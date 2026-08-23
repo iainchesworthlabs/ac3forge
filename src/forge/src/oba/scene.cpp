@@ -254,8 +254,13 @@ bool SceneCursor::is_live(std::size_t object) const {
 void SceneCursor::sample_into(double time_s, std::span<ObjectPlacement> out) const {
     const std::size_t count = std::min(out.size(), scene_.object_count());
     for (std::size_t i = 0; i < count; ++i) {
-        if (i < live_.size() && live_[i]) {
-            out[i] = *live_[i];
+        // Bound once rather than indexing live_ twice: clang-tidy's
+        // bugprone-unchecked-optional-access cannot see that two separate
+        // live_[i] calls name the same optional, and flags the dereference
+        // below as unchecked even though the branch it is in guarantees it.
+        const std::optional<ObjectPlacement>* const pushed = i < live_.size() ? &live_[i] : nullptr;
+        if (pushed && *pushed) {
+            out[i] = **pushed;
             out[i].position = rotate(out[i].position, scene_.orientation());
             continue;
         }
