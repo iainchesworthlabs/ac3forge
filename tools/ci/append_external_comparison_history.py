@@ -14,7 +14,7 @@ decoder - see race_trend's docstring) plus the checked-in
 tests/golden/external-baseline/manifest.json (the FFmpeg/DEE numbers from
 tools/generators/gen_external_baseline.py's last local run), and appends one JSONL
 record per row to <history-dir>/external-comparison-<branch>.jsonl. Only
-"landscape" rows (E-AC-3's "all"/AC-3's automatic tools - the number
+"landscape" rows (E-AC-3's "auto"/AC-3's automatic tools - the number
 actually comparable to FFmpeg's/DEE's own black-box output) get vs_ffmpeg/
 vs_dee deltas; the per-tool detail rows (EAC3_VARIANTS/EAC3_SELF_VARIANTS)
 have no matching external number to compare against, so those keys are

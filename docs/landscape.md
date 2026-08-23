@@ -10,9 +10,11 @@ The comparison is necessarily one number per (leg, tool): neither FFmpeg's
 nor DEE's own E-AC-3/AC-3 encoder exposes which internal coding tools it
 used, so there's no apples-to-apples way to isolate "just coupling" or "just
 spectral extension" against them the way this project can against its own
-history. What's shown is `landscape` — this project's `all`-tools E-AC-3
-encode (or AC-3's unconditionally-automatic encode) — since that's the
-number a real user of either tool actually gets, not an internal detail.
+history. What's shown is `landscape` — this project's `auto`-tools E-AC-3
+encode (the set the encoder picks from the per-channel rate, which is the
+like-for-like answer to FFmpeg's and DEE's own automatic choices), or AC-3's
+unconditionally-automatic encode — since that's the number a real user of
+either tool actually gets, not an internal detail.
 
 <div id="landscape-app">
   <p class="landscape-status">Loading landscape data…</p>

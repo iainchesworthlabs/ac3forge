@@ -546,12 +546,14 @@ collapsed to its latest commit by default to keep it from crowding `main`
 out, and a 🏷 badge marking a row whose commit was tagged as a release.
 
 **vs FFmpeg** / **vs DEE** are only populated on `landscape` rows — the
-delta between this build's own `all`-tools E-AC-3 encode (or AC-3's
+delta between this build's own `auto`-tools E-AC-3 encode (or AC-3's
 automatic-everything encode) and the corresponding tool's number in the
 checked-in [external baseline](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/golden/external-baseline/manifest.json)
 for that same leg, at the `baseline_version` recorded alongside it. A blank
-cell on a `landscape` row means that leg's DEE score is still marked
-unverified in the baseline manifest, not that the delta was zero.
+`vs DEE` cell on a `landscape` row means that leg's DEE score is marked
+unverified in the baseline manifest, not that the delta was zero — at
+baseline version 2 that is the two 64 kbit/s stereo legs, where DEE simply
+cannot encode: its stereo Dolby Digital Plus rate range starts at 96.
 
 ## Where the data lives
 
