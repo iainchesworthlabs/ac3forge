@@ -53,7 +53,22 @@ target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings)
 # Linux's KiB) - the trend job only measures linux-gcc, so the target
 # simply does not exist there yet rather than carrying an untested port.
 # ---------------------------------------------------------------------------
-if(WIN32 OR LINUX)
+#
+# Not built on the ThreadSanitizer leg (roadmap VX16). The global operator
+# new/delete replacements above are the whole mechanism of this target, and
+# TSan's own runtime defines those same operators in
+# libclang_rt.tsan_cxx-x86_64.a - so linking it under -fsanitize=thread is a
+# hard "ld.lld: error: duplicate symbol: operator new(unsigned long)", not a
+# warning. Measured, not assumed: the ASan+UBSan leg links this target today
+# and always has, so the collision is specific to TSan's runtime rather than
+# to sanitizers in general.
+#
+# Nothing is lost by skipping it there. This target exists to count the
+# codec's own allocations for the memory trend
+# (tools/ci/append_memory_history.py), and a count taken through a
+# sanitizer's intercepting allocator would not be the codec's number anyway -
+# the same reason the sanitizer legs are exempt from performance gating.
+if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
     add_executable(ac3membench bench_memory.cpp)
 
     if(WIN32)
