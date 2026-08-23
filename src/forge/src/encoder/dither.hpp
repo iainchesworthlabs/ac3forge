@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
@@ -60,9 +61,9 @@ inline constexpr double kDitherVariance = 0.16663;
 // is worth covering. 1.0 is the plain reading of the paragraph above -
 // substitute noise only where what it replaces was at least as loud. Lower
 // values dither more freely (0 is "wherever any zero-bap bin exists at all",
-// which is FFmpeg's behaviour); higher values reserve it for the deepest
-// holes. Measured across 192-640 kbit/s on three materials - see the table in
-// the pull request that introduced this.
+// which is FFmpeg's own behaviour); higher values reserve it for the deepest
+// holes. 0 and 1 were measured against each other across 96-640 kbit/s on
+// stereo and 5.1; see the table in the pull request that introduced this.
 inline constexpr double kSignalToDitherFloor = 1.0;
 
 class DitherBallot {

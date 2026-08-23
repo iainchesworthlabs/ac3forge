@@ -34,6 +34,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   copy-source reconstruction the encoder could not otherwise mirror. The flag is transmitted
   either way, so none of this costs bits; it trades a little waveform SNR for perceptual quality,
   which is what the tool is for.
+
+  Measured on `tools/ci/quality_race.py`'s own material, decoded by FFmpeg 8.0.1, ViSQOL in audio
+  mode. The E-AC-3 rows carry both changes; the AC-3 rows carry only the dither one. Full tables,
+  every rate and tool set, are in the pull request.
+
+  | leg | before | after |
+  |---|---|---|
+  | AC-3 stereo 192 | 41.82 dB / 4.246 MOS | 41.12 dB / 4.344 MOS |
+  | AC-3 5.1 448 | 21.96 dB / 3.956 MOS | 20.91 dB / 4.268 MOS |
+  | AC-3 5.1 448, committed fixture | 39.95 dB / 3.670 MOS | 38.92 dB / 3.913 MOS |
+  | E-AC-3 stereo 96, no tools | 25.79 dB / 3.799 MOS | 26.75 dB / 4.307 MOS |
+  | E-AC-3 stereo 192, `auto` | 40.42 dB / 4.395 MOS | 40.98 dB / 4.414 MOS |
+  | E-AC-3 5.1 192, no tools | 10.02 dB / 1.326 MOS | 12.14 dB / 2.340 MOS |
+  | E-AC-3 5.1 256, `cpl` | 15.44 dB / 2.364 MOS | 15.36 dB / 2.875 MOS |
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
