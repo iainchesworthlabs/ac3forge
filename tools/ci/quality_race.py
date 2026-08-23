@@ -580,12 +580,21 @@ def race_vbr(original, source, seconds, json_out=None):
     Read the `gap` columns, not the absolute SNR: a sweep point that costs
     203 kbit/s is only interesting next to what 203 kbit/s of CBR buys.
     Positive means VBR won.
+
+    Three comparisons per point, all at the rate the VBR point measured:
+    CBR (a fixed frame size), ABR (the same rate asked for as an average),
+    and FFmpeg's own CBR encoder. The ABR column is there because "average
+    rate" and "variable rate" sound alike and are not: holding an average is
+    the same constraint CBR encodes under, so ABR is expected to score with
+    CBR rather than with VBR, and that expectation is worth having on the
+    table rather than in a comment.
     """
     rows = []
     print("=== E-AC-3 VBR rate-distortion sweep (stereo, tools=none) ===")
     print(f"{'quality':>7} | {'kbps':>6} | {'SNR dB':>7} | {'LSD dB':>6} | {'MOS':>4} | "
-          f"{'CBR SNR':>7} | {'vs CBR':>7} | {'ff SNR':>7} | {'vs ff':>7}")
-    print("-" * 84)
+          f"{'CBR SNR':>7} | {'vs CBR':>7} | {'ABR SNR':>7} | {'vs ABR':>7} | "
+          f"{'ff SNR':>7} | {'vs ff':>7}")
+    print("-" * 104)
     for quality in VBR_QUALITIES:
         tag = f"{quality:.2f}".replace(".", "")
         coded = BUILD / f"vbr_q{tag}.ec3"
@@ -606,6 +615,17 @@ def race_vbr(original, source, seconds, json_out=None):
         cbr_snr, cbr_lsd, _cbr_hf, cbr_mos = decode_scores(
             original, cbr, BUILD / f"vbr_cbr{cbr_kbps}.wav", perceptual=True)
 
+        # ...and the same rate asked for as an AVERAGE rather than as a fixed
+        # frame size. This is the column that says what ABR is and is not
+        # for: holding an average is the same constraint CBR encodes under,
+        # so ABR is expected to land on CBR, not on VBR - and a change that
+        # quietly turned ABR into either one of them shows up right here.
+        abr = BUILD / f"vbr_abr{cbr_kbps}.ec3"
+        _encode_eac3(source, abr, 192, f"avg:{cbr_kbps}")
+        abr_snr, abr_lsd, _abr_hf, abr_mos = decode_scores(
+            original, abr, BUILD / f"vbr_abr{cbr_kbps}.wav", perceptual=True)
+        abr_kbps = measured_kbps(abr, seconds)
+
         ff = BUILD / f"vbr_ff{cbr_kbps}.ec3"
         run(["ffmpeg", "-v", "error", "-y", "-i", source, "-c:a", "eac3",
              "-b:a", f"{cbr_kbps}k", ff])
@@ -618,10 +638,14 @@ def race_vbr(original, source, seconds, json_out=None):
                      "cbr_kbps": cbr_kbps, "cbr_snr_db": float(cbr_snr),
                      "cbr_lsd_db": float(cbr_lsd),
                      "cbr_mos_lqo": None if cbr_mos is None else float(cbr_mos),
+                     "abr_measured_kbps": float(abr_kbps), "abr_snr_db": float(abr_snr),
+                     "abr_lsd_db": float(abr_lsd),
+                     "abr_mos_lqo": None if abr_mos is None else float(abr_mos),
                      "ffmpeg_snr_db": float(ff_snr), "ffmpeg_lsd_db": float(ff_lsd),
                      "ffmpeg_mos_lqo": None if ff_mos is None else float(ff_mos)})
         print(f"{quality:>7.2f} | {kbps:>6.1f} | {snr:>7.2f} | {lsd:>6.2f} | "
               f"{_fmt_mos(mos):>4} | {cbr_snr:>7.2f} | {snr - cbr_snr:>+7.2f} | "
+              f"{abr_snr:>7.2f} | {snr - abr_snr:>+7.2f} | "
               f"{ff_snr:>7.2f} | {snr - ff_snr:>+7.2f}")
 
     print()

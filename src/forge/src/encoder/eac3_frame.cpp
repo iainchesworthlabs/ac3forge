@@ -2576,6 +2576,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                   std::optional<std::uint32_t> cap_words)
         -> std::optional<VbrSize> {
         const std::uint32_t content_bits = side_bits + mantissa_bits + kTailBits;
+        const std::uint32_t wanted = (content_bits + 15) / 16;
         if (cap_words) {
             const std::uint32_t max_words =
                 std::clamp(*cap_words, std::uint32_t{1}, kMaxFrameWords);
@@ -2586,12 +2587,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 return VbrSize{.words = max_words,
                               .fallback_budget = max_words * 16 - side_bits - kTailBits};
             }
-            return VbrSize{.words = (content_bits + 15) / 16, .fallback_budget = std::nullopt};
+            return VbrSize{.words = wanted, .fallback_budget = std::nullopt};
         }
         if (content_bits > kMaxFrameWords * 16) {
             return std::nullopt;
         }
-        return VbrSize{.words = (content_bits + 15) / 16, .fallback_budget = std::nullopt};
+        return VbrSize{.words = wanted, .fallback_budget = std::nullopt};
     };
     const auto vbr_max_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
         if (!vbr.max_kbps) {
@@ -2633,6 +2634,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     };
 
     std::uint32_t words = 0;
+    // ABR only: whether a ceiling cut this frame short of what the steered
+    // offset asked for. Suppresses the controller's upward correction; see
+    // AbrController::commit.
+    bool clipped = false;
     int lo = 0;
     // Set exactly when `lo` was chosen by search() against a fixed budget -
     // CBR always, VBR only when a max_kbps bound was actually hit. The AHT
@@ -2674,7 +2679,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // always a real one.
             const std::uint32_t cap = abr_cap_words(vbr);
             composite = search(cap * 16 - side_bits - kTailBits);
-            state_->abr->observe_search(composite);
+            state_->abr->seed(composite);
         }
         auto sized = vbr_size_for(bits_at(composite), size_cap(vbr));
         if (!sized && drop_delta_and_remeasure()) {
@@ -2685,6 +2690,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         lo = composite;
         words = sized->words;
+        clipped = sized->fallback_budget.has_value();
         if (sized->fallback_budget) {
             // The quality target overshoots the frame's ceiling - vbr.max_kbps
             // under plain VBR, or under ABR whatever the reservoir has left,
@@ -2706,12 +2712,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // separately with this same justification instead.
             fixed_budget = sized->fallback_budget;
             lo = search(*fixed_budget); // NOLINT(bugprone-unchecked-optional-access)
-            if (state_->abr) {
-                // The allowance capped what the controller asked for, so
-                // that offset is now known not to fit - do not leave the
-                // operating point above it.
-                state_->abr->observe_search(lo);
-            }
+            // Under ABR the operating point is deliberately NOT pulled onto
+            // `lo` here: the ceiling that forced this is one frame's
+            // allowance, not a verdict on where the offset belongs, and
+            // wanted_words above already tells the controller by how much it
+            // overshot.
         }
         // Only ever a floor: finish_frame's own auxbits padding already
         // covers any gap between what the content actually needs and the
@@ -2751,9 +2756,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // CBR, or a VBR frame already pinned to its ceiling: the word
             // count cannot move, only which offset fits it can.
             lo = search(*fixed_budget);
-            if (state_->abr) {
-                state_->abr->observe_search(lo);
-            }
         } else {
             // Free-running VBR (or a bound it was naturally already under):
             // quality (lo) does not change, but the gain modes just chosen
@@ -2771,12 +2773,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 return std::unexpected(FrameError::kInvalidBitrate);
             }
             words = sized->words;
+            clipped = sized->fallback_budget.has_value();
             if (sized->fallback_budget) {
                 fixed_budget = sized->fallback_budget;
                 lo = search(*fixed_budget);
-                if (state_->abr) {
-                    state_->abr->observe_search(lo);
-                }
             }
             if (const auto min_words = vbr_min_words(*config_.vbr)) {
                 words = std::max(words, *min_words);
@@ -3151,7 +3151,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // controller believing bits were spent that never were. This is also
     // where the offset for the NEXT frame is steered; see AbrController.
     if (frame && state_->abr) {
-        state_->abr->commit(words);
+        state_->abr->commit(words, clipped);
     }
     return frame;
 }

@@ -13,6 +13,7 @@
 // awkward cases - an exhausted window, an overspend, a window of one - are
 // reachable directly instead of having to be provoked through content.
 
+using ac3::internal::AbrController;
 using ac3::internal::BitReservoir;
 
 TEST_CASE("bit reservoir starts at one frame's share, not the window's", "[abr][reservoir]") {
@@ -103,4 +104,92 @@ TEST_CASE("a saturated window still hands out one frame's share", "[abr][reservo
         CHECK(reservoir.allowance() == 192);
         reservoir.commit(192);
     }
+}
+
+TEST_CASE("the ABR controller has no offset until it is seeded", "[abr][reservoir]") {
+    // The first frame has nothing to steer from, so the encoder runs the same
+    // budget-fitting search CBR does and reports the result here.
+    AbrController controller{192, 16};
+    CHECK_FALSE(controller.offset().has_value());
+    CHECK(controller.allowance() == 192);
+    controller.seed(400);
+    REQUIRE(controller.offset().has_value());
+    CHECK(*controller.offset() == 400);
+    // Only the first seed counts - a later frame's ceiling says nothing about
+    // where the offset belongs.
+    controller.seed(50);
+    CHECK(*controller.offset() == 400);
+}
+
+TEST_CASE("the ABR controller raises the offset while frames come in cheap",
+          "[abr][reservoir]") {
+    AbrController controller{200, 16};
+    controller.seed(400);
+    const int before = *controller.offset();
+    for (int frame = 0; frame < 8; ++frame) {
+        controller.commit(100, false);  // half a frame's share, every frame
+    }
+    CHECK(*controller.offset() > before);
+}
+
+TEST_CASE("the ABR controller lowers the offset while frames run expensive",
+          "[abr][reservoir]") {
+    AbrController controller{200, 16};
+    controller.seed(400);
+    const int before = *controller.offset();
+    for (int frame = 0; frame < 8; ++frame) {
+        controller.commit(400, false);  // double its share, every frame
+    }
+    CHECK(*controller.offset() < before);
+}
+
+TEST_CASE("a clipped frame cannot push the ABR offset up", "[abr][reservoir]") {
+    // Conditional integration, stated directly. A frame the allowance cut
+    // short is not evidence the offset is too LOW - it is evidence of the
+    // opposite - so the upward correction is suppressed for it. Without that
+    // guard the offset winds up against the ceiling and every frame ends up
+    // pinned to its share, which is CBR wearing ABR's name.
+    AbrController clipped{200, 16};
+    AbrController free{200, 16};
+    clipped.seed(500);
+    free.seed(500);
+    for (int frame = 0; frame < 4; ++frame) {
+        clipped.commit(100, true);  // half its share, but only because it was cut
+        free.commit(100, false);    // half its share, and that is all it wanted
+    }
+    CHECK(*clipped.offset() == 500);  // suppressed: no upward correction
+    CHECK(*free.offset() > 500);      // genuinely cheap: spend more
+}
+
+TEST_CASE("a clipped frame that overspent still pulls the ABR offset down",
+          "[abr][reservoir]") {
+    // The other half of conditional integration: only the UPWARD correction
+    // is suppressed. A frame that drew on banked credit and came out over its
+    // share is real evidence the offset is too high, clipped or not - which
+    // is what makes the wound-up equilibrium unreachable rather than merely
+    // unlikely.
+    AbrController controller{200, 16};
+    controller.seed(500);
+    for (int frame = 0; frame < 4; ++frame) {
+        controller.commit(400, true);
+    }
+    CHECK(*controller.offset() < 500);
+}
+
+TEST_CASE("the ABR controller keeps the offset inside the search space", "[abr][reservoir]") {
+    // (csnroffst << 4) | fsnroffst is 10 bits; an offset outside [0, 1023]
+    // is not a value the bit allocation can be asked for at all.
+    AbrController high{200, 4};
+    high.seed(1000);
+    for (int frame = 0; frame < 200; ++frame) {
+        high.commit(1, false);  // absurdly cheap, every frame: drive it up hard
+    }
+    CHECK(*high.offset() == 1023);
+
+    AbrController low{200, 4};
+    low.seed(20);
+    for (int frame = 0; frame < 200; ++frame) {
+        low.commit(4000, false);  // absurdly expensive: drive it down hard
+    }
+    CHECK(*low.offset() == 0);
 }

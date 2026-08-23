@@ -18,9 +18,9 @@
 // frames it slides past.
 //
 // Deliberately just the accounting - it hands out a word allowance and takes
-// back what was actually spent. Which SNR offset fits that allowance is
-// snr_search.hpp's monotone search, exactly as it is for CBR; ABR is that
-// same search against a budget that moves.
+// back what was actually spent. What the encoder does with that allowance is
+// AbrController's job below, and it is deliberately NOT "search for the
+// offset that fills it" - see that class for why.
 //
 // Internal to src/forge/src/encoder/ for the same reason snr_search.hpp is:
 // plumbing between the encoder's own translation units, not library surface.
@@ -114,7 +114,7 @@ class AbrController {
     // The composite offset to encode this frame at, or nullopt before any
     // frame has been encoded: there is nothing to steer from yet, so the
     // caller runs the same budget-fitting search CBR does and reports what it
-    // found through observe_search below.
+    // found through seed() below.
     [[nodiscard]] std::optional<int> offset() const {
         if (!operating_) {
             return std::nullopt;
@@ -122,27 +122,57 @@ class AbrController {
         return std::clamp(static_cast<int>(std::lround(*operating_)), 0, kMaxComposite);
     }
 
-    // A search against a real budget settled on `composite` - the first
-    // frame's seed, or a later frame whose allowance capped what the
-    // controller asked for. Either way it is an offset now KNOWN to fit, so
-    // the operating point never stays above it.
-    void observe_search(int composite) {
-        const auto found = static_cast<double>(composite);
-        operating_ = operating_ ? std::min(*operating_, found) : found;
+    // Seeds the operating point from the first frame's own budget search.
+    // Only the first: a later frame whose allowance capped it says nothing
+    // about where the offset belongs - the allowance moves frame to frame,
+    // and clamping the persistent operating point onto one frame's ceiling
+    // was measured pinning the delivered rate 5-11% BELOW target, because
+    // the offset the search lands on is the largest that FITS and its cost
+    // can sit well under the budget it fitted into.
+    void seed(int composite) {
+        if (!operating_) {
+            operating_ = static_cast<double>(composite);
+        }
     }
 
-    // Records the frame's real size and steers the offset by how far that
-    // size landed from one frame's share. Integral, not proportional: the
-    // offset keeps moving while the stream is off its target rate and stops
-    // moving when it is on it, which is what makes the average a delivered
-    // figure rather than a direction of travel.
-    void commit(std::uint32_t words) {
-        reservoir_.commit(words);
+    // Records the frame and steers the offset by how far the size that went
+    // on the wire landed from one frame's share. Integral, not proportional:
+    // the offset keeps moving while the stream is off its target rate and
+    // stops moving when it is on it, which is what makes the average a
+    // delivered figure rather than a direction of travel.
+    //
+    // `clipped` says the allowance cut this frame short of what the offset
+    // asked for, and suppresses an UPWARD correction only. That is
+    // conditional integration, the standard guard against winding an
+    // integrator up against a saturating actuator, and both halves of it
+    // were measured rather than assumed:
+    //
+    //   - Steering on what the frame WANTED instead (so a clipped frame
+    //     reports its true appetite) keeps the offset honest but makes the
+    //     delivered mean at most the target by construction - every clipped
+    //     frame writes less than it wanted, and nothing ever makes that back.
+    //     Measured 4-10% under target across 96-384 kbit/s.
+    //   - Steering on `written` with no guard at all can settle in a
+    //     degenerate equilibrium where the offset is far too high, every
+    //     frame is clipped to exactly its share, and the error reads zero
+    //     for ever - a perfectly delivered rate with the frame sizes pinned
+    //     flat, which is CBR wearing ABR's name.
+    //
+    // Suppressing only the upward half keeps the real equilibrium (mean
+    // written size = target, with the offset sitting where a frame is
+    // occasionally clipped) and makes the degenerate one unreachable: a
+    // clipped frame that overspent still pulls the offset down.
+    void commit(std::uint32_t written, bool clipped) {
+        reservoir_.commit(written);
         if (!operating_) {
             return;
         }
         const auto target = static_cast<double>(reservoir_.target_words());
-        *operating_ += kGain * (target - static_cast<double>(words)) / target;
+        const double error = (target - static_cast<double>(written)) / target;
+        if (clipped && error > 0.0) {
+            return;
+        }
+        *operating_ += kGain * error;
         *operating_ = std::clamp(*operating_, 0.0, static_cast<double>(kMaxComposite));
     }
 
@@ -150,12 +180,17 @@ class AbrController {
     // (csnroffst << 4) | fsnroffst, the search space snr_search.hpp walks.
     static constexpr int kMaxComposite = 1023;
     // Composite units per whole frame of over- or under-spend. The offset
-    // scale is not linear in bit cost - about 100 units is a 1.5x change in
-    // rate on real material - so a frame that costs double its share pulls
-    // the offset down by roughly a sixth of that, which settles within a few
-    // frames without ringing. Large enough to track a scene change, small
-    // enough that one atypical frame does not re-rate the stream around it.
-    static constexpr double kGain = 16.0;
+    // scale is not linear in bit cost - measured on real material, about 100
+    // units is a 1.5x change in rate, so roughly 0.45% of rate per unit -
+    // which puts this loop's gain near 0.3 per frame, comfortably inside the
+    // stable region and converging in about 20 frames. Two thirds of a second
+    // matters because the stream's FIRST frame is systematically atypical:
+    // its MDCT history is all zeros, so its analysis window carries a step
+    // discontinuity and it costs far more than the frames after it at the
+    // same offset. Seeding from that frame starts the offset too low, and at
+    // a gain of 16 the climb back was still visibly incomplete 80 frames in -
+    // 5% off the delivered rate over a 10-second encode.
+    static constexpr double kGain = 64.0;
     BitReservoir reservoir_;
     // Unset until the first frame has been encoded; see offset().
     std::optional<double> operating_;
