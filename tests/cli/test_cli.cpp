@@ -398,6 +398,44 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
         CHECK(text.find("nofastmdct") != std::string::npos);
     }
 
+    SECTION("dither=off reaches an AC-3 encode, and nodither reaches E-AC-3's tools=") {
+        // AC-3 has no tools= string, so dither=off (support.hpp's
+        // Options::dither) is its equivalent - the same relationship
+        // fast-mdct=off already has to eac3-encode's bare nofastmdct token.
+        const auto ac3_path = dir / "nodither.ac3";
+        const auto ac3_log = dir / "nodither_ac3.log";
+        fs::remove(ac3_path);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() +
+                                    "\" 192 stereo dither=off",
+                                ac3_log);
+        CHECK(rc == 0);
+        CHECK(fs::exists(ac3_path));
+
+        const auto eac3_path = dir / "nodither.ec3";
+        const auto eac3_log = dir / "nodither_eac3.log";
+        fs::remove(eac3_path);
+        const auto rc2 = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                     eac3_path.string() + "\" 192 nodither stereo",
+                                 eac3_log);
+        const auto text = read_log(eac3_log);
+        INFO(text);
+        CHECK(rc2 == 0);
+        CHECK(fs::exists(eac3_path));
+        CHECK(text.find("nodither") != std::string::npos);
+    }
+
+    SECTION("dither=on is refused, not ignored - only off is a value 'dither' takes") {
+        const auto out_path = dir / "dither_bad.ac3";
+        const auto log = dir / "dither_bad.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                                    "\" 192 stereo dither=on",
+                                log);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(read_log(log).find("dither") != std::string::npos);
+    }
+
     SECTION("eac3-encode-multi (src=/map=) also honors fast-mdct=off directly") {
         const auto out_path = dir / "fastmdct_eac3_multi_off.ec3";
         const auto log = dir / "fastmdct_eac3_multi.log";
@@ -1055,7 +1093,7 @@ TEST_CASE("eac3-encode and atmos-encode accept '-' for input and output", "[cli]
 // in two places, neither caught by the round-trip test above because it
 // never turns dialnorm=auto or src=/map= on: finish_measurement() (behind
 // every dialnorm=auto/dialnorm2=auto path) printed its "measured N LKFS ->
-// dialnorm M" line with the no-stream std::println overload, which always
+// dialnorm M" line with the no-stream fmt::println overload, which always
 // targets stdout regardless of out_path; and run_eac3_encode_multi/
 // run_encode_multi's own final summary/routing report used that same
 // unconditional stdout instead of threading status_stream(out_path) through

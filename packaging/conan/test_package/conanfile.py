@@ -17,6 +17,10 @@ class Ac3forgeTestConan(ConanFile):
 
     def requirements(self):
         self.requires(self.tested_reference_str)
+        # This test's own choice of output (fmt::println in src/test_ac3forge.cpp),
+        # not something it needs from ac3forge itself - see that recipe's
+        # requirements() for why ac3forge's own fmt dependency is private/invisible.
+        self.requires("fmt/12.2.0")
 
     def layout(self):
         cmake_layout(self)

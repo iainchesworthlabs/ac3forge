@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -62,7 +63,7 @@ std::pair<std::vector<std::byte>, ac3::DecodedAccessUnit> run(const ac3::oba::At
         }
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
             return {};
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
@@ -84,9 +85,9 @@ int main() {
     const auto [without_container, bed_without] =
         run({.bitrate_kbps = 448, .emit_object_metadata = false});
 
-    std::printf("with container:    %zu bytes, bed %d channels, dialnorm %d\n", with_container.size(),
+    fmt::printf("with container:    %zu bytes, bed %d channels, dialnorm %d\n", with_container.size(),
                 static_cast<int>(bed_with.channels.size()), bed_with.dialnorm);
-    std::printf("without container: %zu bytes, bed %d channels, dialnorm %d\n",
+    fmt::printf("without container: %zu bytes, bed %d channels, dialnorm %d\n",
                 without_container.size(), static_cast<int>(bed_without.channels.size()),
                 bed_without.dialnorm);
 
@@ -106,7 +107,7 @@ int main() {
             }
         }
     }
-    std::printf("same %zu bytes either way (CBR); largest bed sample difference: %.5f\n",
+    fmt::printf("same %zu bytes either way (CBR); largest bed sample difference: %.5f\n",
                 with_container.size(), max_bed_diff);
 
     // Both decode as an ordinary 5.1 bed through this project's own decoder,
