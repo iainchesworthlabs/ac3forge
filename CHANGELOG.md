@@ -12,7 +12,51 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **`ac3kernelbench` covers the fast transform paths and `dft512`.** The kernel series benched
+  the direct IMDCT and not the fast one that has been the decode default since 0.9.0, and never
+  benched `dft512` or the block-switched inverse at all. Four rows added
+  (`imdct512_windowed_fast`, `imdct256_pair_windowed` and its fast form — the only user of the
+  FFT kernel at P = 64 — and `dft512`) plus `ecpl_channel_spectrum_fast`, so each accelerated
+  kernel is recorded beside its own reference form. Part of `PF1`'s decode-side gap, added here
+  because `PF3`/`PF4` needed the numbers.
+- **`dft512` is checked against its own O(N²) summation.** `tests/core/test_fft.cpp` had
+  impulse, DC, bin-aligned-cosine and linearity properties but never compared the transform to
+  the sum `fft.hpp` states it computes. Two cases now do, on six consecutive real-audio-shaped
+  blocks and on genuinely complex input (what §E3.5.5.1 step 5 actually hands it), at the same
+  1e-10 bound the rest of the library's fast paths are held to.
+
 ### Changed
+
+- **The FFT core is radix-4, specialised per size** (`PF4`). The generic iterative radix-2
+  decimation-in-time core every transform in the library shared — an explicit bit-reversal pass
+  followed by log2(P) stages of two-point butterflies, each loading a twiddle and doing a full
+  complex multiply against it — is replaced by compile-time-specialised kernels for the three
+  sizes the codec actually uses (P = 64, 128, 512): radix-4 stages with a trailing radix-2 stage
+  where log2(P) is odd, the first stage's unit twiddles eliminated (a quarter of the butterflies
+  at P = 512 were multiplying by a tabulated 1.0), and the digit-reversal permutation folded
+  into each caller's own input-producing loop — the DCT-IV quarter-split, the §7.9.4.1 step-2
+  pre-twiddle, `dft512`'s input copy — rather than run as a pass of its own. Measured on
+  linux-gcc: `mdct512_forward_fast` 2.47 → 1.24 µs (2.0×), `imdct512_windowed_fast` 2.93 →
+  1.61 µs (1.8×), `dft512` 8.56 → 3.63 µs (2.4×), `band_energy_fast` 27.4 → 18.0 µs (1.5×); a
+  180-second 5.1 AC-3 decode 4.07 → 2.65 s and an E-AC-3 enhanced-coupling decode 5.24 →
+  3.19 s. Every stream in the 40-encode corpus is byte-identical to before, and the direct-form
+  evaluations the fast paths are validated against are untouched — `mode=reference` still runs
+  the spec's own arithmetic end to end. Accuracy is unchanged to three significant figures on
+  every transform and slightly better for `dft512` against its own O(N²) summation (1.9e-15 →
+  1.7e-15).
+- **The fast IMDCT reaches enhanced coupling and JOC object reconstruction** (`PF3`). The two
+  §7.9.4.1 call sites the 0.9.0 fast-inverse work fenced out were still evaluating step 3 as the
+  pseudocode's direct O(N²) sum: `eac3::ecpl_channel_spectrum` (three 512-point inverses per
+  coupled channel per block, on both the encode and the decode side) and `joc::reconstruct` (one
+  per object per block — 90 in a 15-object frame). Both now forward a `fast` flag; a decoder
+  passes `DecoderConfig::fast_imdct` for both, and the encoder-internal `ecpl` use passes
+  `eac3::FrameConfig::fast_mdct`, which makes that field the encoder's fast-transform switch in
+  both directions and keeps `mode=reference` direct end to end. `ecpl_channel_spectrum` is 4.4×
+  faster on its own (74.8 → 17.1 µs, before `PF4` compounds it to 8.8×), and a 30-second
+  15-object decode drops from 6.59 s to 4.96 s. Encoder output is byte-identical across the
+  corpus, so this is a speed choice and not an output one.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
