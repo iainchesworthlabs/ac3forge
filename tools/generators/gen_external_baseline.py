@@ -88,7 +88,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # just also happens to be where its own CLI/WAV-IO/scoring helpers live.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ci"))
 from quality_race import (
-    CLI, decode_scores_ours_fixed, measured_kbps, read_wav_any, read_wav_f32, run, score_fixed,
+    CLI,
+    decode_scores_ours_fixed,
+    measured_kbps,
+    read_wav_any,
+    read_wav_f32,
+    run,
+    score_fixed,
 )
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -120,15 +126,15 @@ UNVERIFIED_DEE_LEGS = {
 }
 
 LEGS = [
-    dict(name="ac3-51-448", codec="ac3", ext="ac3", dee_codec="dd",
-         ffmpeg_codec="ac3", dee_layout="5.1", kbps=448,
-         wav=AUDIO / "reference_51.wav"),
-    dict(name="eac3-stereo-192", codec="eac3", ext="ec3", dee_codec="ddp",
-         ffmpeg_codec="eac3", dee_layout="stereo", kbps=192,
-         wav=AUDIO / "reference_stereo.wav"),
-    dict(name="eac3-51-256", codec="eac3", ext="ec3", dee_codec="ddp",
-         ffmpeg_codec="eac3", dee_layout="5.1", kbps=256,
-         wav=AUDIO / "reference_51.wav"),
+    {"name": "ac3-51-448", "codec": "ac3", "ext": "ac3", "dee_codec": "dd",
+         "ffmpeg_codec": "ac3", "dee_layout": "5.1", "kbps": 448,
+         "wav": AUDIO / "reference_51.wav"},
+    {"name": "eac3-stereo-192", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
+         "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 192,
+         "wav": AUDIO / "reference_stereo.wav"},
+    {"name": "eac3-51-256", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
+         "ffmpeg_codec": "eac3", "dee_layout": "5.1", "kbps": 256,
+         "wav": AUDIO / "reference_51.wav"},
 ]
 
 
@@ -141,14 +147,18 @@ def guard_not_ci():
 
 
 def ffmpeg_version():
-    result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True)
+    # check=False: a missing or broken ffmpeg records "unknown" in the manifest
+    # rather than aborting the whole baseline generation.
+    result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=False)
     return result.stdout.splitlines()[0].strip() if result.returncode == 0 else "unknown"
 
 
 def dee_version():
     # No --version option; -h's help text carries a "belongs to the Dolby
     # Encoding Engine version X" line instead.
-    result = subprocess.run([str(DEE), "-h"], capture_output=True, text=True)
+    # check=False: `dee -h` exits non-zero on some builds even though it printed
+    # the version banner this parses.
+    result = subprocess.run([str(DEE), "-h"], capture_output=True, text=True, check=False)
     for line in (result.stdout or result.stderr).splitlines():
         if "Dolby Encoding Engine version" in line:
             return line.strip()
@@ -263,7 +273,8 @@ def score_tool(original, coded, wav_scratch, is_eac3, decoder):
     if decoder == "ours":
         snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch, perceptual=True)
     else:
-        snr, lsd, hf, mos = decode_scores_ffmpeg_fixed(original, coded, wav_scratch, perceptual=True)
+        snr, lsd, hf, mos = decode_scores_ffmpeg_fixed(original, coded, wav_scratch,
+                                                       perceptual=True)
     return {
         "snr_db": float(snr),
         "lsd_db": float(lsd) if is_eac3 else None,

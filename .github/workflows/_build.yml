@@ -219,6 +219,13 @@ jobs:
           - name: "Windows MSVC"
             runner: ${{ needs.check-runners.outputs.windows_runner }}
             preset: windows-msvc
+            # Declared once, here, so `matrix.experimental` in continue-on-error
+            # above resolves against a property the matrix actually defines -
+            # without it every leg silently reads null and actionlint reports the
+            # reference as undefined. Every other leg is non-experimental by
+            # omission (the `|| false` fallback); a leg that IS experimental sets
+            # this to true and continue-on-error keeps it out of CI Status.
+            experimental: false
             # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
             # channel. Pinned by channel, not exact version: the runner image
             # ships whatever 18.x is current, and the assert step below fails

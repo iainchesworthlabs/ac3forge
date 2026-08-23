@@ -60,6 +60,22 @@ select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF", "PLC", "PLE", "PLW"
 # (docstring style), ANN (annotation coverage), S (bandit), PTH, TRY, EM.
 
 [lint.per-file-ignores]
+# tools/references/ transcribes ETSI TS 102 366's syntax tables line for line -
+# it is a reading of the standard, kept deliberately close to the shape of the
+# printed pseudocode so a divergence from the spec is visible as a divergence
+# on the page. Three rules fight exactly that and nothing else:
+#
+#   E702   `r.bits(8); r.bits(6)` is one row of a syntax table, two fields, and
+#          splitting it across two lines separates them from that row.
+#   SIM102 the spec gates fields by nested conditions; collapsing
+#          `if strmtyp == 1:` / `if r.bits(1):  # chanmape` into one `and`
+#          loses which bit is the guard and which is the field being read.
+#   SIM108 same, for the if/else branches the tables spell out.
+#
+# Everything else applies here as it does everywhere - B023, F841 and PLW0108
+# each found something real in this directory when the gate first ran.
+"tools/references/*.py" = ["E702", "SIM102", "SIM108"]
+
 # Conan recipes declare their inputs as plain class attributes - it is the
 # framework's documented recipe shape, and ClassVar annotations on them would
 # be this repo inventing a house style for someone else's file format.
