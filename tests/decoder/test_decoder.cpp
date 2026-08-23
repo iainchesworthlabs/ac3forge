@@ -21,8 +21,18 @@ namespace {
 // after the sync word. Mirrors encoder.cpp's own tail-patching logic, so a
 // hand-patched frame stays a legal syncframe and only the flipped bit's own
 // meaning changes.
-void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
-                std::uint32_t value) {
+//
+// [[gnu::noinline]]: GCC's -O3 VRP mis-derives, only once this is inlined
+// into one specific one-bit call site (count == 1), that `frame`'s backing
+// store is null ("source object is likely at address zero") and fails the
+// build under -Werror=array-bounds. `frame` is always a real, previously
+// REQUIRE()'d encoded syncframe, dozens of bytes long, at every call site -
+// this is GCC's own known false-positive class for std::vector subscripting
+// after aggressive inlining, not a real bounds issue; blocking inlining
+// removes the interprocedural constant-propagation path that triggers it.
+// Ignored by non-GNU compilers, so no #if guard is needed.
+[[gnu::noinline]] void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
+                                  std::uint32_t value) {
     for (int i = 0; i < count; ++i) {
         const std::size_t bit = offset + static_cast<std::size_t>(i);
         const auto mask = static_cast<std::uint8_t>(0x80u >> (bit & 7));
