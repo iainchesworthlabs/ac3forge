@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <span>
 #include <string>
@@ -48,7 +49,7 @@ int main() {
 
     const auto scanned = ac3::io::scan(elementary);
     if (!scanned) {
-        std::printf("scan failed\n");
+        fmt::printf("scan failed\n");
         return 1;
     }
 
@@ -70,7 +71,7 @@ int main() {
     const auto fragmented =
         mp4::fragment(track, frames, mp4::FragmentOptions{.frames_per_fragment = 8});
     if (!fragmented) {
-        std::printf("fragment failed: %.*s\n",
+        fmt::printf("fragment failed: %.*s\n",
                     static_cast<int>(mp4::describe(fragmented.error()).size()),
                     mp4::describe(fragmented.error()).data());
         return 1;
@@ -86,10 +87,10 @@ int main() {
                                                                 "audio.m3u8", mp4::HlsOptions{});
     const auto dash_snippet = mp4::build_dash_adaptation_set(track, fragmented->media_segments);
 
-    std::printf("%zu bytes init segment, %zu media segment(s) from %zu frames\n",
+    fmt::printf("%zu bytes init segment, %zu media segment(s) from %zu frames\n",
                 fragmented->init_segment.size(), fragmented->media_segments.size(), frames.size());
-    std::printf("HLS media playlist:\n%s\n", media_playlist.c_str());
-    std::printf("HLS master playlist:\n%s\n", master_playlist.c_str());
-    std::printf("DASH AdaptationSet:\n%s\n", dash_snippet.c_str());
+    fmt::printf("HLS media playlist:\n%s\n", media_playlist.c_str());
+    fmt::printf("HLS master playlist:\n%s\n", master_playlist.c_str());
+    fmt::printf("DASH AdaptationSet:\n%s\n", dash_snippet.c_str());
     return 0;
 }

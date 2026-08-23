@@ -13,6 +13,7 @@ target_link_libraries(ac3perf
     PRIVATE
         ac3::forge
         ac3::warnings
+        ac3::fmt
         Catch2::Catch2WithMain)
 
 target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -44,7 +45,7 @@ catch_discover_tests(ac3perf
 # ---------------------------------------------------------------------------
 add_executable(ac3bench bench_encoder.cpp)
 
-target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings)
+target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings ac3::fmt)
 
 target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -81,7 +82,7 @@ if(WIN32 OR LINUX)
 
     target_include_directories(ac3membench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-    target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings)
+    target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings ac3::fmt)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -98,7 +99,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(ac3kernelbench kernel_bench.cpp)
 
-target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac3::warnings)
+target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac3::warnings ac3::fmt)
 
 target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

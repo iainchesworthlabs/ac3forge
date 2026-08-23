@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fmt/printf.h>
 #include <fstream>
 #include <span>
 #include <string>
@@ -354,13 +355,13 @@ int main(int argc, char** argv) {
     }
 
     for (const auto& r : results) {
-        std::printf("%-20s %5d frames  %9.3f ms total  %6.3f ms/frame  (budget %.3f ms/frame)\n",
+        fmt::printf("%-20s %5d frames  %9.3f ms total  %6.3f ms/frame  (budget %.3f ms/frame)\n",
                     r.name.c_str(), r.frames, r.total_ms, r.ms_per_frame, real_time_budget_ms(1));
     }
 
     if (!json_out.empty()) {
         write_json(results, json_out);
-        std::printf("wrote %s\n", json_out.c_str());
+        fmt::printf("wrote %s\n", json_out.c_str());
     }
 
     return 0;
