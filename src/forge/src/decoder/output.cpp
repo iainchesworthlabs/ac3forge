@@ -1,0 +1,412 @@
+#include "ac3/decoder/output.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <numbers>
+#include <optional>
+#include <vector>
+
+#include "ac3/core/tables.hpp"
+#include "ac3/meta/drc.hpp"  // to_db
+#include "ac3/meta/mixing.hpp"
+
+namespace ac3 {
+
+namespace {
+
+// The 90-degree phase shifter §7.8.2's Lt/Rt asks for, as an odd-length
+// type III FIR: a windowed ideal Hilbert transformer, whose impulse response
+// is 2/(pi*n) for odd n and zero for even n. 127 taps puts the usable band
+// (within about half a decibel of true quadrature) from roughly 350 Hz to
+// just under Nyquist at 48 kHz, which covers everything a Dolby Surround
+// decoder steers on. The even taps really are zero, so the convolution below
+// costs half of what the tap count suggests.
+//
+// The group delay is exactly the middle tap, and it is a whole number of
+// samples - that is the reason for choosing an odd length. The direct (L, R,
+// centre) path is delayed to match rather than the surround path advanced,
+// because only one of those two is causal.
+inline constexpr int kHilbertTaps = 127;
+inline constexpr int kHilbertDelay = (kHilbertTaps - 1) / 2;  // 63
+
+// Built once. The window is Hamming: its first sidelobe is low enough to keep
+// the passband ripple under the half decibel above, and it does not zero the
+// outermost taps the way a Hann window would - which would waste two of them.
+const std::vector<double>& hilbert_kernel() {
+    static const std::vector<double> kernel = [] {
+        std::vector<double> taps(static_cast<std::size_t>(kHilbertTaps), 0.0);
+        for (int i = 0; i < kHilbertTaps; ++i) {
+            const int n = i - kHilbertDelay;
+            if (n % 2 == 0) {
+                continue;  // the ideal response is exactly zero on even taps
+            }
+            const double ideal = 2.0 / (std::numbers::pi * static_cast<double>(n));
+            const double window =
+                0.54 - 0.46 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) /
+                                       static_cast<double>(kHilbertTaps - 1));
+            taps[static_cast<std::size_t>(i)] = ideal * window;
+        }
+        return taps;
+    }();
+    return kernel;
+}
+
+// Which coded positions of Table 5.8 carry surround. ac3::meta's own downmix
+// builders keep a fuller version of this privately; what is needed here is
+// only "which indices form the surround sum", and a shared layout type
+// serving both would be a worse fit for each.
+struct Positions {
+    int first = -1;
+    int second = -1;
+};
+
+Positions surround_positions(Acmod acmod) {
+    switch (acmod) {
+        case Acmod::k2_1: return {.first = 2};
+        case Acmod::k3_1: return {.first = 3};
+        case Acmod::k2_2: return {.first = 2, .second = 3};
+        case Acmod::k3_2: return {.first = 3, .second = 4};
+        case Acmod::k1_0:
+        case Acmod::k2_0:
+        case Acmod::k3_0:
+        case Acmod::kDualMono: return {};
+    }
+    return {};
+}
+
+}  // namespace
+
+MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
+                     std::optional<meta::SurroundMixLevel> surmixlev) {
+    MixLevels out;
+    if (cmixlev) {
+        out.loro_clev = meta::coefficient(*cmixlev);
+    }
+    if (surmixlev) {
+        out.loro_slev = meta::coefficient(*surmixlev);
+    }
+    // AC-3 has no separate Lt/Rt levels. §7.8.2's own -3 dB is the right
+    // stand-in for the centre, but a stream that explicitly dropped its
+    // surrounds from the downmix (§5.4.2.5's '10') meant that for any fold and
+    // not only the plain one - carrying it across is the only reading that
+    // does not put back channels the operator deliberately removed.
+    if (surmixlev && *surmixlev == meta::SurroundMixLevel::kSilent) {
+        out.ltrt_slev = meta::level::kSilent;
+    }
+    return out;
+}
+
+MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix) {
+    MixLevels out;
+    if (!mix) {
+        return out;
+    }
+    out.loro_clev = meta::coefficient(mix->lorocmixlev);
+    out.loro_slev = meta::coefficient(mix->lorosurmixlev);
+    out.ltrt_clev = meta::coefficient(mix->ltrtcmixlev);
+    out.ltrt_slev = meta::coefficient(mix->ltrtsurmixlev);
+    out.preferred = mix->dmixmod;
+    // §E2.3.1.10: an absent lfemixlevcod is not "use the default", it is "LFE
+    // mixing is disabled" - a decision the encoder made, which
+    // OutputConfig::mix_lfe deliberately cannot talk it out of.
+    out.lfe_mix_level_db = mix->lfemixlevcod
+                               ? std::optional{meta::lfe_mix_level_db(*mix->lfemixlevcod)}
+                               : std::nullopt;
+    return out;
+}
+
+std::size_t output_channel_count(const OutputConfig& config, Acmod acmod, bool lfe) {
+    const auto coded = static_cast<std::size_t>(fullbw_channel_count(acmod)) + (lfe ? 1U : 0U);
+    if (config.target == DownmixTarget::kAsCoded || acmod == Acmod::kDualMono) {
+        return coded;
+    }
+    return config.target == DownmixTarget::kMono ? 1U : 2U;
+}
+
+int OutputStage::latency_samples() const {
+    return config_.target == DownmixTarget::kLtRt && config_.ltrt_phase_shift ? kHilbertDelay : 0;
+}
+
+double OutputStage::rf_protection_db() const { return meta::to_db(protection_gain_); }
+
+void OutputStage::reset() {
+    shift_history_.clear();
+    direct_history_.clear();
+    delay_scratch_.clear();
+    protection_gain_ = 1.0;
+}
+
+void OutputStage::apply(std::vector<std::vector<float>>& channels, Acmod acmod, bool lfe,
+                        const MixLevels& levels, int dialnorm) {
+    // The span form below is the whole implementation; this one only lends it
+    // views of the vectors and then trims them to what the fold left behind.
+    views_.clear();
+    views_.reserve(channels.size());
+    for (auto& channel : channels) {
+        views_.emplace_back(channel);
+    }
+    apply(views_, acmod, lfe, levels, dialnorm);
+    if (!channels.empty()) {
+        channels.resize(output_channel_count(config_, acmod, lfe));
+    }
+}
+
+void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod, bool lfe,
+                        const MixLevels& levels, int dialnorm) {
+    const bool downmixing =
+        config_.target != DownmixTarget::kAsCoded && acmod != Acmod::kDualMono;
+    const bool normalising = config_.apply_dialnorm || config_.mode != OperatingMode::kCustom;
+    if (!downmixing && !normalising) {
+        return;
+    }
+    if (channels.empty() || channels.front().empty()) {
+        return;
+    }
+    const std::size_t length = channels.front().size();
+    const auto nfchans = static_cast<std::size_t>(fullbw_channel_count(acmod));
+    const std::size_t lfe_index = nfchans;
+    const bool have_lfe = lfe && channels.size() > lfe_index;
+
+    // §5.4.2.8 first. dialnorm describes the CODED programme, so normalising
+    // before the fold or after it gives the same answer for a linear matrix -
+    // but not once RF mode's limiter is in the chain, which reacts to level.
+    // Doing it here means the limiter sees the levels a listener would, which
+    // is the only order in which its ceiling means anything.
+    const double dialnorm_gain = normalising ? meta::dialnorm_gain(dialnorm) : 1.0;
+    if (dialnorm_gain != 1.0) {
+        for (const auto& channel : channels) {
+            for (float& sample : channel) {
+                sample = static_cast<float>(static_cast<double>(sample) * dialnorm_gain);
+            }
+        }
+    }
+    if (!downmixing) {
+        return;
+    }
+
+    // The LFE's contribution, when it is wanted AND the stream did not
+    // disable it. §7.8's ideal is +10 dB relative to left and right; an
+    // E-AC-3 stream carrying its own lfemixlevcod overrides that with
+    // whatever it chose.
+    const double lfe_gain = (config_.mix_lfe && have_lfe && levels.lfe_mix_level_db)
+                                ? meta::lfe_mix_gain(*levels.lfe_mix_level_db)
+                                : 0.0;
+
+    const bool stereo = config_.target != DownmixTarget::kMono;
+    out_left_.assign(length, 0.0F);
+    if (stereo) {
+        out_right_.assign(length, 0.0F);
+    }
+
+    // The three folds differ only in which coefficients they use and whether a
+    // phase-shifted path exists at all, so the accumulation is written once
+    // over whichever set was built.
+    const auto accumulate = [&](const std::array<double, 5>& coeffs, std::vector<float>& out) {
+        for (std::size_t ch = 0; ch < nfchans && ch < channels.size() && ch < coeffs.size();
+             ++ch) {
+            const double gain = coeffs[ch];
+            if (gain == 0.0) {
+                continue;
+            }
+            const auto& source = channels[ch];
+            const std::size_t n = std::min(length, source.size());
+            for (std::size_t i = 0; i < n; ++i) {
+                out[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+            }
+        }
+    };
+
+    if (config_.target == DownmixTarget::kMono) {
+        accumulate(meta::mono_downmix(acmod, levels.loro_clev, levels.loro_slev), out_left_);
+    } else if (config_.target == DownmixTarget::kLoRo) {
+        const auto coeffs = meta::stereo_downmix(acmod, levels.loro_clev, levels.loro_slev);
+        accumulate(coeffs.left, out_left_);
+        accumulate(coeffs.right, out_right_);
+    } else {
+        const auto coeffs = meta::ltrt_downmix(acmod, levels.ltrt_clev, levels.ltrt_slev);
+        accumulate(coeffs.direct.left, out_left_);
+        accumulate(coeffs.direct.right, out_right_);
+
+        // The surround sum, formed once and then shifted once: §7.8.2 puts ONE
+        // surround signal into the matrix, so summing first and filtering the
+        // sum is not an optimisation over filtering each channel, it is the
+        // correct order. It also halves the filter work for a 3/2 source.
+        //
+        // §5.4.2.5's '10' - surrounds dropped from the downmix altogether -
+        // arrives as a coefficient of exactly zero and needs no special case:
+        // the sum stays silent and the shifter filters silence.
+        surround_sum_.assign(length, 0.0F);
+        const Positions positions = surround_positions(acmod);
+        for (const int position : {positions.first, positions.second}) {
+            if (position < 0 || static_cast<std::size_t>(position) >= channels.size()) {
+                continue;
+            }
+            // ltrt_downmix normalises, so the sum has to carry whatever
+            // attenuation the direct path just got. Reading the coefficient
+            // back out rather than re-deriving it from levels.ltrt_slev keeps
+            // the two paths in step whatever normalisation decided.
+            const double gain = coeffs.surround[static_cast<std::size_t>(position)];
+            const auto& source = channels[static_cast<std::size_t>(position)];
+            const std::size_t n = std::min(length, source.size());
+            for (std::size_t i = 0; i < n; ++i) {
+                surround_sum_[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+            }
+        }
+
+        if (config_.ltrt_phase_shift) {
+            // Delay the direct path by the filter's own group delay, then
+            // filter the surround sum, so the two arrive together. Both delay
+            // lines carry across frames, which is what makes a stream decoded
+            // frame by frame identical to the same stream decoded in one go.
+            const auto& kernel = hilbert_kernel();
+            shift_history_.resize(static_cast<std::size_t>(kHilbertTaps) - 1U, 0.0F);
+            direct_history_.resize(2);
+            for (auto& history : direct_history_) {
+                history.resize(static_cast<std::size_t>(kHilbertDelay), 0.0F);
+            }
+
+            // out'[i] = (history ++ out)[i], with the last kHilbertDelay
+            // samples of that same concatenation becoming the next frame's
+            // history. delay_scratch_ is a member rather than a local so this
+            // allocates nothing after the first frame: the swap at the end
+            // leaves it holding the buffer `history` had, which is the same
+            // size, so the assign() never reallocates either.
+            const auto delay_direct = [&](std::vector<float>& out, std::vector<float>& history) {
+                const std::size_t depth = history.size();
+                delay_scratch_.assign(depth, 0.0F);
+                const std::size_t keep = std::min(depth, length);
+                std::copy(out.end() - static_cast<std::ptrdiff_t>(keep), out.end(),
+                          delay_scratch_.end() - static_cast<std::ptrdiff_t>(keep));
+                if (keep < depth) {
+                    // A frame shorter than the delay line: the older tail has
+                    // not aged all the way out yet, and shuffles along.
+                    std::copy(history.begin() + static_cast<std::ptrdiff_t>(keep), history.end(),
+                              delay_scratch_.begin());
+                }
+                for (std::size_t i = length; i-- > depth;) {
+                    out[i] = out[i - depth];
+                }
+                for (std::size_t i = 0; i < keep; ++i) {
+                    out[i] = history[i];
+                }
+                history.swap(delay_scratch_);
+            };
+            delay_direct(out_left_, direct_history_[0]);
+            delay_direct(out_right_, direct_history_[1]);
+
+            // The shifted sum, convolved across the frame boundary through the
+            // carried history. Even taps are exactly zero (see the kernel's own
+            // comment), so only the odd ones are visited.
+            const std::size_t history_size = shift_history_.size();
+            const auto sample_at = [&](std::ptrdiff_t index) -> double {
+                if (index >= 0) {
+                    return static_cast<double>(surround_sum_[static_cast<std::size_t>(index)]);
+                }
+                const auto back = static_cast<std::size_t>(-index);
+                return back <= history_size
+                           ? static_cast<double>(shift_history_[history_size - back])
+                           : 0.0;
+            };
+            for (std::size_t i = 0; i < length; ++i) {
+                double shifted = 0.0;
+                for (int tap = 1; tap < kHilbertTaps; tap += 2) {
+                    shifted += kernel[static_cast<std::size_t>(tap)] *
+                               sample_at(static_cast<std::ptrdiff_t>(i) - tap);
+                }
+                // Lt takes the shifted surround negated and Rt positive - the
+                // 180-degree relationship a Dolby Surround decoder recovers the
+                // surround channel from.
+                out_left_[i] -= static_cast<float>(shifted);
+                out_right_[i] += static_cast<float>(shifted);
+            }
+            const std::size_t keep = std::min(history_size, length);
+            if (history_size > keep) {
+                std::copy(shift_history_.begin() + static_cast<std::ptrdiff_t>(keep),
+                          shift_history_.end(), shift_history_.begin());
+            }
+            std::copy(surround_sum_.end() - static_cast<std::ptrdiff_t>(keep), surround_sum_.end(),
+                      shift_history_.end() - static_cast<std::ptrdiff_t>(keep));
+        } else {
+            for (std::size_t i = 0; i < length; ++i) {
+                out_left_[i] -= surround_sum_[i];
+                out_right_[i] += surround_sum_[i];
+            }
+        }
+    }
+
+    if (lfe_gain != 0.0) {
+        const auto& source = channels[lfe_index];
+        const std::size_t n = std::min(length, source.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto contribution =
+                static_cast<float>(lfe_gain * static_cast<double>(source[i]));
+            out_left_[i] += contribution;
+            if (stereo) {
+                out_right_[i] += contribution;
+            }
+        }
+    }
+
+    // §7.7.2's ceiling, extended to whichever fold was actually asked for.
+    //
+    // §7.8.1's normalisation already bounds a fold by the largest coded
+    // sample, so on its own the matrix cannot overload. What can is the LFE -
+    // deliberately outside that normalisation, since §7.8 treats its
+    // contribution as an addition at up to +10 dB - and a compr word whose
+    // ceiling was computed for the MONO downmix rather than for this one. RF
+    // mode is the mode that promises neither happens.
+    //
+    // The gain is derived per frame from that frame's own peak and then RAMPED
+    // across the frame rather than stepped at its boundary, because a step in
+    // gain is a click. Ramping means the bound is not quite exact where a peak
+    // lands early in a frame that has just got much louder, so a final clamp
+    // backs it up: the ramp is what keeps the limiter inaudible, the clamp is
+    // what makes the ceiling true.
+    if (config_.mode == OperatingMode::kRf) {
+        double peak = 0.0;
+        for (std::size_t i = 0; i < length; ++i) {
+            peak = std::max(peak, std::abs(static_cast<double>(out_left_[i])));
+            if (stereo) {
+                peak = std::max(peak, std::abs(static_cast<double>(out_right_[i])));
+            }
+        }
+        double target = 1.0;
+        if (peak > config_.rf_ceiling && peak > 0.0) {
+            target = config_.rf_ceiling / peak;
+        }
+        // Recover towards unity no faster than 0.5 dB per frame (about 15 dB
+        // per second at 48 kHz), so one loud transient does not leave the whole
+        // programme audibly ducked and a sustained one does not pump.
+        constexpr double kReleasePerFrame = 1.0594630943592953;  // 0.5 dB
+        const double released = std::min(1.0, protection_gain_ * kReleasePerFrame);
+        const double frame_gain = std::min(target, released);
+        const double start = protection_gain_;
+        const auto span = static_cast<double>(length);
+        for (std::size_t i = 0; i < length; ++i) {
+            const double t = span > 1.0 ? static_cast<double>(i) / (span - 1.0) : 1.0;
+            const double gain = start + (frame_gain - start) * t;
+            const auto limited = [&](float sample) {
+                return static_cast<float>(std::clamp(static_cast<double>(sample) * gain,
+                                                     -config_.rf_ceiling, config_.rf_ceiling));
+            };
+            out_left_[i] = limited(out_left_[i]);
+            if (stereo) {
+                out_right_[i] = limited(out_right_[i]);
+            }
+        }
+        protection_gain_ = frame_gain;
+    }
+
+    // The fold lands back in the caller's own first one or two channels. A
+    // copy rather than a swap, because the span form cannot own storage - and
+    // out_left_/out_right_ keep their capacity for the next frame either way,
+    // which is what actually keeps a steady-state decode off the heap.
+    std::copy(out_left_.begin(), out_left_.end(), channels[0].begin());
+    if (stereo && channels.size() > 1) {
+        std::copy(out_right_.begin(), out_right_.end(), channels[1].begin());
+    }
+}
+
+}  // namespace ac3

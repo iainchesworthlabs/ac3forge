@@ -67,6 +67,30 @@ void normalize(std::array<double, 5>& coeffs) {
     }
 }
 
+// §7.8.1 for the two-path Lt/Rt form. The bound has to hold for the direct
+// and shifted paths TOGETHER: a 90-degree shift keeps the surround sum out of
+// phase with a steady tone in the fronts, but says nothing about a transient,
+// where both paths can peak at once. Summing the magnitudes is the only bound
+// that holds for every input, and it is the same "never exceeds 1" clause -
+// applied to the real worst case rather than to a convenient subset of it.
+void normalize_ltrt(LtRtCoefficients& coeffs) {
+    double left = 0.0;
+    double right = 0.0;
+    for (std::size_t i = 0; i < coeffs.direct.left.size(); ++i) {
+        left += coeffs.direct.left[i] + coeffs.surround[i];
+        right += coeffs.direct.right[i] + coeffs.surround[i];
+    }
+    const double sum = std::max(left, right);
+    if (sum <= 1.0) {
+        return;
+    }
+    for (std::size_t i = 0; i < coeffs.direct.left.size(); ++i) {
+        coeffs.direct.left[i] /= sum;
+        coeffs.direct.right[i] /= sum;
+        coeffs.surround[i] /= sum;
+    }
+}
+
 }  // namespace
 
 DownmixCoefficients stereo_downmix(Acmod acmod, double clev, double slev) {
@@ -96,6 +120,43 @@ DownmixCoefficients stereo_downmix(Acmod acmod, double clev, double slev) {
 
     normalize(out.left);
     normalize(out.right);
+    return out;
+}
+
+LtRtCoefficients ltrt_downmix(Acmod acmod, double clev, double slev) {
+    const Layout layout = layout_of(acmod);
+    LtRtCoefficients out;
+    const auto direct = [&](int index, double left, double right) {
+        if (index < 0) {
+            return;
+        }
+        out.direct.left[static_cast<std::size_t>(index)] = left;
+        out.direct.right[static_cast<std::size_t>(index)] = right;
+    };
+    const auto shifted = [&](int index, double gain) {
+        if (index >= 0) {
+            out.surround[static_cast<std::size_t>(index)] = gain;
+        }
+    };
+
+    direct(layout.left, 1.0, 0.0);
+    direct(layout.right, 0.0, 1.0);
+    // A 1/0 source has no left or right of its own, exactly as in Lo/Ro: its
+    // centre becomes both at -3 dB. A Dolby Surround decoder recovers that as
+    // a phantom centre, which is the correct place for it.
+    direct(layout.centre, layout.left < 0 ? level::kMinus3dB : clev,
+           layout.left < 0 ? level::kMinus3dB : clev);
+    // Every coded surround feeds ONE sum, then that sum is shifted and
+    // matrixed. A 2/1 or 3/1 source's single surround is already the sum; a
+    // coded pair is summed at slev, which is what a Dolby Surround encoder
+    // does with discrete surrounds and what a Pro Logic decoder expects to
+    // pull back out of the difference signal. Their individual sides are
+    // deliberately lost here - Lt/Rt has one surround channel, by definition.
+    shifted(layout.surround, slev);
+    shifted(layout.left_surround, slev);
+    shifted(layout.right_surround, slev);
+
+    normalize_ltrt(out);
     return out;
 }
 
@@ -163,5 +224,18 @@ double mono_downmix_peak_dbfs(std::span<const std::span<const float>> channels, 
                               double clev, double slev) {
     return mono_downmix_peak_dbfs({}, channels, acmod, clev, slev);
 }
+
+double dialnorm_gain(int dialnorm) {
+    // §5.4.2.8 reserves 0; every other value is 1..31 dB below full scale.
+    // Anything outside that range means the field was never read (or was read
+    // wrong), and leaving the audio alone is the only reading that cannot
+    // make things worse.
+    if (dialnorm <= 0 || dialnorm > kReferenceDialnorm) {
+        return 1.0;
+    }
+    return std::pow(10.0, static_cast<double>(dialnorm - kReferenceDialnorm) / 20.0);
+}
+
+double lfe_mix_gain(double level_db) { return std::pow(10.0, level_db / 20.0); }
 
 }  // namespace ac3::meta

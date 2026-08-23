@@ -161,6 +161,28 @@ struct DownmixCoefficients {
 [[nodiscard]] AC3FORGE_EXPORT DownmixCoefficients stereo_downmix(Acmod acmod, double clev,
                                                                  double slev);
 
+// §7.8.2's Dolby Surround compatible fold: Lt = L + clev·C − slev·S,
+// Rt = R + clev·C + slev·S, where S is the surround SUM phase shifted by 90
+// degrees. A coefficient cannot express a phase shift, so the surround path
+// is kept separate from the direct one here rather than folded into a single
+// DownmixCoefficients: `direct` holds the coefficients applied to the
+// channels as coded (its surround entries are zero), `surround` holds the
+// coefficients of the channels that form the sum, and the caller applies the
+// shift to that sum before adding it — negated into Lt, positive into Rt.
+// See ac3::OutputStage, which owns the shift itself.
+//
+// Normalisation (§7.8.1) is over the WORST CASE of the two paths together,
+// since the shifted sum is not generally in quadrature with everything at
+// once: a coefficient set whose direct and surround magnitudes could sum
+// above 1 is attenuated until it cannot.
+struct LtRtCoefficients {
+    DownmixCoefficients direct{};
+    std::array<double, 5> surround{};
+};
+
+[[nodiscard]] AC3FORGE_EXPORT LtRtCoefficients ltrt_downmix(Acmod acmod, double clev,
+                                                            double slev);
+
 // §7.8's "output_mode == 1/0" branch: left and right at −3 dB, centre at
 // clev + 3 dB, each surround at slev − 3 dB, then normalised. This is the
 // signal §7.7.2 promises to keep under a ceiling.
@@ -183,5 +205,22 @@ struct DownmixCoefficients {
 
 [[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
+
+// --- §7.7/§7.8 output-stage levels -----------------------------------------
+
+// §5.4.2.8: dialnorm says where average dialogue sits, as −dialnorm dBFS, and
+// a decoder normalising to the −31 dBFS reference attenuates by the
+// difference. dialnorm 31 is already the reference and returns exactly 1.0;
+// every legal value below it is an attenuation, never a boost, so this can
+// only ever reduce level. The reserved value 0 is treated as 31 (no change) -
+// §5.4.2.8 forbids emitting it and a decoder has no better reading of it than
+// "no information", which is what leaving the audio alone says.
+[[nodiscard]] AC3FORGE_EXPORT double dialnorm_gain(int dialnorm);
+inline constexpr int kReferenceDialnorm = 31;
+
+// The linear gain of §E2.3.1.11's LFE mix level, for the §7.8 LFE
+// contribution a decoder may fold in. lfe_mix_level_db(kLfeMixLevelIdeal) is
+// §7.8's stated ideal of +10 dB relative to left and right.
+[[nodiscard]] AC3FORGE_EXPORT double lfe_mix_gain(double level_db);
 
 }  // namespace ac3::meta
