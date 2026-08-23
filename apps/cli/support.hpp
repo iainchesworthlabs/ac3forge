@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/quality/distortion.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
@@ -132,6 +133,14 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // The per-frame search over §7.2.2's transmitted bit allocation
+    // parameters, judged on the reconstruction error the decoder will
+    // produce (EncoderConfig::search, ac3/quality/distortion.hpp).
+    // search=distortion minimises that error; search=perceptual weights it
+    // by a tonality/masking model first. Off by default, like the library
+    // config it feeds - it costs encode time, and this project does not turn
+    // a decision knob on without the numbers. AC-3 encodes only.
+    ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain

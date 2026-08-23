@@ -145,6 +145,15 @@ class AC3FORGE_EXPORT PerceptualModel {
     // noise-masking-tone requirement.
     void reset();
 
+    // The same, for one channel. An AC-3 encoder needs this because its
+    // stream numbering is not stable across frames: the coupling channel
+    // exists only in frames that couple (`cplinu` is off wherever a channel
+    // block-switched, §8.2.4.1), so the slot at index nchans may hold the
+    // history of a coupling channel from several frames ago. Extrapolating
+    // this frame's coupling spectrum from that is not a prediction, it is a
+    // coincidence, and it would read as tonality.
+    void reset(int channel);
+
     // Analyses one channel's block. `coefficients` is the MDCT output
     // indexed from bin 0, `end` the coded bandwidth (endmant); bins at or
     // above `end` are ignored and their bands report zero.

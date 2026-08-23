@@ -174,6 +174,11 @@ void PerceptualModel::reset() {
     std::ranges::fill(impl_->history_depth, 0);
 }
 
+void PerceptualModel::reset(int channel) {
+    assert(channel >= 0 && channel < impl_->channels);
+    impl_->history_depth[static_cast<std::size_t>(channel)] = 0;
+}
+
 std::span<const double> PerceptualModel::band_centre_hz() const {
     return impl_->centre_hz;
 }

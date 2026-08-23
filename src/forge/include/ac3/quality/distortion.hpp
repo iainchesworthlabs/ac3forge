@@ -59,6 +59,25 @@ namespace ac3::quality {
 // bins, not frequencies, and a band's width in Hz follows the rate.
 inline constexpr int kBands = 50;
 
+// What an encoder searching its own transmitted parameters is trying to
+// minimise. Named here rather than in the encoder because both encoders
+// will want it and because it is a statement about the measurement, not
+// about AC-3.
+enum class Criterion : std::uint8_t {
+    // No search: the parameters are whatever the fixed rules chose. This is
+    // what every release before the search existed emitted, and it stays
+    // the default until the measured evidence says otherwise.
+    kNone,
+    // Minimise the reconstruction noise power this header measures. Honest
+    // and cheap, and still a waveform criterion: it prices a decibel in a
+    // band nobody can hear the same as a decibel in one they can.
+    kDistortion,
+    // Minimise the noise-to-mask ratio against ac3::quality::PerceptualModel
+    // - the same measured noise, weighted by what the signal can actually
+    // hide. Costs the psychoacoustic analysis on top.
+    kPerceptual,
+};
+
 // One coded stream's signal and reconstruction-noise power, banded.
 //
 // Both in the same units - normalized coefficient power, where a

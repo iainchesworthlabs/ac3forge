@@ -11,6 +11,7 @@
 
 #include "ac3/core/mantissas.hpp"  // MantissaToken, for the token scratch below
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
@@ -81,6 +82,25 @@ struct EncoderConfig {
     // heavy-compression peak detector consults them whatever acmod is.
     meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
     meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+
+    // --- decision search (ac3/quality) -------------------------------------
+    // §7.2.2's bit allocation parameters are chosen once, from the bit rate,
+    // and written into every frame of the encode. The comment at their
+    // declaration in encoder.cpp records why they were never searched: the
+    // only in-loop criterion this encoder had was the composite SNR offset,
+    // and that number is not comparable between two code sets because each
+    // produces a different masking curve for the offset to sit on.
+    //
+    // ac3::quality supplies the criterion that was missing - the error the
+    // decoder will actually reconstruct - so with this set the encoder tries
+    // a small set of candidate BitAllocCodes per frame, and decides the
+    // delta-bit-allocation race on measured error rather than on the
+    // composite offset each pass happened to reach.
+    //
+    // kNone by default: the search costs real time (see EQ13's measurement
+    // in the CHANGELOG) and this project does not turn a decision knob on
+    // without the numbers to justify it. `ac3cli encode search=...` sets it.
+    quality::Criterion search = quality::Criterion::kNone;
 
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // When set, encode_frame() records its own model of the decoder - the bit
