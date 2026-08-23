@@ -545,7 +545,7 @@ struct EcplBandFit {
 
 // Where coupling starts once it IS in use and the caller has not said - the
 // geometry half of the decision, with WHETHER to couple left to
-// default_cplbegf below. Sub-band 4 - bin
+// auto_cplbegf below. Sub-band 4 - bin
 // 85, 8.0 kHz at 48 kHz - is the floor, because that is roughly where
 // per-channel waveform detail stops being what a listener is hearing. Below
 // it the envelope metric keeps improving and waveform SNR falls off a cliff;
@@ -563,7 +563,7 @@ struct EcplBandFit {
 }
 
 // The rate policy's answer when a tool buys less than it costs - see
-// default_cplbegf/default_spxbegf below. Only `auto` acts on it; a caller who
+// auto_cplbegf/auto_spxbegf below. Only `auto` acts on it; a caller who
 // names a tool explicitly still gets it, at the geometry helper's start
 // sub-band.
 constexpr int kToolOff = -1;
@@ -589,34 +589,25 @@ constexpr int kToolOff = -1;
     return 12 + 14 * nfchans;
 }
 
-// Above this per-channel rate spectral extension stops paying for itself.
-// Unlike coupling's ceiling this one does not move with the channel count -
-// synthesis replaces a band outright rather than sharing it, so what it saves
-// does not depend on how many channels are in the frame.
-//
-// Measured the same way, as the marginal gain of adding spectral extension -
-// both on its own and on top of coupling, the latter being the tighter of the
-// two because coupling has already taken the same band's cost out:
+// Spectral extension has a crossover of the same kind, and unlike coupling's
+// it does not move with the channel count - synthesis replaces a band
+// outright rather than sharing it, so what it saves does not depend on how
+// many channels are in the frame. Measured the same way, as the marginal gain
+// of adding it, both on its own and on top of coupling (the latter tighter,
+// because coupling has already taken the same band's cost out):
 //
 //   on AHT:      +1.5 dB at 48 kbit/s per channel, -0.0 at 64
 //   on AHT+cpl:  +0.4 dB at 48 kbit/s per channel, -0.1 at 64
 //
-// so the crossover sits just below 64 either way, and 56 is the midpoint of
-// the bracket containing it.
-inline constexpr int kSpxRateCeiling = 56;
-
-// Where coupling should start when `auto` is choosing, or kToolOff when it
-// should not be used at all.
-[[nodiscard]] int default_cplbegf(std::uint32_t bitrate_kbps, int nfchans) {
-    const int per_channel = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
-    if (per_channel >= coupling_rate_ceiling(nfchans)) {
-        return kToolOff;
-    }
-    return cplbegf_geometry(bitrate_kbps, nfchans);
-}
+// which put it just below 64 either way, and it was a fixed 56 - the midpoint
+// of that bracket - until spx_rate_ceiling below replaced it. That number is
+// not wrong; it is the answer to the SNR question on this material, and it is
+// recorded here because the perceptual answer, on real programme material,
+// lands about 35 kbit/s per channel higher and it is worth being able to see
+// both.
 
 // Where synthesis takes over once it IS in use and the caller has not said -
-// the geometry half, with WHETHER to extend left to default_spxbegf below.
+// the geometry half, with WHETHER to extend left to auto_spxbegf below.
 // Spectral
 // extension is the crudest of the tools - a copied band with noise stirred in
 // and an envelope painted back on - so it belongs as high as the rate allows.
@@ -636,16 +627,6 @@ inline constexpr int kSpxRateCeiling = 56;
         return 4;  // coefficient 97, 9.1 kHz
     }
     return 5;  // coefficient 109, 10.2 kHz
-}
-
-// Where synthesis should take over when `auto` is choosing, or kToolOff when
-// it should not be used at all.
-[[nodiscard]] int default_spxbegf(std::uint32_t bitrate_kbps, int nfchans) {
-    const int per_channel = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
-    if (per_channel >= kSpxRateCeiling) {
-        return kToolOff;
-    }
-    return spxbegf_geometry(bitrate_kbps, nfchans);
 }
 
 // --- What the content says, as against what the rate says --------------------
@@ -939,7 +920,7 @@ inline constexpr int kCouplingMinSubBands = 4;
 inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
 
 // Where coupling should start when `auto` is choosing, or kToolOff when it
-// should not be used at all - default_cplbegf's rate answer, against the
+// should not be used at all. The rate answer, against the
 // ceiling this frame's content has earned rather than a fixed one.
 [[nodiscard]] int auto_cplbegf(std::uint32_t bitrate_kbps, int nfchans,
                                const CouplingContent& coupling, int subbands) {
@@ -1948,8 +1929,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // CBR fixes the word count up front, from bitrate_kbps; VBR does not know
     // it until the content's own mantissa cost is measured in step 7, so this
-    // stays unset here and is resolved there. Either way default_cplbegf/
-    // default_spxbegf below need a rate-shaped number even under VBR, since
+    // stays unset here and is resolved there. Either way auto_cplbegf/
+    // auto_spxbegf below need a rate-shaped number even under VBR, since
     // that is what tells them how much per-channel headroom the frame has -
     // vbr->nominal_kbps (or its own fallbacks) stands in for bitrate_kbps.
     const std::uint32_t tool_reference_kbps =
