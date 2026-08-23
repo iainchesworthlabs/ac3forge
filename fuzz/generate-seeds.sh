@@ -108,6 +108,40 @@ add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-bed51.ec3"
 run atmos-encode "$WORK/roundtrip-51.wav" "$WORK/atmos-encode.ec3" 448 0
 add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-encode.ec3"
 
+echo "==> Third-party structure: the committed external-baseline bitstreams"
+echo "    (Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - roadmap VX4)"
+# Everything above this point is ac3forge's own output, so every seed shares
+# ac3forge's own encoder choices: frame-hoisted exponent strategies, coupling
+# either on for all six blocks or off, snroffststr 0, frmfgaincode 0, geometry
+# sent once in block 0 and never resent. A mutation starting from one of those
+# explores the neighbourhood of THIS encoder's syntax, and no amount of it
+# reaches syntax the encoder never emits in the first place. The external
+# baseline is real third-party structure - a Dolby encoder resending coupling
+# geometry mid-frame, bringing channels into coupling part-way through, and
+# transmitting the per-channel fast-gain and fine-SNR elements this one leaves
+# out - which is exactly the shape that carried five real decoder defects
+# found while wiring up tools/checks/verify_gold_reference.sh's interop
+# checks. Seeding from these puts the fuzzers' mutations in that neighbourhood
+# too.
+EXTERNAL_BASELINE="$REPO_ROOT/tests/golden/external-baseline"
+for leg in ac3-51-448 eac3-51-256 eac3-stereo-192; do
+    case "$leg" in
+        ac3-*) ext=ac3; targets="fuzz_scan,fuzz_ac3_decode" ;;
+        *)     ext=ec3; targets="fuzz_scan,fuzz_eac3_decode" ;;
+    esac
+    for tool in dee ffmpeg; do
+        src="$EXTERNAL_BASELINE/$leg/$tool.$ext"
+        if [ ! -f "$src" ]; then
+            echo "error: external-baseline fixture missing: $src" >&2
+            exit 1
+        fi
+        # Renamed on the way in: every fixture is called dee.ac3/ffmpeg.ec3
+        # inside its own leg directory, and the corpus directories are flat.
+        cp "$src" "$WORK/external-${leg}-${tool}.${ext}"
+        add_seed "$targets" "$WORK/external-${leg}-${tool}.${ext}"
+    done
+done
+
 echo "==> WAV: an IEC 61937 burst-wrapped PCM16 WAV too - a different write path"
 run spdif "$WORK/ac3-silence.ac3" "$WORK/spdif.wav"
 add_seed "fuzz_wav_read" "$WORK/spdif.wav"
