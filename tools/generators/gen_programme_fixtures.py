@@ -172,6 +172,24 @@ SYNTHETIC = [
 ]
 
 
+# Not audio material and not produced by any generator: a real FFmpeg-encoded
+# E-AC-3 bitstream, committed so tools/checks/verify_gold_reference.sh can
+# check this project's decoder against a third-party stream that sets
+# cplbndstrce == 0 (Annex E's default coupling band structure), which nothing
+# this project's own encoder emits ever does. It lives in the same directory
+# and its bytes matter for exactly the same reason the audio fixtures' do -
+# regenerating it silently would move a published floor - so it is in the
+# manifest too, hashed but with no audio parameters to check.
+BITSTREAMS = [
+    dict(fixture="reference_51_eac3_448k_cplbndstrce0.ec3", kind="bitstream",
+         note="FFmpeg-encoded from reference_51.wav: `ffmpeg -y -i "
+              "tests/golden/audio/reference_51.wav -c:a eac3 -b:a 448k <out>` "
+              "(ffmpeg 8.0.1). Confirmed to set cplbndstrce == 0 with cplbegf == 12 "
+              "in every block - see tools/checks/verify_gold_reference.sh for why "
+              "cplbegf != 0 matters here."),
+]
+
+
 def sha256_of(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -290,6 +308,19 @@ def describe_synthetic(entry):
     }
 
 
+def describe_bitstream(entry):
+    path = OUT / entry["fixture"]
+    if not path.exists():
+        raise SystemExit(f"{path} missing - see this entry's own note for how it was produced")
+    return {
+        "fixture": entry["fixture"],
+        "kind": entry["kind"],
+        "sha256": sha256_of(path),
+        "bytes": path.stat().st_size,
+        "note": entry["note"],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -305,21 +336,24 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
 
     fixtures = [describe_synthetic(e) for e in SYNTHETIC]
+    fixtures += [describe_bitstream(e) for e in BITSTREAMS]
     if not args.synthetic_only:
         for entry in SOURCES:
             fixtures.append(build_fixture(entry, args.source_dir, args.scratch_dir))
     else:
         existing = json.loads(MANIFEST.read_text())["fixtures"] if MANIFEST.exists() else []
         fixtures += [f for f in existing if f["kind"] in ("speech", "music")]
+    fixtures.sort(key=lambda f: f["fixture"])
 
     manifest = {"corpus_version": CORPUS_VERSION, "fixtures": fixtures}
     MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n")
 
-    print(f"{'fixture':<32} | {'kind':<9} | {'ch':>2} | {'secs':>6} | {'KiB':>7}")
-    print("-" * 70)
+    print(f"{'fixture':<42} | {'kind':<9} | {'ch':>2} | {'secs':>6} | {'KiB':>7}")
+    print("-" * 80)
     for f in fixtures:
-        print(f"{f['fixture']:<32} | {f['kind']:<9} | {f['channels']:>2} | "
-              f"{f['duration_s']:>6.2f} | {f['bytes'] / 1024:>7.0f}")
+        ch = f"{f['channels']:>2}" if "channels" in f else " -"
+        secs = f"{f['duration_s']:>6.2f}" if "duration_s" in f else "     -"
+        print(f"{f['fixture']:<42} | {f['kind']:<9} | {ch} | {secs} | {f['bytes'] / 1024:>7.0f}")
     print(f"\nwrote {MANIFEST} (corpus_version {CORPUS_VERSION})")
     return 0
 

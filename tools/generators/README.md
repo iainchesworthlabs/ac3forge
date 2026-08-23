@@ -33,6 +33,18 @@ a failing check instead.
 | `reference_stereo.wav` | synthetic | stereo, 16-bit | 3.00 s | `gen_stereo_reference_wav.py` |
 | `programme_speech_stereo.flac` | speech | stereo, 16-bit | 30.00 s | `gen_programme_fixtures.py` |
 | `programme_music_stereo.flac` | music | stereo, 16-bit | 30.00 s | `gen_programme_fixtures.py` |
+| `reference_51_eac3_448k_cplbndstrce0.ec3` | bitstream | — | — | FFmpeg (captured, see below) |
+
+The last of those is not audio material and no generator here produces it: it
+is a real FFmpeg-encoded E-AC-3 stream, committed so
+`tools/checks/verify_gold_reference.sh` can check this project's decoder
+against a third-party bitstream that sets `cplbndstrce == 0` — Annex E's
+default coupling band structure, which nothing this project's own encoder
+emits ever does, and which a real decoder bug hid behind until FFmpeg's output
+was first tried against it. Its bytes matter for the same reason the audio
+fixtures' do, so it is hashed in the manifest too, with no audio parameters to
+check. `check_corpus.py` also fails on any file in `tests/golden/audio/` that
+the manifest does not list, so a new fixture cannot arrive unregistered.
 
 ### Synthetic and programme material are both kept, on purpose
 

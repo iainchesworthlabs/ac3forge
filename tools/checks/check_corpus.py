@@ -96,6 +96,13 @@ def main() -> int:
                 "CORPUS_VERSION in tools/generators/gen_programme_fixtures.py; every published "
                 "trend series is measured against these bytes.")
             continue
+        if entry["kind"] == "bitstream":
+            # A coded stream, not audio material - hashed like everything else
+            # but with no sample rate or channel count to read. See BITSTREAMS
+            # in tools/generators/gen_programme_fixtures.py.
+            print(f"  ok  {entry['fixture']:<42} {entry['kind']:<9} "
+                  f"{entry['bytes'] / 1024:.0f} KiB")
+            continue
         try:
             facts = flac_streaminfo(path) if path.suffix == ".flac" else wav_facts(path)
         except Exception as exc:  # noqa: BLE001 - report, don't abort the whole sweep
@@ -111,8 +118,22 @@ def main() -> int:
         if abs(duration - entry["duration_s"]) > 0.01:
             failures.append(
                 f"{entry['fixture']}: duration {duration:.3f}s != manifest {entry['duration_s']}s")
-        print(f"  ok  {entry['fixture']:<32} {entry['kind']:<9} "
+        print(f"  ok  {entry['fixture']:<42} {entry['kind']:<9} "
               f"{channels}ch {rate} Hz {bits}-bit {duration:.2f}s")
+
+    # The other direction: a fixture added to the directory but never
+    # registered is exactly as invisible as a regenerated one, and every
+    # published series is just as exposed to it. Nothing else would notice -
+    # it would simply be a committed binary nobody has hashed.
+    listed = {e["fixture"] for e in manifest["fixtures"]}
+    for path in sorted(AUDIO.iterdir()):
+        if path.name == MANIFEST.name or not path.is_file():
+            continue
+        if path.name not in listed:
+            failures.append(
+                f"{path.name}: present in tests/golden/audio/ but not in the corpus manifest. "
+                "Register it in tools/generators/gen_programme_fixtures.py (SOURCES, SYNTHETIC "
+                "or BITSTREAMS) and rerun that script.")
 
     if failures:
         for f in failures:
