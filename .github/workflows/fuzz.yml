@@ -50,7 +50,7 @@
 # This is a bounded, time-boxed run, not continuous (OSS-Fuzz-style) fuzzing
 # infrastructure - see fuzz/README.md.
 #
-# All four run in the same ubuntu:26.04 + LLVM 21 container ci.yml's
+# All four run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
 # linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
 # set (-Werror included) as every other target - the fuzz build used to be the
 # one exception, on the assumption it carried a sign-conversion/double-promotion
@@ -125,14 +125,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      # Also installs libclang-rt-${LLVM_VERSION}-dev (ASan/UBSan/libFuzzer's
+      # static runtime archives) unconditionally - see that package's own
+      # comment in the script - so fuzzing needs no separate install step for
+      # it.
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Replay seeds + regression corpus (no mutation)
         run: bash fuzz/run.sh regress
@@ -160,14 +158,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Fuzz (bounded mutation budget)
         run: bash fuzz/run.sh run
@@ -203,14 +195,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       # The differential harnesses' own oracle (fuzz/differential_oracle.hpp
       # shells out to it at run time) - the same package
@@ -258,14 +244,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Fuzz (deeper bounded mutation budget)
         run: bash fuzz/run.sh run
@@ -316,7 +296,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         run: bash .github/toolchain/03-llvm-toolchain.sh
 
       - uses: ./.github/actions/setup-vcpkg
