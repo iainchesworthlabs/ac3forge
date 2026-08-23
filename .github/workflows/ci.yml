@@ -290,7 +290,7 @@ jobs:
   # fails with "no such file or directory" on every TU without this step, even
   # though it is only reading the AST, not linking anything.
   # -warnings-as-errors='*' makes any finding in the curated set fail the job
-  # (run-clang-tidy-21 is the LLVM Python wrapper and takes single-dash
+  # (run-clang-tidy-<version> is the LLVM Python wrapper and takes single-dash
   # arguments, unlike clang-tidy itself): every finding present when this job
   # was added was either fixed or suppressed with a NOLINT and a one-line
   # justification (see the commit that added this job), so a clean baseline
@@ -327,7 +327,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         run: bash .github/toolchain/03-llvm-toolchain.sh
 
       - uses: ./.github/actions/setup-vcpkg
@@ -344,8 +344,10 @@ jobs:
 
       - name: clang-tidy
         shell: bash
+        env:
+          LLVM_VERSION: ${{ needs.toolchain-versions.outputs.llvm_version }}
         run: |
-          run-clang-tidy-21 -j "$(nproc)" -p build/config-linux-llvm-debug \
+          "run-clang-tidy-${LLVM_VERSION}" -j "$(nproc)" -p build/config-linux-llvm-debug \
             -warnings-as-errors='*' \
             '(src/(forge|matroska)|apps/cli)/.*\.cpp'
 
@@ -850,7 +852,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         run: bash .github/toolchain/03-llvm-toolchain.sh
 
       - uses: ./.github/actions/setup-vcpkg
