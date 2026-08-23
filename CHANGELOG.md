@@ -12,6 +12,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Changed
+
+- **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
+  open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
+  (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
+  is already confirmed on Linux/ALSA against a real AVR, PyPI and the Homebrew tap are live, the
+  vcpkg port is policy-blocked until about 2027-02 - and the retired single-letter IDs are kept
+  in a ledger so older references still resolve. The DAMF reader (`B2`) moves to "Deliberately
+  not on the list" (no public specification); an IAB (SMPTE ST 2098-2) reader replaces it now
+  that SMPTE's catalogue is free.
+
 ## [0.9.0-beta.1] - 2026-08-22
 
 Ninth tagged release. The headline is the memory-usage optimization programme landing in full:

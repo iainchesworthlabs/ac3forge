@@ -49,7 +49,7 @@ C++ exception — realistically only `std::bad_alloc` for a codec core that neve
 `AC3FORGE_ERROR_INTERNAL` instead of propagating into a (possibly non-C++) caller frame.
 
 **No ABI-compatibility promise before v1.0.** Same pre-1.0 stance as the rest of the project (see
-roadmap item F5): a rebuild against a newer `ac3forge` may need a recompile, not merely a relink.
+roadmap item AP1): a rebuild against a newer `ac3forge` may need a recompile, not merely a relink.
 `ac3forge_version()` reports what was actually linked at runtime.
 
 ## Encoding
