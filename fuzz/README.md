@@ -95,7 +95,7 @@ ASan/UBSan, 300 s per harness from the committed seed corpus:
 | `fuzz_emdf_parse`     |  4,982,134 |  16,551 |  120 | clean  |
 | `fuzz_oamd_parse`     | 49,730,651 | 165,218 |  173 | clean  |
 | `fuzz_joc_parse`      | 12,319,988 |  40,930 |   99 | clean  |
-| `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **two memory errors, one after the other** |
+| `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **three memory errors, one after the other** |
 | `fuzz_adm_parse`      |     ~1,000 |     n/a |  n/a | **out-of-memory in the first minute, three times over** |
 
 The two harnesses that found something stopped at the first report each time,
@@ -113,45 +113,57 @@ a whole frame's message A bit by bit and runs HMAC-SHA-256 over it.
 
 ### What they found
 
-Five real defects, all fixed in the same change, each with a committed
-reproducer under `fuzz/regressions/` where the harness produced one:
+Seven reports, at three sites, all fixed in the same change, each with a
+committed reproducer under `fuzz/regressions/`.
 
-1. **`compute_bit_allocation` walked off both ends of its own arrays**, on a
-   region whose size only a debug `assert` had ever constrained - so the
-   shipped NDEBUG build had nothing between a hostile frame and the memory
-   error. Two reports, one after the other:
-   - an EMPTY region indexed `kMaskTab` at `SIZE_MAX` (§7.2.2.4's band walk
-     ends at `kMaskTab[end - 1]`, and `end - 1` on `end == 0` is `-1`) -
-     UBSan;
-   - a region LONGER than the 253-mantissa ceiling §7.2.2.2's `psd` array is
-     sized to wrote one element past the end of it - ASan
-     `stack-buffer-overflow`, a 4-byte write at offset 1076 of a 1012-byte
-     frame object.
+**`compute_bit_allocation` walked off its own arrays** on regions whose
+shape only a debug `assert` had ever constrained - so the shipped NDEBUG
+build had nothing between a hostile frame and the memory error. Three
+reports, each surfacing once the one before it was fixed:
 
-   The same shape as `8386c8f`, the bug this directory was created for. Both
-   are reached through `ac3::signing`'s own frame walk, but the guard is in
-   the library, so the decoder is covered too - and `region.start` was folded
-   into the same guard rather than left for a third report. Two committed
-   reproducers. (`fuzz_signing_verify`.)
-2. **`ac3adm::read_pcm` sized its buffer from the DECLARED `<data>` chunk
-   size**: a 104-byte file claiming ~4 GB of PCM allocated ~4 GB
-   (`malloc(8321498636)`). Bounded by the real file size now, which for a
-   well-formed file never binds. (`fuzz_adm_parse`, first minute.)
-3. **Any other over-claiming chunk did the same thing one layer down.**
-   libbw64 materialises every chunk it reads except `<data>` into a
-   `std::vector` sized straight from the chunk header, inside `readFile()` -
-   so a 99-byte file whose `<axml>` claims four gigabytes asked for four
-   gigabytes before any ac3forge code ran. Reported twice, at two different
-   chunk ids, one of them using RF64's `0xFFFFFFFF` escape value.
-   `adm.cpp`'s new `chunk_sizes_fit()` refuses it. The allocation itself is
-   in third-party code and the residual gap is stated in that function's own
-   comment rather than papered over. (`fuzz_adm_parse`.)
-4. **`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so
-   a Debug build aborted on `ac3cli decode <plain stereo>.ec3 out.wav
-   verify-objects` - an ordinary input for an operation whose whole job is
-   checking streams its caller did not produce. Found while writing the
-   harness rather than by it: these builds are NDEBUG, so the harness could
-   not have caught this one itself.
+- an EMPTY region indexed `kMaskTab` at `SIZE_MAX`. §7.2.2.4's band walk ends
+  at `kMaskTab[end - 1]`, and `end - 1` on `end == 0` is `-1`. (UBSan.)
+- a region LONGER than the 253-mantissa ceiling §7.2.2.2's `psd` array is
+  sized to wrote one element past the end of it. (ASan
+  `stack-buffer-overflow`: a 4-byte write at offset 1076 of a 1012-byte frame
+  object.)
+- `ac3::signing`'s own per-channel tally took `subspan(0, endmant)` of the
+  exponent array the walk had actually recovered, without checking that
+  `endmant` fits in it. That is a precondition, not a clamp: on an empty
+  span it manufactures one with a null data pointer and a non-zero size,
+  which `compute_bit_allocation` then dereferenced. (UBSan, "reference
+  binding to null pointer".)
+
+The first two are guarded in the library, so the decoder is covered as well
+as the signer, and `region.start` was folded into the same guard rather than
+left for a fourth report. The third is guarded at the caller, because a
+frame whose `endmant` disagrees with its own exponents has already lost bit
+sync - `parse()`'s existing `desynced` flag is the right answer, and it
+means such a frame is never signed or verified against a bit range that was
+never right. The same shape as `8386c8f`, the bug this directory was created
+for.
+
+**`ac3adm::parse_bw64` allocated from declared chunk sizes.** Three reports,
+two distinct causes:
+
+- `read_pcm` sized its PCM buffer from the DECLARED `<data>` chunk size, so a
+  104-byte file claiming ~4 GB of audio allocated ~4 GB
+  (`malloc(8321498636)`). Bounded by the real file size now, which for a
+  well-formed file never binds.
+- any OTHER over-claiming chunk did the same thing one layer down: libbw64
+  materialises every chunk it reads except `<data>` into a `std::vector`
+  sized straight from the chunk header, inside `readFile()`, before any
+  ac3forge code runs. Reported twice, at two different chunk ids, one of them
+  using RF64's `0xFFFFFFFF` escape value. `adm.cpp`'s `chunk_sizes_fit()`
+  refuses it. The allocation itself is in third-party code, and the residual
+  gap is stated in that function's own comment rather than papered over.
+
+**`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so a
+Debug build aborted on `ac3cli decode <plain stereo>.ec3 out.wav
+verify-objects` - an ordinary input for an operation whose whole job is
+checking streams its caller did not produce. Found while writing the harness
+rather than by it: these builds are NDEBUG, so the harness could not have
+caught this one itself.
 
 ### What the mutator bought
 

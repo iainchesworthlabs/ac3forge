@@ -38,21 +38,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
-- **Five defects the new harnesses turned up**, each with a reproducer under `fuzz/regressions/`
-  where the harness produced one. `compute_bit_allocation` walked off both ends of its own
-  arrays on a region whose size only a debug `assert` had ever constrained: an empty region
-  indexed its 256-entry band table at `SIZE_MAX` (§7.2.2.4's walk ends at `kMaskTab[end - 1]`,
-  and `end - 1` on `end == 0` is `-1`), and a region longer than the 253-mantissa ceiling wrote
-  one element past the `psd` array — so release builds had nothing between a hostile frame and
-  either memory error.
-  `ac3adm::parse_bw64` sized its PCM buffer from the *declared* `<data>` chunk size, so a
-  104-byte file claiming 4 GB of audio allocated 4 GB, and any other over-claiming chunk did the
-  same one layer down inside libbw64 — both are now bounded by the file's real size. And
-  `signing::verify_atmos_frame` inherited the *signer's* debug assertion that the frame is in
-  the ac3forge Atmos subset, so a Debug build aborted on
+- **Seven reports at three sites, all turned up by the new harnesses**, each with a reproducer
+  under `fuzz/regressions/`. `compute_bit_allocation` walked off its own arrays on regions whose
+  shape only a debug `assert` had ever constrained — an empty region indexed its 256-entry band
+  table at `SIZE_MAX`, a region longer than the 253-mantissa ceiling wrote one element past the
+  `psd` array, and `ac3::signing`'s per-channel tally handed it a span built by violating
+  `subspan`'s precondition (a null data pointer with a non-zero size). `ac3adm::parse_bw64`
+  allocated from declared chunk sizes rather than from what the file holds, so a 104-byte file
+  claiming 4 GB of audio allocated 4 GB, and any other over-claiming chunk did the same one
+  layer down inside libbw64. And `signing::verify_atmos_frame` inherited the *signer's* debug
+  assertion that the frame is in the ac3forge Atmos subset, so a Debug build aborted on
   `ac3cli decode <plain stereo>.ec3 out.wav verify-objects`; verification runs on streams its
   caller did not produce, so that assertion is now signing-only.
-
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
