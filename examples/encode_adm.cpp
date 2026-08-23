@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <fstream>
 #include <numbers>
 #include <span>
@@ -227,7 +228,7 @@ int main(int argc, char** argv) {
     // reimplementing RIFF chunk framing in bash was not a fourth worth having.
     if (argc >= 3 && std::string_view{argv[1]} == "--write-fixture") {
         if (!write_fixture(argv[2])) {
-            std::printf("could not write fixture file\n");
+            fmt::printf("could not write fixture file\n");
             return 1;
         }
         return 0;
@@ -236,14 +237,14 @@ int main(int argc, char** argv) {
     const auto fixture_path =
         (std::filesystem::temp_directory_path() / "ac3forge_encode_adm_fixture.wav").string();
     if (!write_fixture(fixture_path)) {
-        std::printf("could not write fixture file\n");
+        fmt::printf("could not write fixture file\n");
         return 1;
     }
 
     // Step 1: ac3adm::ac3adm (phase 1) - container + ADM graph.
     const auto document = ac3adm::parse_bw64(fixture_path);
     if (!document) {
-        std::printf("parse_bw64 failed: %.*s\n",
+        fmt::printf("parse_bw64 failed: %.*s\n",
                     static_cast<int>(ac3adm::describe(document.error()).size()),
                     ac3adm::describe(document.error()).data());
         std::filesystem::remove(fixture_path);
@@ -255,16 +256,16 @@ int main(int argc, char** argv) {
     const auto bridged = ac3::admbridge::build(*document);
     std::filesystem::remove(fixture_path);
     if (!bridged) {
-        std::printf("admbridge::build failed: %.*s\n",
+        fmt::printf("admbridge::build failed: %.*s\n",
                     static_cast<int>(ac3::admbridge::describe(bridged.error()).size()),
                     ac3::admbridge::describe(bridged.error()).data());
         return 1;
     }
 
-    std::printf("bridged %zu channel(s) from %s\n", bridged->channel_count(),
+    fmt::printf("bridged %zu channel(s) from %s\n", bridged->channel_count(),
                 document->model.programmes.front().name.c_str());
     for (std::size_t i = 0; i < bridged->channel_count(); ++i) {
-        std::printf("  %s: %s\n", bridged->channel_ids[i].c_str(),
+        fmt::printf("  %s: %s\n", bridged->channel_ids[i].c_str(),
                     bridged->is_bed[i] ? "bed speaker feed" : "dynamic object");
     }
 
@@ -293,7 +294,7 @@ int main(int argc, char** argv) {
         // ac3cli's own mkv/mp4/fmp4/ts commands).
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("encode_frame failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("encode_frame failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
@@ -307,7 +308,7 @@ int main(int argc, char** argv) {
     out.close();
     std::filesystem::remove(out_path);
     if (!wrote) {
-        std::printf("could not write output stream\n");
+        fmt::printf("could not write output stream\n");
         return 1;
     }
 
@@ -315,7 +316,7 @@ int main(int argc, char** argv) {
     for (const bool is_bed : bridged->is_bed) {
         bed_count += is_bed ? 1 : 0;
     }
-    std::printf("%zu bytes of DD+ JOC E-AC-3 from %zu ADM-authored frame(s): %zu bed speaker "
+    fmt::printf("%zu bytes of DD+ JOC E-AC-3 from %zu ADM-authored frame(s): %zu bed speaker "
                 "feed(s) + %zu dynamic object(s)\n",
                 stream.size(), total_frames, bed_count, bridged->channel_count() - bed_count);
     return 0;

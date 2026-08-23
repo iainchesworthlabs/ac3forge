@@ -134,6 +134,18 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // §7.3.4 dithflag (plan::Tools::dither), on by default like the library
+    // configs it feeds; dither=off pins it at 0 unconditionally wherever this
+    // command encodes, the same key=off shape fast-mdct=off already uses -
+    // AC-3 has no tools= string, so this is that field's equivalent. E-AC-3's
+    // own tools= string reaches the same field with "nodither". The only
+    // reason to reach for this: a caller needs bit-for-bit agreement between
+    // two decoders of the SAME encode more than it needs dither's real
+    // perceptual benefit - real dither values are decoder-defined, so two
+    // independent, spec-correct decoders diverge in the dithered bins by
+    // design (see EncoderConfig::dither's own comment), which is exactly
+    // what tools/checks/verify_gold_reference.sh needs this for.
+    bool dither = true;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in
