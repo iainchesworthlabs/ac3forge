@@ -12,6 +12,47 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **E-AC-3 delta bit allocation under coupling** (`EQ5`). `§7.2.2.6` corrections are no longer
+  skipped for every stream in a coupled frame: the coupling channel carries its own
+  `cpldeltbae` like any full-bandwidth channel, sent once (block 0) rather than resent every
+  block since one exponent set already covers the whole frame there. AHT streams still carry
+  none, on measured grounds — the comparison was tried on the AHT axis (where those exponents
+  actually normalise) and still lost on every AHT-carrying point, because the concentration a
+  DCT transform buys is not quantization error. Whether a correction is worth its side info is
+  now decided per frame against the rate fit rather than assumed, closing the gap that made an
+  earlier attempt regress 128 kbit/s 5.1. Measured with `tools/ci/quality_race.py`: E-AC-3
+  stereo +0.28 to +3.13 dB SNR across 96–192 kbit/s, 5.1 flat to +2.54 dB across 128–384 kbit/s,
+  no regressions.
+- **Per-channel AC-3 coupling membership** (`EQ6a`). `chincpl` is a per-channel decision now — a
+  block-switched channel is excluded from coupling for the frame while the rest still share a
+  coupling channel, rather than the whole frame losing the tool over one channel's transient
+  (the §8.2.4.1 case `docs/library/encoding-ac3.md` used to record as unhandled). Coupling
+  coordinates resend only when the quantized value actually changes rather than on a fixed
+  0/2/4 cadence, and 2/0 carries a measured `phsflg` restoring phase where an out-of-phase pair
+  would otherwise cancel in the coupling sum (up to +12.3 dB on genuinely anti-phase material).
+  Measured tradeoff: 5.1 coupled loses up to 0.4 dB SNR at 192 kbit/s, where more frequent
+  resends compete with mantissas for an already-tight budget.
+- **`ecplangleintrp` (E-AC-3 enhanced coupling angle interpolation)** (`EQ6c`). §3.5.5.3's linear
+  interpolation between band-centre angles, rather than direct per-band application, is decoded
+  now on both sides — the decoder used to refuse any stream that set the flag. The encoder
+  decides per frame by reconstructing both ways with the already-fitted band values and keeping
+  whichever is closer to the real content; on measured material it fires on a meaningful
+  fraction of enhanced-coupling frames.
+
+### Fixed
+
+- **E-AC-3 decoder never read `cpldeltbae`.** Unreachable before EQ5, since coupling
+  unconditionally cleared delta on the encoder side — the first coupled frame that carried a
+  correction after that changed would have desynchronised every field behind it.
+- **AC-3 coupling desynchronised when membership was partial.** The shared channel's mantissas
+  were coded immediately after channel 0 unconditionally; once `chincpl` became per-channel
+  (EQ6a), a frame that excluded channel 0 handed the coupling channel's mantissas to the wrong
+  stream. Invisible to every structural check (frame size, both CRCs, exponent range) — only
+  visible in per-channel SNR on the low band, which is what a new regression test
+  (`tests/decoder/test_decoder.cpp`) now pins directly.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

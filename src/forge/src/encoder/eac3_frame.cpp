@@ -234,6 +234,10 @@ struct CouplingPlan {
     std::array<bool, kMaxSubBands> structure{};
     BandLayout bands{};
     // --- enhanced coupling only (valid when `enhanced`) ---
+    // §3.5.5.3: whichever way of turning band angles into bin angles
+    // reconstructs closer to the real content this frame - see the decision
+    // right after the per-band fit in encode_frame.
+    bool ecplangleintrp = false;
     int ecpl_begin_subbnd = 0;
     int ecpl_end_subbnd = 0;
     std::array<bool, kEcplSubBands> ecpl_structure{};
@@ -270,6 +274,7 @@ struct CouplingPlan {
         nsubnd = 0;
         structure = {};
         bands = {};
+        ecplangleintrp = false;
         ecpl_begin_subbnd = 0;
         ecpl_end_subbnd = 0;
         ecpl_structure = {};
@@ -1104,7 +1109,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             // for it - see fit_ecpl_band for how every other channel's real
             // angle/chaos are fit. ecpltrans is always 0: no per-block
             // transient tuning yet.
-            w.put(0, 1);  // ecplangleintrp: no interpolation
+            w.put(cpl.ecplangleintrp ? 1 : 0, 1);  // ecplangleintrp
             const bool send = cpl.send[static_cast<std::size_t>(blk)];
             const auto nbnd_e = static_cast<std::size_t>(std::max(cpl.ecpl_bands.count, 1));
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -2167,6 +2172,73 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         }
                     }
                 }
+            }
+
+            // §3.5.5.3: whether ecplangleintrp is worth its one bit is
+            // decided by actually decoding both ways with the fitted,
+            // quantized per-band values this loop just produced, and
+            // keeping whichever reconstructs closer to the real coupled
+            // channels - the same "measure the real decode, don't assume"
+            // rule EQ5's delta decision uses. The fit itself is unchanged
+            // either way: a band's angle is what best explains that band's
+            // own bins under DIRECT application, and interpolating those
+            // same fitted values is either a net win or it isn't, purely as
+            // a reconstruction-side choice - re-fitting jointly for
+            // whichever style wins is a further refinement this pass does
+            // not attempt.
+            //
+            // Channel 0 is always firstchincpl here (see the emission
+            // site's own comment) and its angle is fixed at zero for every
+            // band, so interpolating between identical values changes
+            // nothing for it - only channels 1.. can move the answer.
+            if (nfchans > 1) {
+                AC3_ZONE_SCOPED_N("step3b_ecplangleintrp_decide");
+                double err_direct = 0.0;
+                double err_interp = 0.0;
+                EcplNoise scratch_noise;
+                std::vector<int> band_codes(nbnd_e);
+                std::vector<int> chaos_codes(nbnd_e);
+                std::vector<int> angle_codes(nbnd_e);
+                std::vector<double> angle_bin(static_cast<std::size_t>(bins));
+                std::vector<double> amp_bin(static_cast<std::size_t>(bins));
+                std::array<double, 256> recon{};
+                for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                    const auto& prev = blk > 0 ? coeffs_at(cpl_stream, blk - 1) : kZero;
+                    const auto& curr = coeffs_at(cpl_stream, blk);
+                    const auto& next =
+                        blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
+                    auto& zr = ecpl_zr_scratch_;
+                    auto& zi = ecpl_zi_scratch_;
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    for (int ch = 1; ch < nfchans; ++ch) {
+                        for (std::size_t bnd = 0; bnd < nbnd_e; ++bnd) {
+                            const auto slot = ecpl_slot(blk, ch) + bnd;
+                            band_codes[bnd] = cpl.ecplamp[slot];
+                            chaos_codes[bnd] = cpl.ecplchaos[slot];
+                            angle_codes[bnd] = cpl.ecplangle[slot];
+                        }
+                        ecpl_amplitudes(band_codes, chaos_codes, /*ecpltrans=*/false,
+                                        /*is_first_channel=*/false, cpl.ecpl_begin_subbnd,
+                                        cpl.ecpl_end_subbnd, cpl.ecpl_structure, amp_bin);
+                        const auto& channel = coeffs_at(ch, blk);
+                        for (const bool interpolate : {false, true}) {
+                            ecpl_angles(ch, angle_codes, chaos_codes, /*ecpltrans=*/false,
+                                       /*is_first_channel=*/false, cpl.ecpl_begin_subbnd,
+                                       cpl.ecpl_end_subbnd, cpl.ecpl_structure, scratch_noise,
+                                       angle_bin, interpolate);
+                            ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, cpl.strtmant,
+                                                      cpl.endmant, recon);
+                            double err = 0.0;
+                            for (int bin = cpl.strtmant; bin < cpl.endmant; ++bin) {
+                                const auto ubin = static_cast<std::size_t>(bin);
+                                const double d = channel[ubin] - recon[ubin];
+                                err += d * d;
+                            }
+                            (interpolate ? err_interp : err_direct) += err;
+                        }
+                    }
+                }
+                cpl.ecplangleintrp = err_interp < err_direct;
             }
         }
     }

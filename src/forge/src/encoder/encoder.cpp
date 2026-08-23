@@ -334,17 +334,18 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // --- Block switching (§8.2.2/§7.9) --------------------------------------
     // Decided before the coupling decision below, because §8.2.4.1's basic-
-    // encoder guidance excludes a block-switched channel from coupling, and
-    // this codebase's coupling is frame-wide all-or-nothing rather than a
-    // per-channel toggle (emit_block_side_info below sends chincpl as
-    // unconditionally 1 for every fbw channel) - so the only way to honour
-    // that exclusion without inventing bitstream machinery this phase has no
-    // room for is to leave coupling off for the WHOLE frame whenever any
-    // eligible channel switches, rather than just that one channel.
+    // encoder guidance excludes a block-switched channel from coupling -
+    // and `chincpl` is a per-channel bitstream field, so that exclusion is
+    // honoured by leaving the switching channel out of coupling and letting
+    // every other channel keep it, rather than by turning the tool off for
+    // the whole frame. A channel that switches in ANY block is out for the
+    // whole frame, because this encoder only ever sends coupling strategy
+    // (and with it chincpl) in block 0.
     AC3_ZONE_BEGIN(zone_transients, "step0_transient_detect");
     auto& blksw = scratch_->blksw;
     blksw.assign(static_cast<std::size_t>(nfchans), {});
-    bool any_switched = false;
+    // AC-3's widest acmod (3/2) codes five full-bandwidth channels.
+    std::array<bool, 5> switched{};
     for (int ch = 0; ch < nfchans; ++ch) {
         const auto& pcm = channels[static_cast<std::size_t>(ch)];
         for (int block = 0; block < kBlocksPerFrame; ++block) {
@@ -359,7 +360,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 kSamplesPerBlock};
             const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
             blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] = sw;
-            any_switched = any_switched || sw;
+            switched[static_cast<std::size_t>(ch)] =
+                switched[static_cast<std::size_t>(ch)] || sw;
         }
     }
     AC3_ZONE_END(zone_transients);
@@ -368,10 +370,31 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // Coupling needs at least two full-bandwidth channels to share anything -
     // true of dual mono's nfchans too, but sharing is exactly what its two
     // channels must never do: they are unrelated programmes, and a coupling
-    // channel built from their average would leak each into the other. A
-    // channel that block-switched anywhere this frame is excluded too - see
-    // the block-switching pre-pass above.
-    const bool cplinu = config_.coupling && nfchans >= 2 && !dual_mono && !any_switched;
+    // channel built from their average would leak each into the other.
+    //
+    // Membership is per channel (§5.4.3.7's chincpl[ch]): a channel that
+    // block-switched anywhere this frame is left out and keeps its own full
+    // bandwidth, while the rest still share a coupling channel. On 5.1 that
+    // is the difference between one transient in one surround costing the
+    // whole frame its coupling and costing only that surround its share of
+    // it. Below two members there is nothing left to share, which also
+    // settles 2/0: excluding either channel there leaves one, so a transient
+    // in either still turns the tool off for the frame - and that in turn
+    // keeps §5.4.3.19's nrematbd (derived from cplinu and cplbegf, and
+    // necessarily one value for the pair) well defined.
+    std::array<bool, 5> chincpl{};
+    int coupled_count = 0;
+    if (config_.coupling && nfchans >= 2 && !dual_mono) {
+        for (int ch = 0; ch < nfchans; ++ch) {
+            chincpl[static_cast<std::size_t>(ch)] = !switched[static_cast<std::size_t>(ch)];
+            coupled_count += chincpl[static_cast<std::size_t>(ch)] ? 1 : 0;
+        }
+    }
+    const bool cplinu = coupled_count >= 2;
+    if (!cplinu) {
+        chincpl = {};
+        coupled_count = 0;
+    }
     int cplbegf = 0;
     int cplendf = 0;
     int cplstrtmant = 0;
@@ -402,8 +425,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         cplbands = coupling::group_bands(cplbegf, ncplsubnd, cplbndstrc);
     }
 
-    // Coupled channels stop at the coupling frequency instead.
+    // A COUPLED channel stops at the coupling frequency; one left out of
+    // coupling keeps its own chbwcod bandwidth, and says so on the wire (see
+    // the chbwcod emit, which is per channel for exactly this reason).
     const int fbw_endmant = cplinu ? cplstrtmant : chbw_endmant;
+    const auto channel_endmant = [&](int ch) {
+        return chincpl[static_cast<std::size_t>(ch)] ? cplstrtmant : chbw_endmant;
+    };
 
     // Stream layout: the fbw channels, the LFE, then the coupling channel as
     // one more stream carrying the shared high band.
@@ -414,7 +442,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (s == cpl_stream) {
             return cplendmant;
         }
-        return s < nfchans ? fbw_endmant : kLfeEndmant;
+        return s < nfchans ? channel_endmant(s) : kLfeEndmant;
     };
 
     // --- Frame size via the CBR accumulator --------------------------------
@@ -532,12 +560,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     AC3_ZONE_END(zone_mdct);
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
-    // Coordinates are sent in blocks 0, 2 and 4 and reused in between
-    // (§8.2.4.1); the coupling channel itself is the plain average of the
-    // coupled channels the spec's basic encoder describes (§7.4.1), with the
-    // decoder's x8 living entirely in the coordinates. One coordinate per
-    // BAND, which is one or more sub-bands joined by cplbndstrc.
-    std::array<bool, kBlocksPerFrame> send_coords{};
+    // The coupling channel is the plain average of the coupled channels the
+    // spec's basic encoder describes (§7.4.1), with the decoder's x8 living
+    // entirely in the coordinates. One coordinate per BAND, which is one or
+    // more sub-bands joined by cplbndstrc.
+    //
+    // §8.2.4.1 offers blocks 0/2/4 as a cadence; cplcoe[ch] is a per-channel
+    // per-block bit, so what actually goes out here is "send when the
+    // quantized coordinate set differs from the one the decoder is holding".
+    // That is better on both sides of the trade: a channel whose high band
+    // is stationary sends once per frame instead of three times, and one
+    // that moves gets a correct coordinate in the block it moves in rather
+    // than the previous send's - which the fixed cadence applied to blocks
+    // 1, 3 and 5 regardless.
+    std::array<std::array<bool, 5>, kBlocksPerFrame> send_coords{};
+
     // assign(), not resize(): a fresh vector here was zero-initialized, and
     // the coupling loops below rely on writing before reading rather than
     // on any particular starting value - so the reused storage is put back
@@ -560,6 +597,49 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     const auto master_at = [&](int block, int ch) -> int& {
         return master[static_cast<std::size_t>(block) * static_cast<std::size_t>(nfchans) +
                       static_cast<std::size_t>(ch)];
+    };
+
+    // §7.4.1/§5.4.3.16: for 2/0 only, a set phase flag tells the decoder to
+    // negate the RIGHT channel's coordinate across that band. That exists
+    // because the coupling channel is a SUM: where L and R are out of phase
+    // the sum cancels, the band's shared energy collapses to near nothing,
+    // and every coordinate measured against it runs away. Choosing the sign
+    // that maximises the sum's energy per band, and telling the decoder
+    // which bands were flipped, keeps the shared channel carrying real
+    // signal there instead.
+    //
+    // Frame-constant by construction. phsflg is only transmitted in a block
+    // where some channel sent a coordinate, so a per-block value would have
+    // to track which blocks those were and would go stale in the others;
+    // one decision per frame is always consistent with whatever the
+    // coordinate cadence above ends up choosing. phsflginu stays 0 unless
+    // some band actually wants a flip, so material that does not need this
+    // pays nothing for it beyond the one gating bit.
+    std::array<bool, coupling::kSubBands> phsflg{};
+    bool phsflginu = false;
+    if (cplinu && config_.acmod == Acmod::k2_0) {
+        for (int bnd = 0; bnd < cplbands.count; ++bnd) {
+            const int low = cplbands.start[static_cast<std::size_t>(bnd)];
+            const int high =
+                std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
+            double correlation = 0.0;
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                for (int bin = low; bin < high; ++bin) {
+                    correlation += coeffs_at(0, block)[static_cast<std::size_t>(bin)] *
+                                   coeffs_at(1, block)[static_cast<std::size_t>(bin)];
+                }
+            }
+            phsflg[static_cast<std::size_t>(bnd)] = correlation < 0.0;
+            phsflginu = phsflginu || phsflg[static_cast<std::size_t>(bnd)];
+        }
+        if (!phsflginu) {
+            phsflg = {};
+        }
+    }
+    // The sign the decoder will apply to this channel's coordinate in this
+    // band, and so the sign this encoder must build the shared channel with.
+    const auto coupling_sign = [&](int ch, int bnd) {
+        return (phsflginu && ch == 1 && phsflg[static_cast<std::size_t>(bnd)]) ? -1.0 : 1.0;
     };
 
     if (cplinu) {
@@ -598,24 +678,39 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // average of the coupled channels, K = nfchans, so the shared channel
         // sits at the natural level of one real channel - which is the level
         // the allocator's model expects - and every block shares one scale.
-        const double scale = static_cast<double>(nfchans);
-
+        // K is the number of channels actually sharing the channel, not
+        // nfchans: with a block-switching channel left out, averaging by
+        // nfchans would put the shared channel a level step below where the
+        // allocator's absolute psd model expects it.
+        const double scale = static_cast<double>(coupled_count);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
-            send_coords[static_cast<std::size_t>(block)] = block % 2 == 0;
-
             auto& cpl = coeffs_at(cpl_stream, block);
             cpl.fill(0.0);
             // The raw sum for now; the division by `scale` comes after the
             // coordinates, which are measured against that same raw sum.
-            for (int bin = cplstrtmant; bin < cplendmant; ++bin) {
-                double sum = 0.0;
-                for (int ch = 0; ch < nfchans; ++ch) {
-                    sum += coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
+            // Each channel enters with the sign the decoder will reconstruct
+            // it with, so an out-of-phase pair adds instead of cancelling.
+            for (int bnd = 0; bnd < cplbands.count; ++bnd) {
+                const int low = cplbands.start[static_cast<std::size_t>(bnd)];
+                const int high =
+                    std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
+                for (int bin = low; bin < high; ++bin) {
+                    double sum = 0.0;
+                    for (int ch = 0; ch < nfchans; ++ch) {
+                        if (!chincpl[static_cast<std::size_t>(ch)]) {
+                            continue;
+                        }
+                        sum += coupling_sign(ch, bnd) *
+                               coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
+                    }
+                    cpl[static_cast<std::size_t>(bin)] = sum;
                 }
-                cpl[static_cast<std::size_t>(bin)] = sum;
             }
 
             for (int ch = 0; ch < nfchans; ++ch) {
+                if (!chincpl[static_cast<std::size_t>(ch)]) {
+                    continue;
+                }
                 for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                     const int low = cplbands.start[static_cast<std::size_t>(bnd)];
                     const int high =
@@ -634,25 +729,38 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     values[static_cast<std::size_t>(bnd)] = ratio * scale / 8.0;
                 }
                 const int chosen = coupling::choose_master(values);
+                // Quantize into this block's own slots, then ask whether the
+                // decoder is already holding exactly this - the comparison
+                // has to be on the QUANTIZED values, since those are all the
+                // decoder ever sees and two different ratios landing on one
+                // code are genuinely nothing to retransmit.
                 master_at(block, ch) = chosen;
                 for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                     coord_at(block, ch, bnd) = coupling::quantize_coordinate(
                         values[static_cast<std::size_t>(bnd)], chosen);
                 }
-                // Above the coupling frequency the channel carries nothing of
-                // its own any more.
-                for (int bin = cplstrtmant; bin < 256; ++bin) {
-                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0.0;
+                bool changed = block == 0 || master_at(block - 1, ch) != chosen;
+                for (int bnd = 0; bnd < cplbands.count && !changed; ++bnd) {
+                    const auto held = coord_at(block - 1, ch, bnd);
+                    const auto now = coord_at(block, ch, bnd);
+                    changed = held.exp != now.exp || held.mant != now.mant;
                 }
-            }
-            // Blocks that reuse coordinates must reuse the ones actually
-            // transmitted, or encoder and decoder diverge.
-            if (!send_coords[static_cast<std::size_t>(block)]) {
-                for (int ch = 0; ch < nfchans; ++ch) {
+                send_coords[static_cast<std::size_t>(block)][static_cast<std::size_t>(ch)] =
+                    changed;
+                if (!changed) {
+                    // Not sent, so the decoder keeps the previous block's -
+                    // which is bit-for-bit what was just computed. Copying it
+                    // back anyway keeps "this block's slots are what the
+                    // decoder holds" true without depending on that equality.
                     master_at(block, ch) = master_at(block - 1, ch);
                     for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                         coord_at(block, ch, bnd) = coord_at(block - 1, ch, bnd);
                     }
+                }
+                // Above the coupling frequency the channel carries nothing of
+                // its own any more.
+                for (int bin = cplstrtmant; bin < 256; ++bin) {
+                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0.0;
                 }
             }
             for (int bin = cplstrtmant; bin < cplendmant; ++bin) {
@@ -1042,10 +1150,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             w.put(cplinu ? 1 : 0, 1);
             if (cplinu) {
                 for (int ch = 0; ch < nfchans; ++ch) {
-                    w.put(1, 1);  // chincpl: every fbw channel is coupled
+                    // §5.4.3.7: per channel. A channel that block-switched
+                    // this frame is out (see the coupling decision above) and
+                    // carries its own high band instead.
+                    w.put(chincpl[static_cast<std::size_t>(ch)] ? 1 : 0, 1);  // chincpl[ch]
                 }
                 if (config_.acmod == Acmod::k2_0) {
-                    w.put(0, 1);  // phsflginu: no phase restoration
+                    w.put(phsflginu ? 1 : 0, 1);  // phsflginu
                 }
                 w.put(static_cast<std::uint32_t>(cplbegf), 4);
                 w.put(static_cast<std::uint32_t>(cplendf), 4);
@@ -1059,10 +1170,18 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
         if (cplinu) {
+            bool any_new = false;
             for (int ch = 0; ch < nfchans; ++ch) {
-                const bool send = send_coords[static_cast<std::size_t>(block)];
-                w.put(send ? 1 : 0, 1);  // cplcoe
+                // §5.4.3.14: cplcoe exists only for a channel that is IN
+                // coupling - an excluded one has no coordinates to send.
+                if (!chincpl[static_cast<std::size_t>(ch)]) {
+                    continue;
+                }
+                const bool send =
+                    send_coords[static_cast<std::size_t>(block)][static_cast<std::size_t>(ch)];
+                w.put(send ? 1 : 0, 1);  // cplcoe[ch]
                 if (send) {
+                    any_new = true;
                     w.put(static_cast<std::uint32_t>(master_at(block, ch)), 2);
                     for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                         const auto coordinate = coord_at(block, ch, bnd);
@@ -1071,7 +1190,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     }
                 }
             }
-            // phsflginu is 0, so no phase flags follow.
+            // §5.4.3.16: the phase flags ride with the coordinates - they are
+            // present only in a block where at least one channel sent new
+            // ones, and persist otherwise. Block 0 always has a send (see the
+            // cadence above), so the decoder never applies an unset flag.
+            if (phsflginu && any_new) {
+                for (int bnd = 0; bnd < cplbands.count; ++bnd) {
+                    w.put(phsflg[static_cast<std::size_t>(bnd)] ? 1 : 0, 1);  // phsflg[bnd]
+                }
+            }
         }
 
         if (rematrixing) {
@@ -1111,12 +1238,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (config_.lfe) {
             w.put(fresh(nfchans) ? 1 : 0, 1);  // lfeexpstr
         }
-        // chbwcod exists only for channels NOT in coupling.
-        if (!cplinu) {
-            for (int ch = 0; ch < nfchans; ++ch) {
-                if (fresh(ch)) {
-                    w.put(static_cast<std::uint32_t>(chbwcod), 6);
-                }
+        // §5.4.3.8: chbwcod exists only for a channel NOT in coupling -
+        // per channel, so a partially coupled frame sends it for exactly the
+        // channels that kept their own high band.
+        for (int ch = 0; ch < nfchans; ++ch) {
+            if (chincpl[static_cast<std::size_t>(ch)]) {
+                continue;
+            }
+            if (fresh(ch)) {
+                w.put(static_cast<std::uint32_t>(chbwcod), 6);
             }
         }
 
@@ -1538,10 +1668,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 writer.add(mantissa, bap[static_cast<std::size_t>(bin)]);
             }
         };
+        // §5.4.3.x coded order: the shared channel rides immediately after
+        // the FIRST COUPLED channel, which is not necessarily channel 0 once
+        // chincpl is per channel - a channel left out of coupling does not
+        // pull the coupling channel along behind it. The decoder keys off
+        // exactly this (decoder.cpp's own read loop), and getting it wrong
+        // does not desynchronise the frame - the same total number of
+        // mantissa bits is still consumed - it silently hands one channel's
+        // mantissas to another, which comes back as noise in only the frames
+        // where a channel happened to be excluded.
         bool emitted_coupling = false;
         for (int ch = 0; ch < nfchans; ++ch) {
             emit_stream(ch);
-            if (cplinu && !emitted_coupling) {
+            if (cplinu && chincpl[static_cast<std::size_t>(ch)] && !emitted_coupling) {
                 emit_stream(cpl_stream);
                 emitted_coupling = true;
             }

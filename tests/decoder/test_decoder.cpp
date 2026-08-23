@@ -285,6 +285,99 @@ double tone_energy(const std::vector<float>& x, double hz, double rate) {
 
 }  // namespace
 
+TEST_CASE("a channel left out of coupling does not take the shared channel with it",
+          "[decoder][coupling]") {
+    // S8.2.4.1 excludes a block-switched channel from coupling, and chincpl
+    // is per channel, so the rest of the frame still couples. That makes the
+    // FIRST COUPLED channel something other than channel 0 for the first
+    // time - and the coded order puts the shared channel immediately after
+    // whichever channel that is (S5.4.3.x), which is exactly what the
+    // decoder keys off.
+    //
+    // Getting it wrong is invisible to every structural check: the same
+    // number of mantissa bits is written and read, the frame size and both
+    // CRCs still agree, and no exponent leaves its legal range. It simply
+    // hands the shared channel's mantissas to the wrong channel, and only in
+    // the frames where a channel happened to be excluded. Whole-file SNR is
+    // what noticed - 2.5 dB on 5.1 material where 3% of frames were
+    // affected - so this pins it per channel instead.
+    using ac3::Acmod;
+    constexpr int kFrames = 4;
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .coupling = true}};
+    ac3::FrameDecoder decoder;
+    const auto nchans = static_cast<std::size_t>(encoder.channel_count());
+    REQUIRE(nchans == 5);
+
+    // Channel 0 gets a hard high-frequency onset every frame, which is what
+    // the S8.2.2 detector switches on; the others stay steady, so they alone
+    // remain coupled and channel 0 keeps its own high band.
+    const std::array<double, 5> tones = {500.0, 700.0, 900.0, 1100.0, 1300.0};
+    std::vector<std::vector<float>> source(nchans);
+    std::vector<std::vector<float>> decoded(nchans);
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(nchans);
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        for (std::size_t ch = 0; ch < nchans; ++ch) {
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                const double t =
+                    static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
+                // A low tone per channel to measure against, plus real
+                // content ABOVE the coupling frequency so the shared channel
+                // actually carries mantissas - with a silent coupling
+                // channel the coded order cannot be observed at all.
+                double value =
+                    0.30 * std::sin(2.0 * std::numbers::pi * tones[ch] * t) +
+                    0.18 * std::sin(2.0 * std::numbers::pi *
+                                    (6000.0 + 900.0 * static_cast<double>(ch)) * t) +
+                    0.12 * std::sin(2.0 * std::numbers::pi *
+                                    (11000.0 + 700.0 * static_cast<double>(ch)) * t);
+                // Channel 0 goes quiet, then hits full level part-way through
+                // the frame: the loud onset out of near-silence S8.2.2's
+                // detector switches on.
+                if (ch == 0) {
+                    value = i < 1024 ? 0.002 * value : 1.6 * value;
+                }
+                block[ch][static_cast<std::size_t>(i)] = static_cast<float>(value);
+            }
+            views[ch] = block[ch];
+            source[ch].insert(source[ch].end(), block[ch].begin(), block[ch].end());
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        const auto out = decoder.decode_frame(*frame);
+        REQUIRE(out.has_value());
+        for (std::size_t ch = 0; ch < nchans; ++ch) {
+            decoded[ch].insert(decoded[ch].end(), out->channels[ch].begin(),
+                               out->channels[ch].end());
+        }
+    }
+
+    // Measured at each channel's OWN low tone, which sits below the coupling
+    // frequency and so is coded normally in every channel - coupling has
+    // nothing to do with it, and it is destroyed outright if a channel is
+    // handed another stream's mantissas. A whole-band SNR would be the wrong
+    // instrument here: coupling makes the high band parametric by design, so
+    // it reads low for correct streams too.
+    for (std::size_t ch = 0; ch < nchans; ++ch) {
+        CAPTURE(ch);
+        const double want = tone_energy(source[ch], tones[ch], 48000.0);
+        const double got = tone_energy(decoded[ch], tones[ch], 48000.0);
+        REQUIRE(want > 0.0);
+        CAPTURE(want, got);
+        CHECK(got > 0.5 * want);
+        CHECK(got < 2.0 * want);
+        // A second, independent reading of the same thing. The bar is low
+        // because coupling really does cost the high band: measured here, a
+        // correct decode scores 11.5-41 dB across these channels, and the
+        // mantissa swap drops them to -3.2 to 4.7 dB.
+        CHECK(snr_db(source[ch], decoded[ch]) > 8.0);
+    }
+}
+
+
 TEST_CASE("grouped coupling bands land on the bins they were measured from",
           "[decoder][coupling]") {
     // The encoder joins sub-bands into wider bands towards the top of the

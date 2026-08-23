@@ -938,12 +938,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         } else if (frm->cplinu[static_cast<std::size_t>(blk)]) {
             // --- enhanced coupling coordinates (§E2.3.3.20-26, §3.5.4) ---
             ecplangleintrp = r.read(1) != 0;
-            if (ecplangleintrp) {
-                // Legal syntax this decoder does not implement - see
-                // ecpl_angles' own doc comment. No stream this project's own
-                // encoder produces sets this flag.
-                return std::unexpected(DecodeError::kUnsupported);
-            }
             int firstchincpl = -1;
             for (int ch = 0; ch < nfchans; ++ch) {
                 if (!chincpl[static_cast<std::size_t>(ch)]) {
@@ -1596,6 +1590,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     break;
                 }
             }
+            tail.ecplangleintrp = ecplangleintrp;
             tail.ecpl_begin_subbnd = ecpl_begin_subbnd;
             tail.ecpl_end_subbnd = ecpl_end_subbnd;
             tail.ecpl_structure = ecpl_structure;
@@ -1667,7 +1662,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
                                   tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                   tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise,
-                                  angle_bin);
+                                  angle_bin, tail.ecplangleintrp);
                 eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
                                                 tail.cplendmant, coeffs[uch]);
             }

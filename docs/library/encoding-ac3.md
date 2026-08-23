@@ -59,11 +59,17 @@ plus per-band coordinates.
 ### Block switching
 
 Automatic — no config field toggles it. A §8.2.2 transient detector runs per full-bandwidth
-channel per block, and when **any** eligible channel switches anywhere in the frame, coupling is
-turned off for that entire frame, for **every** channel — not just the one that switched.
-`chincpl` in this encoder is frame-wide all-or-nothing rather than a per-channel flag, so the
-§8.2.4.1 exclusion of a switching channel from coupling can only be honoured by disabling the
-tool outright. The LFE never switches.
+channel per block, and a channel that switches anywhere in the frame is left out of coupling for
+that frame. `chincpl` is written per channel, so §8.2.4.1's exclusion costs only the switching
+channel its share of the tool rather than turning it off for everyone: the others still share a
+coupling channel, and the excluded one carries its own high band and says so with its own
+`chbwcod`. Below two members there is nothing left to share and coupling is dropped for the
+frame, which is also what settles 2/0 — excluding either channel there leaves one, so a transient
+in either still turns the tool off, and §5.4.3.19's `nrematbd` (one value for the pair) stays
+well defined. The LFE never switches.
+
+The coded order follows membership: the shared channel's mantissas ride immediately after the
+first channel that is actually IN coupling, which is not necessarily channel 0.
 
 ### Delta bit allocation
 
@@ -73,13 +79,16 @@ the curve the transmitted exponents alone imply — which is all a decoder's all
 Any band where the two diverge by at least one Table 5.17 step (128 units, 6 dB) gets a
 transmitted correction. The decision is per channel; the LFE is excluded, because §5.4.3.49's
 `deltbae` loop stops short of it — no bitstream field exists to carry an LFE correction at all.
-On AC-3 the coupling channel is in scope like any full-bandwidth channel, and `cpldeltbae` is
-emitted as new information whenever it has segments to send. Two narrowings apply today: the
-E-AC-3 encoder skips delta entirely for any frame where coupling is active (the added side
-information broke the tightest coupling budgets — exactly the rates coupling exists to rescue),
-and both encoders treat delta as a pure quality refinement — when its side-information cost would
-make an otherwise-fittable frame fail to fit, the corrections are dropped and the frame
-re-measured rather than refused.
+The coupling channel is in scope like any full-bandwidth channel on both generations, and
+`cpldeltbae` is emitted as new information whenever it has segments to send. Coupling does not
+suppress the tool on E-AC-3 any more; two narrowings apply there instead. An AHT stream carries
+no corrections, on measured grounds rather than structural ones — see `docs/index.md`. And both
+encoders treat delta as a pure quality refinement: when its side-information cost would make an
+otherwise-fittable frame fail to fit, the corrections are dropped and the frame re-measured
+rather than refused. E-AC-3 goes further and fits the frame both ways, keeping the corrections
+only when they do not cost the frame composite SNR offset — they are re-sent once, in block 0,
+and retained by the other five blocks rather than repeated (§5.4.3.47's `deltbaie == 0` means
+retain outside block 0), since one exponent set covers the whole frame there.
 
 ### Rematrixing
 

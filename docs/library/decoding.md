@@ -70,10 +70,12 @@ The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3
 pre-noise processing (§3.7) — individually or stacked together, at every channel layout including
 7.1.4. That includes Annex E's default coupling band structures: a block that transmits no band
 structure of its own falls back to Table E2.12 (standard coupling) or Table E2.13 (enhanced
-coupling) and decodes normally. Two syntax corners are still recognised and refused rather than
-mis-decoded — enhanced coupling's `ecplangleintrp` (angle interpolation), and a transient
-pre-noise correction reaching further back or forward than the one frame of history/lookahead
-this decoder buffers — because no stream this project's own encoder produces exercises either.
+coupling) and decodes normally. Enhanced coupling's `ecplangleintrp` (§3.5.5.3's linear
+interpolation between band-centre angles) decodes too — the encoder decides per frame whether it
+reconstructs closer to the real content than direct per-band application. One syntax corner is
+still recognised and refused rather than mis-decoded: a transient pre-noise correction reaching
+further back or forward than the one frame of history/lookahead this decoder buffers, because no
+stream this project's own encoder produces exercises it.
 
 Transient pre-noise processing has one API consequence worth knowing: once a stream turns it on,
 `Eac3Decoder::decode_substream` holds one frame back at a time (a correction can reach into the
