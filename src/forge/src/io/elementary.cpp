@@ -125,6 +125,7 @@ std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stre
             out.acmod = acmod;
             out.lfe = lfe;
             out.channels = fullbw_channel_count(acmod) + (lfe ? 1 : 0);
+            out.channel_map = bed_locations(acmod, lfe);
             out.bsid = bsid;
             out.bsmod = bsmod;
             // Table 5.18: frmsizecod's high bits already index kBitratesKbps
@@ -393,6 +394,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         return std::unexpected(ScanError::kEmpty);
     }
     out.channels = eac3::chanmap::channel_count(locations);
+    out.channel_map = locations;
     return out;
 }
 

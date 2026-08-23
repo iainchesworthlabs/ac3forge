@@ -337,6 +337,11 @@ void print_usage() {
     std::println("record/live container=mkv: write straight to Matroska (a single command)");
     std::println("       instead of the bare elementary stream both write by default; 'mkv'");
     std::println("       remains the way to wrap an ALREADY-encoded file after the fact.");
+    std::println("record/live container=fmp4: the output path names a DIRECTORY, written as it");
+    std::println("       goes - init.mp4, segment*.m4s, and audio.m3u8/master.m3u8/manifest.mpd");
+    std::println("       refreshed on every segment (live HLS + a dynamic MPD while the session");
+    std::println("       runs, closed to VOD/static at the end). fmp4-window=<n> keeps only the");
+    std::println("       last n segments listed. 'fmp4' remains the after-the-fact form.");
     std::println("monitor/live --monitor play the 5.1 BED of an Atmos-mode stream: the decoder");
     std::println("       reads TS 103 420's object layer (OAMD/JOC) and reports an object count,");
     std::println("       but this path does not render or export objects, so this is what a");

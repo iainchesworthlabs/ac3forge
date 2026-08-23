@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <format>
+#include <string>
 #include <vector>
 
 #include "ac3/core/bitwriter.hpp"
@@ -131,6 +133,13 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
         w.put(0, 1);  // flag_ec3_extension_type_a
     }
     return w.take();
+}
+
+std::string dash_channel_configuration(const ScannedStream& stream) {
+    // Four upper-case hex digits of ScannedStream::channel_map, zero-padded -
+    // see this function's own comment in ac3/io/dec3.hpp for the scheme and
+    // the citation.
+    return std::format("{:04X}", stream.channel_map);
 }
 
 }  // namespace ac3::io

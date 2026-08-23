@@ -21,6 +21,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/mp4.hpp"
 
 namespace ac3cli::commands {
 
@@ -145,11 +146,40 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                                      .sample_rate = capture.sample_rate(),
                                      .channels = 2,
                                      .samples_per_frame = ac3::kSamplesPerFrame};
-    if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
+    if (meta.container == RecordContainer::kFmp4) {
+        // A directory of CMAF segments and manifests rather than one file -
+        // pushed through the same incremental writer 'live' uses, one frame
+        // at a time, so the two commands leave identical directories for the
+        // same take (see Fmp4SessionWriter).
+        Fmp4SessionWriter fmp4;
+        auto problem = fmp4.open(out_path, mp4::FragmentOptions{}.frames_per_fragment,
+                                 meta.fmp4_window_segments);
+        for (const auto& frame : frames) {
+            if (!problem.empty()) {
+                break;
+            }
+            problem = fmp4.push(frame);
+        }
+        if (problem.empty()) {
+            problem = fmp4.close();
+        }
+        if (!problem.empty()) {
+            std::println(stderr, "error: {}", problem);
+            return 1;
+        }
+        std::println("wrote {} frames ({} kbps) to {} ({} fMP4/CMAF segments)", frames.size(),
+                     bitrate, out_path, fmp4.segments());
+        std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+                     stats.frames_silence_filled, stats.frames_dropped);
+        print_channel_summary(meter);
+        return 0;
+    }
+    if (!write_frames_or_mux(out_path, meta.container == RecordContainer::kMatroska, track,
+                             frames)) {
         return 1;
     }
     std::println("wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
-                 meta.matroska_container ? " (Matroska)" : "");
+                 meta.container == RecordContainer::kMatroska ? " (Matroska)" : "");
     std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
     print_channel_summary(meter);
