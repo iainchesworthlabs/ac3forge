@@ -129,10 +129,10 @@ void print_meta_usage() {
     std::println("  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction "
                  "matrix over 256 MDCT bins instead of the default §7.1 64-band complex QMF - "
                  "cheaper, and what this project did before it had a filterbank, but ~5 dB worse "
-                 "per object and not the domain a licensed decoder reconstructs in. Not part of "
-                 "mode=performance (unlike the transform switches, the two domains give "
-                 "different answers, not the same one at different speed); mode=reference does "
-                 "select qmf");
+                 "per object and not the domain a licensed decoder reconstructs in. Not "
+                 "part of mode= either way: unlike the two transform switches, these are "
+                 "different answers rather than the same one at different speed, and the "
+                 "default is already the domain the clause states");
     std::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                  "signature (needs signing-key=); see docs/concepts/object-signing.md");
     std::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
@@ -266,10 +266,6 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             if (value == "reference") {
                 out.fast_mdct = false;
                 out.fast_imdct = false;
-                // §6.6.6's own domain too. performance does NOT set the
-                // other way: see Options::joc_domain for why this switch is
-                // not symmetric with the two above it.
-                out.joc_domain = ac3::joc::Domain::kQmf;
                 continue;
             }
             std::println(stderr,

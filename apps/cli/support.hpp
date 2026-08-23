@@ -140,12 +140,13 @@ struct Options {
     // 256-bin MDCT approximation this project used before it had a
     // filterbank.
     //
-    // Deliberately NOT wired into mode=performance. The two transform
-    // switches that mode= drives are the same answer computed two ways,
-    // agreeing to ~1e-12, so naming the fast one costs nothing; these two
-    // domains are different answers, 5 dB apart, and a speed preference
-    // should not silently pick the worse one. mode=reference does force
-    // QMF, because that is the domain the clause states.
+    // Deliberately outside mode= in both directions. The two transform
+    // switches mode= drives are the same answer computed two ways, agreeing
+    // to ~1e-12, so naming the fast one costs nothing; these two domains
+    // are different answers about 5 dB apart, and a speed preference should
+    // not silently pick the worse one. mode=reference has nothing to add
+    // either - the default is already §6.6.6's own domain - so mode= stays
+    // exactly the two transform switches it has always been.
     ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.

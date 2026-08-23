@@ -222,7 +222,6 @@ struct ReconstructionState {
 // has only the one form.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, bool fast_mdct = false,
-    Domain domain = Domain::kMdctBand);
+    ReconstructionState& state, bool fast_mdct = false, Domain domain = Domain::kQmf);
 
 }  // namespace ac3::joc

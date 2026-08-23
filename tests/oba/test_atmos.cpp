@@ -456,6 +456,10 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
     ac3::joc::ReconstructionState state;
     std::vector<std::span<const float>> views(4);
 
+    // The shipped default on both sides. The domain pair is compared
+    // head-to-head in "QMF-domain JOC reconstructs objects at least as well
+    // as the MDCT-band path" below; this one just has to run what ships.
+    constexpr auto kDomain = ac3::joc::Domain::kQmf;
     constexpr int kFrames = 6;
     std::array<std::vector<float>, 4> source;   // the whole run, per object
     std::array<std::vector<float>, 4> recovered;  // ditto, aligned index for index
@@ -496,23 +500,26 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
             bed_joc_order[static_cast<std::size_t>(jc)] =
                 sub.channels[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto reconstructed = ac3::joc::reconstruct(bed_joc_order, *params, state);
+        const auto reconstructed =
+            ac3::joc::reconstruct(bed_joc_order, *params, state, /*fast_mdct=*/false, kDomain);
         REQUIRE(reconstructed.size() == 4);
         for (std::size_t i = 0; i < 4; ++i) {
             recovered[i].insert(recovered[i].end(), reconstructed[i].begin(), reconstructed[i].end());
         }
     }
 
-    // Two stacked MDCT round trips carry two stacked 256-sample algorithmic
-    // delays: one from the real encode+decode of the bed itself (see
-    // tests/decoder/test_eac3_decoder.cpp's own snr_db helper), one more from
-    // reconstruct()'s own independent forward+inverse pass over that decoded
-    // bed (see "reconstruct is a 256-sample-delayed identity..." above).
-    // Comparing sample n of the recovered audio against sample (n - 512) of
-    // the true source is what actually measures reconstruction QUALITY
-    // rather than mostly measuring this codebase's own well-understood,
-    // expected transform-pair latency.
-    constexpr std::size_t kDelay = 512;
+    // Two stacked transform round trips carry two stacked algorithmic
+    // delays: 256 samples from the real encode+decode of the bed itself
+    // (see tests/decoder/test_eac3_decoder.cpp's own snr_db helper), plus
+    // reconstruct()'s own independent pass over that decoded bed - which
+    // depends on the domain it ran in, so it is asked rather than assumed
+    // (see "reconstruct is a delayed identity..." above). Comparing sample
+    // n of the recovered audio against sample (n - kDelay) of the true
+    // source is what actually measures reconstruction QUALITY rather than
+    // mostly measuring this codebase's own well-understood, expected
+    // transform-pair latency.
+    const std::size_t kDelay =
+        static_cast<std::size_t>(256 + ac3::joc::reconstruction_delay(kDomain));
     constexpr std::size_t kSkip = static_cast<std::size_t>(kFrame);  // one frame's warm-up/cool-down
     for (int object = 0; object < 4; ++object) {
         CAPTURE(object);

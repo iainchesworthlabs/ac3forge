@@ -83,8 +83,13 @@ struct AtmosConfig {
     // existed: the same solve over 256 MDCT bins, four to a subband. It is
     // cheaper, and it is what the in-repo decoder reconstructs best from
     // when it is also told kMdctBand, but the agreement is between this
-    // encoder and this decoder only.
-    joc::Domain joc_domain = joc::Domain::kMdctBand;
+    // encoder and this decoder only - a licensed decoder has no such
+    // setting, and reads every matrix as a QMF one.
+    //
+    // Default kQmf since the evidence was measured: +5.1 dB mean per-object
+    // SNR through a QMF reconstruction, for +0.26 ms/frame of encode
+    // (0.55 -> 0.80 ms of a 32 ms budget, four objects).
+    joc::Domain joc_domain = joc::Domain::kQmf;
 };
 
 // One object's placement for one frame. Positions are room-anchored per
