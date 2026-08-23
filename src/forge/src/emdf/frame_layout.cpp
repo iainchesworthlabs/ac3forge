@@ -176,8 +176,13 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             } else if (mixdef == 2) {
                 (void)r.read(12);
             } else if (mixdef == 3) {
-                const int n = static_cast<int>(r.read(5));
-                (void)r.read(static_cast<std::size_t>(n + 2) * 8);
+                // mixdeflen sizes the WHOLE remaining element, sub-fields and
+                // byte-alignment padding included, so it can be skipped whole
+                // without walking mixdata2e/mixdata3e. skip() rather than
+                // read(): (mixdeflen + 2) * 8 runs to 264 bits, well past the
+                // 32 read() accepts.
+                const std::uint32_t mixdeflen = r.read(5);
+                r.skip(static_cast<std::size_t>(mixdeflen + 2) * 8);
             }
             if (acmod < 2) {
                 if (r.read(1)) {
@@ -255,20 +260,26 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     {  // addbsi element -> a hole, and the object-audio marker when it is one
         const std::size_t p = r.bit_position();
         if (r.read(1)) {  // addbsie
-            const int addbsil = static_cast<int>(r.read(6));
-            const int first = static_cast<int>(r.read(8));
+            // §E2.3.1.28: addbsil counts BYTES MINUS ONE, so the element is
+            // always at least one byte and at most 64.
+            const std::uint32_t addbsil = r.read(6);
+            std::uint32_t consumed_bytes = 1;
+            const std::uint32_t first = r.read(8);
             // TS 103 420 §8.3.1 fixes an object-audio stream's addbsi to
             // seven reserved bits then flag_ec3_extension_type_a, then - only
             // when that bit is set - an 8-bit complexity_index_type_a
             // (§8.3.2.2). Anything else in addbsi belongs to whoever put it
-            // there; recognising it is not the same as claiming it.
-            const bool marker = (first >> 1) == 0 && (first & 1) != 0 && (addbsil + 1) >= 2;
-            if (first & 1) {
+            // there; recognising it is not the same as claiming it. A flag
+            // set with no second byte to hold the index is not that shape, so
+            // it is not treated as the marker either.
+            const bool marker = (first >> 1) == 0 && (first & 1) != 0 && addbsil >= 1;
+            if (marker) {
                 out.oba_complexity_index = static_cast<int>(r.read(8));
-                (void)r.read(static_cast<std::size_t>(addbsil + 1 - 2) * 8);
-            } else {
-                (void)r.read(static_cast<std::size_t>(addbsil) * 8);
+                consumed_bytes = 2;
             }
+            // skip(), not read(), for whatever is left: addbsil's payload runs
+            // to 512 bits, well past the 32 read() accepts.
+            r.skip(static_cast<std::size_t>(addbsil + 1 - consumed_bytes) * 8);
             out.addbsi = BitRange{.first = p, .last = r.bit_position() - 1};
             out.addbsi_object_extension = marker;
         }
