@@ -64,6 +64,7 @@ add_executable(ac3tests
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
+    encoder/test_exp_strategy.cpp
     core/test_exponents.cpp
     core/test_fft.cpp
     containers/test_fmp4.cpp
@@ -100,6 +101,14 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# test_exp_strategy.cpp includes exp_strategy.hpp, the exponent-run planner the
+# two encoder translation units share. It is deliberately not library surface -
+# nothing outside src/forge/src/encoder/ has any business planning exponent
+# runs - but what it decides is a cost judgement, and that is worth holding to
+# account on inputs chosen to make the right answer obvious rather than only
+# through a whole encode. Same pattern as the signing headers above.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
 
 # test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
 # committed programme-material fixtures rather than a synthetic signal - the delta bit

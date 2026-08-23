@@ -91,6 +91,16 @@ constexpr int kFrmfgaincode = 0;   // fgaincod defaults to 0x4, matching AC-3
 // carried, and the frame-level flag has to be decided before the blocks are
 // written.
 
+// What a mantissa at each bap actually resolves, in bits: Table 7.18's qntztab
+// for the directly coded allocations, and ceil(log2(levels)) for the four that
+// pack three or two to a word (bap 1, 2 and 4 carry 3, 5 and 11 levels, which
+// kBapBits enters as 0 because none of them is a whole number of bits on the
+// wire). Read only to bound how much precision a coarser exponent set can
+// throw away - a bin cannot lose what it was never given - so an approximation
+// to a fraction of a bit is exactly as good as the exact figure would be.
+constexpr std::array<std::uint8_t, 16> kBapPrecisionBits = {0, 2, 3, 3,  4,  4,  5,  6,
+                                                            7, 8, 9, 10, 11, 12, 14, 16};
+
 // How deep to taper the seam when the caller does not say. The taps come out
 // at -1.2, -2.4 and -3.6 dB, deepest on the join - a gentle smoothing rather
 // than a hole.
@@ -173,8 +183,12 @@ struct ChannelPlan {
     int start = 0;    // strtmant: 0 for fbw and LFE, cplstrtmant for coupling
     int endmant = 0;
     // Tiling the frame's blocks, first run at block 0 - so run_of_block is
-    // total and runs is never empty once step 6 has run.
+    // total and there is always at least one run once step 6 has run. The
+    // vector only ever grows: nruns says how many of its entries this frame
+    // uses, so a frame with fewer runs than the last still keeps the storage
+    // of the entries it is not using. Read it through active_runs().
     std::vector<ExponentRun> runs;
+    int nruns = 0;
     std::array<int, kBlocksPerFrame> run_of_block{};
     // Table E2.10's code for this stream's run layout, valid only when the
     // frame hoists its strategies (payload.expstre clear).
@@ -191,6 +205,12 @@ struct ChannelPlan {
     std::vector<std::array<double, kBlocksPerFrameSize>> aht_coeffs;
     std::vector<std::uint8_t> aht_gain;  // per bin: 1, 2 or 4
 
+    [[nodiscard]] std::span<ExponentRun> active_runs() {
+        return std::span{runs}.first(static_cast<std::size_t>(nruns));
+    }
+    [[nodiscard]] std::span<const ExponentRun> active_runs() const {
+        return std::span{runs}.first(static_cast<std::size_t>(nruns));
+    }
     // Which run a block reads its exponents and allocation from.
     [[nodiscard]] ExponentRun& run_at(int blk) {
         return runs[static_cast<std::size_t>(run_of_block[static_cast<std::size_t>(blk)])];
@@ -213,6 +233,7 @@ struct ChannelPlan {
     void reset_for_frame() {
         start = 0;
         endmant = 0;
+        nruns = 0;
         run_of_block = {};
         frmexpstr = 0;
         aht = false;
@@ -241,7 +262,7 @@ struct ChannelPlan {
     // §E2.2.3 needs an AHT stream's exponents transmitted exactly once in the
     // frame (nchregs == 1), so an AHT stream always has exactly one run and
     // this is that run's allocation.
-    const auto& bap = plan.runs.front().bap;
+    const auto& bap = plan.runs[0].bap;
     std::uint32_t bits = 2;  // chgaqmod itself, which is part of the element
     int active = 0;
     for (int bin = plan.start; bin < plan.endmant; ++bin) {
@@ -779,7 +800,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         for (const bool sw : plan.blksw) {
             blkswe = blkswe || sw;
         }
-        for (const auto& run : plan.runs) {
+        for (const auto& run : plan.active_runs()) {
             dbaflde = dbaflde || run.delta.deltnseg > 0;
         }
     }
@@ -800,6 +821,70 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     const auto strategy_at = [&](int s, int blk) {
         const auto& plan = stream_plan(s);
         return plan.fresh_at(blk) ? plan.run_at(blk).strategy : ExpStrategy::kReuse;
+    };
+    // Whether a stream has a delta correction to send in a given block. Its
+    // run does, or it does not - a run is one allocation, so its correction is
+    // constant across the blocks it covers.
+    const auto delta_wants = [&](int s, int blk) {
+        return stream_plan(s).run_at(blk).delta.deltnseg > 0;
+    };
+    // deltbaie == 0 does NOT mean "no delta this block". Outside block 0 it
+    // means "keep whatever delta state the previous block left in place"
+    // (§5.4.3.47, and §7.2.2.6's "the delta bit allocation values are not
+    // updated"); only in block 0 does it clear every stream. A stream that
+    // carried a delta in the previous block and wants none now therefore has
+    // to be TOLD, with an explicit '10'.
+    //
+    // With one exponent set for the whole frame this could never arise - one
+    // run meant one correction, sent identically in every block - so it only
+    // becomes reachable now that a stream's runs can differ. Left unhandled it
+    // is not a small quality loss: the decoder keeps applying the stale
+    // correction, its allocation diverges from this encoder's, the two size
+    // the mantissa fields differently, and every field after that point is
+    // read at the wrong bit offset. It surfaces a block or two later as an
+    // exponent walking outside 0..24 or a grouped exponent above 124 - both
+    // §7.10.2 error conditions - which is exactly how it was caught here:
+    // FFmpeg and this project's own decoder both refused frame 284 of a
+    // 192 kbit/s stereo encode. ac3::verify models the AC-3 encoder, whose
+    // own emitter (encoder.cpp) carries the same rule for the same reason.
+    //
+    // So: emit when some stream has a correction to send this block, and emit
+    // also when nobody wants one but the decoder is still holding the last -
+    // purely to say '10' at it. Replayed from block 0 rather than carried in a
+    // variable, because this function runs twice per frame (once into
+    // measure_side_bits' counter, once for real) and the rate search may clear
+    // a run's delta in between: the answer has to be a pure function of the
+    // plan as it stands right now.
+    const auto delta_needs_emit = [&](int upto) {
+        std::array<bool, chanmap::kMaxSubstreamChannels + 1> held{};  // what the decoder is holding
+        bool emit = false;
+        for (int b = 0; b <= upto; ++b) {
+            bool wanted = cpl.in_use && delta_wants(cpl_stream, b);
+            for (int ch = 0; ch < nfchans && !wanted; ++ch) {
+                wanted = delta_wants(ch, b);
+            }
+            bool leftover = false;
+            if (!wanted) {
+                leftover = cpl.in_use && held[static_cast<std::size_t>(cpl_stream)];
+                for (int ch = 0; ch < nfchans && !leftover; ++ch) {
+                    leftover = held[static_cast<std::size_t>(ch)];
+                }
+            }
+            emit = wanted || leftover;
+            if (emit) {
+                // Every stream's code is sent, so the decoder's state becomes
+                // exactly what this block asked for.
+                if (cpl.in_use) {
+                    held[static_cast<std::size_t>(cpl_stream)] = delta_wants(cpl_stream, b);
+                }
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    held[static_cast<std::size_t>(ch)] = delta_wants(ch, b);
+                }
+            } else if (b == 0) {
+                held.fill(false);  // deltbaie == 0 in block 0 clears
+            }
+        }
+        return emit;
     };
 
     w.put(kSyncWord, 16);
@@ -976,21 +1061,32 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             w.put(0, 5);  // convexpstr[ch]
         }
     }
-    // §E2.2.3's AHT block. Each flag exists only where the channel's exponents
+    // §E2.2.3's AHT block. Each flag exists only where that stream's exponents
     // are transmitted exactly once in the frame - ncplregs, nchregs[ch] and
     // nlferegs all 1 - because AHT spans the whole frame and cannot straddle a
-    // change of exponent set. Table E2.10 code 0 (D15 then reuse) is that
-    // shape by construction, and coupling additionally has to be in use for
-    // all six blocks, which this encoder's all-or-nothing coupling guarantees.
+    // change of exponent set; coupling additionally has to be in use for all
+    // six blocks, which this encoder's all-or-nothing coupling guarantees.
+    //
+    // With Table E2.10 code 0 for every stream those conditions held by
+    // construction and the flags could be written unconditionally. They are
+    // real conditions now: a stream that refreshes its exponents mid-frame
+    // sends NO flag, and is implicitly not an AHT stream - which it never is,
+    // since the run planner gives an AHT stream exactly one run. Writing a
+    // flag anyway shifts the SNR offsets and everything after them, and the
+    // damage lands blocks later as an out-of-range exponent rather than as
+    // anything a decoder can attribute to this bit.
     if (payload.ahte) {
-        if (cpl.in_use) {
-            w.put(payload.chans.back().aht ? 1 : 0, 1);  // cplahtinu
+        const auto regions = [&](int s) { return stream_plan(s).nruns; };
+        if (cpl.in_use && regions(cpl_stream) == 1) {
+            w.put(stream_plan(cpl_stream).aht ? 1 : 0, 1);  // cplahtinu
         }
         for (int ch = 0; ch < nfchans; ++ch) {
-            w.put(payload.chans[static_cast<std::size_t>(ch)].aht ? 1 : 0, 1);
+            if (regions(ch) == 1) {
+                w.put(stream_plan(ch).aht ? 1 : 0, 1);  // chahtinu[ch]
+            }
         }
-        if (config.lfe) {
-            w.put(payload.chans[static_cast<std::size_t>(nfchans)].aht ? 1 : 0, 1);
+        if (config.lfe && regions(nfchans) == 1) {
+            w.put(stream_plan(nfchans).aht ? 1 : 0, 1);  // lfeahtinu
         }
     }
     // snroffststr == 0: the SNR offsets live here, once for the frame, and
@@ -1346,10 +1442,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             const auto delta_of = [&](int s) -> const DeltaSegments& {
                 return stream_plan(s).run_at(blk).delta;
             };
-            bool any_delta = cpl.in_use && delta_of(cpl_stream).deltnseg > 0;
-            for (int ch = 0; ch < nfchans && !any_delta; ++ch) {
-                any_delta = delta_of(ch).deltnseg > 0;
-            }
+            const bool any_delta = delta_needs_emit(blk);
             w.put(any_delta ? 1 : 0, 1);  // deltbaie
             if (any_delta) {
                 // §5.4.3.47-57's syntax table sends every stream's 2-bit
@@ -1548,7 +1641,10 @@ struct FrameEncoder::FrameState {
     // Per-(stream, block) raw exponents, one kCoefficientsPerBlock-wide slot
     // each, and the run-boundary start blocks the planner reads them into.
     std::vector<std::uint8_t> exp_blocks;
-    std::vector<int> exp_starts;
+    // Per stream, from a provisional allocation: which bins actually receive
+    // mantissa bits, which is what makes an exponent set's cost comparable to
+    // the precision it gives up.
+    std::vector<std::uint8_t> exp_coded;
     std::vector<std::int32_t> aht_column;
     std::vector<double> delta_peak_mag;
     std::vector<double> spx_recon;
@@ -1589,6 +1685,7 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     // quietest the format can state.
     const auto one_quiet_run = [](const std::vector<std::uint8_t>& quiet, ChannelPlan& plan) {
         plan.runs.resize(1);
+        plan.nruns = 1;
         auto& run = plan.runs.front();
         run.start_block = 0;
         run.strategy = ExpStrategy::kD15;
@@ -2371,18 +2468,59 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     AC3_ZONE_END(zone_aht_select);
 
+    // One run's transmitted exponent set and the decoder-mirror it produces.
+    // §8.2.10-8.2.11: the encoder must use the DECODED exponents from here on,
+    // not the raw ones it started from, or the decoder's independently
+    // computed allocation silently diverges.
+    const auto encode_run = [](ChannelPlan& plan, ExponentRun& run,
+                               std::span<const std::uint8_t> raw, bool is_cpl) {
+        // Bins below the stream's own start are inert but must still hold a
+        // value the allocator can read; the quietest possible one keeps them
+        // from influencing anything.
+        run.decoded.assign(static_cast<std::size_t>(plan.endmant), kMaxExponent);
+        if (is_cpl) {
+            run.coded = {};
+            run.cpl_coded = encode_coupling_exponents(raw, run.strategy);
+            decode_coupling_exponents(
+                run.cpl_coded.cplabsexp, run.cpl_coded.groups, run.strategy,
+                std::span{run.decoded}.subspan(static_cast<std::size_t>(plan.start)));
+        } else {
+            run.cpl_coded = {};
+            run.coded = encode_exponents(raw, run.strategy);
+            decode_exponents(run.coded.absolute, run.coded.groups, run.strategy, run.decoded);
+        }
+        run.bap.assign(static_cast<std::size_t>(plan.endmant), 0);
+    };
+    // The plan every stream starts from: one D15 set for the whole frame,
+    // Table E2.10 code 0 - what this encoder emitted before it planned runs at
+    // all, and still the right answer for a stationary frame.
+    const auto set_single_run = [&](ChannelPlan& plan, std::span<const std::uint8_t> raw,
+                                    bool is_cpl) {
+        if (plan.runs.empty()) {
+            plan.runs.resize(1);
+        }
+        plan.nruns = 1;
+        auto& run = plan.runs[0];
+        run.start_block = 0;
+        run.strategy = ExpStrategy::kD15;
+        run.delta = {};
+        encode_run(plan, run, raw, is_cpl);
+        plan.run_of_block = {};
+        plan.frmexpstr = 0;
+    };
+
     // --- 6. Fixed point and this frame's exponent runs per stream ----------
     AC3_ZONE_BEGIN(zone_exponents, "step5_exponents");
     // An exponent set is shared by every block of its run, and a bin's
     // exponent there has to accommodate the run's LOUDEST block. The smallest
     // exponent across those blocks is that bin's worst case; anything larger
-    // would overflow the mantissa in the block that peaks. So the run
-    // boundaries are the whole quality question: a run that spans the frame
-    // quantizes every quiet block against a scale meant for the loud one, and
-    // a run per block spends on exponent sets what the frame could have spent
-    // on mantissas. Section 8.2.8's own answer - resend when the exponents
-    // have really moved - is what plans them, shared with the AC-3 encoder
-    // (internal::needs_new_exponents).
+    // would overflow the mantissa in the block that peaks. So where the runs
+    // end is the whole question: one run for the frame quantizes every quiet
+    // block against a scale chosen by the loud one, and a run per block spends
+    // on exponent sets what the frame could have spent on mantissas.
+    // internal::plan_exponent_runs weighs exactly that, in bits, against a
+    // provisional allocation built here first - see its own comment for why
+    // the AC-3 encoder's fixed threshold could not simply be reused.
     //
     // Under AHT the axis changes. The values the quantizers see are no longer
     // the six blocks' MDCT coefficients but the six DCT coefficients taken
@@ -2395,9 +2533,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // components reaching full scale, so a bin presented at a third of full
     // scale comes back at three times its own level. Measured on the
     // reference program, that cost 46 dB of the vector range's SNR while the
-    // scalar range sat at a comfortable 33. §E2.2.3 also needs an AHT
-    // stream's exponents transmitted exactly once in the frame (nchregs ==
-    // 1), so an AHT stream plans one run and never asks the detector.
+    // scalar range sat at a comfortable 33. §E2.2.3 also needs an AHT stream's
+    // exponents transmitted exactly once in the frame (nchregs == 1), so an
+    // AHT stream keeps the single set below and is never planned.
     auto& fixed = fixed_scratch_;
     fixed.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
     const auto fixed_at = [&](int s, int blk) -> std::array<std::int32_t, 256>& {
@@ -2405,9 +2543,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                      static_cast<std::size_t>(blk)];
     };
     // Every block's own raw exponents, per stream, indexed from the stream's
-    // start bin the way `raw` below is. The run planner compares consecutive
-    // blocks here and each run's set is the per-bin minimum over the blocks
-    // it covers, so both readings come from one extraction pass.
+    // start bin the way `raw` is. The planner reads these; each run's own set
+    // is the per-bin minimum over the blocks it covers.
     auto& block_exps = state_->exp_blocks;
     block_exps.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame * kCoefficientsPerBlock,
                       kMaxExponent);
@@ -2417,24 +2554,23 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 kCoefficientsPerBlock,
             span);
     };
+
+    // --- 6a. The single-set plan every stream starts from -------------------
+    // Also what an AHT stream keeps, and what the provisional allocation below
+    // is measured against.
     for (int s = 0; s < streams; ++s) {
         auto& plan = payload.chans[static_cast<std::size_t>(s)];
         plan.start = stream_start(s);
         plan.endmant = stream_end(s);
-        const bool is_lfe = config_.lfe && s == nfchans;
         const bool is_cpl = s == cpl_stream;
         const auto span = static_cast<std::size_t>(plan.endmant - plan.start);
         auto& raw = state_->exp_raw;
+        raw.assign(span, kMaxExponent);
         auto& axis_exps = state_->exp_axis;
         axis_exps.assign(span, 0);
-        // Run boundaries as start blocks, closed with kBlocksPerFrame so run
-        // r covers starts[r] up to starts[r + 1].
-        auto& starts = state_->exp_starts;
-        starts.assign(1, 0);
 
         if (plan.aht) {
             AC3_ZONE_SCOPED_N("step5_aht_transform");
-            raw.assign(span, kMaxExponent);
             plan.aht_fixed.assign(static_cast<std::size_t>(plan.endmant), {});
             plan.aht_coeffs.assign(static_cast<std::size_t>(plan.endmant), {});
             auto& column = state_->aht_column;
@@ -2471,108 +2607,200 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     out[static_cast<std::size_t>(bin)] =
                         to_fixed25(source[static_cast<std::size_t>(bin)]);
                 }
+                const auto exps = block_exps_at(s, blk, span);
                 extract_exponents(
-                    std::span{out}.subspan(static_cast<std::size_t>(plan.start), span),
-                    block_exps_at(s, blk, span));
-            }
-            std::span<const std::uint8_t> reference = block_exps_at(s, 0, span);
-            for (int blk = 1; blk < kBlocksPerFrame; ++blk) {
-                const auto current = block_exps_at(s, blk, span);
-                // §7.9's block-switched block is isolated into its own
-                // single-block run on both sides - entering forces a boundary
-                // here, leaving forces one at the next block - which
-                // strategy_for_span(1) below then resolves to D45
-                // automatically, matching §8.2.2's "a channel that is
-                // block-switched uses the D45 exponent strategy". Neither the
-                // LFE nor the coupling channel is ever block-switched, so the
-                // guard simply never fires for them.
-                const bool switch_boundary =
-                    s < nfchans && (plan.blksw[static_cast<std::size_t>(blk)] ||
-                                    plan.blksw[static_cast<std::size_t>(blk - 1)]);
-                if (internal::needs_new_exponents(current, reference, is_lfe) ||
-                    switch_boundary) {
-                    starts.push_back(blk);
-                    reference = current;
+                    std::span{out}.subspan(static_cast<std::size_t>(plan.start), span), exps);
+                for (std::size_t bin = 0; bin < span; ++bin) {
+                    raw[bin] = std::min(raw[bin], exps[bin]);
                 }
             }
         }
-        starts.push_back(kBlocksPerFrame);
+        set_single_run(plan, raw, is_cpl);
+    }
 
-        // §5.4.3.25: the coupling channel's exponents are grouped without the
-        // fbw channels' round-up slack - ncplgrps covers the region exactly -
-        // so its bin count must be an exact multiple of three times the
-        // strategy's group size. Standard coupling's uniform 12-bin sub-bands
-        // satisfy that for all three strategies; enhanced coupling's Table
-        // E3.9 sub-bands are 6 bins wide at the bottom, so a region an odd
-        // number of those wide cannot carry D45. A plan that asks for one is
-        // dropped back to the single D15 run every region can carry, rather
-        // than re-banded into a shape Table E2.10 has no code for.
-        if (is_cpl && starts.size() > 2) {
-            bool expressible = true;
-            for (std::size_t r = 0; r + 1 < starts.size(); ++r) {
-                expressible = expressible && coupling_strategy_fits(
-                                                 static_cast<int>(span),
-                                                 strategy_for_span(starts[r + 1] - starts[r]));
-            }
-            if (!expressible) {
-                starts.assign({0, kBlocksPerFrame});
+    // Coupling leak seeds, from the coupling channel's own first band: the
+    // allocator starts at a sensible level instead of a fixed guess, and both
+    // the provisional allocation below and the real one in step 8 need them.
+    // The seeds are transmitted once, in block 0, so they describe the
+    // allocation block 0's exponents produce - and block 0's set is run 0's
+    // whichever plan the stream ends up with.
+    const auto set_coupling_leaks = [&] {
+        if (!cpl.in_use) {
+            return;
+        }
+        const auto& plan = payload.chans[static_cast<std::size_t>(cpl_stream)];
+        const int exp = plan.runs[0].decoded[static_cast<std::size_t>(cpl.strtmant)];
+        const int psd = 3072 - (exp << 7);
+        cpl.fleak = std::clamp((psd - fast_gain(kBamode0Codes.fgaincod) - 768) >> 8, 0, 7);
+        cpl.sleak = std::clamp((psd - slow_gain(kBamode0Codes.sgaincod) - 768) >> 8, 0, 7);
+    };
+    set_coupling_leaks();
+
+    // --- 6b. How much precision each bin is actually given ------------------
+    // The planner needs to know that, because a coarser exponent set can only
+    // cost a bin what the allocator gave it - and at these rates most bins are
+    // given nothing at all. The allocation at the previous frame's converged
+    // offset is the cheapest honest answer available here: the search is
+    // already warm-started from it precisely because consecutive frames of
+    // real programme material converge to the same or a near-neighbouring
+    // offset (snr_search.hpp). The first frame of a stream has no such
+    // history, and takes the single set above rather than guess.
+    const bool plan_runs = snr_search_hint_ >= 0;
+    auto& coded_mask = state_->exp_coded;
+    coded_mask.assign(static_cast<std::size_t>(streams) * kCoefficientsPerBlock, 0);
+    // What a stream's plan costs the frame at that offset, in bits: the
+    // exponent sets it transmits plus the mantissas its own allocation asks
+    // for. Both sides of the trade, measured by the encoder's own allocator
+    // rather than modelled - which is what lets a plan be rejected for costing
+    // more than it saves.
+    std::array<std::uint32_t, chanmap::kMaxSubstreamChannels + 1> single_cost{};
+    const auto allocate_and_cost = [&](ChannelPlan& p, int s) {
+        std::uint32_t bits = 0;
+        for (auto& run : p.active_runs()) {
+            const BitAllocRegion region{.start = p.start,
+                                        .coupling = s == cpl_stream,
+                                        .cplfleak = cpl.fleak,
+                                        .cplsleak = cpl.sleak,
+                                        .snr_all_zero = snr_search_hint_ == 0,
+                                        .high_efficiency = p.aht,
+                                        .delta = run.delta};
+            compute_bit_allocation(run.decoded, config_.sample_rate, kBamode0Codes,
+                                   snr_search_hint_ >> 4, snr_search_hint_ & 15, run.bap, region);
+            bits += 4 + 7 * static_cast<std::uint32_t>(run.coded.groups.size() +
+                                                       run.cpl_coded.groups.size());
+        }
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            const std::array<std::span<const std::uint8_t>, 1> view{
+                std::span{p.run_at(blk).bap}.subspan(static_cast<std::size_t>(p.start))};
+            bits += static_cast<std::uint32_t>(mantissa_bits_per_block(view));
+        }
+        return bits;
+    };
+    if (plan_runs) {
+        AC3_ZONE_SCOPED_N("step5_provisional_alloc");
+        for (int s = 0; s < streams; ++s) {
+            auto& plan = payload.chans[static_cast<std::size_t>(s)];
+            single_cost[static_cast<std::size_t>(s)] = allocate_and_cost(plan, s);
+            const auto& run = plan.runs[0];
+            const auto mask = std::span{coded_mask}.subspan(
+                static_cast<std::size_t>(s) * kCoefficientsPerBlock, kCoefficientsPerBlock);
+            for (int bin = plan.start; bin < plan.endmant; ++bin) {
+                mask[static_cast<std::size_t>(bin - plan.start)] =
+                    kBapPrecisionBits[run.bap[static_cast<std::size_t>(bin)] &
+                                      (kBapPrecisionBits.size() - 1)];
             }
         }
+    }
 
-        // One exponent set, one allocation and one delta correction per run.
-        // Grown before the loop and trimmed after it, so every entry the loop
-        // touches is one it fully re-sets and nothing survives from a frame
-        // that had more runs - the in-place contract ChannelPlan's own
-        // reset_for_frame documents.
-        const std::size_t run_count = starts.size() - 1;
+    // --- 6c. Plan, in both of Annex E's two forms, and take the cheaper -----
+    // expstre is one frame-level bit for every stream at once, so the choice
+    // between them is a frame decision: five bits a stream for a Table E2.10
+    // code against twelve for six per-block ones, set against what each form's
+    // best plan costs. The table's codes carry the run layout only - every
+    // strategy they imply is strategy_for_span's - so the hoisted form is not
+    // merely cheaper to signal, it is also less free, and there are frames
+    // where paying the seven bits to state D15 on a short run wins them back
+    // many times over.
+    std::array<internal::ExponentRunPlan, chanmap::kMaxSubstreamChannels + 1> hoisted{};
+    std::array<internal::ExponentRunPlan, chanmap::kMaxSubstreamChannels + 1> per_block{};
+    long long hoisted_score = 0;
+    long long per_block_score = 0;
+    if (plan_runs) {
+        AC3_ZONE_SCOPED_N("step5_plan_runs");
+        for (int s = 0; s < streams; ++s) {
+            auto& plan = payload.chans[static_cast<std::size_t>(s)];
+            if (plan.aht) {
+                continue;  // §E2.2.3: one exponent region, nothing to plan
+            }
+            const auto span = static_cast<std::size_t>(plan.endmant - plan.start);
+            internal::ExponentRunInput input{
+                .exps = std::span{block_exps}.subspan(
+                    static_cast<std::size_t>(s) * kBlocksPerFrame * kCoefficientsPerBlock,
+                    static_cast<std::size_t>(kBlocksPerFrame) * kCoefficientsPerBlock),
+                .bins = static_cast<int>(span),
+                .blocks = kBlocksPerFrame,
+                .precision = std::span{coded_mask}.subspan(
+                    static_cast<std::size_t>(s) * kCoefficientsPerBlock, span),
+                .boundary = {},
+                .coupling = s == cpl_stream,
+                .lfe = config_.lfe && s == nfchans,
+                .free_strategy = false};
+            // §8.2.2's "a channel that is block-switched uses the D45
+            // exponent strategy" is deliberately NOT forced here, unlike in
+            // the AC-3 encoder, which isolates a switched block into its own
+            // D45 run. Exponents are per-bin scale factors; nothing about
+            // blksw changes what one means, so sharing a set across a long and
+            // a short block is a question of cost like any other and the
+            // planner is already answering that question. Forcing it is
+            // expensive on exactly the material it is meant to help: measured
+            // on the transient leg at 192 kbit/s stereo, isolating every
+            // switched block cost 2.8 dB of SNR and 5 dB of high-band energy
+            // against letting the planner decide, because the forced sets are
+            // spent whether or not the exponents actually moved. §8.2.2 is
+            // §8's basic-encoder guidance, not a decoder requirement.
+            hoisted[static_cast<std::size_t>(s)] = internal::plan_exponent_runs(input);
+            input.free_strategy = true;
+            per_block[static_cast<std::size_t>(s)] = internal::plan_exponent_runs(input);
+            hoisted_score += hoisted[static_cast<std::size_t>(s)].score;
+            per_block_score += per_block[static_cast<std::size_t>(s)].score;
+        }
+    }
+    // Seven bits a stream is the whole difference in signalling: five for a
+    // frame code against twelve for six two-bit ones. The LFE pays neither -
+    // lfeexpstr is one bit a block in both forms - and an AHT stream states
+    // one set either way, so only the streams that were planned count.
+    int signalled_streams = 0;
+    for (int s = 0; s < streams; ++s) {
+        const auto& plan = payload.chans[static_cast<std::size_t>(s)];
+        if (!plan.aht && !(config_.lfe && s == nfchans)) {
+            ++signalled_streams;
+        }
+    }
+    // Which set of proposals to take forward. The form actually written is
+    // settled after the checks below, from the plans that survive them.
+    const bool prefer_per_block =
+        plan_runs && per_block_score + 7LL * signalled_streams < hoisted_score;
+
+    // --- 6d. Build the chosen plan ------------------------------------------
+    for (int s = 0; s < streams; ++s) {
+        auto& plan = payload.chans[static_cast<std::size_t>(s)];
+        const bool is_lfe = config_.lfe && s == nfchans;
+        const bool is_cpl = s == cpl_stream;
+        if (!plan_runs || plan.aht) {
+            continue;  // 6a's single set already stands
+        }
+        const auto& chosen = prefer_per_block ? per_block[static_cast<std::size_t>(s)]
+                                              : hoisted[static_cast<std::size_t>(s)];
+        const auto span = static_cast<std::size_t>(plan.endmant - plan.start);
+        auto& raw = state_->exp_raw;
+        const auto run_count = static_cast<std::size_t>(chosen.count);
         if (plan.runs.size() < run_count) {
             plan.runs.resize(run_count);
         }
         for (std::size_t r = 0; r < run_count; ++r) {
-            const int first_blk = starts[r];
-            const int last_blk = starts[r + 1];
+            const int first_blk = chosen.starts[r];
+            const int last_blk = chosen.starts[r + 1];
             auto& run = plan.runs[r];
             run.start_block = first_blk;
-            // §5.4.3.15 makes lfeexpstr a single bit - present or reuse - so
-            // the LFE has no banding to choose and every set it sends is D15.
-            // An AHT stream's one set is D15 for the same reason its run
-            // count is one.
-            run.strategy = (is_lfe || plan.aht) ? ExpStrategy::kD15
-                                                : strategy_for_span(last_blk - first_blk);
-            if (!plan.aht) {
-                raw.assign(span, kMaxExponent);
-                for (int blk = first_blk; blk < last_blk; ++blk) {
-                    const auto current = block_exps_at(s, blk, span);
-                    for (std::size_t bin = 0; bin < span; ++bin) {
-                        raw[bin] = std::min(raw[bin], current[bin]);
-                    }
+            run.strategy = chosen.strategy[r];
+            raw.assign(span, kMaxExponent);
+            for (int blk = first_blk; blk < last_blk; ++blk) {
+                const auto current = block_exps_at(s, blk, span);
+                for (std::size_t bin = 0; bin < span; ++bin) {
+                    raw[bin] = std::min(raw[bin], current[bin]);
                 }
             }
-            // Bins below the stream's own start are inert but must still hold
-            // a value the allocator can read; the quietest possible one keeps
-            // them from influencing anything.
-            run.decoded.assign(static_cast<std::size_t>(plan.endmant), kMaxExponent);
-            if (is_cpl) {
-                run.coded = {};
-                run.cpl_coded = encode_coupling_exponents(raw, run.strategy);
-                decode_coupling_exponents(
-                    run.cpl_coded.cplabsexp, run.cpl_coded.groups, run.strategy,
-                    std::span{run.decoded}.subspan(static_cast<std::size_t>(plan.start)));
-            } else {
-                run.cpl_coded = {};
-                run.coded = encode_exponents(raw, run.strategy);
-                decode_exponents(run.coded.absolute, run.coded.groups, run.strategy, run.decoded);
-            }
+            encode_run(plan, run, raw, is_cpl);
             // §7.2.2.6: compare this run's shared exponent-derived masking
             // curve against one built from the real coefficients. `raw` above
             // (and hence this run's exponents) is the MIN exponent across the
-            // run's blocks per bin - driven by whichever block has the
-            // LARGEST magnitude there - so the comparison needs that same
-            // per-bin max, not an average, or it would measure the
-            // (intentional) gap between "loudest block" and "typical block"
-            // instead of real quantization error and bias toward spurious
-            // cuts. See the ExponentRun::delta comment for why AHT streams and
-            // the LFE skip this.
+            // run's blocks per bin - driven by whichever block has the LARGEST
+            // magnitude there - so the comparison needs that same per-bin max,
+            // not an average, or it would measure the (intentional) gap
+            // between "loudest block" and "typical block" instead of real
+            // quantization error and bias toward spurious cuts. See the
+            // ExponentRun::delta comment for why AHT streams and the LFE skip
+            // this.
             //
             // Delta is skipped entirely whenever coupling is in use this frame
             // - not just for the coupling channel itself - deliberately
@@ -2585,7 +2813,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // Getting a coupling-aware version of this heuristic right needs
             // more care than this phase has room for (roadmap EQ5).
             run.delta = {};
-            if (!plan.aht && !is_lfe && !cpl.in_use) {
+            if (!is_lfe && !cpl.in_use) {
                 auto& peak_mag = state_->delta_peak_mag;
                 peak_mag.assign(static_cast<std::size_t>(plan.endmant), 0.0);
                 for (int blk = first_blk; blk < last_blk; ++blk) {
@@ -2598,66 +2826,100 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 }
                 run.delta = choose_delta_segments(peak_mag, run.decoded, plan.start);
             }
-            run.bap.assign(static_cast<std::size_t>(plan.endmant), 0);
             for (int blk = first_blk; blk < last_blk; ++blk) {
                 plan.run_of_block[static_cast<std::size_t>(blk)] = static_cast<int>(r);
             }
         }
-        plan.runs.resize(run_count);
+        plan.nruns = static_cast<int>(run_count);
+        // The proposal is only a proposal. plan_exponent_runs weighs the
+        // exponent sets against a model of the precision they buy back, and a
+        // model of quantization noise is not the same thing as the allocator's
+        // own answer: refreshing a quiet block gives it its own, larger
+        // exponents, which LOWERS its psd, which makes the allocator hand it
+        // fewer bits - so part of the precision the model counts as recovered
+        // is never spent. The check is therefore made against the allocator
+        // itself, at the offset the search is about to start from: a plan that
+        // costs the frame more bits than the single set it replaces cannot buy
+        // quality with them, it can only push down the composite offset every
+        // stream shares, and it is dropped.
+        //
+        // §7.2.2.6's own escape hatch does not apply here - this is not a
+        // correction that can be withdrawn later - so the fallback has to be a
+        // complete plan, which is the single D15 set 6a built.
+        if (run_count > 1 || chosen.strategy[0] != ExpStrategy::kD15) {
+            const std::uint32_t cost = allocate_and_cost(plan, s);
+            if (cost >= single_cost[static_cast<std::size_t>(s)]) {
+                auto& raw_again = state_->exp_raw;
+                raw_again.assign(span, kMaxExponent);
+                for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                    const auto current = block_exps_at(s, blk, span);
+                    for (std::size_t bin = 0; bin < span; ++bin) {
+                        raw_again[bin] = std::min(raw_again[bin], current[bin]);
+                    }
+                }
+                set_single_run(plan, raw_again, is_cpl);
+                continue;
+            }
+        }
         // The frame-level form of the same plan (Table E2.10), for audfrm to
-        // write when the frame hoists its strategies. The code carries only
-        // the run layout - the strategies it implies are strategy_for_span's,
-        // which is exactly what the loop above chose - so the two forms cannot
-        // disagree about the sets that were actually encoded. The LFE's own
-        // code is never transmitted (its strategy is a per-block bit) and is
-        // left at whatever its layout gives.
+        // write when the frame hoists its strategies. The code carries the run
+        // layout only - every strategy it implies is strategy_for_span's - so
+        // the two forms cannot disagree about the sets that were encoded. The
+        // LFE's own code is never transmitted (its strategy is a per-block
+        // bit) and is left at whatever its layout gives.
         std::array<bool, kBlocksPerFrame> fresh_blocks{};
         for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
             fresh_blocks[static_cast<std::size_t>(blk)] = plan.fresh_at(blk);
         }
         plan.frmexpstr = frame_exp_strategy_code(fresh_blocks);
-        if (plan.aht) {
-            AC3_ZONE_SCOPED_N("step5_aht_normalize");
-            // The mantissas the quantizers see, normalised by each bin's own
-            // exponent. They have to exist before the rate search, because
-            // under GAQ the search cannot size the frame without quantizing.
-            const auto& decoded = plan.runs.front().decoded;
-            plan.aht_gain.assign(static_cast<std::size_t>(plan.endmant), 1);
-            for (int bin = plan.start; bin < plan.endmant; ++bin) {
-                const auto at = static_cast<std::size_t>(bin);
-                const int exp = decoded[at];
-                for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-                    plan.aht_coeffs[at][j] =
-                        std::ldexp(static_cast<double>(plan.aht_fixed[at][j]), exp - 24);
-                }
+    }
+    // Which form audfrm takes, from the plans that actually survived: the
+    // hoisted one whenever every run states the strategy Table E2.10 would
+    // give its span, since that is five bits a stream against twelve. A single
+    // stream wanting a strategy the table cannot express takes the whole frame
+    // to the per-block form - expstre is one bit for all of them.
+    payload.expstre = false;
+    for (int s = 0; s < streams; ++s) {
+        const auto& plan = payload.chans[static_cast<std::size_t>(s)];
+        if (config_.lfe && s == nfchans) {
+            continue;  // lfeexpstr is a per-block bit in either form
+        }
+        for (int r = 0; r < plan.nruns; ++r) {
+            const int span_blocks =
+                (r + 1 < plan.nruns ? plan.runs[static_cast<std::size_t>(r + 1)].start_block
+                                    : kBlocksPerFrame) -
+                plan.runs[static_cast<std::size_t>(r)].start_block;
+            payload.expstre =
+                payload.expstre || plan.runs[static_cast<std::size_t>(r)].strategy !=
+                                       strategy_for_span(span_blocks);
+        }
+    }
+    // The seeds were derived from the single-set plan above; block 0's set may
+    // have changed with it, so they are re-derived from whatever run 0 now is.
+    set_coupling_leaks();
+
+    for (int s = 0; s < streams; ++s) {
+        auto& plan = payload.chans[static_cast<std::size_t>(s)];
+        if (!plan.aht) {
+            continue;
+        }
+        AC3_ZONE_SCOPED_N("step5_aht_normalize");
+        // The mantissas the quantizers see, normalised by each bin's own
+        // exponent. They have to exist before the rate search, because under
+        // GAQ the search cannot size the frame without quantizing.
+        const auto& decoded = plan.runs.front().decoded;
+        plan.aht_gain.assign(static_cast<std::size_t>(plan.endmant), 1);
+        for (int bin = plan.start; bin < plan.endmant; ++bin) {
+            const auto at = static_cast<std::size_t>(bin);
+            const int exp = decoded[at];
+            for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+                plan.aht_coeffs[at][j] =
+                    std::ldexp(static_cast<double>(plan.aht_fixed[at][j]), exp - 24);
             }
         }
     }
-    // §E2.3.2.1: hoist the strategies into audfrm's Table E2.10 codes. Every
-    // run layout the planner above can produce has a code (the table is a
-    // complete enumeration - see frame_exp_strategy_code), and every strategy
-    // a code implies is the one strategy_for_span already chose, so the
-    // cheaper form never costs a plan. The per-block form exists for the
-    // frames that have no choice, which is what EQ11's short syncframes will
-    // be.
-    payload.expstre = false;
 
     AC3_ZONE_END(zone_exponents);
-
-    // --- 7. Coupling leak seeds ---------------------------------------------
-    // The coupling channel's allocation starts above the low-frequency region
-    // entirely, so instead of running lowcomp it continues the masking decay
-    // from transmitted leak state. Deriving the seeds from the coupling
-    // channel's own first band starts the allocator at a sensible level.
-    if (cpl.in_use) {
-        const auto& plan = payload.chans[static_cast<std::size_t>(cpl_stream)];
-        // Block 0's set: the seeds are transmitted once, in block 0, so they
-        // describe the allocation that block's exponents produce.
-        const int exp = plan.runs.front().decoded[static_cast<std::size_t>(cpl.strtmant)];
-        const int psd = 3072 - (exp << 7);
-        cpl.fleak = std::clamp((psd - fast_gain(kBamode0Codes.fgaincod) - 768) >> 8, 0, 7);
-        cpl.sleak = std::clamp((psd - slow_gain(kBamode0Codes.sgaincod) - 768) >> 8, 0, 7);
-    }
 
     // --- 8. SNR-offset search ----------------------------------------------
     // The side info is offset-independent here (bamode 0, no delta
@@ -2688,7 +2950,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // generalized from "coupling active" to "would not otherwise fit".
     bool any_delta_applied = false;
     for (const auto& plan : payload.chans) {
-        for (const auto& run : plan.runs) {
+        for (const auto& run : plan.active_runs()) {
             any_delta_applied = any_delta_applied || run.delta.deltnseg > 0;
         }
     }
@@ -2697,7 +2959,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             return false;
         }
         for (auto& plan : payload.chans) {
-            for (auto& run : plan.runs) {
+            for (auto& run : plan.active_runs()) {
                 run.delta = {};
             }
         }
@@ -2720,7 +2982,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         std::uint32_t aht_bits = 0;
         for (int s = 0; s < streams; ++s) {
             auto& plan = payload.chans[static_cast<std::size_t>(s)];
-            for (auto& run : plan.runs) {
+            for (auto& run : plan.active_runs()) {
                 // Every stream shares one fsnroffst, so the frame-wide
                 // §7.2.2.1.1 condition reduces to the composite being zero.
                 const BitAllocRegion region{.start = plan.start,
@@ -2977,7 +3239,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     std::vector<int> gains;
                     for (int bin = plan.start; bin < plan.endmant; ++bin) {
                         const auto at = static_cast<std::size_t>(bin);
-                        if (aht_gaq_has_gain(plan.runs.front().bap[at], plan.gaqmod)) {
+                        if (aht_gaq_has_gain(plan.runs[0].bap[at], plan.gaqmod)) {
                             gains.push_back(plan.aht_gain[at]);
                         }
                     }
@@ -3006,7 +3268,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 }
                 for (int bin = plan.start; bin < plan.endmant; ++bin) {
                     const auto at = static_cast<std::size_t>(bin);
-                    const int hebap = plan.runs.front().bap[at];
+                    const int hebap = plan.runs[0].bap[at];
                     auto& values = plan.aht_coeffs[at];
                     if (hebap == 0) {
                         values.fill(0.0);  // what the decoder will hold here

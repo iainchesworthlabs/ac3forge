@@ -399,20 +399,49 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
         // §E2.2.3: cplahtinu, then chahtinu[ch] per fbw channel, then
         // lfeahtinu - exactly which streams re-code their six blocks of
         // mantissas as one gain-adaptively-quantized set instead of the
-        // ordinary per-block grouped format. cplahtinu is gated the same way
-        // frmcplexpstr was above: present only when some block actually
-        // couples this frame.
-        const bool cpl_active =
-            std::find(frm.cplinu.begin(), frm.cplinu.begin() + nblks, true) !=
-            frm.cplinu.begin() + nblks;
-        if (cpl_active) {
+        // ordinary per-block grouped format.
+        //
+        // Each flag exists only where that stream's exponents are transmitted
+        // exactly once in the frame (ncplregs / nchregs[ch] / nlferegs == 1):
+        // AHT spans the frame and cannot straddle a change of exponent set, so
+        // a stream that refreshes mid-frame sends no flag and is not an AHT
+        // stream. Coupling additionally has to be in use for EVERY block, not
+        // merely somewhere in the frame. Every stream this project's own
+        // encoder used to emit had one exponent set for the whole frame, so
+        // reading the flags unconditionally happened to be right for them and
+        // wrong for anything else - including this encoder's own output once
+        // it started planning exponent runs.
+        int ncplblks = 0;
+        int ncplregs = 0;
+        for (int blk = 0; blk < nblks; ++blk) {
+            const auto ublk = static_cast<std::size_t>(blk);
+            ncplblks += frm.cplinu[ublk] ? 1 : 0;
+            ncplregs += (frm.cplstre[ublk] || frm.cplexpstr[ublk] != ExpStrategy::kReuse) ? 1 : 0;
+        }
+        if (ncplblks == nblks && ncplregs == 1) {
             frm.ahtinu[static_cast<std::size_t>(kCplStream)] = r.read(1) != 0;  // cplahtinu
         }
         for (int ch = 0; ch < nfchans; ++ch) {
-            frm.ahtinu[static_cast<std::size_t>(ch)] = r.read(1) != 0;  // chahtinu[ch]
+            int nchregs = 0;
+            for (int blk = 0; blk < nblks; ++blk) {
+                nchregs += frm.chexpstr[static_cast<std::size_t>(blk)]
+                                       [static_cast<std::size_t>(ch)] != ExpStrategy::kReuse
+                               ? 1
+                               : 0;
+            }
+            if (nchregs == 1) {
+                frm.ahtinu[static_cast<std::size_t>(ch)] = r.read(1) != 0;  // chahtinu[ch]
+            }
         }
         if (bsi.lfe) {
-            frm.ahtinu[static_cast<std::size_t>(nfchans)] = r.read(1) != 0;  // lfeahtinu
+            int nlferegs = 0;
+            for (int blk = 0; blk < nblks; ++blk) {
+                nlferegs +=
+                    frm.lfeexpstr[static_cast<std::size_t>(blk)] != ExpStrategy::kReuse ? 1 : 0;
+            }
+            if (nlferegs == 1) {
+                frm.ahtinu[static_cast<std::size_t>(nfchans)] = r.read(1) != 0;  // lfeahtinu
+            }
         }
     }
     if (frm.snroffststr == 0x0) {
