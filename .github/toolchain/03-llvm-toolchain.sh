@@ -6,12 +6,14 @@ set -euo pipefail
 # repo's CI stay pinned to the same LLVM. Consumed by .github/workflows/_build.yml,
 # which runs it with sudo on the GitHub-hosted Ubuntu runner. Verified against
 # Ubuntu 26.04 LTS, where the distro archive carries both compilers (gcc 15.2.0,
-# clang 21.1.8) and neither fallback path is taken.
+# clang 22.1.2) and neither fallback path is taken.
 #
 
 # LLVM/Clang major version the project pins to. Keep this in step with the
-# toolchain files (cmake/toolchains/*.llvm.toolchain.cmake) and the vcpkg triplets.
-LLVM_VERSION=21
+# toolchain files (cmake/toolchains/*.llvm.toolchain.cmake), the vcpkg triplets,
+# and .github/toolchain-versions.json's llvm_windows_version (the exact point
+# release for the Windows installer download in _build.yml).
+LLVM_VERSION=22
 
 # apt.llvm.org dist codename for the FALLBACK path only (see below). Defaults to
 # the running release; override with the env var if a base needs a different repo.
@@ -54,7 +56,7 @@ PACKAGES=(
 )
 
 # Ubuntu 26.04 LTS (resolute) and newer ship this exact set in the 'universe'
-# component (clang-${LLVM_VERSION} = 1:21.1.8…, pool/universe/l/llvm-toolchain-21).
+# component (clang-${LLVM_VERSION} = 1:22.1.2…, pool/universe/l/llvm-toolchain-22).
 # Installing from the distribution archive means the build does NOT depend on
 # apt.llvm.org, which has had sustained (~30 min) pool outages that used to block
 # the whole template build. Ensure 'universe' is enabled — it already is on a
@@ -107,15 +109,26 @@ fi
 
 apt-get install -y --no-install-recommends "${PACKAGES[@]}"
 
-# Set up alternatives
+# Set up alternatives, then --set each one explicitly. --install alone is not
+# enough on a machine that already has an older pinned version selected: with
+# every version registered at the same fixed priority, --install does not
+# re-elect the newly-installed one, so a version bump would silently keep
+# building with the old compiler (caught in practice by the drift guard
+# below, which is exactly why it's there) - --set makes this script's
+# LLVM_VERSION win outright, every run, regardless of what was selected before.
 update-alternatives --install /usr/bin/clang clang "/usr/bin/clang-${LLVM_VERSION}" 100
+update-alternatives --set clang "/usr/bin/clang-${LLVM_VERSION}"
 update-alternatives --install /usr/bin/clang++ clang++ "/usr/bin/clang++-${LLVM_VERSION}" 100
+update-alternatives --set clang++ "/usr/bin/clang++-${LLVM_VERSION}"
 update-alternatives --install /usr/bin/clang-tidy clang-tidy "/usr/bin/clang-tidy-${LLVM_VERSION}" 100
+update-alternatives --set clang-tidy "/usr/bin/clang-tidy-${LLVM_VERSION}"
 update-alternatives --install /usr/bin/lld lld "/usr/bin/lld-${LLVM_VERSION}" 100
+update-alternatives --set lld "/usr/bin/lld-${LLVM_VERSION}"
 update-alternatives --install /usr/bin/llvm-symbolizer llvm-symbolizer "/usr/bin/llvm-symbolizer-${LLVM_VERSION}" 100
+update-alternatives --set llvm-symbolizer "/usr/bin/llvm-symbolizer-${LLVM_VERSION}"
 
 echo "==> Clang $(clang --version | head -1) installed"
 
-# Guard against a silent major-version drift (e.g. the distro moving clang to 22).
+# Guard against a silent major-version drift (e.g. the distro moving clang to 23).
 clang --version | grep -qE "version ${LLVM_VERSION}\." \
     || { echo "ERROR: clang is not version ${LLVM_VERSION}"; exit 1; }
