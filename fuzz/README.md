@@ -106,6 +106,15 @@ clean over a full budget once the findings below are fixed:
 |------------------------|-----------:|-------:|-----:|--------|
 | `fuzz_signing_verify` |     91,865 |    218 | 1358 | clean, 420 s, fresh corpus |
 | `fuzz_adm_parse`      |     47,732 |    158 |  116 | clean, 300 s |
+| `fuzz_ac3_decode`     |     14,724 |     43 |  827 | clean, mutator on |
+| `fuzz_eac3_decode`    |      3,583 |     12 | 1231 | clean, mutator on |
+
+The two decode harnesses are in that table because the mutator gives them
+reach they did not have before, and because the guards added for the findings
+below sit in code they run: worth confirming they are still clean rather than
+assuming it. Their exec rates are low here only because the machine was
+heavily loaded at the time - compare the A/B section's figures below, measured
+on the same harnesses under lighter load.
 
 `fuzz_signing_verify`'s coverage went from 870 at the first report to 1358
 once all three were fixed, which is the point: each defect was a wall the
