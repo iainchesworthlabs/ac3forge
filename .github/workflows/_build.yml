@@ -201,10 +201,10 @@ jobs:
     timeout-minutes: 90
 
     # Ubuntu 26.04 for the Linux legs, where the distro archive carries
-    # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 21
+    # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 22
     # outright. This is a pin, not a convenience: on ubuntu-latest (24.04 at
     # the time of writing) the LLVM script has to fall back to apt.llvm.org,
-    # whose noble repo is missing clang-tidy-21, lld-21 and libc++-21-dev, so
+    # whose noble repo is missing clang-tidy-22, lld-22 and libc++-22-dev, so
     # the install fails before a single file is compiled.
     # Pinning the container also stops a runner-image bump silently changing
     # the compiler under the matrix. Empty for the Windows/macOS legs, which
@@ -400,7 +400,7 @@ jobs:
       # ---------------------------------------------------------------------
       # Toolchains
       # ---------------------------------------------------------------------
-      # gcc-15 and LLVM 21, from the scripts aqualink-automate uses to build its
+      # gcc-16 and LLVM 22, from the scripts aqualink-automate uses to build its
       # runner images, copied verbatim. On the pinned 26.04 container both take
       # the distribution-archive path and neither fallback runs. Each script
       # asserts its own resulting version and exits non-zero on drift.
@@ -413,19 +413,20 @@ jobs:
           if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/02-gcc-toolchain.sh
           else bash .github/toolchain/02-gcc-toolchain.sh; fi
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         if: matrix.llvm && runner.os == 'Linux'
         run: |
           set -eu
           if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/03-llvm-toolchain.sh
           else bash .github/toolchain/03-llvm-toolchain.sh; fi
 
-      # The Windows runner image ships an LLVM, but not necessarily 21. Install
-      # the official build straight from the llvm-project release, pinned to the
-      # same 21.1.8 the Ubuntu 26.04 archive carries, so both LLVM legs are on
-      # one version. Chocolatey is deliberately avoided: its llvm package tracks
-      # whatever is newest and would drift off the pin.
-      - name: Install LLVM 21 (Windows)
+      # The Windows runner image ships an LLVM, but not necessarily the pinned
+      # one. Install the official build straight from the llvm-project release,
+      # pinned via llvm_windows_version to the same point release the Ubuntu
+      # 26.04 archive carries (see toolchain-versions.json's own comment), so
+      # both LLVM legs are on one version. Chocolatey is deliberately avoided:
+      # its llvm package tracks whatever is newest and would drift off the pin.
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }} (Windows)
         if: matrix.llvm && runner.os == 'Windows'
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
         # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
@@ -433,9 +434,11 @@ jobs:
         # windows-latest ships pwsh too, which is why this only surfaced once a
         # job actually landed on a self-hosted Windows runner.
         shell: powershell
+        env:
+          LLVM_WINDOWS_VERSION: ${{ needs.toolchain-versions.outputs.llvm_windows_version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '21.1.8'
+          $version = $env:LLVM_WINDOWS_VERSION
           $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
           $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
           Invoke-WebRequest -Uri $url -OutFile $exe
