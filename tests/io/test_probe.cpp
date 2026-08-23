@@ -368,13 +368,14 @@ TEST_CASE("the detail callback sees every access unit exactly once", "[io][probe
     CHECK(offsets.back() < stream.size());
 }
 
-TEST_CASE("AccessUnitReader delimits exactly what split_access_units does", "[io][probe]") {
-    const auto stream = encode_ac3(7, true);
-    const auto expected = ac3::split_access_units(stream);
-    REQUIRE(expected.has_value());
+namespace {
 
-    // A stringstream stands in for the file: the reader only ever pulls
-    // forward, which is the property that lets it work on a pipe.
+// Walks `stream` through an AccessUnitReader and checks every unit against
+// `expected`, byte for byte and offset for offset. A stringstream stands in
+// for the file: the reader only ever pulls forward, which is the property
+// that lets it work on a pipe.
+void check_reader_against(std::span<const std::byte> stream,
+                          std::span<const std::span<const std::byte>> expected) {
     std::string raw(reinterpret_cast<const char*>(stream.data()), stream.size());  // NOLINT
     std::istringstream in{raw};
     ac3::io::AccessUnitReader reader{in};
@@ -387,16 +388,89 @@ TEST_CASE("AccessUnitReader delimits exactly what split_access_units does", "[io
         if (unit->empty()) {
             break;
         }
-        REQUIRE(seen < expected->size());
-        const auto& want = expected->at(seen);
+        REQUIRE(seen < expected.size());
+        const auto& want = expected[seen];
         CHECK(unit->size() == want.size());
         CHECK(std::ranges::equal(*unit, want));
         CHECK(reader.byte_offset() == offset);
         offset += unit->size();
         ++seen;
     }
-    CHECK(seen == expected->size());
+    CHECK(seen == expected.size());
     CHECK(offset == stream.size());
+}
+
+}  // namespace
+
+TEST_CASE("AccessUnitReader delimits access units the way the format defines them",
+          "[io][probe]") {
+    SECTION("AC-3: one syncframe is one access unit") {
+        // Checked against split_frames, NOT split_access_units. The latter
+        // reads byte 2's top bits as strmtyp, which only means strmtyp in an
+        // Annex E frame - in an AC-3 one those bits are part of crc1, so its
+        // answer here would depend on a checksum. That is a known property
+        // rather than a discovery (apps/android/.../file_replay.cpp documents
+        // it against a real disc, and deliberately works around it locally
+        // rather than changing the shared path), and every caller of it in
+        // this repo already branches on bsid. AccessUnitReader is not affected
+        // - it settles the generation through read_frame_header first - so
+        // one syncframe per access unit is the right expectation here.
+        const auto stream = encode_ac3(7, true);
+        const auto expected = ac3::split_frames(stream);
+        REQUIRE(expected.has_value());
+        REQUIRE(expected->size() == 7);
+        check_reader_against(stream, *expected);
+    }
+
+    SECTION("E-AC-3: an independent substream plus the dependents that follow it") {
+        // The case the boundary rule actually exists for. A 7.1 access unit is
+        // an independent 5.1 bed plus one dependent carrying the rear pair, so
+        // a reader that treated every syncframe as its own unit - or that
+        // failed to close a unit at the next independent - would disagree here
+        // and nowhere else.
+        namespace cm = ac3::eac3::chanmap;
+        const ac3::eac3::AccessUnitConfig config{
+            .independent = {.bitrate_kbps = 640, .acmod = ac3::Acmod::k3_2, .lfe = true},
+            .dependents = {{.bitrate_kbps = 320,
+                            .acmod = ac3::Acmod::k2_2,
+                            .chanmap = cm::k71Rear}}};
+        ac3::eac3::AccessUnitEncoder encoder{config};
+        const auto pcm = tone_channels(10, 4);
+        std::vector<std::byte> stream;
+        for (int frame = 0; frame < 4; ++frame) {
+            std::vector<std::span<const float>> views;
+            views.reserve(pcm.size());
+            for (const auto& channel : pcm) {
+                views.emplace_back(std::span{channel}.subspan(
+                    static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame,
+                    ac3::kSamplesPerFrame));
+            }
+            const auto unit = encoder.encode_access_unit(views);
+            REQUIRE(unit.has_value());
+            stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
+        }
+
+        const auto expected = ac3::split_access_units(stream);
+        REQUIRE(expected.has_value());
+        REQUIRE(expected->size() == 4);
+        check_reader_against(stream, *expected);
+
+        // ...and probe reports the shape those units have: two substreams per
+        // unit, 8 syncframes over 4 access units, and a 7.1 render from a 5.1
+        // bed - the §E3.8.2 union, not the bed's own channel count.
+        const auto report = ac3::io::probe(stream);
+        REQUIRE(report.has_value());
+        CHECK(report->access_units == 4);
+        CHECK(report->syncframes == 8);
+        CHECK(report->substreams_per_unit == 2);
+        REQUIRE(report->substreams.size() == 2);
+        CHECK(report->substreams[0].strmtyp == ac3::eac3::StreamType::kIndependent);
+        CHECK(report->substreams[1].strmtyp == ac3::eac3::StreamType::kDependent);
+        CHECK(report->substreams[1].chanmap == cm::k71Rear);
+        CHECK(report->coded_channels == 6);
+        CHECK(report->rendered_channels == 8);
+        CHECK(report->layout.count == 8);
+    }
 }
 
 TEST_CASE("MinMax keeps absent and zero apart", "[io][probe]") {

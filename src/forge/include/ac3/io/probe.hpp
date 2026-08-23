@@ -290,6 +290,17 @@ class AC3FORGE_EXPORT Prober {
 // in progress. What differs is the memory: this keeps a fixed read window
 // plus the unit being assembled - never the file - so probing a two-hour
 // stream costs the same as probing a two-second one.
+//
+// It also differs in how it decides. split_access_units reads strmtyp at a
+// fixed byte offset, which only means strmtyp in a genuine Annex E frame - in
+// an AC-3 one those bits belong to crc1, so its grouping of a stream whose
+// leading substream is not bsid 16 depends on a checksum (see
+// apps/android/.../file_replay.cpp's group_by_bsid, which documents a real
+// commercial disc where that mis-grouped 176 of 480 access units). This goes
+// through read_frame_header, which settles the generation from bsid at bit 40
+// first - the deterministic route that comment recommends - and so groups such
+// a stream correctly. Callers that only ever hand it E-AC-3 will see no
+// difference.
 class AC3FORGE_EXPORT AccessUnitReader {
    public:
     explicit AccessUnitReader(std::istream& in);
