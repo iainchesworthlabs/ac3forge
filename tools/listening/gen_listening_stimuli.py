@@ -399,7 +399,7 @@ def abx_key(out_dir, built, rng, trials_per_pair):
     return rows
 
 
-def write_webmushra_config(out_dir, built, labels_by_leg, seconds):
+def write_webmushra_config(out_dir, built, labels_by_leg):
     """A webMUSHRA (github.com/audiolabs/webMUSHRA) page config for the set.
 
     Optional: the blind-labelled WAVs beside it are a complete stimulus set
@@ -489,7 +489,7 @@ def main() -> int:
         labels_by_leg = mushra_key(args.out, built, rng)
         for leg_name, conditions in built.items():
             write_stimuli(args.out, leg_name, conditions, labels_by_leg[leg_name])
-        write_webmushra_config(args.out, built, labels_by_leg, args.seconds)
+        write_webmushra_config(args.out, built, labels_by_leg)
     else:
         rows = abx_key(args.out, built, rng, args.trials_per_pair)
         # ABX needs no blinding in the filenames - the trials key says which

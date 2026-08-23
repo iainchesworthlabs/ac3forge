@@ -537,9 +537,10 @@ Four metrics, and only SNR is regression-checked:
   collapse it is.
 - **LSD** — banded log-spectral distance, restricted to the Bark bands the
   object actually occupies. Objects are individually narrow-band by nature
-  (this scene's engine is 58–232 Hz), so most of the 24 bands hold nothing
-  but the reference's own numerical floor and the unrestricted measure the
-  codec legs use reports a *healthy* reconstruction here at 10–38 dB. See
+  (this scene's engine is 58–232 Hz and occupies 3 of the 24 bands; only the
+  broadband `comet` occupies all of them), so most bands hold nothing but the
+  reference's own numerical floor and the unrestricted measure the codec legs
+  use reports a *healthy* reconstruction here at 10–38 dB. See
   `object_spectral_scores` in `tools/ci/quality_race.py`.
 - **Leakage** — all the coded energy that landed outside those bands, against
   all the reference energy inside them. This is the object-specific measure:

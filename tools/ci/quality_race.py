@@ -950,10 +950,12 @@ OBJECT_SKIP = 1536
 # A band is "occupied" by an object if its reference energy is within this
 # much of the object's loudest band. Everything below the line is treated as
 # out-of-band and scored as leakage instead of as spectral distance - see
-# object_spectral_scores. 40 dB is a wide enough net to keep an object's real
-# skirts and harmonics inside it (this scene's narrowest object, the engine,
-# still occupies 8 of the 24 Bark bands at this threshold) while excluding
-# the bands where the reference is only its own numerical floor.
+# object_spectral_scores. 40 dB is a wide net on purpose: it has to keep an
+# object's real skirts and harmonics inside, and how much of the spectrum
+# that is varies enormously by object. Measured over this scene's five: the
+# engine and pod-hi occupy 3 of the 24 Bark bands each, pod-lo 4, broadcast
+# 13, and the comet - broadband hiss - all 24, which is why it is the one
+# object with no leakage figure at all.
 OBJECT_BAND_FLOOR_DB = 40.0
 
 
