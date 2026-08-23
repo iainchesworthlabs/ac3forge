@@ -197,9 +197,21 @@ check_against_source() {
     fi
 }
 
+# dither=off / nodither below: §7.3.4 leaves the actual dither VALUES
+# decoder-defined ("any reasonably random sequence"), so two independent,
+# spec-correct decoders given the same dithered stream diverge in the
+# dithered bins by design, not by bug - once dithflag is really decided from
+# content (EncoderConfig::dither / plan::Tools::dither), the gold material
+# below hits that on most blocks and would fail this gate's tight floor for a
+# reason that has nothing to do with a regression. This gate exists to
+# compare two decodes of the SAME bitstream at floating-point-noise
+# precision, so it asks every encode here for the deterministic, pre-EQ4
+# dithflag=0 behaviour instead - the one thing this gate cannot tell apart
+# from a real bug. Nothing about dither itself is exercised here;
+# tools/ci/quality_race.py and the CLI's own dithflag tests own that.
 count=$((count + 1))
 echo "[$count] encode: AC-3 5.1 @ 448 kbps"
-run_cli encode "$GOLD_WAV" "$WORKDIR/gold.ac3" 448 51 >/dev/null
+run_cli encode "$GOLD_WAV" "$WORKDIR/gold.ac3" 448 51 dither=off >/dev/null
 check_one "ac3" "$WORKDIR/gold.ac3" "ac3" 448
 
 count=$((count + 1))
@@ -207,8 +219,10 @@ echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=none)"
 # The plain-path baseline: no Annex E tool engages, so this is the closest
 # thing to an apples-to-apples comparison between the two decoders and sets
 # the tightest floor (see MIN_SNR_DB's own comment for the 61.8-67.9 dB range
-# this has landed in historically).
-run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold.ec3" 256 none 51 >/dev/null
+# this has landed in historically). "nodither" alone is this generation's
+# "no tools" - the literal "none" is a distinct special case parse_tools()
+# does not let another token join.
+run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold.ec3" 256 nodither 51 >/dev/null
 check_one "eac3" "$WORKDIR/gold.ec3" "eac3" 256
 
 count=$((count + 1))
@@ -239,7 +253,7 @@ echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=cpl)"
 # all at the round-trips-without-crashing and FFmpeg-parses-it level; this
 # gate's tight dB-based regression detection just isn't the right tool for
 # them yet.
-run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold_cpl.ec3" 256 cpl 51 >/dev/null
+run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
 check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256
 
 # Third-party interop: cplbndstrce == 0 (Annex E's default coupling band
