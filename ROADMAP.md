@@ -50,19 +50,41 @@ both encoders decide from content rather than from the bit rate.
   E-AC-3 channel in every frame with dynamics. The AC-3 §8.2.8 reuse-span planner in
   `encoder.cpp` is reusable; the decoder already reads per-block strategies (`expstre=1`). AHT
   channels keep one set (`nchregs==1`). Add a quality-race leg on transient material.
-- [ ] **EQ2 (M)** — Per-channel and per-block SNR offsets. Both encoders search one composite
-  `csnroffst`+`fsnroffst` and write the same fine offset as `cplfsnroffst` and every
-  `chfsnroffst` (`encoder.cpp`; `eac3_frame.cpp` `kSnroffststr = 0`), so a quiet centre channel
-  loses precision at the rate loud surrounds set. PR #195 found up to +5.7 dB on one channel from
-  a fine offset alone. Search the composite, then redistribute fine steps per channel; on E-AC-3
-  also exercise `snroffststr` 1/2, which nothing emits today.
-- [ ] **EQ3 (S)** — `bamode=1` for E-AC-3. The encoder sends `bamode=0`, which pins
-  `dbpbcod=2`; the AC-3 sweep in 0.7.0 measured `dbpbcod` 2→3 at up to +5.9 dB at 192 kbit/s.
-  Eleven bits per frame to write; re-running the 192–640 kbit/s measurement is most of the work.
-- [ ] **EQ4 (S)** — Adaptive `dithflag`. Both encoders write it as 0 unconditionally (the
-  E-AC-3 one sends `dithflage=1` just to force it off). §7.3.4 dither exists to fill zero-bit
-  bins in active channels; the decoder half landed as `D2`. On for channels with signal, off for
-  silence; keep the encoder's own reconstruction model and `ac3::verify` coherent with it.
+- [ ] **EQ2 (M)** — Per-channel and per-block SNR offsets. **Attempted and not adopted; read
+  this before trying again.** The redistribution was implemented for AC-3 (search the composite,
+  score each stream's real distortion against the allocation that won, move fine steps towards
+  the worse-served streams, re-search) and swept over both of its constants — a level-discount
+  exponent of 0/0.5/1 crossed with a gain of −2/−0.7/0/+0.7/+2 steps per dB — on synthesized
+  stereo, synthesized 5.1 and the committed 5.1 fixture at 192 and 448 kbit/s. No setting beat
+  leaving it off: best case ±0.1 dB SNR, typically −0.1 to −0.6, ViSQOL MOS flat throughout. The
+  mechanism does move bits; the channels receiving them (surrounds carrying broadband noise)
+  cannot convert a fraction of a bap step into anything, while the channels giving them up are
+  high in the table where each step is worth real dB. Two reference encoders agree: FFmpeg 8.0.1
+  and Dolby DEE 6.5.4 both write ONE fine offset for every stream — coupling channel and LFE
+  included — in all 79 frames of their coupled 5.1/448 streams in
+  `tests/golden/external-baseline/`. The AC-3 LFE's own measured `+4` (PR #195) stays as the one
+  per-channel departure. On E-AC-3 `snroffststr` 0x1 and 0x2 were both emitted and FFmpeg refused
+  both, with and without an explicit block-0 `snroffste`, so this project's reading of Table
+  E1.4's block-level SNR element disagrees with FFmpeg's somewhere, and no encoder in reach emits
+  either strategy to arbitrate from — the encoder stays on 0x0. Note that the emitted layout
+  matched `tools/references/eac3_parse.py`, this project's independent transcription, so the two
+  readings inside the project agree and it is FFmpeg that differs. The decoder's own 0x2 path was
+  brought into line with that transcription in passing (it read no `cplfsnroffst` at all). What
+  is left genuinely untried is the per-BLOCK dimension, which on E-AC-3 needs a bit allocation
+  per block rather than per frame — six times the work in the rate search's innermost loop — and
+  has its own measurement to justify that.
+- [x] **EQ3 (S)** — `bamode=1` for E-AC-3. Done: `baie` plus the eleven parameter bits in block
+  0 and one bit in each of the other five, 17 a frame, buying `dbpbcod` 3. Swept 0–3 at 96/128/192
+  stereo and 192/256/384/640 5.1: 3 wins every cell, +1.2 to +3.0 dB SNR over the `bamode=0`
+  value of 2, MOS up everywhere too. `floorcod` swept 0/4/7 and left at Table E1.4's 7 (inert on
+  SNR, best LSD). Both reference AC-3 encoders emit exactly this set, `{2,1,1,3,7}`.
+- [x] **EQ4 (S)** — Adaptive `dithflag`. Done, both encoders, per channel per block: dither
+  where the zero-bit bins hold at least as much energy as the dither that would replace them,
+  never over digital silence, never on a block-switched channel (Dolby's own encoder writes
+  `dithflag` as exactly `!blksw`), and — E-AC-3 only — never in a frame using spectral extension,
+  whose copy-source reconstruction the encoder cannot mirror. Free in bits: the flag is
+  transmitted either way. It trades waveform SNR for perceptual quality, which is what §7.3.4 is
+  for; see the pull request's table.
 - [ ] **EQ5 (M)** — E-AC-3 delta bit allocation under coupling and on AHT streams. Skipped for
   every channel whenever coupling is in use that frame (`eac3_frame.cpp`, gate
   `!plan.aht && !is_lfe && !cpl.in_use`); `docs/index.md` says "for now". AC-3's `D3` was worth
