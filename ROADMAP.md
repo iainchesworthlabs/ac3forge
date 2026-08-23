@@ -107,18 +107,27 @@ both encoders decide from content rather than from the bit rate.
   encoders on every metric: ours loses 2.66 dB above 10 kHz where FFmpeg loses 0.91, and `auto`
   picks AHT-only because it is SNR-optimal, while `spx`/`all` fix the envelope at a 3 dB SNR
   cost. Decide the policy with a perceptual score (VX6), not SNR alone.
-- [ ] **EQ9 (L)** — Closed-loop tool decisions. `auto` chooses cpl/spx/aht and their band edges
-  from the rate (`default_cplbegf`/`default_spxbegf`), reproducing the best fixed variant on 13
-  of 14 measured points but never from content: near-mono material at a high rate never gets
-  coupling, a sparse-HF frame never gets spx. Per-frame on/off and band edges from inter-channel
-  correlation, HF energy and transient state, including under VBR where the reference rate is a
-  nominal number.
-- [ ] **EQ10 (M)** — Enhanced coupling and transient pre-noise: make them auto-worthy or label
-  them. Both are fully implemented with their own CI legs and own-decoder oracle, never chosen by
-  `auto` (`cpl.enhanced` is masked off under `auto_tools`), and a net loss on every trend row
-  (tpn stereo/192: 18.0 dB vs 31.7 without). Gate tpn on detected transients with a measured
-  pre-echo benefit and ecpl on bands where the angle/chaos fit beats standard coupling; if
-  neither pays, say so in `docs/concepts` and keep them as reference-correctness tools.
+- [x] **EQ9 (L)** — Closed-loop tool decisions. `auto` chose cpl/spx/aht from the rate alone;
+  two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
+  region's fit against the decoder's own rank-one reconstruction, and the energy share above the
+  extension frequency. Re-measured on real programme material (six excerpts of a 5.1 theatrical
+  mix, 32–96 kbit/s per channel, ViSQOL MOS-LQO beside SNR): +0.11 MOS and +0.36 dB against the
+  rate-only policy, better in 19 of 36 cells, no (layout, rate) point regressing, and the
+  committed fixtures' own landscape numbers unchanged. The extension
+  ceiling now moves with content (110 kbit/s per channel where the top end is empty, 55 where it
+  is not) instead of sitting at a fixed 56 measured as SNR on fixtures with nothing above
+  8.1 kHz. Band edges themselves are still rate-only — `EQ6`/`EQ13`.
+- [x] **EQ10 (M)** — Enhanced coupling and transient pre-noise: measured, and labelled rather
+  than made auto-worthy — for two different reasons. Enhanced coupling is the better-sounding of
+  the two coupling reconstructions on real material at every (layout, rate) point tried, worth
+  +0.54 MOS-LQO at 96 kbit/s stereo through +0.16 at 384 kbit/s 5.1; every trend
+  row calls it a loss because every trend row is SNR. It stays out of `auto` because FFmpeg
+  misreads §E3.5's syntax as a corrupt frame, and `auto` has to stay decodable. Transient
+  pre-noise does not pay at all: over exactly the samples it touches it measures 6.5–24 dB worse
+  than leaving the audio alone, at every bitrate, and the gap widens with rate because the
+  substitution's error is a property of the material (flat at 20.7–22.5 dB) while the coder's own
+  error keeps falling. Block switching gets there first. Both documented in
+  `docs/concepts/ac3-eac3.md` and `docs/library/encoding-eac3.md`.
 - [ ] **EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. The encoder
   always writes six blocks; the decoder's `numblkscod != 3` path is spec-derived and has never
   seen a real stream. This is the 256-sample-granularity mode `live` would want. Depends on EQ1
