@@ -3,6 +3,7 @@
 #include <span>
 
 #include "ac3/decoder/decoder.hpp"
+#include "crc_mutator.hpp"
 
 // Mirrors ac3cli's own 'decode' path (apps/cli/main.cpp: run_decode): split the
 // raw stream into syncframes, then decode each one with a single FrameDecoder
@@ -21,4 +22,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         (void)decoder.decode_frame(frame);
     }
     return 0;
+}
+
+// Re-stamp crc1/crc2 after mutating, so a mutation aimed at the frame's
+// contents is not thrown away by the checksum guarding them - see
+// crc_mutator.hpp for the mechanism and for why one mutation in four is
+// deliberately left unrepaired.
+extern "C" std::size_t LLVMFuzzerCustomMutator(std::uint8_t* data, std::size_t size,
+                                               std::size_t max_size, unsigned int seed) {
+    return ac3fuzz::crc_repairing_mutate(data, size, max_size, seed);
 }

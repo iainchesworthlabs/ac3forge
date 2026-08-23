@@ -312,8 +312,8 @@ machine-readable output and a single failure exit code. Users arrive with contai
 ## VX. Verification and oracles
 
 Nine required build legs, sanitizers, clang-tidy, PREfast, CodeQL, per-component coverage
-floors, a gold-reference gate on every leg, six libFuzzer harnesses and an AC-3 input-space
-fuzzer already exist. What remains is mostly what the tree names itself.
+floors, a gold-reference gate on every leg, eleven libFuzzer harnesses (one of them opt-in) and
+an AC-3 input-space fuzzer already exist. What remains is mostly what the tree names itself.
 
 - [ ] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
   (`fuzz_encoder_space.py`: "Scope: AC-3 only"). Random Annex E tool tokens, `fscod2` rates, VBR,
@@ -326,7 +326,7 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   sides passes it. Per-substream, per-block diffs of exponents, bap, delta, AHT gains, coupling
   and spx coordinates, including dependents and the tpn hold-back — the facility that fired four
   frames before the `deltbaie` symptom on AC-3.
-- [ ] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
+- [x] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
   `oba::parse_payload`, `joc::parse_payload`, `signing::verify_atmos_stream`,
   `ac3adm::parse_bw64`), plus a CRC-re-stamping custom mutator for the decode harnesses so
   mutated skip-field bytes reach the object parsers instead of dying at the CRC check, which

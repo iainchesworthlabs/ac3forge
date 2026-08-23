@@ -86,6 +86,59 @@ a sign anything is under-tested relative to its own cost.
 | `fuzz_ac3_decode`      | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
 | `fuzz_eac3_decode`     | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
 | `fuzz_wav_read`        | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
+| `fuzz_emdf_parse`      | `ac3::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
+| `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
+| `fuzz_joc_parse`       | `ac3::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
+| `fuzz_signing_verify`  | `ac3::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
+| `fuzz_adm_parse`       | `ac3adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
+
+### The object and metadata layer (roadmap VX3)
+
+The last five rows are the parsers behind a skip field in every Atmos frame -
+this project's differentiating feature, and the deepest attacker-controlled
+bytes in the tree. Before them the layer was reached only indirectly, through
+`fuzz_eac3_decode`, which meant it was reached only by mutations that still
+had a valid CRC. That is the same blindspot the CRC mutator below exists for,
+and the two changes landed together: direct harnesses so a mutation lands
+inside the payload, and a mutator so the indirect path stops throwing its
+inputs away at the checksum.
+
+They are separate harnesses rather than one chained one because seeding
+matters more here than reach. `fuzz/metadata-seeds.py extract` pulls the real
+containers and the real OAMD/JOC payloads out of the Atmos streams
+`generate-seeds.sh` has just encoded, so each harness starts from bytes its
+own parser accepts; reaching the same states through a container would spend
+most of the budget on container syntax instead. Nothing in `ac3cli` dumps a
+raw payload, and the container is not byte-aligned inside the frame carrying
+it (`put_skip_field` writes it 8 bits at a time from wherever the audio
+happened to end), so the extractor locates it with the same bit-by-bit sync
+scan `parse_container` itself does and repacks from that offset.
+
+`fuzz_signing_verify`'s input is not a bare stream: it is a length byte, that
+many key bytes, then the stream. The key is fuzzed because it is untrusted
+too - a key file is operator-supplied and may be any length, including empty,
+and `verify_atmos_stream` (unlike `sign_atmos_stream`) has no `key.empty()`
+early-out - and because keying the HMAC differently is what makes `kValid`
+and `kMismatch` both reachable. Nothing here derives, forges or reconstructs
+a key; an arbitrary key produces an arbitrary tag, which is all verification
+needs to be exercised. Signing is deliberately not fuzzed: it writes into the
+caller's own buffer, and a caller signs a stream it just encoded.
+
+### The ADM harness is opt-in
+
+`fuzz_adm_parse` is the one harness here not built by default, and not in
+`fuzz/run.sh`'s default target list. `ac3adm` is the one library in this
+project with a third-party dependency footprint: `AC3FORGE_BUILD_ADM` is OFF
+by default, and turning it on additionally needs vcpkg's `adm` feature for
+libadm's Boost headers plus network access for the `FetchContent` pulls of
+libbw64 and libadm themselves - none of which anything else in this build
+touches. `AC3FORGE_FUZZ_ADM=1 VCPKG_ROOT=... fuzz/run.sh` turns all of that
+on and appends the harness to the default list.
+
+It is also the one harness whose reports may not land in ac3forge's own code:
+BW64 chunk-walking is libbw64's and ADM XML is libadm's. That is worth
+knowing either way - the bytes reach them through an `ac3adm::` API this
+project ships - but it changes what "fix it" means for a finding here.
 
 `matroska::` was checked and has no read/demux path - `matroska::mux()` only
 ever produces bytes from frames already in hand, so there is nothing to fuzz
@@ -94,6 +147,54 @@ there. `ac3::io::read_wav` takes a path rather than a byte span, so
 (`/dev/shm` when available) before calling it - the one unavoidable step
 beyond calling the real function directly, since there is no in-memory
 overload to call instead.
+
+## The CRC-repairing mutator (roadmap VX3)
+
+"Differential mode" below records the problem in passing: "the overwhelming
+majority of mutations get rejected immediately by this project's own decoder
+(bad sync word, bad CRC, a reserved field)". Of those three, bad CRC is the
+one that is pure loss. A bad sync word or a reserved value at least exercises
+the rejection path it names. A bad CRC rejects an input whose ONLY defect is
+the checksum, throwing away whatever the mutation did to the fields behind
+it - and `decode_frame` checks crc1 and crc2 before reading one bit of bsi,
+`decode_substream` checks crc2 before reading one bit of the audio blocks. So
+every mutation that lands in a skip field, which is where the EMDF container
+and therefore all of the object metadata lives, died two orders of magnitude
+before the parser it was aimed at.
+
+`fuzz_ac3_decode` and `fuzz_eac3_decode` now define an
+`LLVMFuzzerCustomMutator` (`fuzz/crc_mutator.hpp`): run libFuzzer's own
+mutation first, then walk the result as a concatenation of syncframes -
+same bsid-at-bit-40 test and same two size derivations `ac3::split_frames`
+uses - and rewrite each frame's CRC words in place.
+
+Re-stamping is not a naive recompute. crc2 is an ordinary trailing CRC, but
+crc1 **precedes** the region it protects: A/52 §7.10.1 requires the register
+to read zero after the first 5/8 of the syncframe has been shifted through,
+and says outright that crc1 is not the CRC of that region. It has to be
+solved for, through the GF(2) polynomial inverse `ac3::solve_leading_crc`
+implements - the same call `src/forge/src/encoder/encoder.cpp` makes, down to
+its crc2 == `kSyncWord` avoidance step (a crc2 that happens to equal 0x0B77
+would make the frame's own tail look like the start of the next syncframe, so
+the encoder flips crcrsv and recomputes; a mutator skipping that would hand
+the splitter a frame boundary that is not there).
+
+Two deliberate limits:
+
+- **Nothing else is repaired.** Frame lengths, reserved fields and the
+  bsi/audblk syntax are left exactly as the mutation left them. The goal is
+  to stop losing inputs at the checksum, not to constrain the engine to valid
+  streams.
+- **One mutation in four is left unrepaired**, keyed off libFuzzer's own
+  `Seed` argument. Always repairing would make a bad CRC unreachable by
+  mutation, and the decoders' behaviour on a frame whose checksum is the only
+  thing wrong with it is exactly what a re-stamping mutator would stop anyone
+  from ever checking again.
+
+The differential harnesses do not define one. They share their crash-only
+siblings' seed corpora, so they inherit the deeper inputs this finds, but
+adding the mutator there would multiply the number of inputs both decoders
+accept - and every one of those spawns a real FFmpeg process.
 
 ## Differential mode (roadmap G3)
 
@@ -231,7 +332,33 @@ from ac3forge's own valid output - `fuzz/generate-seeds.sh` drives `ac3cli`
 across the layout/codec/Annex-E-tool matrix this project already supports
 (every layout token, every tool combination, both codecs, silence and real
 audio, coupled and uncoupled, Atmos objects and the bed51 fallback) and
-collects the resulting streams. Starting mutation from real, self-consistent
+collects the resulting streams.
+
+Three of the corpora are not raw `ac3cli` output and are built by
+`fuzz/metadata-seeds.py`, which `generate-seeds.sh` calls:
+
+- `fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse` - `metadata-seeds.py
+  extract` reads the Atmos streams just encoded, locates each frame's EMDF
+  container by the same bit-by-bit sync scan `emdf::parse_container` does,
+  repacks it from that bit offset, and writes out both the container and the
+  OAMD/JOC payloads inside it. Capped at six per stream per kind:
+  consecutive frames genuinely differ (an object moves, so its position
+  fields and JOC coefficients change), but the fiftieth position update
+  teaches the engine nothing the sixth did not.
+- `fuzz_adm_parse` - `metadata-seeds.py adm` synthesises BW64/RF64 fixtures,
+  because nothing `ac3cli` produces is an ADM file. They mirror the ones
+  `tests/adm/test_adm.cpp` builds in memory: BS.2088-1 chunk layout,
+  BS.2076-2 ADM XML, one Objects document and one DirectSpeakers document,
+  plus an RF64 whose `<data>` size resolves through `<ds64>` and a file with
+  no `<axml>` at all.
+
+`fuzz_signing_verify`'s corpus is built inline in `generate-seeds.sh`, since
+its input is a key-prefixed stream rather than a file `ac3cli` writes: a
+throwaway 16-byte key, the same Atmos streams both signed with that key and
+left unsigned, and the bed51 fallback, so all three of
+`verify_atmos_frame`'s outcomes (`kValid`, `kMismatch`, `kNoContainer`) are
+represented. The key is generated fresh from `/dev/urandom` at seed-generation
+time and has no significance beyond making the signed copy verifiable. Starting mutation from real, self-consistent
 streams is what lets a fuzzer's mutations explore "almost valid" input
 instead of spending its budget on bytes that get rejected before line one of
 the parser.
