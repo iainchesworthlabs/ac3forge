@@ -10,7 +10,10 @@ In rough order of strength:
 1. **The in-repo decoder.** Fully normative and shares the encoder's core, so a round trip
    exercises the bit-allocation model in both directions. It reaches float32-precision PCM
    parity with FFmpeg's decoder on identical streams: max sample difference 7.9e-6 (≈ −102 dBFS)
-   for AC-3, 1.4e-5 for E-AC-3. It also reads FFmpeg's own encoder output.
+   for AC-3, 1.4e-5 for E-AC-3. It also reads FFmpeg's own encoder output, Dolby Encoding
+   Engine's, and pinned commercial-encoder excerpts from FFmpeg's FATE archive — see
+   [Third-party bitstreams](#third-party-bitstreams) for what that corpus is, and for the five
+   decoder defects wiring it up exposed.
 2. **FFmpeg as an external oracle.** Every stream this project produces is strict-decoded with
    `-xerror -err_detect crccheck+bitstream+buffer+explode`, which fails on a CRC error, a
    bitstream violation or a buffer problem rather than concealing it. Automated and required in
@@ -82,6 +85,13 @@ suite (max peak-normalized relative error ~3e-12 forward, 7.8e-14 inverse; end-t
 real material). The fast paths are the default, because that evidence was reviewed and accepted
 before each default flipped.
 
+Both evaluations are gated end to end, not only at the transform level. The `linux-gcc` leg
+runs `tools/checks/verify_gold_reference.sh` twice — once as it stands, once with
+`TRANSFORM_MODE=reference` — so the direct forms face the same FFmpeg-oracle SNR floors on the
+same real streams as the fast paths, and `tools/ci/run_codec_matrix.sh` carries `fast-mdct=off`
+and `fast-imdct=off` rows through the sanitizers. Without that, a change to a fast path could
+take its own reference with it and nothing outside the transform unit tests would notice.
+
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
 against an external decoder, or isolating a suspected transform defect — and `mode=performance`
@@ -103,6 +113,55 @@ build with libasound present; `ctest` runs whatever the configuration registered
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
+
+## Third-party bitstreams
+
+**There are no free AC-3 or E-AC-3 conformance bitstreams.** ATSC A/52 and ETSI TS 102 366 are
+both freely downloadable *documents*, but neither body publishes conformance *vectors* for these
+codecs the way MPEG does for its own, and Dolby's verification material ships under licence with
+its professional tools. Everything below is the substitute, and it is worth being explicit that
+it is one: a corpus of real third-party encoder output with no normative expected decode
+attached to it, not a conformance suite.
+
+Two tiers, both gated in CI:
+
+- **Committed** — `tests/golden/external-baseline/` holds six streams from Dolby Encoding Engine
+  6.5.4 and FFmpeg 8.0.1, each encoded from this repository's own source WAVs (see
+  `tools/generators/gen_external_baseline.py`). `tools/checks/verify_gold_reference.sh` decodes
+  all six with `ac3cli` on every gold-reference leg and diffs each against FFmpeg's own decode,
+  with per-fixture floors quoted beside the measured numbers in the script. They also seed the
+  decoder fuzzers, so mutation starts from third-party structure rather than only from this
+  project's own encoder output.
+- **Fetched** — `tools/checks/verify_fate_interop.py` pulls seven SHA-256-pinned samples from
+  FFmpeg's FATE archive and holds each against FFmpeg's own decode. These are excerpts of
+  commercially mastered programme material, encoded years ago by whatever encoder the mastering
+  house used, and they exercise choices neither this project's encoder nor FFmpeg's makes:
+  spectral extension at 128 and 256 kbit/s, 1536 kbit/s, a director's-commentary track, dither
+  in use, and the 3/1 acmod nothing in this tree can encode. Fetched at run time and never
+  committed — they are film excerpts, and pinning by hash is what keeps an upstream change from
+  quietly moving the numbers. Runs nightly in the `Interop` workflow.
+
+Wiring up the first tier found **five separate Annex E decoder defects** in a single sitting, on
+syntax that no stream this project can encode is able to reach — the three AHT-in-use flags read
+unconditionally, `cplfgaincod`/`cplfsnroffst` not read at all, the three band-structure default
+tables applied in the wrong blocks, the `first*` per-frame coordinate states approximated as
+"block 0", and a missing coupling-state reset. Four of the six fixtures did not decode at all
+before that. It is the clearest evidence on this page for why a self-consistent round trip, an
+independent transcription and a second decoder driven by the same encoder are all still not the
+same thing as reading somebody else's bitstream.
+
+Two divergences are recorded rather than resolved:
+
+- **FFmpeg mis-decodes DEE's stereo E-AC-3 stream.** It reports `exponent 25 is out-of-range`
+  and `error decoding the audio block` on frame after frame; measured against the source WAV,
+  FFmpeg's decode scores 14.3 dB where `ac3cli`'s scores 33.7 dB — and `ac3cli` lands within
+  0.6 dB of its own score on FFmpeg's encode of the same source at the same rate. So that one
+  fixture has no FFmpeg oracle and is scored against the source WAV instead.
+- **`wav_channel_order` writes acmods 2/1 and 3/1 in bitstream order** (L C R S), on the stated
+  grounds that no WAV convention claims a mono-surround slot, while FFmpeg maps 3/1 onto
+  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and writes L R C S. The audio agrees — channel 0 at
+  48.93 dB, and channels 1 and 2 swapped — but the files cannot be diffed as they stand, so the
+  FATE sample that exercises 3/1 is decode-and-parse only.
 
 ## Where the oracles don't reach
 

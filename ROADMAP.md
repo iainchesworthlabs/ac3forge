@@ -331,12 +331,18 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `ac3adm::parse_bw64`), plus a CRC-re-stamping custom mutator for the decode harnesses so
   mutated skip-field bytes reach the object parsers instead of dying at the CRC check, which
   `fuzz/README.md` says most of them do.
-- [ ] **VX4 (M)** — Third-party decode interop gates. The six Dolby- and FFmpeg-encoded streams
-  in `tests/golden/external-baseline` are the closest thing to conformance vectors the tree can
-  hold and are decoded only by FFmpeg, for spectrograms. First (S): decode them with the in-repo
-  decoder against FFmpeg's float32 decode in `verify_gold_reference.sh` and seed the fuzzers from
-  them. Then: a scheduled job over pinned FFmpeg FATE AC-3/E-AC-3 samples (spx streams, 1536
-  kbit/s, commentary tracks). Document that no free ATSC or ETSI conformance bitstreams exist.
+- [x] **VX4 (M)** — Third-party decode interop gates. Both steps done. `verify_gold_reference.sh`
+  decodes all six committed `tests/golden/external-baseline` bitstreams on every gold-reference
+  leg, five against FFmpeg's own decode and the sixth against its source WAV (FFmpeg cannot read
+  DEE's stereo E-AC-3 stream), and the six seed the decoder fuzzers. The nightly `Interop`
+  workflow runs `tools/checks/verify_fate_interop.py` over seven SHA-256-pinned FATE samples,
+  fetched rather than committed. Running the first step found **five** real Annex E decoder
+  defects — the AHT-in-use flags, `cplfgaincod`/`cplfsnroffst`, the three band-structure default
+  tables, the `first*` per-frame states, and the coupling-state reset — none of which any stream
+  this project can encode could reach. Two things are recorded rather than fixed: `wav_channel_
+  order` writes acmods 2/1 and 3/1 in bitstream order where FFmpeg uses WAV's FL/FR/FC/BC, and
+  `the_great_wall_7.1.eac3` is an AC-3 core plus an E-AC-3 dependent substream, an arrangement
+  `decode` does not model.
 - [ ] **VX5 (M)** — Dolby Reference Player, wider and in CI. The crosscheck loop runs
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
@@ -361,10 +367,11 @@ fuzzer already exist. What remains is mostly what the tree names itself.
 - [ ] **VX9 (M)** — A listening test. README and `docs/verification.md` have carried "no
   listening test has been run" through nine releases. One documented MUSHRA or ABX session over
   the landscape legs on VX7's material, with the protocol and results on `docs/landscape.md`.
-- [ ] **VX10 (S)** — Reference-mode end-to-end gate. Since 0.9.0 every CI gate that touches a
-  real stream runs the fast transforms; run `verify_gold_reference.sh` once with
-  `mode=reference` and add a `fast-imdct=off` decode row to the codec matrix, so the normative
-  direct forms — the oracle every fast path is validated against — stay exercised against FFmpeg.
+- [x] **VX10 (S)** — Reference-mode end-to-end gate. `verify_gold_reference.sh` takes
+  `TRANSFORM_MODE=reference`, which puts `mode=reference` on every encode and decode it runs and
+  suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
+  second time that way. The codec matrix gained `fast-imdct=off` decode rows for both codecs
+  beside its existing `fast-mdct=off` encode row.
 - [ ] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
   `macos-llvm` all score exactly 6.0 dB below every x86 leg on every channel of the gold gate.
   `docs/building.md` and `ci.yml` blame Homebrew's libm, which the glibc/GCC arm64 rows

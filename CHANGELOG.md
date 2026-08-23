@@ -12,6 +12,47 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Five E-AC-3 decoder defects, all of them syntax only a third-party encoder produces.** The
+  six real Dolby Encoding Engine and FFmpeg bitstreams in `tests/golden/external-baseline` had
+  been in the repository since 2026-08-12 with nothing in `tests/` or `src/` reading them;
+  pointing the in-repo decoder at them for the first time found that four of the six did not
+  decode at all. Each defect desynchronised the bit reader outright rather than merely losing
+  fidelity, and each is in syntax this project's own encoder and FFmpeg's both happen never to
+  emit: the three AHT-in-use flags read unconditionally instead of only where a stream's
+  exponents are transmitted once in the frame (Table E1.2); the coupling channel's own fast gain
+  and fine SNR offset (`cplfgaincod`, `cplfsnroffst`) not read at all; the default coupling,
+  spectral-extension and enhanced-coupling band-structure tables applied in every block whose
+  exist flag was clear, where §E2.3.3.7/.15/.18 use the default only in the first block using
+  that tool and the previous block's structure in every later one; `firstcplcos[ch]`,
+  `firstspxcos[ch]` and `firstcplleak` treated as "block 0" rather than the per-frame,
+  per-channel state §E2.3.2.28-30 defines; and a block declaring "no coupling" failing to reset
+  the coupling state. All six fixtures decode now. On DEE's stereo E-AC-3 stream — which FFmpeg
+  8.0.1 mis-decodes, reporting `exponent 25 is out-of-range` — the in-repo decoder scores
+  33.7 dB against the source, where FFmpeg's own decode scores 14.3 dB.
+
+### Added
+
+- **Third-party decode interop gates** (roadmap `VX4`). The gold-reference gate now decodes all
+  six committed external-baseline bitstreams with `ac3cli` on every leg and diffs each against
+  FFmpeg's own decode, with per-fixture floors quoted beside their measured numbers; the one
+  fixture FFmpeg cannot read is scored against the source WAV instead. The same six streams seed
+  the decoder fuzzers, so mutation starts from real third-party structure rather than only from
+  this project's own encoder output. A new nightly `Interop` workflow widens the corpus to seven
+  SHA-256-pinned FFmpeg FATE samples — commercially mastered material exercising spectral
+  extension, 1536 kbit/s, a commentary track, dither, and the 3/1 acmod nothing in this tree can
+  encode — fetched at run time rather than committed. `compare_wav.py` gains `--max-diff-dbfs`
+  for near-silent material, where an SNR ratio cannot distinguish an inaudible disagreement from
+  a defect.
+- **A reference-mode end-to-end gate** (roadmap `VX10`). Since 0.9.0 flipped both transform
+  defaults to the fast paths, every CI gate that touched a real stream ran in performance mode
+  and the normative direct forms — the oracle each fast path is validated against — were covered
+  only by transform-level unit tests. `verify_gold_reference.sh` now takes
+  `TRANSFORM_MODE=reference` and the `linux-gcc` leg runs it a second time that way, and the
+  codec matrix gains `fast-imdct=off` decode rows beside its existing `fast-mdct=off` encode
+  row.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
