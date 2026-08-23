@@ -4,8 +4,8 @@
 #include <exception>
 #include <cstdint>
 #include <cstdio>
-#include <format>
-#include <print>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -277,12 +277,12 @@ constexpr std::array<Command, 26> kCommands{{
 }};
 
 void print_usage() {
-    std::println("ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder");
-    std::println("");
-    std::println("Usage:");
-    std::println("  ac3cli --version    print version and git provenance, then exit");
+    fmt::println("ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder");
+    fmt::println("");
+    fmt::println("Usage:");
+    fmt::println("  ac3cli --version    print version and git provenance, then exit");
     for (const auto& c : kCommands) {
-        std::string line = std::format("  ac3cli {:<13}{}", c.name, c.spec);
+        std::string line = fmt::format("  ac3cli {:<13}{}", c.name, c.spec);
         // A command the platform cannot run is listed, not hidden: hiding it
         // makes 'ac3cli play' answer "unknown command", which is a lie about
         // a command that exists and would work elsewhere. The note slot says
@@ -297,145 +297,145 @@ void print_usage() {
             if (line.size() >= 62) {
                 line += ' ';
             }
-            line = std::format("{:<62}({})", line, note);
+            line = fmt::format("{:<62}({})", line, note);
         }
-        std::println("{}", line);
+        fmt::println("{}", line);
     }
     const auto& backend = ac3::audio::audio_backend();
     if (!backend.capture.available || !backend.passthrough.available ||
         !backend.monitor.available) {
-        std::println("");
+        fmt::println("");
         if (!backend.capture.available) {
-            std::println("UNAVAILABLE HERE — {}.", backend.capture.reason);
+            fmt::println("UNAVAILABLE HERE — {}.", backend.capture.reason);
         }
         if (!backend.passthrough.available) {
-            std::println("UNAVAILABLE HERE — {}.", backend.passthrough.reason);
+            fmt::println("UNAVAILABLE HERE — {}.", backend.passthrough.reason);
         }
         if (!backend.monitor.available) {
-            std::println("UNAVAILABLE HERE — {}.", backend.monitor.reason);
+            fmt::println("UNAVAILABLE HERE — {}.", backend.monitor.reason);
         }
-        std::println("Everything else is file I/O and behaves identically on every platform;");
-        std::println("'spdif' in particular reaches a receiver without any audio backend at all.");
+        fmt::println("Everything else is file I/O and behaves identically on every platform;");
+        fmt::println("'spdif' in particular reaches a receiver without any audio backend at all.");
     }
-    std::println("");
-    std::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
-    std::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    std::println("       eac3-encode, atmos-encode and decode only. e.g.:");
-    std::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
-    std::println("");
-    std::println("live monitor_device/passthrough_device: -2 (default) leaves that leg off,");
-    std::println("       -1 is the default render endpoint, N picks one from 'outputs'.");
-    std::println("       Either or both may run alongside the file this always writes.");
-    std::println("live mode: 'channels' (default) carries stereo straight through; 'atmos'");
-    std::println("       pans every captured channel into a 5.1 bed as its own object, moving");
-    std::println("       it every frame the same way 'atmos' orbits its synthetic ones — the");
-    std::println("       hook a real live position source drops into once one exists.");
-    std::println("live capture2=<index>: the capture_device positional stays the session's");
-    std::println("       clock master, paced exactly as it always has been; capture2= adds a");
-    std::println("       second, independently-clocked device whose stream is resampled to");
-    std::println("       track the master, with the measured drift printed at session end.");
-    std::println("record/live container=mkv: write straight to Matroska (a single command)");
-    std::println("       instead of the bare elementary stream both write by default; 'mkv'");
-    std::println("       remains the way to wrap an ALREADY-encoded file after the fact.");
-    std::println("record/live container=fmp4: the output path names a DIRECTORY, written as it");
-    std::println("       goes - init.mp4, segment*.m4s, and audio.m3u8/master.m3u8/manifest.mpd");
-    std::println("       refreshed on every segment (live HLS + a dynamic MPD while the session");
-    std::println("       runs, closed to VOD/static at the end). fmp4-window=<n> keeps only the");
-    std::println("       last n segments listed. 'fmp4' remains the after-the-fact form.");
-    std::println("monitor/live --monitor play the 5.1 BED of an Atmos-mode stream: the decoder");
-    std::println("       reads TS 103 420's object layer (OAMD/JOC) and reports an object count,");
-    std::println("       but this path does not render or export objects, so this is what a");
-    std::println("       legacy decoder hears, not unmixed objects.");
-    std::println("decode objects_dir (E-AC-3 Atmos only): exports each JOC-reconstructed object");
-    std::println("       as its own object_NN.wav, alongside the usual 5.1 bed WAV.");
-    std::println("");
-    std::println("tools:  Annex E coding tools, '+'-joined — {}", plan::kToolsSyntax);
-    std::println("        cpl:N / spx:N pin that tool's band edge (e.g. cpl:4+spx:5);");
-    std::println("        aht:N pins the GAQ mode — aht:0 is AHT with GAQ switched off;");
-    std::println("        atten:N pins the SPX notch depth, noatten removes it");
-    std::println("");
-    std::println("vbr (eac3-encode only): {}", plan::kVbrSyntax);
-    std::println("        quality is encoder-relative, not a fixed target — bit cost rises");
-    std::println("        steeply above roughly half the range, so a high quality with no");
-    std::println("        max bound will often refuse real programme material outright;");
-    std::println("        bitrate_kbps still matters in vbr mode — it feeds the same");
-    std::println("        coupling/spx frequency defaults it always has, not a target rate");
-    std::println("atmos: objects orbit the room at different heights and rates,");
-    std::println("       encoded as a 5.1 E-AC-3 bed with JOC + OAMD side data");
-    std::println("       (TS 103 420). FFmpeg reports \"Dolby Digital Plus + Dolby Atmos\".");
-    std::println("atmos mode: objects (default) writes the JOC+OAMD container; bed51 omits");
-    std::println("       it so the 5.1 bed still plays on a decoder that refuses an object");
-    std::println("       container it cannot validate instead of falling back to the bed.");
-    std::println("");
-    std::println("layout: {}", plan::layout_names(plan::Codec::kEac3));
-    std::println("        AC-3 carries only {} — everything wider needs the dependent",
+    fmt::println("");
+    fmt::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
+    fmt::println("       means stdin (an input path) or stdout (an output path) - encode,");
+    fmt::println("       eac3-encode, atmos-encode and decode only. e.g.:");
+    fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
+    fmt::println("");
+    fmt::println("live monitor_device/passthrough_device: -2 (default) leaves that leg off,");
+    fmt::println("       -1 is the default render endpoint, N picks one from 'outputs'.");
+    fmt::println("       Either or both may run alongside the file this always writes.");
+    fmt::println("live mode: 'channels' (default) carries stereo straight through; 'atmos'");
+    fmt::println("       pans every captured channel into a 5.1 bed as its own object, moving");
+    fmt::println("       it every frame the same way 'atmos' orbits its synthetic ones — the");
+    fmt::println("       hook a real live position source drops into once one exists.");
+    fmt::println("live capture2=<index>: the capture_device positional stays the session's");
+    fmt::println("       clock master, paced exactly as it always has been; capture2= adds a");
+    fmt::println("       second, independently-clocked device whose stream is resampled to");
+    fmt::println("       track the master, with the measured drift printed at session end.");
+    fmt::println("record/live container=mkv: write straight to Matroska (a single command)");
+    fmt::println("       instead of the bare elementary stream both write by default; 'mkv'");
+    fmt::println("       remains the way to wrap an ALREADY-encoded file after the fact.");
+    fmt::println("record/live container=fmp4: the output path names a DIRECTORY, written as it");
+    fmt::println("       goes - init.mp4, segment*.m4s, and audio.m3u8/master.m3u8/manifest.mpd");
+    fmt::println("       refreshed on every segment (live HLS + a dynamic MPD while the session");
+    fmt::println("       runs, closed to VOD/static at the end). fmp4-window=<n> keeps only the");
+    fmt::println("       last n segments listed. 'fmp4' remains the after-the-fact form.");
+    fmt::println("monitor/live --monitor play the 5.1 BED of an Atmos-mode stream: the decoder");
+    fmt::println("       reads TS 103 420's object layer (OAMD/JOC) and reports an object count,");
+    fmt::println("       but this path does not render or export objects, so this is what a");
+    fmt::println("       legacy decoder hears, not unmixed objects.");
+    fmt::println("decode objects_dir (E-AC-3 Atmos only): exports each JOC-reconstructed object");
+    fmt::println("       as its own object_NN.wav, alongside the usual 5.1 bed WAV.");
+    fmt::println("");
+    fmt::println("tools:  Annex E coding tools, '+'-joined — {}", plan::kToolsSyntax);
+    fmt::println("        cpl:N / spx:N pin that tool's band edge (e.g. cpl:4+spx:5);");
+    fmt::println("        aht:N pins the GAQ mode — aht:0 is AHT with GAQ switched off;");
+    fmt::println("        atten:N pins the SPX notch depth, noatten removes it");
+    fmt::println("");
+    fmt::println("vbr (eac3-encode only): {}", plan::kVbrSyntax);
+    fmt::println("        quality is encoder-relative, not a fixed target — bit cost rises");
+    fmt::println("        steeply above roughly half the range, so a high quality with no");
+    fmt::println("        max bound will often refuse real programme material outright;");
+    fmt::println("        bitrate_kbps still matters in vbr mode — it feeds the same");
+    fmt::println("        coupling/spx frequency defaults it always has, not a target rate");
+    fmt::println("atmos: objects orbit the room at different heights and rates,");
+    fmt::println("       encoded as a 5.1 E-AC-3 bed with JOC + OAMD side data");
+    fmt::println("       (TS 103 420). FFmpeg reports \"Dolby Digital Plus + Dolby Atmos\".");
+    fmt::println("atmos mode: objects (default) writes the JOC+OAMD container; bed51 omits");
+    fmt::println("       it so the 5.1 bed still plays on a decoder that refuses an object");
+    fmt::println("       container it cannot validate instead of falling back to the bed.");
+    fmt::println("");
+    fmt::println("layout: {}", plan::layout_names(plan::Codec::kEac3));
+    fmt::println("        AC-3 carries only {} — everything wider needs the dependent",
                  plan::layout_names(plan::Codec::kAc3));
-    std::println("        substreams that only E-AC-3 has.");
+    fmt::println("        substreams that only E-AC-3 has.");
     for (const auto& info : plan::kLayouts) {
         if (info.transmitted == info.rendered) {
             continue;
         }
         // Where the two differ, say so: a dependent that REPLACES a bed
         // channel spends coded channels a listener never counts.
-        std::println("        {} renders {} speakers from {} coded channels", info.name,
+        fmt::println("        {} renders {} speakers from {} coded channels", info.name,
                      info.rendered, info.transmitted);
     }
-    std::println("        For 'sine' and 'eac3-sine' each speaker gets its own tone; append");
-    std::println("        'c' to a 'sine' layout (stereoc, 51c) to enable channel coupling.");
-    std::println("        For 'encode' and 'eac3-encode' it names the OUTPUT layout: a");
-    std::println("        source narrower than it leaves the channels it lacks silent, and");
-    std::println("        a wider one folds down per §7.8 using cmixlev/surmixlev.");
-    std::println("");
-    std::println("        [layout] also takes a comma-separated Table E2.5 location list");
-    std::println("        instead of one of the names above, for anything Annex E allows");
-    std::println("        that has no preset: e.g. L,C,R,LFE,Vhl,Vhr or L,C,R,LFE,LFE2,Vhc.");
-    std::println("        AC-3 accepts one too, as long as it needs no dependent substream");
-    std::println("        (e.g. L,R,Cs or L,C,R,Cs - Table 5.8 modes no preset names).");
-    std::println("        Locations: L C R Ls Rs Lc Rc Lrs Rrs Cs Ts Lsd Rsd Lw Rw Vhl Vhr");
-    std::println("        Vhc Lts Rts LFE2 LFE - a paired location (Lc/Rc, Lrs/Rrs, Lsd/Rsd,");
-    std::println("        Lw/Rw, Vhl/Vhr, Lts/Rts) must be given both halves.");
-    std::println("");
-    std::println("atmos: objects orbit the room at different heights and rates;");
-    std::println("       atmos-encode makes each channel of a real file an object instead.");
-    std::println("       Both emit a 5.1 E-AC-3 bed with JOC + OAMD side data (TS 103 420).");
-    std::println("       FFmpeg reports \"Dolby Digital Plus + Dolby Atmos\".");
-    std::println("       atmos-encode's [paths.txt] takes authored per-object motion the same");
-    std::println("       way atmos-path does, keyed by WAV channel index; an object it doesn't");
-    std::println("       mention keeps atmos-encode's own default (fanned-out) placement.");
-    std::println("");
-    std::println("mkv wraps an AC-3 or E-AC-3 elementary stream in Matroska, taking the");
-    std::println("format, packet boundaries, sample rate and channel count from the bitstream");
-    std::println("itself — so it cannot be told the wrong ones. E-AC-3 dependent substreams");
-    std::println("are grouped into their access unit and counted as the channels they render.");
-    std::println("");
-    std::println("fmp4 writes a fragmented MP4/CMAF init segment plus one media segment per");
-    std::println("fragment (frames_per_fragment access units each, default 48 - about 1.5s at");
-    std::println("48 kHz), alongside an HLS media+master playlist pair and a DASH MPD, all");
-    std::println("pointing at the same segments (CMAF's whole point) — ready for a real HLS/");
-    std::println("DASH origin or packager. Dolby Atmos content signals CHANNELS=\"<N>/JOC\" in");
-    std::println("the HLS playlists automatically, per Apple's HLS Authoring Specification.");
-    std::println("");
-    std::println("ts wraps the same elementary stream as an MPEG-2 Transport Stream (PAT + PMT");
-    std::println("+ one PES-wrapped audio PID), identified per the DVB profile — stream_type");
-    std::println("0x06 plus the AC3_descriptor or Enhanced_AC3_descriptor ETSI EN 300 468 Annex D");
-    std::println("defines, not ATSC's — with PCR stamped on the audio PID every access unit.");
-    std::println("");
-    std::println("Without a layout, encode and eac3-encode both follow the source: 1 -> mono,");
-    std::println("2 -> stereo, 3 to 6 -> 5.1; eac3-encode alone extends that to 8 -> 7.1,");
-    std::println("10 -> 5.1.4, 12 -> 7.1.4 (encode refuses anything wider than 3/2 + LFE).");
-    std::println("Commands that carry PCM report per-channel levels when they finish; 'record'");
-    std::println("meters live. 'couple' turns on channel coupling wherever a command encodes.");
+    fmt::println("        For 'sine' and 'eac3-sine' each speaker gets its own tone; append");
+    fmt::println("        'c' to a 'sine' layout (stereoc, 51c) to enable channel coupling.");
+    fmt::println("        For 'encode' and 'eac3-encode' it names the OUTPUT layout: a");
+    fmt::println("        source narrower than it leaves the channels it lacks silent, and");
+    fmt::println("        a wider one folds down per §7.8 using cmixlev/surmixlev.");
+    fmt::println("");
+    fmt::println("        [layout] also takes a comma-separated Table E2.5 location list");
+    fmt::println("        instead of one of the names above, for anything Annex E allows");
+    fmt::println("        that has no preset: e.g. L,C,R,LFE,Vhl,Vhr or L,C,R,LFE,LFE2,Vhc.");
+    fmt::println("        AC-3 accepts one too, as long as it needs no dependent substream");
+    fmt::println("        (e.g. L,R,Cs or L,C,R,Cs - Table 5.8 modes no preset names).");
+    fmt::println("        Locations: L C R Ls Rs Lc Rc Lrs Rrs Cs Ts Lsd Rsd Lw Rw Vhl Vhr");
+    fmt::println("        Vhc Lts Rts LFE2 LFE - a paired location (Lc/Rc, Lrs/Rrs, Lsd/Rsd,");
+    fmt::println("        Lw/Rw, Vhl/Vhr, Lts/Rts) must be given both halves.");
+    fmt::println("");
+    fmt::println("atmos: objects orbit the room at different heights and rates;");
+    fmt::println("       atmos-encode makes each channel of a real file an object instead.");
+    fmt::println("       Both emit a 5.1 E-AC-3 bed with JOC + OAMD side data (TS 103 420).");
+    fmt::println("       FFmpeg reports \"Dolby Digital Plus + Dolby Atmos\".");
+    fmt::println("       atmos-encode's [paths.txt] takes authored per-object motion the same");
+    fmt::println("       way atmos-path does, keyed by WAV channel index; an object it doesn't");
+    fmt::println("       mention keeps atmos-encode's own default (fanned-out) placement.");
+    fmt::println("");
+    fmt::println("mkv wraps an AC-3 or E-AC-3 elementary stream in Matroska, taking the");
+    fmt::println("format, packet boundaries, sample rate and channel count from the bitstream");
+    fmt::println("itself — so it cannot be told the wrong ones. E-AC-3 dependent substreams");
+    fmt::println("are grouped into their access unit and counted as the channels they render.");
+    fmt::println("");
+    fmt::println("fmp4 writes a fragmented MP4/CMAF init segment plus one media segment per");
+    fmt::println("fragment (frames_per_fragment access units each, default 48 - about 1.5s at");
+    fmt::println("48 kHz), alongside an HLS media+master playlist pair and a DASH MPD, all");
+    fmt::println("pointing at the same segments (CMAF's whole point) — ready for a real HLS/");
+    fmt::println("DASH origin or packager. Dolby Atmos content signals CHANNELS=\"<N>/JOC\" in");
+    fmt::println("the HLS playlists automatically, per Apple's HLS Authoring Specification.");
+    fmt::println("");
+    fmt::println("ts wraps the same elementary stream as an MPEG-2 Transport Stream (PAT + PMT");
+    fmt::println("+ one PES-wrapped audio PID), identified per the DVB profile — stream_type");
+    fmt::println("0x06 plus the AC3_descriptor or Enhanced_AC3_descriptor ETSI EN 300 468 Annex D");
+    fmt::println("defines, not ATSC's — with PCR stamped on the audio PID every access unit.");
+    fmt::println("");
+    fmt::println("Without a layout, encode and eac3-encode both follow the source: 1 -> mono,");
+    fmt::println("2 -> stereo, 3 to 6 -> 5.1; eac3-encode alone extends that to 8 -> 7.1,");
+    fmt::println("10 -> 5.1.4, 12 -> 7.1.4 (encode refuses anything wider than 3/2 + LFE).");
+    fmt::println("Commands that carry PCM report per-channel levels when they finish; 'record'");
+    fmt::println("meters live. 'couple' turns on channel coupling wherever a command encodes.");
     print_meta_usage();
-    std::println("");
-    std::println("For decode, drc=<scale> applies §7.7.1 partial compression (0 = ignore,");
-    std::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
-    std::println("");
-    std::println("qc measures a stream's real BS.1770-4/EBU Tech 3342 loudness and compares it");
-    std::println("       against the dialnorm/compr it embeds - preset=<name> also gates that");
-    std::println("       measurement against a named delivery spec ({}),", ac3::meta::kQcPresetNames);
-    std::println("       or preset=all checks every one; omitting preset= just measures and");
-    std::println("       reports, with no pass/fail verdict. Exit code is 0 only when every");
-    std::println("       requested gate passes (or none was requested and decode succeeded).");
+    fmt::println("");
+    fmt::println("For decode, drc=<scale> applies §7.7.1 partial compression (0 = ignore,");
+    fmt::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
+    fmt::println("");
+    fmt::println("qc measures a stream's real BS.1770-4/EBU Tech 3342 loudness and compares it");
+    fmt::println("       against the dialnorm/compr it embeds - preset=<name> also gates that");
+    fmt::println("       measurement against a named delivery spec ({}),", ac3::meta::kQcPresetNames);
+    fmt::println("       or preset=all checks every one; omitting preset= just measures and");
+    fmt::println("       reports, with no pass/fail verdict. Exit code is 0 only when every");
+    fmt::println("       requested gate passes (or none was requested and decode succeeded).");
 }
 
 }  // namespace
@@ -444,7 +444,7 @@ int run_main(int argc, char** argv) {
     const std::span<char*> raw{argv, static_cast<std::size_t>(argc)};
     if (raw.size() > 1 &&
         (std::string_view{raw[1]} == "--version" || std::string_view{raw[1]} == "-v")) {
-        std::println("{}", ac3::version_details());
+        fmt::println("{}", ac3::version_details());
         return 0;
     }
     // Split the command line into positional arguments and metadata options. An
@@ -481,7 +481,7 @@ int run_main(int argc, char** argv) {
             continue;
         }
         if (args.size() < c.min_args) {
-            std::println(stderr, "error: {} needs {}", c.name, c.spec);
+            fmt::println(stderr, "error: {} needs {}", c.name, c.spec);
             return 1;
         }
         // Refuse before the handler runs, so a command that cannot work here
@@ -489,12 +489,12 @@ int run_main(int argc, char** argv) {
         // partway through with whatever error code the no-backend stub
         // happened to return. Nothing silently does nothing.
         if (const auto* missing = unmet(c.needs)) {
-            std::println(stderr, "error: '{}' is unavailable on this platform: {}", c.name,
+            fmt::println(stderr, "error: '{}' is unavailable on this platform: {}", c.name,
                          missing->reason);
             if (c.needs == Needs::kPassthrough) {
                 // The one live-audio capability with a portable substitute:
                 // same bursts, written to a file instead of an endpoint.
-                std::println(stderr,
+                fmt::println(stderr,
                              "  'ac3cli spdif <in.ac3> <out.wav>' wraps the same IEC 61937 "
                              "bursts into a WAV that any player will pass through untouched.");
             }
@@ -502,29 +502,29 @@ int run_main(int argc, char** argv) {
         }
         return c.run(Args{args, meta, couple_flag});
     }
-    std::println(stderr, "error: unknown command '{}'", command);
+    fmt::println(stderr, "error: unknown command '{}'", command);
     print_usage();
     return 1;
 }
 
 // run_main is std::expected-clean throughout; the one realistic exception
-// source left is std::format/std::println itself (std::format_error), which
+// source left is fmt::format/fmt::println itself (fmt::format_error), which
 // nothing here catches internally. Left uncaught, that unwinds out of main
 // and terminates - a crash with no exit code a script could act on rather
 // than the ordinary "error: ..." this CLI otherwise always prints on
 // failure. This is the one place that catches it. clang-tidy still flags
 // main() itself: it cannot see past this try/catch to know the escape is
 // caught, and reports the one path it cannot fully close by construction -
-// the catch block's own std::println, whose fixed one-argument format string
+// the catch block's own fmt::println, whose fixed one-argument format string
 // has no realistic way to throw. NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv) {
     try {
         return run_main(argc, argv);
     } catch (const std::exception& e) {
-        std::println(stderr, "error: unhandled exception: {}", e.what());
+        fmt::println(stderr, "error: unhandled exception: {}", e.what());
         return 1;
     } catch (...) {
-        std::println(stderr, "error: unhandled exception of unknown type");
+        fmt::println(stderr, "error: unhandled exception of unknown type");
         return 1;
     }
 }

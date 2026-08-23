@@ -185,6 +185,7 @@ target_link_libraries(ac3gui
         mp4::mp4
         mpegts::mpegts
         ac3::warnings
+        ac3::fmt
         Qt6::Core
         Qt6::Gui
         Qt6::Quick

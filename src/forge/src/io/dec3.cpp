@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/format.h>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "ac3/core/bitwriter.hpp"
@@ -138,18 +138,8 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
 std::string dash_channel_configuration(const ScannedStream& stream) {
     // Four upper-case hex digits of ScannedStream::channel_map, zero-padded -
     // see this function's own comment in ac3/io/dec3.hpp for the scheme and
-    // the citation. Written out by hand rather than with std::format for the
-    // reason version.cpp gives beside its own concatenation: <format> is not
-    // available on every libc++ this library builds against (NDK r26's, and
-    // an -mmacosx-version-min=11.0 wheel build, whose <format> reaches for a
-    // std::to_chars introduced in macOS 13.3), and four nibbles buy nothing
-    // from a formatting library.
-    constexpr std::string_view kDigits = "0123456789ABCDEF";
-    std::string out(4, '0');
-    for (std::size_t i = 0; i < 4; ++i) {
-        out[i] = kDigits[(stream.channel_map >> (12 - 4 * i)) & 0xF];
-    }
-    return out;
+    // the citation.
+    return fmt::format("{:04X}", stream.channel_map);
 }
 
 }  // namespace ac3::io

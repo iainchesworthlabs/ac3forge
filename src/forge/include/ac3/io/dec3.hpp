@@ -38,7 +38,7 @@ namespace ac3::io {
 // 16-bit channel-assignment field, left channel in the most significant bit,
 // so a 5.1 stream is "F801". That field is ScannedStream::channel_map
 // verbatim (ATSC A/52-2018 Table E2.5 is the same sixteen locations in the
-// same order), which is why this is one std::format rather than a table.
+// same order), which is why this is one fmt::format rather than a table.
 //
 // Beside build_codec_config_box for its own reason: which locations an AC-3
 // or E-AC-3 stream carries is acmod/lfeon/chanmap syntax, read by the scanner

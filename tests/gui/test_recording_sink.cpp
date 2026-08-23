@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
 #include <fstream>
 #include <span>
 #include <string>
@@ -217,7 +217,7 @@ TEST_CASE("RecordingSink's fragmented-MP4 take matches mp4::fragment's own segme
 
     CHECK(fs::exists(dir / "init.mp4"));
     for (const auto& segment : batch->media_segments) {
-        const auto path = dir / std::format("segment{}.m4s", segment.sequence_number);
+        const auto path = dir / fmt::format("segment{}.m4s", segment.sequence_number);
         REQUIRE(fs::exists(path));
         CHECK(read_file_bytes(path) == segment.bytes);
     }

@@ -2,7 +2,8 @@
 
 #include <chrono>
 #include <cstdint>
-#include <format>
+#include <fmt/chrono.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <ios>
 #include <string_view>
@@ -70,7 +71,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     // brand on the segments themselves.
     hls_ = mp4::HlsOptions{.channels_attribute =
                                scanned->oba_complexity_index
-                                   ? std::format("{}/JOC", *scanned->oba_complexity_index)
+                                   ? fmt::format("{}/JOC", *scanned->oba_complexity_index)
                                    : std::string{}};
     dash_ = mp4::DashOptions{
         .joc_complexity_index = scanned->oba_complexity_index,
@@ -86,7 +87,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     if (!write_bytes(dir_ / "init.mp4", writer_->init_segment())) {
         return kWriteFailed;
     }
-    availability_start_ = std::format(
+    availability_start_ = fmt::format(
         "{:%FT%TZ}", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
     return {};
 }
@@ -141,7 +142,7 @@ std::string Fmp4FolderWriter::push(std::span<const std::byte> frame) {
     if (!*segment) {
         return {};
     }
-    const auto name = std::format("segment{}.m4s", (*segment)->sequence_number);
+    const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);
     if (!write_bytes(dir_ / name, (*segment)->bytes)) {
         return kWriteFailed;
     }
@@ -159,7 +160,7 @@ std::string Fmp4FolderWriter::close() {
         return std::string{mp4::describe(segment.error())};
     }
     if (*segment) {
-        const auto name = std::format("segment{}.m4s", (*segment)->sequence_number);
+        const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);
         if (!write_bytes(dir_ / name, (*segment)->bytes)) {
             return kWriteFailed;
         }

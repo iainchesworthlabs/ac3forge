@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <numbers>
 #include <span>
 #include <utility>
@@ -38,7 +39,7 @@ int main() {
         {.time_s = 1.6, .position = {.x = 1.0, .y = 0.5, .z = 0.0}, .gain = 0.0},
     });
     if (!keyframed) {
-        std::printf("KeyframePath::create failed\n");
+        fmt::printf("KeyframePath::create failed\n");
         return 1;
     }
 
@@ -68,13 +69,13 @@ int main() {
 
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    std::printf("%zu bytes of DD+ with %d scripted objects over a 5.1 bed\n", stream.size(),
+    fmt::printf("%zu bytes of DD+ with %d scripted objects over a 5.1 bed\n", stream.size(),
                 encoder.dynamic_object_count());
     return 0;
 }

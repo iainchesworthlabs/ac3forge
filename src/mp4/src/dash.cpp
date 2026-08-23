@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <string>
 
 #include "manifest_detail.hpp"
@@ -43,11 +43,11 @@ using manifest_detail::segment_infos;
             ++run;
         }
         const std::string start =
-            i == 0 ? std::format(" t=\"{}\"", segments[i].base_media_decode_time) : std::string{};
+            i == 0 ? fmt::format(" t=\"{}\"", segments[i].base_media_decode_time) : std::string{};
         if (run > 1) {
-            out += std::format("        <S{} d=\"{}\" r=\"{}\"/>\n", start, duration, run - 1);
+            out += fmt::format("        <S{} d=\"{}\" r=\"{}\"/>\n", start, duration, run - 1);
         } else {
-            out += std::format("        <S{} d=\"{}\"/>\n", start, duration);
+            out += fmt::format("        <S{} d=\"{}\"/>\n", start, duration);
         }
         i += run;
     }
@@ -65,12 +65,12 @@ using manifest_detail::segment_infos;
                                                            const DashOptions& options) {
     std::string out;
     if (options.dolby_channel_configuration.empty()) {
-        out += std::format(
+        out += fmt::format(
             "    <AudioChannelConfiguration "
             "schemeIdUri=\"urn:mpeg:mpegB:cicp:ChannelConfiguration\" value=\"{}\"/>\n",
             track.channels);
     } else {
-        out += std::format(
+        out += fmt::format(
             "    <AudioChannelConfiguration "
             "schemeIdUri=\"tag:dolby.com,2014:dash:audio_channel_configuration:2011\" "
             "value=\"{}\"/>\n",
@@ -80,7 +80,7 @@ using manifest_detail::segment_infos;
         out +=
             "    <SupplementalProperty "
             "schemeIdUri=\"tag:dolby.com,2018:dash:EC3_ExtensionType:2018\" value=\"JOC\"/>\n";
-        out += std::format(
+        out += fmt::format(
             "    <SupplementalProperty "
             "schemeIdUri=\"tag:dolby.com,2018:dash:EC3_ExtensionComplexityIndex:2018\" "
             "value=\"{}\"/>\n",
@@ -125,7 +125,7 @@ std::string build_dash_adaptation_set(const AudioTrack& track,
     // every real sample), but not something to ship deliberately when the
     // exact, spec-correct alternative is no harder to build from the same
     // segment list.
-    return std::format(
+    return fmt::format(
         "<AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\">\n"
         "  <Representation id=\"{}\" codecs=\"{}\" bandwidth=\"{}\" audioSamplingRate=\"{}\">\n"
         "{}"
@@ -162,7 +162,7 @@ std::string build_dash_mpd(const AudioTrack& track, std::span<const SegmentInfo>
         }
         const double total_seconds =
             static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-        return std::format(
+        return fmt::format(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
             "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
@@ -183,8 +183,8 @@ std::string build_dash_mpd(const AudioTrack& track, std::span<const SegmentInfo>
     const std::string publish =
         options.publish_time.empty()
             ? std::string{}
-            : std::format(" publishTime=\"{}\"", options.publish_time);
-    return std::format(
+            : fmt::format(" publishTime=\"{}\"", options.publish_time);
+    return fmt::format(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"dynamic\" "
         "availabilityStartTime=\"{}\"{} minimumUpdatePeriod=\"PT{:.3f}S\" "

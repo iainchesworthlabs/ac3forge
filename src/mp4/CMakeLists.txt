@@ -54,7 +54,8 @@ target_compile_features(mp4_objects PUBLIC cxx_std_23)
 # no-op unless AC3FORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
 target_link_libraries(mp4_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>")
+    "$<BUILD_INTERFACE:ac3::coverage>"
+    "$<BUILD_INTERFACE:ac3::fmt>")
 
 set_target_properties(mp4_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
