@@ -305,7 +305,7 @@ void print_meta_usage() {
     fmt::println("  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)");
     fmt::println("                    all four ride mixmdate on E-AC-3 and Annex D's xbsi1 "
                  "on AC-3; naming any of them turns the group on");
-    fmt::println();
+    fmt::println("");
     fmt::println("  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod "
                  "fields on Annex D's xbsi1/xbsi2 instead (§D1) - implied by dmixmod=, the "
                  "four levels above, and the three xbsi2 fields below");
@@ -317,7 +317,7 @@ void print_meta_usage() {
                  ac3::meta::kAdConverterNames);
     fmt::println("  encinfo           AC-3 Annex D: set the encoder's own reserved bit "
                  "(§D2.3.1.12)");
-    fmt::println();
+    fmt::println("");
     fmt::println("  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2) - "
                  "implied by every informational option below, and by dsurexmod=/"
                  "dheadphonmod=/adconvtyp= above");
@@ -335,7 +335,7 @@ void print_meta_usage() {
                  "(§E2.3.1.63)");
     fmt::println("  timecode=<code>   AC-3 bsid 8 only: {} (§5.4.2.26-28)",
                  ac3::meta::kTimeCodeSyntax);
-    fmt::println();
+    fmt::println("");
     fmt::println("  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB "
                  "(§E2.3.1.13); pgmscl2= is Ch2's, extpgmscl= the external "
                  "programme's (§E2.3.1.17)");
