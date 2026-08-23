@@ -1,8 +1,8 @@
-#include <print>
+#include <fmt/base.h>
 
 #include "ac3/version.hpp"
 
 int main() {
-    std::println("{}", ac3::version_details());
+    fmt::println("{}", ac3::version_details());
     return 0;
 }

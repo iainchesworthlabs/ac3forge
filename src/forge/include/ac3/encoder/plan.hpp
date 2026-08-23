@@ -241,6 +241,16 @@ struct Tools {
     // used a coding tool is a bitstream question this flag never touches.
     bool fast_mdct = true;
 
+    // §7.3.4 dithflag, per-channel-per-block content decision - likewise not
+    // a coding tool (a decoder that never receives a set dithflag still
+    // decodes every stream correctly), but shares this surface with
+    // fast_mdct for the same reason. On by default (see EncoderConfig::
+    // dither / eac3::FrameConfig::dither); "nodither" pins it at 0
+    // unconditionally, the deterministic behaviour a bit-for-bit comparison
+    // against an external decoder needs (see dither's own comment for why
+    // real dither values are inherently decoder-specific).
+    bool dither = true;
+
     // `auto` counts: it may well turn a tool on, and the caller needs E-AC-3
     // either way for the choice to be available at all.
     [[nodiscard]] bool any() const {
@@ -249,13 +259,14 @@ struct Tools {
 };
 
 inline constexpr std::string_view kToolsSyntax =
-    "none | auto | cpl | spx | aht | tpn | nofastmdct | all (auto picks the tool set from the "
-    "per-channel rate and ignores the on/off tokens, which is what a stream should normally "
-    "use; cpl:N / spx:N pin a band edge, aht:N the "
+    "none | auto | cpl | spx | aht | tpn | nofastmdct | nodither | all (auto picks the tool set "
+    "from the per-channel rate and ignores the on/off tokens, which is what a stream should "
+    "normally use; cpl:N / spx:N pin a band edge, aht:N the "
     "gain mode, ecpl selects enhanced coupling instead of standard, tpn selects transient "
     "pre-noise processing, nofastmdct forces the direct-form forward MDCT instead of the "
-    "default §7.9.4 fast path - the fast MDCT is not a coding tool, so 'none'/'all' leave it "
-    "alone and the older opt-in spelling 'fastmdct' is accepted as a no-op)";
+    "default §7.9.4 fast path, nodither pins dithflag at 0 instead of deciding it from content - "
+    "neither is a coding tool, so 'none'/'all' leave them alone and the older opt-in spelling "
+    "'fastmdct' is accepted as a no-op)";
 
 // The '+'-joined token: "none", "cpl", "cpl+spx", "all", "cpl:4+spx:5",
 // "aht:0", "spx+noatten", "atten:12". Returns false on anything unrecognised
