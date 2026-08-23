@@ -115,34 +115,50 @@ def load_baseline_scores(manifest_json: Path):
     return out
 
 
-def trailing_mean(history_path: Path, leg: str, variant: str, window: int,
-                   metric: str = "snr_db"):
-    """Mean of the last `window` recorded values of `metric` for this
-    leg/variant, or None if there are none.
+TRACKED_METRICS = ("snr_db", "mos_lqo")
 
-    Records missing the metric, or carrying it as null, are skipped rather
-    than counted as zero. That matters for mos_lqo specifically: every record
+
+def load_history(history_path: Path):
+    """(leg, variant) -> {metric: [values, oldest first]} for TRACKED_METRICS.
+
+    One pass over the file, not one per (row, metric) lookup. This history
+    grows by one record per (leg, variant) on every develop/main push - eight
+    legs' worth is ~68 records a push against thousands already there - and
+    re-reading and re-parsing all of it for each of the ~136 lookups a run
+    now makes would be quadratic in a file that only ever gets longer.
+
+    Records missing a metric, or carrying it as null, are skipped rather than
+    counted as zero. That matters for mos_lqo specifically: every record
     written before visqol-python was installed in CI has "mos_lqo": null, and
     there are thousands of them - averaging those in would put the baseline
-    somewhere near zero and make the first real score look like an enormous
-    improvement, then make the second one look like a regression against it.
-    Skipping them means the MOS window fills up from the first real run
-    onward and simply has no baseline until it does.
+    near zero, make the first real score look like an enormous improvement,
+    and then make the second look like a regression against it. Skipping them
+    means the MOS window fills from the first real run onward and simply has
+    no baseline until it does.
     """
+    history: dict[tuple[str, str], dict[str, list]] = {}
     if not history_path.exists():
-        return None
-    matches = []
+        return history
     for line in history_path.read_text().splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
-        if rec.get("leg") == leg and rec.get("variant") == variant:
+        key = (rec.get("leg"), rec.get("variant"))
+        for metric in TRACKED_METRICS:
             value = rec.get(metric)
             if value is not None:
-                matches.append(value)
-    if not matches:
+                history.setdefault(key, {}).setdefault(metric, []).append(value)
+    return history
+
+
+def trailing_mean(history, leg: str, variant: str, window: int, metric: str = "snr_db"):
+    """Mean of the last `window` recorded values of `metric` for this
+    leg/variant, or None if there are none. `history` comes from
+    load_history()."""
+    values = history.get((leg, variant), {}).get(metric)
+    if not values:
         return None
-    tail = matches[-window:]
+    tail = values[-window:]
     return sum(tail) / len(tail)
 
 
@@ -173,12 +189,13 @@ def main() -> int:
         print(f"::warning::no rows found in {args.trend_json}; nothing to append")
         return 0
     baselines = load_baseline_scores(args.manifest_json)
+    history = load_history(history_path)
 
     lines = []
     hard_regression = False
     for row in rows:
         leg, variant = row["leg"], row["variant"]
-        baseline = trailing_mean(history_path, leg, variant, REGRESSION_TRAILING_WINDOW)
+        baseline = trailing_mean(history, leg, variant, REGRESSION_TRAILING_WINDOW)
         entry = {
             "commit": args.commit,
             "branch": args.branch,
@@ -210,7 +227,7 @@ def main() -> int:
                             entry[f"vs_{tool}_mos_lqo"] = entry["mos_lqo"] - score["mos_lqo"]
         lines.append(json.dumps(entry, sort_keys=True))
 
-        mos_baseline = trailing_mean(history_path, leg, variant,
+        mos_baseline = trailing_mean(history, leg, variant,
                                       REGRESSION_TRAILING_WINDOW, metric="mos_lqo")
         mos_drop = (None if mos_baseline is None or entry["mos_lqo"] is None
                     else mos_baseline - entry["mos_lqo"])
