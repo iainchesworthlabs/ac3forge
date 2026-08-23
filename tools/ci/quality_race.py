@@ -332,8 +332,11 @@ _visqol_warned = False
 #   3 s -> 3.9 s    10 s -> 20.5 s   30 s -> 127.8 s
 #
 # so a 30 s programme fixture costs 30x what a 3 s synthetic one does, and
-# `trend` mode scores roughly 40 rows per run. Uncapped that is over half an
-# hour added to a pull-request job; capped at 4 s it is about four minutes.
+# `trend` mode makes 62 distinct scoring calls per run across its eight legs.
+# Uncapped, the programme legs alone would add over half an hour to a
+# pull-request job. Capped at 4 s, the whole column measured about seven
+# minutes (a full `trend` run took 10m48s with ViSQOL and 3m59s with it
+# stubbed out).
 #
 # 4 s is where the score itself has converged: the same pair reads 4.336 at
 # 2 s, 4.272 at 4 s, 4.257 at 6 s and 4.251 at 8 s, so the residual against a
@@ -721,6 +724,7 @@ def race_ci(original, source, original_51, source_51):
 # no external encoder ever invoked.
 AUDIO_DIR = REPO / "tests" / "golden" / "audio"
 
+
 # The programme fixtures ship as FLAC (tools/generators/gen_programme_fixtures.py's
 # own docstring says why: 3.1 MB against 5.8 MB of WAV each, under a standing
 # repo constraint on fixture bytes). Nothing else in this file, and nothing in
@@ -750,12 +754,12 @@ MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
 # see this section's own header for why this file must never import that one.
 #
 # Two things changed at baseline_version 2. First, real programme material:
-# every leg above the divider is 2.5-3 s of sin()/noise/FIR (see
-# gen_programme_fixtures.py for what that costs), and the three below it are
-# 30 s CC0 recordings that roll off the way real material does. The synthetic
-# legs are NOT retired - their series go back to the first baseline, and
-# breaking that continuity to swap material would throw away the history this
-# whole page exists to show.
+# the five reference_* legs are 2.5-3 s of sin()/noise/FIR (see
+# gen_programme_fixtures.py for what that costs), and the three programme_*
+# ones are 30 s CC0 recordings that roll off the way real material does. The
+# synthetic legs are NOT retired - their series go back to the first
+# baseline, and breaking that continuity to swap material would throw away
+# the history the landscape page exists to show.
 #
 # Second, rates where the Annex E tools actually run. `auto` turns coupling on
 # below 12 + 14n kbit/s per channel and spectral extension below 56 (see

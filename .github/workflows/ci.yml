@@ -257,6 +257,30 @@ jobs:
         shell: bash
         run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
 
+  # Every published quality series is measured against tests/golden/audio/,
+  # and its points are only comparable to each other because the material
+  # under them never moved. A regenerated fixture is close to invisible - it
+  # still decodes, still has the right duration and channel count, still
+  # produces a plausible SNR - and simply puts a step in every series that
+  # reads as an encoder change. This hashes each fixture against
+  # tests/golden/audio/corpus.json so that becomes a failing check instead of
+  # a mystery on a trend page months later.
+  #
+  # Its own job rather than a step on ffmpeg-validate: stdlib-only, no build,
+  # no container, seconds to run, and it should still report on a
+  # docs-or-fixtures-only change where `changes.outputs.code` is false and
+  # ffmpeg-validate never starts. Same shape and same reasoning as
+  # packaging-consistency above.
+  fixture-corpus:
+    name: Fixture Corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check committed fixtures match the corpus manifest
+        run: python3 tools/checks/check_corpus.py
+
   # .clang-tidy's own header comment explains the curated check groups and
   # what got excluded from them (and why). A full Build precedes clang-tidy,
   # not just Configure: CMake 3.28's Ninja dependency-scan step (the
@@ -1137,7 +1161,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
     runs-on: ubuntu-latest
     steps:
       - name: Gate on required job results
@@ -1149,6 +1173,7 @@ jobs:
           R_CHANGES: ${{ needs.changes.result }}
           R_MACROS: ${{ needs.platform-macros.result }}
           R_PACKAGING: ${{ needs.packaging-consistency.result }}
+          R_CORPUS: ${{ needs.fixture-corpus.result }}
           # 'skipped' on a docs-only change, which is a pass, not a failure.
           R_TIDY: ${{ needs.static-analysis.result }}
           R_COVERAGE: ${{ needs.coverage.result }}
@@ -1165,6 +1190,7 @@ jobs:
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
                       "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
                       "packaging-consistency:$R_PACKAGING" \
+                      "fixture-corpus:$R_CORPUS" \
                       "static-analysis:$R_TIDY" "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
