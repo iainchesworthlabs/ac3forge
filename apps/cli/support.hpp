@@ -14,6 +14,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
@@ -132,6 +133,20 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // Which domain JOC estimates and applies its reconstruction matrix in
+    // (AtmosConfig::joc_domain / DecoderConfig::joc_domain). QMF - §7.1's
+    // 64-band complex filterbank, what §6.6.6 describes and what a licensed
+    // decoder runs - is the default; joc-domain=mdct selects the cheaper
+    // 256-bin MDCT approximation this project used before it had a
+    // filterbank.
+    //
+    // Deliberately NOT wired into mode=performance. The two transform
+    // switches that mode= drives are the same answer computed two ways,
+    // agreeing to ~1e-12, so naming the fast one costs nothing; these two
+    // domains are different answers, 5 dB apart, and a speed preference
+    // should not silently pick the worse one. mode=reference does force
+    // QMF, because that is the domain the clause states.
+    ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain

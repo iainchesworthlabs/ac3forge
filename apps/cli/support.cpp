@@ -126,6 +126,13 @@ void print_meta_usage() {
                  "fast-imdct=off still adjusts one half on its own");
     std::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
                  "(mode=reference's decode half); bare fast-imdct names the default");
+    std::println("  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction "
+                 "matrix over 256 MDCT bins instead of the default §7.1 64-band complex QMF - "
+                 "cheaper, and what this project did before it had a filterbank, but ~5 dB worse "
+                 "per object and not the domain a licensed decoder reconstructs in. Not part of "
+                 "mode=performance (unlike the transform switches, the two domains give "
+                 "different answers, not the same one at different speed); mode=reference does "
+                 "select qmf");
     std::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                  "signature (needs signing-key=); see docs/concepts/object-signing.md");
     std::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
@@ -228,6 +235,21 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                          token);
             return false;
         }
+        if (key == "joc-domain") {
+            if (value == "qmf") {
+                out.joc_domain = ac3::joc::Domain::kQmf;
+                continue;
+            }
+            if (value == "mdct") {
+                out.joc_domain = ac3::joc::Domain::kMdctBand;
+                continue;
+            }
+            std::println(stderr,
+                         "error: joc-domain is 'qmf' (the default, §7.1's complex filterbank) "
+                         "or 'mdct' (the 256-bin approximation) (got '{}')",
+                         token);
+            return false;
+        }
         if (key == "mode") {
             // The two transform switches as one intent-level toggle:
             // performance (the default state - both fast paths) for normal
@@ -244,6 +266,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             if (value == "reference") {
                 out.fast_mdct = false;
                 out.fast_imdct = false;
+                // §6.6.6's own domain too. performance does NOT set the
+                // other way: see Options::joc_domain for why this switch is
+                // not symmetric with the two above it.
+                out.joc_domain = ac3::joc::Domain::kQmf;
                 continue;
             }
             std::println(stderr,
