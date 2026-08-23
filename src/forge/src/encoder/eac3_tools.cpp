@@ -479,15 +479,17 @@ EcplSpectrumScratch& ecpl_spectrum_scratch() {
 void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
                            std::span<const double, 256> curr_mant,
                            std::span<const double, 256> next_mant, std::span<double, 256> real_out,
-                           std::span<double, 256> imag_out) {
+                           std::span<double, 256> imag_out, bool fast) {
     AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
     auto& s = ecpl_spectrum_scratch();
     // Step 1: three independent 512-sample normative IMDCTs (§7.9.4.1
     // steps 1-5, the exact machinery every other coefficient set in this
-    // decoder already goes through).
-    imdct512_windowed(prev_mant, s.x_prev);
-    imdct512_windowed(curr_mant, s.x_curr);
-    imdct512_windowed(next_mant, s.x_next);
+    // decoder already goes through), down `fast`'s branch of that
+    // transform - three inverses per coupled channel per block, and the
+    // bulk of this function's cost either way.
+    imdct512_windowed(prev_mant, s.x_prev, fast);
+    imdct512_windowed(curr_mant, s.x_curr, fast);
+    imdct512_windowed(next_mant, s.x_next, fast);
 
     // Step 2: overlap the second half of the previous block and the first
     // half of the next block with the current one.
