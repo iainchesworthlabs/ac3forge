@@ -6,7 +6,7 @@ reference, options list and troubleshooting, see [Building from source](../build
 
 ## Toolchains
 
-Built and tested with **MSVC 14.51** and **clang-cl 21.1** on **Windows 11**, via Visual Studio
+Built and tested with **MSVC 14.51** and **clang-cl 22.1** on **Windows 11**, via Visual Studio
 2026 (MSVC) or clang-cl.
 
 Every Windows preset chainloads a toolchain file that locates `cl.exe`/`clang-cl.exe` and

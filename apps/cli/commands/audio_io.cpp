@@ -3,8 +3,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <memory>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -27,17 +28,17 @@ namespace ac3cli::commands {
 int run_devices() {
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
-        std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return 1;
     }
     if (devices->empty()) {
-        std::println("no active capture endpoints found");
+        fmt::println("no active capture endpoints found");
         return 0;
     }
-    std::println("{:>3}  {:<9} {:>7}  {:>3}  {}", "idx", "kind", "rate", "ch", "name");
+    fmt::println("{:>3}  {:<9} {:>7}  {:>3}  {}", "idx", "kind", "rate", "ch", "name");
     for (std::size_t i = 0; i < devices->size(); ++i) {
         const auto& d = (*devices)[i];
-        std::println("{:>3}  {:<9} {:>7}  {:>3}  {}{}", i,
+        fmt::println("{:>3}  {:<9} {:>7}  {:>3}  {}{}", i,
                      d.kind == ac3::audio::DeviceKind::kInput ? "input" : "loopback",
                      d.sample_rate, d.channels, d.name, d.is_default ? "  [default]" : "");
     }
@@ -62,16 +63,16 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
                        ac3::iec61937::PassthroughDetector& detector, const Options& meta) {
     const auto channels = capture.channels();
     const bool eac3 = detector.detected() == ac3::iec61937::BurstDataType::kEac3;
-    std::println("");
-    std::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
+    fmt::println("");
+    fmt::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
                  eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
     if (meta.matroska_container) {
         // Said rather than silently ignored: container=mkv needs the frame
         // boundaries write_frames_or_mux muxes on, and this path never has
         // frames - it has a byte stream nothing here re-parsed. 'mkv' turns
         // the result into Matroska in one further step.
-        std::println("container=mkv does not apply to a passthrough capture: writing the bare");
-        std::println("elementary stream, which 'ac3cli mkv' will wrap if you want a container.");
+        fmt::println("container=mkv does not apply to a passthrough capture: writing the bare");
+        fmt::println("elementary stream, which 'ac3cli mkv' will wrap if you want a container.");
     }
 
     EncodedStreamSink sink;
@@ -85,7 +86,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
         payload.clear();
         const auto pushed = reader.push(carrier, payload);
         if (!pushed) {
-            std::println(stderr, "error: {}", ac3::iec61937::describe(pushed.error()));
+            fmt::println(stderr, "error: {}", ac3::iec61937::describe(pushed.error()));
             return false;
         }
         if (payload.empty()) {
@@ -126,31 +127,31 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
             sink.abort();
             return 1;
         }
-        std::print("\r  {} burst{} captured ({:.1f} s)  ", reader.bursts(),
+        fmt::print("\r  {} burst{} captured ({:.1f} s)  ", reader.bursts(),
                    reader.bursts() == 1 ? "" : "s",
                    static_cast<double>(captured) / static_cast<double>(rate));
     }
-    std::println("");
+    fmt::println("");
 
     capture.stop();
     if (reader.bursts() == 0) {
         sink.abort();
-        std::println(stderr, "error: the bursts stopped before a whole one was captured");
+        fmt::println(stderr, "error: the bursts stopped before a whole one was captured");
         return 1;
     }
     if (!sink.close()) {
         return 1;
     }
     const auto stats = capture.stats();
-    std::println("wrote {} {} bursts ({} bytes) to {}", reader.bursts(),
+    fmt::println("wrote {} {} bursts ({} bytes) to {}", reader.bursts(),
                  eac3 ? "E-AC-3" : "AC-3", elementary_bytes, out_path);
-    std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+    fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
     if (reader.skipped_bursts() > 0 || reader.false_syncs() > 0) {
-        std::println("{} burst(s) of another data type skipped, {} false sync(s) resynced past",
+        fmt::println("{} burst(s) of another data type skipped, {} false sync(s) resynced past",
                      reader.skipped_bursts(), reader.false_syncs());
     }
-    std::println("no re-encode happened: this is what the source sent, byte for byte.");
+    fmt::println("no re-encode happened: this is what the source sent, byte for byte.");
     return 0;
 }
 
@@ -160,15 +161,15 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                int device_index, const Options& meta) {
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
-        std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return 1;
     }
     if (devices->empty()) {
-        std::println(stderr, "error: no capture endpoints available");
+        fmt::println(stderr, "error: no capture endpoints available");
         return 1;
     }
     if (device_index < 0 || static_cast<std::size_t>(device_index) >= devices->size()) {
-        std::println(stderr, "error: device index {} out of range (see 'ac3cli devices')",
+        fmt::println(stderr, "error: device index {} out of range (see 'ac3cli devices')",
                      device_index);
         return 1;
     }
@@ -190,11 +191,11 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
-        std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return 1;
     }
     const auto channels = capture.channels();
-    std::println("recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
+    fmt::println("recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
                  capture.sample_rate(), channels, seconds);
 
     // A rate AC-3 cannot encode at leaves only one thing this can be. Listen
@@ -220,7 +221,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
             return record_passthrough(out_path, seconds, capture, detector, meta);
         }
         capture.stop();
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: device runs at {} Hz; AC-3 needs 32, 44.1 or 48 kHz "
                      "(change the endpoint's shared-mode format in Windows sound settings), "
                      "and it is not bitstreaming IEC 61937 either",
@@ -284,7 +285,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         meter.process(views);
         auto frame = encoder->encode_frame(views);
         if (!frame) {
-            std::println(stderr, "error: bitrate must be a legal AC-3 rate");
+            fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
             return 1;
         }
         frames.push_back(std::move(*frame));
@@ -293,7 +294,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
                                     capture.sample_rate());
     }
-    std::println("");
+    fmt::println("");
 
     capture.stop();
     const auto stats = capture.stats();
@@ -307,9 +308,9 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
         return 1;
     }
-    std::println("wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
+    fmt::println("wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
                  meta.matroska_container ? " (Matroska)" : "");
-    std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+    fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
     print_channel_summary(meter);
     return 0;
@@ -318,44 +319,44 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
 int run_outputs() {
     const auto devices = ac3::audio::enumerate_render_devices();
     if (!devices) {
-        std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return 1;
     }
     if (devices->empty()) {
-        std::println("no active render endpoints found");
+        fmt::println("no active render endpoints found");
         return 0;
     }
-    std::println("{:>3}  {:<9}  {:<9}  {:<9}  {}", "idx", "AC-3", "E-AC-3", "excl PCM", "name");
+    fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {}", "idx", "AC-3", "E-AC-3", "excl PCM", "name");
     for (std::size_t i = 0; i < devices->size(); ++i) {
         const auto& d = (*devices)[i];
-        std::println("{:>3}  {:<9}  {:<9}  {:<9}  {}{}", i, d.supports_ac3_passthrough ? "yes" : "no",
+        fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {}{}", i, d.supports_ac3_passthrough ? "yes" : "no",
                      d.supports_eac3_passthrough ? "yes" : "no",
                      d.supports_exclusive_pcm ? "yes" : "no", d.name,
                      d.is_default ? "  [default]" : "");
     }
-    std::println("");
-    std::println("AC-3     the endpoint accepted an IEC 61937 AC-3 format in exclusive mode.");
-    std::println("E-AC-3   the same, for Dolby Digital Plus (and Atmos riding inside it - there");
-    std::println("         is no separate passthrough format for Atmos).");
-    std::println("excl PCM the same endpoint accepted ordinary 16-bit stereo PCM exclusively.");
-    std::println("");
-    std::println("PCM yes + AC-3/E-AC-3 no means the device simply cannot bitstream - analog");
-    std::println("outputs cannot; only S/PDIF (TOSLINK/coax) and HDMI can. Enable Dolby Digital");
-    std::println("under Sound > Playback > Properties > Supported Formats for such a device.");
-    std::println("All no means exclusive mode itself is unavailable (disabled for the device,");
-    std::println("or another application currently holds it).");
+    fmt::println("");
+    fmt::println("AC-3     the endpoint accepted an IEC 61937 AC-3 format in exclusive mode.");
+    fmt::println("E-AC-3   the same, for Dolby Digital Plus (and Atmos riding inside it - there");
+    fmt::println("         is no separate passthrough format for Atmos).");
+    fmt::println("excl PCM the same endpoint accepted ordinary 16-bit stereo PCM exclusively.");
+    fmt::println("");
+    fmt::println("PCM yes + AC-3/E-AC-3 no means the device simply cannot bitstream - analog");
+    fmt::println("outputs cannot; only S/PDIF (TOSLINK/coax) and HDMI can. Enable Dolby Digital");
+    fmt::println("under Sound > Playback > Properties > Supported Formats for such a device.");
+    fmt::println("All no means exclusive mode itself is unavailable (disabled for the device,");
+    fmt::println("or another application currently holds it).");
     return 0;
 }
 
 int run_play(std::string_view in_path, int device_index) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
+        fmt::println(stderr, "error: cannot read {}", in_path);
         return 1;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
-        std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
     const bool eac3 = *bsid > 8;
@@ -365,7 +366,7 @@ int run_play(std::string_view in_path, int device_index) {
     if (eac3) {
         const auto split = ac3::split_access_units(stream);
         if (!split || split->empty()) {
-            std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+            fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return 1;
         }
         units = *split;
@@ -375,7 +376,7 @@ int run_play(std::string_view in_path, int device_index) {
     } else {
         const auto split = ac3::split_frames(stream);
         if (!split || split->empty()) {
-            std::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
+            fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return 1;
         }
         units = *split;
@@ -391,18 +392,18 @@ int run_play(std::string_view in_path, int device_index) {
     // available" sent people hunting for a missing sound device when the real
     // answer was a COM failure.
     if (!devices) {
-        std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return 1;
     }
     if (devices->empty()) {
-        std::println(stderr, "error: no render endpoints available");
+        fmt::println(stderr, "error: no render endpoints available");
         return 1;
     }
     std::string device_id;
     std::string device_name = "default endpoint";
     if (device_index >= 0) {
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
-            std::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
                          device_index);
             return 1;
         }
@@ -412,7 +413,7 @@ int run_play(std::string_view in_path, int device_index) {
         const bool supported =
             eac3 ? chosen.supports_eac3_passthrough : chosen.supports_ac3_passthrough;
         if (!supported) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: \"{}\" does not accept {} over IEC 61937 (see 'ac3cli outputs')",
                          chosen.name, eac3 ? "E-AC-3" : "AC-3");
             return 1;
@@ -424,10 +425,10 @@ int run_play(std::string_view in_path, int device_index) {
         device_id, content_rate,
         eac3 ? ac3::audio::BitstreamFormat::kEac3 : ac3::audio::BitstreamFormat::kAc3);
     if (!started) {
-        std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return 1;
     }
-    std::println("streaming {} {} to \"{}\" ({} Hz{})…", units.size(),
+    fmt::println("streaming {} {} to \"{}\" ({} Hz{})…", units.size(),
                  eac3 ? "access units" : "frames", device_name, content_rate,
                  eac3 ? ", carrier 4x that" : " carrier");
 
@@ -437,7 +438,7 @@ int run_play(std::string_view in_path, int device_index) {
         if (eac3) {
             auto result = eac3_packer.push(unit);
             if (!result) {
-                std::println(stderr, "error: burst wrap failed");
+                fmt::println(stderr, "error: burst wrap failed");
                 return 1;
             }
             if (!*result) {
@@ -447,7 +448,7 @@ int run_play(std::string_view in_path, int device_index) {
         } else {
             const auto wrapped = ac3::iec61937::wrap_frame(unit);
             if (!wrapped) {
-                std::println(stderr, "error: burst wrap failed");
+                fmt::println(stderr, "error: burst wrap failed");
                 return 1;
             }
             burst = *wrapped;
@@ -464,7 +465,7 @@ int run_play(std::string_view in_path, int device_index) {
     }
     const auto stats = sink.stats();
     sink.stop();
-    std::println("submitted {} bursts, rendered {}, {} underruns", stats.bursts_submitted,
+    fmt::println("submitted {} bursts, rendered {}, {} underruns", stats.bursts_submitted,
                  stats.bursts_rendered, stats.underruns);
     return 0;
 }

@@ -19,11 +19,12 @@ it, so everything here requires upstream Clang - specifically the
 has never exercised, so it is deliberately out of scope; see
 `fuzz/CMakeLists.txt`'s `CMAKE_CXX_COMPILER_FRONTEND_VARIANT` guard).
 
-`.github/toolchain/03-llvm-toolchain.sh` installs the Clang compiler itself
-but not `libclang-rt-<ver>-dev` (the ASan/UBSan/libFuzzer runtime archives):
-none of `ci.yml`'s other Clang legs link a sanitizer, so none of them have
-ever needed it. `fuzz.yml` installs it as an explicit extra step; a local
-Debian/Ubuntu run needs `apt-get install libclang-rt-21-dev` (or your
+`.github/toolchain/03-llvm-toolchain.sh` installs `libclang-rt-<ver>-dev` (the
+ASan/UBSan/libFuzzer runtime archives) unconditionally alongside the Clang
+compiler itself, even though none of `ci.yml`'s other Clang legs link a
+sanitizer - simplest to always have it rather than fork the install for the
+sanitizer/fuzzing presets alone. `fuzz.yml` needs no separate step for it; a
+local Debian/Ubuntu run needs `apt-get install libclang-rt-22-dev` (or your
 distro's equivalent) before `fuzz/run.sh` will link.
 
 ## `-Werror` is on for this build too
@@ -197,14 +198,108 @@ failure, so a random run stays fully reproducible after the fact. Failing
 inputs are kept under `fuzz-encoder-artifacts/` (gitignored, and regenerable
 from the seed).
 
-Scope: AC-3 `encode` only. E-AC-3's own configuration space - the Annex E tool
-tokens, VBR, the wider layouts - is a real remaining gap, deliberately left
-open rather than half-covered.
+Scope: AC-3 `encode` only.
+
+### The E-AC-3 half
+
+E-AC-3's own configuration space is **`tools/ci/fuzz_eac3_encoder_space.py`**
+(roadmap VX1), which the file above used to name as its own remaining gap. It
+asks the same question of `eac3-encode` and `atmos-encode`, over the part of
+the space that is E-AC-3's alone: Annex E tool tokens with their band-edge
+pins (`cpl`, `ecpl`, `spx`, `aht`, `tpn`, `auto`), the `fscod2` half sample
+rates, CBR and VBR, every layout including the ones that need dependent
+substreams, and Atmos object counts. It imports the AC-3 harness's PCM
+generator rather than copying it, so `cliff` and the rest of the adversarial
+material are one implementation serving both.
+
+Two things about it are genuinely different, and both come from E-AC-3 rather
+than from a preference:
+
+**The oracle is not one oracle.** FFmpeg reads AC-3 whole; it does not read
+E-AC-3 whole, and what it cannot read is exactly what this covers. It refuses
+a second dependent substream (`substreamid != 0`, which 7.1.4 needs), has no
+model at all of enhanced coupling or transient pre-noise processing, and
+refuses `fscod2` audio outright - as does Dolby's own Reference Player. So
+every case is classified before it runs, and each class is checked as hard as
+something external still can:
+
+| class | what runs |
+|---|---|
+| `full` | FFmpeg strict decode, `run_codec_matrix.sh`'s exact invocation, plus both framing checks below |
+| `header` | no FFmpeg decode, but the framing is still checked - twice |
+| `none` | nothing at all - empty, kept so a future cell that escapes even the independent walk is reported rather than silently passed |
+
+The `header` class is the "no oracle" cell class, and it is deliberately not
+an empty gesture, because framing can be checked without decoding anything.
+Two things do it:
+
+- **`syncframe_walk()`**, the harness's own walk over the four fields that
+  decide E-AC-3's framing - syncword, `strmtyp`, `substreamid`, `frmsiz`, all
+  at fixed bit offsets right after the syncword. No tables, no coding tools,
+  nothing shared with the encoder, and it works at **every** layout. If a
+  `frmsiz` does not describe its own syncframe, the next read lands somewhere
+  that is not a syncword and it says so - which is exactly what a bit-offset
+  defect produces, and the shape of the `deltbaie` bug that motivated the AC-3
+  harness.
+- **`ffprobe`**, where FFmpeg can be trusted to walk one: access-unit count,
+  exact byte tiling, sample rate. It is *not* asked about a layout needing two
+  dependent substreams, and that is measurement rather than caution - see
+  below.
+
+What the class does *not* prove is stated in the script too: a misreading of
+the spec shared by this project's encoder and its decoder would survive it,
+and so would one shared by the encoder and the field layout the walk reads.
+That is the same limitation `docs/verification.md` records for the CI gate
+covering `ecpl`/`tpn` today. `--check-oracles` re-measures the whole table
+against the installed FFmpeg, so a cell wrongly listed as a gap cannot quietly
+stop being tested.
+
+The 7.1.4 exclusion was itself a harness finding. On case seed
+`4765573204069690189` - a 7.1.4 VBR stream at 32 kHz - `ffprobe` reported 19
+access units where the encoder wrote 18, splitting one 1329/207 at an offset
+that is not a syncframe boundary at all. The independent walk found all 54
+syncframes forming 18 access units of exactly 1536 bytes, tiling the file with
+no slack: the stream was correct, and FFmpeg's demuxer had lost sync inside
+the second dependent substream `ff_ac3_parse_header` refuses to parse, then
+resynced on an ordinary byte pattern. Asserting its packet count there was
+asserting FFmpeg's limitation, not the stream - the same trap already avoided
+for `sample_rate`, which it reports as 0 on those streams for the same reason.
+The seed is kept in `REGRESSION_SEEDS`.
+
+**The acceptance envelope has a ceiling as well as a floor.** AC-3's
+`frmsizcod` indexes Table 5.18, so its frame size follows from the rate pair.
+E-AC-3 signals the size directly in `frmsiz`, which is 11 bits - a hard
+2048-word cap on any syncframe. At 48 kHz that binds nowhere near the top of
+the rate list; at the Annex E half rates it binds *inside* it, at 320 kbit/s
+for 16 kHz, 448 for 22.05 kHz and 512 for 24 kHz. `--check-envelope` measures
+the per-layout rate floors and that ceiling together.
+
+What it found on its first sweep: `eac3-encode` **aborted on an assertion**
+for any rate above that ceiling, at every layout. Both halves of such a pair
+are legal on their own and nothing in the CLI's grammar marks the combination,
+so it took two ordinary numbers to reach. Nothing else could have seen it -
+`run_codec_matrix.sh`'s only WAV source is 48 kHz, and `eac3-sine`/
+`eac3-silence` have no sample-rate argument at all. It now reports the actual
+limit, `--check-envelope` gates the refusal staying a clean exit 1, and
+`tests/cli/test_cli.cpp`'s `[frmsiz]` case pins the message.
+
+```bash
+AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
+python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope   # rate floors + the frmsiz ceiling
+python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles    # what this FFmpeg can actually read
+python3 tools/ci/fuzz_eac3_encoder_space.py --replay <case-seed>
+python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
+```
+
+Failing inputs are kept under `fuzz-eac3-encoder-artifacts/` (gitignored, and
+regenerable from the seed). Both harnesses run bounded in `ci.yml`'s
+`ffmpeg-validate` job on every pull request, and deeper in `fuzz.yml`'s
+`encoder-space-nightly` job, which has a separate dispatch budget for each.
 
 ## Running locally
 
 ```bash
-# One-time: any Clang 18+ with libFuzzer works; CI pins LLVM 21 the same way
+# One-time: any Clang 18+ with libFuzzer works; CI pins LLVM 22 the same way
 # ci.yml's linux-llvm leg does (.github/toolchain/03-llvm-toolchain.sh).
 fuzz/run.sh                    # build, then run every default-list harness for 60s each
 fuzz/run.sh fuzz_scan          # just one harness
@@ -286,11 +381,17 @@ gitignored; `fuzz/run.sh` creates it on demand.
 - `fuzz-nightly` - a 10-minute-per-harness mutation budget on a daily
   schedule, plus `workflow_dispatch` with a configurable budget for an
   on-demand deeper run. Crash-only harnesses only - see `fuzz-differential`.
-- `encoder-space-nightly` - the encoder input-space search above, on the same
-  daily schedule and `workflow_dispatch`, with a 15-minute default budget.
-  Shares none of the machinery of the other four (no libFuzzer, no sanitizer
-  runtime, not in `fuzz/run.sh`): it builds the plain `linux-llvm` CLI with
-  vcpkg and a pinned `ffmpeg`, the way `ci.yml`'s `ffmpeg-validate` job does.
+- `encoder-space-nightly` - the encoder input-space searches above, both of
+  them, on the same daily schedule and `workflow_dispatch`, with a 15-minute
+  default budget each (`encoder_space_seconds` and
+  `eac3_encoder_space_seconds`). Shares none of the machinery of the other
+  four (no libFuzzer, no sanitizer runtime, not in `fuzz/run.sh`): it builds
+  the plain `linux-llvm` CLI with vcpkg and a pinned `ffmpeg`, the way
+  `ci.yml`'s `ffmpeg-validate` job does. The E-AC-3 half runs its
+  `--check-oracles` and `--check-envelope` gates first, for the same reason
+  the AC-3 envelope check runs first: a search whose acceptance table or
+  oracle table has gone stale comes back green having checked less than it
+  claims.
 
 The bounded per-PR counterpart to `encoder-space-nightly` is a step in
 `ci.yml`'s `ffmpeg-validate` job (~2 minutes, plus the envelope check), not a
