@@ -68,6 +68,30 @@ target_link_libraries(ac3cli
 # Needs::kCapture/kPassthrough/kMonitor runtime-availability checks (main.cpp), the
 # `mp4`/`ts` commands below need no such check: this target is simply never configured
 # at all in a build where either would be missing.
+# -Wnull-dereference false positive, GNU only: SampleQueue::reset()'s
+# std::vector<std::vector<float>>::assign(channels, {}) call, inlined at -O3
+# (Release; not seen at the -debug preset's lower optimization) through
+# several layers of libstdc++'s own vector internals (bits/stl_vector.h's
+# _M_fill_assign/_M_erase_at_end), which GCC misattributes as a real null
+# dereference of a pointer subtraction its own optimizer introduced -
+# confirmed by actually building config-linux-gcc (not just -debug) on the
+# CI-pinned GCC 16 - reachable from a plain WSL2 GCC 15.2.0 build too, and
+# seen for real in CI's own build logs (CodeQL, adm-validate, and the plain
+# Linux GCC/GCC-arm64 legs all hit it). `channels` is source_channels,
+# always > 0 for a stream that scanned successfully - nothing here is
+# genuinely null-unsafe.
+#
+# cmake/CompilerWarnings.cmake documents this exact false-positive category
+# for GCC < 15 against libstdc++ internals reached from this project's own
+# code (see its own comment, and gcc.gnu.org/bugzilla PR 108757 and
+# neighbours), and src/ac3adm/CMakeLists.txt has an identical GCC-15 instance
+# already scoped to just that target - this is the same category surfacing on
+# GCC 16 instead, in this one file. Scoped to the file rather than widening
+# either of those guards: nothing else in this project has hit it, so
+# silencing it everywhere would risk hiding a genuine one elsewhere.
+set_source_files_properties(commands/stream_tools.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+
 include(GNUInstallDirs)
 
 # COMPONENT runtime: without one, CPack files this under its own

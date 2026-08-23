@@ -3,7 +3,12 @@
 #include <expected>
 #include <string>
 
-#include "ac3adm/model.hpp"
+// AdmError lives in ac3adm.hpp, not model.hpp - model.hpp is only the parsed
+// object graph (AdmModel/AdmDocument/ChnaEntry), and this header's own
+// std::expected<..., AdmError> return types need the error enum itself.
+// ac3adm.hpp already includes model.hpp, so this is the one include either
+// way.
+#include "ac3adm/ac3adm.hpp"
 
 // The one BW64/RF64/RIFF shape the vendored libbw64 refuses outright:
 // WAVE_FORMAT_IEEE_FLOAT in <fmt > (formatTag 3, or 0xFFFE EXTENSIBLE
