@@ -171,8 +171,8 @@ constexpr int kContainerFmp4 = 4;
 constexpr int kContainerMpegts = 5;
 
 // The streamable subset of that combo, for a recording's frame-at-a-time
-// write path. MP4 and fMP4 map to nothing: their format needs every frame
-// at once (see RecordingSink's own header), so a recording targeting them
+// write path. Plain MP4 alone maps to nothing: moov/stco need every frame's
+// final offset (see RecordingSink's own header), so a recording targeting it
 // keeps the accumulate-then-writeOutput shape.
 std::optional<RecordingSink::Container> recording_sink_container(int container_index) {
     switch (container_index) {
@@ -184,6 +184,8 @@ std::optional<RecordingSink::Container> recording_sink_container(int container_i
             return RecordingSink::Container::kSpdif;
         case kContainerMpegts:
             return RecordingSink::Container::kMpegts;
+        case kContainerFmp4:
+            return RecordingSink::Container::kFmp4;
         default:
             return std::nullopt;
     }
@@ -199,6 +201,11 @@ std::optional<RecordingSink::Container> recording_sink_container(int container_i
 struct Mp4Scan {
     mp4::AudioTrack track;
     std::optional<int> oba_complexity_index;
+    // The DASH AudioChannelConfiguration @value for this stream on the Dolby
+    // scheme (ac3::io::dash_channel_configuration) - a plain string for the
+    // same reason as the field above: it is derived from the scan's own
+    // channel_map, which points into nothing that outlives this call.
+    std::string dolby_channel_configuration;
 };
 
 // mp4::AudioTrack::codec_config (the dec3/dac3 box, including the Atmos
@@ -225,7 +232,8 @@ std::expected<Mp4Scan, QString> scan_for_mp4(const std::vector<std::vector<std::
         .channels = scanned->channels,
         .samples_per_frame = ac3::kSamplesPerFrame,
         .codec_config = ac3::io::build_codec_config_box(*scanned)};
-    return Mp4Scan{std::move(track), scanned->oba_complexity_index};
+    return Mp4Scan{std::move(track), scanned->oba_complexity_index,
+                   ac3::io::dash_channel_configuration(*scanned)};
 }
 
 bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std::byte> bytes) {
@@ -241,32 +249,6 @@ bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std:
 bool write_text_to_path(const std::filesystem::path& path, std::string_view text) {
     return write_bytes_to_path(
         path, std::as_bytes(std::span{reinterpret_cast<const char*>(text.data()), text.size()}));
-}
-
-// A minimal but complete DASH MPD document wrapped around
-// mp4::build_dash_adaptation_set()'s <AdaptationSet> snippet, ported from
-// ac3cli's own build_dash_mpd (apps/cli/main.cpp): that helper is CLI-side
-// glue, not part of mp4:: (mp4/dash.hpp deliberately stops at the
-// <AdaptationSet> snippet - see its own header comment), so the GUI needs
-// the identical wrapper.
-QString build_dash_mpd(const mp4::AudioTrack& track, std::span<const mp4::MediaSegment> segments,
-                       std::string_view adaptation_set) {
-    std::uint64_t total_samples = 0;
-    for (const auto& segment : segments) {
-        total_samples += segment.duration_samples;
-    }
-    const double total_seconds =
-        static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-    return QString::fromStdString(std::format(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
-        "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
-        "profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">\n"
-        "  <Period>\n"
-        "{}"
-        "  </Period>\n"
-        "</MPD>\n",
-        total_seconds, adaptation_set));
 }
 
 // See kbpsPerChannelFloor()'s own Q_PROPERTY comment for the derivation.
@@ -4880,7 +4862,7 @@ void EncoderController::startRecording(int deviceIndex, const QUrl& url) {
         // which is what bounds a take's memory (an hour at 448 kbps used to
         // be ~200 MB of frames held until Stop) and puts its bytes on disk
         // as they happen, so a crash mid-take no longer loses the take.
-        // mp4/fMP4 keep the accumulate shape for writeOutput below - their
+        // Plain MP4 keeps the accumulate shape for writeOutput below - its
         // format needs every frame at once (see RecordingSink's header).
         // container_index_/atmos_enabled_/codec_ are read from this worker
         // exactly the way writeOutput itself always has; taking the
@@ -5680,7 +5662,13 @@ QString EncoderController::writeOutput(const QString& path,
         if (!built) {
             return built.error();
         }
-        const auto fragmented = mp4::fragment(built->track, frames);
+        // ETSI TS 103 420 §E.5's 'ceao' compatibility brand for an
+        // object-audio track, which DASH-IF IOP Part 8 v5.0.0 §5.3.3 asks
+        // for - the same construction ac3cli's own run_fmp4 makes from the
+        // same scanned complexity index.
+        const auto fragmented = mp4::fragment(
+            built->track, frames,
+            mp4::FragmentOptions{.object_audio_brand = built->oba_complexity_index.has_value()});
         if (!fragmented) {
             return to_qstring(mp4::describe(fragmented.error()));
         }
@@ -5717,10 +5705,18 @@ QString EncoderController::writeOutput(const QString& path,
             !write_text_to_path(dir / "master.m3u8", master_playlist)) {
             return QStringLiteral("Could not write the HLS playlists to \"%1\".").arg(path);
         }
+        // The DASH side: TS 103 420 §D.2's JOC extension type and
+        // complexity index (DASH-IF IOP Part 8 §5.3.2), plus the
+        // AudioChannelConfiguration @value TS 102 366 clause I.1.2.1
+        // defines - again the same pair ac3cli's run_fmp4 writes.
+        const mp4::DashOptions dash_options{
+            .joc_complexity_index = built->oba_complexity_index,
+            .dolby_channel_configuration = built->dolby_channel_configuration};
         const auto adaptation_set =
-            mp4::build_dash_adaptation_set(built->track, fragmented->media_segments);
-        const auto mpd = build_dash_mpd(built->track, fragmented->media_segments, adaptation_set);
-        if (!write_text_to_path(dir / "manifest.mpd", mpd.toStdString())) {
+            mp4::build_dash_adaptation_set(built->track, fragmented->media_segments, dash_options);
+        const auto mpd =
+            mp4::build_dash_mpd(built->track, fragmented->media_segments, adaptation_set);
+        if (!write_text_to_path(dir / "manifest.mpd", mpd)) {
             return QStringLiteral("Could not write manifest.mpd to \"%1\".").arg(path);
         }
         return QString();
