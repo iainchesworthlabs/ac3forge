@@ -29,6 +29,50 @@ metadata options (any order, after the positional arguments):
   mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)
   lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)
   dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)
+  ltrtcmixlev=<dB>  Lt/Rt centre level, Table D2.3: +3|+1.5|0|-1.5|-3|-4.5|-6|off
+  lorocmixlev=<dB>  Lo/Ro centre level, Table D2.5 (same eight values)
+  ltrtsurmixlev=<dB>      Lt/Rt surround level, Table D2.4: -1.5|-3|-4.5|-6|off
+                    (the three louder codes are reserved)
+  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)
+
+  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod
+                    fields on Annex D's xbsi1/xbsi2 instead (§D1)
+  dsurexmod=none|off|ex|pliiz     Dolby Surround EX (Table D2.7)
+  dheadphonmod=none|off|on        Dolby Headphone (Table D2.8)
+  adconvtyp=standard|hdcd         A/D converter type (Table D2.9)
+  encinfo           AC-3 Annex D: set the encoder's own reserved bit (§D2.3.1.12)
+
+  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2)
+  bsmod=<service>   type of service, Table 5.7: cm | me | vi | hi | dialogue |
+                    commentary | emergency | voiceover (or 0..7)
+  dsurmod=none|off|on     Dolby Surround, 2/0 only (Table 5.11)
+  mixlevel=<dB SPL> peak mixing level, 80..111 (§5.4.2.14)
+  roomtyp=none|large|small        mixing room (Table 5.12)
+  mixlevel2= / roomtyp2=  Ch2's own pair, layout 1+1 only (§5.4.2.22/23)
+  langcod / langcod2      emit the reserved 0xFF language byte (§5.4.2.12); AC-3 only
+  copyright         set copyrightb (§5.4.2.24; default clear)
+  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)
+  sourcefscod       E-AC-3: source sampled at twice fscod's rate (§E2.3.1.63)
+  timecode=HH:MM:SS[:FF[.N]]      AC-3 bsid 8 only (§5.4.2.26-28)
+
+  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB (§E2.3.1.13)
+  pgmscl2=<dB>|mute Ch2's own, layout 1+1 only (§E2.3.1.15)
+  extpgmscl=<dB>|mute     the external programme's (§E2.3.1.17)
+  mixdef=none|premix|reserved|ext  mixing-parameter block (Table E2.6)
+  premixcmp=<sel>:<src>:<scale>   dynrng|compr : external|local : 0..7
+                    (§E2.3.1.19-21)
+  mixdata=<0..4095> the twelve bits mixdef=reserved reserves (§E2.3.1.23)
+  extmix=<L>,<C>,<R>,<Ls>,<Rs>,<LFE>[,<dmix>]   mixdef=ext external channel
+                    scale codes 0..15 (Table E2.8), 'off' for a channel the
+                    external programme lacks
+  auxmix=<a1>,<a2>  mixdef=ext auxiliary channel scales, same codes
+  speechmix=<d>[,<d1>:<att1>[,<d2>:<att2>]]     mixdef=ext speech enhancement
+                    data (§E2.3.1.44-51)
+  paninfo=<0..239>[:<0..63>]      E-AC-3 pan position, 1.5 degree steps
+                    clockwise from centre, mono/1+1 only (§E2.3.1.53-58)
+  paninfo2=         Ch2's own, layout 1+1 only
+  blkmixcfg=<b0,..,b5>    E-AC-3 per-block mixing configuration, six 0..31
+                    words or '-' for a block that sends none (§E2.3.1.59-61)
   couple            enable channel coupling - honored by 'encode' and 'sine' ('sine' can also
                     spell it as a 'c' layout suffix); E-AC-3 coupling is the tools argument's
                     cpl token instead
@@ -68,6 +112,72 @@ codecs' decode alike.
 See [Metadata](../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
 that page's config fields.
+
+## Bit stream information: `annexd`, `infomdat` and the service fields
+
+Everything in this group is metadata a receiver reads *about* the programme; none of it changes
+an output sample. What it decides is whether that receiver can tell a complete main programme
+from an audio-description track, whether a stereo pair is a Dolby Surround matrix, and what
+acoustic level the mix was judged at.
+
+The two gate tokens exist because the two formats carry the group differently:
+
+- **`annexd`** (AC-3 only) writes `bsid` 6. AC-3's two 14-bit `timecod` fields have never been
+  applied for their originally anticipated purpose (§D1), so Annex D spends them on `xbsi1`
+  (`dmixmod` plus separate Lt/Rt and Lo/Ro centre and surround levels) and `xbsi2` (`dsurexmod`,
+  `dheadphonmod`, `adconvtyp`). It is implied by `dmixmod=`, by any of the four level tokens, and
+  by the three `xbsi2` tokens — so `ac3cli encode in.wav out.ac3 384 51 dmixmod=ltrt` writes a
+  `bsid`-6 stream without being asked twice. `timecode=` and `annexd` are refused together: they
+  are the same 28 bits.
+- **`infomdat`** (E-AC-3 only) opens Table E1.2's `infomdat` element. It is implied by every
+  informational token — `bsmod=`, `dsurmod=`, `dsurexmod=`, `dheadphonmod=`, `adconvtyp=`,
+  `mixlevel=`, `roomtyp=`, `copyright`, `origbs=`, `sourcefscod`. AC-3 needs no such gate: those
+  fields are unconditional in its own bsi.
+
+Fields the layout has no room for are simply not written, per the syntax: `dsurmod` and
+`dheadphonmod` exist only at 2/0, `dsurexmod` only at 2/2 and 3/2, `mixlevel2`/`roomtyp2`/
+`paninfo2`/`pgmscl2` only at 1+1. Setting one anyway is not an error — it just does not reach the
+wire, which is what lets one set of options describe a programme at any layout.
+
+`langcod` is a presence flag rather than a value: §5.4.2.12 makes the byte a reserved `0xFF`, the
+language table it once indexed having been dropped in favour of the signalling layer's own
+ISO 639-2 code.
+
+```bash
+ac3cli encode in.wav out.ac3 384 51 bsmod=vi mixlevel=105 roomtyp=large copyright dmixmod=ltrt ltrtcmixlev=-1.5 dsurexmod=ex adconvtyp=hdcd
+```
+
+That is an AC-3 visually-impaired associated service, mixed at 105 dB SPL in a large X-curve
+room, copyright asserted, preferring an Lt/Rt downmix with the centre 1.5 dB down in it, flagged
+as Surround EX and captured through an HDCD converter — `bsid` 6, because the last three of those
+have nowhere else to go.
+
+## Programme mixing (E-AC-3): `pgmscl`, `mixdef`, `paninfo`, `blkmixcfg`
+
+The `mixmeta` group's five downmix levels say how to fold *this* programme down. The tokens above
+say how to combine it with a *second* one — the audio-description or commentary service a
+receiver mixes against the main programme. §E2.3.1.17's "external program" is that second stream.
+The whole group is written only by the independent substream, since a dependent is part of
+someone else's programme and has no second one of its own to talk about.
+
+`mixdef=` picks one of Table E2.6's four options and decides which of the tokens below are
+written: `premix` sends `premixcmp=` alone, `reserved` sends `mixdata=`'s twelve bits, and `ext`
+sends whichever of `extmix=`/`auxmix=`/`speechmix=` are given inside a length-prefixed block.
+Naming any of them turns `mixmeta` on.
+
+```bash
+ac3cli eac3-encode in.wav out.ec3 448 none 51 pgmscl=-6 extpgmscl=+3 \
+    mixdef=ext premixcmp=dynrng:external:0 extmix=0,2,0,off,off,15 \
+    blkmixcfg=3,-,7,-,-,31 bsmod=commentary mixlevel=98 roomtyp=small
+```
+
+In `extmix=`, `off` means the external programme has **no** such channel (§E2.3.1.31's cleared
+flag), which is not the same as a scale factor of `0` — that is Table E2.8's −1 dB. `blkmixcfg=`
+takes one word per block with `-` for a block whose `blkmixcfginfoe` stays clear.
+
+`decode` reports both groups back: any service, production, Surround or programme-mixing field
+the stream actually carries is printed under the `dynrng`/`compr` lines. A plain complete-main
+programme with none of them prints nothing extra.
 
 ## The `tools:` token (`eac3-encode`)
 

@@ -706,17 +706,21 @@ inline constexpr int kSpxRateCeiling = 56;
 // twelve, or a mixdeflen-sized field whose contents are optional and whose
 // remainder is zero fill.
 void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) {
-    const auto emit_premix = [&w](const meta::PremixCompression& premix) {
-        w.put(static_cast<std::uint32_t>(premix.premixcmpsel), 1);
-        w.put(static_cast<std::uint32_t>(premix.drcsrc), 1);
-        w.put(static_cast<std::uint32_t>(premix.premixcmpscl), 3);
+    // Takes its writer rather than capturing one: mixdef 0x3 below runs the
+    // whole contents through a throwaway writer first to measure them, and a
+    // helper bound to `w` would put those measurement bits into the real
+    // frame - ahead of the mixdeflen field that has not been written yet.
+    const auto emit_premix = [](BitWriter& out, const meta::PremixCompression& premix) {
+        out.put(static_cast<std::uint32_t>(premix.premixcmpsel), 1);
+        out.put(static_cast<std::uint32_t>(premix.drcsrc), 1);
+        out.put(static_cast<std::uint32_t>(premix.premixcmpscl), 3);
     };
     w.put(static_cast<std::uint32_t>(mixing.mixdef), 2);
     switch (mixing.mixdef) {
         case meta::MixDefinition::kNone:
             return;
         case meta::MixDefinition::kPremix:
-            emit_premix(mixing.premix);
+            emit_premix(w, mixing.premix);
             return;
         case meta::MixDefinition::kReserved:
             w.put(mixing.reserved, 12);
@@ -733,7 +737,7 @@ void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) 
         out.put(mixing.external ? 1 : 0, 1);  // mixdata2e
         if (mixing.external) {
             const auto& external = *mixing.external;
-            emit_premix(external.premix);
+            emit_premix(out, external.premix);
             // §E2.3.1.25 onwards: one flag-plus-4-bit-code pair per channel,
             // in Table E1.2's order, each absent when the external programme
             // has no such channel.

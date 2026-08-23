@@ -407,7 +407,15 @@ ApplicationWindow {
                           + (EncoderController.aht ? 1 : 0);
             const metaOn = (EncoderController.heavy ? 1 : 0)
                          + (EncoderController.mixmeta ? 1 : 0)
-                         + (EncoderController.drcIndex > 0 ? 1 : 0);
+                         + (EncoderController.drcIndex > 0 ? 1 : 0)
+                         // The service/production card counts as one, however
+                         // many of its fields are set - the badge says which
+                         // tabs have something to look at, not how much.
+                         + (EncoderController.bsmodIndex > 0
+                            || EncoderController.mixLevelDbSpl >= 80
+                            || EncoderController.copyrightBit
+                            || !EncoderController.originalBitstream
+                            || EncoderController.annexD ? 1 : 0);
             tabs.push({ key: "coding", label: qsTr("Coding tools"),
                         badge: toolsOn > 0 ? String(toolsOn) : "" });
             tabs.push({ key: "meta", label: qsTr("Metadata"),
@@ -3829,6 +3837,159 @@ ApplicationWindow {
                                                 wrapMode: Text.WordWrap
                                             }
                                         }
+                                    }
+                                }
+
+                                Card {
+                                    title: qsTr("Service & production")
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+
+                                        Text {
+                                            text: qsTr("service")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "bsmodCombo"
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.bsmodNames
+                                            currentIndex: EncoderController.bsmodIndex
+                                            onActivated: EncoderController.bsmodIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            text: qsTr("mixed at")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        SpinBox {
+                                            objectName: "mixLevelSpin"
+                                            from: 79
+                                            to: 111
+                                            enabled: !EncoderController.busy
+                                            value: EncoderController.mixLevelDbSpl
+                                            textFromValue: (value) => value < 80
+                                                           ? qsTr("not stated") : value + " dB SPL"
+                                            valueFromText: (text) => text === qsTr("not stated")
+                                                           ? 79 : parseInt(text)
+                                            onValueModified: EncoderController.mixLevelDbSpl = value
+                                        }
+                                        ComboBox {
+                                            objectName: "roomTypeCombo"
+                                            enabled: !EncoderController.busy
+                                                     && EncoderController.mixLevelDbSpl >= 80
+                                            model: EncoderController.roomTypeNames
+                                            currentIndex: EncoderController.roomTypeIndex
+                                            onActivated: EncoderController.roomTypeIndex = currentIndex
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+
+                                        Text {
+                                            visible: EncoderController.surroundModeAvailable
+                                            text: qsTr("Dolby Surround")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "dsurmodCombo"
+                                            visible: EncoderController.surroundModeAvailable
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.dsurmodNames
+                                            currentIndex: EncoderController.dsurmodIndex
+                                            onActivated: EncoderController.dsurmodIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            visible: EncoderController.surroundModeAvailable
+                                            text: qsTr("Dolby Headphone")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "dheadphonCombo"
+                                            visible: EncoderController.surroundModeAvailable
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.dheadphonNames
+                                            currentIndex: EncoderController.dheadphonIndex
+                                            onActivated: EncoderController.dheadphonIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            visible: EncoderController.surroundExAvailable
+                                            text: qsTr("Surround EX")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "dsurexCombo"
+                                            visible: EncoderController.surroundExAvailable
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.dsurexNames
+                                            currentIndex: EncoderController.dsurexIndex
+                                            onActivated: EncoderController.dsurexIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            text: qsTr("A/D")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "adConvCombo"
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.adConvNames
+                                            currentIndex: EncoderController.adConvIndex
+                                            onActivated: EncoderController.adConvIndex = currentIndex
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+
+                                        CheckBox {
+                                            objectName: "copyrightCheck"
+                                            text: qsTr("Copyright")
+                                            enabled: !EncoderController.busy
+                                            checked: EncoderController.copyrightBit
+                                            onToggled: EncoderController.copyrightBit = checked
+                                        }
+                                        CheckBox {
+                                            objectName: "originalCheck"
+                                            text: qsTr("Original bit stream")
+                                            enabled: !EncoderController.busy
+                                            checked: EncoderController.originalBitstream
+                                            onToggled: EncoderController.originalBitstream = checked
+                                        }
+                                        CheckBox {
+                                            objectName: "annexDCheck"
+                                            visible: EncoderController.annexDAvailable
+                                            text: qsTr("Annex D (bsid 6)")
+                                            enabled: !EncoderController.busy
+                                            checked: EncoderController.annexD
+                                            onToggled: EncoderController.annexD = checked
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: qsTr("What the stream says about itself, not about how to decode it: which service this is (ATSC A/53 and DVB key associated-service handling off it), how the mix was monitored, and the Dolby Surround / Headphone / Surround EX flags. AC-3 carries the last three only under Annex D, which reuses the two time code fields \u00a7D1 says were never applied for their original purpose; E-AC-3 gathers the whole group into infomdat, which naming any of these turns on.")
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.fontSmall
+                                        wrapMode: Text.WordWrap
                                     }
                                 }
 

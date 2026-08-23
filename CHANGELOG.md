@@ -12,7 +12,54 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **AC-3 Annex D alternate bit stream syntax (bsid 6)** — roadmap `DC3`. AC-3's two 14-bit
+  `timecod` fields have never been applied for their originally anticipated purpose (§D1), so
+  Annex D reuses them: `EncoderConfig::alternate_bsi` writes `bsid` 6 and spends those 28 bits on
+  `xbsi1` (a preferred-downmix indication plus separate Lt/Rt and Lo/Ro centre and surround
+  levels, Tables D2.2–D2.6) and `xbsi2` (Dolby Surround EX, Dolby Headphone, A/D converter type).
+  Until now `dmixmod=ltrt|loro` was a CLI token that on AC-3 had nowhere to go. The decoder
+  recognises `bsid` 6 and reports both groups on `DecodedFrame`. CLI: `annexd` (implied by
+  `dmixmod=`, the four level tokens and the three `xbsi2` tokens), `dsurexmod=`,
+  `dheadphonmod=`, `adconvtyp=`, `encinfo`, `ltrtcmixlev=`, `lorocmixlev=`, `ltrtsurmixlev=`,
+  `lorosurmixlev=`.
+- **The informational bit stream information fields**, both codecs — roadmap `DC3`. `bsmod`
+  (complete main through commentary and emergency, Table 5.7 — what ATSC A/53 and DVB key
+  associated-service handling off), `dsurmod`, `langcod`, `audprodie`'s mixing level and room
+  type, `copyrightb`, `origbs` and the 28-bit time code were constants on the way out and skipped
+  on the way in; they are now configurable through `ac3::meta::BsiInfo` and reported on decode.
+  E-AC-3 gathers the same set (plus `dheadphonmod`, `dsurexmod`, `adconvtyp` and `sourcefscod`)
+  into Table E1.2's `infomdat` element, which `FrameConfig::info` writes and `Eac3Decoder`
+  reports. CLI: `bsmod=`, `dsurmod=`, `mixlevel=`, `roomtyp=`, `mixlevel2=`, `roomtyp2=`,
+  `langcod`, `langcod2`, `copyright`, `origbs=`, `sourcefscod`, `timecode=`, `infomdat`.
+- **The rest of E-AC-3's `mixmdate`** — roadmap `DC4`. `MixMetadata` reached only the five
+  downmix levels and `lfemixlevcod`; it now carries Table E1.2's programme scale factors
+  (`pgmscl`, `pgmscl2`, `extpgmscl`), the `mixdef` 0x1–0x3 mixing-parameter block (premix
+  compression select/source/scale, `mixdata2e`'s per-channel external-programme scales and
+  `mixdata3e`'s speech enhancement data, sized by `mixdeflen`), pan information for 1/0 and 1+1,
+  and per-block mixing configuration. These are what a receiver uses to mix an audio-description
+  or commentary programme against the main one. Written by the independent substream and reported
+  on `DecodedSubstream`/`DecodedAccessUnit`. CLI: `pgmscl=`, `pgmscl2=`, `extpgmscl=`, `mixdef=`,
+  `premixcmp=`, `mixdata=`, `extmix=`, `auxmix=`, `speechmix=`, `paninfo=`, `paninfo2=`,
+  `blkmixcfg=`.
+- **`decode` reports what it read.** Any service, production, Surround or programme-mixing field
+  a stream actually carries is now printed under the `dynrng`/`compr` lines, along with `bsid` 6
+  where the alternate syntax is in use. A programme carrying none of them prints nothing extra.
+- **GUI: a Service & production card** on the Metadata tab — service type, mixing level and room
+  type, the Dolby Surround / Headphone / Surround EX flags where the layout carries them, A/D
+  converter type, the copyright and original-bit-stream bits, and an Annex D toggle on AC-3.
+
 ### Changed
+
+- `DecodedFrame` reports `bsid`, `cmixlev` and `surmixlev` instead of discarding the two mix
+  levels — the input roadmap `DC1`'s decoder output stage needs. A layout that carries neither
+  field reports §7.8's own fallbacks, so a caller can apply them unconditionally.
+- New `FrameError::kInvalidBsi` (`AC3FORGE_ERROR_ENCODE_INVALID_BSI` in the C API) refuses a bit
+  stream information value too wide for its field — a mixing level above 31 needs six bits where
+  §5.4.2.14 has five, and writing it would push every following field one bit along rather than
+  merely recording the wrong level. New `plan::PlanError::kTimecodeNeedsBsid8` refuses a plan
+  asking for Annex D and a time code, which occupy the same 28 bits.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list

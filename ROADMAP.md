@@ -127,24 +127,32 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   detector. Expose as `ac3cli decode channels=2|1`, use it in `MonitorSink` when the device is
   narrower than the stream, replace the WASM demo's fold, verify against FFmpeg `-ac 2`. Lo/Ro
   plus dialnorm alone is an M; Lt/Rt's surround phase shift and RF-mode overload protection are
-  the rest. Needs DC3/DC4 to stop discarding the levels first.
+  the rest. DC3/DC4 have since stopped discarding the levels: `DecodedFrame` reports
+  `cmixlev`/`surmixlev` and `DecodedSubstream` reports the whole `mixmdate` group, so the input
+  this needs is already on the wire and read back.
 - [ ] **DC2 (M)** — Error concealment (§7.10). On a CRC or truncation error the decoder returns
   the error and `docs/library/decoding.md` tells the caller to catch it and keep going, which
   leaves a hard discontinuity in the PCM. An opt-in policy: repeat-and-fade, mute with a window
   ramp, render the bed alone when a dependent is missing — reported on the result so tests can
   assert it. The live, monitor and WASM paths benefit directly.
-- [ ] **DC3 (M)** — AC-3 Annex D alternate syntax (bsid 6, `xbsi1`/`xbsi2`) and the
-  informational BSI fields, encode and decode. `dmixmod=ltrt|loro` is a CLI token that on AC-3
-  has nowhere to go: `timecod1e`/`timecod2e` are hard 0 and no `xbsi` is written anywhere, so
-  the Lt/Rt vs Lo/Ro levels, Surround EX and headphone flags broadcast AC-3 carries cannot be
-  expressed. `bsmod`, `dsurmod`, `langcod`, `audprodie`, `copyrightb`, `origbs` are constants on
-  the way out and skipped on the way in, so an associated service (bsmod 1–7) or a
-  Dolby-Surround-encoded stereo mix cannot be labelled or inspected.
-- [ ] **DC4 (M)** — E-AC-3 `mixmdate` depth and `infomdat`: programme scale factors, the
-  mixing-parameter block (`mixdef`/`mixdata`), pan information and per-block mix configuration.
-  The encoder writes all of them as absent and the decoder skips every byte; `MixMetadata`
-  carries `dmixmod`, four levels and `lfemixlevcod`. These are what a receiver uses to mix an
-  audio-description or commentary programme against the main one.
+- [x] **DC3 (M)** — AC-3 Annex D alternate syntax (bsid 6, `xbsi1`/`xbsi2`) and the
+  informational BSI fields, encode and decode. `EncoderConfig::alternate_bsi` writes bsid 6 and
+  spends the two 14-bit `timecod` fields §D1 reclaims on `dmixmod` plus separate Lt/Rt and Lo/Ro
+  levels (`xbsi1`) and the Surround EX / Headphone / A-D converter flags (`xbsi2`);
+  `EncoderConfig::info` (`ac3::meta::BsiInfo`) makes `bsmod`, `dsurmod`, `langcod`, `audprodie`,
+  `copyrightb`, `origbs` and the time code configurable. `FrameDecoder` recognises bsid 6 and
+  reports both groups, the informational fields and `cmixlev`/`surmixlev` on `DecodedFrame`.
+  CLI: `annexd`, `bsmod=`, `dsurmod=`, `dsurexmod=`, `dheadphonmod=`, `adconvtyp=`, `mixlevel=`,
+  `roomtyp=`, `langcod`, `copyright`, `origbs=`, `timecode=`, the four `ltrt*`/`loro*` levels;
+  GUI: the Metadata tab's Service & production card.
+- [x] **DC4 (M)** — E-AC-3 `mixmdate` depth and `infomdat`: programme scale factors, the
+  mixing-parameter block (`mixdef` 0x1–0x3, including `mixdata2e`'s per-channel external scales
+  and `mixdata3e`'s speech enhancement data), pan information and per-block mix configuration,
+  plus the whole `infomdat` group. `MixMetadata` carries all of it, the independent substream
+  writes it, and `Eac3Decoder` reports `mixing`/`info` on `DecodedSubstream` and
+  `DecodedAccessUnit`. CLI: `pgmscl=`, `pgmscl2=`, `extpgmscl=`, `mixdef=`, `premixcmp=`,
+  `mixdata=`, `extmix=`, `auxmix=`, `speechmix=`, `paninfo=`, `paninfo2=`, `blkmixcfg=`,
+  `infomdat`, `sourcefscod`.
 - [ ] **DC5 (L)** — Multiple independent substreams (I0–I7). `ac3::io::scan` starts a new
   access unit at every independent frame without looking at `substreamid`, so a stream with I0
   and I1 decodes as alternating frames of one programme; `AccessUnitConfig` has exactly one

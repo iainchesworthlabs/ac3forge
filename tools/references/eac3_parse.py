@@ -146,53 +146,62 @@ def parse_frame(data, verbose=True):
         # The rest is gated on strmtyp == 0: a dependent substream carries only
         # the downmix/mix-level group above.
         if strmtyp == 0:
-            if r.bits(1):
-                mix['pgmscl'] = r.bits(6)
-            if acmod == 0:
+            def optional(name, width):
                 if r.bits(1):
-                    r.bits(6)        # pgmscl2
-            if r.bits(1):
-                mix['extpgmscl'] = r.bits(6)
+                    mix[name] = r.bits(width)
+
+            def premix(prefix):
+                mix[prefix + 'premixcmpsel'] = r.bits(1)
+                mix[prefix + 'drcsrc'] = r.bits(1)
+                mix[prefix + 'premixcmpscl'] = r.bits(3)
+
+            optional('pgmscl', 6)
+            if acmod == 0:
+                optional('pgmscl2', 6)
+            optional('extpgmscl', 6)
             mixdef = r.bits(2)
+            mix['mixdef'] = mixdef
             if mixdef == 1:
-                r.bits(1); r.bits(1); r.bits(3)  # premixcmpsel, drcsrc, premixcmpscl
+                premix('')
             elif mixdef == 2:
-                r.bits(12)           # mixdata
+                mix['mixdata'] = r.bits(12)
             elif mixdef == 3:
                 # §E2.3.1.22: mixdeflen 0-31 means a mixdata field of 2-33
                 # BYTES, and whatever the sub-structures below do not use is
-                # mixdatafill. So the length is authoritative and the parse of
-                # the contents only has to be good enough to not overrun it -
-                # skipping to the end is both simpler and more robust than
-                # trusting a field-by-field walk of a rarely used element.
+                # mixdatafill. So the length stays authoritative: the walk
+                # below reads the sub-fields for their values, and the reader
+                # is then placed from the LENGTH rather than from wherever the
+                # walk stopped - which is what keeps a stream using some
+                # sub-field this parser does not model from going adrift.
                 mixdeflen = r.bits(5)
                 mixdata_start = r.pos
                 if r.bits(1):        # mixdata2e
-                    r.bits(1); r.bits(1); r.bits(3)
-                    for _ in range(6):   # L, C, R, Ls, Rs and LFE scale factors
-                        if r.bits(1):
-                            r.bits(4)
-                    if r.bits(1):    # dmixscle
-                        r.bits(4)
+                    premix('ext')
+                    for name in ('extpgml', 'extpgmc', 'extpgmr',
+                                 'extpgmls', 'extpgmrs', 'extpgmlfe'):
+                        optional(name + 'scl', 4)
+                    optional('dmixscl', 4)
                     if r.bits(1):    # addche
-                        for _ in range(2):   # two auxiliary channels
-                            if r.bits(1):
-                                r.bits(4)
+                        optional('extpgmaux1scl', 4)
+                        optional('extpgmaux2scl', 4)
                 if r.bits(1):        # mixdata3e
-                    r.bits(5)        # spchdat
+                    mix['spchdat'] = r.bits(5)
                     if r.bits(1):    # addspchdate
-                        r.bits(5); r.bits(2)      # spchdat1, spchan1att
+                        mix['spchdat1'] = r.bits(5)
+                        mix['spchan1att'] = r.bits(2)
                         if r.bits(1):             # addspchdat1e
-                            r.bits(5); r.bits(3)  # spchdat2, spchan2att
+                            mix['spchdat2'] = r.bits(5)
+                            mix['spchan2att'] = r.bits(3)
                 used = r.pos - mixdata_start
                 r.bits(8 * (mixdeflen + 2) - used)   # mixdata remainder + fill
             if acmod < 2:
                 if r.bits(1):        # paninfoe
-                    r.bits(8)        # panmean
-                    r.bits(6)        # paninfo
+                    mix['panmean'] = r.bits(8)
+                    mix['paninfo'] = r.bits(6)
                 if acmod == 0:
                     if r.bits(1):    # paninfo2e
-                        r.bits(8); r.bits(6)
+                        mix['panmean2'] = r.bits(8)
+                        mix['paninfo2'] = r.bits(6)
             # §E2.3.1.59: the per-block mixing configuration is gated by ONE
             # frame-level bit. Reading the block flags without it costs five
             # bits or more, and everything downstream lands adrift - which is
@@ -201,25 +210,35 @@ def parse_frame(data, verbose=True):
             # failed to parse.
             if r.bits(1):            # frmmixcfginfoe
                 if numblkscod == 0:
-                    r.bits(5)        # blkmixcfginfo[0]
+                    # §E2.3.1.60: one block per syncframe infers the flag
+                    # set, so the word is unconditional and there is no flag.
+                    mix['blkmixcfginfo'] = [r.bits(5)]
                 else:
+                    blocks = []
                     for _ in range(nblks):
-                        if r.bits(1):    # blkmixcfginfoe
-                            r.bits(5)    # blkmixcfginfo[blk]
+                        blocks.append(r.bits(5) if r.bits(1) else None)
+                    mix['blkmixcfginfo'] = blocks
+    info = {}
     if r.bits(1):                    # infomdate
-        r.bits(3)                    # bsmod
-        r.bits(1); r.bits(1)         # copyrightb, origbs
+        info['bsmod'] = r.bits(3)
+        info['copyrightb'] = r.bits(1)
+        info['origbs'] = r.bits(1)
         if acmod == 2:
-            r.bits(2); r.bits(2)     # dsurmod, dheadphonmod
+            info['dsurmod'] = r.bits(2)
+            info['dheadphonmod'] = r.bits(2)
         if acmod >= 6:
-            r.bits(2)                # dsurexmod
-        if r.bits(1):                # audprodie
-            r.bits(5); r.bits(2); r.bits(1)
-        if acmod == 0:
-            if r.bits(1):
-                r.bits(5); r.bits(2); r.bits(1)
+            info['dsurexmod'] = r.bits(2)
+        # Annex E's audprodie carries a third field AC-3's §5.4.2.13 does
+        # not: adconvtyp, which AC-3 puts in Annex D's xbsi2 instead.
+        for suffix in ('', '2'):
+            if suffix and acmod != 0:
+                break
+            if r.bits(1):            # audprodie / audprodi2e
+                info['mixlevel' + suffix] = r.bits(5)
+                info['roomtyp' + suffix] = r.bits(2)
+                info['adconvtyp' + suffix] = r.bits(1)
         if fscod < 3:
-            r.bits(1)                # sourcefscod
+            info['sourcefscod'] = r.bits(1)
     if strmtyp == 0 and numblkscod != 3:
         r.bits(1)                    # convsync
     if strmtyp == 2:
@@ -249,6 +268,8 @@ def parse_frame(data, verbose=True):
         log(f'  compr: 0x{compr:02X}  {role}')
     if mix:
         log('  mixmdate: ' + '  '.join(f'{k}={v}' for k, v in mix.items()))
+    if info:
+        log('  infomdat: ' + '  '.join(f'{k}={v}' for k, v in info.items()))
 
     # --- audfrm (Table E1.3) ---
     if numblkscod == 3:
@@ -709,7 +730,8 @@ def parse_frame(data, verbose=True):
                                'numblkscod': numblkscod,
                                'acmod': acmod, 'lfeon': lfeon, 'chanmap': chanmap,
                                'dialnorm': dialnorm, 'compr': compr,
-                               'mixmdate': mix or None, 'dynrng': dynrng_blocks,
+                               'mixmdate': mix or None, 'infomdat': info or None,
+                               'dynrng': dynrng_blocks,
                                'oba': oba, 'emdf': emdf, 'aux_start': aux_start}
 
 

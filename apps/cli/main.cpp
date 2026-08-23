@@ -455,7 +455,11 @@ int run_main(int argc, char** argv) {
                                token == "couple" || token == "heavy" || token == "heavy2" ||
                                token == "mixmeta" || token == "sign-objects" ||
                                token == "verify-objects" || token == "keep-partial" ||
-                               token == "fast-mdct" || token == "fast-imdct";
+                               token == "fast-mdct" || token == "fast-imdct" ||
+                               token == "annexd" || token == "infomdat" ||
+                               token == "encinfo" || token == "langcod" ||
+                               token == "langcod2" || token == "copyright" ||
+                               token == "sourcefscod";
         if (token == "couple") {
             couple_flag = true;
         }
