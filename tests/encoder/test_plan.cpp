@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -449,6 +450,96 @@ TEST_CASE("eac3_config halves a plan's VBR bounds for each dependent, not its qu
         CHECK(dependent.vbr->min_kbps == 100);
         CHECK(dependent.vbr->max_kbps == 320);
         CHECK(dependent.vbr->nominal_kbps == 150);
+    }
+}
+
+TEST_CASE("vbr tokens survive a round trip", "[vbr][abr]") {
+    // format_vbr is what a front end shows for what it is about to do, so a
+    // token has to come back as itself - including the ABR fields, whose
+    // default window is deliberately not spelled out (see format_vbr).
+    const std::vector<std::string> tokens = {
+        "off",           "q:0.500000",         "q:0.500000,min:96",
+        "q:0.500000,max:320",                  "q:0.500000,min:96,max:320",
+        "avg:192",       "avg:192,win:8",      "avg:192,min:96,max:448",
+        "avg:192,win:8,min:96,max:448"};
+    for (const auto& token : tokens) {
+        std::optional<ac3::eac3::VbrConfig> vbr;
+        INFO("token " << token);
+        REQUIRE(ac3::plan::parse_vbr(token, vbr));
+        CHECK(ac3::plan::format_vbr(vbr) == token);
+    }
+}
+
+TEST_CASE("the vbr avg: token turns average-rate mode on", "[vbr][abr]") {
+    std::optional<ac3::eac3::VbrConfig> vbr;
+    REQUIRE(ac3::plan::parse_vbr("avg:224", vbr));
+    REQUIRE(vbr.has_value());
+    REQUIRE(vbr->abr.has_value());
+    CHECK(vbr->abr->target_kbps == 224);
+    // Left alone, the window is AbrConfig's own default rather than anything
+    // this parser invents.
+    CHECK(vbr->abr->window_frames == ac3::eac3::kAbrDefaultWindowFrames);
+
+    std::optional<ac3::eac3::VbrConfig> bounded;
+    REQUIRE(ac3::plan::parse_vbr("avg:224,win:12,max:320", bounded));
+    REQUIRE(bounded->abr.has_value());
+    CHECK(bounded->abr->target_kbps == 224);
+    CHECK(bounded->abr->window_frames == 12);
+    CHECK(bounded->max_kbps == 320);
+}
+
+TEST_CASE("plain vbr tokens leave average-rate mode off", "[vbr][abr]") {
+    std::optional<ac3::eac3::VbrConfig> vbr;
+    REQUIRE(ac3::plan::parse_vbr("q:0.4,min:96,max:320", vbr));
+    REQUIRE(vbr.has_value());
+    CHECK_FALSE(vbr->abr.has_value());
+}
+
+TEST_CASE("a malformed vbr token is rejected rather than half-applied", "[vbr][abr]") {
+    const std::vector<std::string> bad = {
+        "win:8",             // a window around an average nothing named
+        "q:0.5,win:8",       // ...and not a plain-VBR field either
+        "q:0.5,avg:192",     // two rate controls at once
+        "avg:192,q:0.5",     // ...in either order
+        "avg:0",             // zero kbps is not a rate
+        "avg:192,win:0",     // a zero-frame window is not a window
+        "avg:",              // the field did not survive whatever produced it
+        "avg:192,",          // trailing separator, same rule as parse_tools
+        "avg:abc",
+        "avg:192,avg:256",   // said twice, meaning which?
+        "avg:192,min:256",   // a floor above the average it must average to
+        "avg:192,max:96",    // a ceiling below it
+    };
+    for (const auto& token : bad) {
+        std::optional<ac3::eac3::VbrConfig> vbr;
+        INFO("token " << token);
+        CHECK_FALSE(ac3::plan::parse_vbr(token, vbr));
+    }
+}
+
+TEST_CASE("eac3_config halves a plan's ABR target for each dependent, not its window",
+          "[vbr][abr]") {
+    // The plan's target is what the WHOLE access unit is contracted to
+    // average, so each substream holds half of it - the same rule min/max
+    // already follow. The window counts frames, not bits, and both substreams
+    // cover the same 1536 samples, so it carries over unchanged.
+    const ac3::plan::Plan plan{
+        .codec = ac3::plan::Codec::kEac3,
+        .layout = ac3::plan::LayoutId::k71,
+        .bitrate_kbps = 640,
+        .vbr = ac3::eac3::VbrConfig{
+            .abr = ac3::eac3::AbrConfig{.target_kbps = 384, .window_frames = 10}}};
+    const auto config = ac3::plan::eac3_config(plan);
+    REQUIRE(config.independent.vbr.has_value());
+    REQUIRE(config.independent.vbr->abr.has_value());
+    CHECK(config.independent.vbr->abr->target_kbps == 384);
+    CHECK(config.independent.vbr->abr->window_frames == 10);
+    REQUIRE_FALSE(config.dependents.empty());
+    for (const auto& dependent : config.dependents) {
+        REQUIRE(dependent.vbr.has_value());
+        REQUIRE(dependent.vbr->abr.has_value());
+        CHECK(dependent.vbr->abr->target_kbps == 192);
+        CHECK(dependent.vbr->abr->window_frames == 10);
     }
 }
 

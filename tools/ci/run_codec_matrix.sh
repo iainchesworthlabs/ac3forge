@@ -283,7 +283,13 @@ run_ffmpeg_check eac3_meta.ec3
 # value rather than a placeholder. A modest quality with no max bound stays
 # well clear of the "refuses real programme material outright" warning; the
 # bounded case exercises the min:/max: syntax the unbounded one does not.
-for vbr in "q:0.3" "q:0.6,min:96,max:256"; do
+# The avg: rows are the average-rate (ABR) control, which is a DIFFERENT
+# leading token rather than another field on q: - it steers the SNR offset
+# across frames instead of reading a fixed one, so it exercises a code path
+# no q: row reaches (see eac3::AbrConfig). One plain average, one with an
+# explicit window and per-frame bounds, since those compose with the average
+# rather than replacing it.
+for vbr in "q:0.3" "q:0.6,min:96,max:256" "avg:192" "avg:192,win:8,min:96,max:448"; do
     safe=$(echo "$vbr" | tr ':,' '__')
     run eac3-encode bootstrap_51.wav "eac3_vbr_${safe}.ec3" 192 none 51 "$vbr"
     run decode "eac3_vbr_${safe}.ec3" "eac3_vbr_${safe}.wav"

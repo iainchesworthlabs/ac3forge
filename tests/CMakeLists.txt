@@ -52,6 +52,7 @@ add_executable(ac3tests
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
     core/test_bitwriter.cpp
+    encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
     decoder/test_decoder.cpp
@@ -100,6 +101,11 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# test_bit_reservoir.cpp reaches the encoder's own internal bit_reservoir.hpp
+# (ABR's sliding-window accounting), which is plumbing between the encoder's
+# translation units rather than library surface - same pattern, same reason.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
 
 # test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
 # committed programme-material fixtures rather than a synthetic signal - the delta bit

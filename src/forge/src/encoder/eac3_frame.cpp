@@ -29,6 +29,7 @@
 
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "bit_reservoir.hpp"
 #include "snr_search.hpp"
 
 namespace ac3::eac3 {
@@ -1349,6 +1350,24 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
+        // ABR's target IS a rate the stream promises to deliver, so unlike
+        // quality it has to be expressible: a target that gives no words at
+        // all, or more than frmsiz's 11 bits can signal, is not an average
+        // any frame sequence could hold. A zero-frame window is not a window.
+        if (vbr.abr) {
+            const auto target_words = frame_words(config.sample_rate, vbr.abr->target_kbps);
+            if (target_words < 1 || target_words > kMaxFrameWords ||
+                vbr.abr->window_frames < 1) {
+                return std::unexpected(FrameError::kInvalidBitrate);
+            }
+            // Bounds that exclude the target make the average unreachable by
+            // construction - every frame would be clamped to the same side of
+            // it, so the long run could never average out to what was asked.
+            if ((vbr.min_kbps && *vbr.min_kbps > vbr.abr->target_kbps) ||
+                (vbr.max_kbps && *vbr.max_kbps < vbr.abr->target_kbps)) {
+                return std::unexpected(FrameError::kInvalidBitrate);
+            }
+        }
     } else {
         const auto words = frame_words(config.sample_rate, config.bitrate_kbps);
         if (words < 1 || words > kMaxFrameWords) {
@@ -1440,6 +1459,11 @@ struct FrameEncoder::FrameState {
     std::vector<double> spx_gains;
     std::vector<double> spx_synth;
     std::vector<double> spx_band_rms;
+    // ABR's rate control - the sliding-window budget and the composite offset
+    // it steers - engaged exactly when config_.vbr->abr is. Encoder-lifetime
+    // state, NOT touched by reset_for_frame: the whole point is that what one
+    // frame did not spend is still there for the next.
+    std::optional<internal::AbrController> abr;
 };
 
 FrameEncoder::~FrameEncoder() = default;
@@ -1489,6 +1513,17 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
 
 FrameEncoder::FrameEncoder(const FrameConfig& config)
     : config_(config), state_(std::make_unique<FrameState>()) {
+    if (config_.vbr && config_.vbr->abr) {
+        // Clamped the same way every other word count here is: validate()
+        // rejects a target outside [1, kMaxFrameWords] before any frame is
+        // encoded, but a FrameEncoder can be constructed without that call
+        // having run, and a reservoir whose target is zero would hand out a
+        // zero allowance forever - and divide by it when steering the offset.
+        state_->abr.emplace(
+            std::clamp(frame_words(config_.sample_rate, config_.vbr->abr->target_kbps),
+                       std::uint32_t{1}, kMaxFrameWords),
+            std::max(config_.vbr->abr->window_frames, std::uint32_t{1}));
+    }
     if (config_.drc) {
         range_.emplace(*config_.drc, config_.sample_rate);
     }
@@ -1623,9 +1658,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // default_spxbegf below need a rate-shaped number even under VBR, since
     // that is what tells them how much per-channel headroom the frame has -
     // vbr->nominal_kbps (or its own fallbacks) stands in for bitrate_kbps.
+    // Under ABR the average rate is the honest fallback ahead of max_kbps:
+    // that IS the rate the stream is contracted to deliver, where max_kbps is
+    // only the ceiling an individual frame may peak to.
     const std::uint32_t tool_reference_kbps =
         config_.vbr ? config_.vbr->nominal_kbps.value_or(
-                          config_.vbr->max_kbps.value_or(kVbrDefaultNominalKbps))
+                          config_.vbr->abr
+                              ? config_.vbr->abr->target_kbps
+                              : config_.vbr->max_kbps.value_or(kVbrDefaultNominalKbps))
                     : config_.bitrate_kbps;
 
     // --- 1. Tool decisions --------------------------------------------------
@@ -2526,13 +2566,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         std::uint32_t words = 0;
         std::optional<std::uint32_t> fallback_budget;
     };
+    //
+    // `cap_words` is the ceiling this frame may not pass: max_kbps's word
+    // count under plain VBR, and under ABR whatever the sliding-window
+    // reservoir has left (already the tighter of the two - see abr_cap_words
+    // below). Disengaged means no ceiling was asked for at all, which is the
+    // "fail rather than fall back" case above.
     const auto vbr_size_for = [&](std::uint32_t mantissa_bits,
-                                  const VbrConfig& vbr) -> std::optional<VbrSize> {
+                                  std::optional<std::uint32_t> cap_words)
+        -> std::optional<VbrSize> {
         const std::uint32_t content_bits = side_bits + mantissa_bits + kTailBits;
-        if (vbr.max_kbps) {
+        if (cap_words) {
             const std::uint32_t max_words =
-                std::clamp(frame_words(config_.sample_rate, *vbr.max_kbps), std::uint32_t{1},
-                          kMaxFrameWords);
+                std::clamp(*cap_words, std::uint32_t{1}, kMaxFrameWords);
             if (content_bits > max_words * 16) {
                 if (side_bits + kTailBits > max_words * 16) {
                     return std::nullopt;
@@ -2547,12 +2593,43 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         return VbrSize{.words = (content_bits + 15) / 16, .fallback_budget = std::nullopt};
     };
+    const auto vbr_max_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
+        if (!vbr.max_kbps) {
+            return std::nullopt;
+        }
+        return std::clamp(frame_words(config_.sample_rate, *vbr.max_kbps), std::uint32_t{1},
+                          kMaxFrameWords);
+    };
+    // ABR's cap for THIS frame: what the reservoir has left, never above a
+    // max_kbps ceiling if one was also given, and never below the words the
+    // frame's own syntax needs whatever the reservoir says. That last floor
+    // is what keeps an exhausted reservoir from turning into a hard
+    // kInvalidBitrate - a frame cannot be smaller than the bits it must
+    // carry, so it overspends, commits the real figure, and the frames it
+    // slides past pay it back. side_bits is read fresh on every call because
+    // drop_delta_and_remeasure() can move it between them.
+    const auto abr_cap_words = [&](const VbrConfig& vbr) -> std::uint32_t {
+        std::uint32_t cap = state_->abr->allowance();
+        if (const auto bound = vbr_max_words(vbr)) {
+            cap = std::min(cap, *bound);
+        }
+        const std::uint32_t syntax_words = (side_bits + kTailBits + 15) / 16;
+        return std::clamp(std::max(cap, syntax_words), std::uint32_t{1}, kMaxFrameWords);
+    };
     const auto vbr_min_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
         if (!vbr.min_kbps) {
             return std::nullopt;
         }
         return std::clamp(frame_words(config_.sample_rate, *vbr.min_kbps), std::uint32_t{1},
                           kMaxFrameWords);
+    };
+    // The ceiling vbr_size_for measures this frame against: max_kbps under
+    // plain VBR, the reservoir's remaining allowance under ABR. Called
+    // rather than computed once, because both inputs move underneath it -
+    // side_bits when a delta segment is dropped, and the reservoir whenever
+    // a frame is committed.
+    const auto size_cap = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
+        return vbr.abr ? std::optional{abr_cap_words(vbr)} : vbr_max_words(vbr);
     };
 
     std::uint32_t words = 0;
@@ -2574,11 +2651,34 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         lo = search(*fixed_budget);
     } else {
         const auto& vbr = *config_.vbr;
-        const int composite = std::clamp(
-            static_cast<int>(std::lround(std::clamp(vbr.quality, 0.0, 1.0) * 1023.0)), 0, 1023);
-        auto sized = vbr_size_for(bits_at(composite), vbr);
+        // Plain VBR reads the offset straight off `quality` and never moves
+        // it. ABR does not read `quality` at all: the offset is held across
+        // frames and steered by the reservoir controller (see
+        // bit_reservoir.hpp), which is what lets a quiet frame stay cheap
+        // while the long-run rate still lands where it was asked to.
+        int composite = 0;
+        if (!state_->abr) {
+            composite = std::clamp(
+                static_cast<int>(std::lround(std::clamp(vbr.quality, 0.0, 1.0) * 1023.0)), 0,
+                1023);
+        } else if (const auto steered = state_->abr->offset()) {
+            composite = *steered;
+        } else {
+            // ABR's very first frame: there is no operating point to steer
+            // from yet, so take the same budget-fitting search CBR runs -
+            // against this frame's own allowance - and seed the controller
+            // with what it finds. Cheaper and far more accurate than
+            // guessing a starting offset and converging onto it over the
+            // opening second of the stream. abr_cap_words never returns a
+            // cap too small for the frame's own syntax, so this budget is
+            // always a real one.
+            const std::uint32_t cap = abr_cap_words(vbr);
+            composite = search(cap * 16 - side_bits - kTailBits);
+            state_->abr->observe_search(composite);
+        }
+        auto sized = vbr_size_for(bits_at(composite), size_cap(vbr));
         if (!sized && drop_delta_and_remeasure()) {
-            sized = vbr_size_for(bits_at(composite), vbr);
+            sized = vbr_size_for(bits_at(composite), size_cap(vbr));
         }
         if (!sized) {
             return std::unexpected(FrameError::kInvalidBitrate);
@@ -2586,7 +2686,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         lo = composite;
         words = sized->words;
         if (sized->fallback_budget) {
-            // The quality target overshoots vbr.max_kbps: fall back to the
+            // The quality target overshoots the frame's ceiling - vbr.max_kbps
+            // under plain VBR, or under ABR whatever the reservoir has left,
+            // which is exactly how a long-run average gets held without
+            // pinning every frame to the same size: fall back to the
             // same search CBR uses, budgeted against the ceiling instead of
             // a fixed target, so a bounded VBR frame is never worse than the
             // best CBR could do at that rate.
@@ -2603,6 +2706,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // separately with this same justification instead.
             fixed_budget = sized->fallback_budget;
             lo = search(*fixed_budget); // NOLINT(bugprone-unchecked-optional-access)
+            if (state_->abr) {
+                // The allowance capped what the controller asked for, so
+                // that offset is now known not to fit - do not leave the
+                // operating point above it.
+                state_->abr->observe_search(lo);
+            }
         }
         // Only ever a floor: finish_frame's own auxbits padding already
         // covers any gap between what the content actually needs and the
@@ -2639,21 +2748,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
         if (fixed_budget) {
-            // CBR, or a VBR frame already pinned to its max_kbps ceiling:
-            // the word count cannot move, only which offset fits it can.
+            // CBR, or a VBR frame already pinned to its ceiling: the word
+            // count cannot move, only which offset fits it can.
             lo = search(*fixed_budget);
+            if (state_->abr) {
+                state_->abr->observe_search(lo);
+            }
         } else {
             // Free-running VBR (or a bound it was naturally already under):
             // quality (lo) does not change, but the gain modes just chosen
             // can move the mantissa cost - down, when auto-selecting the
             // cheapest per channel; either way, when a mode was forced - so
             // the word count is re-derived exactly as it was the first time,
-            // including the same max_kbps re-check in case a forced mode
-            // pushed the cost back over a bound the quality target alone had
-            // stayed under.
-            auto sized = vbr_size_for(bits_at(lo), *config_.vbr);
+            // including the same ceiling re-check (max_kbps, or ABR's own
+            // reservoir allowance) in case a forced mode pushed the cost back
+            // over a bound the quality target alone had stayed under.
+            auto sized = vbr_size_for(bits_at(lo), size_cap(*config_.vbr));
             if (!sized && drop_delta_and_remeasure()) {
-                sized = vbr_size_for(bits_at(lo), *config_.vbr);
+                sized = vbr_size_for(bits_at(lo), size_cap(*config_.vbr));
             }
             if (!sized) {
                 return std::unexpected(FrameError::kInvalidBitrate);
@@ -2662,6 +2774,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             if (sized->fallback_budget) {
                 fixed_budget = sized->fallback_budget;
                 lo = search(*fixed_budget);
+                if (state_->abr) {
+                    state_->abr->observe_search(lo);
+                }
             }
             if (const auto min_words = vbr_min_words(*config_.vbr)) {
                 words = std::max(words, *min_words);
@@ -3029,7 +3144,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
     }
 
-    return finish_frame(config_, words, payload, aux);
+    auto frame = finish_frame(config_, words, payload, aux);
+    // ABR's accounting closes on the size that actually went on the wire -
+    // after every floor, ceiling and AHT re-derivation above, and only once
+    // the frame really exists, so a finish_frame failure cannot leave the
+    // controller believing bits were spent that never were. This is also
+    // where the offset for the NEXT frame is steered; see AbrController.
+    if (frame && state_->abr) {
+        state_->abr->commit(words);
+    }
+    return frame;
 }
 
 // --- access units ----------------------------------------------------------
