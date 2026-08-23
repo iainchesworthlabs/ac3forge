@@ -42,6 +42,15 @@ Modes:
                render_spectrograms() - this part DOES need an `ffmpeg`
                binary, only ever to decode the already-committed
                tests/golden/external-baseline/ bitstreams, never to encode.
+  objects    - object-reconstruction quality: the committed five-object
+               scene (tests/golden/audio/reference_objects.wav plus its
+               .paths placements) encoded with `atmos-encode` and decoded
+               back to per-object WAVs, one SNR/LSD/MOS row per object per
+               rate. Compute-only, no gate; see race_objects(). There is no
+               external oracle for object decode at all - not FFmpeg's
+               decoder, not Dolby's - so this is a self-consistency series
+               throughout, which that function's own comment spells out.
+               `--json-out PATH` writes the rows as JSON.
 
 Usage (repo root, after building):  python tools/ci/quality_race.py [mode]
 Set AC3CLI to override the ac3cli binary (see CLI below); CI always does.
@@ -870,6 +879,256 @@ def render_spectrograms(out_dir):
         print(f"wrote {out_path}")
 
 
+# --- Object-reconstruction quality mode ---------------------------------------
+#
+# The only quality series this project has for its OBJECT layer. Every codec
+# layer beside it - AC-3, E-AC-3, and each Annex E tool - has a per-commit
+# trend row; object reconstruction had exactly one measurement anywhere in
+# the tree, tests/oba/test_atmos.cpp's `snr_db > 10.0` against 18-35 dB
+# measured, so a 10-20 dB JOC regression passed CI and appeared on no page.
+#
+# The loop is the one that unit test runs, moved out to the CLI and to a
+# committed scene: encode tests/golden/audio/reference_objects.wav (five mono
+# object essences as WAV channels) with `atmos-encode`, driven by the
+# committed placements in reference_objects.paths, then decode with
+# `decode <stream> <bed> <objects_dir>` and score each exported object_NN.wav
+# against the source channel it came from. tools/generators/gen_object_scene_wav.py
+# generates both committed files and documents the scene.
+#
+# THERE IS NO EXTERNAL ORACLE FOR OBJECT DECODE AT ALL - a weaker position
+# than even ecpl/tpn are in (see decode_scores_ours' docstring). FFmpeg has no
+# JOC reconstruction at all, and Dolby's own decoder gates object decoding on
+# a keyed authenticity tag this project ships no key for (docs/concepts/
+# atmos-joc.md), so it plays these streams as their 5.1 bed and never
+# produces objects to compare against. This is a pure self-consistency
+# series: this project's own encoder and decoder share one reading of TS 103
+# 420, so a genuine regression in either still collapses these numbers, and a
+# defect both sides agree on is invisible here. docs/object-quality-trend.md
+# says exactly that on the page itself.
+OBJECTS_WAV = AUDIO_DIR / "reference_objects.wav"
+OBJECTS_PATHS = AUDIO_DIR / "reference_objects.paths"
+
+# Kept in sync by hand with gen_object_scene_wav.py's OBJECT_NAMES (that
+# module is stdlib-only and local-only, this one is numpy-based and CI-side -
+# the same no-cross-import rule race_trend already follows with
+# gen_external_baseline.py). Each name is a trend series' `variant`, so
+# renaming one starts a new series rather than continuing the old one.
+OBJECT_NAMES = ["broadcast", "comet", "engine", "pod-hi", "pod-lo"]
+
+# Two rates, because they fail differently. At 256 kbit/s the five objects are
+# reconstructed out of a bed whose own mantissas are the binding constraint;
+# at 448 (AtmosConfig's default) the bed is comfortable and what is left is
+# the reconstruction limit itself. Measured against a real build (2026-08-23):
+# 9.6-18.6 dB at 256, 11.9-22.7 dB at 448. A regression in bit allocation
+# moves the first far more than the second; one in the JOC matrix moves both.
+OBJECT_LEGS = [
+    dict(name="atmos-objects-256", kbps=256),
+    dict(name="atmos-objects-448", kbps=448),
+]
+
+# joc::reconstruct is a DELAYED identity, not an instantaneous one: two
+# stacked MDCT round trips carry two stacked 256-sample algorithmic delays -
+# one from the real encode+decode of the bed, one more from reconstruct()'s
+# own forward+inverse pass over that decoded bed. tests/oba/test_atmos.cpp
+# derives the same 512 and its comment carries the full reasoning. Fixed here
+# rather than searched for by cross-correlation the way align() does for the
+# codec legs: the delay is a known property of the transform pair, and a
+# correlation search would silently absorb a real timing regression as "just
+# a different lag" instead of reporting it as the SNR collapse it is.
+# Confirmed empirically against this exact scene before being fixed here -
+# the correlation peak lands on 512 for every object.
+OBJECT_DELAY = 512
+
+# Skipped at each end, in samples: one syncframe of warm-up and cool-down,
+# matching the unit test's own kSkip. The decoder's first frame has no
+# previous half-block to overlap-add against and the last object frame is the
+# tail of one, so scoring either would measure the transform's edges rather
+# than the reconstruction.
+OBJECT_SKIP = 1536
+
+
+# A band is "occupied" by an object if its reference energy is within this
+# much of the object's loudest band. Everything below the line is treated as
+# out-of-band and scored as leakage instead of as spectral distance - see
+# object_spectral_scores. 40 dB is a wide enough net to keep an object's real
+# skirts and harmonics inside it (this scene's narrowest object, the engine,
+# still occupies 8 of the 24 Bark bands at this threshold) while excluding
+# the bands where the reference is only its own numerical floor.
+OBJECT_BAND_FLOOR_DB = 40.0
+
+
+def _fmt_leak(leak):
+    """"-" for an object that occupies every band, same convention as
+    _fmt_mos' own missing-value cell."""
+    return "-" if leak is None else f"{leak:+.1f}"
+
+
+def object_spectral_scores(o, d):
+    """Banded LSD over the bands this object occupies, plus its leakage.
+
+    spectral_scores() as written cannot be used directly on an object.
+    Objects are individually NARROW-BAND by nature - this scene's engine is
+    58-232 Hz and its pod-hi is 4.7-9.4 kHz - so most of the 24 Bark bands
+    hold nothing but the reference's own numerical floor, and any leakage
+    from the four other objects into one of those bands is a ratio against
+    ~zero. Run unmodified, that reports this scene's objects at 10-38 dB
+    "log-spectral distance", which is a true statement about band ratios and
+    a useless one about envelope fidelity: it is dominated by bands the
+    object was never in. spectral_scores' own frame-level `loud` filter
+    exists for exactly this reason one axis over (it drops near-silent
+    frames); this is the same idea applied to bands.
+
+    So the two questions are separated and both reported:
+
+    lsd_db  - mean |10 log10(coded/reference)| per band per loud frame, over
+              the OCCUPIED bands only. Directly comparable in meaning to
+              every other LSD in this file, just restricted to the part of
+              the spectrum the object is actually in.
+    leak_db - all the coded energy that landed OUTSIDE those bands, against
+              all the reference energy inside them. This is the measure
+              specific to object coding: the audible failure of a JOC
+              reconstruction is another object's content arriving in this
+              one, and for well-separated objects that lands where this
+              object has no content of its own. Lower is better. None - not
+              a large negative number - for an object that occupies every
+              band, since there is then nowhere outside for anything to leak
+              into and no measurement to report; this scene's comet, a
+              broadband hiss, is exactly that case.
+    """
+    so = _spectrogram(o)
+    sd = _spectrogram(d)
+    # Same near-silent-frame filter as spectral_scores, and for the same
+    # reason: a frame whose band ratios are all floor-against-floor would
+    # otherwise swamp the average.
+    energy = so.sum(axis=1)
+    loud = energy > 1e-6 * max(energy.max(), 1e-30)
+    band_o = np.array([so[loud, lo:hi].sum() for lo, hi in BANDS])
+    band_d = np.array([sd[loud, lo:hi].sum() for lo, hi in BANDS])
+    occupied = band_o >= band_o.max() * 10 ** (-OBJECT_BAND_FLOOR_DB / 10.0)
+
+    lsd = []
+    leak = (None if occupied.all()
+            else 10 * np.log10(max(band_d[~occupied].sum(), 1e-30) /
+                               max(band_o[occupied].sum(), 1e-30)))
+    for (lo, hi), inside in zip(BANDS, occupied):
+        if not inside:
+            continue
+        eo = so[loud, lo:hi].sum(axis=1) + 1e-12
+        ed = sd[loud, lo:hi].sum(axis=1) + 1e-12
+        lsd.append(np.mean(np.abs(10 * np.log10(ed / eo))))
+    return float(np.mean(lsd)), (None if leak is None else float(leak))
+
+
+def object_scores(source, recovered, perceptual=False):
+    """SNR/LSD/leakage/MOS for one object, at the fixed OBJECT_DELAY.
+
+    source/recovered are 1-D float arrays: the scene channel this object was
+    built from, and the object_NN.wav the decoder exported for it. Both are
+    trimmed to the common overlap with OBJECT_SKIP samples dropped at each
+    end, and stay 1-D - _spectrogram and perceptual_score both read a single
+    channel that way, and there is no second channel to average over here
+    the way there is on every other mode's material.
+    """
+    n = min(len(source) - OBJECT_SKIP,
+            len(recovered) - OBJECT_DELAY - OBJECT_SKIP) - OBJECT_SKIP
+    if n <= 0:
+        raise SystemExit("object audio is shorter than the warm-up/cool-down window")
+    o = source[OBJECT_SKIP:OBJECT_SKIP + n]
+    d = recovered[OBJECT_SKIP + OBJECT_DELAY:OBJECT_SKIP + OBJECT_DELAY + n]
+    snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
+    lsd, leak = object_spectral_scores(o, d)
+    mos = perceptual_score(o, d) if perceptual else None
+    return float(snr), lsd, leak, (None if mos is None else float(mos))
+
+
+def race_objects(json_out=None):
+    """One row per (leg, object), plus a `scene` row per leg.
+
+    The `scene` row is the plain mean of that leg's per-object SNR/LSD/leakage
+    (and of MOS where every object has one) - a single number per leg for a reader
+    who wants "did the object layer move" without reading five rows, and the
+    row docs/object-quality-trend.md charts by default. It is a mean of the
+    objects, not a separate measurement: an object that collapses on its own
+    shows up here diluted by four that did not, which is exactly why the
+    per-object rows exist beside it rather than instead of it.
+    """
+    if not OBJECTS_WAV.exists() or not OBJECTS_PATHS.exists():
+        raise SystemExit(f"missing {OBJECTS_WAV} / {OBJECTS_PATHS} - regenerate them with "
+                         "python tools/generators/gen_object_scene_wav.py")
+    source = read_wav_any(OBJECTS_WAV)
+    if source.shape[1] != len(OBJECT_NAMES):
+        raise SystemExit(f"{OBJECTS_WAV} has {source.shape[1]} channels, but OBJECT_NAMES lists "
+                         f"{len(OBJECT_NAMES)} - regenerate the scene, or fix the list")
+    seconds = len(source) / RATE
+
+    print(f"{'leg':<18} | {'object':<10} | {'SNR dB':>7} | {'LSD dB':>6} | "
+          f"{'leak dB':>7} | {'MOS':>4} | {'kbps':>6}")
+    print("-" * 72)
+
+    results = []
+    for leg in OBJECT_LEGS:
+        name, kbps = leg["name"], leg["kbps"]
+        coded = BUILD / f"objects_{name}.ec3"
+        bed = BUILD / f"objects_{name}_bed.wav"
+        objects_dir = BUILD / f"objects_{name}"
+        # Any previous run's exports are removed first: the decoder writes one
+        # object_NN.wav per object it reconstructs, so a run that produced
+        # FEWER objects than the last one would otherwise be scored partly
+        # against stale files left behind by the earlier run.
+        if objects_dir.exists():
+            for stale in objects_dir.glob("object_*.wav"):
+                stale.unlink()
+        run([CLI, "atmos-encode", str(OBJECTS_WAV), str(coded), str(kbps),
+             str(len(OBJECT_NAMES)), str(OBJECTS_PATHS)])
+        run([CLI, "decode", str(coded), str(bed), str(objects_dir)])
+        kbps_measured = measured_kbps(coded, seconds)
+
+        rows = []
+        for index, object_name in enumerate(OBJECT_NAMES):
+            exported = objects_dir / f"object_{index:02}.wav"
+            if not exported.exists():
+                raise SystemExit(f"{exported} was not written - the decoder reconstructed fewer "
+                                 f"than {len(OBJECT_NAMES)} objects from {coded}")
+            recovered = read_wav_f32(exported)[:, 0]
+            snr, lsd, leak, mos = object_scores(np.ascontiguousarray(source[:, index]),
+                                                np.ascontiguousarray(recovered),
+                                                perceptual=True)
+            rows.append(dict(leg=name, bitrate_kbps=kbps, variant=object_name, snr_db=snr,
+                             lsd_db=lsd, leak_db=leak, mos_lqo=mos,
+                             measured_kbps=float(kbps_measured)))
+
+        every_mos = [r["mos_lqo"] for r in rows]
+        every_leak = [r["leak_db"] for r in rows if r["leak_db"] is not None]
+        rows.append(dict(
+            leg=name, bitrate_kbps=kbps, variant="scene",
+            snr_db=float(np.mean([r["snr_db"] for r in rows])),
+            lsd_db=float(np.mean([r["lsd_db"] for r in rows])),
+            # Averaged over the objects that HAVE a leakage figure: an
+            # object occupying every band contributes no measurement rather
+            # than a floor value that would drag the scene mean down by
+            # hundreds of dB (see object_spectral_scores).
+            leak_db=(float(np.mean(every_leak)) if every_leak else None),
+            mos_lqo=(None if any(m is None for m in every_mos)
+                     else float(np.mean(every_mos))),
+            measured_kbps=float(kbps_measured)))
+
+        for row in rows:
+            print(f"{row['leg']:<18} | {row['variant']:<10} | {row['snr_db']:>7.2f} | "
+                  f"{row['lsd_db']:>6.2f} | {_fmt_leak(row['leak_db']):>7} | "
+                  f"{_fmt_mos(row['mos_lqo']):>4} | {row['measured_kbps']:>6.1f}")
+        print()
+        results.extend(rows)
+
+    print("No external oracle exists for object decode - FFmpeg has no JOC reconstruction, and")
+    print("Dolby's own decoder needs a key this project does not ship, so it plays these streams")
+    print("as their 5.1 bed. These are self-consistency numbers; see race_objects' own comment.")
+
+    if json_out is not None:
+        Path(json_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(json_out).write_text(json.dumps({"rows": results}, indent=2) + "\n")
+        print(f"wrote {json_out}")
+
+
 DRP = Path(r"C:\Program Files\Dolby\Dolby Reference Player")
 
 
@@ -1147,10 +1406,16 @@ def main():
         if "--spectrogram-dir" in sys.argv:
             spectrogram_dir = Path(sys.argv[sys.argv.index("--spectrogram-dir") + 1])
             render_spectrograms(spectrogram_dir)
+    elif which == "objects":
+        json_out = None
+        if "--json-out" in sys.argv:
+            json_out = Path(sys.argv[sys.argv.index("--json-out") + 1])
+        race_objects(json_out=json_out)
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend)")
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend | "
+            f"objects)")
 
 
 if __name__ == "__main__":
