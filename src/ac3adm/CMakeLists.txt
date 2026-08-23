@@ -133,7 +133,8 @@ endif()
 target_sources(ac3adm_objects
     PRIVATE
         src/adm_model.cpp
-        src/adm.cpp)
+        src/adm.cpp
+        src/float_pcm_bw64.cpp)
 
 target_include_directories(ac3adm_objects
     PUBLIC

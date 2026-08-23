@@ -48,13 +48,15 @@ enum class AdmError : std::uint8_t {
     kNotRiff,            // not a RIFF/RF64/BW64 WAVE file
     kMissingFmt,         // no <fmt > chunk found
     kMissingData,        // no <data> chunk found
-    kUnsupportedFormat,  // <fmt > names a format libbw64 cannot decode (e.g. IEEE-float/formatTag
-                         // 3 - see model.hpp's PcmAudio comment). Reserved, like kNotRiff/
-                         // kMissingFmt/kMissingData: libbw64 itself rejects this at open time
-                         // through the same untyped exception family those three share, so it
-                         // currently surfaces as kCannotOpen instead - see adm.cpp's own comment
-                         // on parse_bw64_path for why inventing a false-precision mapping from
-                         // the exception text alone isn't done.
+    kUnsupportedFormat,  // <fmt > names a format no reader here decodes - a compressed WAVE
+                         // codec, or an integer width that is not a whole number of bytes.
+                         // IEEE-float/formatTag 3 used to land here (via kCannotOpen) and no
+                         // longer does: see model.hpp's PcmAudio comment. Reported precisely,
+                         // alongside kNotRiff/kMissingFmt/kMissingData, only on the float
+                         // reader's own container walk; a file libbw64 opens and then rejects
+                         // still surfaces as kCannotOpen, since its exceptions carry no type
+                         // this module could map from - see adm.cpp's own comment on
+                         // parse_bw64_path.
     kMalformedXml,       // <axml> content failed to parse: genuinely malformed XML (an
                          // unterminated tag, say), OR well-formed XML missing a mandatory ADM
                          // attribute/element - libadm's own parser reports both through the same
