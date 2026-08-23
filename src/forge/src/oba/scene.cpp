@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <expected>
+#include <initializer_list>
 #include <optional>
 #include <span>
 #include <string>
