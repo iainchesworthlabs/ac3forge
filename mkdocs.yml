@@ -122,5 +122,6 @@ nav:
       - Quality trend: quality-trend.md
       - Performance trend: performance-trend.md
       - Tool comparison trend: tool-comparison-trend.md
+      - Object quality trend: object-quality-trend.md
       - Landscape: landscape.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
