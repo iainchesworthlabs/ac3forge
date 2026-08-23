@@ -25,7 +25,7 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | reached through the E-AC-3 harnesses |
 | JOC payloads (TS 103 420 §6) | `ac3::joc::parse_payload` | reached through the E-AC-3 harnesses |
 | WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
-| ADM XML + BW64/RF64 (opt-in build) | `ac3adm::read`, via vendored libadm/libbw64 | **no** — see [ADM](#adm-xml-and-bw64) |
+| ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **no** — see [ADM](#adm-xml-and-bw64) |
 | Object authenticity tags | `ac3::signing::verify_atmos_frame` | no |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
@@ -62,11 +62,15 @@ the posture is a set of specific properties rather than a language guarantee:
   `std::bad_alloc` from an allocation it makes.
 - **No owning raw pointers, no manual `new`/`delete`, no C string handling** in the codec core.
   Buffers are `std::vector`; borrowed views are `std::span` and `std::string_view`.
-- **Indexed access is `std::span`/`std::vector`, which is bounds-checked in a debug build**
-  (MSVC's `_STL_VERIFY`, libstdc++/libc++ assertions) and unchecked in a release build. Debug
-  builds are what CI runs the codec matrix and the whole test suite on, so an out-of-range index
-  is a failed job rather than a silent read — but a shipped release build has no such net, which
-  is why the fuzzers run under ASan.
+- **Indexed access is `std::span` and `std::vector`, which are bounds-checked only where the
+  standard library's own assertions are on** — MSVC's `_STL_VERIFY` in a debug build, and
+  libstdc++/libc++ only under `_GLIBCXX_ASSERTIONS`/`_LIBCPP_HARDENING_MODE`, neither of which
+  this project sets. Of the CI legs only the ASan + UBSan one is a debug build, and that is also
+  the leg that runs the codec matrix, so an out-of-range index there fails the job. Every other
+  leg, and every shipped package, is a release build with no such net — which is why the fuzzers
+  run under ASan rather than relying on the library's own checks. (The WAV over-read fixed
+  alongside this document is exactly that story: caught by `_STL_VERIFY` in a debug build,
+  invisible in a release one.)
 
 What runs against it, continuously:
 
@@ -74,8 +78,9 @@ What runs against it, continuously:
   built with ASan + UBSan and `-fno-sanitize-recover=all`. Four drive the decode and parse entry
   points for crashes and undefined behaviour; two more decode the same mutated bytes with FFmpeg
   as well and diff the PCM, so a *wrong* decode that does not crash is caught too. `Fuzz Regress`
-  replays the checked-in seed and regression corpora on every push and pull request; `Fuzz Short`
-  and `Fuzz Differential` add a bounded mutation budget on pushes, and a nightly job goes deeper.
+  replays the checked-in seed and regression corpora on every push to `develop`/`main` and every
+  pull request into them; `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on
+  pushes, and a nightly job goes deeper.
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
   so the sanitizers see the real command paths rather than only unit tests.

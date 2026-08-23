@@ -126,6 +126,12 @@ Adding a vector means adding one `Vector(...)` to `build_vector_list()` in that 
 `_ffmpeg_support()` applies the rules above from the vector's own layout, tools and sample rate,
 so it cannot drift out of step with what the oracle table says.
 
+The *list* is hand-maintained, though. `tools/checks/check_matrix_coverage.py` asks whether
+`tools/ci/run_codec_matrix.sh` names every CLI token the binary knows about; nothing asks that of
+this set, so a new layout or tool token can land without gaining a vector. What CI does catch is
+the other direction — the generator drives real `ac3cli` command lines on every push, so a token
+that changes spelling fails a pull request rather than a release.
+
 To include the signed Atmos vector, supply a key — the same environment `ac3cli` itself reads:
 
 ```bash

@@ -797,6 +797,7 @@ def generate(
                 "bitrate_kbps": vector.bitrate_kbps,
                 "tools": vector.tools,
                 "source": SOURCES[vector.source]["path"] if vector.source else None,
+                "extra_inputs": vector.extra_inputs,
                 "command": ["ac3cli", *[a.replace(str(out_dir) + os.sep, "").replace("\\", "/") for a in args]],
                 "bytes": target.stat().st_size,
                 "sha256": sha256_file(target),
@@ -966,7 +967,7 @@ def write_archive(out_dir: Path, archive: Path) -> None:
     """
     root = out_dir.name
     files = sorted(p for p in out_dir.rglob("*") if p.is_file())
-    raw = archive.with_suffix("")
+    raw = archive.parent / archive.name.removesuffix(".gz")
     with tarfile.open(raw, "w", format=tarfile.GNU_FORMAT) as tar:
         for path in files:
             info = tar.gettarinfo(str(path), arcname=f"{root}/{path.relative_to(out_dir).as_posix()}")
@@ -1075,7 +1076,9 @@ def main() -> int:
         print("determinism: a second run reproduced every hash")
 
     if args.archive:
-        archive = args.out.with_suffix(args.out.suffix + ".tar.gz")
+        # Not with_suffix(): a bundle directory named for a version ends in
+        # ".1", which Path would treat as the suffix to replace.
+        archive = args.out.parent / (args.out.name + ".tar.gz")
         write_archive(args.out, archive)
         print(f"{archive} ({archive.stat().st_size / 1e6:.1f} MB), sha256 {sha256_file(archive)}")
 
