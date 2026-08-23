@@ -1,0 +1,66 @@
+# ruff configuration for every Python file in this tree - the ~30 scripts under
+# tools/ that implement this project's oracles and CI gates (quality_race.py,
+# fuzz_encoder_space.py, compare_wav.py, the four trend appenders), the
+# python/ binding package, the examples, the icon generator and the Conan
+# recipe. Run by .github/workflows/ci.yml's script-lint job (roadmap VX14) and
+# runnable locally the same way - see docs/building.md.
+#
+# A silent bug in tools/ is not an ordinary lint problem here: those scripts
+# ARE the gates, so a broken comparison or a swallowed subprocess failure
+# turns a CI check green without checking anything. That is the reason this
+# file exists at all, and it is why the curated set below leans towards
+# defect-finding rules over style ones.
+
+line-length = 100  # .clang-format's ColumnLimit, so both languages read alike.
+target-version = "py310"  # python/pyproject.toml's requires-python floor.
+
+exclude = [
+    "build",
+    "build-*",
+    # The throwaway venv ci.yml's script-lint job installs the pinned linters
+    # into (and that docs/building.md's local recipe uses by the same name):
+    # without this, `ruff check .` walks its site-packages and lints every
+    # dependency in it.
+    ".lintvenv",
+    # Emscripten's generated module loader and its sidecars - machine output,
+    # not source. Nothing here is Python, but keeping the directory out of
+    # every tool's walk is cheaper than explaining it per-tool.
+    "docs/assets/wasm-decode-demo",
+]
+
+[lint]
+# Curated, explicitly listed rather than left at ruff's default set: the
+# default moves between releases, and dependabot bumps the pin in
+# requirements/requirements-lint.txt, so an implicit set would mean a linter
+# upgrade could fail CI on rules nobody chose. Same discipline as .clang-tidy's
+# own curated Checks list.
+#
+#   E, W  pycodestyle - the mechanical layout errors
+#   F     pyflakes    - undefined names, unused imports, dead locals
+#   I     isort       - deterministic import order
+#   UP    pyupgrade   - syntax superseded by the py310 floor above
+#   B     bugbear     - real defect classes; B023 (a closure capturing a loop
+#                       variable) is the one that found live bugs here
+#   C4    comprehensions
+#   SIM   simplifications that remove a branch rather than reword one
+#   RUF   ruff's own; RUF100 keeps `noqa` suppressions honest by failing on
+#         ones that no longer suppress anything
+#   PLC/PLE/PLW  pylint's convention/error/warning tiers; PLW1510
+#         (subprocess.run without check=) is the highest-value rule in this
+#         whole set for a tree whose scripts shell out to ffmpeg and ac3cli
+#         for their answers
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF", "PLC", "PLE", "PLW"]
+
+# PLR, pylint's refactor tier, is deliberately absent rather than selected and
+# then suppressed: PLR2004 (magic-value-comparison) alone fires 145 times
+# across tools/references/, where the magic values ARE the spec tables being
+# transcribed, and PLR09xx are function-size opinions that would mean
+# restructuring working oracle code for no defect found. Also absent, as
+# separate decisions with their own backlogs rather than oversights: D
+# (docstring style), ANN (annotation coverage), S (bandit), PTH, TRY, EM.
+
+[lint.per-file-ignores]
+# Conan recipes declare their inputs as plain class attributes - it is the
+# framework's documented recipe shape, and ClassVar annotations on them would
+# be this repo inventing a house style for someone else's file format.
+"packaging/conan/**/*.py" = ["RUF012"]

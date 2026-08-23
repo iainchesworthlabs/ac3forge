@@ -19,9 +19,14 @@ CMakeUserPresets.json
 # already covers python/build/; __pycache__/ already covers every test/tool's bytecode cache)
 __pycache__/
 .pytest_cache/
+.coverage
 *.egg-info/
 python/dist/
 wheelhouse/
+# The throwaway venv ci.yml's script-lint job installs the pinned linters into, and
+# that docs/building.md's local recipe uses by the same name. Also excluded in
+# ruff.toml, so a local `ruff check .` never walks into its site-packages.
+.lintvenv/
 
 # Downloaded standards documents (free from ATSC/ETSI; not redistributed here)
 docs/spec/

@@ -257,6 +257,93 @@ jobs:
         shell: bash
         run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
 
+  # ruff, shellcheck and actionlint over the non-C++ half of the tree (roadmap
+  # VX14). Same shape as platform-macros and packaging-consistency above:
+  # cheap, fast, and deliberately ungated by `changes` so a script edit is
+  # reported even while a heavier leg is red.
+  #
+  # This is not ordinary lint hygiene here. The ~30 Python files under tools/
+  # ARE this project's oracles and gates - quality_race.py's SNR floors,
+  # fuzz_encoder_space.py, compare_wav.py, the four trend appenders,
+  # check_matrix_coverage.py - so a swallowed subprocess failure or a closure
+  # capturing a loop variable in one of them turns a CI check green without
+  # checking anything, and nothing downstream would ever notice. Every rule in
+  # ruff.toml's curated set was picked with that in mind; see its header.
+  #
+  # A separate job from static-analysis (clang-tidy) rather than another step
+  # inside it: that one needs a container bootstrap, a GCC install, vcpkg and a
+  # complete build before it parses its first TU. This one needs a checkout and
+  # a pip install. Keeping them apart means a broken oracle script is reported
+  # in about a minute instead of behind the slowest job on the critical path.
+  #
+  # zizmor.yml already covers workflow *security* (injectable expressions,
+  # over-broad permissions, unpinned actions); actionlint covers workflow
+  # *correctness* (undefined matrix properties, bad `needs`/`if` expressions,
+  # invalid runner labels) plus, via -shellcheck below, the shell inside every
+  # `run:` block - which no other check in this repo looks at at all.
+  script-lint:
+    name: Script Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A venv rather than a bare `pip install`: the hosted image's system
+      # Python is PEP 668 externally-managed, and --break-system-packages (what
+      # the container jobs below use, safely, because their container is thrown
+      # away) is the wrong tool on a runner whose Python other steps may still
+      # need. requirements/requirements-lint.txt is a pip-compile
+      # --generate-hashes lock like requirements-coverage.txt and
+      # requirements-ffmpeg-validate.txt, so all three linter versions are
+      # pinned by hash and move only when the lock is regenerated.
+      - name: Install linters
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .lintvenv
+          .lintvenv/bin/python -m pip install --quiet --upgrade pip
+          .lintvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-lint.txt
+          .lintvenv/bin/ruff --version
+          .lintvenv/bin/shellcheck --version | tr '\n' ' '; echo
+          .lintvenv/bin/actionlint -version
+
+      # Configuration (rule set, line length, exclusions, and the reasoning for
+      # each) lives in ruff.toml at the repository root, shared verbatim with a
+      # local `ruff check .`, the same way tools/checks/coverage_report.sh is
+      # shared with the coverage job - CI and a developer machine cannot drift
+      # onto different rules.
+      - name: ruff
+        shell: bash
+        run: .lintvenv/bin/ruff check --no-cache --output-format=github .
+
+      # `git ls-files` rather than a hard-coded list of directories: a shell
+      # script added anywhere in the tree is then linted the day it lands,
+      # instead of silently sitting outside the gate until someone remembers to
+      # widen a glob here.
+      - name: shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          printf 'shellcheck: %d script(s)\n' "${#scripts[@]}"
+          printf '  %s\n' "${scripts[@]}"
+          .lintvenv/bin/shellcheck --format=gcc "${scripts[@]}"
+
+      # -shellcheck hands actionlint the same pinned binary the step above uses,
+      # so the shell inside every `run:` block is checked too - that integration
+      # is where this job's first real finding came from (an `ls | head -1`
+      # parse in release.yml's provenance-export step). -pyflakes= disables the
+      # other integration outright: it would only see the `python -c` one-liners
+      # inside `run:` blocks, and ruff above already covers every real .py file.
+      - name: actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          .lintvenv/bin/actionlint -no-color -oneline \
+            -shellcheck .lintvenv/bin/shellcheck -pyflakes=
+
   # .clang-tidy's own header comment explains the curated check groups and
   # what got excluded from them (and why). A full Build precedes clang-tidy,
   # not just Configure: CMake 3.28's Ninja dependency-scan step (the
@@ -1119,7 +1206,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
     runs-on: ubuntu-latest
     steps:
       - name: Gate on required job results
@@ -1131,6 +1218,7 @@ jobs:
           R_CHANGES: ${{ needs.changes.result }}
           R_MACROS: ${{ needs.platform-macros.result }}
           R_PACKAGING: ${{ needs.packaging-consistency.result }}
+          R_SCRIPTLINT: ${{ needs.script-lint.result }}
           # 'skipped' on a docs-only change, which is a pass, not a failure.
           R_TIDY: ${{ needs.static-analysis.result }}
           R_COVERAGE: ${{ needs.coverage.result }}
@@ -1147,6 +1235,7 @@ jobs:
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
                       "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
                       "packaging-consistency:$R_PACKAGING" \
+                      "script-lint:$R_SCRIPTLINT" \
                       "static-analysis:$R_TIDY" "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
