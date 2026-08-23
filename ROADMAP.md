@@ -149,8 +149,7 @@ both encoders decide from content rather than from the bit rate.
   criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet (only the two `BitAllocCodes` fields
   the encoder's own dead-end comment named), E-AC-3 isn't wired (needs EQ3), and the perceptual
   model needs further calibration before it is worth turning on. See
-  [docs/library/quality.md](docs/library/quality.md) and
-  [docs/library/encoding-ac3.md § Decision search](docs/library/encoding-ac3.md#decision-search).
+  `docs/library/quality.md` and `docs/library/encoding-ac3.md`'s Decision search section.
 
 ## DC. Decoder and consumer output
 
