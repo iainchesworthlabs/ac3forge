@@ -34,6 +34,8 @@ constexpr std::array<std::array<std::uint8_t, 6>, 32> kE210 = {{
 constexpr std::array<int, 16> kMantBits = {0, 0, 0, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16};
 constexpr int kLfeEndmant = 7;
 constexpr int kMaxFbwChannels = 5;
+// numblkscod 3 (the only value in scope below) is six blocks per syncframe.
+constexpr std::size_t kBlocksPerFrame = 6;
 
 // The one frame shape this walker maps - ac3forge's Atmos output. See the
 // header's SCOPE note for why anything else comes back unsupported rather
@@ -330,24 +332,29 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         return out_of_scope();
     }
 
-    std::vector<int> cplinu(static_cast<std::size_t>(nblks), 0);
+    // Past the shape check numblkscod is pinned to 3, so nblks is six - the
+    // same fixed count chexpstr and lfeexpstr below are already sized for. A
+    // fixed array rather than a vector: no allocation, and no "could this be
+    // empty?" question for an optimiser to ask about the [0] below (GCC 16 at
+    // -O3 asks it, and -Werror=null-dereference makes it fatal).
+    std::array<int, kBlocksPerFrame> cplinu{};
     if (acmod > 1) {
         cplinu[0] = static_cast<int>(r.read(1));
-        for (int b = 1; b < nblks; ++b) {
+        for (std::size_t b = 1; b < kBlocksPerFrame; ++b) {
             if (r.read(1)) {
-                cplinu[static_cast<std::size_t>(b)] = static_cast<int>(r.read(1));
+                cplinu[b] = static_cast<int>(r.read(1));
             } else {
-                cplinu[static_cast<std::size_t>(b)] = cplinu[static_cast<std::size_t>(b - 1)];
+                cplinu[b] = cplinu[b - 1];
             }
         }
     }
-    for (int b = 0; b < nblks; ++b) {
-        if (cplinu[static_cast<std::size_t>(b)] != 0) {
+    for (const int in_use : cplinu) {
+        if (in_use != 0) {
             return out_of_scope();
         }
     }
 
-    std::array<std::array<int, kMaxFbwChannels>, 6> chexpstr{};  // [blk][ch]
+    std::array<std::array<int, kMaxFbwChannels>, kBlocksPerFrame> chexpstr{};  // [blk][ch]
     if (expstre) {
         // per-block exponent strategy, 2 bits per channel per block
         for (int b = 0; b < nblks; ++b) {
@@ -366,7 +373,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             }
         }
     }
-    std::array<int, 6> lfeexpstr{};
+    std::array<int, kBlocksPerFrame> lfeexpstr{};
     if (lfeon) {
         for (int b = 0; b < nblks; ++b) {
             lfeexpstr[static_cast<std::size_t>(b)] = static_cast<int>(r.read(1));
