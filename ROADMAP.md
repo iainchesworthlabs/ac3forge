@@ -427,8 +427,8 @@ no SIMD and no threading anywhere in the codec core.
   byte-identical encodes for the encoder-internal use or keep that side direct. Done: both
   forward a `fast` flag, the decoder passing `DecoderConfig::fast_imdct` and the
   encoder-internal `ecpl` use `eac3::FrameConfig::fast_mdct`; the 40-stream encode corpus is
-  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4);
-  a 180-second enhanced-coupling decode 5.24 → 3.19 s. `joc::reconstruct` still runs its bed
+  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4, 6.5×
+  with it); a 180-second enhanced-coupling decode 5.24 → 3.19 s. `joc::reconstruct` still runs its bed
   ANALYSIS (five forward MDCTs per block) direct, which is now the dominant cost of an object
   decode — see PF8.
 - [x] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
@@ -437,9 +437,10 @@ no SIMD and no threading anywhere in the codec core.
   about 10%. Done as `fft_kernel.hpp`: compile-time-specialised radix-4 stages with a trailing
   radix-2 stage where log2(P) is odd, the first stage's unit twiddles gone, and the
   digit-reversal folded into each caller's own input-producing loop instead of running as a
-  pass. Kernel-level 1.8–2.4× on every fast transform; a 180-second 5.1 AC-3 decode 4.07 →
-  2.65 s. Encodes byte-identical; `dft512` against its own O(N²) sum improved from 1.9e-15 to
-  1.7e-15.
+  pass. The kernel measured standalone is 1.6–1.75× across P = 64/128/512; at the caller level
+  the median paired ratio over 12 interleaved runs is 1.2–2.0× per fast transform, against an
+  0.89–1.08× noise floor on the unchanged ones. A 180-second 5.1 AC-3 decode 4.07 → 2.65 s.
+  Encodes byte-identical; `dft512` against its own O(N²) sum improved from 1.9e-15 to 1.7e-15.
 - [ ] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
   (`src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, the same mechanism as
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has

@@ -86,7 +86,7 @@ evidence was reviewed and accepted before each default flipped.
 The kernel itself is radix-4 with a trailing radix-2 stage where log2(P) is odd, specialised at
 compile time for the three sizes the codec uses (P = 64, 128, 512), with the first stage's
 unit twiddles eliminated and the digit-reversal permutation folded into each caller's own
-input-producing loop rather than run as a pass — 1.6–1.8× the throughput of the generic
+input-producing loop rather than run as a pass — 1.6–1.75× the throughput of the generic
 radix-2 core it replaced, at the same tolerances.
 
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
