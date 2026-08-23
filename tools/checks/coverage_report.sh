@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
 #
-# Library coverage report + per-component statement/branch gate.
+# Coverage report + per-component statement/branch gate.
 #
 # One gcov extraction pass over an AC3FORGE_ENABLE_COVERAGE build (the
 # config-linux-gcc-coverage preset - see CMakePresets.json), then one cheap
-# gate pass per library component off the shared JSON trace. Line and branch
-# coverage are gated PER COMPONENT rather than as one blended number:
-# src/forge is an order of magnitude larger than any container writer, so a
-# blend would let a real regression in src/mpegts or src/capi hide inside
-# ordinary drift in src/forge - and "which module is thin" is exactly the
-# question a per-component table exists to answer.
+# gate pass per component off the shared JSON trace. Line and branch coverage
+# are gated PER COMPONENT rather than as one blended number: src/forge is an
+# order of magnitude larger than any container writer, so a blend would let a
+# real regression in src/mpegts or src/capi hide inside ordinary drift in
+# src/forge - and "which module is thin" is exactly the question a
+# per-component table exists to answer.
+#
+# apps/cli is gated here too (roadmap VX15), not just src/. It is about 6,500
+# lines across seven command modules, it is the executable the codec matrix,
+# the gold-reference gate and the encoder-space fuzzer all drive, and it had
+# no floor at all - while the two CLI bugs this project has actually shipped
+# (the stdout/stderr leak and the Windows argv mangling) were both in exactly
+# that kind of silently untested front-end path. Its per-command breakdown is
+# printed below the gate so a thin command shows up as thin rather than
+# averaging away inside the aggregate.
+#
+# apps/gui is NOT gated and is deliberately out of scope. Its C++ needs a Qt
+# kit on the coverage leg, and no Linux CI leg installs one today
+# (.github/workflows/_build.yml installs Qt only on the `gui: true` matrix
+# entries, which are plain builds, not instrumented ones). Adding it means
+# either putting Qt on the coverage job or standing up a second instrumented
+# leg - a separate decision with its own runner-time cost, not something to
+# smuggle in behind a threshold table. apps/gui's interactive surfaces are
+# covered by its own Qt Quick tests, and its one Qt-free class
+# (RecordingSink) is already in ac3tests.
 #
 # Run by .github/workflows/ci.yml's coverage job after `ctest`; runnable
 # locally the same way, from the repository root (see docs/building.md):
@@ -17,7 +36,7 @@
 #   cmake --preset config-linux-gcc-coverage
 #   cmake --build --preset build-linux-gcc-coverage -- -k 0
 #   ctest --preset test-linux-gcc-coverage -LE Performance
-#   ./tools/checks/coverage_report.sh -g gcov-15
+#   ./tools/checks/coverage_report.sh -g gcov-16
 #
 # Thresholds sit a few points under each component's measured baseline (the
 # table below records the measurement each floor was set against) so ordinary
@@ -49,14 +68,15 @@ if [ ! -f CMakePresets.json ]; then
     exit 2
 fi
 
-# Component floors, one row per library component: <dir under src/> <line%> <branch%>.
+# Component floors, one row per component: <path> <line%> <branch%>. A path,
+# not a bare name, since roadmap VX15 added apps/ alongside src/.
 #
-# Calibrated 2026-08-20 against a WSL2 run on the CI toolchain pins (gcc/gcov
-# 15.2.0, gcovr 8.6), measured per component as:
+# Calibrated 2026-08-20 (src/*) and 2026-08-23 (apps/cli) against WSL2 runs on
+# the CI toolchain pins (gcov 15.2.0, gcovr 8.6), measured per component as:
 #
-#   forge 92.2/84.1 audio 31.2/19.9   signing 86.9/61.4   matroska 93.3/91.9
-#   mp4 95.0/90.2   mpegts 93.5/92.5  capi 87.8/79.2      ac3adm 87.2/82.6
-#   admbridge 90.3/85.0               (aggregate 87.4/78.2)
+#   forge 92.5/84.4 audio 33.3/22.2   signing 87.4/62.6   matroska 93.5/92.1
+#   mp4 95.1/90.3   mpegts 94.1/90.7  capi 87.8/79.2      ac3adm 87.7/82.6
+#   admbridge 91.8/85.6               apps/cli 47.3/42.0
 #
 # Each floor sits ~4-8 points under its measurement: a couple of points for
 # the known WSL-reads-higher-than-hosted effect (see ci.yml's coverage job
@@ -74,16 +94,26 @@ fi
 # written; its remaining gap is src/capi/src/internal.hpp's guard() catch
 # clauses (allocation failure is not fakeable from a test) and the
 # defensively unreachable enum fallthroughs beside them.
+#
+# apps/cli's floor is the same kind of honest-low number, and its margin is
+# the widest here for a reason its own breakdown below makes visible: two of
+# its command modules (audio_io, live_audio) only execute at all to the
+# extent the runner has a capture or render endpoint, and that differs
+# between a developer's WSL (which has an ALSA `default`) and a headless CI
+# container (which has nothing). Roughly 15% of apps/cli's lines sit behind
+# that difference, so the floor is set to survive the no-device case rather
+# than the measurement that produced it.
 components="
-forge      88 78
-audio      25 15
-signing    82 55
-matroska   88 85
-mp4        90 85
-mpegts     88 85
-capi       82 72
-ac3adm     82 75
-admbridge  85 78
+src/forge      88 78
+src/audio      25 15
+src/signing    82 55
+src/matroska   88 85
+src/mp4        90 85
+src/mpegts     88 85
+src/capi       82 72
+src/ac3adm     82 75
+src/admbridge  85 78
+apps/cli       40 34
 "
 
 json="$build_dir/coverage.json"
@@ -107,6 +137,7 @@ html="$build_dir/coverage.html"
 # vanishing silently.
 gcovr --root . \
     --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge)/.*' \
+    --filter 'apps/cli/.*' \
     --gcov-executable "$gcov_exe" \
     --exclude-throw-branches --exclude-unreachable-branches \
     --gcov-ignore-errors=no_working_dir_found \
@@ -120,25 +151,49 @@ while read -r comp line_min branch_min; do
 
     # A component with zero files in the trace is a broken measurement (built
     # without instrumentation, or not built at all - e.g. a coverage preset
-    # that lost AC3FORGE_BUILD_ADM=ON), not a 0%-covered component. Fail
-    # loudly rather than letting a silent no-data "pass" or a misleading 0%
-    # stand in for the real answer.
-    if ! grep -q "src/$comp/" "$json"; then
-        echo "::error::coverage: no data for src/$comp - was it built with AC3FORGE_ENABLE_COVERAGE on?"
+    # that lost AC3FORGE_BUILD_ADM=ON or AC3FORGE_BUILD_CLI=ON), not a
+    # 0%-covered component. Fail loudly rather than letting a silent no-data
+    # "pass" or a misleading 0% stand in for the real answer. This is exactly
+    # what caught apps/cli linking an instrumented library without being
+    # instrumented itself - see cmake/Coverage.cmake's own note.
+    if ! grep -q "$comp/" "$json"; then
+        echo "::error::coverage: no data for $comp - was it built with AC3FORGE_ENABLE_COVERAGE on?"
         fail=1
         continue
     fi
 
     echo
-    echo "== src/$comp (gate: line >= $line_min%, branch >= $branch_min%) =="
-    if ! gcovr --root . --add-tracefile "$json" --filter "src/$comp/.*" \
+    echo "== $comp (gate: line >= $line_min%, branch >= $branch_min%) =="
+    if ! gcovr --root . --add-tracefile "$json" --filter "$comp/.*" \
         --print-summary \
         --fail-under-line "$line_min" --fail-under-branch "$branch_min"; then
-        echo "::error::coverage gate missed for src/$comp (need line >= $line_min%, branch >= $branch_min%)"
+        echo "::error::coverage gate missed for $comp (need line >= $line_min%, branch >= $branch_min%)"
         fail=1
     fi
 done <<EOF
 $components
 EOF
+
+# apps/cli's per-command breakdown. Reported, never gated: one floor on the
+# aggregate is what stops a regression, and a floor per command module would
+# be ten more numbers to re-calibrate every time a command moves between
+# files. What this exists for is visibility - the aggregate alone would let
+# a command sitting at 0% hide behind six that are not, which is precisely
+# the state apps/cli was in when this gate was written (containers, audio_io
+# and live_audio were all at 0.0% line while the aggregate read 44.9%).
+echo
+echo "== apps/cli per command (reported, not gated) =="
+printf '%-26s %8s %8s\n' "module" "line" "branch"
+for src in apps/cli/*.cpp apps/cli/commands/*.cpp; do
+    [ -e "$src" ] || continue
+    # --print-summary writes its two lines after the per-file table, so the
+    # whole report is captured and those two picked out of it. Redirecting the
+    # table away with --txt /dev/null takes the summary with it.
+    summary="$(gcovr --root . --add-tracefile "$json" --filter "${src}" \
+        --print-summary 2>/dev/null || true)"
+    line_pct="$(echo "$summary" | awk '/^lines:/ {print $2}')"
+    branch_pct="$(echo "$summary" | awk '/^branches:/ {print $2}')"
+    printf '%-26s %8s %8s\n' "${src#apps/cli/}" "${line_pct:-n/a}" "${branch_pct:-n/a}"
+done
 
 exit "$fail"

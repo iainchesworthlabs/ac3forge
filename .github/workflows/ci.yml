@@ -509,9 +509,27 @@ jobs:
       # machine cannot drift onto different filters or thresholds. The
       # mdct.cpp suspicious-hits gcov-bug workaround this step used to carry
       # inline moved there with the rest of the gcovr flags.
+      #
+      # The gate covers apps/cli as well as the nine library components since
+      # roadmap VX15 - which is why config-linux-gcc-coverage now builds the
+      # CLI, and why the Test step above takes longer than it used to. That
+      # table also prints a per-command breakdown below the gate, so a
+      # command module sitting at 0% is visible rather than averaged away.
       - name: Coverage report + gate
         shell: bash
         run: bash tools/checks/coverage_report.sh -g gcov-16
+
+      # apps/gui is the one first-party tree with no coverage number at all,
+      # and deliberately so (roadmap VX15 called it out as a separate
+      # decision): instrumenting its C++ needs a Qt kit on THIS job, and no
+      # Linux leg installs one - _build.yml puts Qt only on its `gui: true`
+      # matrix entries, which are plain builds. Adding it means either putting
+      # Qt on this container or standing up a second instrumented leg, both of
+      # which cost real runner time for a tree whose interactive surfaces are
+      # already covered by apps/gui/tests' own Qt Quick suite and whose one
+      # Qt-free class (RecordingSink) is already in ac3tests. See
+      # tools/checks/coverage_report.sh's header for the same note beside the
+      # threshold table.
 
       - name: Upload coverage report
         if: always()

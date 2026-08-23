@@ -43,6 +43,13 @@ else()
     target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp)
 endif()
 
+# ac3::coverage (roadmap VX15) instruments this target's OWN sources. Linking
+# an instrumented library is not enough and never was: --coverage is
+# target-scoped, so before this line every .cpp under apps/cli compiled
+# uninstrumented and produced no .gcno at all - a gcovr filter for apps/cli
+# came back with zero files rather than a low percentage. It is an INTERFACE
+# target that adds nothing when AC3FORGE_ENABLE_COVERAGE is off (the default),
+# so this costs every other configuration nothing.
 target_link_libraries(ac3cli
     PRIVATE
         ac3::forge
@@ -51,7 +58,8 @@ target_link_libraries(ac3cli
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
-        ac3::warnings)
+        ac3::warnings
+        ac3::coverage)
 
 # ac3::forge, matroska::matroska, mp4::mp4 and mpegts::mpegts are link-only here, but
 # installed and packaged in their own right elsewhere - see

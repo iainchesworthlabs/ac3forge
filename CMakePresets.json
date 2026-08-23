@@ -175,10 +175,10 @@
     {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3tests. CLI and examples are off purely to save build time: they would link fine (the gcov runtime propagates to consumers automatically, see cmake/Coverage.cmake), but tools/checks/coverage_report.sh filters the report to the library components, so building them instrumented buys nothing - see .github/workflows/ci.yml's coverage job.",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (roadmap VX15): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "AC3FORGE_ENABLE_COVERAGE": "ON",
-        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_CLI": "ON",
         "AC3FORGE_BUILD_EXAMPLES": "OFF",
         "AC3FORGE_BUILD_ADM": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm"
