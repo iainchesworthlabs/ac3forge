@@ -192,8 +192,8 @@ and a crash lose everything captured.
 The output file opens before the session is marked live, so a bad destination path is refused up
 front exactly like a bad device choice — not discovered as a mid-take failure minutes in.
 
-What "writing incrementally" means depends on the container, but both write straight into the
-chosen file — there is no separate spool file for either:
+What "writing incrementally" means depends on the container, but each writes straight into the
+chosen destination — there is no separate spool file for any of them:
 
 - **Elementary stream** (`.ac3` / `.ec3`): every byte written *is* the take, from the first frame
   on — a crash leaves exactly what was captured, playable up to that point.
@@ -211,16 +211,31 @@ chosen file — there is no separate spool file for either:
   disk are complete, valid Matroska, so the `.mkv` itself plays up to that point: the same honest
   "playable up to where it stopped" guarantee the elementary-stream path gives, not a companion
   file to fold in by hand afterward.
+- **MPEG-TS** (`.ts`): pushed through `mpegts::Writer`, whose bytes are contract-identical to the
+  one-shot `mpegts::mux` for the same frames — a transport stream carries no length field and no
+  trailer, so a truncated take is simply a shorter valid one.
+- **S/PDIF** (`.wav`): each access unit is wrapped into its IEC 61937 burst and appended through a
+  streaming WAV writer, which re-patches the RIFF header about once a second for the same reason
+  the raw-WAV safety copy below does.
+- **Fragmented MP4/CMAF**: a folder, not a file, and the only container here whose *manifests*
+  change as the take runs. Each unit goes into `mp4::FragmentWriter`, which hands back a complete
+  CMAF media segment every time a fragment closes (48 access units, about 1.5 s); that segment is
+  written as `segment<N>.m4s` and `audio.m3u8`/`master.m3u8`/`manifest.mpd` are rewritten beside
+  it. While the session is running they are live-shaped — no `#EXT-X-ENDLIST`, and a
+  `type="dynamic"` MPD with an `availabilityStartTime` — so the folder is a servable origin
+  mid-take; Stop flushes the trailing partial fragment and closes both to their VOD/static forms.
+  `init.mp4` is written at the *first* frame rather than at Start, because its `dac3`/`dec3` box
+  is read off the bitstream and there is no bitstream yet before then. A crash mid-take leaves
+  every already-written segment complete and a playlist listing the ones that were closed when it
+  last rewrote — the same "playable up to where it stopped" guarantee, one segment coarser.
 
-Both paths flush to disk roughly once a second (not per frame) rather than on every write.
+All four flush to disk roughly once a second (not per frame) rather than on every write.
 
-The Container combo's other four choices — S/PDIF, MP4, fragmented MP4/CMAF, MPEG-TS — fall into
-the elementary-stream path above during a live session, not their own: the Matroska writer is the
-only incremental muxer this project has, and the other containers' muxers are batch APIs that
-need the whole frame list up front — there is nothing to push a live unit into for any of them.
-So a live session with one of those four selected keeps writing the plain stream, exactly the
-file it would write with the combo left on Elementary stream; the container only changes what a
-*file* encode wraps it as afterward (see
+**MP4** is the one Container choice that falls into the elementary-stream path above during a live
+session rather than its own: `moov`/`stco` need every frame's final offset, so there is nothing to
+push a live unit into. A live session with MP4 selected keeps writing the plain stream, exactly
+the file it would write with the combo left on Elementary stream; the container only changes what
+a *file* encode wraps it as afterward (see
 [Container](format-and-channels.md#presets-codec-bit-rate-container)).
 
 There is also an optional **raw-WAV safety copy**: the pre-flight "Raw-WAV safety copy" checkbox
@@ -334,9 +349,9 @@ passthrough, running continuously and still writing the file `record` always has
 same `atmos` mode, with the timeline replaced by real-time motion. **Two-device capture is at
 parity** — `capture2=<index>` (see [Two-device capture](#two-device-capture-clock-master-model))
 uses the same shared `DriftResampler`/`ClockDriftEstimator` pair on both sides. **Container choice
-is at parity too** — `ac3cli record`/`ac3cli live` both take a `container=mkv` trailing token (see
+is at parity too** — `ac3cli record`/`ac3cli live` both take a `container=` trailing token (see
 [CLI → Options &
-grammars](../cli/metadata-options.md#recordlive-options-record-live-containermkv)) that writes
+grammars](../cli/metadata-options.md#recordlive-options-record-live-container)) that writes
 straight to Matroska in the one command, the same choice this page's own [Take
 durability](#take-durability) section describes the GUI's Container combo making. The CLI reaches
 it with `matroska::mux()` rather than `matroska::Writer` — `record`/`live` already hold every frame
