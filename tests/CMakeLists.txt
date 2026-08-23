@@ -47,6 +47,7 @@ endif()
 add_executable(ac3tests
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
+    encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp

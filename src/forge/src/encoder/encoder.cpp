@@ -18,6 +18,7 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
@@ -119,6 +120,15 @@ int rematrix_band_count(bool cplinu, int cplbegf) {
         return 4;
     }
     return cplbegf > 0 ? 3 : 2;
+}
+
+// §7.2.2.4's fast gain, when the caller has not pinned one. Placeholder for
+// the rate-dependent policy EQ7 measures; see step 0's comment.
+int fgaincod_for(const EncoderConfig& config) {
+    if (config.fgaincod >= 0) {
+        return config.fgaincod;
+    }
+    return BitAllocCodes{}.fgaincod;
 }
 
 // Step 9's SNR-offset search result: the composite offset it found, and the
@@ -301,37 +311,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     AC3_ZONE_END(zone_metadata);
 
-    // Bandwidth: explicit config, or a bitrate-aware default. This comes
-    // before the coupling decision because coupling inherits it - see
-    // default_cplendf.
-    //
-    // Do not tune this against the checked-in fixtures. Swept 2026-08-17 over
-    // chbwcod 24..60 at 192-640 kbit/s on both of them, and narrowing looks
-    // like a large win on every metric this repo measures: 5.1 at 448 gains
-    // 2.1 dB of SNR at chbwcod 28, and even log-spectral distance improves
-    // (5.43 -> 5.26). It is an artifact. chbwcod 28 codes to 14.7 kHz, and
-    // reference_51.wav carries 1.1e-4 of its energy above that (it is built
-    // from FIR-smoothed noise), so discarding the top 9 kHz costs almost
-    // nothing there while freeing bits everywhere else. Real programme
-    // material is not band-limited like that, and a 14.7 kHz AC-3 encoder at
-    // 448 kbit/s would be plainly worse to listen to while scoring better
-    // here.
-    //
-    // The other direction was measured too, and the current rule is right:
-    // forcing full bandwidth (chbwcod 60) is worth -0.004 dB at 448 - the
-    // rule already reaches 59 there - and -0.83 dB at 384, where the extra
-    // band costs more in quantisation noise than the energy it recovers.
-    // Trading bandwidth for precision as the rate falls is what this does,
-    // and it is doing it correctly.
-    int chbwcod = config_.chbwcod;
-    if (chbwcod < 0) {
-        const int per_channel_kbps =
-            static_cast<int>(config_.bitrate_kbps) / std::max(nfchans, 1);
-        chbwcod = std::clamp(per_channel_kbps * 2 / 3, 24, 60);
-    }
-    assert(chbwcod >= 0 && chbwcod <= 60);
-    const int chbw_endmant = ((chbwcod + 12) * 3) + 37;
-
     // --- Block switching (§8.2.2/§7.9) --------------------------------------
     // Decided before the coupling decision below, because §8.2.4.1's basic-
     // encoder guidance excludes a block-switched channel from coupling, and
@@ -363,6 +342,130 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
     }
     AC3_ZONE_END(zone_transients);
+
+    // --- 1. MDCT per channel per block -------------------------------------
+    AC3_ZONE_BEGIN(zone_mdct, "step1_mdct");
+    // assign() keeps exactly the zero-fill the fresh vector used to provide
+    // (bins outside a stream's coded range stay zero, whether or not any
+    // reader depends on that today) - only the storage itself is the reused
+    // member (see encoder.hpp's work-buffer comment).
+    //
+    // Sized for the real channels only: whether there is a coupling stream on
+    // the end is not known yet, because the coupling decision now reads a
+    // bandwidth this transform has to produce first. Step 2 resizes when it
+    // turns out there is one - the coupling slot sits at index nchans, past
+    // everything written here, so growing the vector leaves every existing
+    // index where it was.
+    auto& coeffs = coeffs_;
+    coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
+    const auto coeffs_at = [&](int s, int block) -> std::array<double, 256>& {
+        return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
+                      static_cast<std::size_t>(block)];
+    };
+    for (int ch = 0; ch < nchans; ++ch) {
+        for (int block = 0; block < kBlocksPerFrame; ++block) {
+            auto& time = time_scratch_;
+            AC3_ZONE_BEGIN(zone_gather, "step1_gather");
+            for (int n = 0; n < 512; ++n) {
+                const int pos = block * 256 - 256 + n;
+                time[static_cast<std::size_t>(n)] =
+                    pos < 0 ? history_[static_cast<std::size_t>(ch)]
+                                      [static_cast<std::size_t>(pos + 256)]
+                            : static_cast<double>(
+                                  channels[static_cast<std::size_t>(ch)]
+                                          [static_cast<std::size_t>(pos)]);
+            }
+            AC3_ZONE_END(zone_gather);
+            auto& windowed = windowed_scratch_;
+            AC3_ZONE_BEGIN(zone_window, "step1_window");
+            apply_analysis_window(time, windowed);
+            AC3_ZONE_END(zone_window);
+            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)]) {
+                // §7.9.2: the two half-block transforms are interleaved
+                // bin-by-bin into one ordinary 256-coefficient set - from
+                // here on, exponent/bitalloc/mantissa code cannot tell this
+                // block apart from a long one.
+                const std::span<const double, 512> full(windowed);
+                auto& first = half1_scratch_;
+                auto& second = half2_scratch_;
+                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
+                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
+                auto& out = coeffs_at(ch, block);
+                for (int k = 0; k < 128; ++k) {
+                    out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
+                    out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
+                }
+            } else {
+                mdct512_forward(windowed, coeffs_at(ch, block), config_.fast_mdct);
+            }
+        }
+        for (int n = 0; n < 256; ++n) {
+            history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
+                static_cast<double>(
+                    channels[static_cast<std::size_t>(ch)][static_cast<std::size_t>(1280 + n)]);
+        }
+    }
+    AC3_ZONE_END(zone_mdct);
+
+    // Bandwidth: explicit config, or the rate AND the content. This comes
+    // before the coupling decision because coupling inherits it - see
+    // default_cplendf - and after the transform because the content half
+    // reads this frame's own spectrum.
+    //
+    // Do not tune this against the checked-in fixtures. Swept 2026-08-17 over
+    // chbwcod 24..60 at 192-640 kbit/s on both of them, and narrowing looks
+    // like a large win on every metric this repo measures: 5.1 at 448 gains
+    // 2.1 dB of SNR at chbwcod 28, and even log-spectral distance improves
+    // (5.43 -> 5.26). It is an artifact. chbwcod 28 codes to 14.7 kHz, and
+    // reference_51.wav carries 1.1e-4 of its energy above that (it is built
+    // from FIR-smoothed noise), so discarding the top 9 kHz costs almost
+    // nothing there while freeing bits everywhere else.
+    //
+    // What EQ7's own pass added is that this is NOT a property of that
+    // fixture. Re-swept 2026-08-23 on real programme material (CC0/public-
+    // domain piano, thunderstorm, church bells, speech and samba - see the
+    // PR), waveform SNR still rises monotonically as the band narrows,
+    // because the discarded energy is a vanishing fraction of the total in
+    // any natural signal too: a solo piano recording carries 3.5e-8 of its
+    // energy above 14.7 kHz, half a decade LESS than reference_51.wav's
+    // 7e-5. An SNR-led bandwidth rule narrows until it is plainly audible on
+    // any material at all. ViSQOL is what separates them, and it is
+    // emphatic - AC-3 5.1 at 448 kbit/s, real material:
+    //
+    //   chbwcod        24     28     32     40     48     59
+    //   kHz          13.6   14.7   15.8   18.1   20.3   23.4
+    //   SNR dB      26.07  25.96  25.80  25.57  25.41  25.18
+    //   MOS         3.843  4.131  4.217  4.256  4.252  4.248
+    //
+    // so the top of the band is worth about 0.4 MOS and costs 0.9 dB of SNR,
+    // and everything above 18 kHz is free either way.
+    //
+    // The rate half stays as it was, and stays a CEILING: at 192 kbit/s 5.1
+    // the same measurement runs the other way (MOS 3.145 at chbwcod 24 down
+    // to 2.411 at 59), because there the bits the top of the band costs are
+    // bits the rest of the spectrum needed. Trading bandwidth for precision
+    // as the rate falls is right, and content cannot be allowed to buy back
+    // a band the frame cannot afford.
+    //
+    // Under that ceiling the content decides, through A/52's own hearing
+    // threshold - see ac3/encoder/bandwidth.hpp for why that particular test
+    // and not an energy one. Narrowing is rate-limited so a quiet passage
+    // cannot pump the band edge; widening is immediate.
+    int chbwcod = config_.chbwcod;
+    if (chbwcod < 0) {
+        std::array<std::uint8_t, 253> peak_exponents{};
+        peak_exponents.fill(static_cast<std::uint8_t>(kMaxExponent));
+        for (int ch = 0; ch < nfchans; ++ch) {
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                encoder::accumulate_peak_exponents(coeffs_at(ch, block), peak_exponents);
+            }
+        }
+        chbwcod = encoder::choose_chbwcod(config_.bitrate_kbps, nfchans, peak_exponents,
+                                          config_.sample_rate, chbwcod_state_);
+        chbwcod_state_ = chbwcod;
+    }
+    assert(chbwcod >= 0 && chbwcod <= 60);
+    const int chbw_endmant = ((chbwcod + 12) * 3) + 37;
 
     // --- Coupling decision -------------------------------------------------
     // Coupling needs at least two full-bandwidth channels to share anything -
@@ -472,66 +575,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // curve for the offset to sit on. A sound search would have to
     // reconstruct and measure real distortion per candidate, which is a far
     // larger change than the uniform win above justifies.
-    const BitAllocCodes codes{.dbpbcod = 3};
-
-    // --- 1. MDCT per channel per block -------------------------------------
-    AC3_ZONE_BEGIN(zone_mdct, "step1_mdct");
-    // assign() keeps exactly the zero-fill the fresh vector used to provide
-    // (bins outside a stream's coded range stay zero, whether or not any
-    // reader depends on that today) - only the storage itself is the reused
-    // member (see encoder.hpp's work-buffer comment).
-    auto& coeffs = coeffs_;
-    coeffs.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
-    const auto coeffs_at = [&](int s, int block) -> std::array<double, 256>& {
-        return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
-                      static_cast<std::size_t>(block)];
-    };
-    for (int ch = 0; ch < nchans; ++ch) {
-        for (int block = 0; block < kBlocksPerFrame; ++block) {
-            auto& time = time_scratch_;
-            AC3_ZONE_BEGIN(zone_gather, "step1_gather");
-            for (int n = 0; n < 512; ++n) {
-                const int pos = block * 256 - 256 + n;
-                time[static_cast<std::size_t>(n)] =
-                    pos < 0 ? history_[static_cast<std::size_t>(ch)]
-                                      [static_cast<std::size_t>(pos + 256)]
-                            : static_cast<double>(
-                                  channels[static_cast<std::size_t>(ch)]
-                                          [static_cast<std::size_t>(pos)]);
-            }
-            AC3_ZONE_END(zone_gather);
-            auto& windowed = windowed_scratch_;
-            AC3_ZONE_BEGIN(zone_window, "step1_window");
-            apply_analysis_window(time, windowed);
-            AC3_ZONE_END(zone_window);
-            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)]) {
-                // §7.9.2: the two half-block transforms are interleaved
-                // bin-by-bin into one ordinary 256-coefficient set - from
-                // here on, exponent/bitalloc/mantissa code cannot tell this
-                // block apart from a long one.
-                const std::span<const double, 512> full(windowed);
-                auto& first = half1_scratch_;
-                auto& second = half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
-                auto& out = coeffs_at(ch, block);
-                for (int k = 0; k < 128; ++k) {
-                    out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
-                    out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
-                }
-            } else {
-                mdct512_forward(windowed, coeffs_at(ch, block), config_.fast_mdct);
-            }
-        }
-        for (int n = 0; n < 256; ++n) {
-            history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
-                static_cast<double>(
-                    channels[static_cast<std::size_t>(ch)][static_cast<std::size_t>(1280 + n)]);
-        }
-    }
-    AC3_ZONE_END(zone_mdct);
+    const BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_)};
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
+    // The coupling channel is one more stream on the end, so its coefficient
+    // slots are the growth step 1 deliberately left off (see its comment).
+    // resize() value-initializes the new slots, which is the same zero fill
+    // assign() gave every other one.
+    if (cplinu) {
+        coeffs.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    }
     // Coordinates are sent in blocks 0, 2 and 4 and reused in between
     // (§8.2.4.1); the coupling channel itself is the plain average of the
     // coupled channels the spec's basic encoder describes (§7.4.1), with the
