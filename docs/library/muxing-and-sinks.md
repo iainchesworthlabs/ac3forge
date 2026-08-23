@@ -301,7 +301,7 @@ meter.process(decoded_views);   // once per frame, planar A/52 order
 
 ```cpp
 const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];  // exact, not ballistic
-std::printf("peak %.1f dBFS  rms %.1f dBFS\n", stats.peak_db(), stats.rms_db());
+fmt::printf("peak %.1f dBFS  rms %.1f dBFS\n", stats.peak_db(), stats.rms_db());
 
 const auto energy = ac3::analysis::energy_vector(meter.levels(), acmod);
 ```

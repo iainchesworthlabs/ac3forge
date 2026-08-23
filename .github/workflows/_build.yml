@@ -400,8 +400,9 @@ jobs:
       # ---------------------------------------------------------------------
       # Toolchains
       # ---------------------------------------------------------------------
-      # gcc-16 and LLVM 22, from the scripts aqualink-automate uses to build its
-      # runner images, copied verbatim. On the pinned 26.04 container both take
+      # gcc-16 and LLVM 22, from the scripts the org-shared runner fleet repo,
+      # iainchesworthlabs/ci-runners, uses to build its own images, copied
+      # verbatim. On the pinned 26.04 container both take
       # the distribution-archive path and neither fallback runs. Each script
       # asserts its own resulting version and exits non-zero on drift.
       # `sudo` is absent in the container (already root) and required on the

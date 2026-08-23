@@ -58,7 +58,7 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -239,7 +239,7 @@ std::vector<Candidate> find_candidates() {
             .kind = kind,
             .name = alsa::config_device_name(kind, entry.card_id, index),
             .hw_name = alsa::hw_device_name(entry.card_id, entry.device),
-            .friendly = std::format("{}: {}", entry.card_name, entry.device_name),
+            .friendly = fmt::format("{}: {}", entry.card_name, entry.device_name),
         });
         ++index;
     });

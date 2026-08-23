@@ -26,7 +26,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <format>
+#include <fmt/format.h>
 #include <optional>
 #include <string>
 #include <thread>
@@ -167,7 +167,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
 // because a slave name containing its own colons and commas ("hw:CARD=PCH,
 // DEV=0") would otherwise be split into the plug plugin's own arguments.
 std::string through_plug(const std::string& name) {
-    return std::format("plug:{{SLAVE=\"{}\"}}", name);
+    return fmt::format("plug:{{SLAVE=\"{}\"}}", name);
 }
 
 }  // namespace
