@@ -281,12 +281,15 @@ TEST_CASE("AC-3 keeps the rate ceiling whatever the content") {
 }
 
 TEST_CASE("E-AC-3 narrows the coded bandwidth where it used to send 60") {
-    // 192 kbit/s stereo is 96 per channel: above both tool ceilings, so
-    // `auto` runs AHT alone and chbwcod - not coupling or spectral
-    // extension - decides the coded bandwidth. This encoder used to send a
-    // fixed 60 there whatever the material.
+    // Coupling and spectral extension off explicitly, not just left to
+    // `auto`: EQ9 made both content-aware, and a signal with nothing above
+    // 8 kHz is exactly the "top end nearly empty" case that can turn
+    // spectral extension on well below its old fixed 56 kbit/s-per-channel
+    // ceiling - which would decide the coded bandwidth itself and leave
+    // chbwcod, the thing under test here, never consulted. Forcing both
+    // tools off isolates chbwcod's own behaviour from whatever `auto`
+    // otherwise decides.
     ac3::eac3::FrameConfig auto_bw{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
-    auto_bw.auto_tools = true;
     ac3::eac3::FrameConfig fixed_60 = auto_bw;
     fixed_60.chbwcod = 60;
 

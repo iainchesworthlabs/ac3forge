@@ -1647,6 +1647,7 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     }
 
     auto patched = *frame;
+    patch_bits(patched, kDithflagBit0, 2, 0b00);  // start from dither off
     patch_bits(patched, kDithflagBit0, 1, 1);  // dithflag[0] = 1
 
     // Determinism: two independent decoders on the same patched frame
@@ -1702,12 +1703,19 @@ TEST_CASE("dithflag=1 on a coupled E-AC-3 channel dithers independently of its s
     // it only depends on which optional fields are structurally present).
     constexpr std::size_t kDithflagBit0 = 108;
 
+    // The encoder decides these flags from content now (src/forge/src/
+    // encoder/dither.hpp), so the dither-off baseline is established by hand
+    // rather than assumed from what it wrote - this test is about the
+    // decoder, and both sides of the comparison belong here.
+    auto cleared = *frame;
+    patch_bits(cleared, kDithflagBit0, 2, 0b00);
+
     ac3::Eac3Decoder baseline_decoder;
-    const auto baseline = baseline_decoder.decode_substream(*frame);
+    const auto baseline = baseline_decoder.decode_substream(cleared);
     REQUIRE(baseline.has_value());
     REQUIRE(baseline->has_value());
 
-    auto patched = *frame;
+    auto patched = cleared;
     patch_bits(patched, kDithflagBit0, 2, 0b11);  // dithflag[0] = dithflag[1] = 1
 
     ac3::Eac3Decoder decoder;

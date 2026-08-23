@@ -23,7 +23,7 @@ for (int frame = 0; frame < 31; ++frame) {  // 48000 / 1536, near enough
 
     const auto encoded = encoder->encode_frame(views);
     if (!encoded) {
-        std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+        fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
         return 1;
     }
     write(stream, *encoded);  // one complete syncframe
@@ -114,6 +114,22 @@ information broke the tightest coupling budgets — exactly the rates coupling e
 and both encoders treat delta as a pure quality refinement — when its side-information cost would
 make an otherwise-fittable frame fail to fit, the corrections are dropped and the frame
 re-measured rather than refused.
+
+### Dither substitution
+
+Automatic as well (§7.3.4) — no config field. `dithflag` is one bit per full-bandwidth channel
+per block and is transmitted whichever way it reads, so the decision costs nothing; what it
+decides is what the decoder puts in the bins the allocator gave no bits to. Per channel per
+block, the encoder sums the real coefficient energy over those bins and compares it against the
+energy the dither would replace it with (a uniform ±0.707 draw at the bin's own exponent scale,
+§7.3.4's own recommended scaling), and sets the flag only when the first is at least as large as
+the second — cover a hole, never paper over silence. Digital silence therefore always reads
+clear, and a block-switched channel is excluded outright: two interleaved half transforms share
+one coefficient set there, so a zero-bit slot is really two half-block bins and filling it
+smears noise across the transient. The LFE has no `dithflag` at all (§5.4.3.2's loop is over
+full-bandwidth channels), and a coupled channel is judged over both regions it receives — its own
+spectrum and the shared coupling channel's band, whose zero-bit bins the decoder dithers per
+*receiving* channel.
 
 ### Rematrixing
 
