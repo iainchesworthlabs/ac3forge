@@ -107,8 +107,10 @@ jobs:
       # A venv rather than a bare pip install, for the same PEP 668 reason as
       # ci.yml's script-lint job. requirements/requirements-pytest.txt is a
       # pip-compile --generate-hashes lock like the other three under
-      # requirements/, so the test tooling is pinned; the wheel itself is
-      # installed from wheelhouse/ and brings its own declared numpy.
+      # requirements/, so pytest, its coverage plugin and the wheel's own numpy
+      # dependency are all pinned by hash before the wheel is installed
+      # offline on top - see that .in file's header for why numpy is satisfied
+      # here rather than left to pip during the wheel install.
       - name: Install the wheel and the pinned test tooling
         shell: bash
         run: |
@@ -117,7 +119,17 @@ jobs:
           .pyvenv/bin/python -m pip install --quiet --upgrade pip
           .pyvenv/bin/python -m pip install --quiet --require-hashes \
             -r requirements/requirements-pytest.txt
-          .pyvenv/bin/python -m pip install --quiet wheelhouse/*.whl
+          # --find-links, not `pip install wheelhouse/*.whl`: cibuildwheel
+          # produces one wheel per interpreter (cp310-cp314), so the glob would
+          # hand pip five files and four of them are "not a supported wheel on
+          # this platform" for whatever Python the runner image ships. Naming
+          # the project and pointing pip at the directory lets it pick the one
+          # that matches, whichever that turns out to be. --no-index so it can
+          # only ever pick from wheelhouse/ - with the index reachable, pip
+          # would be free to prefer a released ac3forge from PyPI over the
+          # locally built wheel this job exists to measure.
+          .pyvenv/bin/python -m pip install --quiet --no-index \
+            --find-links wheelhouse ac3forge
           .pyvenv/bin/python -c "import ac3forge; print(ac3forge.__version__)"
 
       # --cov-fail-under is the gate. The floor is deliberately well under the
