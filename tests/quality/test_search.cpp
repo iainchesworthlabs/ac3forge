@@ -112,7 +112,7 @@ std::vector<std::vector<std::byte>> encode_all(const ac3::EncoderConfig& config,
 TEST_CASE("the encoder's model still matches a real decode with the search on",
           "[quality][search]") {
     const auto stereo = make_material(2);
-    const auto surround = make_material(5);
+    const auto surround = make_material(6);  // 5 fbw + LFE
     for (const auto criterion : {ac3::quality::Criterion::kDistortion,
                                  ac3::quality::Criterion::kPerceptual}) {
         for (const std::uint32_t kbps : {192U, 448U}) {

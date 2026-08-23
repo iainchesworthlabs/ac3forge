@@ -180,13 +180,35 @@ struct NoiseToMask {
     // not the ratio of the sums: a loud band with slack must not be allowed
     // to pay for a quiet band that is over threshold, which is precisely
     // the failure the composite SNR offset already has.
+    //
+    // A reporting number, not a search objective - see `audible_bits`.
     double mean_db = 0.0;
     // The worst single band, and which one. What a listener meets first.
     double worst_db = 0.0;
     int worst_band = -1;
     // Bands that carried signal and so contributed. Zero means nothing was
-    // coded, and both numbers above are then 0.
+    // coded, and every number above is then 0.
     int bands = 0;
+    // THE SEARCH OBJECTIVE: sum over bands of n_b * log2(1 + N_b / T_b),
+    // with n_b the band's width in transform bins. Johnston's perceptual
+    // entropy applied to the ERROR rather than to the signal - an estimate
+    // of how many bits of audible information the reconstruction gets
+    // wrong.
+    //
+    // `mean_db` was tried as the objective first and is the wrong shape for
+    // one, in two ways that both push the same direction. A mean over the
+    // 50 bands weights them equally, but Table 7.13's first 37 bands are one
+    // bin each and the last 13 cover about 216 between them - so an
+    // unweighted mean hands 74% of the vote to the bottom 3.5 kHz. And a
+    // mean of raw RATIOS is dominated by its largest term, so one quiet band
+    // with a small threshold decides the whole frame. Measured on real
+    // programme material, a search minimising it chose dbpbcod 2 over 3 in
+    // 45% of frames - the value this encoder's own sweep found worse at
+    // every rate - and lost 0.05 MOS for it. Weighting by width and taking
+    // the log of each ratio fixes both: a band's say is proportional to how
+    // much spectrum it is, and a band 40 dB over threshold counts for more
+    // than one 10 dB over without counting for a thousand times more.
+    double audible_bits = 0.0;
 };
 
 // `threshold` is normally a sum of BlockAnalysis::threshold over the same

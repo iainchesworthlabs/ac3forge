@@ -71,6 +71,7 @@ struct PerceptualModel::Impl {
     // Band geometry for this sample rate.
     std::array<double, kBands> centre_hz{};
     std::array<double, kBands> centre_bark{};
+    std::array<double, kBands> width_bark{};      // the band's own span in Bark
     std::array<double, kBands> absolute_power{};  // per LINE, coefficient power
 
     // Row b of the spreading matrix: the bands that mask band b, as a
@@ -112,6 +113,14 @@ void PerceptualModel::Impl::build_geometry(SampleRate sample_rate) {
         // k * rate / 512.
         centre_hz[b] = (start + (size / 2.0)) * rate / 512.0;
         centre_bark[b] = bark_of(centre_hz[b]);
+        // And its span, which is the number the spreading below actually
+        // needs. Table 7.13's bands are nothing like equal on this scale:
+        // band 0 is one bin covering 0.93 Bark, band 49 is twelve bins
+        // covering 0.08. A floor keeps the reciprocal finite for any
+        // sample rate.
+        const double low = bark_of(start * rate / 512.0);
+        const double high = bark_of((start + size) * rate / 512.0);
+        width_bark[b] = std::max(high - low, 1e-3);
     }
 
     for (std::size_t b = 0; b < kBands; ++b) {
@@ -137,15 +146,36 @@ void PerceptualModel::Impl::build_geometry(SampleRate sample_rate) {
             }
             const double linear = std::pow(10.0, db / 10.0);
             weight[b][source] = linear;
-            sum += linear;
+            // Weighted by the SOURCE band's Bark width, which is what makes
+            // the normalisation below partition-consistent.
+            sum += linear * width_bark[source];
             row.first = std::min(row.first, static_cast<int>(source));
             row.last = std::max(row.last, static_cast<int>(source));
         }
         // MPEG-1 model 2 renormalises the spread energy by the spreading
-        // function's own gain; without it a flat spectrum would produce an
-        // excitation several times its own energy and every threshold would
-        // be inflated by a constant nobody chose.
-        row.normalisation = sum > 0.0 ? 1.0 / sum : 1.0;
+        // function's own gain, so that a flat spectrum produces an
+        // excitation equal to its own energy rather than several times it.
+        // It divides by the plain row sum, which is right for ITS partitions
+        // - Annex D's are about a third of a Bark each and near enough
+        // uniform - and wrong for A/52's, which vary twelvefold in Bark
+        // width across the band (0.93 at DC, 0.08 at 23 kHz).
+        //
+        // With a plain row sum on partitions that unequal, the excitation of
+        // a band is compared against a weighted MEAN band width rather than
+        // against its own: wide low bands come out over-demanded and narrow
+        // high bands under-demanded, by up to about 11 dB across the range.
+        // Measured, that starves the top of the spectrum - the search
+        // preferred dbpbcod 2, log-spectral distance rose 0.45 dB and SNR
+        // fell over a decibel.
+        //
+        // Weighting the sum by each source band's Bark width, and scaling
+        // the result by this band's own, is the density form of the same
+        // expression: the spread quantity is energy per Bark, and a band's
+        // share of it is its own width. A flat spectral density then
+        // reproduces itself in every band whatever the partition, which is
+        // the property Annex D's normalisation is reaching for and gets by
+        // assuming the partitions are uniform.
+        row.normalisation = sum > 0.0 ? width_bark[b] / sum : 1.0;
         if (row.last < row.first) {
             row.first = static_cast<int>(b);
             row.last = static_cast<int>(b);
@@ -339,6 +369,13 @@ NoiseToMask noise_to_mask(const BandNoise& measured, std::span<const double> thr
         const double ratio = measured.noise[b] / threshold[b];
         sum += ratio;
         ++result.bands;
+        // Table 7.13's own width. The topmost coded band may be cut short by
+        // endmant, so its weight can be over-stated by up to eleven bins out
+        // of the ~250 a channel codes; carrying the exact coded width would
+        // mean threading it through every caller for a correction smaller
+        // than the model's own approximations.
+        const double width = tables::kBandSize[b];
+        result.audible_bits += width * std::log2(1.0 + ratio);
         if (result.worst_band < 0 || ratio > worst) {
             worst = ratio;
             result.worst_band = static_cast<int>(b);

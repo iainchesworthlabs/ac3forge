@@ -105,13 +105,21 @@ both encoders decide from content rather than from the bit rate.
   per-frame quality knob (`VbrConfig`) with no race leg, no trend row and no measured
   rate-distortion curve; add a sweep mode to `quality_race.py`, then a long-run average-rate
   (ABR) mode with a bit reservoir, which is what a streaming ladder or a mux actually asks for.
-- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model.
-  `encoder.cpp` records that the only in-loop quality criterion is the composite SNR offset, and
-  that both earlier attempts to search per-frame bit-allocation codes and exponent strategies
-  failed for exactly that reason. `ac3::verify` already models the decoder's reconstruction; a
-  per-candidate distortion measure on top of it lets the transmitted knobs (EQ2, EQ5, EQ7, delta
-  segments) be chosen on real error, and a tonality/masking estimate can drive them. Last in the
-  theme; needs VX6 and VX7 to validate on anything other than fixture SNR.
+- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
+  measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
+  against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
+  model), wired into a per-frame `dbpbcod`/`fgaincod` search (`EncoderConfig::search`) with real
+  hysteresis, and validated on real CC0/CC-BY material (not fixture SNR - VX6/VX7's own gap,
+  closed locally for this) against FFmpeg's decode by SNR/LSD/ViSQOL. The distortion criterion is
+  a real win from 448 kbit/s up; at 192 it trades SNR against per-band shape and currently
+  costs more than it buys. The perceptual criterion currently loses at every rate tested - its
+  model is validated in isolation but not yet calibrated well enough to beat the fixed defaults
+  on real material with rematrixing active. Both stay off by default. What's NOT done: neither
+  criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet (only the two `BitAllocCodes` fields
+  the encoder's own dead-end comment named), E-AC-3 isn't wired (needs EQ3), and the perceptual
+  model needs further calibration before it is worth turning on. See
+  [docs/library/quality.md](docs/library/quality.md) and
+  [docs/library/encoding-ac3.md § Decision search](docs/library/encoding-ac3.md#decision-search).
 
 ## DC. Decoder and consumer output
 

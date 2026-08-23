@@ -12,6 +12,42 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **`ac3::quality`: decoded-domain distortion measurement and a psychoacoustic model** (`EQ13`).
+  `encoder.cpp` has recorded, since the dbpbcod/exponent-strategy work, that a per-frame search
+  over the transmitted bit allocation parameters was tried twice and rejected both times: the
+  only in-loop criterion available was the composite SNR offset, and that number is not
+  comparable between two candidates that produce different masking curves. `ac3::quality`
+  supplies the missing criterion - the error a decoder will actually reconstruct, computed
+  without decoding by evaluating §7.3's quantizers in closed form on the encoder's own
+  coefficients, decoded exponents and bit allocation (pinned bit-exact against the real
+  quantize/dequantize pair over the whole mantissa range) - plus a tonality/masking model
+  (Johnston's perceptual entropy, MPEG-1 model 2's unpredictability-based tonality, Schroeder/
+  Zwicker-Terhardt spreading, a measured-and-capped absolute threshold) that prices what the
+  first measure finds against what the signal can actually hide.
+  See [docs/library/quality.md](docs/library/quality.md).
+- **`EncoderConfig::search`**: a per-frame search over `dbpbcod`/`fgaincod` (six candidates,
+  including the no-search defaults), judged by the measure above and gated by real hysteresis
+  (the incumbent is the previous frame's winner, not a fixed baseline, so two near-equal
+  candidates don't retrigger every frame). `kNone` by default; `kDistortion` and `kPerceptual`
+  turn it on (`ac3cli encode ... search=distortion|perceptual`). AC-3 only - E-AC-3's `bamode=0`
+  pins the same parameters and needs `EQ3`'s syntax work first.
+  Validated on CC0/CC-BY programme material (not the checked-in band-limited fixtures) against
+  FFmpeg's decode, scored by SNR/log-spectral distance/ViSQOL MOS-LQO: `kDistortion` is a real,
+  repeatable win from 448 kbit/s up (SNR +0.4 to +0.8 dB, LSD and MOS improved on every material
+  tested); at 192 kbit/s its own criterion still improves but trades SNR against per-band spectral
+  shape, and that trade currently costs LSD and MOS more than it buys back. `kPerceptual`
+  currently loses at every rate tested - real evidence that its psychoacoustic model, though
+  validated in isolation (discriminates tone/noise/transient correctly, calibrated to this
+  project's own transform), is not yet calibrated well enough to beat a well-tuned fixed default
+  on real stereo material with rematrixing active. Both stay off by default. Validated in stereo
+  only - the search's mechanism is proven correct at 3/2+LFE by the mirror self-check, but
+  external-metric validation on real 5.1 material hit a measurement-harness alignment problem this
+  round ran out of time to resolve; left for a follow-up. See
+  [docs/library/encoding-ac3.md § Decision search](docs/library/encoding-ac3.md#decision-search)
+  for the full table and the reproduction command.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

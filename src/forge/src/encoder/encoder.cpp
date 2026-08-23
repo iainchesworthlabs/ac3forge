@@ -232,11 +232,12 @@ struct FrameEncoder::PlanScratch {
     // spectrum would be extrapolated from a spectrum belonging to a
     // different signal.
     bool coupled_last_frame = false;
-    // Per stream: the measured reconstruction noise at the allocation
-    // run_bap currently holds, and the frame's summed masking thresholds.
-    // Per stream rather than summed across them for the same reason
-    // noise_to_mask averages ratios rather than dividing sums - a channel
-    // with slack must not pay for a channel without.
+    // Per (stream, block): the measured reconstruction noise at the
+    // allocation run_bap currently holds, and the masking thresholds it is
+    // judged against. Split that finely for the same reason noise_to_mask
+    // weighs bands separately rather than dividing sums - a channel with
+    // slack must not pay for a channel without, and neither must a loud
+    // block for a quiet one.
     std::vector<quality::BandNoise> measured;
     std::vector<std::array<double, quality::kBands>> thresholds;
     quality::BlockAnalysis analysis;
@@ -1632,17 +1633,25 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // the error the decoder will reconstruct.
     if (config_.search != quality::Criterion::kNone) {
         AC3_ZONE_SCOPED_N("step9a_codes_search");
+        // Per (stream, block), not per stream. Masking is a within-block
+        // phenomenon, and a frame-summed threshold would let a loud block's
+        // slack pay for a quiet block's excess - the same failure
+        // noise_to_mask avoids across bands and the per-stream split avoids
+        // across channels.
+        const auto slot_count = static_cast<std::size_t>(streams) * kBlocksPerFrame;
         auto& measured = scratch_->measured;
-        measured.resize(static_cast<std::size_t>(streams));
+        measured.resize(slot_count);
+        const auto slot_of = [&](int s, int block) {
+            return static_cast<std::size_t>(s) * kBlocksPerFrame +
+                   static_cast<std::size_t>(block);
+        };
 
         // The measurement at whatever allocation run_bap currently holds -
-        // which, after a settle(), is the winning composite offset's. Six
-        // blocks per stream, summed, because that is the span the frame's
-        // one set of codes governs.
+        // which, after a settle(), is the winning composite offset's.
         const auto measure = [&] {
             AC3_ZONE_SCOPED_N("step9a_measure");
-            for (int s = 0; s < streams; ++s) {
-                measured[static_cast<std::size_t>(s)].reset();
+            for (auto& slot : measured) {
+                slot.reset();
             }
             for (int block = 0; block < kBlocksPerFrame; ++block) {
                 for (int s = 0; s < streams; ++s) {
@@ -1651,14 +1660,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         p.run_of_block[static_cast<std::size_t>(block)]);
                     const int begin = stream_start(s);
                     const int end = stream_end(s);
-                    const std::size_t base =
-                        fixed_base[static_cast<std::size_t>(s) * kBlocksPerFrame +
-                                   static_cast<std::size_t>(block)];
                     quality::accumulate_block(
                         std::span<const std::int32_t>(fixed).subspan(
-                            base, static_cast<std::size_t>(end - begin)),
+                            fixed_base[slot_of(s, block)],
+                            static_cast<std::size_t>(end - begin)),
                         p.runs[run].decoded, run_bap[static_cast<std::size_t>(s)][run], begin,
-                        end, measured[static_cast<std::size_t>(s)]);
+                        end, measured[slot_of(s, block)]);
                 }
             }
         };
@@ -1682,7 +1689,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
             scratch_->coupled_last_frame = cplinu;
 
-            thresholds.assign(static_cast<std::size_t>(streams), {});
+            thresholds.assign(slot_count, {});
             auto& analysis = scratch_->analysis;
             // Block-outer, stream-inner: analyse() advances one channel's
             // history by exactly one block, so each stream's calls have to
@@ -1690,53 +1697,90 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             for (int block = 0; block < kBlocksPerFrame; ++block) {
                 for (int s = 0; s < streams; ++s) {
                     model.analyse(s, coeffs_at(s, block), stream_end(s), analysis);
-                    for (std::size_t b = 0; b < static_cast<std::size_t>(quality::kBands); ++b) {
-                        thresholds[static_cast<std::size_t>(s)][b] += analysis.threshold[b];
-                    }
+                    thresholds[slot_of(s, block)] = analysis.threshold;
                 }
             }
         }
 
         // Lower is better, in dB, for both criteria - so the switch margin
-        // below is one constant that means the same thing either way.
+        // below is one constant that means the same thing either way. The
+        // perceptual criterion's own quantity is a bit count rather than a
+        // ratio, so it is put on a log scale here for that reason alone: a
+        // 0.05 dB margin is then about 1.2% either way.
         const auto score = [&]() -> double {
             measure();
             if (config_.search == quality::Criterion::kDistortion) {
-                double signal = 0.0;
-                double noise = 0.0;
+                // Per STREAM, mean of the ratios - not one ratio of pooled
+                // power across every stream. Rematrixing and coupling both
+                // routinely leave one stream far quieter than another (a
+                // rematrixed difference channel against its sum, a coupled
+                // channel's shared high band against a full-bandwidth low
+                // one), and a pooled ratio is dominated by whichever stream
+                // is loudest: a candidate could serve the quiet stream worse
+                // while barely moving the pooled number, because the quiet
+                // stream's absolute noise is small next to the loud
+                // stream's. That is the exact "loud pays for quiet" failure
+                // noise_to_mask's own mean-of-ratios exists to avoid one
+                // level down (across bands) - measured on real 2/0 material
+                // with rematrixing active, pooling here cost 1.8 dB of SNR
+                // and 0.45 dB of log-spectral distance against a mono
+                // control (no rematrixing) that showed neither.
+                double sum_ratio = 0.0;
+                int counted = 0;
                 for (int s = 0; s < streams; ++s) {
-                    signal += measured[static_cast<std::size_t>(s)].total_signal();
-                    noise += measured[static_cast<std::size_t>(s)].total_noise();
+                    double signal = 0.0;
+                    double noise = 0.0;
+                    for (int block = 0; block < kBlocksPerFrame; ++block) {
+                        const auto& slot = measured[slot_of(s, block)];
+                        signal += slot.total_signal();
+                        noise += slot.total_noise();
+                    }
+                    if (signal > 0.0) {
+                        sum_ratio += noise / std::max(signal, 1e-300);
+                        ++counted;
+                    }
                 }
-                if (signal <= 0.0 || noise <= 0.0) {
+                if (counted == 0) {
                     return -quality::kMaxSnrDb;
                 }
-                return 10.0 * std::log10(noise / signal);  // noise-to-signal
+                return 10.0 * std::log10(sum_ratio / counted);  // mean noise-to-signal
             }
-            double sum = 0.0;
-            int counted = 0;
-            for (int s = 0; s < streams; ++s) {
-                const auto nmr = quality::noise_to_mask(measured[static_cast<std::size_t>(s)],
-                                                        thresholds[static_cast<std::size_t>(s)]);
-                if (nmr.bands > 0) {
-                    sum += nmr.mean_db;
-                    ++counted;
-                }
+            double bits = 0.0;
+            for (std::size_t slot = 0; slot < slot_count; ++slot) {
+                bits += quality::noise_to_mask(measured[slot], thresholds[slot]).audible_bits;
             }
-            return counted > 0 ? sum / counted : 0.0;
+            // Summed, not averaged: these are bits of audible error, and the
+            // frame's total is what a listener meets. A floor keeps a
+            // transparent frame off the log's asymptote without ever being
+            // reachable by a frame that has any audible error at all.
+            constexpr double kBitsFloor = 1e-6;
+            return 10.0 * std::log10(std::max(bits, kBitsFloor));
         };
 
-        // `codes` is still the defaults here and settle() has already run at
-        // them, so the incumbent is scored without a second settlement.
+        // The incumbent is the PREVIOUS FRAME's winning codes, not the fixed
+        // defaults `codes` currently holds - see previous_codes_'s own
+        // comment on FrameEncoder for why: comparing every frame against the
+        // same fixed baseline gives "stay where you were" no advantage over
+        // switching, which turns the margin below into real hysteresis
+        // instead of a per-frame coin flip. `codes` is still the defaults
+        // here and `settlement` already reflects them from the search that
+        // ran above this point, so the extra settlement below runs only when
+        // the previous frame actually chose something else.
         const BitAllocCodes defaults = codes;
-        BitAllocCodes best_codes = defaults;
+        const BitAllocCodes incumbent = previous_codes_;
+        codes = incumbent;
+        if (!(incumbent == defaults)) {
+            seed_coupling_leaks();
+            settlement = settle();
+        }
+        BitAllocCodes best_codes = incumbent;
         Settlement best_settlement = settlement;
         double best = score();
-        BitAllocCodes last_tried = defaults;
+        BitAllocCodes last_tried = incumbent;
 
         for (const BitAllocCodes& candidate : kCodeCandidates) {
-            if (candidate == defaults) {
-                continue;  // the incumbent, already scored
+            if (candidate == incumbent) {
+                continue;  // already scored above
             }
             codes = candidate;
             seed_coupling_leaks();
@@ -1768,6 +1812,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             seed_coupling_leaks();
             settlement = settle();
         }
+        previous_codes_ = best_codes;
     }
 
     const int lo = settlement.composite;

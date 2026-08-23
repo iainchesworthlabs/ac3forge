@@ -51,6 +51,7 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `drc2` | none | `std::optional<meta::Profile>`. Ch2's own DRC, meaningful only under `kDualMono` — no fallback to `drc` when unset (see below). |
 | `heavy2` | none | `std::optional<meta::HeavyConfig>`. Ch2's own heavy compression, same rule as `drc2`. |
 | `cmixlev`, `surmixlev` | −4.5 dB, −6 dB | Tables 5.9/5.10. Always define the §7.8 downmix, whatever `acmod` is. |
+| `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit allocation parameters, judged on the error the decoder will reconstruct — see below. `kDistortion` or `kPerceptual` turn it on; the CLI spells it `search=distortion` / `search=perceptual`. |
 
 Coupling is what makes 5.1 viable below 448 kbit/s: above the coupling frequency the
 full-bandwidth channels stop carrying their own coefficients and share one coupling channel
@@ -80,6 +81,84 @@ information broke the tightest coupling budgets — exactly the rates coupling e
 and both encoders treat delta as a pure quality refinement — when its side-information cost would
 make an otherwise-fittable frame fail to fit, the corrections are dropped and the frame
 re-measured rather than refused.
+
+### Decision search
+
+Off by default (`EncoderConfig::search`). With it on, the encoder stops taking §7.2.2's bit
+allocation parameters as given and chooses them per frame, from the error a decoder will actually
+reconstruct — measured by [`ac3::quality`](quality.md) without decoding anything.
+
+The candidates are `dbpbcod` {2, 3} × `fgaincod` {1, 2, 4}, six in all, of which the no-search
+defaults are one. The other four parameters are left fixed on measured evidence: `floorcod` is
+inert (the floor never binds at any rate on any material tried, so all eight values encode
+identically) and `sdcycod`/`fdcycod`/`sgaincod` move the result by tenths. `fgaincod` is the one
+the fixed rules could never settle — 1 is worth about +2 dB at 448 and +7 dB at 640 kbit/s and
+*regresses* at 192 — so instead of a rate rule it is asked of each frame directly.
+
+Two criteria, because they are different questions rather than two points on one scale:
+
+- **`kDistortion`** minimises the reconstruction noise power. Honest and cheap, and still a
+  waveform criterion — it prices a decibel in a band nobody can hear the same as a decibel in one
+  they can.
+- **`kPerceptual`** minimises the noise-to-mask ratio against the tonality/masking model, which
+  costs the psychoacoustic analysis on top. That analysis runs once per frame rather than once per
+  candidate: it describes the *signal*, and no choice of codes changes that.
+
+The incumbent for that comparison is the PREVIOUS frame's winner, not the fixed defaults - a
+candidate has to beat it by 0.05 dB to displace it. Comparing every frame against a fixed baseline
+instead of the running choice was tried first and measurably cost stability: on real programme
+material it switched on about a fifth of all frames, most of them a single frame reverting the
+next, each one moving the masking curve for 32 ms. Carrying the winner forward gives "stay" a
+standing zero-cost option, which is what turns the margin into real hysteresis.
+
+The delta-bit-allocation on/off race below is decided the same way when the search is on: on
+measured error rather than on which pass reached the higher composite SNR offset.
+
+### Measured, not assumed
+
+Validated on CC0/CC-BY programme material (Bach piano, Blender's *Sintel* film mix) rather than
+the checked-in band-limited fixtures, decoded through FFmpeg and scored against the original by
+SNR, log-spectral distance and ViSQOL MOS-LQO (`tools/ci/quality_race.py`'s own scoring, reused
+rather than re-invented):
+
+| Material | Rate | Criterion | ΔSNR | ΔLSD | ΔMOS |
+|---|---|---|---|---|---|
+| film (stereo) | 192 kbit/s | `kDistortion` | +0.02 dB | +0.38 (worse) | −0.05 |
+| film (stereo) | 448 kbit/s | `kDistortion` | **+0.82 dB** | **−0.03 (better)** | **+0.02** |
+| piano (stereo) | 192 kbit/s | `kDistortion` | +0.50 dB | +1.22 (worse) | −0.01 |
+| piano (stereo) | 448 kbit/s | `kDistortion` | **+0.36 dB** | **−0.01 (better)** | flat |
+| piano (stereo) | 192 kbit/s | `kPerceptual` | −0.40 dB | +1.35 (worse) | −0.01 |
+| piano (stereo) | 448 kbit/s | `kPerceptual` | −0.54 dB | flat | flat |
+| film (stereo) | 192 kbit/s | `kPerceptual` | −2.18 dB | +0.46 (worse) | −0.06 |
+| film (stereo) | 448 kbit/s | `kPerceptual` | −1.30 dB | flat | flat |
+
+`kDistortion` is a genuine, repeatable win at 448 kbit/s and above on every material and metric
+measured - the "structural unlock" this search exists to deliver. At the tighter 192 kbit/s budget
+its own criterion still improves (that is what it optimises: `kDistortion`'s score is the MEAN of
+each stream's own noise-to-signal ratio, not one ratio of power pooled across streams - a pooled
+ratio was tried first and let a loud rematrixed channel's outcome dominate a quiet one's the same
+way the composite SNR offset already does, which is exactly the failure this measure exists to
+avoid), but the improvement is small enough that redistributing bits away from `dbpbcod`'s
+quiet-band floor costs more in per-band spectral shape (LSD) and ViSQOL's opinion than the SNR
+gains back - a real tradeoff the composite SNR offset could never have surfaced, not a bug in the
+measurement. `kPerceptual` currently loses outright at every rate tested: its own objective
+correctly discounts already-masked headroom, which gives it much thinner decision margins than raw
+distortion, and on real stereo material with rematrixing active those thin margins are landing on
+the wrong side of what external metrics prefer. Both stay off by default; `kDistortion` is the one
+with evidence to turn on, and only where the material and rate resemble what was measured here.
+
+5.1 is not in the table above: the mirror self-check proves the search's mechanism correct at
+`Acmod::k3_2` + LFE (same candidates, same settlement, same re-settle-on-mismatch path
+`tests/quality/test_search.cpp` exercises for stereo), but external-metric validation on real 5.1
+material hit a measurement-harness alignment problem this session ran out of time to resolve, not
+an encoder defect. Left for a follow-up.
+
+See `docs/library/quality.md` for
+the model and the reproduction commands.
+
+Frame sizes are unaffected — every one of these codes is a fixed-width field, so no candidate can
+cost or save a byte. E-AC-3 does not have this: it sends `bamode = 0`, which pins `dbpbcod`, so
+carrying per-frame codes at all needs syntax the E-AC-3 encoder does not emit yet.
 
 ### Rematrixing
 
