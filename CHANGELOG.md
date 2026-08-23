@@ -57,6 +57,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   not on the list" (no public specification); an IAB (SMPTE ST 2098-2) reader replaces it now
   that SMPTE's catalogue is free.
 
+### Added
+
+- **`dither=off` / `nodither`** (`EncoderConfig::dither`, `eac3::FrameConfig::dither`,
+  `plan::Tools::dither`) pins §7.3.4 `dithflag` at 0 unconditionally, the deterministic behaviour
+  from before content-decided dither existed. Real dither values are decoder-defined - two
+  independent, spec-correct decoders given the same dithered stream diverge in the dithered bins
+  by design - so this exists for the one caller that needs bit-for-bit agreement between two
+  decodes of the same bitstream more than it needs dither's own perceptual benefit:
+  `tools/checks/verify_gold_reference.sh`, whose 55 dB decoder-agreement gate content-decided
+  dither would otherwise fail on legitimate, spec-permitted divergence rather than a real bug.
+  AC-3 has no `tools=` string, so `dither=off` is the CLI option surface `fast-mdct=off` already
+  established there; E-AC-3's `tools=` string takes the equivalent bare `nodither` token.
+
 ### Fixed
 
 - **E-AC-3 `snroffststr` 0x2 read the wrong fields.** The per-channel fine-offset strategy's

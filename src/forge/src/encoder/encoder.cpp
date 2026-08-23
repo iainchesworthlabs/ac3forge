@@ -1533,8 +1533,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // spectrum up to cplstrtmant, then the shared coupling channel's band,
     // whose zero-bap bins the decoder dithers per RECEIVING channel (§7.3.4's
     // "uncorrelated" requirement) and therefore under this channel's flag.
+    //
+    // config_.dither is on by default; the whole loop below is skipped when
+    // it is not, leaving dithflag at its all-false default - the
+    // deterministic behaviour from before this feature existed, for a caller
+    // that needs bit-for-bit agreement with an external decoder more than it
+    // needs the flag itself (see EncoderConfig::dither's own comment).
     AC3_ZONE_BEGIN(zone_dither, "step9a_dither_flags");
-    for (int ch = 0; ch < nfchans; ++ch) {
+    for (int ch = 0; ch < nfchans && config_.dither; ++ch) {
         const auto& p = plan[static_cast<std::size_t>(ch)];
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto run = static_cast<std::size_t>(

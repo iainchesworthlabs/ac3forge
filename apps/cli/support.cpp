@@ -126,6 +126,13 @@ void print_meta_usage() {
                  "fast-imdct=off still adjusts one half on its own");
     std::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
                  "(mode=reference's decode half); bare fast-imdct names the default");
+    std::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
+                 "channel per block from content - applies wherever this command encodes, "
+                 "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "
+                 "has the equivalent bare nodither token instead. Real dither values are "
+                 "decoder-defined, so this is for a run that needs bit-for-bit agreement "
+                 "with another decoder more than it needs dither's own perceptual benefit "
+                 "(tools/checks/verify_gold_reference.sh is the one that does)");
     std::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                  "signature (needs signing-key=); see docs/concepts/object-signing.md");
     std::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
@@ -225,6 +232,20 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             std::println(stderr,
                          "error: the fast IMDCT is the default; 'fast-imdct=off' forces the "
                          "direct §7.9.4 step-3 evaluation (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "dither") {
+            // No bare-word form: unlike fast-mdct, dither has no prior
+            // opt-in spelling to keep parsing, so only the value form -
+            // the direction that still needs saying - exists at all.
+            if (value == "off") {
+                out.dither = false;
+                continue;
+            }
+            std::println(stderr,
+                         "error: dither is content-decided by default; 'dither=off' pins "
+                         "dithflag at 0 unconditionally (got '{}')",
                          token);
             return false;
         }

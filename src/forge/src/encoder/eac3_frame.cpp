@@ -2776,7 +2776,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // codebase has been bitten by before. Dither therefore stays off for a
     // frame that uses spectral extension, and the two models stay coherent by
     // construction.
-    if (!spx.in_use) {
+    //
+    // config_.dither is on by default; when it is not, the loop below never
+    // runs and payload.dithflag keeps the all-false state reset_for_frame
+    // leaves it in - the deterministic behaviour from before this feature
+    // existed, for a caller that needs bit-for-bit agreement with an
+    // external decoder more than it needs the flag itself (see
+    // FrameConfig::dither's own comment).
+    if (config_.dither && !spx.in_use) {
         AC3_ZONE_SCOPED_N("step8a_dither_flags");
         // cpl_stream is -1 when nothing couples, so the plan is only named
         // where it exists.
