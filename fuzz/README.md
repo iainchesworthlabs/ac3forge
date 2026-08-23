@@ -268,8 +268,8 @@ python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
 
 Failing inputs are kept under `fuzz-eac3-encoder-artifacts/` (gitignored, and
 regenerable from the seed). Both harnesses run bounded in `ci.yml`'s
-ffmpeg-validate job on every pull request and deeper in this file's
-`encoder-space-nightly` job.
+`ffmpeg-validate` job on every pull request, and deeper in `fuzz.yml`'s
+`encoder-space-nightly` job, which has a separate dispatch budget for each.
 
 ## Running locally
 
@@ -356,11 +356,17 @@ gitignored; `fuzz/run.sh` creates it on demand.
 - `fuzz-nightly` - a 10-minute-per-harness mutation budget on a daily
   schedule, plus `workflow_dispatch` with a configurable budget for an
   on-demand deeper run. Crash-only harnesses only - see `fuzz-differential`.
-- `encoder-space-nightly` - the encoder input-space search above, on the same
-  daily schedule and `workflow_dispatch`, with a 15-minute default budget.
-  Shares none of the machinery of the other four (no libFuzzer, no sanitizer
-  runtime, not in `fuzz/run.sh`): it builds the plain `linux-llvm` CLI with
-  vcpkg and a pinned `ffmpeg`, the way `ci.yml`'s `ffmpeg-validate` job does.
+- `encoder-space-nightly` - the encoder input-space searches above, both of
+  them, on the same daily schedule and `workflow_dispatch`, with a 15-minute
+  default budget each (`encoder_space_seconds` and
+  `eac3_encoder_space_seconds`). Shares none of the machinery of the other
+  four (no libFuzzer, no sanitizer runtime, not in `fuzz/run.sh`): it builds
+  the plain `linux-llvm` CLI with vcpkg and a pinned `ffmpeg`, the way
+  `ci.yml`'s `ffmpeg-validate` job does. The E-AC-3 half runs its
+  `--check-oracles` and `--check-envelope` gates first, for the same reason
+  the AC-3 envelope check runs first: a search whose acceptance table or
+  oracle table has gone stale comes back green having checked less than it
+  claims.
 
 The bounded per-PR counterpart to `encoder-space-nightly` is a step in
 `ci.yml`'s `ffmpeg-validate` job (~2 minutes, plus the envelope check), not a
