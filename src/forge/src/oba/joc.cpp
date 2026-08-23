@@ -186,6 +186,13 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
     params.seq_count = seq_count;
     params.shapes.assign(static_cast<std::size_t>(objects), ObjectShape{});
 
+    // Object 0's own fields, captured as scalars rather than read back from
+    // `shapes` afterward - `objects` is always >= 1 (joc_num_objects_bits + 1)
+    // so params.shapes is never empty, but a read through it later is exactly
+    // the shape GCC's -Wnull-dereference cannot see through at -O3.
+    int first_num_bands_idx = params.num_bands_idx;
+    bool first_fine_quant = params.fine_quant;
+
     for (int object = 0; object < objects; ++object) {
         auto& shape = params.shapes[static_cast<std::size_t>(object)];
         shape.present = r.read(1) != 0;  // b_joc_obj_present
@@ -205,13 +212,16 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
                 shape.offset_ts[static_cast<std::size_t>(dp)] = static_cast<int>(r.read(5)) + 1;
             }
         }
+        if (object == 0) {
+            first_num_bands_idx = shape.num_bands_idx;
+            first_fine_quant = shape.fine_quant;
+        }
     }
 
     // The frame-wide fields stay meaningful for the uniform case every
     // in-repo caller works with; `shapes` is authoritative regardless.
-    const auto& first = params.shapes.front();
-    params.num_bands_idx = first.num_bands_idx;
-    params.fine_quant = first.fine_quant;
+    params.num_bands_idx = first_num_bands_idx;
+    params.fine_quant = first_fine_quant;
     params.matrix.assign(params.coefficient_count(), 0.0);
 
     // --- joc_data (§6.2.5) ---
