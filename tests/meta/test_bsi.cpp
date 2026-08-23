@@ -598,14 +598,18 @@ TEST_CASE("plan: alternate_bsi reuses the derived levels and the xbsi2 group", "
     ac3::plan::Metadata options;
     options.dmixmod = ac3::meta::DownmixMode::kLtRt;
     options.lorosurmixlev = ac3::meta::MixLevel::kSilent;
-    options.xbsi2.adconvtyp = ac3::meta::AdConverterType::kHdcd;
-    options.xbsi2.encinfo = true;
+    options.info.dsurexmod = ac3::meta::SurroundExMode::kSurroundEx;
+    options.adconvtyp = ac3::meta::AdConverterType::kHdcd;
+    options.encinfo = true;
 
     const auto alternate = ac3::plan::alternate_bsi(options);
     REQUIRE(alternate.mix);
     CHECK(alternate.mix->dmixmod == ac3::meta::DownmixMode::kLtRt);
     CHECK(alternate.mix->lorosurmixlev == ac3::meta::MixLevel::kSilent);
     REQUIRE(alternate.extended);
+    // dsurexmod is stated on `info` because E-AC-3's infomdat carries the same
+    // field; alternate_bsi() is what puts it in xbsi2 for the AC-3 path.
+    CHECK(alternate.extended->dsurexmod == ac3::meta::SurroundExMode::kSurroundEx);
     CHECK(alternate.extended->adconvtyp == ac3::meta::AdConverterType::kHdcd);
     CHECK(alternate.extended->encinfo);
 }

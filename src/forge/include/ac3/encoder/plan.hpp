@@ -348,11 +348,18 @@ struct Metadata {
     // E-AC-3 only: emit the infomdat group. AC-3 has no such gate - every one
     // of these fields is unconditional in its bsi.
     bool infomdat = false;
+    // §D2.3.1.10 / Table E1.2: the A/D converter type is stated once here and
+    // each codec's config builder puts it where that codec has room for it -
+    // Annex D's xbsi2 on AC-3, inside audprodie on E-AC-3. Keeping it out of
+    // `info.audprod` is what stops naming a converter type from inventing an
+    // audprodie group on AC-3, which has no field for it there.
+    meta::AdConverterType adconvtyp = meta::AdConverterType::kStandard;
+    // §D2.3.1.12, AC-3 Annex D only: the one bit reserved for the encoder.
+    bool encinfo = false;
     // AC-3 only: emit bsid 6 and Annex D's xbsi1/xbsi2 in place of the two
     // timecod fields. E-AC-3 has no alternate syntax - its own mixmdate and
     // infomdat carry the same quantities - so this is ignored there.
     bool annexd = false;
-    meta::ExtendedBsi xbsi2{};
 };
 
 // The mixmdate group these options imply: the five Table D2.2-D2.6 levels

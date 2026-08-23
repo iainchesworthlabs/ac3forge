@@ -882,7 +882,12 @@ meta::AlternateBsi alternate_bsi(const Metadata& options) {
     // the MixMetadata it returns has no Annex D field and is simply not read
     // by the AC-3 writer - see MixMetadata's own comment.
     out.mix = mix_metadata(options);
-    out.extended = options.xbsi2;
+    // dsurexmod and dheadphonmod are stated once, on `info`, because E-AC-3
+    // carries the same two fields in infomdat - one source, two homes.
+    out.extended = meta::ExtendedBsi{.dsurexmod = options.info.dsurexmod,
+                                     .dheadphonmod = options.info.dheadphonmod,
+                                     .adconvtyp = options.adconvtyp,
+                                     .encinfo = options.encinfo};
     return out;
 }
 
@@ -1045,6 +1050,12 @@ eac3::AccessUnitConfig eac3_config(const Plan& plan) {
     }
     if (plan.meta.infomdat) {
         independent.info = plan.meta.info;
+        // Annex E's audprodie carries adconvtyp as a third field where AC-3's
+        // stops at roomtyp; Metadata states it once, outside audprod, so this
+        // is where it reaches the wire on this side.
+        if (independent.info->audprod) {
+            independent.info->audprod->adconvtyp = plan.meta.adconvtyp;
+        }
     }
     apply_tools(plan.tools, independent);
     independent.vbr = plan.vbr;

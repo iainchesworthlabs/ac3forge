@@ -440,7 +440,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (token == "encinfo") {
             out.p.annexd = true;
-            out.p.xbsi2.encinfo = true;
+            out.p.encinfo = true;
             continue;
         }
         if (token == "langcod" || token == "langcod2") {
@@ -710,20 +710,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             bool ok = false;
             if (key == "dsurexmod") {
                 ok = ac3::meta::parse_surround_ex_mode(value, out.p.info.dsurexmod);
-                out.p.xbsi2.dsurexmod = out.p.info.dsurexmod;
             } else if (key == "dheadphonmod") {
                 ok = ac3::meta::parse_headphone_mode(value, out.p.info.dheadphonmod);
-                out.p.xbsi2.dheadphonmod = out.p.info.dheadphonmod;
             } else {
-                ac3::meta::AdConverterType type{};
-                ok = ac3::meta::parse_ad_converter(value, type);
-                out.p.xbsi2.adconvtyp = type;
-                // AC-3's own audprodie has no adconvtyp field; E-AC-3's does,
-                // so the value has to reach both places it can be written.
-                if (!out.p.info.audprod) {
-                    out.p.info.audprod.emplace();
-                }
-                out.p.info.audprod->adconvtyp = type;
+                ok = ac3::meta::parse_ad_converter(value, out.p.adconvtyp);
             }
             if (!ok) {
                 std::println(stderr, "error: {} must be one of: {}", key,

@@ -731,7 +731,7 @@ public:
         return meta_.info.audprod ? static_cast<int>(meta_.info.audprod->roomtyp) : 0;
     }
     [[nodiscard]] QStringList roomTypeNames() const;
-    [[nodiscard]] int adConvIndex() const { return static_cast<int>(meta_.xbsi2.adconvtyp); }
+    [[nodiscard]] int adConvIndex() const { return static_cast<int>(meta_.adconvtyp); }
     [[nodiscard]] QStringList adConvNames() const;
     [[nodiscard]] bool copyrightBit() const { return meta_.info.copyrightb; }
     [[nodiscard]] bool originalBitstream() const { return meta_.info.origbs; }

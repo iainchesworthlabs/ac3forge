@@ -1027,7 +1027,7 @@ QString EncoderController::metaTokens() const {
                         kRoom[static_cast<std::size_t>(meta_.info.audprod->roomtyp)])));
         }
     }
-    if (meta_.xbsi2.adconvtyp != defaults.xbsi2.adconvtyp) {
+    if (meta_.adconvtyp != defaults.adconvtyp) {
         tokens.append(QStringLiteral("adconvtyp=hdcd"));
     }
     if (meta_.info.copyrightb) {
@@ -1633,7 +1633,6 @@ void EncoderController::setDheadphonIndex(int index) {
     meta_.info.dheadphonmod = value;
     meta_.infomdat = true;
     // AC-3 has nowhere but Annex D's xbsi2 to put this one.
-    meta_.xbsi2.dheadphonmod = value;
     meta_.annexd = true;
     emit planChanged();
 }
@@ -1645,7 +1644,6 @@ void EncoderController::setDsurexIndex(int index) {
     }
     meta_.info.dsurexmod = value;
     meta_.infomdat = true;
-    meta_.xbsi2.dsurexmod = value;
     meta_.annexd = true;
     emit planChanged();
 }
@@ -1694,17 +1692,15 @@ void EncoderController::setRoomTypeIndex(int index) {
 
 void EncoderController::setAdConvIndex(int index) {
     const auto value = static_cast<ac3::meta::AdConverterType>(std::clamp(index, 0, 1));
-    if (value == meta_.xbsi2.adconvtyp) {
+    if (value == meta_.adconvtyp) {
         return;
     }
-    meta_.xbsi2.adconvtyp = value;
+    // Stated once; eac3_config() places it inside audprodie and ac3_config()
+    // in xbsi2, so neither front end has to know where it lands. Turning
+    // both containers on is still this setter's job, since without one the
+    // choice has nowhere to be written at all.
+    meta_.adconvtyp = value;
     meta_.annexd = true;
-    // Annex E carries adconvtyp inside audprodie rather than in a group of
-    // its own, so the E-AC-3 half of the same choice lands there.
-    if (!meta_.info.audprod) {
-        meta_.info.audprod.emplace();
-    }
-    meta_.info.audprod->adconvtyp = value;
     meta_.infomdat = true;
     emit planChanged();
 }
