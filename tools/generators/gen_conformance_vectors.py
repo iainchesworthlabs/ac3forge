@@ -1025,9 +1025,12 @@ def main() -> int:
     if not args.cli.is_file():
         print(f"error: no such ac3cli: {args.cli}", file=sys.stderr)
         return 1
-    # Every run_cli call below sets cwd to the bundle directory, so a relative
-    # --cli would resolve differently (or not at all) once it does.
+    # Every run_cli call below sets cwd to the bundle directory, so anything
+    # relative would resolve differently (or not at all) once it does: --cli
+    # against the bundle instead of here, and every path derived from --out
+    # against itself a second time. Both are absolute from here on.
     args.cli = args.cli.resolve()
+    args.out = args.out.resolve()
     if args.sign and args.signing_key is None and not (
         os.environ.get("AC3FORGE_SIGNING_KEY") or os.environ.get("AC3FORGE_SIGNING_KEY_FILE")
     ):
