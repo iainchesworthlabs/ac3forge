@@ -320,6 +320,114 @@ metrics it is the only one that tries to answer "which sounds better", which
 is why it is worth having beside the two that answer narrower questions
 exactly.
 
+## Listening test
+
+Everything above this section is a waveform or model measure. SNR and LSD are
+distances; MOS-LQO is a *prediction* of what a panel would say, from a model
+trained on panels — which is closer to "how it sounds" than a distance is, and
+still not a listener. This section is where a real one goes.
+
+**No session has been run yet.** The apparatus is in the repository
+([`tools/listening/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/tools/listening));
+the listening is human time that has not been spent. The results table below
+is empty and says so rather than carrying placeholder numbers, and
+`README.md`'s and [Validation](verification.md)'s "no listening test has been
+run" sentences stay as they are until it is not.
+
+### Protocol
+
+**Systems under test.** The same three legs as the table above, and the same
+conditions:
+
+| Leg | Codec | Layout | Rate | Arms |
+|---|---|---|---|---|
+| `ac3-51-448` | AC-3 | 5.1 | 448 kbit/s | ac3forge, FFmpeg |
+| `eac3-stereo-192` | E-AC-3 | stereo | 192 kbit/s | ac3forge, FFmpeg, DEE |
+| `eac3-51-256` | E-AC-3 | 5.1 | 256 kbit/s | ac3forge, FFmpeg |
+
+The 5.1 legs have no DEE arm, for the reason their `vs DEE` cells are already
+**n/a** above: that DEE build drops the Ls channel on discrete 6-channel
+input, so its 5.1 output is marked unverified in the baseline manifest. A
+stimulus nobody should draw a conclusion from is worse than a missing one.
+
+Each leg also carries BS.1534-3's hidden reference and its two low-pass
+anchors, 3.5 kHz (mandatory) and 7 kHz (recommended).
+
+**One decoder for everything.** Every stimulus, including ac3forge's own
+encode, is decoded by FFmpeg. This is deliberately the opposite of what the
+trend legs do. A listening test compares *encoders*; if each encoder's output
+went through its own decoder, the panel would be scoring encoder-and-decoder
+pairs and no result could be attributed to either. One decoder makes the
+decoder a constant, and FFmpeg is the one all three encoders have in common.
+Neither FFmpeg's nor DEE's *encoder* is ever run — the external arms are the
+committed `tests/golden/external-baseline/` bitstreams, the same boundary the
+numbers above observe.
+
+**Alignment and level.** Codec delay is removed by cross-correlation and every
+condition trimmed to a common length, so switching between them mid-item does
+not click. Levels are deliberately *not* re-normalized per condition: a level
+change introduced by the apparatus would be scored as an artifact of the
+encoder.
+
+**Method.** BS.1534-3 MUSHRA where a panel can be staffed — all of a leg's
+conditions presented together against a labelled reference, scored 0–100, with
+BS.1534-3 post-screening (a listener who scored the hidden reference below 90
+on more than 15% of trials is excluded, reported by name with their numbers).
+Forced-choice A/B/X otherwise, which works with one listener and answers a
+narrower question — not "how much worse", only "could this listener tell them
+apart at all" — with an exact one-sided binomial p-value against the 0.5
+guessing rate. 24 trials per pair puts the p &lt; 0.05 threshold at 17 correct.
+
+**Two preconditions that the committed material does not currently meet**, both
+detected and reported by the stimulus generator rather than left to be
+discovered mid-session:
+
+- **The anchors do not work on the 5.1 legs.** A low-pass anchor only anchors
+  the scale if removing the band above its cutoff is audible.
+  `reference_51.wav` carries 0.059% of its total energy above 3.5 kHz (−32.3
+  dB) and 0.031% above 7 kHz, so both anchors are near-transparent copies of
+  the reference there — a panel would correctly score them near 100, which
+  leaves the bottom of the scale undefined and the session unscalable against
+  any other panel's. The stereo leg is fine (−5.0 dB and −11.5 dB). Until
+  roadmap VX7's real programme material lands, that means MUSHRA on the stereo
+  leg and ABX on the 5.1 legs.
+- **The items are 1.9 seconds long.** BS.1534-3 asks for excerpts of about 10
+  s. The committed fixtures are 2.5–3.0 s before alignment trims them, and
+  they are synthetic — `sin()` and filtered noise, not programme. VX7 again.
+
+Both are recorded per session in `session.json` alongside the seed, render
+mode and baseline version, so a session's own limits travel with its numbers.
+
+**Monitoring.** `--render native` presents the 5.1 legs as 5.1 and needs a 5.1
+setup; `--render stereo` renders them through FFmpeg's own downmix (which
+applies the stream's `cmixlev`/`surmixlev`) for a headphone session. Which was
+used is part of the result — the two are not the same experiment.
+
+**Decoder complaints ride through to the table.** FFmpeg reports two
+out-of-range exponents decoding DEE's own committed stereo stream. A concealed
+error is a real artifact a listener hears, but it is that decoder reading that
+stream, not DEE's encoder being worse, and any row scored from a flagged
+stimulus carries the flag.
+
+### Results
+
+No session has been run, so there are no numbers here. When one is,
+`score_listening_test.py --markdown-out` produces the table that goes in this
+space: one row per (leg, condition) with the mean score and a 95% confidence
+interval for MUSHRA, or one row per (leg, system) with proportion correct, a
+95% Wilson interval and an exact binomial p for ABX.
+
+### Reproducing the stimulus set
+
+After building `ac3cli`:
+
+```bash
+AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/listening/gen_listening_stimuli.py --out listening-session
+```
+
+[`tools/listening/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/listening/README.md)
+is the operator's sequence, including what a session needs from a person.
+
 ## Where the data lives
 
 Same `quality-history` branch mechanism as
