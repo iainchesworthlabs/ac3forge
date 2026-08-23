@@ -69,13 +69,19 @@ enum class EditError : std::uint8_t {
 // Read, not applied: this exists so a transcode can carry a DD+ stream's
 // downmix intent across to the two coarse levels AC-3 has room for. See
 // ac3::meta (ac3/meta/mixing.hpp) for what the values mean.
+// Every member below carries an explicit `= std::nullopt`, even though
+// std::optional's own default constructor already produces one: a caller
+// naming only some of these in a designated initializer trips GCC's
+// -Wmissing-field-initializers (on under -Wextra, and this project builds
+// -Werror) for every member without one. The same reason the CLI's own
+// QcProgrammeResult spells its defaults out.
 struct WireMixMetadata {
-    std::optional<meta::DownmixMode> dmixmod;
-    std::optional<meta::MixLevel> ltrtcmixlev;
-    std::optional<meta::MixLevel> lorocmixlev;
-    std::optional<meta::MixLevel> ltrtsurmixlev;
-    std::optional<meta::MixLevel> lorosurmixlev;
-    std::optional<int> lfemixlevcod;  // Table E1.3, 0..31
+    std::optional<meta::DownmixMode> dmixmod = std::nullopt;
+    std::optional<meta::MixLevel> ltrtcmixlev = std::nullopt;
+    std::optional<meta::MixLevel> lorocmixlev = std::nullopt;
+    std::optional<meta::MixLevel> ltrtsurmixlev = std::nullopt;
+    std::optional<meta::MixLevel> lorosurmixlev = std::nullopt;
+    std::optional<int> lfemixlevcod = std::nullopt;  // Table E1.3, 0..31
 };
 
 // One syncframe's rewritable metadata, and enough of its shape to know which
@@ -95,29 +101,32 @@ struct FrameMetadata {
     bool lfe = false;
 
     int dialnorm = 31;
-    std::optional<std::uint8_t> compr;
-    std::optional<int> dialnorm2;  // 1+1 dual mono only
-    std::optional<std::uint8_t> compr2;
-    std::optional<int> bsmod;
-    std::optional<int> dsurmod;
+    std::optional<std::uint8_t> compr = std::nullopt;
+    std::optional<int> dialnorm2 = std::nullopt;  // 1+1 dual mono only
+    std::optional<std::uint8_t> compr2 = std::nullopt;
+    std::optional<int> bsmod = std::nullopt;
+    std::optional<int> dsurmod = std::nullopt;
 
     // AC-3's two bsi downmix levels (§5.4.2.4/§5.4.2.5), present only when
     // acmod brought the channels they describe.
-    std::optional<meta::CentreMixLevel> cmixlev;
-    std::optional<meta::SurroundMixLevel> surmixlev;
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
     // E-AC-3's richer group, when mixmdate was set. AC-3 never has one.
-    std::optional<WireMixMetadata> mix;
+    std::optional<WireMixMetadata> mix = std::nullopt;
 };
 
 // What to change. Every field is optional; an unset one is left exactly as it
 // was, so an empty edit is a no-op that still re-stamps the CRCs identically.
+// Explicit `= std::nullopt` on every member, for WireMixMetadata's reason
+// above - and it matters most here, since naming ONE field is exactly how
+// this struct is meant to be used.
 struct MetadataEdit {
-    std::optional<int> dialnorm;            // 1..31 (§5.4.2.8)
-    std::optional<int> dialnorm2;           // 1..31, 1+1 only
-    std::optional<std::uint8_t> compr;      // §7.7.2's 8-bit word, needs compre set
-    std::optional<std::uint8_t> compr2;     // ditto, Ch2's own
-    std::optional<int> bsmod;               // 0..7 (Table 5.5)
-    std::optional<int> dsurmod;             // 0..3 (Table 5.11), acmod 2/0 only
+    std::optional<int> dialnorm = std::nullopt;         // 1..31 (§5.4.2.8)
+    std::optional<int> dialnorm2 = std::nullopt;        // 1..31, 1+1 only
+    std::optional<std::uint8_t> compr = std::nullopt;   // §7.7.2's word, needs compre set
+    std::optional<std::uint8_t> compr2 = std::nullopt;  // ditto, Ch2's own
+    std::optional<int> bsmod = std::nullopt;            // 0..7 (Table 5.5)
+    std::optional<int> dsurmod = std::nullopt;          // 0..3 (Table 5.11), acmod 2/0 only
 };
 
 // Reads one syncframe's metadata without changing anything. `frame` may be

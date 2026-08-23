@@ -31,9 +31,11 @@ namespace ac3cli::commands {
 // reported on stderr). A result whose figures are all unset means it decoded
 // but held no audio above the -70 LKFS absolute gate.
 struct StreamLoudness {
-    std::optional<double> integrated_lkfs;
-    std::optional<double> ch1_lkfs;
-    std::optional<double> ch2_lkfs;
+    // Explicit defaults for the same -Wmissing-field-initializers reason
+    // QcProgrammeResult (analysis.cpp) spells its own out.
+    std::optional<double> integrated_lkfs = std::nullopt;
+    std::optional<double> ch1_lkfs = std::nullopt;
+    std::optional<double> ch2_lkfs = std::nullopt;
 };
 
 std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream);
