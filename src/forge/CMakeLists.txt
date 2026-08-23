@@ -130,6 +130,7 @@ target_sources(forge_objects
         src/encoder/transient.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/metadata_edit.cpp
         src/io/wav.cpp
         src/io/wav_format.cpp
         src/io/wav_stream_reader.cpp

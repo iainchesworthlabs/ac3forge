@@ -53,6 +53,16 @@ struct ScannedStream {
     // substream together with the dependents that follow it. Spans point into
     // the caller's buffer.
     std::vector<std::span<const std::byte>> access_units{};
+    // Samples each of those access units codes, parallel to `access_units`.
+    // Always 1536 for AC-3 (§5.3.1: six blocks of 256, no other option), but
+    // E-AC-3's numblkscod lets an independent substream code 1, 2, 3 or 6
+    // blocks (§E2.3.1.4), so an E-AC-3 access unit is 256, 512, 768 or 1536
+    // samples long and a stream may mix lengths. Kept here rather than
+    // recomputed by every caller because the scan has already read
+    // numblkscod off the wire and nobody downstream should have to parse a
+    // syncframe again to find out how long it is - see access_unit_timing()
+    // below for what this is actually for.
+    std::vector<std::uint32_t> access_unit_samples{};
     // Substreams in the first access unit; always 1 for AC-3.
     std::size_t substreams_per_unit = 0;
 
@@ -86,5 +96,85 @@ struct ScannedStream {
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<ScannedStream, ScanError> scan(
     std::span<const std::byte> stream);
+
+// --- timing ----------------------------------------------------------------
+//
+// Where access unit i starts and how long it lasts. Every container writer in
+// this project computes this privately from a samples_per_frame it was handed
+// (mp4::AudioTrack, mpegts::AudioTrack, matroska::AudioTrack all take one),
+// which is correct only while every access unit is the same length - true of
+// everything this project's own encoders produce and not true in general, and
+// in any case not something a caller could ask about before this existed.
+//
+// The arithmetic is deliberately integer: a frame duration is very often not
+// a whole number of ticks in whatever timescale a container uses (1536
+// samples at 44.1 kHz is 34.83 ms), so a running sum of per-frame increments
+// drifts. Every value below is computed from the ABSOLUTE sample position, so
+// the error against the true time never exceeds one tick however long the
+// stream runs - the same rule mpegts::/matroska:: already follow internally.
+
+struct AccessUnitTiming {
+    // Samples from the start of the stream to the first sample this access
+    // unit codes.
+    std::uint64_t start_sample = 0;
+    std::uint32_t duration_samples = 0;
+    std::uint32_t sample_rate = 0;
+
+    [[nodiscard]] double start_seconds() const {
+        return sample_rate == 0 ? 0.0
+                                : static_cast<double>(start_sample) /
+                                      static_cast<double>(sample_rate);
+    }
+    [[nodiscard]] double duration_seconds() const {
+        return sample_rate == 0 ? 0.0
+                                : static_cast<double>(duration_samples) /
+                                      static_cast<double>(sample_rate);
+    }
+    // The same instant in an arbitrary clock - 90000 for MPEG-2 systems, 1000
+    // for Matroska's default millisecond timecode scale, the track timescale
+    // for ISOBMFF. Rounded down, from the absolute sample position, for the
+    // no-drift reason in this section's own comment.
+    [[nodiscard]] std::uint64_t start_in_timescale(std::uint32_t timescale) const {
+        return sample_rate == 0 ? 0 : start_sample * timescale / sample_rate;
+    }
+    // The difference between this unit's start and the next one's, in the
+    // same clock - NOT duration_samples converted on its own, which would
+    // round independently and let a run of durations disagree with the
+    // start times they are supposed to add up to.
+    [[nodiscard]] std::uint64_t duration_in_timescale(std::uint32_t timescale) const {
+        if (sample_rate == 0) {
+            return 0;
+        }
+        const std::uint64_t end = (start_sample + duration_samples) * timescale / sample_rate;
+        return end - start_in_timescale(timescale);
+    }
+};
+
+// Access unit `index`, or nothing when there is no such unit.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<AccessUnitTiming> access_unit_timing(
+    const ScannedStream& stream, std::size_t index);
+
+// Total samples the stream codes, and the same figure in seconds.
+[[nodiscard]] AC3FORGE_EXPORT std::uint64_t stream_duration_samples(const ScannedStream& stream);
+[[nodiscard]] AC3FORGE_EXPORT double stream_duration_seconds(const ScannedStream& stream);
+
+// The access unit covering `sample` - i.e. the one to cut at for a given
+// position. Nothing when `sample` is past the end. A cut is only ever
+// access-unit-aligned, so a caller asking for a time inside a unit gets that
+// whole unit's index, never a split.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<std::size_t> access_unit_at_sample(
+    const ScannedStream& stream, std::uint64_t sample);
+
+// Same question in seconds, rounded to the nearest sample first.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<std::size_t> access_unit_at_seconds(
+    const ScannedStream& stream, double seconds);
+
+// The one length every access unit shares, or nothing when they differ. This
+// is exactly the question a fixed-duration container track can answer and a
+// variable one cannot: mp4::AudioTrack/mpegts::AudioTrack/matroska::AudioTrack
+// each hold a single samples_per_frame, so a stream this returns nothing for
+// cannot be described to them without per-sample durations they do not model.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
+    const ScannedStream& stream);
 
 }  // namespace ac3::io

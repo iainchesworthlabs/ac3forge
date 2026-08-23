@@ -61,6 +61,7 @@ add_executable(ac3tests
     encoder/test_eac3.cpp
     decoder/test_eac3_decoder.cpp
     io/test_elementary.cpp
+    io/test_metadata_edit.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
