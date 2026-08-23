@@ -706,18 +706,27 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 4. Fixed point + per-block raw exponents --------------------------
     AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
     auto& fixed = fixed_;
-    fixed.clear();
     {
-        // One reservation instead of push_back growth across ~10k bins - the
-        // exact total is knowable up front, and the phase-5 Tracy zones put
-        // this stage second only to transient detection in the former
-        // unzoned remainder.
+        // Sized once, up front: the exact total across ~10k bins is knowable
+        // before the loop, and the phase-5 Tracy zones put this stage second
+        // only to transient detection in the former unzoned remainder.
+        //
+        // resize() with no clear() before it, unlike the push_back form this
+        // replaced (ROADMAP PF5 gave every slot a contiguous destination to
+        // batch into, which needs the space to exist first). clear() would
+        // drop the size to zero and make the resize value-initialize all ten
+        // thousand elements again on every frame; without it, a steady-state
+        // frame whose layout has not changed finds the vector already the
+        // right size and the call does nothing at all. Nothing reads a stale
+        // value either way - every slot below is fully overwritten by
+        // to_fixed25_block before fixed_at can reach it, and fixed_base
+        // carries the offsets rather than them being implied by growth.
         std::size_t total = 0;
         for (int s = 0; s < streams; ++s) {
             total += static_cast<std::size_t>(stream_end(s) - stream_start(s)) *
                      kBlocksPerFrame;
         }
-        fixed.reserve(total);
+        fixed.resize(total);
     }
     auto& fixed_base = fixed_base_;
     fixed_base.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, 0);
@@ -726,6 +735,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // inner vector's capacity where assign would discard it.
     auto& block_exps = block_exps_;
     block_exps.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    // Where the next slot starts in `fixed`, now that the vector is sized up
+    // front and its size no longer tracks how much has been written.
+    std::size_t cursor = 0;
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
@@ -737,13 +749,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // seam, and extract_exponents is the same per-element
             // exponent_from_fixed this loop used to call inline. Both
             // produce identical values to the element-wise form - see
-            // exponents.cpp - so the bitstream is unchanged. resize() past
-            // the reservation above rather than push_back so the batch has a
-            // contiguous destination to write into.
+            // exponents.cpp - so the bitstream is unchanged.
             const auto count = static_cast<std::size_t>(end - begin);
-            const std::size_t base = fixed.size();
-            fixed_base[slot] = base;
-            fixed.resize(base + count);
+            fixed_base[slot] = cursor;
+            const std::size_t base = cursor;
+            cursor += count;
             block_exps[slot].resize(count);
             to_fixed25_block(
                 std::span<const double>{coeffs_at(s, block)}.subspan(
