@@ -747,10 +747,11 @@ def classify(case, encode, out_path):
     failure.
 
     The exit-code check is not pedantry. The first defect this harness found
-    was an assert() firing on a legal-looking configuration, which exits 3 on
-    Linux and 0x80000003 on Windows. A plain `!= 0` test with a message
-    allow-list behind it would have reported that as a tolerated refusal the
-    moment the abort happened to print a matching line first."""
+    was an assert() firing on a legal-looking configuration - an abort, which
+    subprocess reports as 3 or 0x80000003 on Windows and as -6 (SIGABRT) on
+    Linux, never as 1. A plain `!= 0` test with a message allow-list behind it
+    would have reported that as a tolerated refusal the moment the abort
+    happened to print a matching line first."""
     if encode.returncode != 0:
         if encode.returncode == 1:
             for reason, message in REFUSALS.items():

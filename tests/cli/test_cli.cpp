@@ -975,9 +975,16 @@ TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
                         log);
             const auto text = read_log(log);
             INFO(text);
-            // Exactly 1, not merely non-zero: an abort reports 3 (or
-            // 0x80000003) here, and "non-zero" would pass for both.
-            CHECK(rc == 1);
+            CHECK(rc != 0);
+            // What actually separates a refusal from the abort this replaced
+            // is the MESSAGE, not the exit code: an assertion failure prints
+            // its own text and never reaches the diagnosis below. The code
+            // itself is deliberately not compared against an exact value -
+            // std::system() hands back the child's own code on Windows but a
+            // POSIX wait status elsewhere, where exit 1 arrives as 256, so
+            // `rc == 1` would be a Windows-only assertion wearing a portable
+            // face.
+            CHECK(text.find("Assertion") == std::string::npos);
             CHECK(text.find("frmsiz") != std::string::npos);
             CHECK(text.find("words per syncframe") != std::string::npos);
             CHECK_FALSE(fs::exists(out_path));
@@ -999,7 +1006,8 @@ TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
                         log);
             const auto text = read_log(log);
             INFO(text);
-            CHECK(rc == 1);
+            CHECK(rc != 0);
+            CHECK(text.find("Assertion") == std::string::npos);
             CHECK(text.find("frmsiz") != std::string::npos);
             CHECK_FALSE(fs::exists(out_path));
         }
