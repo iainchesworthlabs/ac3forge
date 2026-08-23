@@ -870,6 +870,147 @@ jobs:
           echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
           exit 1
 
+  # Encoder throughput, this PR against its own merge base, on one runner
+  # (roadmap VX17).
+  #
+  # The gap this closes: persist-performance-trend below only runs on pushes to
+  # develop/main, so the relative "is this slower than it was" question is not
+  # asked until after a PR has merged. The absolute question IS asked on every
+  # PR - tests/performance/test_performance.cpp's ac3perf, in every
+  # build-and-test leg - but its real-time budget carries enough headroom that
+  # a change could double ms/frame and still pass it comfortably. A PR that
+  # halved the encoder's speed would therefore go green everywhere and only
+  # surface on the trend chart afterwards.
+  #
+  # NON-BLOCKING, on purpose and in two independent ways: continue-on-error
+  # here, and tools/ci/compare_performance.py never exiting non-zero on a
+  # comparison it completed. It is also deliberately absent from ci-status's
+  # `needs` list. Timings on a shared hosted runner are noisy enough that a
+  # PR-blocking threshold would cost more in re-runs than it caught; the two
+  # checks that DO block are untouched (ac3perf's absolute budget on every PR,
+  # append_performance_history.py's hard tier on merge). What this adds is the
+  # number in front of the reviewer at review time, in the job summary, with
+  # the same soft/hard tiers the trend job applies - imported from that script
+  # rather than restated, so a PR and its own merge cannot disagree about what
+  # counts as a regression.
+  #
+  # Runner budget. This is a new job rather than an addition to an existing
+  # leg, and it builds twice, so it is kept as narrow as it can be and still
+  # answer the question:
+  #   - `--target ac3bench ac3kernelbench` only. Not the library's tests, not
+  #     the CLI, not the GUI - the same two binaries persist-performance-trend
+  #     builds, and nothing else.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so
+  #     it costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - Gated on `changes` like every other heavy job, so a docs-only PR
+  #     never starts it.
+  #   - PERF_RUNS repetitions per side. Three is the smallest number that
+  #     gives compare_performance.py a spread to report alongside each delta,
+  #     which is what lets a reader tell a real 25% move from a noisy one;
+  #     ac3bench is 200 frames per workload and takes seconds, so the
+  #     repetitions are a rounding error next to the two builds.
+  performance-compare:
+    name: Performance vs merge base
+    needs: [changes, toolchain-versions]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    continue-on-error: true
+    env:
+      PERF_RUNS: 3
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Resolve the merge base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          # On a pull_request event the checked-out HEAD is the merge commit,
+          # so BASE_SHA is already an ancestor of it and this returns BASE_SHA
+          # itself. Asking git rather than trusting that keeps the answer right
+          # if GitHub ever hands over a base tip that has moved on.
+          merge_base="$(git merge-base "$BASE_SHA" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Merge base: $merge_base"
+
+      - name: Build and run the benchmarks at this PR's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          mkdir -p perf-results/head
+          for i in $(seq 1 "$PERF_RUNS"); do
+            build/config-linux-gcc/bin/ac3bench --json-out "perf-results/head/bench$i.json"
+            build/config-linux-gcc/bin/ac3kernelbench \
+              --json-out "perf-results/head/kernels$i.json"
+          done
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_performance.py, which the
+      # base commit may not even have) exactly where they are, and gives the
+      # base its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      - name: Build and run the benchmarks at the merge base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-perf "$BASE_SHA"
+          mkdir -p perf-results/base
+          pushd ../base-perf >/dev/null
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          popd >/dev/null
+          for i in $(seq 1 "$PERF_RUNS"); do
+            ../base-perf/build/config-linux-gcc/bin/ac3bench \
+              --json-out "perf-results/base/bench$i.json"
+            ../base-perf/build/config-linux-gcc/bin/ac3kernelbench \
+              --json-out "perf-results/base/kernels$i.json"
+          done
+
+      - name: Compare and publish the job summary
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_performance.py \
+            --base-dir perf-results/base \
+            --head-dir perf-results/head \
+            --base-ref "merge base $BASE_SHORT"
+
   # FFmpeg as an independent oracle (CONTRIBUTING.md's "Oracles" list, #2),
   # automated - previously a manual/developer-only practice. Builds ac3cli
   # only (linux-llvm preset; no GUI, and build-and-test already covers
