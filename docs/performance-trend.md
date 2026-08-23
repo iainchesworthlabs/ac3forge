@@ -492,6 +492,88 @@ measured 180-second decodes went from 3.53 s to 0.79 s (AC-3) and 3.49 s to
 0.75 s (E-AC-3) when the fast path became the default - `mode=reference`
 runs the old numbers on purpose.
 
+## Minimum-footprint decoder
+
+Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
+soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
+[Building → Minimum-footprint decoder profile](../building.md#minimum-footprint-decoder-profile)
+for what the profile changes and why.
+
+`apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
+E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from the
+run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprint` in
+`.github/workflows/_build.yml` reproduces them on every push, and
+`tools/checks/run_baremetal_probe.sh` reproduces them locally.
+
+### Static footprint
+
+| | Bytes |
+|---|---|
+| `.text` (code + read-only data) | 120,728 |
+| `.data` (initialised) | 396 |
+| `.bss` (zero-initialised) | 232,936 |
+| **Image total** | **354,060** (345.8 KiB) |
+
+Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
+attribution from the linker map):
+
+| Object | `.text` | `.bss` |
+|---|---|---|
+| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 22.8 KiB | 96.1 KiB |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 20.0 KiB | 42.3 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 36.8 KiB | 0 |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 9.3 KiB | 12.4 KiB |
+| `decoder.cpp.obj` (AC-3) | 12.2 KiB | 0 |
+| everything else, summed | 46.8 KiB | 13.1 KiB |
+
+`tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
+(`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
+`ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited, and checked by two
+`ASSERT()`s in the linker script rather than trusted.
+
+### Table ROM budget
+
+The reason PF7 asks for this figure by name: the direct-form transform tables `mode=reference`
+needs are **absent from this image entirely**, not merely unused. Measured on the object file
+with `dumpbin /HEADERS` (Windows) — the actual `.bss` reservation, not an estimate:
+
+| Table | Bytes | Only needed by |
+|---|---|---|
+| `ForwardCosTable<512>` | 1,048,576 | Direct-form forward MDCT, long — **encode**, not on this decoder's path at all |
+| `ForwardCosTable<256>` × 2 | 524,288 | Direct-form forward MDCT, short — **encode** |
+| `InnerSumTable` | 262,144 | Direct-form inverse, long — decode, `mode=reference` only |
+| `InnerSumPairTable` | 65,536 | Direct-form inverse, short — decode, `mode=reference` only |
+| **Total excluded** | **1,900,544** (1.81 MiB) | |
+| *Fast-path tables actually linked in* | *~12,600* | |
+
+A build asking for `mode=reference` in this profile gets `DecodeError::kUnsupported` rather than
+a silent fast-path substitution — see the building doc for why.
+
+### Runtime footprint
+
+| | Value |
+|---|---|
+| Peak heap | 242,986 bytes (237.3 KiB) |
+| Leaked at exit | 0 |
+| `sizeof(ac3::FrameDecoder)` | 12,312 bytes |
+| `sizeof(ac3::Eac3Decoder)` | 12,600 bytes |
+| Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
+| AC-3 allocations per frame, steady state | 45 |
+| E-AC-3 allocations per frame, steady state | 85 |
+
+The steady-state allocation counts are the gap [Building](../building.md#gaps) records: PF7 asks
+for zero, and this is 45/85 — from the per-block geometry vectors inside the decoders and the
+`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
+memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
+those two return types, not to allocation *reuse*. Reaching zero means those becoming
+fixed-capacity, a public-type change tracked separately from this profile.
+
+`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak and both allocation counts
+at ceilings above these measured values, so a regression stops the build instead of drifting
+the table silently.
+
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>
 </div>

@@ -1078,6 +1078,78 @@ jobs:
           path: build/config-wasm-emscripten/bin/wasm_decode_demo
           if-no-files-found: error
 
+  # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
+  # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
+  # operating system, no filesystem and no hardware floating point. Its own job
+  # rather than a `build` matrix entry for the same reason build-wasm is: none
+  # of that matrix's steps apply here (no ctest suite, no cpack package, no
+  # gold-reference gate, and the profile's own guard refuses the options those
+  # steps assume).
+  #
+  # What it gates on, in tools/checks/run_baremetal_probe.sh: the probe's own
+  # verdict (every channel's level against apps/baremetal/fixture.hpp), the
+  # linked image size, peak heap, and steady-state allocations per frame. The
+  # last of those is a distance-from-zero the profile has not closed - see
+  # docs/building.md's gap note - and the ceiling is there so it cannot grow
+  # while the gap is open.
+  #
+  # Runs on every push, like build-wasm: this is the only leg that compiles the
+  # codec for a 32-bit target at all, and the first one to do so found three
+  # real portability faults that no LP64 leg could have (see the profile's own
+  # commit). A leg that only ran before releases would have found them then.
+  build-footprint:
+    name: Minimum-footprint decoder (arm-none-eabi, QEMU)
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    permissions:
+      contents: read
+    steps:
+      # One apt transaction, not several: interleaved apt-get runs on the same
+      # dpkg database leave half-configured packages behind, and
+      # libstdc++-arm-none-eabi-newlib in that state produces a "cstdio: No
+      # such file or directory" that looks like a missing dependency rather
+      # than an interrupted install.
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends             ca-certificates cmake git ninja-build python3             gcc-arm-none-eabi binutils-arm-none-eabi             libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib             qemu-system-arm
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Report toolchain versions
+        run: |
+          arm-none-eabi-g++ --version | head -1
+          qemu-system-arm --version | head -1
+
+      - name: Build and run the probe under QEMU
+        env:
+          AC3FORGE_FOOTPRINT_SUMMARY: ${{ runner.temp }}/footprint.txt
+        run: ./tools/checks/run_baremetal_probe.sh
+
+      # The footprint table in docs/performance-trend.md is written by hand
+      # from these numbers, so keep the run's own copy: a table nobody can
+      # check against the run that produced it is a claim, not a measurement.
+      - name: Footprint summary
+        if: always()
+        run: |
+          set -eu
+          python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/ac3probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload footprint artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: footprint-arm-none-eabi
+          path: |
+            ${{ runner.temp }}/footprint.txt
+            build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map
+          if-no-files-found: warn
+
   # Persists this run's gold-reference SNR numbers (docs/quality-trend.md) so
   # they outlive the CI run that produced them, instead of only ever living in
   # a log that ages out. One job, not one push per leg: `needs: build` waits

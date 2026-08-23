@@ -434,14 +434,22 @@ no SIMD and no threading anywhere in the codec core.
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has
   it: FFT butterflies, windowing, `to_fixed25`, `band_energy`, the psd/mask loops. Raspberry Pi,
   the Shield and WASM are where a 2–3× decode matters. After PF1–PF4 and VX11 (the FMA policy).
-- [ ] **PF6 (M)** — A latency budget: document end-to-end encoder latency (lookahead, transient
-  detection, tpn hold-back), expose it (`ac3forge_encoder_latency_samples()`), and make EQ11's
-  short syncframes the low-latency mode. The first question an engine or conferencing integrator
-  asks.
-- [ ] **PF7 (L)** — A minimum-footprint decoder profile: static allocation only, no heap in the
-  decode loop, an explicit table ROM budget, a `-fno-exceptions`/no-RTTI audit, a float32 path,
-  and a cross-compiled no-OS CI leg (`arm-none-eabi` under QEMU). The memory programme cut decode
-  bytes per frame by more than half; this is the next step for set-top and DSP ports.
+- [x] **PF6 (M)** — A latency budget: documented end-to-end encoder latency (frame
+  granularity, MDCT/IMDCT overlap, lookahead, the §3.7 hold-back) in `ac3/latency.hpp`, measured
+  it empirically (`tests/decoder/test_latency.cpp`: an impulse and a tone burst through a real
+  encode→decode, located by peak and by cross-correlation), and exposed it -
+  `latency()`/`latency_samples()` on every encoder, `latency_samples()` on both decoders,
+  `ac3forge_encoder_latency_samples()` in the C API, `FrameEncoder.latency` in Python. EQ11's
+  short syncframes (the low-latency mode this was meant to document) have not landed - the
+  E-AC-3 latency section names the 512-1024-sample figures they would enable and says so.
+- [x] **PF7 (L)** — A minimum-footprint decoder profile: `AC3FORGE_MINIMAL_DECODER` builds a
+  decode-only `ac3::forge_minimal` with no exceptions, no RTTI and no direct-form transform
+  tables (an explicit 1.81 MiB ROM budget, measured on the object file), proven on a
+  cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`, `build-footprint`) that decodes
+  real AC-3/E-AC-3 to the host build's own levels in 354 KB of image and 243 KB of peak heap.
+  Two requirements are recorded as open gaps rather than half-enforced: zero heap traffic in the
+  decode loop (today: 45-85 allocations/frame) and a float32-only internal path - see
+  `docs/building.md`'s Gaps section.
 
 ## AP. Library surface, bindings and v1.0
 
