@@ -16,9 +16,10 @@
 | `ac3/encoder/assignment.hpp` | `ac3::plan::Assignment`, `Destination`, `SourceShape`, `parse_assignment`/`format_assignment`, `derive_codec`. The explicit, channel-by-channel alternative to `plan::route()` for multiple loaded sources — backs the CLI's `src=`/`map=` options and the GUI's multi-source controller. |
 | `ac3/decoder/decoder.hpp` | `FrameDecoder`, `Eac3Decoder`, `split_frames`, `split_access_units`, `stream_bsid`. |
 | `ac3/decoder/transient_prenoise.hpp` | `apply_transient_prenoise`, `transient_prenoise_range` — the §3.7.2 post-IMDCT pre-echo correction `Eac3Decoder` applies to decoded PCM; see [Decoding](decoding.md) for the buffering it forces on `decode_substream`/`decode_access_unit`. |
-| `ac3/io/elementary.hpp` | `scan`, `ScannedStream`. |
+| `ac3/io/elementary.hpp` | `scan`, `ScannedStream`, and the per-access-unit timing helpers (`access_unit_timing`, `access_unit_at_seconds`, `uniform_access_unit_samples`) a container writer or a frame-aligned cut needs. |
+| `ac3/io/metadata_edit.hpp` | `read_frame_metadata`, `edit_frame_metadata`, `edit_stream_metadata`, `restamp_crc` — changing `dialnorm`/`compr`/`bsmod`/`dsurmod` on an already-encoded stream without re-encoding the audio, CRCs re-stamped (`crc1` solved, not computed). |
 | `ac3/io/dec3.hpp` | `build_codec_config_box` — the ISOBMFF `dac3`/`dec3` sample-entry payload (ETSI TS 102 366 Annex F), Dolby Atmos extension included, built from a `ScannedStream`. What `mp4::AudioTrack::codec_config` is filled in with. |
-| `ac3/io/wav.hpp` | WAV read/write (PCM16 and float32) and the WAV↔Table 5.8 permutation. |
+| `ac3/io/wav.hpp` | WAV read (8/16/24/32-bit PCM, 32/64-bit float, `WAVE_FORMAT_EXTENSIBLE`, RF64/BW64) and write (float32, raw PCM16), plus the WAV↔Table 5.8 permutation. |
 | `ac3/meta/drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | `dynrng`, `compr`, BS.1770, downmix levels, named QC delivery-gate presets. |
 | `ac3/spatial/spatial.hpp` | `BedRenderer`, `pan_azimuth`, `pan_room`. |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp` | The object layer. |

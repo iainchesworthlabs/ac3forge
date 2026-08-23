@@ -157,6 +157,9 @@ TEST_CASE("metadata refuses a field the stream does not carry", "[cli][metadata]
     const auto out = dir / "meta_nocompr_out.ac3";
     const auto log = dir / "meta_nocompr.log";
 
+    // Removed first: the scratch directory survives between runs, so an
+    // "it wrote nothing" check is only meaningful against a clean slate.
+    fs::remove(out);
     REQUIRE(run_cli("metadata " + quoted(source) + " " + quoted(out) + " compr=-6", log) != 0);
     const auto text = read_log(log);
     INFO(text);
@@ -258,6 +261,7 @@ TEST_CASE("cut snaps to access-unit boundaries and refuses a start past the end"
 
     SECTION("a start past the end is refused, not silently empty") {
         const auto empty = dir / "cut_past_end.ac3";
+        fs::remove(empty);
         REQUIRE(run_cli("cut " + quoted(source) + " " + quoted(empty) + " 60", log) != 0);
         CHECK(text.find("access-unit aligned") != std::string::npos);
         CHECK_FALSE(fs::exists(empty));
@@ -280,6 +284,7 @@ TEST_CASE("cat refuses inputs a decoder could not follow across the join", "[cli
     const auto out = dir / "cat_mismatch.ac3";
     const auto log = dir / "cat_mismatch.log";
 
+    fs::remove(out);
     REQUIRE(run_cli("cat " + quoted(out) + " " + quoted(surround) + " " + quoted(stereo), log) !=
             0);
     const auto text = read_log(log);
@@ -381,6 +386,9 @@ TEST_CASE("transcode needs to be told the codec when the name cannot say it",
     const auto out = dir / "tx_suffix_out.bin";
     const auto log = dir / "tx_suffix.log";
 
+    // This one writes `out` for real further down, so the previous run's
+    // copy is still there unless it goes first.
+    fs::remove(out);
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out), log) != 0);
     CHECK(read_log(log).find("codec=ac3|eac3") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
