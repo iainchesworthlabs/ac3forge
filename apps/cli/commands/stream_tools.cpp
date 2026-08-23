@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
@@ -12,6 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "../support.hpp"
@@ -522,7 +524,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         // slots occupies, fixed from the first access unit that decodes -
         // the flush below needs both, and by then there is no access unit
         // left to read them off.
-        ac3::eac3::chanmap::Layout layout{};
+        ac3::eac3::chanmap::Layout programme_layout{};
         std::vector<std::size_t> slot_to_wav;
         for (const auto& unit : loaded->scan.access_units) {
             const auto decoded = decoder->decode_access_unit(unit);
@@ -540,7 +542,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
             track_dynrng(std::span{programme.dynrng}.first(static_cast<std::size_t>(
                 ac3::eac3::blocks_per_syncframe(programme.numblkscod))));
             if (slot_to_wav.empty()) {
-                layout = programme.layout;
+                programme_layout = programme.layout;
                 // The decoded programme is in Table E2.5 slot order; the
                 // routing was built for a source in WAV order, the same
                 // reconciliation `decode` makes before writing a WAV. Dual
@@ -549,8 +551,8 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
                 const auto order =
                     programme.acmod == ac3::Acmod::kDualMono
                         ? std::vector<std::size_t>{}
-                        : plan::wav_order(std::span{layout.items}.first(
-                              static_cast<std::size_t>(layout.count)));
+                        : plan::wav_order(std::span{programme_layout.items}.first(
+                              static_cast<std::size_t>(programme_layout.count)));
                 slot_to_wav.assign(programme.channels.size(), 0);
                 for (std::size_t wav = 0; wav < slot_to_wav.size(); ++wav) {
                     slot_to_wav[order.empty() ? wav : order[wav]] = wav;
@@ -588,7 +590,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
             }
             const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
             for (int i = 0; i < locations.count; ++i) {
-                const int slot = layout.index_of(locations[i]);
+                const int slot = programme_layout.index_of(locations[i]);
                 if (slot < 0 || static_cast<std::size_t>(slot) >= slot_to_wav.size()) {
                     continue;
                 }
@@ -890,6 +892,20 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     if (in_paths.size() < 2) {
         std::println(stderr, "error: cat needs at least two inputs");
         return 1;
+    }
+    // Unlike every other command here, this opens its output BEFORE reading
+    // its inputs - one at a time, so only one input's bytes are resident at
+    // once however many are joined. That makes naming an input as the output
+    // destructive rather than merely odd (the sink truncates it first), so it
+    // is refused. Compared as paths rather than as text, so "./a.ac3" and
+    // "a.ac3" are recognised as the same file.
+    for (const auto path : in_paths) {
+        std::error_code ec;
+        if (std::filesystem::equivalent(std::filesystem::path{std::string{out_path}},
+                                        std::filesystem::path{std::string{path}}, ec)) {
+            std::println(stderr, "error: {} is both an input and the output", path);
+            return 1;
+        }
     }
     // Loaded one at a time and written straight through, so only one input's
     // bytes are resident at once however many are joined.

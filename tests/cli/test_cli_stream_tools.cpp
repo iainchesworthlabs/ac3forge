@@ -15,6 +15,7 @@
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/drc.hpp"
 
 // The DC9 stream tools, driven the same way tests/cli/test_cli.cpp drives
 // every other command: the real built ac3cli.exe as a subprocess, inspecting
@@ -180,7 +181,9 @@ TEST_CASE("metadata stamps compr onto a stream that carries one", "[cli][metadat
     CHECK(*after->compr != *before->compr);
     // §7.7.2's own rounding rule: the stamped word is the largest gain that
     // does NOT exceed the requested one, so the ceiling stays a ceiling.
-    CHECK(ac3::meta::to_db(ac3::meta::compr_gain(*after->compr)) <= Catch::Approx(-6.0));
+    // A small tolerance for the dB conversion itself, not for the rounding
+    // rule: the stamped word must not represent a gain ABOVE the request.
+    CHECK(ac3::meta::to_db(ac3::meta::compr_gain(*after->compr)) <= -6.0 + 1e-9);
     require_same_audio(source, out, "meta_compr_audio");
 }
 

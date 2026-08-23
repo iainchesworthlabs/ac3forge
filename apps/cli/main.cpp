@@ -360,8 +360,11 @@ void print_usage() {
     std::println("");
     std::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
     std::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    std::println("       eac3-encode, atmos-encode and decode only. e.g.:");
+    std::println("       eac3-encode, atmos-encode, decode and the five stream tools");
+    std::println("       (transcode, metadata, normalize, cut, cat). e.g.:");
     std::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
+    std::println("       transcode to '-' cannot read the codec off the name, so pair it");
+    std::println("       with codec=ac3|eac3.");
     std::println("");
     std::println("live monitor_device/passthrough_device: -2 (default) leaves that leg off,");
     std::println("       -1 is the default render endpoint, N picks one from 'outputs'.");

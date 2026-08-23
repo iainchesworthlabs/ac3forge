@@ -170,7 +170,8 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 ac3cli decode out.ec3 out.wav
 ```
 
-`decode` takes `-` for either path too, the same convention the encoding commands above use:
+`decode` takes `-` for either path too, the same convention the encoding commands above (and the
+five stream tools below) use:
 
 ```bash
 ac3cli decode - - < out.ac3 > out.wav
