@@ -729,18 +729,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
+        const auto span = static_cast<std::size_t>(end - begin);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
             fixed_base[slot] = fixed.size();
-            block_exps[slot].resize(static_cast<std::size_t>(end - begin));
-            for (int bin = begin; bin < end; ++bin) {
-                const std::int32_t f =
-                    to_fixed25(coeffs_at(s, block)[static_cast<std::size_t>(bin)]);
-                fixed.push_back(f);
-                block_exps[slot][static_cast<std::size_t>(bin - begin)] =
-                    static_cast<std::uint8_t>(exponent_from_fixed(f));
-            }
+            block_exps[slot].resize(span);
+            // resize() rather than a per-bin push_back so the conversion and
+            // its exponent extraction can run as one fused pass over the
+            // stream's bins (see exponents.hpp's to_fixed25_block); the
+            // reserve() above already sized `fixed` for the whole frame, so
+            // this never reallocates and the tail span stays valid.
+            fixed.resize(fixed.size() + span);
+            to_fixed25_block(
+                std::span{coeffs_at(s, block)}.subspan(static_cast<std::size_t>(begin), span),
+                std::span{fixed}.last(span), block_exps[slot]);
         }
     }
     AC3_ZONE_END(zone_fixed);

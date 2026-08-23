@@ -1,11 +1,9 @@
 #include "ac3/core/exponents.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <span>
 #include <vector>
 
@@ -14,28 +12,11 @@
 
 namespace ac3 {
 
-std::int32_t to_fixed25(double c) {
-    const double scaled = std::round(c * 16777216.0);  // 2^24
-    if (scaled >= 16777215.0) {
-        return 16777215;  // 2^24 - 1
-    }
-    if (scaled <= -16777216.0) {
-        return -16777216;  // -2^24
-    }
-    return static_cast<std::int32_t>(scaled);
-}
-
-int exponent_from_fixed(std::int32_t fixed) {
-    const auto magnitude = static_cast<std::uint32_t>(std::abs(static_cast<std::int64_t>(fixed)));
-    if (magnitude == 0) {
-        return kMaxExponent;
-    }
-    // Leading zeros of the 24-bit magnitude field: countl_zero on 32 bits
-    // minus the 8 bits above it. |c| >= 0.5 (bit 23 set) gives exponent 0.
-    const int exponent = std::countl_zero(magnitude) - 8;
-    return std::clamp(exponent, 0, kMaxExponent);
-}
-
+// to_fixed25 and exponent_from_fixed are header-inline (exponents.hpp says
+// why); this stays out of line because its callers are whole-block ones that
+// already amortise a call, and one of them - the E-AC-3 AHT path - reads a
+// column across the six blocks' transform axis rather than a contiguous run
+// of coefficients, so it has no to_fixed25 half to fuse with.
 void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8_t> exponents) {
     assert(fixed.size() == exponents.size());
     for (std::size_t i = 0; i < fixed.size(); ++i) {

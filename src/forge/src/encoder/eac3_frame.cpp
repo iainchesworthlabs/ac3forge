@@ -2315,11 +2315,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
                 const auto& source = coeffs_at(s, blk);
                 auto& out = fixed_at(s, blk);
-                for (int bin = plan.start; bin < plan.endmant; ++bin) {
-                    out[static_cast<std::size_t>(bin)] =
-                        to_fixed25(source[static_cast<std::size_t>(bin)]);
-                }
-                extract_exponents(
+                // One fused pass over the stream's bins rather than a
+                // per-bin conversion loop followed by a second walk in
+                // extract_exponents - see exponents.hpp's to_fixed25_block.
+                to_fixed25_block(
+                    std::span{source}.subspan(static_cast<std::size_t>(plan.start), span),
                     std::span{out}.subspan(static_cast<std::size_t>(plan.start), span),
                     axis_exps);
                 for (std::size_t bin = 0; bin < span; ++bin) {
