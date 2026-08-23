@@ -22,6 +22,13 @@ namespace {
 
 using namespace tables;
 
+// A/52 §7.2.2.2: the widest allocation region the standard admits - 253
+// mantissas in one channel (the fbw bandwidth ceiling), which is exactly the
+// length of the psd array §7.2.2.2 builds. Named rather than repeated as a
+// literal because compute_bit_allocation now enforces it at run time and not
+// only in a debug assert; see its own comment for why.
+inline constexpr std::size_t kMaxMantissas = 253;
+
 // §7.2.2.3: log-addition of two banded PSD values.
 int logadd(int a, int b) {
     const int c = a - b;
@@ -121,24 +128,43 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                             std::span<std::uint8_t> bap, const BitAllocRegion& region) {
     AC3_ZONE_SCOPED_N("compute_bit_allocation");
     assert(exps.size() == bap.size());
-    // An empty region allocates nothing, and says so by returning before the
-    // band walk below - which is not merely pointless on an empty region but
-    // undefined on one: §7.2.2.4 runs from kMaskTab[start] to
-    // kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing kMaskTab
-    // at SIZE_MAX. Reported by fuzz_signing_verify (roadmap VX3).
+    // A region outside 1..kMaxMantissas allocates nothing, and says so here
+    // rather than walking off the end of the arrays below. Both ends are
+    // real, and fuzz_signing_verify (roadmap VX3) reported both:
     //
-    // No encode path produces an empty region, and the assert below still
-    // says so for a caller's benefit. But `exps` reaches here, through both
-    // the decoder and ac3::signing's own frame walk, sized by a field value
-    // a hostile stream picks - and this project has been here before
-    // (8386c8f: a decoder shifting by an unvalidated exponent). A contract
-    // that only a debug assert enforces is not enforced in the builds that
-    // ship.
-    if (exps.empty()) {
+    //  - Empty. §7.2.2.4's band walk runs from kMaskTab[start] to
+    //    kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing that
+    //    256-entry table at SIZE_MAX.
+    //  - Longer than kMaxMantissas. §7.2.2.2's psd array is exactly that
+    //    long (A/52 admits no more mantissas than that in one channel), so
+    //    the first bin past it is a stack write one element off the end -
+    //    which is what ASan actually reported, a 4-byte WRITE at offset
+    //    1076 of a 1012-byte frame object.
+    //
+    // No encode path produces either, and the assert below still says so for
+    // a caller's benefit. But `exps` reaches here, through both the decoder
+    // and ac3::signing's own frame walk, sized by a field value a hostile
+    // stream picks - and this project has been here before (8386c8f: a
+    // decoder shifting by an unvalidated exponent). A contract that only a
+    // debug assert enforces is not enforced in the builds that ship.
+    //
+    // bap is filled rather than left alone: it is the caller's output, and
+    // "no allocation" is what an unreadable region gets, the same answer
+    // §7.2.2.1.1's all-zero-SNR case gives just below.
+    //
+    // region.start joins the same guard rather than waiting to be reported
+    // separately: it comes from the same stream (cplstrtmant, spx_startmant),
+    // it indexes kMaskTab directly two statements after the size check, and
+    // the assert immediately below already states the range - so leaving it
+    // to that assert alone would repeat the exact mistake the two findings
+    // above were.
+    if (exps.empty() || exps.size() > kMaxMantissas || region.start < 0 ||
+        static_cast<std::size_t>(region.start) >= exps.size()) {
+        std::ranges::fill(bap, std::uint8_t{0});
         return;
     }
     const int end = static_cast<int>(exps.size());
-    assert(end >= 1 && end <= 253);
+    assert(end >= 1 && end <= static_cast<int>(kMaxMantissas));
     assert(region.start >= 0 && region.start < end);
 
     // §7.2.2.1.1 special case: when EVERY SNR offset in the block is zero,
@@ -162,7 +188,7 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
     const int kStart = region.start;
 
     // §7.2.2.2: exponents -> 13-bit signed log PSD.
-    std::array<int, 253> psd{};
+    std::array<int, kMaxMantissas> psd{};
     for (int bin = kStart; bin < end; ++bin) {
         psd[static_cast<std::size_t>(bin)] = 3072 - (exps[static_cast<std::size_t>(bin)] << 7);
     }
@@ -328,7 +354,7 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     AC3_ZONE_SCOPED_N("choose_delta_segments");
     assert(coefficients.size() == exps.size());
     const int end = static_cast<int>(exps.size());
-    assert(end >= 1 && end <= 253);
+    assert(end >= 1 && end <= static_cast<int>(kMaxMantissas));
     assert(start >= 0 && start < end);
 
     // Two psd curves in identical units: the flat one compute_bit_allocation
@@ -336,8 +362,8 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     // pre-quantization coefficient magnitude. Table 5.17's 128-units-per-6dB
     // step is exactly one exponent step (§7.2.2.2's psd = 3072 - exp<<7), so
     // exponent = -1 - log2(|c|) gives real_psd = 3200 + 128*log2(|c|).
-    std::array<int, 253> psd{};
-    std::array<int, 253> real_psd{};
+    std::array<int, kMaxMantissas> psd{};
+    std::array<int, kMaxMantissas> real_psd{};
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
         psd[i] = 3072 - (exps[i] << 7);

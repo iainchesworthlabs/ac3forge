@@ -38,11 +38,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
-- **Four defects the new harnesses turned up**, each with a reproducer under `fuzz/regressions/`
-  where the harness produced one. `compute_bit_allocation` indexed its 256-entry band table at
-  `SIZE_MAX` on an empty allocation region (§7.2.2.4's walk ends at `kMaskTab[end - 1]`, and
-  `end - 1` on `end == 0` is `-1`) — the contract was stated only by a debug `assert`, so
-  release builds had nothing between a hostile frame and the pointer overflow.
+- **Five defects the new harnesses turned up**, each with a reproducer under `fuzz/regressions/`
+  where the harness produced one. `compute_bit_allocation` walked off both ends of its own
+  arrays on a region whose size only a debug `assert` had ever constrained: an empty region
+  indexed its 256-entry band table at `SIZE_MAX` (§7.2.2.4's walk ends at `kMaskTab[end - 1]`,
+  and `end - 1` on `end == 0` is `-1`), and a region longer than the 253-mantissa ceiling wrote
+  one element past the `psd` array — so release builds had nothing between a hostile frame and
+  either memory error.
   `ac3adm::parse_bw64` sized its PCM buffer from the *declared* `<data>` chunk size, so a
   104-byte file claiming 4 GB of audio allocated 4 GB, and any other over-claiming chunk did the
   same one layer down inside libbw64 — both are now bounded by the file's real size. And

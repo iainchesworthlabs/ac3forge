@@ -37,7 +37,7 @@ namespace ac3adm {
 std::string_view describe(AdmError error) {
     switch (error) {
         case AdmError::kCannotOpen: return "cannot open file";
-        case AdmError::kNotRiff: return "not a RIFF/RF64/BW64 WAVE file";
+        case AdmError::kNotRiff: return "not a well-formed RIFF/RF64/BW64 WAVE file";
         case AdmError::kMissingFmt: return "missing fmt chunk";
         case AdmError::kMissingData: return "missing data chunk";
         case AdmError::kUnsupportedFormat: return "unsupported audio format";
