@@ -902,26 +902,32 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
 
     const auto type = *reader.data_type();
     const bool eac3 = type == ac3::iec61937::BurstDataType::kEac3;
-    std::println("unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
+    // stderr when the elementary stream itself is going to stdout, the same
+    // convention encode/decode follow (see status_stream's own comment):
+    // this report must never land in the middle of the bytes a pipeline is
+    // reading.
+    auto* status = status_stream(out_path);
+    std::println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
                  eac3 ? "E-AC-3" : "AC-3", reader.bursts() == 1 ? "" : "s", out_path,
                  elementary_bytes);
     if (chunk) {
         // The carrier rate, not the content rate: an E-AC-3 carrier runs at
         // 4x, so 192000 here means a 48 kHz programme.
-        std::println("carrier: {} Hz, {} ch, {} words", chunk->sample_rate, chunk->channels,
+        std::println(status, "carrier: {} Hz, {} ch, {} words", chunk->sample_rate,
+                     chunk->channels,
                      reader.word_order() == ac3::iec61937::WordOrder::kBigEndian
                          ? "big-endian"
                          : "little-endian");
     }
     if (reader.skipped_bursts() > 0) {
-        std::println("skipped {} burst(s) of another data type", reader.skipped_bursts());
+        std::println(status, "skipped {} burst(s) of another data type", reader.skipped_bursts());
     }
     if (reader.false_syncs() > 0) {
-        std::println("resynced past {} preamble pattern(s) with no syncframe behind them",
+        std::println(status, "resynced past {} preamble pattern(s) with no syncframe behind them",
                      reader.false_syncs());
     }
     if (!finished) {
-        std::println("warning: {}", ac3::iec61937::describe(finished.error()));
+        std::println(status, "warning: {}", ac3::iec61937::describe(finished.error()));
     }
     return 0;
 }

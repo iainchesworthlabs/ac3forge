@@ -2162,3 +2162,30 @@ TEST_CASE("cli: unspdif refuses ordinary PCM and leaves no output behind", "[cli
                       out.string() + "\"",
                   log) != 0);
 }
+
+TEST_CASE("cli: unspdif writes a clean stream to stdout, status text to stderr", "[cli][unspdif]") {
+    // The convention encode/decode already follow (status_stream): with "-"
+    // as the output, the human-readable report must not land in the middle of
+    // the binary a pipeline is reading. Worth its own test because getting it
+    // wrong is invisible until something downstream chokes - the report is
+    // valid-looking text prepended to a valid stream.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdout.log";
+    const auto ac3 = dir / "unspdif_stdout_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdout.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    const auto piped = dir / "unspdif_stdout.ac3";
+    REQUIRE(run_cli_stdout("unspdif \"" + wav.string() + "\" -", piped, log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+    // And the report did go somewhere - to stderr, not nowhere.
+    CHECK(read_log(log).find("unwrapped") != std::string::npos);
+}
