@@ -38,10 +38,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   at P = 512 were multiplying by a tabulated 1.0), and the digit-reversal permutation folded
   into each caller's own input-producing loop — the DCT-IV quarter-split, the §7.9.4.1 step-2
   pre-twiddle, `dft512`'s input copy — rather than run as a pass of its own. Measured on
-  linux-gcc: `mdct512_forward_fast` 2.47 → 1.24 µs (2.0×), `imdct512_windowed_fast` 2.93 →
-  1.61 µs (1.8×), `dft512` 8.56 → 3.63 µs (2.4×), `band_energy_fast` 27.4 → 18.0 µs (1.5×); a
-  180-second 5.1 AC-3 decode 4.07 → 2.65 s and an E-AC-3 enhanced-coupling decode 5.24 →
-  3.19 s. Every stream in the 40-encode corpus is byte-identical to before, and the direct-form
+  linux-gcc, median of ten interleaved base/branch runs: `mdct512_forward_fast` 2535 → 1415
+  ns/call (1.81×), `dft512` 8036 → 4361 (1.86×), `imdct512_windowed_fast` 2889 → 1842 (1.56×),
+  `mdct256_pair_fast` 2510 → 1698 (1.56×), `imdct256_pair_windowed_fast` 3147 → 2262 (1.34×),
+  `band_energy_fast` 27.9 → 21.9 µs (1.24×), against a 0.90–1.07× spread on the kernels this
+  did not touch. End to end over 180 seconds of real 5.1: a 5.1 AC-3 decode 4.19 → 2.92 s and
+  an E-AC-3 enhanced-coupling decode 5.84 → 3.24 s. Every stream in the 40-encode corpus is byte-identical to before, and the direct-form
   evaluations the fast paths are validated against are untouched — `mode=reference` still runs
   the spec's own arithmetic end to end. Accuracy is unchanged to three significant figures on
   every transform and slightly better for `dft512` against its own O(N²) summation (1.9e-15 →
@@ -54,8 +56,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   passes `DecoderConfig::fast_imdct` for both, and the encoder-internal `ecpl` use passes
   `eac3::FrameConfig::fast_mdct`, which makes that field the encoder's fast-transform switch in
   both directions and keeps `mode=reference` direct end to end. `ecpl_channel_spectrum` is 4.4×
-  faster on its own (74.8 → 17.1 µs, before `PF4` compounds it to 8.8×), and a 30-second
-  15-object decode drops from 6.59 s to 4.96 s. Encoder output is byte-identical across the
+  faster on its own (74.8 → 17.1 µs, before `PF4` compounds it to 6.9× — 73.4 → 10.6 µs), and a
+  30-second 15-object decode drops from 6.47 s to 4.83 s. Encoder output is byte-identical across the
   corpus, so this is a speed choice and not an output one.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

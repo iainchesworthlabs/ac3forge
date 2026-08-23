@@ -427,8 +427,9 @@ no SIMD and no threading anywhere in the codec core.
   byte-identical encodes for the encoder-internal use or keep that side direct. Done: both
   forward a `fast` flag, the decoder passing `DecoderConfig::fast_imdct` and the
   encoder-internal `ecpl` use `eac3::FrameConfig::fast_mdct`; the 40-stream encode corpus is
-  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4, 6.5×
-  with it); a 180-second enhanced-coupling decode 5.24 → 3.19 s. `joc::reconstruct` still runs its bed
+  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4, 6.9×
+  with it); a 180-second enhanced-coupling decode 5.84 → 3.24 s, a 30-second 15-object decode
+  6.47 → 4.83 s. `joc::reconstruct` still runs its bed
   ANALYSIS (five forward MDCTs per block) direct, which is now the dominant cost of an object
   decode — see PF8.
 - [x] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
@@ -437,10 +438,10 @@ no SIMD and no threading anywhere in the codec core.
   about 10%. Done as `fft_kernel.hpp`: compile-time-specialised radix-4 stages with a trailing
   radix-2 stage where log2(P) is odd, the first stage's unit twiddles gone, and the
   digit-reversal folded into each caller's own input-producing loop instead of running as a
-  pass. The kernel measured standalone is 1.6–1.75× across P = 64/128/512; at the caller level
-  the median paired ratio over 12 interleaved runs is 1.2–2.0× per fast transform, against an
-  0.89–1.08× noise floor on the unchanged ones. A 180-second 5.1 AC-3 decode 4.07 → 2.65 s.
-  Encodes byte-identical; `dft512` against its own O(N²) sum improved from 1.9e-15 to 1.7e-15.
+  pass. The kernel measured standalone is 1.6–1.75× across P = 64/128/512; at the caller level,
+  median of ten interleaved runs, 1.24–1.86× per fast transform against an 0.90–1.07× spread on
+  the unchanged ones. A 180-second 5.1 AC-3 decode 4.19 → 2.92 s. Encodes byte-identical;
+  `dft512` against its own O(N²) sum improved from 1.9e-15 to 1.7e-15.
 - [ ] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
   (`src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, the same mechanism as
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has
@@ -457,8 +458,8 @@ no SIMD and no threading anywhere in the codec core.
 - [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
   `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
   forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.
-  Measured after PF3/PF4: a 30-second 15-object decode is 4.96 s, of which about 3.5 s is those
-  transforms; the object inverses PF3 just fixed were 1.6 s of the 6.6 s before. It is one
+  Measured after PF3/PF4: a 30-second 15-object decode is 4.83 s, of which about 3.5 s is those
+  transforms; the object inverses PF3 just fixed were 1.6 s of the 6.5 s before. It is one
   argument, but it changes decoded object audio at ~1e-13 and there is no decoder-side forward
   switch to hang it on today — `DecoderConfig::fast_imdct` names the inverse — so it wants a
   deliberate decision, not a drive-by flip.
