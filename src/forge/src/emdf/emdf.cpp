@@ -1,5 +1,6 @@
 #include "ac3/emdf/emdf.hpp"
 
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -121,37 +122,57 @@ std::size_t find_sync_bit(std::span<const std::byte> data) {
     return kSyncNotFound;
 }
 
-// Decode-side inverse of put_payload_config, restricted (like the writer) to
-// the one shape TS 103 420 Table 56 mandates. Returns false for anything
-// else - an `e`/mode bit reading differently from what the writer always
-// sends - since the fields that would follow a different choice are not
-// documented anywhere this codebase transcribes them from, and guessing
-// their width would risk desynchronising the rest of the container.
-[[nodiscard]] bool read_payload_config(BitReader& r) {
-    if (r.read(1) != 0) {  // smploffste
-        return false;
+// Decode-side inverse of put_payload_config - but of the WHOLE of §H.2.1.3,
+// not just the one shape put_payload_config writes. Every branch here has a
+// defined width, so there is nothing to refuse: the reader walks the clause
+// and hands back what it found.
+//
+// This used to accept only Table 56's configuration and reject the rest,
+// which turns out to reject real Dolby output: DEE's own DD+ JOC streams
+// send the OAMD payload with payload_frame_aligned == 0 (so neither the
+// duplicate flags nor priority/proc_allowed follow it) while sending the JOC
+// payload in the same container with it set.
+[[nodiscard]] PayloadConfig read_payload_config(BitReader& r) {
+    PayloadConfig config;
+    const bool sample_offset_present = r.read(1) != 0;  // smploffste
+    if (sample_offset_present) {
+        config.sample_offset = static_cast<int>(r.read(11));  // smploffst
+        r.skip(1);                                            // reserved
     }
     if (r.read(1) != 0) {  // duratione
-        return false;
+        config.duration = read_variable_bits(r, 11);
     }
-    if (r.read(1) != 1) {  // groupide
-        return false;
+    if (r.read(1) != 0) {  // groupide
+        config.group_id = read_variable_bits(r, 2);
     }
-    read_variable_bits(r, 2);  // groupid: not needed to tell OAMD and JOC apart, both arrive by id
-    if (r.read(1) != 0) {  // codecdatae - see put_payload_config's own comment
-        return false;
+    config.codec_data = r.read(1) != 0;  // codecdatae
+    if (config.codec_data) {
+        r.skip(8);  // reserved - see put_payload_config's own comment
     }
-    if (r.read(1) != 0) {  // discard_unknown_payload
-        return false;
+    config.discard_unknown = r.read(1) != 0;
+    if (!config.discard_unknown) {
+        if (!sample_offset_present) {
+            config.frame_aligned = r.read(1) != 0;
+            if (config.frame_aligned) {
+                config.create_duplicate = r.read(1) != 0;
+                config.remove_duplicate = r.read(1) != 0;
+            }
+        }
+        if (sample_offset_present || config.frame_aligned) {
+            config.priority = static_cast<int>(r.read(5));
+            config.proc_allowed = static_cast<int>(r.read(2));
+        }
     }
-    if (r.read(1) != 1) {  // payload_frame_aligned
-        return false;
-    }
-    r.skip(1);  // create_duplicate
-    r.skip(1);  // remove_duplicate
-    r.skip(5);  // priority
-    r.skip(2);  // proc_allowed
-    return true;
+    return config;
+}
+
+// Tables H.2.5 and H.2.6. They differ only in their first entry: 0b00 is 8
+// bits of secondary protection's "none" but is RESERVED for the primary
+// field, which is why the primary case has to be refused rather than
+// skipped - a reserved code names no width.
+[[nodiscard]] int protection_bits(std::uint32_t code) {
+    constexpr std::array<int, 4> kWidths = {0, 8, 32, 128};
+    return kWidths[code & 3u];
 }
 
 }  // namespace
@@ -226,23 +247,26 @@ std::expected<std::optional<std::vector<DecodedPayload>>, ParseError> parse_cont
         return std::unexpected(ParseError::kTruncated);
     }
 
-    if (r.read(2) != 0) {  // emdf_version: only 0 (Annex H's own syntax) is defined
+    // §H.2.1.2.0. Version 3 escapes to variable_bits, but every version
+    // other than 0 leaves the container's own field layout undefined here,
+    // so the escape is read only to be honest about what was refused.
+    if (r.read(2) != 0) {  // emdf_version
         return std::unexpected(ParseError::kUnsupportedConfig);
     }
-    r.skip(3);  // key_id: unauthenticated, nothing to check on decode
+    if (r.read(3) == 7) {  // key_id, and its own escape (§H.2.1.2.0)
+        read_variable_bits(r, 3);
+    }
 
     std::vector<DecodedPayload> payloads;
     while (true) {
-        const auto id = r.read(5);
+        auto id = r.read(5);
         if (id == 0) {  // terminates the payload list
             break;
         }
-        if (id == 0x1F) {  // §H.2.2.2.2: the size-extension escape, never emitted here
-            return std::unexpected(ParseError::kUnsupportedConfig);
+        if (id == 0x1F) {  // §H.2.2.2.2: the id-extension escape
+            id += read_variable_bits(r, 5);
         }
-        if (!read_payload_config(r)) {
-            return std::unexpected(ParseError::kUnsupportedConfig);
-        }
+        const PayloadConfig config = read_payload_config(r);
         const auto size = read_variable_bits(r, 8);
         // Attacker/corruption-controlled: bound it against what is actually
         // left before allocating, rather than trusting a field that could
@@ -253,6 +277,7 @@ std::expected<std::optional<std::vector<DecodedPayload>>, ParseError> parse_cont
         }
         DecodedPayload payload;
         payload.id = static_cast<int>(id);
+        payload.config = config;
         payload.bytes.reserve(size);
         for (std::uint32_t i = 0; i < size; ++i) {
             payload.bytes.push_back(static_cast<std::byte>(r.read(8)));
@@ -262,14 +287,16 @@ std::expected<std::optional<std::vector<DecodedPayload>>, ParseError> parse_cont
 
     // §H.2.2.4: skip the protection field rather than validate it - its
     // content is implementation dependent and unverifiable, see
-    // build_container's own comment. Only the shape real streams (this
-    // encoder's and Dolby's own reference ones) actually use is recognised;
-    // anything else is refused rather than mis-skipped.
-    if (r.read(2) != 0b10 || r.read(2) != 0b01) {
+    // build_container's own comment. Tables H.2.5/H.2.6 give every code a
+    // width except protection_length_primary == 0b00, which is reserved and
+    // so cannot be skipped at all.
+    const auto primary = r.read(2);
+    const auto secondary = r.read(2);
+    if (primary == 0) {
         return std::unexpected(ParseError::kUnsupportedConfig);
     }
-    r.skip(32);  // protection_bits_primary
-    r.skip(8);   // protection_bits_secondary
+    r.skip(protection_bits(primary));    // protection_bits_primary
+    r.skip(protection_bits(secondary));  // protection_bits_secondary
 
     if (r.overflowed()) {
         return std::unexpected(ParseError::kTruncated);

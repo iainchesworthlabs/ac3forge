@@ -1141,6 +1141,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             if (frm->snroffststr == 0x1) {
                 fsnroffst.fill(static_cast<int>(r.read(4)));
             } else {
+                // §E2.3.1: cplfsnroffst comes FIRST when this block couples,
+                // ahead of every fbw channel's own - it is a stream in the
+                // allocation like any other, not something coupling inherits.
+                if (frm->cplinu[static_cast<std::size_t>(blk)]) {
+                    fsnroffst[static_cast<std::size_t>(kCplStream)] =
+                        static_cast<int>(r.read(4));
+                }
                 for (int ch = 0; ch < nchans; ++ch) {
                     fsnroffst[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(4));
                 }
@@ -1149,6 +1156,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // fgaincode is only ever sent when the frame said it might be; absent,
         // every channel's fast gain reverts to 0x4 for this block.
         if (frm->frmfgaincode && r.read(1) != 0) {
+            // cplfgaincod leads the list on the same footing cplfsnroffst
+            // does above. Missing it desynchronises everything after it by
+            // three bits, which is how a real DD+ JOC stream from the Dolby
+            // Encoding Engine used to fail: convsnroffste then read a bit
+            // that was not it, its ten-bit convsnroffst vanished, and the
+            // next block's exponents landed thirteen bits out
+            // (tests/decoder/test_dee_joc_fixture.cpp).
+            if (frm->cplinu[static_cast<std::size_t>(blk)]) {
+                fgaincod[static_cast<std::size_t>(kCplStream)] = static_cast<int>(r.read(3));
+            }
             for (int ch = 0; ch < nchans; ++ch) {
                 fgaincod[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(3));
             }
@@ -1781,16 +1798,21 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     const int key = static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid;
 
     // --- JOC audio reconstruction -----------------------------------------
-    // Only when OAMD's own object ordering and JOC's line up 1:1 - a
-    // dynamic-object-only program (no bed), where oba::parse_payload's
-    // `objects` is already exactly the objects JOC coded (see its own
-    // DecodedProgram comment). A bed program's JOC objects would not match
-    // object_metadata->objects index for index, and this project's own
-    // AtmosEncoder never produces one anyway, so reconstruction is skipped
-    // rather than risk mislabeling one object's audio as another's.
-    if (out.object_metadata && out.object_metadata->program.dynamic_only && !joc_bytes.empty()) {
+    // JOC's outputs are the program's objects with the LFE positions removed
+    // (§6.3.2.2 bypasses them), which oba::joc_object_indices() spells out.
+    // For the dynamic-object-only program AtmosEncoder writes, that is
+    // exactly object_metadata->objects index for index; for a bed program -
+    // what channel-based-immersive third-party content is - it is the bed's
+    // own channels, and out.object_indices is what says which.
+    if (out.object_metadata && !joc_bytes.empty()) {
         const auto params = joc::parse_payload(joc_bytes);
-        if (params && params->objects == static_cast<int>(out.object_metadata->objects.size())) {
+        const auto indices = oba::joc_object_indices(out.object_metadata->program);
+        // §6.3.2.2 Table 47: the JOC downmix is the five channels this
+        // substream carries, in JOC order. A 7-channel downmix needs Lb/Rb
+        // from a dependent substream, which decode_substream does not have
+        // in hand here, so those configurations parse but do not reconstruct.
+        if (params && params->objects == static_cast<int>(indices.size()) &&
+            params->channels == joc::kNumChannels5X) {
             constexpr std::array<int, joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
             // Spans, not copies: this permutation used to deep-copy five
             // channels (~30 KB a frame) purely to reorder them.
@@ -1807,6 +1829,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     joc_slot = std::make_unique<joc::ReconstructionState>();
                 }
                 out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot);
+                out.object_indices = indices;
             }
         }
     }
@@ -1979,6 +2002,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.numblkscod = lead.numblkscod;
     out.object_metadata = lead.object_metadata;
     out.object_audio = lead.object_audio;
+    out.object_indices = lead.object_indices;
     out.substream_count = static_cast<int>(substreams.size());
 
     // The PCM target for one program slot: the caller's span when
