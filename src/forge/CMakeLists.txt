@@ -133,6 +133,7 @@ target_sources(forge_objects
         src/io/wav.cpp
         src/io/wav_stream_reader.cpp
         src/io/wav_stream_writer.cpp
+        src/meta/bsi.cpp
         src/meta/drc.cpp
         src/meta/loudness.cpp
         src/meta/mixing.cpp

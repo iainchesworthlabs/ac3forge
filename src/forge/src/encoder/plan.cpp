@@ -23,6 +23,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -859,14 +860,30 @@ namespace {
 }  // namespace
 
 meta::MixMetadata mix_metadata(const Metadata& options) {
-    return {.dmixmod = options.dmixmod,
-            // Lt/Rt folds down into a matrix that will be re-decoded, so the
-            // centre traditionally sits 1.5 dB hotter there than in Lo/Ro.
-            .ltrtcmixlev = meta::MixLevel::kMinus3dB,
-            .lorocmixlev = widen(options.cmixlev),
-            .ltrtsurmixlev = meta::MixLevel::kMinus3dB,
-            .lorosurmixlev = widen(options.surmixlev),
-            .lfemixlevcod = options.lfemix};
+    // Everything past the five levels comes from mixdepth verbatim - the
+    // programme scale factors, the mixing-parameter block, the pan info and
+    // the per-block configuration have nothing to derive from.
+    meta::MixMetadata out = options.mixdepth;
+    out.dmixmod = options.dmixmod;
+    // Lt/Rt folds down into a matrix that will be re-decoded, so the centre
+    // traditionally sits 1.5 dB hotter there than in Lo/Ro. An explicit
+    // override wins over both that convention and the widening below.
+    out.ltrtcmixlev = options.ltrtcmixlev.value_or(meta::MixLevel::kMinus3dB);
+    out.lorocmixlev = options.lorocmixlev.value_or(widen(options.cmixlev));
+    out.ltrtsurmixlev = options.ltrtsurmixlev.value_or(meta::MixLevel::kMinus3dB);
+    out.lorosurmixlev = options.lorosurmixlev.value_or(widen(options.surmixlev));
+    out.lfemixlevcod = options.lfemix;
+    return out;
+}
+
+meta::AlternateBsi alternate_bsi(const Metadata& options) {
+    meta::AlternateBsi out;
+    // xbsi1 is the same five quantities mix_metadata() derives. The rest of
+    // the MixMetadata it returns has no Annex D field and is simply not read
+    // by the AC-3 writer - see MixMetadata's own comment.
+    out.mix = mix_metadata(options);
+    out.extended = options.xbsi2;
+    return out;
 }
 
 // --- configs ----------------------------------------------------------------
@@ -887,6 +904,9 @@ std::string_view describe(PlanError error) {
         case PlanError::kVbrNeedsEac3:
             return "variable bit rate needs E-AC-3 - AC-3's frame size indexes Table 5.18 "
                    "and cannot vary freely";
+        case PlanError::kTimecodeNeedsBsid8:
+            return "Annex D's alternate syntax reuses the two time code fields (§D1), so a "
+                   "bsid-6 stream cannot carry a time code as well";
     }
     return "";
 }
@@ -914,6 +934,13 @@ std::optional<PlanError> validate(const Plan& plan) {
     }
     if (plan.vbr && plan.codec == Codec::kAc3) {
         return PlanError::kVbrNeedsEac3;
+    }
+    // Only AC-3 has an alternate syntax to choose, and only AC-3 has a time
+    // code field for it to displace - E-AC-3 has neither, so `annexd` there is
+    // inert rather than in conflict with anything.
+    if (plan.codec == Codec::kAc3 && plan.meta.annexd &&
+        (plan.meta.info.timecod1 || plan.meta.info.timecod2)) {
+        return PlanError::kTimecodeNeedsBsid8;
     }
     return std::nullopt;
 }
@@ -949,7 +976,14 @@ EncoderConfig ac3_config(const Plan& plan) {
                           ? plan.meta.heavy2
                           : std::optional<meta::HeavyConfig>(std::nullopt),
             .cmixlev = plan.meta.cmixlev,
-            .surmixlev = plan.meta.surmixlev};
+            .surmixlev = plan.meta.surmixlev,
+            .info = plan.meta.info,
+            // Annex D and the time code occupy the same 28 bits, so asking for
+            // bsid 6 drops whatever timecode the plan carried rather than
+            // handing the encoder a config it would refuse.
+            .alternate_bsi = plan.meta.annexd
+                                 ? std::optional<meta::AlternateBsi>(alternate_bsi(plan.meta))
+                                 : std::nullopt};
 }
 
 namespace {
@@ -1008,6 +1042,9 @@ eac3::AccessUnitConfig eac3_config(const Plan& plan) {
     }
     if (plan.meta.mixmeta) {
         independent.mixing = mix_metadata(plan.meta);
+    }
+    if (plan.meta.infomdat) {
+        independent.info = plan.meta.info;
     }
     apply_tools(plan.tools, independent);
     independent.vbr = plan.vbr;
