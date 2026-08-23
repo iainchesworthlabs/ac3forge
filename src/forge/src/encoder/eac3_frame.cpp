@@ -831,14 +831,18 @@ inline constexpr double kSpxRichShare = 3.0e-2;
 inline constexpr int kSpxRichCeiling = 55;
 
 [[nodiscard]] int spx_rate_ceiling(double energy_share) {
-    constexpr double kQuiet = -4.0;  // log10(kSpxQuietShare)
+    // Derived from the two anchors rather than written out, so moving either
+    // share moves the line with it. std::log10 is not constexpr before C++26.
+    const double quiet = std::log10(kSpxQuietShare);
+    const double rich = std::log10(kSpxRichShare);
+    // The max() is not the same as the clamp: it keeps log10 off zero for a
+    // digitally silent top end, which is a real input here.
     const double decades =
-        std::clamp(std::log10(std::max(energy_share, kSpxQuietShare)), kQuiet,
-                   std::log10(kSpxRichShare));
-    const double slope = (kSpxRichCeiling - kSpxQuietCeiling) /
-                         (std::log10(kSpxRichShare) - kQuiet);
+        std::clamp(std::log10(std::max(energy_share, kSpxQuietShare)), quiet, rich);
+    const double slope =
+        static_cast<double>(kSpxRichCeiling - kSpxQuietCeiling) / (rich - quiet);
     return static_cast<int>(
-        std::lround(kSpxQuietCeiling + slope * (decades - kQuiet)));
+        std::lround(kSpxQuietCeiling + slope * (decades - quiet)));
 }
 
 // Coupling's crossover, moved by how well this frame's own region survives
