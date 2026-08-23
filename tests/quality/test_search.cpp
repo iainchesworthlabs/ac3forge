@@ -219,7 +219,7 @@ TEST_CASE("searching on distortion lowers the decoded error", "[quality][search]
                 const std::size_t base = (frame - 1) * ac3::kSamplesPerFrame;
                 for (std::size_t n = 0; n < out.size(); ++n) {
                     const double reference = in[base + n];
-                    const double error = out[n] - reference;
+                    const double error = static_cast<double>(out[n]) - reference;
                     signal += reference * reference;
                     noise += error * error;
                 }
