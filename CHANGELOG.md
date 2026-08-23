@@ -14,6 +14,53 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **E-AC-3 `auto` chooses its Annex E tools from the frame, not just the bitrate** (`EQ9`). The
+  tool set used to follow from the per-channel rate alone. Two measures taken from the MDCT
+  coefficients the transform has already produced now decide with it: how much of the coupling
+  region survives the decoder's own reconstruction of it (the shared channel is the coefficient
+  sum and the coordinate restores each band's energy, so the residual against that rank-one shape
+  *is* what coupling costs — evaluated, not estimated), and how much of the frame's energy sits
+  above the extension frequency. Spectral extension's ceiling now runs from 110 kbit/s per
+  channel where the top end is nearly empty down to 55 where it carries real content, instead of
+  a fixed 56; coupling now needs both a near-exact fit and a region at least four sub-bands wide,
+  which it rarely has once §E3.3.1 has derived its end frequency from `spxbegf`.
+
+  Measured on real programme material rather than the checked-in fixtures — six 12 s excerpts of
+  a 5.1 theatrical mix, six (layout, rate) points from 32 to 96 kbit/s per channel, scored
+  through this project's own decoder with ViSQOL MOS-LQO beside SNR — `auto` comes out +0.13
+  MOS-LQO and +0.34 dB SNR against the rate-only policy, better in 23 of 36 cells and worse in
+  one, with no (layout, rate) point regressing. The fixed 56 it replaces was measured as marginal
+  SNR on fixtures carrying 99.9% of their energy below 8.1 kHz, which is below where either tool
+  operates.
+
+  `tools=auto` output stays decodable by FFmpeg, and the tool tokens (`cpl`, `spx`, `aht`,
+  `cpl+ecpl`, `tpn`, …) are unchanged — a caller who names a tool set still gets exactly it.
+
+### Documented
+
+- **Enhanced coupling and transient pre-noise, measured and labelled** (`EQ10`). Both are fully
+  implemented and decode correctly; neither is in `auto`'s set, for opposite reasons, and both
+  are now written down with their numbers in `docs/concepts/ac3-eac3.md` and
+  `docs/library/encoding-eac3.md`.
+
+  Enhanced coupling is the better-sounding of the two coupling reconstructions on real material —
+  ahead of standard coupling on MOS-LQO at every (layout, rate) point tried, and worth +0.42
+  against `auto`'s own score at 64 kbit/s per channel and +0.31 at 77. Every trend row records it
+  as a net loss because every trend row is SNR, and a phase-restoring reconstruction built on a
+  full DFT does not preserve the waveform. What keeps it out of `auto` is that FFmpeg's Annex E
+  parser has no model of §E3.5 and misreads such a stream as a corrupt frame; `cpl+ecpl` still
+  asks for it, and on a pipeline whose decoder reads it the measurements say to.
+
+  Transient pre-noise processing does not pay. Over exactly the samples it touches it lands
+  6.5–24 dB further from the original than leaving the audio alone, at every bitrate measured,
+  and the gap widens with rate: the substitution's error is a property of the material (flat at
+  20.7–22.5 dB whatever the bitrate) while the coder's own error over those samples falls from
+  11.9 dB at 96 kbit/s stereo to −3.3 dB at 256. It is not a bit-allocation effect — outside its
+  own footprint the two decodes are bit-identical — and perceptually it is a no-op, matching the
+  untreated encode to within 0.01 MOS-LQO in every row. Block switching gets there first: the
+  correction is gated on the same transient detector that shortens the transform, so it
+  substitutes earlier audio for audio the short transforms had already protected.
+
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`

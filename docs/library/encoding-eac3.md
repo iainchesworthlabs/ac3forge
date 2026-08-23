@@ -59,6 +59,78 @@ rejects them outright.
 > verification-gap table in [Validation](../verification.md#where-the-oracles-dont-reach) for
 > which tools have an external oracle.
 
+## How `auto` chooses
+
+`FrameConfig::auto_tools` (the CLI's `tools=auto`) hands the tool set to the encoder instead of
+naming it. It overrides `coupling`/`spx`/`aht` rather than combining with them: when it is set
+they are not read at all, while `cplbegf`/`spxbegf`/`gaqmod` still steer the geometry of whatever
+it does turn on.
+
+It decides from two things — the per-channel bitrate, and the frame itself. The content half is
+measured from the MDCT coefficients the transform has already produced, so it costs a pass over
+the affected region and no second transform:
+
+| Measure | What it is | What it decides |
+|---|---|---|
+| coupling fit | How much of the coupling region's energy survives the decoder's own reconstruction of it. §7.4.1's shared channel is the coefficient sum and the transmitted coordinate restores each band's energy, so the residual against that rank-one shape is what coupling costs — this is evaluated, not estimated. 1.0 is a perfect fit (every channel already a scalar multiple of the sum, which is what near-mono material looks like above 8 kHz); independent channels of equal level land at `2/sqrt(n) - 1`, which is 0.41 for a stereo pair and slightly negative for five. | Whether to couple, and how far above the fixed rate ceiling coupling may reach. |
+| extension energy share | How much of the frame's energy sits above the extension frequency. | Whether to extend: the ceiling runs from 110 kbit/s per channel where the top end is nearly empty down to 55 where it carries real content. |
+
+The rules that fall out of those:
+
+- **Spectral extension** is on below a ceiling that moves with the energy share above. A frame
+  whose top end is nearly empty — which is most real programme material — gets synthesis at up to
+  96 kbit/s per channel, because what synthesis replaces there is a band the coder was about to
+  spend nothing on and drop. A frame whose top end carries real content loses it by 64.
+- **Coupling** needs a fit of 0.99 or better *and* a region at least four sub-bands wide.
+  §E3.3.1 derives `cplendf` from `spxbegf`, so wherever synthesis is in use coupling is left one
+  or two sub-bands — 12 or 24 coefficients — which cannot repay a coordinate per band per channel
+  plus a shared channel the allocator buys bits for. In practice `auto` now couples rarely.
+- **AHT** is always permitted and decided per channel per frame by whether the six blocks look
+  alike, which was already a content decision.
+- **Enhanced coupling** and **transient pre-noise processing** are never chosen by `auto` — see
+  [What `auto` will not choose](#what-auto-will-not-choose) below.
+
+Under VBR there is no fixed target rate, so `VbrConfig::nominal_kbps` (or `max_kbps`, or 192)
+stands in for it. The content half is unaffected: it reads the frame either way, which is most of
+what makes the VBR case work at all.
+
+### What `auto` will not choose
+
+Both of these are fully implemented, decode correctly in this project's own decoder at every
+layout, and have their own CI legs. Neither is in `auto`'s set, for different reasons.
+
+**Enhanced coupling (§E3.5)** is not a quality problem. Measured on real programme material —
+six 12 s excerpts of a 5.1 theatrical mix at six (layout, rate) points — it scores *above*
+standard coupling on ViSQOL MOS-LQO at every one of them, and letting `auto` reach for it was
+worth +0.42 MOS at 64 kbit/s per channel and +0.31 at 77. Every SNR trend row records it as a
+loss, and both are true: a phase-restoring reconstruction built on a full DFT does not preserve
+the waveform, it preserves what the waveform sounded like.
+
+What rules it out is interoperability. FFmpeg's Annex E parser has no model of §E3.5's syntax at
+all — it does not decline an enhanced-coupling stream, it misreads it and reports a corrupt
+frame — and `auto` is the tool set a caller gets for asking for nothing in particular, so it has
+to stay decodable by the decoders that exist. `cpl+ecpl` still asks for it explicitly, and on a
+closed pipeline with a decoder known to read it, the measurements say to.
+
+**Transient pre-noise processing (§3.7)** does not pay at all, and the measurement is
+unambiguous. It overwrites the decoded audio ahead of a transient with a copy of the audio 512
+samples earlier. That substitution's error is a property of the material, not of the coder: over
+exactly the samples it touches it measures 20.7–22.5 dB at every bitrate tried, flat. The coder's
+own error over those same samples is 11.9 dB at 96 kbit/s stereo and −3.3 dB at 256 — it improves
+with rate, and it is already the better of the two at the lowest rate this encoder supports. So
+the correction lands between 6.5 and 24 dB *worse* than leaving the audio alone, everywhere it
+fires, and the gap widens as the rate rises. It is not a bit-allocation effect: outside its own
+footprint the two decodes are bit-identical. Perceptually it is a no-op — MOS-LQO matched the
+untreated encode to within 0.01 in every row measured.
+
+The mechanism is that block switching gets there first. §3.7 exists to clean up pre-echo, and
+this encoder gates the correction on the same transient detector that switches to short
+transforms — so it fires exactly where the short transforms have already confined the pre-echo,
+and substitutes earlier audio for audio that was not damaged. Treat it as a reference-correctness
+tool: it demonstrates the syntax and the §3.7.2 reconstruction, and there is no measured rate or
+content at which it improves the result.
+
+
 Block switching (§8.2.2/§7.9) is automatic here too — no config field. A channel that switches
 anywhere in the frame is excluded from both coupling (same reasoning as AC-3's) and, for this
 generation only, from AHT for that frame: AHT's own "stationary" premise (§E3.4, the opposite of
