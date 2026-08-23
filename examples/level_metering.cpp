@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -52,12 +53,12 @@ int main() {
 
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         const auto decoded = decoder.decode_frame(*encoded);
         if (!decoded) {
-            std::printf("decode failed: %.*s\n",
+            fmt::printf("decode failed: %.*s\n",
                         static_cast<int>(ac3::describe(decoded.error()).size()),
                         ac3::describe(decoded.error()).data());
             return 1;
@@ -73,12 +74,12 @@ int main() {
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
         const auto name = ac3::analysis::channel_name(kAcmod, kLfe, ch);
         const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];
-        std::printf("%-3.*s peak %6.1f dBFS  rms %6.1f dBFS%s\n", static_cast<int>(name.size()),
+        fmt::printf("%-3.*s peak %6.1f dBFS  rms %6.1f dBFS%s\n", static_cast<int>(name.size()),
                     name.data(), stats.peak_db(), stats.rms_db(), stats.clipped_samples > 0 ? "  CLIPPED" : "");
     }
 
     const auto energy = ac3::analysis::energy_vector(meter.levels(), kAcmod);
-    std::printf("soundfield: %.1f degrees, magnitude %.2f, %.1f dBFS\n", energy.azimuth_deg,
+    fmt::printf("soundfield: %.1f degrees, magnitude %.2f, %.1f dBFS\n", energy.azimuth_deg,
                 energy.magnitude, energy.level_db);
     return 0;
 }

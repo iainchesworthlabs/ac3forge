@@ -8,7 +8,7 @@
 #include <fstream>
 #include <numbers>
 #include <optional>
-#include <print>
+#include <fmt/format.h>
 #include <span>
 #include <sstream>
 #include <string>
@@ -46,11 +46,11 @@ std::optional<int> apply_object_signing(std::vector<std::vector<std::byte>>& uni
     const auto key = ac3::signing::load_signing_key(meta.signing_key.value_or(""));
     if (!key) {
         if (key.error().kind == ac3::signing::KeyErrorKind::kAbsent) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: sign-objects needs a key — pass signing-key=<path>, or set "
                          "AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY");
         } else {
-            std::println(stderr, "error: {}", key.error().message);
+            fmt::println(stderr, "error: {}", key.error().message);
         }
         return std::nullopt;
     }
@@ -69,7 +69,7 @@ std::optional<std::vector<std::vector<ac3::oba::Keyframe>>> parse_path_file(
     std::string_view path) {
     std::ifstream in{std::string{path}};
     if (!in) {
-        std::println(stderr, "error: cannot open {}", path);
+        fmt::println(stderr, "error: cannot open {}", path);
         return std::nullopt;
     }
     std::vector<std::vector<ac3::oba::Keyframe>> by_object;
@@ -86,7 +86,7 @@ std::optional<std::vector<std::vector<ac3::oba::Keyframe>>> parse_path_file(
         ac3::oba::Keyframe kf;
         if (!(tokens >> kf.time_s >> kf.position.x >> kf.position.y >> kf.position.z >>
               kf.gain >> kf.lfe_send)) {
-            std::println(stderr, "error: {}:{}: expected 'object time_s x y z gain lfe_send'",
+            fmt::println(stderr, "error: {}:{}: expected 'object time_s x y z gain lfe_send'",
                          path, lineno);
             return std::nullopt;
         }
@@ -104,7 +104,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
               std::uint32_t objects, std::uint32_t orbit_seconds, std::string_view mode,
               const Options& meta) {
     if (objects < 1 || objects > 15) {
-        std::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
+        fmt::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
                              "and TS 103 420 §8.3.2.2 caps the total at 16)");
         return 1;
     }
@@ -112,7 +112,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     // degrades to a plain 5.1 bed on a decoder that refuses an unvalidated
     // object container instead of falling back (see AtmosConfig).
     if (mode != "objects" && mode != "bed51") {
-        std::println(stderr, "error: mode is 'objects' (default) or 'bed51'");
+        fmt::println(stderr, "error: mode is 'objects' (default) or 'bed51'");
         return 1;
     }
     const bool emit_objects = mode != "bed51";
@@ -183,7 +183,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
 
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps — the metadata and "
                          "the mantissas share one frame, so try a higher bit rate",
                          objects, bitrate);
@@ -206,18 +206,18 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
         return 1;
     }
     if (*signed_count > 0) {
-        std::println("  signed {} frames' EMDF object container with the supplied key",
+        fmt::println("  signed {} frames' EMDF object container with the supplied key",
                      *signed_count);
     }
     if (!out_sink.close()) {
         return 1;
     }
-    std::println("wrote {} E-AC-3 access units to {}", frames, out_path);
+    fmt::println("wrote {} E-AC-3 access units to {}", frames, out_path);
     if (emit_objects) {
-        std::println("  {} dynamic objects + the bed's LFE = {} objects, JOC over a 5.1 downmix",
+        fmt::println("  {} dynamic objects + the bed's LFE = {} objects, JOC over a 5.1 downmix",
                      objects, ac3::oba::object_count(encoder.program()));
     } else {
-        std::println("  bed51: 5.1 bed only, no object container — plays as 5.1 on a decoder "
+        fmt::println("  bed51: 5.1 bed only, no object container — plays as 5.1 on a decoder "
                      "that rejects an unvalidated one ({} objects were panned into the bed)",
                      objects);
     }
@@ -233,12 +233,12 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     const auto objects =
         objects_arg != 0 ? static_cast<std::size_t>(objects_arg) : parsed->size();
     if (objects < 1 || objects > 15) {
-        std::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
+        fmt::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
                              "and TS 103 420 §8.3.2.2 caps the total at 16)");
         return 1;
     }
     if (parsed->size() > objects) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: {} has keyframes up to object index {}, more than the {} objects "
                      "requested",
                      paths_path, parsed->size() - 1, objects);
@@ -251,7 +251,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
         if (i < parsed->size() && !(*parsed)[i].empty()) {
             auto created = ac3::oba::KeyframePath::create((*parsed)[i]);
             if (!created) {
-                std::println(stderr, "error: object {} has two keyframes at the same time_s", i);
+                fmt::println(stderr, "error: object {} has two keyframes at the same time_s", i);
                 return 1;
             }
             paths.emplace_back(std::move(*created));
@@ -303,7 +303,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
 
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps — the metadata and "
                          "the mantissas share one frame, so try a higher bit rate",
                          objects, bitrate);
@@ -322,13 +322,13 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
         return 1;
     }
     if (*signed_count > 0) {
-        std::println("  signed {} frames' EMDF object container with the supplied key",
+        fmt::println("  signed {} frames' EMDF object container with the supplied key",
                      *signed_count);
     }
     if (!out_sink.close()) {
         return 1;
     }
-    std::println("wrote {} E-AC-3 access units to {} ({} objects from {})", frames, out_path,
+    fmt::println("wrote {} E-AC-3 access units to {} ({} objects from {})", frames, out_path,
                  objects, paths_path);
     return 0;
 }
@@ -347,7 +347,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     if (!streaming) {
         wav = read_wav_arg(in_path);
         if (!wav) {
-            std::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
             return 1;
         }
     }
@@ -363,7 +363,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     const auto count = objects == 0 ? src_channels
                                     : std::min<std::size_t>(objects, src_channels);
     if (count < 1 || count > 15) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: 1 to 15 objects (the bed's LFE is the 16th, and TS 103 420 "
                      "§8.3.2.2 caps the total at 16); this file has {} channels",
                      src_channels);
@@ -382,7 +382,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                                   ? measured_dialnorm(*wav, *sr, layout->acmod, layout->lfe, status)
                                   : std::nullopt;
         if (!measured) {
-            std::println(stderr, "error: cannot measure loudness for this file; "
+            fmt::println(stderr, "error: cannot measure loudness for this file; "
                                  "pass dialnorm=<1..31> explicitly");
             return 1;
         }
@@ -445,7 +445,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
             if (i < parsed->size() && !(*parsed)[i].empty()) {
                 auto created = ac3::oba::KeyframePath::create((*parsed)[i]);
                 if (!created) {
-                    std::println(stderr, "error: object {} has two keyframes at the same time_s",
+                    fmt::println(stderr, "error: object {} has two keyframes at the same time_s",
                                  i);
                     return 1;
                 }
@@ -490,7 +490,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
             }
             const auto got = stream_in.read_planar(stream_dst, valid);
             if (!got || *got != valid) {
-                std::println(stderr, "error: {}: {}", in_path,
+                fmt::println(stderr, "error: {}: {}", in_path,
                              ac3::io::describe(got ? ac3::io::WavError::kTruncated
                                                    : got.error()));
                 out_sink.abort();
@@ -524,7 +524,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                                                        static_cast<double>(src_rate)))
                           : encoder.encode_frame(views, placement);
         if (!unit) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps — the metadata and the "
                          "mantissas share one frame, so try a higher bit rate",
                          count, bitrate);
@@ -552,16 +552,16 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         return 1;
     }
     if (*signed_count > 0) {
-        std::println(status_stream(out_path),
+        fmt::println(status_stream(out_path),
                      "  signed {} frames' EMDF object container with the supplied key",
                      *signed_count);
     }
     if (!out_sink.close()) {
         return 1;
     }
-    std::println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) to {}",
+    fmt::println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) to {}",
                 out_sink.frames(), bitrate, src_rate, out_path);
-    std::println(status,
+    fmt::println(status,
                  "  {} objects from {} source channels + the bed's LFE = {} objects, "
                  "JOC over a 5.1 downmix",
                  count, src_channels, ac3::oba::object_count(encoder.program()));
@@ -578,7 +578,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     // "a silently ignored metadata flag looks exactly like metadata that did not work" (see
     // parse_options's own comment above).
     if (meta.p.measure_dialnorm) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: dialnorm=auto is not supported by atmos-adm - an ADM document's bed/"
                      "object channels have no single fixed layout to measure loudness against the "
                      "way atmos-encode's WAV input does; pass dialnorm=<1..31> explicitly");
@@ -587,7 +587,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 
     auto source = ac3cli::load_adm_atmos_source(in_path, programme_id);
     if (!source) {
-        std::println(stderr, "error: {}: {}", in_path, source.error());
+        fmt::println(stderr, "error: {}: {}", in_path, source.error());
         return 1;
     }
 
@@ -598,7 +598,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 
     const auto count = source->channel_count();
     if (count < 1 || count > 15) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: 1 to 15 bed/object channels (the bed's LFE is the 16th, and TS 103 "
                      "420 §8.3.2.2 caps the total at 16); {} resolved {} channel(s)",
                      in_path, count);
@@ -641,7 +641,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
                                 static_cast<double>(source->sample_rate));
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: cannot encode {} channels at {} kbps — the metadata and the "
                          "mantissas share one frame, so try a higher bit rate",
                          count, bitrate);
@@ -670,9 +670,9 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     // See run_encode's identical status_stream() comment: out_path == "-" means the E-AC-3 bytes
     // just written own stdout, so this report goes to stderr instead.
     const auto status = status_stream(out_path);
-    std::println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) from {} to {}",
+    fmt::println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) from {} to {}",
                 out_sink.frames(), bitrate, source->sample_rate, in_path, out_path);
-    std::println(status,
+    fmt::println(status,
                  "  {} bed speaker feed(s) + {} dynamic object(s) + the bed's LFE = {} objects, "
                  "JOC over a 5.1 downmix",
                  bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
