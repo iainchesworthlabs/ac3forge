@@ -1628,9 +1628,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                           config_.vbr->max_kbps.value_or(kVbrDefaultNominalKbps))
                     : config_.bitrate_kbps;
 
-    // --- 1. Tool decisions --------------------------------------------------
-    // Spectral extension is settled first, because when both tools are in use
-    // it fixes where coupling has to stop (§E3.3.1).
+    // --- 1. Frame setup -----------------------------------------------------
+    // The order from here is: block switching, then the MDCT, then the tool
+    // decisions the transform's own coefficients inform (steps 2 and 3), then
+    // coupling proper. The transform runs BEFORE the tools are chosen because
+    // choosing them from content means measuring content, and the frame's
+    // coefficients are the measurement - re-deriving the same spectrum from
+    // the PCM a second time would cost a second transform for numbers this
+    // one already has. Nothing in the MDCT depends on which tools are on: it
+    // reads the block-switch decision and nothing else.
     // The Payload lives on the encoder (state_) and reset_for_frame makes it
     // exactly a fresh one, minus the re-allocations - ~150 KB of vectors a
     // frame before this.
@@ -1651,6 +1657,104 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     auto& cpl = payload.cpl;
     auto& spx = payload.spx;
+
+    // --- Block switching (§8.2.2/§7.9) --------------------------------------
+    // Decided before the coupling decision below, because §8.2.4.1's basic-
+    // encoder guidance excludes a block-switched channel from coupling, and
+    // this codebase's coupling is frame-wide all-or-nothing rather than a
+    // per-channel toggle - so the only way to honour that exclusion without
+    // inventing bitstream machinery this phase has no room for is to leave
+    // coupling (and, below, AHT) off for the WHOLE frame whenever any
+    // eligible channel switches, rather than just that one channel.
+    AC3_ZONE_BEGIN(zone_transients, "step1_transient_detect");
+    auto& blksw = state_->blksw;
+    blksw.assign(static_cast<std::size_t>(nfchans), {});
+    auto& channel_switched = state_->channel_switched;
+    channel_switched.assign(static_cast<std::size_t>(nfchans), false);
+    bool any_switched = false;
+    for (int ch = 0; ch < nfchans; ++ch) {
+        const auto& pcm = channels[static_cast<std::size_t>(ch)];
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            // §8.2.2 defines blksw from the analysis window's SECOND half -
+            // exactly this block period's 256 NEW samples, a contiguous
+            // slice of the frame's own PCM. The window's first half was last
+            // call's segment; the detector's persistent state carries it, so
+            // no history splice (and no 512-sample gather) is needed here at
+            // all - see TransientDetector::detect.
+            const std::span<const float, kSamplesPerBlock> segment{
+                pcm.data() + static_cast<std::size_t>(blk) * kSamplesPerBlock,
+                kSamplesPerBlock};
+            const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
+            blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)] = sw;
+            channel_switched[static_cast<std::size_t>(ch)] =
+                channel_switched[static_cast<std::size_t>(ch)] || sw;
+            any_switched = any_switched || sw;
+        }
+    }
+    AC3_ZONE_END(zone_transients);
+
+    // --- 2. MDCT ------------------------------------------------------------
+    AC3_ZONE_BEGIN(zone_mdct, "step2_mdct");
+    auto& coeffs = state_->coeffs;
+    // Sized for the CODED channels only. The coupling channel is one more
+    // stream on the end, but whether there is one is a tool decision that
+    // has not been taken yet - it is taken from these very coefficients -
+    // so its slots are appended once cpl.in_use is settled, below. Appending
+    // rather than sizing for the maximum keeps a no-coupling frame's
+    // footprint where it was.
+    coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
+    const auto coeffs_at = [&](int s, int blk) -> std::array<double, 256>& {
+        return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
+                      static_cast<std::size_t>(blk)];
+    };
+    for (int ch = 0; ch < nchans; ++ch) {
+        const auto& pcm = channels[static_cast<std::size_t>(ch)];
+        auto& hist = history_[static_cast<std::size_t>(ch)];
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            auto& time = time_scratch_;
+            AC3_ZONE_BEGIN(zone_gather, "step2_gather");
+            for (int n = 0; n < 512; ++n) {
+                const int pos = blk * 256 - 256 + n;
+                time[static_cast<std::size_t>(n)] =
+                    pos < 0 ? hist[static_cast<std::size_t>(pos + 256)]
+                            : static_cast<double>(pcm[static_cast<std::size_t>(pos)]);
+            }
+            AC3_ZONE_END(zone_gather);
+            auto& windowed = windowed_scratch_;
+            AC3_ZONE_BEGIN(zone_window, "step2_window");
+            apply_analysis_window(time, windowed);
+            AC3_ZONE_END(zone_window);
+            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
+                // §7.9.2: the two half-block transforms are interleaved
+                // bin-by-bin into one ordinary 256-coefficient set - from
+                // here on, exponent/bitalloc/mantissa code cannot tell this
+                // block apart from a long one.
+                const std::span<const double, 512> full(windowed);
+                auto& first = half1_scratch_;
+                auto& second = half2_scratch_;
+                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
+                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
+                auto& out = coeffs_at(ch, blk);
+                for (int k = 0; k < 128; ++k) {
+                    out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
+                    out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
+                }
+            } else {
+                mdct512_forward(windowed, coeffs_at(ch, blk), config_.fast_mdct);
+            }
+        }
+        for (int n = 0; n < 256; ++n) {
+            hist[static_cast<std::size_t>(n)] =
+                static_cast<double>(pcm[static_cast<std::size_t>(1280 + n)]);
+        }
+    }
+
+    AC3_ZONE_END(zone_mdct);
+
+    // --- Spectral extension (§E3.6) ------------------------------------------
+    // Settled before coupling, because when both are in use it fixes where
+    // coupling has to stop (§E3.3.1).
+    //
     // `auto` asks the rate policy whether each tool is worth its cost here;
     // otherwise the caller's own flags stand. The policy answers either
     // kToolOff or the geometry helper's own value, so only the on/off
@@ -1703,69 +1807,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
     }
 
-    // --- Block switching (§8.2.2/§7.9) --------------------------------------
-    // Decided before the coupling decision below, because §8.2.4.1's basic-
-    // encoder guidance excludes a block-switched channel from coupling, and
-    // this codebase's coupling is frame-wide all-or-nothing rather than a
-    // per-channel toggle - so the only way to honour that exclusion without
-    // inventing bitstream machinery this phase has no room for is to leave
-    // coupling (and, below, AHT) off for the WHOLE frame whenever any
-    // eligible channel switches, rather than just that one channel.
-    AC3_ZONE_BEGIN(zone_transients, "step1_transient_detect");
-    auto& blksw = state_->blksw;
-    blksw.assign(static_cast<std::size_t>(nfchans), {});
-    auto& channel_switched = state_->channel_switched;
-    channel_switched.assign(static_cast<std::size_t>(nfchans), false);
-    bool any_switched = false;
-    for (int ch = 0; ch < nfchans; ++ch) {
-        const auto& pcm = channels[static_cast<std::size_t>(ch)];
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-            // §8.2.2 defines blksw from the analysis window's SECOND half -
-            // exactly this block period's 256 NEW samples, a contiguous
-            // slice of the frame's own PCM. The window's first half was last
-            // call's segment; the detector's persistent state carries it, so
-            // no history splice (and no 512-sample gather) is needed here at
-            // all - see TransientDetector::detect.
-            const std::span<const float, kSamplesPerBlock> segment{
-                pcm.data() + static_cast<std::size_t>(blk) * kSamplesPerBlock,
-                kSamplesPerBlock};
-            const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
-            blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)] = sw;
-            channel_switched[static_cast<std::size_t>(ch)] =
-                channel_switched[static_cast<std::size_t>(ch)] || sw;
-            any_switched = any_switched || sw;
-        }
-    }
-    AC3_ZONE_END(zone_transients);
-
-    // §3.7: transient pre-noise processing. Reuses the block-switch decision
-    // above rather than a second, independent transient detector - a channel
-    // gets a correction exactly where it also short-transforms. The chosen
-    // location is the first switched block's own leading edge (already a
-    // multiple of 4, so nothing is lost rounding transprocloc to the wire
-    // field's 4-sample resolution) and translen is a fixed, conservative 0:
-    // the shortest legal correction window, covering exactly the block
-    // boundary immediately before the switch with no extra margin. Neither
-    // choice is spec-mandated - only decoder reconstruction (§3.7.2) is
-    // normative - so both are this encoder's own starting heuristic, a
-    // baseline to tune once real listening (not just round-trip decode)
-    // guides it.
-    if (config_.transient_prenoise) {
-        payload.chintransproc.assign(static_cast<std::size_t>(nfchans), false);
-        payload.transprocloc.assign(static_cast<std::size_t>(nfchans), 0);
-        payload.transproclen.assign(static_cast<std::size_t>(nfchans), 0);
-        for (int ch = 0; ch < nfchans; ++ch) {
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-                if (blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
-                    payload.chintransproc[static_cast<std::size_t>(ch)] = true;
-                    payload.transprocloc[static_cast<std::size_t>(ch)] = blk * kSamplesPerBlock;
-                    payload.transproclen[static_cast<std::size_t>(ch)] = 0;
-                    payload.transproce = true;
-                    break;
-                }
-            }
-        }
-    }
 
     // §E2.2.3 gates the whole coupling element on acmod > 0x1, so 1/0 and the
     // rejected 1+1 cannot couple however the caller asks.
@@ -1877,58 +1918,40 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         return s < nfchans ? fbw_endmant : kLfeEndmant;
     };
+    // The coupling stream's own coefficient slots, now that the decision is
+    // in. cpl_stream is nchans - the index straight after the coded channels
+    // - so a plain resize puts them exactly where coeffs_at expects, and
+    // leaves the per-channel coefficients the MDCT already wrote untouched.
+    coeffs.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
 
-    // --- 2. MDCT ------------------------------------------------------------
-    AC3_ZONE_BEGIN(zone_mdct, "step2_mdct");
-    auto& coeffs = state_->coeffs;
-    coeffs.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
-    const auto coeffs_at = [&](int s, int blk) -> std::array<double, 256>& {
-        return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
-                      static_cast<std::size_t>(blk)];
-    };
-    for (int ch = 0; ch < nchans; ++ch) {
-        const auto& pcm = channels[static_cast<std::size_t>(ch)];
-        auto& hist = history_[static_cast<std::size_t>(ch)];
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-            auto& time = time_scratch_;
-            AC3_ZONE_BEGIN(zone_gather, "step2_gather");
-            for (int n = 0; n < 512; ++n) {
-                const int pos = blk * 256 - 256 + n;
-                time[static_cast<std::size_t>(n)] =
-                    pos < 0 ? hist[static_cast<std::size_t>(pos + 256)]
-                            : static_cast<double>(pcm[static_cast<std::size_t>(pos)]);
-            }
-            AC3_ZONE_END(zone_gather);
-            auto& windowed = windowed_scratch_;
-            AC3_ZONE_BEGIN(zone_window, "step2_window");
-            apply_analysis_window(time, windowed);
-            AC3_ZONE_END(zone_window);
-            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
-                // §7.9.2: the two half-block transforms are interleaved
-                // bin-by-bin into one ordinary 256-coefficient set - from
-                // here on, exponent/bitalloc/mantissa code cannot tell this
-                // block apart from a long one.
-                const std::span<const double, 512> full(windowed);
-                auto& first = half1_scratch_;
-                auto& second = half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
-                auto& out = coeffs_at(ch, blk);
-                for (int k = 0; k < 128; ++k) {
-                    out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
-                    out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
+    // §3.7: transient pre-noise processing. Reuses the block-switch decision
+    // above rather than a second, independent transient detector - a channel
+    // gets a correction exactly where it also short-transforms. The chosen
+    // location is the first switched block's own leading edge (already a
+    // multiple of 4, so nothing is lost rounding transprocloc to the wire
+    // field's 4-sample resolution) and translen is a fixed, conservative 0:
+    // the shortest legal correction window, covering exactly the block
+    // boundary immediately before the switch with no extra margin. Neither
+    // choice is spec-mandated - only decoder reconstruction (§3.7.2) is
+    // normative - so both are this encoder's own starting heuristic, a
+    // baseline to tune once real listening (not just round-trip decode)
+    // guides it.
+    if (config_.transient_prenoise) {
+        payload.chintransproc.assign(static_cast<std::size_t>(nfchans), false);
+        payload.transprocloc.assign(static_cast<std::size_t>(nfchans), 0);
+        payload.transproclen.assign(static_cast<std::size_t>(nfchans), 0);
+        for (int ch = 0; ch < nfchans; ++ch) {
+            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                if (blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
+                    payload.chintransproc[static_cast<std::size_t>(ch)] = true;
+                    payload.transprocloc[static_cast<std::size_t>(ch)] = blk * kSamplesPerBlock;
+                    payload.transproclen[static_cast<std::size_t>(ch)] = 0;
+                    payload.transproce = true;
+                    break;
                 }
-            } else {
-                mdct512_forward(windowed, coeffs_at(ch, blk), config_.fast_mdct);
             }
-        }
-        for (int n = 0; n < 256; ++n) {
-            hist[static_cast<std::size_t>(n)] =
-                static_cast<double>(pcm[static_cast<std::size_t>(1280 + n)]);
         }
     }
-
-    AC3_ZONE_END(zone_mdct);
 
     // --- 3. Coupling: the shared channel and its coordinates ---------------
     const auto nbnd = static_cast<std::size_t>(std::max(cpl.bands.count, 1));
