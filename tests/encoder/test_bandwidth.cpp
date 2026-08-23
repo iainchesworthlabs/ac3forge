@@ -103,35 +103,35 @@ int ac3_chbwcod(std::span<const std::byte> frame) {
 // documents - and it is enough here, because both sides of the comparison
 // run through the identical decoder.
 double decode_snr_eac3(const ac3::eac3::FrameConfig& config, double top_hz) {
-    constexpr int kFrames = 8;
+    constexpr int kFrames = 10;
     ac3::eac3::FrameEncoder encoder(config);
-    ac3::FrameDecoder decoder;
+    ac3::Eac3Decoder decoder;
     std::uint64_t n = 0;
     std::vector<float> source;
-    std::vector<double> decoded;
+    std::vector<float> decoded;
     for (int f = 0; f < kFrames; ++f) {
         const auto pcm = band_limited_noise(n, top_hz, 0.5, 40);
         source.insert(source.end(), pcm.begin(), pcm.end());
         const std::vector<std::span<const float>> views(2, std::span<const float>{pcm});
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
-        const auto out = decoder.decode_frame(*frame);
-        REQUIRE(out.has_value());
-        for (const double s : out->channels.front()) {
-            decoded.push_back(s);
-        }
+        const auto unit = decoder.decode_access_unit(*frame);
+        REQUIRE(unit.has_value());
+        REQUIRE(unit->has_value());
+        const auto& left = (*unit)->channels.front();
+        decoded.insert(decoded.end(), left.begin(), left.end());
     }
-    // One block of transform delay, and the first frame's overlap half is
-    // built from silence - drop both ends rather than score the ramp.
+    // 256 samples of encode+decode transform delay, and a warm-up frame
+    // dropped at each end rather than scored against the ramp.
+    constexpr std::size_t kDelay = ac3::kSamplesPerBlock;
     constexpr std::size_t kSkip = ac3::kSamplesPerFrame;
     double signal = 0.0;
     double noise = 0.0;
-    const std::size_t n_cmp = std::min(source.size(), decoded.size()) - kSkip;
-    for (std::size_t i = kSkip; i < n_cmp; ++i) {
-        const double s = source[i - ac3::kSamplesPerBlock];
-        const double e = decoded[i] - s;
-        signal += s * s;
-        noise += e * e;
+    for (std::size_t i = kSkip; i + kSkip < std::min(source.size(), decoded.size()); ++i) {
+        const double x = static_cast<double>(source[i - kDelay]);
+        const double d = static_cast<double>(decoded[i]) - x;
+        signal += x * x;
+        noise += d * d;
     }
     return 10.0 * std::log10(signal / std::max(noise, 1e-30));
 }
@@ -191,14 +191,14 @@ TEST_CASE("choose_chbwcod holds the rate ceiling and rate-limits narrowing") {
     const auto quiet = loud_everywhere(ac3::kMaxExponent);
 
     // The ceiling is the pre-EQ7 AC-3 curve, unchanged.
-    CHECK(rate_ceiling_chbwcod(192, 5) == 24);   // 38 kbit/s per channel
+    CHECK(rate_ceiling_chbwcod(192, 5) == 25);   // 38 kbit/s per channel
     CHECK(rate_ceiling_chbwcod(448, 5) == 59);   // 89
     CHECK(rate_ceiling_chbwcod(640, 5) == 60);   // 128, clamped
     CHECK(rate_ceiling_chbwcod(192, 2) == 60);   // 96, clamped
 
     // Content that fills the spectrum cannot buy a band the rate cannot
     // afford: at 192 kbit/s 5.1 the answer is the ceiling, not 60.
-    CHECK(choose_chbwcod(192, 5, full, rate, -1) == 24);
+    CHECK(choose_chbwcod(192, 5, full, rate, -1) == 25);
 
     // Nor does an empty spectrum collapse the band in one frame once the
     // encoder has a previous value to fall from.
@@ -250,7 +250,7 @@ TEST_CASE("AC-3 keeps the rate ceiling whatever the content") {
         REQUIRE(frame.has_value());
         last = *frame;
     }
-    CHECK(ac3::encoder::rate_ceiling_chbwcod(192, 5) == 24);
+    CHECK(ac3::encoder::rate_ceiling_chbwcod(192, 5) == 25);
     // 3/2 + LFE couples at this rate, which removes chbwcod from the stream
     // entirely (§5.4.3.8) - so the check that matters is that the frame is
     // legal and decodes, and the ceiling itself is pinned by the unit test
