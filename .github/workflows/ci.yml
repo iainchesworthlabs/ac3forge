@@ -983,6 +983,35 @@ jobs:
           name: quality-spectrograms
           path: results/spectrograms
 
+      # Compute-only, same as the landscape trend above: encodes the
+      # committed five-object scene (tests/golden/audio/reference_objects.wav
+      # plus its .paths placements) with this build's `atmos-encode`, decodes
+      # it back to per-object WAVs with this build's `decode`, and scores each
+      # object against the channel it came from. No external tool is involved
+      # at any point and none could be - there is no external oracle for
+      # object decode at all (FFmpeg implements no JOC reconstruction, and
+      # Dolby's own decoder needs a key this project does not ship), which is
+      # exactly the gap this leg exists to close: before it, the object layer
+      # was measured once anywhere in the tree, in a unit test with a 10 dB
+      # floor against 18-35 dB measured. See race_objects() in
+      # tools/ci/quality_race.py and docs/object-quality-trend.md.
+      #
+      # It lives on this job rather than a job of its own because it needs
+      # exactly what this one already has built and installed - ac3cli and
+      # numpy - and takes a couple of seconds on top of a job that already
+      # runs several minutes.
+      - name: Object-reconstruction quality (compute-only)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/quality_race.py objects --json-out results/objects.json
+
+      - name: Upload object-reconstruction quality
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: object-reconstruction-quality
+          path: results/objects.json
+
   # Persists ffmpeg-validate's landscape-trend numbers (see that job's own
   # comment) to the quality-history branch, same mechanism as
   # persist-performance-trend beside it - one job downstream of a single
@@ -1112,6 +1141,113 @@ jobs:
           echo "::error::A leg/variant's SNR dropped at least 10 dB below its trailing average - see the job log above."
           exit 1
 
+  # Persists ffmpeg-validate's object-reconstruction numbers to the same
+  # quality-history branch, a different file again
+  # (object-quality-<branch>.jsonl, read by docs/object-quality-trend.md).
+  # A separate job from persist-external-comparison-trend beside it rather
+  # than a second step inside it: the two write different files with
+  # different regression thresholds and either can fail on its own, and
+  # keeping them apart means an object regression fails a job named for
+  # object quality. Both push to the same branch, so both take the same
+  # fetch-checkout-commit-push shape and a concurrent push from the other is
+  # handled the same way it already is between this job and
+  # persist-performance-trend: one CI run, one commit each, sequenced by the
+  # remote.
+  #
+  # No manifest argument, unlike the external-comparison job: there is no
+  # external baseline for object decode and there cannot be one - see
+  # tools/ci/append_object_quality_history.py's own header.
+  persist-object-quality-trend:
+    name: Publish object-reconstruction quality trend
+    needs: ffmpeg-validate
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # persist-credentials: false - same reasoning as every other persist-*
+      # job's identical checkout: this working tree is only read from (the
+      # append script, `git show` on this commit); the "Prepare
+      # quality-history checkout" step below pushes through its own
+      # explicitly-scoped remote instead.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download object-reconstruction quality
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: object-reconstruction-quality
+          path: results
+
+      # Same mechanic as the other persist-* jobs' identical step: plain git
+      # over an HTTPS remote carrying the token, not actions/checkout, which
+      # fails outright if quality-history does not exist yet.
+      - name: Prepare quality-history checkout
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          mkdir -p history
+          cd history
+          if git ls-remote --exit-code --heads "$remote" quality-history >/dev/null 2>&1; then
+            git init -q
+            git remote add origin "$remote"
+            git fetch -q origin quality-history
+            git checkout -q quality-history
+          else
+            git init -q -b quality-history
+            git remote add origin "$remote"
+            git commit -q --allow-empty -m "Initialize quality-history branch"
+          fi
+
+      - name: Append object-quality history
+        id: append
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
+          python3 tools/ci/append_object_quality_history.py \
+            --objects-json results/objects.json \
+            --history-dir history \
+            --branch "$BRANCH" \
+            --commit "$COMMIT_SHA" \
+            --commit-date "$commit_date"
+
+      - name: Commit and push object-quality-history update
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd history
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -q -m "Object-quality trend: ${BRANCH}@${COMMIT_SHA}"
+            git push -q origin quality-history
+          fi
+
+      # Deliberately after the push above, not instead of the append step
+      # failing outright - same reasoning as every other persist-* job's
+      # identical hard-regression step.
+      - name: Fail on hard object-quality regression
+        if: steps.append.outputs.hard_regression == 'true'
+        shell: bash
+        run: |
+          echo "::error::An object's SNR dropped at least 5 dB below its trailing average - see the job log above."
+          exit 1
+
   # Branch protection points at this one check rather than at each matrix leg,
   # so adding or renaming a leg does not need the protection rule updated.
   # Experimental legs cannot reach it: continue-on-error means the reusable
@@ -1119,7 +1255,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
     runs-on: ubuntu-latest
     steps:
       - name: Gate on required job results
@@ -1141,6 +1277,7 @@ jobs:
           # `if`) - a pass, not a failure, same as R_TIDY/R_COVERAGE above.
           R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
           R_EXT_TREND: ${{ needs.persist-external-comparison-trend.result }}
+          R_OBJ_TREND: ${{ needs.persist-object-quality-trend.result }}
         run: |
           set -euo pipefail
           fail=0
@@ -1151,7 +1288,8 @@ jobs:
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
                       "persist-performance-trend:$R_PERF_TREND" \
-                      "persist-external-comparison-trend:$R_EXT_TREND"; do
+                      "persist-external-comparison-trend:$R_EXT_TREND" \
+                      "persist-object-quality-trend:$R_OBJ_TREND"; do
             job="${pair%%:*}"; result="${pair#*:}"
             echo "  $job: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
