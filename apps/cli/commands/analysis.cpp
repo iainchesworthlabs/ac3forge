@@ -8,6 +8,7 @@
 #include <format>
 #include <fstream>
 #include <ios>
+#include <iostream>
 #include <istream>
 #include <memory>
 #include <optional>
@@ -17,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
@@ -823,29 +825,50 @@ std::optional<CarrierChunk> seek_riff_data(std::istream& in, std::uint64_t file_
 }  // namespace
 
 int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial) {
-    std::ifstream in{std::string{in_path}, std::ios::binary};
-    if (!in) {
-        std::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+    // "-" reads the carrier from stdin, so a capture tool can be piped
+    // straight in - which on a machine with a real S/PDIF input is the
+    // natural shape of this ("arecord ... | ac3cli unspdif - out.ec3"). The
+    // RIFF walk below needs to seek and stdin does not, but it does not need
+    // to run at all: BurstReader resyncs on Pa/Pb, and a WAV header cannot
+    // contain a preamble followed by a syncframe, so the header simply gets
+    // scanned past. All that is lost is the carrier's declared rate, which
+    // is a reported detail rather than something the unwrap depends on.
+    const bool stdio = is_stdio_path(in_path);
+    std::ifstream file;
+    if (stdio) {
+        ac3::cli::platform::set_stdio_binary();
+    } else {
+        file.open(std::string{in_path}, std::ios::binary);
+        if (!file) {
+            std::println(stderr, "error: cannot read {}", in_path);
+            return 1;
+        }
     }
-    in.seekg(0, std::ios::end);
-    const auto end = in.tellg();
-    if (end < 0) {
-        std::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+    std::istream& in = stdio ? std::cin : file;
+
+    std::uint64_t file_bytes = 0;
+    if (!stdio) {
+        in.seekg(0, std::ios::end);
+        const auto end = in.tellg();
+        if (end < 0) {
+            std::println(stderr, "error: cannot read {}", in_path);
+            return 1;
+        }
+        file_bytes = static_cast<std::uint64_t>(end);
+        in.seekg(0, std::ios::beg);
     }
-    const auto file_bytes = static_cast<std::uint64_t>(end);
-    in.seekg(0, std::ios::beg);
 
     // A WAV carrier (what 'spdif' writes, and what a capture tool saves) or a
     // bare dump of carrier bytes. Both are ordinary inputs here, so neither
     // is an error: if the RIFF walk does not find a data chunk, the whole
     // file is the carrier.
-    const auto chunk = seek_riff_data(in, file_bytes);
-    std::uint64_t remaining = file_bytes;
+    const auto chunk = stdio ? std::nullopt : seek_riff_data(in, file_bytes);
+    // Unbounded for stdin, whose length nothing knows until it ends; the
+    // read loop below stops on the first short read either way.
+    std::uint64_t remaining = stdio ? UINT64_MAX : file_bytes;
     if (chunk) {
         remaining = chunk->bytes;
-    } else {
+    } else if (!stdio) {
         in.clear();
         in.seekg(0, std::ios::beg);
     }

@@ -252,9 +252,9 @@ constexpr std::array<Command, 27> kCommands{{
      Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
-    {"unspdif", 3, "<in.wav|in.raw> <out.ac3|out.ec3>",
+    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
      "the inverse: recover the elementary stream from IEC 61937 bursts, as captured from "
-     "an S/PDIF or HDMI input or written by 'spdif'",
+     "an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end",
      Needs::kNothing,
      [](const Args& x) { return run_unspdif(x.str(1), x.str(2), x.meta.keep_partial); }},
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", Needs::kNothing,

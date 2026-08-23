@@ -2189,3 +2189,30 @@ TEST_CASE("cli: unspdif writes a clean stream to stdout, status text to stderr",
     // And the report did go somewhere - to stderr, not nowhere.
     CHECK(read_log(log).find("unwrapped") != std::string::npos);
 }
+
+TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
+    // The natural shape of this on a machine with a real S/PDIF input is a
+    // capture tool piped straight in, so "-" has to work on the input side
+    // too - and it takes a different code path from the file one, which
+    // seeks and walks the RIFF chunk list. Here the WAV header is simply
+    // scanned past, which is only safe because a header cannot contain a
+    // preamble with a syncframe behind it.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdin.log";
+    const auto ec3 = dir / "unspdif_stdin_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdin.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // Both ends piped at once, the way a shell would use it.
+    const auto piped = dir / "unspdif_stdin.ec3";
+    REQUIRE(run_cli_stdio("unspdif - -", wav, piped, log) == 0);
+
+    std::ifstream a{ec3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+}

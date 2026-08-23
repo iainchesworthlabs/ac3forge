@@ -25,7 +25,7 @@ Usage:
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
   ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
   ac3cli spdif        <in.ac3> <out.wav>                      (IEC 61937 wrap as playable PCM16 WAV)
-  ac3cli unspdif      <in.wav|in.raw> <out.ac3|out.ec3>       (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif')
+  ac3cli unspdif      <in.wav|in.raw|-> <out.ac3|out.ec3|->   (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
   ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
   ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
@@ -213,7 +213,7 @@ Add `preset=<name>` (or `preset=all`) to gate that same measurement against a na
 | Command | What it does |
 |---|---|
 | `spdif` | Wraps AC-3 or E-AC-3 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. For feeding a receiver through an ordinary audio path |
-| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` as the output path writes the stream to stdout (its report goes to stderr, same convention as `encode`/`decode`) |
+| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones |
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
 | `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
