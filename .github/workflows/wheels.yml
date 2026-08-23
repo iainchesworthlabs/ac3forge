@@ -68,6 +68,70 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
+  # A coverage floor for python/ (roadmap VX15), the Python-side counterpart to
+  # ci.yml's per-component gcov gate.
+  #
+  # Its own job rather than folding --cov into [tool.cibuildwheel]'s
+  # test-command: that command runs once per interpreter per platform - fifteen
+  # times for this matrix - and the answer does not vary between them. One
+  # ubuntu wheel, installed and measured once, is the whole signal.
+  #
+  # What this does and does not measure, stated plainly because the number
+  # looks better than it is. python/src/ac3forge/__init__.py is a re-export
+  # shim: an import block, a version lookup, and __all__. Nearly all of the
+  # binding surface is C++ (python/src/ac3forge_ext/bindings.cpp), which
+  # coverage.py cannot see at all - so a high percentage here means "the
+  # package imports and its Python-level surface executes", not "the bindings
+  # are tested". That is still worth gating: a name dropped from the import
+  # list, a broken __version__ lookup, or a module that no longer imports on
+  # some interpreter all show up here and nowhere else. The C++ underneath is
+  # covered by ci.yml's gate over src/forge, which is where those lines live.
+  python-coverage:
+    name: Python coverage
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The wheel the build job just produced, not a fresh build: this
+      # measures what would actually ship, and reuses several minutes of
+      # compilation rather than repeating it.
+      - name: Download the Linux wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wheels-ubuntu-latest
+          path: wheelhouse
+
+      # A venv rather than a bare pip install, for the same PEP 668 reason as
+      # ci.yml's script-lint job. requirements/requirements-pytest.txt is a
+      # pip-compile --generate-hashes lock like the other three under
+      # requirements/, so the test tooling is pinned; the wheel itself is
+      # installed from wheelhouse/ and brings its own declared numpy.
+      - name: Install the wheel and the pinned test tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .pyvenv
+          .pyvenv/bin/python -m pip install --quiet --upgrade pip
+          .pyvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-pytest.txt
+          .pyvenv/bin/python -m pip install --quiet wheelhouse/*.whl
+          .pyvenv/bin/python -c "import ac3forge; print(ac3forge.__version__)"
+
+      # --cov-fail-under is the gate. The floor is deliberately well under the
+      # measurement for the same reason every floor in
+      # tools/checks/coverage_report.sh is: it should trip on a real
+      # regression, not on ordinary churn. Raise it as python/ grows real
+      # Python code rather than leaving the headroom in place indefinitely.
+      - name: pytest with a coverage floor
+        shell: bash
+        run: |
+          set -euo pipefail
+          .pyvenv/bin/python -m pytest python/tests \
+            --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
+
   # Off until a maintainer provisions PyPI trusted publishing and creates the `pypi` GitHub
   # environment this job targets - see docs/releasing.md. Until then this job's environment
   # reference has nothing to authorize against and the run fails cleanly at that step; the build

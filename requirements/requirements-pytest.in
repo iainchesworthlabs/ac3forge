@@ -1,0 +1,14 @@
+# pytest and its coverage plugin for wheels.yml's python-coverage job (roadmap
+# VX15). Separate from requirements-coverage.txt on purpose: that lock is
+# gcovr for ci.yml's C++ coverage job, and the two jobs run on different
+# workflows with nothing in common but the word "coverage".
+#
+# numpy is deliberately absent - it arrives as a dependency of the ac3forge
+# wheel under test, so pinning it here would risk installing a different one
+# than the wheel actually declares.
+#
+# Regenerate the lock after any change here with:
+#   python -m piptools compile --generate-hashes --strip-extras \
+#     --output-file=requirements-pytest.txt requirements-pytest.in
+pytest
+pytest-cov
