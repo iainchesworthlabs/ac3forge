@@ -532,6 +532,113 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
     }
 }
 
+// The narrow layouts and the one service type whose meaning depends on acmod.
+// A/52 Table 5.7 splits bsmod 0b111 by acmod - 1/0 is voice over, anything
+// wider is karaoke - and Table D.4/G.2 give the two OPPOSITE full-service
+// restrictions, so getting the split wrong flips a bit in every descriptor
+// that carries it.
+TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
+    const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
+    const mpegts::MuxOptions atsc{.profile = mpegts::BroadcastProfile::kAtsc};
+
+    SECTION("mono reads as 0b000 in both registries") {
+        const mpegts::ServiceInfo mono{.acmod = 1, .channels = 1, .bsid = 8};
+        const auto dvb = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+                                      .service = mono},
+                                     frames);
+        REQUIRE(dvb.has_value());
+        // AC-3, full service, complete main, mono.
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*dvb)).body[1]) == 0x40);
+
+        const auto ac3_atsc = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+                                           .service = mono},
+                                          frames, atsc);
+        REQUIRE(ac3_atsc.has_value());
+        // Table A4.5: num_channels is acmod itself, 0b0001 for 1/0.
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*ac3_atsc)).body[2]) == 0x03);
+
+        auto eac3_mono = mono;
+        eac3_mono.bsid = 16;
+        const auto eac3_atsc = mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 1,
+                                            .service = eac3_mono},
+                                           frames, atsc);
+        REQUIRE(eac3_atsc.has_value());
+        // Table G.3: 0b000, mono.
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*eac3_atsc)).body[1]) == 0xC0);
+    }
+
+    SECTION("1+1 dual mono reads as 0b001") {
+        const mpegts::ServiceInfo dual{.acmod = 0, .channels = 2, .bsid = 8};
+        const auto dvb = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+                                      .service = dual},
+                                     frames);
+        REQUIRE(dvb.has_value());
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*dvb)).body[1]) == 0x41);
+    }
+
+    SECTION("a 1+1 ATSC descriptor carries langcod2 when it is extended") {
+        // Table A4.1 gates langcod2 on num_channels == 0b0000, which is
+        // exactly acmod 1+1 - so the extended form is a byte longer here than
+        // for any other layout.
+        mpegts::ServiceInfo dual{.acmod = 0, .channels = 2, .bsid = 8};
+        dual.mainid = 2;
+        const auto file = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+                                       .service = dual},
+                                      frames, atsc);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 8);
+        CHECK(std::to_integer<std::uint8_t>(d.body[3]) == 0xFF);  // langcod
+        CHECK(std::to_integer<std::uint8_t>(d.body[4]) == 0xFF);  // langcod2
+        CHECK((std::to_integer<std::uint8_t>(d.body[5]) >> 5) == 2);  // mainid
+    }
+
+    SECTION("bsmod 0b111 is voice over at 1/0 and karaoke above it") {
+        // Table D.4: voice over "set to 0b0", karaoke "set to 0b1" - the same
+        // code, opposite full-service flags, decided by acmod alone.
+        const auto voiceover = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+             .service = {.bsmod = 7, .acmod = 1, .channels = 1, .bsid = 8}},
+            frames);
+        REQUIRE(voiceover.has_value());
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*voiceover)).body[1]) == 0x38);
+
+        const auto karaoke = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+             .service = {.bsmod = 7, .acmod = 2, .channels = 2, .bsid = 8}},
+            frames);
+        REQUIRE(karaoke.has_value());
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*karaoke)).body[1]) == 0x7A);
+    }
+
+    SECTION("an emergency service is full by Table D.4, a dialogue one is not") {
+        const auto emergency = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+             .service = {.bsmod = 6, .acmod = 1, .channels = 1, .bsid = 8}},
+            frames);
+        REQUIRE(emergency.has_value());
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*emergency)).body[1]) == 0x70);
+
+        const auto dialogue = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+             .service = {.bsmod = 4, .acmod = 2, .channels = 2, .bsid = 8}},
+            frames);
+        REQUIRE(dialogue.has_value());
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*dialogue)).body[1]) == 0x22);
+    }
+
+    SECTION("full_service can be overridden where the tables do not pin it") {
+        auto service = five_one_service(8);
+        service.bsmod = 2;  // visually impaired - unconstrained either way
+        service.full_service = false;
+        const auto partial = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 6,
+                                          .service = service},
+                                         frames);
+        REQUIRE(partial.has_value());
+        CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*partial)).body[1]) == 0x14);
+    }
+}
+
 TEST_CASE("the DVB profile is what a caller gets without asking", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
     const auto implicit =

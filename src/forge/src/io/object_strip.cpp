@@ -6,6 +6,7 @@
 #include <expected>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/crc16.hpp"

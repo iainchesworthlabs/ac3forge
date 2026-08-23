@@ -68,7 +68,47 @@ struct SkipField {
     bool carries_container = false;  // the EMDF sync word was found inside this one
 };
 
+// Field order here is deliberate, not incidental: clang-tidy's
+// optin.performance.Padding check measured this layout at 34 bytes of
+// padding against 2 optimal (every std::size_t/std::vector/std::optional
+// ahead of the bools, largest alignment first) and CI enforces it. Comments
+// stay attached to their field; only the ORDER moved.
 struct FrameLayout {
+    std::size_t frame_bits = 0;
+    // First bit after the last block's mantissas - i.e. where auxdata begins
+    // (§5.4.4). Everything from here to the end of the frame is padding,
+    // auxdatae, crcrsv and crc2.
+    std::size_t audio_end_bits = 0;
+
+    // --- object layer -------------------------------------------------------
+    std::size_t container_start = 0;        // bit offset of the emdf_sync word
+    std::size_t container_parsed_bits = 0;  // from container_start, through the protection bits
+
+    // --- excisable regions --------------------------------------------------
+    // Table E1.3's frame-level skipflde flag: one bit, whose position is
+    // recorded so a rewriter can clear it, and whose value says whether the
+    // per-block skip fields below exist at all.
+    std::size_t skipflde_bit = 0;
+    std::vector<SkipField> skip_fields{};
+    // Table E1.2's addbsi element (addbsie, addbsil and the payload), when
+    // one is present. `object_extension` is true only when that payload is
+    // EXACTLY TS 103 420 §8.3.1's object-audio marker - seven zero reserved
+    // bits, flag_ec3_extension_type_a set, and (when addbsil allows it) the
+    // §8.3.2.2 complexity index - and never for an addbsi carrying something
+    // else, which is not this project's to interpret or remove.
+    std::optional<BitRange> addbsi = std::nullopt;
+
+    // Every region ac3::signing excludes from the authenticated message,
+    // ascending, non-overlapping: the framing words, the infomdate flag, the
+    // addbsi element, the skipflde flag, every skip field, and the auxdata +
+    // CRC tail.
+    std::vector<BitRange> holes{};
+
+    int container_len = 0;  // content bytes, after the 32-bit header
+    int protection_primary_code = 0;
+    int protection_secondary_code = 0;
+    int oba_complexity_index = 0;
+
     // False for a frame this walker declines to map - one outside the scope
     // in the header comment above, or one whose fields stopped making sense
     // part-way through (a spectral-extension band range that cannot exist,
@@ -88,48 +128,15 @@ struct FrameLayout {
     // matter what shape it is.
     bool object_signals = false;
 
-    std::size_t frame_bits = 0;
-    // First bit after the last block's mantissas - i.e. where auxdata begins
-    // (§5.4.4). Everything from here to the end of the frame is padding,
-    // auxdatae, crcrsv and crc2.
-    std::size_t audio_end_bits = 0;
-
-    // --- object layer -------------------------------------------------------
     bool has_container = false;
-    std::size_t container_start = 0;        // bit offset of the emdf_sync word
-    int container_len = 0;                  // content bytes, after the 32-bit header
-    std::size_t container_parsed_bits = 0;  // from container_start, through the protection bits
-    int protection_primary_code = 0;
-    int protection_secondary_code = 0;
-
-    // --- excisable regions --------------------------------------------------
-    // Table E1.3's frame-level skipflde flag: one bit, whose position is
-    // recorded so a rewriter can clear it, and whose value says whether the
-    // per-block skip fields below exist at all.
-    std::size_t skipflde_bit = 0;
     bool skipflde = false;
-    std::vector<SkipField> skip_fields{};
-    // Table E1.2's addbsi element (addbsie, addbsil and the payload), when
-    // one is present. `object_extension` is true only when that payload is
-    // EXACTLY TS 103 420 §8.3.1's object-audio marker - seven zero reserved
-    // bits, flag_ec3_extension_type_a set, and (when addbsil allows it) the
-    // §8.3.2.2 complexity index - and never for an addbsi carrying something
-    // else, which is not this project's to interpret or remove.
-    std::optional<BitRange> addbsi = std::nullopt;
     bool addbsi_object_extension = false;
-    int oba_complexity_index = 0;
     // Table E1.3's blkstrtinfoe. Recorded because blkstrtinfo's own field
     // width is derived from frmsiz (E2.3.3.2's "bit_length(frmsiz+1)"), so a
     // rewriter that re-derives the frame size cannot leave this field alone -
     // which is why ac3::io::strip_objects refuses a frame that carries one
     // rather than shifting the bits under it.
     bool blkstrtinfoe = false;
-
-    // Every region ac3::signing excludes from the authenticated message,
-    // ascending, non-overlapping: the framing words, the infomdate flag, the
-    // addbsi element, the skipflde flag, every skip field, and the auxdata +
-    // CRC tail.
-    std::vector<BitRange> holes{};
 };
 
 // Maps one complete E-AC-3 syncframe. `frame` must be exactly the syncframe -
