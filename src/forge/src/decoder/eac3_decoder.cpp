@@ -88,30 +88,52 @@ struct Bsi {
     // this.
     std::optional<std::uint8_t> compr;
     std::optional<std::uint16_t> chanmap;
+    // Table E1.2's mixmdate downmix levels, when the substream carried a
+    // mixing-metadata payload - see parse_mixing_metadata.
+    std::optional<meta::MixMetadata> mix;
     // Ch2's own dialnorm/compr, present only when acmod is kDualMono (1+1).
     std::optional<int> dialnorm2;
     std::optional<std::uint8_t> compr2;
 };
 
-// Table E1.2's mixing-metadata payload. None of it changes how the audio is
-// coded, but every field still has to be walked exactly: one bit out of place
-// shifts audfrm along and the rest of the frame decodes as a different stream.
-// The two strmtyp gates here are the point - an independent substream carries
-// the program-scaling and mixing-configuration block that a dependent, which
-// is only ever part of someone else's program, does not.
-void skip_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
+// Table E1.2's mixing-metadata payload. Every field still has to be walked
+// exactly - one bit out of place shifts audfrm along and the rest of the frame
+// decodes as a different stream - but the DOWNMIX levels at the head of it are
+// also kept, because they are what §7.8 folds this substream down with; the
+// rest is still skipped (see the roadmap's DC4 for what taking the remainder
+// would mean). The two strmtyp gates below are the point of the split: an
+// independent substream carries the program-scaling and mixing-configuration
+// block that a dependent, which is only ever part of someone else's program,
+// does not.
+std::optional<meta::MixMetadata> parse_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
+    meta::MixMetadata mix;
     if (acmod > 0x2) {
-        r.skip(2);  // dmixmod
+        const auto dmixmod = r.read(2);
+        // Table D2.2 reserves '11', which reads as "not indicated" - the
+        // MixMetadata default, so a reserved code needs no branch of its own.
+        if (dmixmod <= static_cast<std::uint32_t>(meta::DownmixMode::kLoRo)) {
+            mix.dmixmod = static_cast<meta::DownmixMode>(dmixmod);
+        }
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
-        r.skip(3 + 3);  // ltrtcmixlev, lorocmixlev
+        mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
+        mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
     }
     if ((acmod & 0x4) != 0) {
-        r.skip(3 + 3);  // ltrtsurmixlev, lorosurmixlev
+        // Tables D2.4/D2.6 reserve '000'..'010' for the surround levels, and
+        // §E2.3.1.9 has a decoder receiving one substitute 0.841 - which is
+        // exactly MixLevel::kMinus1_5dB, so the substitution is made here
+        // rather than left for every reader of the field to remember.
+        const auto surround = [&] {
+            const auto level = static_cast<meta::MixLevel>(r.read(3));
+            return meta::valid_surround_mix_level(level) ? level : meta::MixLevel::kMinus1_5dB;
+        };
+        mix.ltrtsurmixlev = surround();
+        mix.lorosurmixlev = surround();
     }
     if (bsi.lfe && r.read(1) != 0) {
-        r.skip(5);  // lfemixlevcod
+        mix.lfemixlevcod = static_cast<int>(r.read(5));
     }
     if (bsi.strmtyp != StreamType::kDependent) {
         if (r.read(1) != 0) r.skip(6);  // pgmscl
@@ -144,6 +166,7 @@ void skip_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
             }
         }
     }
+    return mix;
 }
 
 // Table E1.2's informational-metadata payload: bsmod and the production notes.
@@ -237,7 +260,7 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
     }
     const int nblks = eac3::blocks_per_syncframe(bsi.numblkscod);
     if (r.read(1) != 0) {  // mixmdate
-        skip_mixing_metadata(r, bsi, nblks);
+        bsi.mix = parse_mixing_metadata(r, bsi, nblks);
     }
     if (r.read(1) != 0) {  // infomdate
         skip_informational_metadata(r, bsi);
@@ -448,7 +471,119 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
 
 }  // namespace
 
+Eac3Decoder::Eac3Decoder(const DecoderConfig& config)
+    : config_(internal::resolve_operating_mode(config)), output_(config.output) {}
+
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
+    std::span<const std::byte> frame) {
+    auto decoded = decode_substream_core(frame);
+    if (decoded) {
+        return decoded;
+    }
+    if (config_.concealment == ConcealmentPolicy::kNone) {
+        return decoded;
+    }
+    // Which identity's history to reconstruct from. strmtyp and substreamid
+    // sit at fixed positions immediately after the sync word, so a frame
+    // damaged anywhere past its header still names itself; one damaged in the
+    // header does not, and falls back on the last identity that decoded. That
+    // fallback is right for the overwhelmingly common one-identity stream and
+    // no worse than refusing for any other - a wrong guess conceals from the
+    // wrong history, a refusal drops the audio outright.
+    std::size_t slot = 0;
+    if (frame.size() >= 3) {
+        BitReader peek{frame};
+        peek.skip(16);
+        const auto strmtyp = peek.read(2);
+        const auto substreamid = peek.read(3);
+        slot = static_cast<std::size_t>(strmtyp * 8 + substreamid);
+    } else if (last_identity_ >= 0) {
+        slot = static_cast<std::size_t>(last_identity_);
+    } else {
+        return decoded;
+    }
+    if (!retained_[slot] && last_identity_ >= 0) {
+        slot = static_cast<std::size_t>(last_identity_);
+    }
+    if (auto concealed = conceal(decoded.error(), slot)) {
+        return std::optional<DecodedSubstream>(std::move(*concealed));
+    }
+    return decoded;
+}
+
+std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::size_t slot) {
+    const auto& retained = retained_[slot];
+    // Nothing retained for this identity means the loss is at the head of it:
+    // there is no previous block to reconstruct from, and inventing one would
+    // be substituting audio rather than concealing a gap in it.
+    if (!retained) {
+        return std::nullopt;
+    }
+    const bool repeat = config_.concealment == ConcealmentPolicy::kRepeatFade;
+    const int nchans = retained->nchans;
+
+    DecodedSubstream out = retained->shape;
+    out.dynrng.fill(meta::kDynrngUnity);
+    out.dynrng2.fill(meta::kDynrngUnity);
+    // A concealed frame carries no object layer: OAMD and JOC describe THIS
+    // frame's objects, and repeating the previous frame's positions would put
+    // moving objects somewhere they demonstrably are not.
+    out.object_metadata = std::nullopt;
+    out.object_audio.clear();
+
+    const int nblks = eac3::blocks_per_syncframe(out.numblkscod);
+    out.channels.assign(static_cast<std::size_t>(nchans),
+                        std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
+                                           0.0f));
+
+    auto& delay_slot = delay_[slot];
+    if (!delay_slot) {
+        delay_slot = std::make_unique<std::array<std::array<double, 256>, 6>>();
+    }
+    auto& delay = *delay_slot;
+
+    // 20 dB across six blocks, the same decay FrameDecoder::conceal uses - a
+    // syncframe coding fewer blocks simply travels less of that curve, which
+    // is the right relationship: the decay is per unit of TIME lost, and a
+    // one-block syncframe loses a sixth as much of it.
+    constexpr double kDecayPerBlock = 0.6812920690579611;  // 10^(-20/(20*6))
+    double gain = kDecayPerBlock;
+    for (int blk = 0; blk < nblks; ++blk) {
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto uch = static_cast<std::size_t>(ch);
+            const auto& last = retained->last_block[uch];
+            auto& history = delay[uch];
+            auto& pcm = out.channels[uch];
+            for (int n = 0; n < kSamplesPerBlock; ++n) {
+                const auto un = static_cast<std::size_t>(n);
+                const double head = repeat ? last[un] * gain : 0.0;
+                pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
+                    static_cast<float>(2.0 * (head + history[un]));
+                history[un] = repeat ? last[un + 256] * gain : 0.0;
+            }
+        }
+        gain *= kDecayPerBlock;
+    }
+    if (repeat) {
+        const double carried = gain / kDecayPerBlock;
+        for (int ch = 0; ch < nchans; ++ch) {
+            for (double& value : retained->last_block[static_cast<std::size_t>(ch)]) {
+                value *= carried;
+            }
+        }
+    } else {
+        for (int ch = 0; ch < nchans; ++ch) {
+            retained->last_block[static_cast<std::size_t>(ch)].fill(0.0);
+        }
+    }
+
+    out.concealed = Concealment{.error = error,
+                                .action = repeat ? ConcealmentAction::kRepeatFade
+                                                 : ConcealmentAction::kMute};
+    return out;
+}
+
+std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream_core(
     std::span<const std::byte> frame) {
     if (frame.size() < 8) {
         return std::unexpected(DecodeError::kTruncated);
@@ -493,12 +628,23 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     out.compr2 = bsi->compr2;
     out.dynrng2.fill(meta::kDynrngUnity);
     out.numblkscod = bsi->numblkscod;
+    out.mix = bsi->mix;
     out.chanmap = bsi->chanmap;
     out.last_dependent = bsi->strmtyp == StreamType::kDependent && bsi->compre;
     out.blksw.assign(static_cast<std::size_t>(nfchans), {});
     out.channels.assign(static_cast<std::size_t>(nchans),
                         std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
                                            0.0f));
+
+    // §7.10: whether the block loop below has to keep its last block for a
+    // future loss of THIS identity to be reconstructed from. Skipped entirely
+    // with concealment off, which is what keeps a decoder configured the way
+    // every existing caller configures it from carrying 24 KB per identity it
+    // will never read.
+    const bool retain_last_block = config_.concealment != ConcealmentPolicy::kNone;
+    if (retain_last_block) {
+        conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
+    }
 
     // §E2.3.1.2: a dependent's substreamid starts again at 0 in its own space,
     // so identity - and hence which overlap-add history belongs to this frame
@@ -1767,6 +1913,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                               history[static_cast<std::size_t>(n)]));
                 history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
             }
+            // §7.10's raw material, captured into scratch rather than
+            // straight into retained_: this frame may still be refused
+            // further down, and a refused frame must not become what the
+            // NEXT loss is reconstructed from.
+            if (retain_last_block && blk == nblks - 1 && index < conceal_scratch_.size()) {
+                std::copy(x.begin(), x.end(), conceal_scratch_[index].begin());
+            }
         }
     }
 
@@ -1809,6 +1962,37 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot);
             }
         }
+    }
+
+    // §7.10: this frame decoded, so its last block becomes what a future loss
+    // of this identity is reconstructed from. Committed here, past every
+    // return that refuses the frame - including transient pre-noise
+    // processing's own kUnsupported refusal below, which is why this cannot
+    // simply live at the end of the block loop.
+    //
+    // Deliberately BEFORE the §3.7 hold-back: a held-back frame has still
+    // decoded, and its overlap tail is what the next frame of the identity
+    // continues from whether or not the PCM has been released yet.
+    if (retain_last_block) {
+        auto& retained = retained_[static_cast<std::size_t>(key)];
+        if (!retained) {
+            retained = std::make_unique<RetainedSubstream>();
+        }
+        retained->nchans = nchans;
+        for (int ch = 0; ch < nchans && static_cast<std::size_t>(ch) < conceal_scratch_.size();
+             ++ch) {
+            retained->last_block[static_cast<std::size_t>(ch)] =
+                conceal_scratch_[static_cast<std::size_t>(ch)];
+        }
+        // Metadata only - the PCM belongs to this frame, and object_metadata/
+        // object_audio describe objects a concealed frame has no business
+        // repeating (see conceal()).
+        retained->shape = out;
+        retained->shape.channels.clear();
+        retained->shape.object_metadata = std::nullopt;
+        retained->shape.object_audio.clear();
+        retained->shape.concealed = std::nullopt;
+        last_identity_ = key;
     }
 
     auto& pending_slot = pending_[static_cast<std::size_t>(key)];
@@ -1863,6 +2047,179 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     return std::optional<DecodedSubstream>(std::move(out));
 }
 
+namespace {
+
+// Where each Table E2.5 location folds to, when a program has to be reduced
+// to one of §7.8's own acmod layouts before §7.8 can fold it at all.
+//
+// This IS an extension beyond §7.8, and worth being plain about: §7.8 defines
+// folds FROM the eight AC-3 acmods and says nothing about the wide layouts
+// Annex E's chanmap can express - a 7.1.4 program has no §7.8 fold, because
+// §7.8 predates anything that could code one. Reducing first is the least
+// invented thing available: every extra location has an obvious §7.8 seat (a
+// wide left is a left, a rear surround is a surround, a top front left is a
+// left), and once it is in that seat the actual downmix is the spec's own,
+// with the stream's own levels. The alternative - dropping the channels §7.8
+// cannot name - would silently discard the whole height layer.
+//
+// -3 dB on every secondary contribution, so two locations sharing one seat
+// sum to the power of one. A location already IN the reduced layout arrives
+// at unity, which makes the reduction an exact identity for every plain
+// acmod bed - the overwhelmingly common case, and the one that must not
+// change by so much as a bit.
+enum class Seat : std::uint8_t { kLeft, kCentre, kRight, kLeftSurround, kRightSurround, kLfe };
+
+struct SeatMix {
+    Seat first = Seat::kLeft;
+    double first_gain = 1.0;
+    // A second seat, for the locations with no side of their own: a mono
+    // surround or a top surround belongs equally to both surrounds.
+    bool has_second = false;
+    Seat second = Seat::kRight;
+    double second_gain = 0.0;
+};
+
+SeatMix seat_of(eac3::chanmap::Location location) {
+    using L = eac3::chanmap::Location;
+    constexpr double kHalfPower = meta::level::kMinus3dB;
+    switch (location) {
+        case L::kLeft: return {.first = Seat::kLeft};
+        case L::kCentre: return {.first = Seat::kCentre};
+        case L::kRight: return {.first = Seat::kRight};
+        case L::kLeftSurround: return {.first = Seat::kLeftSurround};
+        case L::kRightSurround: return {.first = Seat::kRightSurround};
+        case L::kLfe: return {.first = Seat::kLfe};
+        // Front pairs inside the mains, the wides and the front heights: all
+        // left or right, at the shared-seat level.
+        case L::kLc:
+        case L::kLw:
+        case L::kVhl: return {.first = Seat::kLeft, .first_gain = kHalfPower};
+        case L::kRc:
+        case L::kRw:
+        case L::kVhr: return {.first = Seat::kRight, .first_gain = kHalfPower};
+        case L::kVhc: return {.first = Seat::kCentre, .first_gain = kHalfPower};
+        // Rear, side and top surrounds keep their side.
+        case L::kLrs:
+        case L::kLsd:
+        case L::kLts: return {.first = Seat::kLeftSurround, .first_gain = kHalfPower};
+        case L::kRrs:
+        case L::kRsd:
+        case L::kRts: return {.first = Seat::kRightSurround, .first_gain = kHalfPower};
+        // A mono surround and a top (overhead centre) surround have no side,
+        // so they go to both - which for the 2/1 and 3/1 beds reproduces
+        // §7.8's own single-surround branch exactly, since slev then reaches
+        // each front through this -3 dB rather than through the branch's own.
+        case L::kCs:
+        case L::kTs:
+            return {.first = Seat::kLeftSurround,
+                    .first_gain = kHalfPower,
+                    .has_second = true,
+                    .second = Seat::kRightSurround,
+                    .second_gain = kHalfPower};
+        // §E2.3.1.8's second LFE joins the first.
+        case L::kLfe2: return {.first = Seat::kLfe, .first_gain = kHalfPower};
+    }
+    return {.first = Seat::kLeft, .first_gain = 0.0};
+}
+
+// Which acmod the occupied seats amount to, so §7.8's own coefficients and
+// normalisation apply to the layout that is actually there rather than to a
+// 3/2 with silent channels in it.
+Acmod reduced_acmod(bool centre, bool mains, bool surrounds) {
+    if (!mains) {
+        return Acmod::k1_0;  // a centre-only program; nothing else can reach here
+    }
+    if (centre) {
+        return surrounds ? Acmod::k3_2 : Acmod::k3_0;
+    }
+    return surrounds ? Acmod::k2_2 : Acmod::k2_0;
+}
+
+}  // namespace
+
+void Eac3Decoder::render_output(std::span<const std::span<float>> channels,
+                                const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
+                                const std::optional<meta::MixMetadata>& mix, int dialnorm) {
+    if (channels.empty() || channels.front().empty()) {
+        return;
+    }
+    const auto levels = mix_levels(mix);
+    // Dual mono has no layout to reduce and no fold to apply (OutputStage
+    // refuses it outright); a caller asking only for dialnorm normalisation
+    // still gets it, which is what passing straight through does. `lfe` is
+    // only consulted on this path - past it, what matters is which seat the
+    // rendered layout actually filled, not what the bed's lfeon said.
+    if (config_.output.target == DownmixTarget::kAsCoded || acmod == Acmod::kDualMono ||
+        layout.count == 0) {
+        output_.apply(channels, acmod, lfe, levels, dialnorm);
+        return;
+    }
+
+    // Seat every rendered location, then fold the seats. See seat_of above
+    // for why this step exists and what it does and does not claim.
+    const std::size_t length = channels.front().size();
+    fold_scratch_.resize(6);
+    for (auto& seat : fold_scratch_) {
+        seat.assign(length, 0.0F);
+    }
+    std::array<bool, 6> occupied{};
+    const auto pour = [&](Seat seat, double gain, std::span<const float> source) {
+        const auto index = static_cast<std::size_t>(seat);
+        occupied[index] = true;
+        auto& target = fold_scratch_[index];
+        const std::size_t n = std::min(length, source.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            target[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+        }
+    };
+    const auto count = std::min(static_cast<std::size_t>(layout.count), channels.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        const SeatMix seat = seat_of(layout[static_cast<int>(i)]);
+        pour(seat.first, seat.first_gain, channels[i]);
+        if (seat.has_second) {
+            pour(seat.second, seat.second_gain, channels[i]);
+        }
+    }
+
+    const bool has_centre = occupied[static_cast<std::size_t>(Seat::kCentre)];
+    const bool has_mains = occupied[static_cast<std::size_t>(Seat::kLeft)] ||
+                           occupied[static_cast<std::size_t>(Seat::kRight)];
+    const bool has_surrounds = occupied[static_cast<std::size_t>(Seat::kLeftSurround)] ||
+                               occupied[static_cast<std::size_t>(Seat::kRightSurround)];
+    const bool has_lfe = occupied[static_cast<std::size_t>(Seat::kLfe)];
+    const Acmod folded = reduced_acmod(has_centre, has_mains, has_surrounds);
+
+    // Table 5.8 coded order for `folded`, which is the order OutputStage
+    // reads. A centre-only program has its audio in the centre seat, and 1/0
+    // codes that one channel at index 0.
+    fold_views_.clear();
+    const auto lend = [&](Seat seat) {
+        fold_views_.emplace_back(fold_scratch_[static_cast<std::size_t>(seat)]);
+    };
+    if (folded == Acmod::k1_0) {
+        lend(Seat::kCentre);
+    } else {
+        lend(Seat::kLeft);
+        if (has_centre) {
+            lend(Seat::kCentre);
+        }
+        lend(Seat::kRight);
+        if (has_surrounds) {
+            lend(Seat::kLeftSurround);
+            lend(Seat::kRightSurround);
+        }
+    }
+    if (has_lfe) {
+        lend(Seat::kLfe);
+    }
+    output_.apply(fold_views_, folded, has_lfe, levels, dialnorm);
+
+    const std::size_t produced = output_channel_count(config_.output, folded, has_lfe);
+    for (std::size_t i = 0; i < produced && i < channels.size(); ++i) {
+        std::copy(fold_views_[i].begin(), fold_views_[i].end(), channels[i].begin());
+    }
+}
+
 std::vector<DecodedSubstream> Eac3Decoder::flush() {
     std::vector<DecodedSubstream> ready;
     // Slot order is key order, so this drains in the same ascending
@@ -1884,6 +2241,29 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         queue.clear();
     }
+    // §7.8, applied here too so a stream that ends mid-hold-back hands its
+    // last frames back at the same channel count every other frame of it came
+    // out at - a sink opened for a stereo fold cannot take six channels for
+    // the final access unit. Each flushed substream is folded on its own
+    // because that is all there is: by definition the assembly these belong
+    // to never completed (see this function's own doc comment), so there is
+    // no rendered program to fold instead.
+    for (auto& substream : ready) {
+        // A local rather than fold_views_: render_output uses that member as
+        // its own working storage, and handing it its own scratch as the
+        // argument would alias. flush() runs once per stream, so the
+        // allocation is not on any hot path.
+        std::vector<std::span<float>> views;
+        views.reserve(substream.channels.size());
+        for (auto& channel : substream.channels) {
+            views.emplace_back(channel);
+        }
+        const auto layout = eac3::chanmap::expand(substream.location_map());
+        render_output(views, layout, substream.acmod, substream.lfe, substream.mix,
+                      substream.dialnorm);
+        substream.channels.resize(
+            output_channel_count(config_.output, substream.acmod, substream.lfe));
+    }
     return ready;
 }
 
@@ -1895,6 +2275,47 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_into(
     std::span<const std::byte> unit, std::span<const std::span<float>> channels) {
     return decode_access_unit_core(unit, channels);
+}
+
+// §5.4.2.8/§7.8 over an assembled program, in whichever storage it landed -
+// the result's own vectors, or the caller's spans when decode_access_unit_into
+// supplied them. A no-op unless DecoderConfig::output asks for something, and
+// the one place the fold happens for the access-unit forms.
+void Eac3Decoder::apply_output(DecodedAccessUnit& out,
+                               std::span<const std::span<float>> external) {
+    if (config_.output.target == DownmixTarget::kAsCoded &&
+        config_.output.mode == OperatingMode::kCustom && !config_.output.apply_dialnorm) {
+        return;
+    }
+    const auto slots = out.channels.empty() ? static_cast<std::size_t>(out.layout.count)
+                                            : out.channels.size();
+    au_views_.clear();
+    if (external.empty()) {
+        for (auto& channel : out.channels) {
+            au_views_.emplace_back(channel);
+        }
+    } else {
+        for (std::size_t i = 0; i < slots && i < external.size(); ++i) {
+            au_views_.emplace_back(external[i]);
+        }
+    }
+    // `lfe` here is about the RENDERED layout, not the bed's own lfeon: a
+    // dependent can add an LFE2 the bed never had. render_output only reads
+    // it on the pass-through path anyway (the fold works out for itself which
+    // seats the layout filled), but passing the rendered answer keeps the two
+    // in agreement.
+    const bool rendered_lfe = out.layout.index_of(eac3::chanmap::Location::kLfe) >= 0;
+    render_output(au_views_, out.layout, out.acmod, rendered_lfe, out.mix, out.dialnorm);
+    if (!external.empty()) {
+        return;
+    }
+    // output_channel_count() keys off acmod, which describes the BED; what
+    // came back here is a fold of the assembled program, so the count comes
+    // from the same three cases it does, read against the rendered layout.
+    if (config_.output.target == DownmixTarget::kAsCoded || out.acmod == Acmod::kDualMono) {
+        return;
+    }
+    out.channels.resize(config_.output.target == DownmixTarget::kMono ? 1U : 2U);
 }
 
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
@@ -1916,6 +2337,9 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // own return type.
     std::vector<int> keys;
     keys.reserve(frames->size());
+    // Set when a dependent substream of this unit was dropped rather than
+    // decoded - see the loop below and ConcealmentAction::kBedOnly.
+    std::optional<DecodeError> bed_only;
     for (const auto& frame : *frames) {
         BitReader peek{frame};
         const auto bsi = parse_bsi(peek, frame.size());
@@ -1926,6 +2350,18 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 
         auto decoded = decode_substream(frame);
         if (!decoded) {
+            // §7.10, the access-unit-level case: a DEPENDENT that will not
+            // decode and could not be concealed (nothing retained for it yet)
+            // does not have to take the program down with it - the bed is a
+            // self-sufficient rendering of the same programme, just narrower
+            // than the stream promised. The independent substream is a
+            // different matter: without it there is no program at all.
+            if (config_.concealment != ConcealmentPolicy::kNone &&
+                bsi->strmtyp == StreamType::kDependent && keys.size() > 1) {
+                bed_only = decoded.error();
+                keys.pop_back();
+                continue;
+            }
             return std::unexpected(decoded.error());
         }
         if (decoded->has_value()) {
@@ -1979,7 +2415,22 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.numblkscod = lead.numblkscod;
     out.object_metadata = lead.object_metadata;
     out.object_audio = lead.object_audio;
+    out.mix = lead.mix;
     out.substream_count = static_cast<int>(substreams.size());
+    // §7.10: kBedOnly when a dependent was dropped above, otherwise whatever
+    // the substreams themselves reported - a concealed BED is what the
+    // program as a whole was concealed by, and it outranks a narrowed layout
+    // because it says the audio itself was substituted rather than merely
+    // that some of it is missing.
+    if (bed_only) {
+        out.concealed = Concealment{.error = *bed_only, .action = ConcealmentAction::kBedOnly};
+    }
+    for (const auto& sub : substreams) {
+        if (sub.concealed) {
+            out.concealed = sub.concealed;
+            break;
+        }
+    }
 
     // The PCM target for one program slot: the caller's span when
     // decode_access_unit_into supplied them (every slot's samples are
@@ -2012,6 +2463,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         for (std::size_t ch = 0; ch < lead.channels.size(); ++ch) {
             write_slot(ch, lead.channels[ch]);
         }
+        apply_output(out, external);
         return std::optional<DecodedAccessUnit>(std::move(out));
     }
 
@@ -2051,6 +2503,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             write_slot(static_cast<std::size_t>(slot), sub.channels[static_cast<std::size_t>(i)]);
         }
     }
+    apply_output(out, external);
     return std::optional<DecodedAccessUnit>(std::move(out));
 }
 

@@ -29,6 +29,7 @@
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -126,6 +127,28 @@ void print_meta_usage() {
                  "fast-imdct=off still adjusts one half on its own");
     std::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
                  "(mode=reference's decode half); bare fast-imdct names the default");
+    std::println("  channels=2|1      decode/monitor: apply the §7.8 output stage and leave "
+                 "that many channels - 2 is a stereo fold, 1 is mono. channels=as-coded (the "
+                 "default) does nothing at all. The stream's own cmixlev/surmixlev (AC-3) or "
+                 "mixmdate levels (E-AC-3) drive the matrix; §7.8.1's normalisation keeps it "
+                 "from overloading");
+    std::println("  downmix=loro|ltrt|mono  which fold channels= produces: §7.8.1's plain "
+                 "stereo (the default), §7.8.2's Dolby Surround compatible Lt/Rt, or mono. "
+                 "Naming one implies the width, so downmix=ltrt on its own is enough");
+    std::println("  ltrt-phase=off    take Lt/Rt's sign-only matrix instead of §7.8.2's real "
+                 "90-degree surround phase shift, which costs 63 samples of output delay");
+    std::println("  mix-lfe           fold the LFE into the downmix too (§7.8 makes it "
+                 "optional and this decoder drops it by default), at the stream's own "
+                 "lfemixlevcod where it has one and §7.8's +10 dB ideal where it does not");
+    std::println("  drcmode=line|rf   decode/monitor: §7.7's two named consumer modes. line "
+                 "normalises dialnorm and applies the transmitted dynrng in full; rf uses "
+                 "compr instead (falling back on dynrng per §7.7.2.1) and protects the "
+                 "downmix from overload. Both set dialnorm normalisation, unlike drc=/heavy, "
+                 "which are the individual switches. Default: neither");
+    std::println("  conceal=repeat|mute     decode/monitor: §7.10 error concealment. A frame "
+                 "that will not decode is reconstructed from the previous block's overlap - "
+                 "repeated and faded, or muted through the codec's own window - instead of "
+                 "failing the command. Off by default");
     std::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                  "signature (needs signing-key=); see docs/concepts/object-signing.md");
     std::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
@@ -250,6 +273,107 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                          "error: mode is 'performance' (the default) or 'reference' (got '{}')",
                          token);
             return false;
+        }
+        if (token == "mix-lfe") {
+            out.output.mix_lfe = true;
+            continue;
+        }
+        if (key == "channels") {
+            // How many channels to LEAVE, which is the question an operator
+            // actually has ("this has to play on a stereo device"). Which
+            // stereo matrix is downmix='s question, and it has a default, so
+            // channels= alone is enough to get a usable fold.
+            if (value == "as-coded") {
+                out.output.target = ac3::DownmixTarget::kAsCoded;
+                continue;
+            }
+            if (value == "1") {
+                out.output.target = ac3::DownmixTarget::kMono;
+                continue;
+            }
+            if (value == "2") {
+                // A downmix= earlier on the same command line already chose
+                // the matrix; channels=2 only confirms the width.
+                if (!out.downmix_named) {
+                    out.output.target = ac3::DownmixTarget::kLoRo;
+                }
+                continue;
+            }
+            std::println(stderr,
+                         "error: channels is '2' (§7.8 stereo), '1' (mono) or 'as-coded' (the "
+                         "default - no downmix at all) (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "downmix") {
+            if (value == "loro") {
+                out.output.target = ac3::DownmixTarget::kLoRo;
+            } else if (value == "ltrt") {
+                out.output.target = ac3::DownmixTarget::kLtRt;
+            } else if (value == "mono") {
+                out.output.target = ac3::DownmixTarget::kMono;
+            } else {
+                std::println(stderr,
+                             "error: downmix is 'loro' (§7.8.1), 'ltrt' (§7.8.2, Dolby Surround "
+                             "compatible) or 'mono' (got '{}')",
+                             token);
+                return false;
+            }
+            out.downmix_named = true;
+            continue;
+        }
+        if (key == "ltrt-phase") {
+            // The 90-degree shift on Lt/Rt's surround sum is what §7.8.2
+            // describes and costs a fixed delay on the whole output; 'off'
+            // takes the sign-only matrix a lot of hardware implements
+            // instead. Same key=off shape fast-mdct=/fast-imdct= use.
+            if (value == "off") {
+                out.output.ltrt_phase_shift = false;
+                continue;
+            }
+            std::println(stderr,
+                         "error: the Lt/Rt surround phase shift is the default; "
+                         "'ltrt-phase=off' selects the sign-only matrix (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "drcmode") {
+            // §7.7's two named consumer modes. Each sets dialnorm
+            // normalisation AND which of dynrng/compr applies, which is what
+            // distinguishes them from drc=/heavy - those are the individual
+            // switches, these are the two combinations that have names.
+            if (value == "line") {
+                out.output.mode = ac3::OperatingMode::kLine;
+            } else if (value == "rf") {
+                out.output.mode = ac3::OperatingMode::kRf;
+            } else if (value == "none") {
+                out.output.mode = ac3::OperatingMode::kCustom;
+            } else {
+                std::println(stderr,
+                             "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
+                             "overload protection) or 'none' (the default) (got '{}')",
+                             token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "conceal") {
+            // §7.10. Off by default: a decode that hits a damaged frame says
+            // so and stops, which is what a verification tool should do.
+            if (value == "repeat") {
+                out.concealment = ac3::ConcealmentPolicy::kRepeatFade;
+            } else if (value == "mute") {
+                out.concealment = ac3::ConcealmentPolicy::kMute;
+            } else if (value == "off") {
+                out.concealment = ac3::ConcealmentPolicy::kNone;
+            } else {
+                std::println(stderr,
+                             "error: conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
+                             "silence) or 'off' (the default) (got '{}')",
+                             token);
+                return false;
+            }
+            continue;
         }
         if (key == "drc") {
             // On the decode side drc= is a scale factor (§7.7.1 partial

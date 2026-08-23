@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "ac3/analysis/levels.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
@@ -132,6 +134,19 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
+    // Every field defaults off, so a plain invocation still writes the coded
+    // channels untouched - see channels=/downmix=/drcmode= in
+    // print_meta_usage. Set straight into DecoderConfig::output.
+    ac3::OutputConfig output{};
+    // Whether channels= or downmix= actually named a target this run, so the
+    // two can cooperate without either silently winning: downmix=ltrt on its
+    // own means stereo, channels=2 on its own means Lo/Ro, and the pair in
+    // either order means what both said.
+    bool downmix_named = false;
+    // 'decode'/'monitor' only: §7.10 error concealment. Off by default, so a
+    // damaged frame is still reported rather than papered over.
+    ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kNone;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain

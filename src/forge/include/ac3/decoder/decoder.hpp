@@ -362,6 +362,12 @@ struct DecodedSubstream {
     // (see Eac3Decoder::decode_substream's own comment on this - a bed
     // program AtmosEncoder itself never produces).
     std::vector<std::vector<float>> object_audio;
+    // §7.10, same convention as DecodedFrame::concealed: set only when this
+    // substream was concealed rather than decoded. A concealed substream
+    // never carries an object layer - OAMD and JOC describe the frame that
+    // did not arrive, and repeating the previous frame's positions would put
+    // moving objects somewhere they demonstrably are not.
+    std::optional<Concealment> concealed = std::nullopt;
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
@@ -429,7 +435,7 @@ struct DecodedAccessUnit {
 class AC3FORGE_EXPORT Eac3Decoder {
    public:
     Eac3Decoder() = default;
-    explicit Eac3Decoder(const DecoderConfig& config) : config_(config) {}
+    explicit Eac3Decoder(const DecoderConfig& config);
 
     // Decodes one syncframe. Overlap-add state is kept per substream identity,
     // so the substreams of successive access units stay independent of each
@@ -500,7 +506,28 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // since by definition the assembly never completed.
     [[nodiscard]] std::vector<DecodedSubstream> flush();
 
+    // The output stage's own added delay, in samples - see
+    // OutputStage::latency_samples(). Zero for every configuration except
+    // Lt/Rt with its phase shift left on.
+    [[nodiscard]] int output_latency_samples() const { return output_.latency_samples(); }
+
    private:
+    // decode_substream without the §7.10 concealment wrapper around it.
+    [[nodiscard]] std::expected<std::optional<DecodedSubstream>, DecodeError>
+    decode_substream_core(std::span<const std::byte> frame);
+    // §7.10: a substream's worth of audio built out of retained_[slot] under
+    // the configured policy, or std::nullopt when that identity has nothing
+    // retained yet. `slot` is the identity key described below.
+    [[nodiscard]] std::optional<DecodedSubstream> conceal(DecodeError error, std::size_t slot);
+    // The §7.8 fold, applied to an assembled program. Split out because
+    // decode_access_unit_core and flush() both need it and neither is a
+    // natural home for the Table E2.5 reduction it does first.
+    // render_output over an assembled access unit, in whichever storage it
+    // landed - the result's own vectors or the caller's spans.
+    void apply_output(DecodedAccessUnit& out, std::span<const std::span<float>> external);
+    void render_output(std::span<const std::span<float>> channels,
+                       const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
+                       const std::optional<meta::MixMetadata>& mix, int dialnorm);
     // Both public access-unit forms above: `external` empty means allocate
     // the program PCM into the returned DecodedAccessUnit, non-empty means
     // write through the spans - the same split decode_frame_core makes.
@@ -509,6 +536,20 @@ class AC3FORGE_EXPORT Eac3Decoder {
                             std::span<const std::span<float>> external);
 
     DecoderConfig config_{};
+    // §5.4.2.8/§7.8, applied to the assembled program rather than to each
+    // substream: a dependent on its own is half a soundfield, and folding it
+    // separately would mean folding something nobody was ever meant to hear.
+    // Inert unless DecoderConfig::output asks for something.
+    OutputStage output_{};
+    // render_output's own working storage: the wide Table E2.5 layout reduced
+    // to the §7.8 acmod layout nearest it, and views onto whichever buffers
+    // the fold is reading. Members so a steady-state decode allocates
+    // nothing; empty unless a fold is actually configured.
+    std::vector<std::vector<float>> fold_scratch_;
+    std::vector<std::span<float>> fold_views_;
+    // apply_output's own views onto the assembled program - separate from
+    // fold_views_, which render_output uses as working storage of its own.
+    std::vector<std::span<float>> au_views_;
 
     // Per-substream-identity state, indexed by strmtyp * 8 + substreamid: a
     // dependent's id lives in its own numbering space (§E2.3.1.2), so id
@@ -549,6 +590,26 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // vector - unlike some deques - allocates nothing, so 32 idle slots
     // cost nothing.
     std::array<std::vector<DecodedSubstream>, kSubstreamSlots> pending_au_parts_;
+    // §7.10's raw material, per substream identity: the metadata of the last
+    // frame of that identity that decoded, and its last BLOCK's windowed
+    // transform output per coded channel. Lazily allocated behind unique_ptr
+    // for the same reason delay_ is - 32 by-value slots would pin 768 KB for
+    // a stream that has one identity and (usually) no concealment at all.
+    struct RetainedSubstream {
+        DecodedSubstream shape;
+        std::array<std::array<double, 512>, 6> last_block{};
+        int nchans = 0;
+    };
+    std::array<std::unique_ptr<RetainedSubstream>, kSubstreamSlots> retained_;
+    // Where the block loop writes its last block while a frame is still in
+    // progress, committed into retained_ only once the frame has decoded
+    // cleanly - see FrameDecoder's own conceal_scratch_ for why. Sized lazily,
+    // so a decoder with concealment off never allocates it.
+    std::vector<std::array<double, 512>> conceal_scratch_;
+    // The identity of the last frame that decoded, for the one concealment
+    // case that cannot name its own: a frame damaged so far forward that even
+    // strmtyp/substreamid cannot be trusted. -1 until something decodes.
+    int last_identity_ = -1;
 
     // decode_substream's own per-block IMDCT/enhanced-coupling scratch
     // (PREfast's C6262, alert #63): reused across every (block, channel)

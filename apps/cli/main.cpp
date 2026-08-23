@@ -455,7 +455,8 @@ int run_main(int argc, char** argv) {
                                token == "couple" || token == "heavy" || token == "heavy2" ||
                                token == "mixmeta" || token == "sign-objects" ||
                                token == "verify-objects" || token == "keep-partial" ||
-                               token == "fast-mdct" || token == "fast-imdct";
+                               token == "fast-mdct" || token == "fast-imdct" ||
+                               token == "mix-lfe";
         if (token == "couple") {
             couple_flag = true;
         }
