@@ -142,9 +142,14 @@ being read off its own build:
 | `fuzz_ac3_decode`  | on      |     12,860 |    295 |  **787** | **2723** |
 
 +11.6% and +10.4% edge coverage, +7.7% and +14.2% features, for the same
-wall-clock budget - and on E-AC-3, 35% more executions as well, because a
-frame that clears the CRC gets decoded rather than dropped, which is a
-cheaper path per input than the corpus churn the rejected ones caused.
+wall-clock budget. The E-AC-3 execution count went up as well (4,546 against
+3,366), which is not the direction repairing the checksum would obviously
+push it - a frame that clears the CRC costs a full decode where a rejected
+one costs almost nothing. The two runs also grew differently-shaped corpora
+(233 files / 14.5 MB against 271 / 17 MB), and average input size is what
+sets per-exec cost here, so that is the likely reason rather than anything
+about the repair itself. Recorded as observed; the coverage columns are the
+result this change is claiming.
 The mutator's re-stamping half also has its own portable unit test
 (`tests/core/test_crc_mutator.cpp`), so a crc1 solved wrongly would fail the
 ordinary test suite on every platform rather than only showing up as a

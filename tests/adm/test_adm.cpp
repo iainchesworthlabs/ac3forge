@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -629,6 +630,51 @@ TEST_CASE("an oversized declared data chunk is bounded by the real file size", "
     if (doc.has_value()) {
         CHECK(doc->audio.frame_count() <= file.size());
     }
+}
+
+// The second and third findings from fuzz/fuzz_adm_parse, both the same
+// shape and both different from the <data> case above: libbw64 materialises
+// every chunk it reads EXCEPT <data> into a std::vector sized straight from
+// the chunk header, during readFile() itself, so a 99-byte file whose <axml>
+// claims four gigabytes asked for four gigabytes before any ac3forge code
+// ran. adm.cpp's chunk_sizes_fit() now refuses any chunk but <data> whose
+// declared size runs past the end of the file; see its own comment for what
+// that covers and what it deliberately does not.
+//
+// 0xFFFFFFFF is one of the two values the fuzzer actually reached, and is
+// also RF64's <ds64> escape - so it is checked here explicitly alongside an
+// ordinary oversized value, to pin down that the escape is only honoured on
+// <data> (the "parses the same content via RF64" case above is the other
+// half of that pair).
+TEST_CASE("a non-data chunk declaring more than the file holds is refused", "[adm]") {
+    const auto declared = GENERATE(std::uint32_t{0x7FFFFF00}, std::uint32_t{0xFFFFFFFF});
+    CAPTURE(declared);
+
+    Bytes body;
+    append_chunk(body, "fmt ", build_fmt_chunk(1, 48000, 16));
+    append_chunk(body, "axml", Bytes(kCarAdmXml), declared);
+    append_chunk(body, "data", build_pcm16_data(4));
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE_FALSE(doc.has_value());
+    CHECK(doc.error() == ac3adm::AdmError::kNotRiff);
+}
+
+// The other half of that check: a recording cut off part-way through <data>
+// is an ordinary file, not an attack, and must still read. <data> is exempt
+// from chunk_sizes_fit() precisely so this keeps working.
+TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
+    Bytes file = minimal_fixture_bytes(false);
+    file.resize(file.size() - 3);  // lose the tail of <data>, keep every header
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    CHECK(doc.has_value());
 }
 
 TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "[adm][model]") {
