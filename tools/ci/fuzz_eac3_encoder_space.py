@@ -49,20 +49,24 @@ hard as something external still can:
           access unit has at most one dependent substream, no ecpl and no tpn,
           and a normal sample rate.
 
-  header  FFmpeg cannot decode the audio, but ffprobe still walks the
-          syncframes - so the FRAMING is externally checked even where the
-          samples are not: every access unit found, the packet sizes tiling
-          the file exactly, and (where FFmpeg gets that far) the sample rate
-          read back. This is the "no oracle" cell class roadmap VX1 asks for,
-          and it is deliberately not an empty one: measured, ffprobe agrees on
-          the access-unit count and on the exact byte extent of every one of
-          them for `fscod2`, for ecpl/tpn and for 7.1.4 alike, on CBR and VBR
-          streams both.
+  header  FFmpeg cannot decode the audio, but the FRAMING is still checked -
+          by two independent means, neither of which needs a decode:
 
-  none    Nothing external says anything at all. In practice this class is
-          empty - every cell measured here reaches at least `header` - and it
-          exists so a future cell that does not is reported as such rather
-          than quietly counted as a pass.
+            * syncframe_walk(), this file's own walk over the four fields
+              that decide E-AC-3's framing (syncword, strmtyp, substreamid,
+              frmsiz). No tables, no coding tools, nothing shared with the
+              encoder, and it works at EVERY layout - including the ones
+              FFmpeg cannot parse at all. This is what makes the class
+              genuinely non-empty rather than a polite name for "skipped".
+            * ffprobe's own syncframe walk, where FFmpeg can be trusted to do
+              one: access-unit count, exact byte tiling, sample rate. Not
+              asked for a layout needing two dependent substreams - see
+              header_check() for the stream that proved why.
+
+  none    Nothing external and nothing independent says anything at all. This
+          class is empty: syncframe_walk() reaches every stream this harness
+          can produce. It exists so a future cell that escapes even that is
+          reported as such rather than quietly counted as a pass.
 
 Which class a case lands in, and why, is measured against FFmpeg 8.0 rather
 than assumed - see ORACLE_GAPS and --check-oracles. Every class still runs the
@@ -70,12 +74,13 @@ in-repo `ac3cli decode` round trip; the class only decides what ELSE runs.
 
 The weaker guarantee in the `header` class is stated plainly because it is
 real: a misreading of the spec shared by this project's encoder AND its
-decoder would survive it. docs/verification.md says the same thing about the
-CI gate that covers ecpl/tpn today. Framing is what an external tool can still
-prove, and framing is where a bit-offset defect - the shape of the deltbaie
-bug that motivated the AC-3 harness - shows up first: a syncframe whose
-contents are read at the wrong offset is a syncframe whose frmsiz no longer
-tiles the file.
+decoder would survive it, and so would one shared by the encoder and the field
+layout syncframe_walk() reads. docs/verification.md says the same thing about
+the CI gate that covers ecpl/tpn today. What framing does prove is where a
+bit-offset defect - the shape of the deltbaie bug that motivated the AC-3
+harness - shows up first: a syncframe whose contents are written at the wrong
+offset is a syncframe whose frmsiz no longer lands the next syncword where it
+promised.
 
 --- determinism -------------------------------------------------------------
 
@@ -304,18 +309,41 @@ REFUSALS = {
 # encoder-space counterpart of fuzz/regressions/ (which holds DECODER inputs)
 # - a case seed regenerates its whole input from one number, so the number is
 # the artifact.
-# Unlike the AC-3 harness's list, these are PINNED rather than harvested: the
+# Mostly PINNED rather than harvested, unlike the AC-3 harness's list: the
 # defects below were found by unseeded sweeps, which by construction do not
-# reuse a seed, so each entry is the smallest case seed that redraws the same
-# shape. That is the useful property either way - what a regression seed has
-# to do is reproduce, not be the literal number that failed first.
+# reuse a seed, so most entries are the smallest case seed that redraws the
+# same shape. That is the useful property either way - what a regression seed
+# has to do is reproduce, not be the literal number that failed first. (The
+# 7.1.4 entry is the exception: that one IS the seed that failed.)
+#
+# MAINTENANCE: a case is a pure function of its seed AND of draw_case, so any
+# change to the generator - a new option, a reweighting, one more entry in a
+# choice list - silently redraws every seed here into a different case. Two of
+# these entries stopped testing what their description claimed exactly that
+# way while this file was being written. Re-run --regressions after touching
+# draw_case and check each case still MATCHES its description, not merely that
+# the run exits 0: a seed that has drifted into an unrelated configuration
+# passes quietly.
 REGRESSION_SEEDS = {
-    25: "16 kHz at 384 kbit/s (mono, cpl+tpn): a legal Table 5.18 rate at a "
-        "legal Annex E half rate that no syncframe can signal, because "
-        "frmsiz is 11 bits. Must classify as refused ('frmsiz ceiling') - it "
-        "was an abort before the fix, and an abort is not a refusal",
-    71: "the same ceiling at the other end of the half rates: 24 kHz at "
-        "576 kbit/s, where the cut sits three Table 5.18 steps higher",
+    25: "16 kHz at 384 kbit/s (mono, cpl): a legal Table 5.18 rate at a legal "
+        "Annex E half rate that no syncframe can signal, because frmsiz is 11 "
+        "bits. Must classify as refused ('frmsiz ceiling') - it was an abort "
+        "before the fix, and an abort is not a refusal",
+    24: "the same ceiling at 22.05 kHz (1+1 at 640 kbit/s), where the cut "
+        "falls two Table 5.18 steps higher than at 16 kHz",
+    412: "and at 24 kHz (mono at 640 kbit/s), the highest of the three cuts. "
+         "All three are pinned because the ceiling is derived per sample "
+         "rate, not tabulated, so one of them passing proves little about "
+         "the others",
+    4765573204069690189:
+        "7.1.4 under VBR at 32 kHz: a stream this harness first reported as a "
+        "framing failure and which turned out to be correct - 54 syncframes, "
+        "18 access units of 1536 bytes, tiling the file exactly. FFmpeg's "
+        "demuxer lost sync inside the second dependent substream it cannot "
+        "parse and resynced mid-frame, reporting 19 packets split 1329/207 at "
+        "an offset that is not a syncframe boundary. Must come back clean: it "
+        "pins that ffprobe is no longer asked about a two-dependent layout, "
+        "and that the independent walk still is",
     59: "a 16-channel source handed to atmos-encode with no explicit object "
         "count, so its default one-object-per-channel asks for one more than "
         "TS 103 420 8.3.2.2 allows. A legal WAV, so the refusal is the "
@@ -659,33 +687,108 @@ def ffmpeg_check(ffmpeg, path, forced=False):
     return _run(argv + ["-i", str(path), "-f", "null", "-"])
 
 
+def syncframe_walk(path, expected_units):
+    """The framing oracle that does not depend on FFmpeg at all.
+
+    Four fields decide E-AC-3's framing, and all four sit at fixed bit offsets
+    immediately after the syncword, before anything a coding tool can change:
+
+        syncword   16 bits, 0x0B77   (§E2.3.1.1)
+        strmtyp     2 bits           (§E2.3.1.2: 0 independent, 1 dependent)
+        substreamid 3 bits           (§E2.3.1.2)
+        frmsiz     11 bits           (§E2.3.1.3: words - 1)
+
+    So a walk over them needs no bit allocation, no exponent strategy, no
+    tables - and shares nothing with the encoder that produced the stream. If
+    a frmsiz does not describe its own syncframe, the very next read lands on
+    something that is not a syncword and this says so. That is exactly the
+    failure a bit-offset defect produces, and it is checked here at EVERY
+    layout, including the ones FFmpeg cannot read at all.
+
+    Written after ffprobe was caught disagreeing about a stream that turned
+    out to be correct - see ORACLE_GAPS' "two dependent substreams" entry.
+
+    Returns None when everything holds, or a string naming what did not."""
+    data = path.read_bytes()
+    offset = 0
+    units = 0
+    frames = 0
+    previous_dependent = -1
+    while offset < len(data):
+        if offset + 5 > len(data):
+            return (f"{len(data) - offset} trailing bytes at offset {offset} are too short to "
+                    f"be a syncframe")
+        if data[offset] != 0x0B or data[offset + 1] != 0x77:
+            return (f"no syncword at offset {offset}, where the previous frmsiz said the next "
+                    f"syncframe starts ({frames} syncframes in, {units} access units)")
+        word = (data[offset + 2] << 8) | data[offset + 3]
+        strmtyp = (word >> 14) & 0x3
+        substreamid = (word >> 11) & 0x7
+        size = ((word & 0x7FF) + 1) * 2
+        if strmtyp == 0:
+            units += 1
+            previous_dependent = -1
+        elif strmtyp == 1:
+            if units == 0:
+                return f"a dependent substream at offset {offset} precedes any independent one"
+            # §E2.3.1.2 numbers an independent substream's dependents from 0
+            # upwards in transmission order; a gap or a repeat would leave a
+            # decoder unable to tell which bed channels a dependent replaces.
+            if substreamid != previous_dependent + 1:
+                return (f"dependent substreamid {substreamid} at offset {offset} does not "
+                        f"follow {previous_dependent}")
+            previous_dependent = substreamid
+        else:
+            return (f"strmtyp {strmtyp} at offset {offset} is neither independent nor "
+                    f"dependent (0x2 needs a branch this encoder does not write, 0x3 is "
+                    f"reserved)")
+        frames += 1
+        offset += size
+    if offset != len(data):
+        return f"the last frmsiz runs {offset - len(data)} bytes past the end of the stream"
+    if units == 0:
+        return "no independent substream anywhere in the stream"
+    if expected_units is not None and units != expected_units:
+        return (f"the syncframes make {units} access units; the encoder reported writing "
+                f"{expected_units}")
+    return None
+
+
 def header_check(ffprobe, path, case, expected_units):
-    """The framing oracle: what an external tool can still prove about a
-    stream whose AUDIO it cannot decode.
+    """Third-party agreement on the framing, from FFmpeg's own demuxer.
 
-    `-f eac3` is forced here rather than arbitrated the way the full decode
-    arbitrates. The point of this check is the syncframe walk, and letting
-    container auto-detection have an opinion would only add a second,
-    unrelated way for it to fail - the misprobe question belongs to the decode
-    path, which keeps run_codec_matrix.sh's exact invocation precisely so that
-    it still means what that script means.
+    This is the weaker of the two framing checks and the one with a limit, so
+    syncframe_walk() above runs first and unconditionally; this one only adds
+    what an outside implementation can confirm.
 
-    Three assertions, in increasing strength:
+    `-f eac3` is forced rather than arbitrated the way the full decode
+    arbitrates. The point here is the syncframe walk, and letting container
+    auto-detection have an opinion would only add a second, unrelated way for
+    it to fail - the misprobe question belongs to the decode path, which keeps
+    run_codec_matrix.sh's exact invocation precisely so that it still means
+    what that script means.
+
+    Three assertions:
 
       1. ffprobe reads the stream at all.
       2. It finds exactly the access units the encoder says it wrote, and
-         their packet sizes tile the file EXACTLY - sum == file size, no
-         slack. This is the one that matters: a bit-offset defect, the shape
-         of the deltbaie bug that motivated the AC-3 harness, moves a frmsiz
-         and therefore moves a boundary, and a boundary that has moved cannot
-         still tile.
-      3. The sample rate reads back as encoded - but only where FFmpeg gets
-         far enough to have one. Measured: on a two-dependent (7.1.4) stream
-         it reports 0, having stopped at the substream it will not parse,
-         while still counting and sizing every access unit. Asserting a rate
-         there would be asserting FFmpeg's limitation, not the stream.
+         their packet sizes tile the file EXACTLY - sum == file size, no slack.
+      3. The sample rate reads back as encoded.
 
-    Returns None when everything holds, or a string naming what did not."""
+    NOT RUN at all for a layout needing two or more dependent substreams. That
+    is not caution, it is measurement: `ff_ac3_parse_header` rejects
+    `substreamid != 0`, so inside a 7.1.4 access unit FFmpeg's demuxer has a
+    substream it cannot parse, and it can lose sync there and resync on an
+    ordinary byte pattern. Caught doing exactly that on case seed
+    4765573204069690189 - an 18-access-unit stream reported as 19 packets,
+    split 1329/207 at an offset that is not a syncframe boundary at all, while
+    the independent walk above found all 54 syncframes forming 18 units of
+    1536 bytes each, tiling the file exactly. Its sample_rate is unusable
+    there for the same reason (it reports 0, having stopped at the substream
+    it will not parse). Asserting any of it would be asserting FFmpeg's
+    limitation rather than the stream."""
+    if DEPENDENTS.get(case.layout, 0) >= 2:
+        return None
     result = _run([ffprobe, "-v", "error", "-f", "eac3", "-select_streams", "a:0",
                    "-show_entries", "stream=sample_rate", "-show_packets",
                    "-of", "json", str(path)])
@@ -715,12 +818,11 @@ def header_check(ffprobe, path, case, expected_units):
         return (f"ffprobe found {len(packets)} access units; the encoder reported writing "
                 f"{expected_units}")
 
-    if DEPENDENTS.get(case.layout, 0) < 2:
-        streams = parsed.get("streams", [])
-        reported = streams[0].get("sample_rate") if streams else None
-        if str(reported) != str(case.sample_rate):
-            return (f"ffprobe reports sample_rate {reported}; the stream was encoded at "
-                    f"{case.sample_rate}")
+    streams = parsed.get("streams", [])
+    reported = streams[0].get("sample_rate") if streams else None
+    if str(reported) != str(case.sample_rate):
+        return (f"ffprobe reports sample_rate {reported}; the stream was encoded at "
+                f"{case.sample_rate}")
     return None
 
 
@@ -806,16 +908,21 @@ def run_case(cli, ffmpeg, ffprobe, case, workdir, artifacts):
             save_artifacts(artifacts, case, result, tmp)
             return result
 
-        # The framing oracle, at every class including `full` - it is cheap,
-        # and a stream whose audio decodes can still have a frmsiz that does
-        # not describe it.
-        if ffprobe is not None:
-            problem = header_check(ffprobe, out, case,
-                                   units_written(encode.stdout + encode.stderr))
-            if problem is not None:
-                result = Result(case, "fail", problem, "framing", oracle=oracle, gaps=gaps)
-                save_artifacts(artifacts, case, result, tmp)
-                return result
+        # The framing oracles, at every class including `full` - both are
+        # cheap, and a stream whose audio decodes can still carry a frmsiz
+        # that does not describe it.
+        #
+        # The independent walk runs first and always, FFmpeg or not: it is the
+        # one that works at every layout, and the only framing check 7.1.4
+        # gets at all.
+        claimed = units_written(encode.stdout + encode.stderr)
+        problem = syncframe_walk(out, claimed)
+        if problem is None and ffprobe is not None:
+            problem = header_check(ffprobe, out, case, claimed)
+        if problem is not None:
+            result = Result(case, "fail", problem, "framing", oracle=oracle, gaps=gaps)
+            save_artifacts(artifacts, case, result, tmp)
+            return result
 
         if oracle != "full":
             return Result(case, "no-oracle", ", ".join(gaps), "ffmpeg",
@@ -1066,10 +1173,18 @@ def check_oracles(cli, ffmpeg, ffprobe):
             case = Case(seed=0, command="eac3-encode", layout=layout, bitrate=384,
                         sample_rate=rate, source_channels=6, frames=8, pcm16=True,
                         audio_profile="runs", correlation="independent", tools=tools)
-            framing = header_check(ffprobe, out, case,
-                                   units_written(encode.stdout + encode.stderr))
-            print(f"  {name}: ffmpeg {'decodes' if decoded else 'refused'}, ffprobe "
-                  f"{'walks it' if framing is None else 'FAILED: ' + framing.splitlines()[0]}")
+            claimed = units_written(encode.stdout + encode.stderr)
+            walk = syncframe_walk(out, claimed)
+            framing = header_check(ffprobe, out, case, claimed) if walk is None else None
+            probe_note = ("not asked (FFmpeg cannot parse this layout)"
+                          if DEPENDENTS.get(layout, 0) >= 2
+                          else ("walks it" if framing is None
+                                else "FAILED: " + framing.splitlines()[0]))
+            print(f"  {name}: ffmpeg {'decodes' if decoded else 'refused'}, "
+                  f"syncframes {'walk' if walk is None else 'FAILED: ' + walk.splitlines()[0]}"
+                  f", ffprobe {probe_note}")
+            if walk is not None:
+                failures.append(f"{name}: the independent syncframe walk failed - {walk}")
             if framing is not None:
                 failures.append(f"{name}: the framing oracle no longer holds - {framing}")
             if expect_decode is True and not decoded:

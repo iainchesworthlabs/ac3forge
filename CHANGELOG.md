@@ -23,9 +23,10 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   generator, which it imports rather than copies. Because FFmpeg does not read E-AC-3 whole — no
   second dependent substream, no model of enhanced coupling or transient pre-noise, no `fscod2`
   decode — every case is classified by which oracle can actually read it, and the cells FFmpeg
-  cannot decode are held against `ffprobe`'s syncframe walk instead: the access-unit count and the
-  exact byte extent of every one, checked against the encoder's own reported count. Bounded on
-  every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
+  cannot decode still get their *framing* checked: by a walk over the four fields that fix E-AC-3
+  framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
+  and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
+  on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
 
 ### Fixed
 

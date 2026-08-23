@@ -132,16 +132,21 @@ only the in-repo decoder can read is checked against itself, not against anythin
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
 (roadmap VX1) is built around: it classifies every case it draws by which of these rows it lands
-on, and holds the ones FFmpeg cannot decode against `ffprobe`'s syncframe walk instead — the
-access-unit count and the exact byte extent of each one, checked against the encoder's own
-reported count. Measured, that walk holds for `fscod2`, for `ecpl`/`tpn` and for 7.1.4 alike, on
-CBR and VBR streams both, so the *framing* stays externally checked wherever the samples cannot
-be. It does not close the gap — the paragraphs below still stand, and a misreading shared by this
+on, and checks the *framing* of the ones FFmpeg cannot decode — which needs no decode at all. Two
+things do it: a walk over the four fields that fix E-AC-3's framing (syncword, `strmtyp`,
+`substreamid`, `frmsiz`, all at fixed bit offsets), which shares nothing with the encoder and
+works at every layout; and `ffprobe`'s own syncframe walk, where FFmpeg can be trusted to do one.
+It is not asked about a two-dependent layout, because it demonstrably cannot: on one 7.1.4 stream
+it reported 19 access units where 18 were written, splitting one at an offset that is not a
+syncframe boundary — it had lost sync inside the very substream this table's "no" row is about.
+
+None of this closes the gap — the paragraphs below still stand, and a misreading shared by this
 project's encoder and its decoder would survive a framing check as easily as it survives the
 round trip — but it is more than nothing, and it is where a bit-offset defect shows up first: a
-syncframe read at the wrong offset is a syncframe whose size field no longer describes it. The
-harness's `--check-oracles` re-measures this table's own claims against the installed FFmpeg, so
-a row that stops being true is reported rather than quietly assumed.
+syncframe written at the wrong offset is a syncframe whose `frmsiz` no longer lands the next
+syncword where it promised. The harness's `--check-oracles` re-measures this table's own claims
+against the installed FFmpeg, so a row that stops being true is reported rather than quietly
+assumed.
 
 **7.1.4 has no external oracle at all.** For that one layout, encoder and decoder are checked
 against each other and nothing else:
