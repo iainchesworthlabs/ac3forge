@@ -14,6 +14,7 @@
 #include "ac3/encoder/silent_frame.hpp"  // FrameError
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 
@@ -282,6 +283,31 @@ inline constexpr std::uint32_t kMaxFrameWords = 2048;
 // padding; the padding is what gets pushed in front of it.
 using AuxPayload = std::span<const std::byte>;
 
+// The latency budget a stream from this configuration imposes end to end
+// (roadmap PF6; ac3/latency.hpp documents the four terms).
+//
+// Only transient_prenoise moves anything. Every other Annex E tool - AHT,
+// coupling, enhanced coupling, spectral extension - is a different way of
+// coding the SAME frame's coefficients and adds no delay on either side: AHT
+// packs a channel's six blocks into block 0 rather than looking ahead of the
+// frame, spx and coupling reconstruct within the block they arrive in, and
+// none of them change how many samples the decoder must hold. §3.7 is the
+// exception because its correction reaches backwards ACROSS a frame boundary,
+// which is only realizable by a decoder that still has the previous frame -
+// hence one frame period of hold-back, charged here because it is the
+// encoder's tool choice that imposes it.
+//
+// Free function rather than a FrameEncoder member alone so a caller can price
+// a configuration before building an encoder for it, which is what a live
+// pipeline sizing its buffers actually needs.
+[[nodiscard]] constexpr LatencyBudget eac3_latency(const FrameConfig& config) {
+    return LatencyBudget{
+        .frame_samples = kSamplesPerFrame,
+        .transform_samples = kTransformDelaySamples,
+        .lookahead_samples = 0,
+        .holdback_samples = config.transient_prenoise ? kSamplesPerFrame : 0};
+}
+
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     const FrameConfig& config, AuxPayload aux = {});
 
@@ -329,6 +355,12 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] int channel_count() const {
         return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
     }
+
+    // Roadmap PF6 - see ac3/latency.hpp for what each term means and
+    // eac3_latency() below for why transient_prenoise is the only field of
+    // FrameConfig that moves any of them.
+    [[nodiscard]] LatencyBudget latency() const { return eac3_latency(config_); }
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
     FrameConfig config_;
@@ -448,6 +480,17 @@ class AC3FORGE_EXPORT AccessUnitEncoder {
     [[nodiscard]] const AccessUnitConfig& config() const { return config_; }
     // Summed across substreams: the span count encode_access_unit expects.
     [[nodiscard]] int channel_count() const;
+
+    // Roadmap PF6. Every substream of an access unit codes the same 1536
+    // samples of the same program, so the frame and transform terms are
+    // shared rather than summed - what a dependent substream CAN add is its
+    // own §3.7 hold-back, since transproce is a per-substream flag and a
+    // decoder holds back per substream identity. The worst term across the
+    // whole unit is therefore the unit's own, and decode_access_unit's
+    // assembly cache means one substream holding back delays the assembled
+    // program, not just that substream.
+    [[nodiscard]] LatencyBudget latency() const;
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
     AccessUnitConfig config_;

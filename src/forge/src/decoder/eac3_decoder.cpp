@@ -1863,6 +1863,21 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     return std::optional<DecodedSubstream>(std::move(out));
 }
 
+int Eac3Decoder::latency_samples() const {
+    // A slot holds a value exactly while that substream identity is one frame
+    // behind (see decode_substream's hold-back), so "any slot pending" IS
+    // "this decoder is currently a frame late". pending_au_parts_ is not
+    // consulted: it holds results already RELEASED by decode_substream and
+    // only waiting on a sibling identity, so whatever delay it represents is
+    // the pending_ slot of that sibling, already counted here.
+    for (const auto& slot : pending_) {
+        if (slot.has_value()) {
+            return kSamplesPerFrame;
+        }
+    }
+    return 0;
+}
+
 std::vector<DecodedSubstream> Eac3Decoder::flush() {
     std::vector<DecodedSubstream> ready;
     // Slot order is key order, so this drains in the same ascending

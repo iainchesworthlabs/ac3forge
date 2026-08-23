@@ -8,6 +8,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -104,6 +105,35 @@ class AC3FORGE_EXPORT AtmosEncoder {
     [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_frame(
         std::span<const std::span<const float>> objects,
         std::span<const ObjectPlacement> placement);
+
+    // Roadmap PF6. The OBJECT path's budget - what this encoder is for.
+    //
+    // Its transform term is TWICE kTransformDelaySamples, and that is not a
+    // typo. JOC does not code objects; it codes a matrix that pulls them back
+    // out of the decoded bed (joc::reconstruct), and doing that means a second
+    // full MDCT/IMDCT round trip over PCM the decoder has already
+    // reconstructed - block b's analysis window there spans bed samples
+    // [256b - 256, 256b + 256) exactly as the first one spanned input
+    // samples. Two TDAC overlaps in series, so an object sample lags its input
+    // by 512 rather than 256. Nothing in this encoder can shorten that: the
+    // second transform is the decoder's, and it is what the tool is.
+    //
+    // With emit_object_metadata off there is no container, no JOC and no
+    // second transform - the stream is plain 5.1 - so the budget collapses to
+    // bed_latency()'s.
+    [[nodiscard]] LatencyBudget latency() const {
+        LatencyBudget budget = bed_latency();
+        if (config_.emit_object_metadata) {
+            budget.transform_samples += kTransformDelaySamples;
+        }
+        return budget;
+    }
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
+
+    // The 5.1 BED's budget: what a legacy decoder that ignores the container
+    // hears, and the figure to use when the objects are not being
+    // reconstructed. One transform overlap, like any other E-AC-3 stream.
+    [[nodiscard]] LatencyBudget bed_latency() const { return encoder_.latency(); }
 
     // Dynamic objects only. The program has one more - the bed's LFE - which
     // is what the free object_count(Program) counts.
