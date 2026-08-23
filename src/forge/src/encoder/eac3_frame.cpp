@@ -30,6 +30,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "dither.hpp"
 #include "snr_search.hpp"
 
 namespace ac3::eac3 {
@@ -56,7 +57,7 @@ constexpr int kSnroffststr = 0;    // one SNR offset pair for the whole frame
 constexpr int kDithflage = 1;      // sent explicitly: the DEFAULT when absent is
                                    // dither ON, which would fill every zero-bit
                                    // bin with noise and make "silence" audible
-constexpr int kBamode = 0;         // default allocation parameters, zero bits
+constexpr int kBamode = 1;         // the allocation parameters are transmitted
 // Table E1.4, the else-branch of if(bamode): with bamode == 0 the allocation
 // parameters take THESE values. They are not the §8.2.12 basic-encoder
 // recommendations that AC-3 uses - floorcod is 0x7 here against §8.2.12's 4,
@@ -66,12 +67,44 @@ constexpr int kBamode = 0;         // default allocation parameters, zero bits
 // read it with another, and every block after the first landed at the wrong
 // offset. Digital silence cannot catch this, because zero SNR offsets make
 // §7.2.2.1.1 zero the allocation before floorcod is ever consulted.
+//
+// Still named here because two things outside the transmitted set continue to
+// take their values from it: fgaincod, which baie does not carry at all
+// (frmfgaincode == 0 makes the decoder revert every channel to 0x4 per
+// block), and the decoder-side default whenever a frame declines to send
+// baie.
 constexpr BitAllocCodes kBamode0Codes{.sdcycod = 2,
                                       .fdcycod = 1,
                                       .sgaincod = 1,
                                       .dbpbcod = 2,
                                       .floorcod = 7,
                                       .fgaincod = 4};  // frmfgaincode == 0 (§8.2.12)
+// What bamode == 1 buys: the frame states its own allocation parameters
+// instead of inheriting the table above. baie is sent once, in block 0, and
+// the remaining five blocks each say "keep them" - 1 + 11 + 5 = 17 bits a
+// frame, about 0.3% of a 96 kbit/s frame and 0.03% of a 640 kbit/s one.
+//
+// Only dbpbcod moves, and it moves to what the AC-3 encoder already measured
+// its way to (see encoder.cpp's own note): dbknee rises from Table 7.9's
+// 0x800 to 0xc00, and §7.2.2.5 adds (dbknee - bndpsd) >> 2 to the excitation
+// of every band below the knee, so a quiet band's mask is lifted and its bits
+// go to bands that hold energy. Measured across 96-640 kbit/s on stereo and
+// 5.1 - see the table in the pull request that introduced this - the change
+// is a gain at every rate and layout tried, largest at the low ones where
+// there are fewest bits to misplace.
+//
+// floorcod stays at the bamode == 0 value rather than moving to §8.2.12's 4
+// alongside dbpbcod: 7 is the lowest floor of the eight (Table 7.10's
+// 0xf800), so it is the one that never binds, and swapping it for 4 was
+// measured as inert-to-negative here exactly as the same sweep found for
+// AC-3. sdcycod/fdcycod/sgaincod are the bamode == 0 values, which are also
+// §8.2.12's.
+constexpr BitAllocCodes kAllocCodes{.sdcycod = 2,
+                                    .fdcycod = 1,
+                                    .sgaincod = 1,
+                                    .dbpbcod = 3,
+                                    .floorcod = 7,
+                                    .fgaincod = kBamode0Codes.fgaincod};
 constexpr int kFrmfgaincode = 0;   // fgaincod defaults to 0x4, matching AC-3
 // Padding goes through auxbits. AC-3 cannot do that - §5.5 confines its aux
 // field to the final 3/8 of the frame, to protect the crc1-at-5/8 checkpoint -
@@ -355,6 +388,11 @@ struct Payload {
     // rematrixed" - the same bit pattern a stream with nothing to gain from
     // it would choose anyway.
     std::array<std::array<bool, 4>, kBlocksPerFrame> rematflg{};
+    // §7.3.4's dithflag[ch], [ch][blk], full-bandwidth channels only (the
+    // LFE has no such flag). All false for silence and for build_silent_frame,
+    // which is the right answer there: dither over digital silence is the one
+    // case §7.3.4 must not produce.
+    std::array<std::array<bool, kBlocksPerFrame>, chanmap::kMaxSubstreamFullbw> dithflag{};
     std::vector<ChannelPlan> chans;
     std::array<std::vector<MantissaToken>, kBlocksPerFrame> mantissas;
     // §7.7.1 words per block. All unity when the config carries no profile,
@@ -383,6 +421,7 @@ struct Payload {
         cpl.reset_for_frame();
         spx.reset_for_frame();
         rematflg = {};
+        dithflag = {};
         for (auto& plan : chans) {
             plan.reset_for_frame();
         }
@@ -1095,8 +1134,17 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         }
         // blkswe == 0: blksw omitted, every channel implicitly long (Table
         // E1.4's own else-branch).
+        // §7.3.4, decided per channel per block from what the allocation left
+        // out - see dither.hpp, and the note at the decision itself for why it
+        // is settled after the rate search rather than here. dithflage is 1
+        // (kDithflage), so these bits are transmitted whichever way they read
+        // and the decision costs nothing.
         for (int ch = 0; ch < nfchans; ++ch) {
-            w.put(0, 1);  // dithflag: off, so zero-bit bins stay silent
+            w.put(payload.dithflag[static_cast<std::size_t>(ch)]
+                                  [static_cast<std::size_t>(blk)]
+                      ? 1
+                      : 0,
+                  1);  // dithflag
         }
         // Same persistence rule as AC-3 (§7.7.1.2): resend only on a change,
         // always send in block 0. Unlike almost everything else in Annex E,
@@ -1361,7 +1409,21 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             }
         }
 
-        // bamode == 0: the allocation parameters take their defaults.
+        // bamode == 1: the allocation parameters are transmitted, once. baie
+        // sits between the exponents and the SNR offsets (Table E1.4), and
+        // §5.4.3.36's persistence rule is the AC-3 one - an absent baie keeps
+        // whatever the previous block set, so five of the six blocks cost one
+        // bit each.
+        if constexpr (kBamode != 0) {
+            w.put(first ? 1 : 0, 1);  // baie
+            if (first) {
+                w.put(static_cast<std::uint32_t>(kAllocCodes.sdcycod), 2);
+                w.put(static_cast<std::uint32_t>(kAllocCodes.fdcycod), 2);
+                w.put(static_cast<std::uint32_t>(kAllocCodes.sgaincod), 2);
+                w.put(static_cast<std::uint32_t>(kAllocCodes.dbpbcod), 2);
+                w.put(static_cast<std::uint32_t>(kAllocCodes.floorcod), 3);
+            }
+        }
         // snroffststr == 0: the offsets came from audfrm, so the block
         // carries no SNR fields whatsoever.
         // frmfgaincode == 0, so fgaincod defaults to 0x4 for every channel.
@@ -2567,14 +2629,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const auto& plan = payload.chans[static_cast<std::size_t>(cpl_stream)];
         const int exp = plan.decoded[static_cast<std::size_t>(cpl.strtmant)];
         const int psd = 3072 - (exp << 7);
-        cpl.fleak = std::clamp((psd - fast_gain(kBamode0Codes.fgaincod) - 768) >> 8, 0, 7);
-        cpl.sleak = std::clamp((psd - slow_gain(kBamode0Codes.sgaincod) - 768) >> 8, 0, 7);
+        cpl.fleak = std::clamp((psd - fast_gain(kAllocCodes.fgaincod) - 768) >> 8, 0, 7);
+        cpl.sleak = std::clamp((psd - slow_gain(kAllocCodes.sgaincod) - 768) >> 8, 0, 7);
     }
 
     // --- 8. SNR-offset search ----------------------------------------------
-    // The side info is offset-independent here (bamode 0, no delta
-    // allocation), so it can be measured once and the remainder handed
-    // wholly to the mantissas.
+    // The side info is offset-independent here - the allocation parameters
+    // are a compile-time constant set and the SNR fields are fixed-width - so
+    // it can be measured once and the remainder handed wholly to the
+    // mantissas.
     // The metadata competes with the mantissas for the same frame. It is
     // inside emit_frame's output now that it rides in a skip field, so the
     // side-info measurement already accounts for it.
@@ -2638,7 +2701,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                         .snr_all_zero = composite == 0,
                                         .high_efficiency = plan.aht,
                                         .delta = plan.delta};
-            compute_bit_allocation(plan.decoded, config_.sample_rate, kBamode0Codes,
+            compute_bit_allocation(plan.decoded, config_.sample_rate, kAllocCodes,
                                    composite >> 4, composite & 15, plan.bap, region);
             if (plan.aht) {
                 // An AHT stream's cost is a whole-frame figure: six blocks of
@@ -2845,6 +2908,72 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // unconditionally keeps the hint fresh for whichever path the next frame
     // takes.
     snr_search_hint_ = lo;
+
+    // --- 8a. Dither substitution per channel per block ----------------------
+    // §7.3.4, decided from what the allocation above actually left out - see
+    // dither.hpp for the comparison. Here rather than earlier because the
+    // zero-bap bins are the whole input and payload.bap only holds the
+    // winning offset's allocation from the evaluation just above; the flags
+    // cost nothing in bits (dithflage is on regardless), so nothing about the
+    // frame's size depends on this.
+    //
+    // Two streams are left out of the weighing, both because the decoder does
+    // not dither them:
+    //   * an AHT stream, whose zero-hebap bins reconstruct as literal zero
+    //     whatever dithflag says (§E3.4's mantissas are read once for the
+    //     whole frame, and there is no per-block substitution step);
+    //   * every stream at all, when spectral extension is in use - see below.
+    //
+    // Spectral extension is the one place this encoder holds a reconstruction
+    // of what the decoder will produce (the `rebuild` lambda in step 10),
+    // because the extension bands are scaled to match the copy source's own
+    // energy. Dither would change that source, and the encoder cannot
+    // reproduce the values: DitherGenerator is deterministic per decoder
+    // instance, but the sequence a given bin receives depends on how many
+    // zero-bap bins the decoder walked before it, across every stream and
+    // block. Mirroring that would mean duplicating the decoder's traversal
+    // order in the encoder, which is exactly the kind of shadow model this
+    // codebase has been bitten by before. Dither therefore stays off for a
+    // frame that uses spectral extension, and the two models stay coherent by
+    // construction.
+    //
+    // config_.dither is on by default; when it is not, the loop below never
+    // runs and payload.dithflag keeps the all-false state reset_for_frame
+    // leaves it in - the deterministic behaviour from before this feature
+    // existed, for a caller that needs bit-for-bit agreement with an
+    // external decoder more than it needs the flag itself (see
+    // FrameConfig::dither's own comment).
+    if (config_.dither && !spx.in_use) {
+        AC3_ZONE_SCOPED_N("step8a_dither_flags");
+        // cpl_stream is -1 when nothing couples, so the plan is only named
+        // where it exists.
+        const ChannelPlan* cpl_plan =
+            cpl.in_use ? &payload.chans[static_cast<std::size_t>(cpl_stream)] : nullptr;
+        const bool cpl_weighable = cpl_plan != nullptr && !cpl_plan->aht;
+        for (int ch = 0; ch < nfchans; ++ch) {
+            const auto& plan = payload.chans[static_cast<std::size_t>(ch)];
+            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                internal::DitherBallot ballot;
+                if (!plan.aht) {
+                    ballot.weigh(coeffs_at(ch, blk), plan.decoded, plan.bap, plan.start,
+                                 plan.endmant);
+                }
+                if (cpl_weighable) {
+                    ballot.weigh(coeffs_at(cpl_stream, blk), cpl_plan->decoded, cpl_plan->bap,
+                                 cpl_plan->start, cpl_plan->endmant);
+                }
+                // A block-switched channel never dithers, for the same reason
+                // as in the AC-3 encoder: the coefficient set is two
+                // interleaved half-blocks, so filling a zero-bap slot spreads
+                // noise across the transient the switch exists to resolve.
+                // Dolby's own encoder writes exactly this rule - see
+                // dither.hpp's note on the reference streams.
+                payload.dithflag[static_cast<std::size_t>(ch)]
+                                [static_cast<std::size_t>(blk)] =
+                    !plan.blksw[static_cast<std::size_t>(blk)] && ballot.on();
+            }
+        }
+    }
 
     // --- 9. Mantissa tokens per block --------------------------------------
     AC3_ZONE_BEGIN(zone_mantissas, "step8_mantissa_tokens");

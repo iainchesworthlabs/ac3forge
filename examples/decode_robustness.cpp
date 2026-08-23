@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -49,7 +50,7 @@ int main() {
         }
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         frame_offsets.push_back(stream.size());
@@ -68,12 +69,12 @@ int main() {
 
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
-        std::printf("split_frames failed: %.*s\n",
+        fmt::printf("split_frames failed: %.*s\n",
                     static_cast<int>(ac3::describe(frames.error()).size()),
                     ac3::describe(frames.error()).data());
         return 1;
     }
-    std::printf("%zu frame(s) delimited, corruption at byte %zu\n", frames->size(), corrupt_at);
+    fmt::printf("%zu frame(s) delimited, corruption at byte %zu\n", frames->size(), corrupt_at);
 
     ac3::FrameDecoder decoder;
     int recovered = 0;
@@ -82,7 +83,7 @@ int main() {
         const auto decoded = decoder.decode_frame((*frames)[i]);
         if (!decoded) {
             const auto message = ac3::describe(decoded.error());
-            std::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
+            fmt::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
                         static_cast<int>(message.size()), message.data());
             ++failed;
             continue;
@@ -90,6 +91,6 @@ int main() {
         ++recovered;
     }
 
-    std::printf("%d of %zu frames recovered, %d skipped\n", recovered, frames->size(), failed);
+    fmt::printf("%d of %zu frames recovered, %d skipped\n", recovered, frames->size(), failed);
     return (recovered == kFrameCount - 1 && failed == 1) ? 0 : 1;
 }

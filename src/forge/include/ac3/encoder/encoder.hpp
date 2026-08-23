@@ -64,6 +64,18 @@ struct EncoderConfig {
     // regardless of this flag.
     bool fast_mdct = true;
 
+    // §7.3.4 dithflag, decided per channel per block from content (see
+    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // config field here. false pins dithflag at 0 unconditionally, the
+    // deterministic behaviour from before this existed: real dither values
+    // are decoder-defined (the spec's own "any reasonably random sequence"),
+    // so two independent, spec-correct decoders given the same dithered
+    // stream diverge in the dithered bins by design - which is exactly what
+    // breaks a bit-for-bit comparison between this project's own decoder and
+    // an external one (tools/checks/verify_gold_reference.sh). That gate sets
+    // this false; nothing else needs to.
+    bool dither = true;
+
     // --- dynamic range and downmix metadata (§7.7, §7.8) -------------------
     // Dynamic range control. std::nullopt leaves dynrnge clear in every block,
     // which is what §7.7.1.2 says an encoder applying no compression does, and

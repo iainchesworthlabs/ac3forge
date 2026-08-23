@@ -27,6 +27,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/mirror.hpp"
+#include "dither.hpp"
 #include "snr_search.hpp"
 
 namespace ac3 {
@@ -966,6 +967,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // a parallel formula that every new field could silently invalidate.
     int csnroffst = 0;
     int fsnroffst = 0;
+    // §7.3.4's dithflag[ch], one bit per fbw channel per block. Decided from
+    // content by step 9a below, once the allocation this frame will actually
+    // carry is known - which is after the SNR search, and therefore after
+    // step 8 has already run this emitter into its bit counter. That is
+    // harmless and deliberate: the field is one bit whichever way it reads,
+    // so the measurement pass sees the right WIDTH from the all-false
+    // starting state and only the real write below sees the right value.
+    std::array<std::array<bool, kBlocksPerFrame>, 5> dithflag{};
+    assert(nfchans <= static_cast<int>(dithflag.size()));
 
     // The snroffste block gives the LFE its own 4-bit lfefsnroffst, alongside
     // each fbw channel's chfsnroffst and the coupling channel's cplfsnroffst,
@@ -1025,7 +1035,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                   1);  // blksw
         }
         for (int ch = 0; ch < nfchans; ++ch) {
-            w.put(0, 1);  // dithflag
+            w.put(dithflag[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] ? 1
+                                                                                          : 0,
+                  1);  // dithflag
         }
         // §7.7.1.2: an absent word means "keep the previous BLOCK's", so only a
         // change needs sending. Block 0 inherits nothing - absence there is
@@ -1540,6 +1552,55 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);
     AC3_ZONE_END(zone_snr_search);
+
+    // --- 9a. Dither substitution per channel per block ---------------------
+    // §7.3.4, decided from what the allocation above actually left out - see
+    // dither.hpp for the comparison itself. It has to run here rather than
+    // anywhere earlier: run_bap holds the winning offset's allocation only
+    // once step 9's delta on/off race has settled, and the zero-bap bins are
+    // the whole input. It costs nothing in bits - the flag is transmitted in
+    // every block either way (§5.4.3.2) - so it does not disturb the budget
+    // this step just finished spending.
+    //
+    // A coupled channel is weighed over both regions it receives: its own
+    // spectrum up to cplstrtmant, then the shared coupling channel's band,
+    // whose zero-bap bins the decoder dithers per RECEIVING channel (§7.3.4's
+    // "uncorrelated" requirement) and therefore under this channel's flag.
+    //
+    // config_.dither is on by default; the whole loop below is skipped when
+    // it is not, leaving dithflag at its all-false default - the
+    // deterministic behaviour from before this feature existed, for a caller
+    // that needs bit-for-bit agreement with an external decoder more than it
+    // needs the flag itself (see EncoderConfig::dither's own comment).
+    AC3_ZONE_BEGIN(zone_dither, "step9a_dither_flags");
+    for (int ch = 0; ch < nfchans && config_.dither; ++ch) {
+        const auto& p = plan[static_cast<std::size_t>(ch)];
+        for (int block = 0; block < kBlocksPerFrame; ++block) {
+            const auto run = static_cast<std::size_t>(
+                p.run_of_block[static_cast<std::size_t>(block)]);
+            internal::DitherBallot ballot;
+            ballot.weigh(coeffs_at(ch, block), p.runs[run].decoded,
+                         run_bap[static_cast<std::size_t>(ch)][run], 0, stream_end(ch));
+            if (cplinu) {
+                const auto& cp = plan[static_cast<std::size_t>(cpl_stream)];
+                const auto crun = static_cast<std::size_t>(
+                    cp.run_of_block[static_cast<std::size_t>(block)]);
+                ballot.weigh(coeffs_at(cpl_stream, block), cp.runs[crun].decoded,
+                             run_bap[static_cast<std::size_t>(cpl_stream)][crun],
+                             cplstrtmant, cplendmant);
+            }
+            // A block-switched channel never dithers. The transform there is
+            // two 256-point halves interleaved into one coefficient set, so a
+            // zero-bap "bin" is really two half-block bins, and filling it
+            // spreads noise across a transient this frame just spent bits
+            // resolving. Dolby's own encoder writes exactly this rule - see
+            // dither.hpp's note on the reference streams.
+            dithflag[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] =
+                !blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] &&
+                ballot.on();
+        }
+    }
+    AC3_ZONE_END(zone_dither);
 
     // --- 10. Mantissa tokens per block -------------------------------------
     AC3_ZONE_BEGIN(zone_mantissa_tokens, "step10_mantissa_tokens");

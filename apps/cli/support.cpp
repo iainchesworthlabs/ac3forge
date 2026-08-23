@@ -9,13 +9,13 @@
 #include <cstdio>
 #include <expected>
 #include <filesystem>
-#include <format>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <limits>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -276,95 +276,95 @@ std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback) {
 }
 
 void print_meta_usage() {
-    std::println("metadata options (any order, after the positional arguments):");
-    std::println("  drc=<profile>     §7.7.1 dynamic range control per block");
-    std::println("                    {}", ac3::meta::kProfileNames);
-    std::println("  heavy             §7.7.2 heavy compression: a peak ceiling in the");
-    std::println("                    mono downmix, at syncframe resolution");
-    std::println("  ceiling=<dBFS>    that ceiling (default -0.5)");
-    std::println("  dialogue=<dBFS>   where heavy compression puts dialogue (default -20)");
-    std::println("  drc2=<profile>    Ch2's own DRC profile, layout 1+1 only (§7.7.1) - not "
+    fmt::println("metadata options (any order, after the positional arguments):");
+    fmt::println("  drc=<profile>     §7.7.1 dynamic range control per block");
+    fmt::println("                    {}", ac3::meta::kProfileNames);
+    fmt::println("  heavy             §7.7.2 heavy compression: a peak ceiling in the");
+    fmt::println("                    mono downmix, at syncframe resolution");
+    fmt::println("  ceiling=<dBFS>    that ceiling (default -0.5)");
+    fmt::println("  dialogue=<dBFS>   where heavy compression puts dialogue (default -20)");
+    fmt::println("  drc2=<profile>    Ch2's own DRC profile, layout 1+1 only (§7.7.1) - not "
                  "inherited from drc=, set both to compress both programmes alike");
-    std::println("  heavy2            Ch2's own heavy compression, layout 1+1 only (§7.7.2.2)");
-    std::println("  ceiling2=<dBFS>   that ceiling for Ch2 (default -0.5)");
-    std::println("  dialogue2=<dBFS>  where Ch2's heavy compression puts dialogue (default -20)");
-    std::println("  dialnorm=auto     measure BS.1770 loudness and derive dialnorm (§5.4.2.8)");
-    std::println("  dialnorm=<1..31>  set it directly (default 31)");
-    std::println("  dialnorm2=auto | <1..31>   Ch2's own dialnorm, layout 1+1 only "
+    fmt::println("  heavy2            Ch2's own heavy compression, layout 1+1 only (§7.7.2.2)");
+    fmt::println("  ceiling2=<dBFS>   that ceiling for Ch2 (default -0.5)");
+    fmt::println("  dialogue2=<dBFS>  where Ch2's heavy compression puts dialogue (default -20)");
+    fmt::println("  dialnorm=auto     measure BS.1770 loudness and derive dialnorm (§5.4.2.8)");
+    fmt::println("  dialnorm=<1..31>  set it directly (default 31)");
+    fmt::println("  dialnorm2=auto | <1..31>   Ch2's own dialnorm, layout 1+1 only "
                  "(§5.4.2.16, default 31)");
-    std::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
-    std::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
-    std::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
-    std::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
-    std::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
-    std::println("  ltrtcmixlev=<dB>  Lt/Rt centre level, Table D2.3: "
+    fmt::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
+    fmt::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
+    fmt::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
+    fmt::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
+    fmt::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
+    fmt::println("  ltrtcmixlev=<dB>  Lt/Rt centre level, Table D2.3: "
                  "+3|+1.5|0|-1.5|-3|-4.5|-6|off");
-    std::println("  lorocmixlev=<dB>  Lo/Ro centre level, Table D2.5 (same eight values)");
-    std::println("  ltrtsurmixlev=<dB>      Lt/Rt surround level, Table D2.4: "
+    fmt::println("  lorocmixlev=<dB>  Lo/Ro centre level, Table D2.5 (same eight values)");
+    fmt::println("  ltrtsurmixlev=<dB>      Lt/Rt surround level, Table D2.4: "
                  "-1.5|-3|-4.5|-6|off (the three louder codes are reserved)");
-    std::println("  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)");
-    std::println("                    all four ride mixmdate on E-AC-3 and Annex D's xbsi1 "
+    fmt::println("  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)");
+    fmt::println("                    all four ride mixmdate on E-AC-3 and Annex D's xbsi1 "
                  "on AC-3; naming any of them turns the group on");
-    std::println();
-    std::println("  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod "
+    fmt::println();
+    fmt::println("  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod "
                  "fields on Annex D's xbsi1/xbsi2 instead (§D1) - implied by dmixmod=, the "
                  "four levels above, and the three xbsi2 fields below");
-    std::println("  dsurexmod=<mode>  Dolby Surround EX, Table D2.7: {}",
+    fmt::println("  dsurexmod=<mode>  Dolby Surround EX, Table D2.7: {}",
                  ac3::meta::kSurroundExModeNames);
-    std::println("  dheadphonmod=<mode>     Dolby Headphone, Table D2.8: {}",
+    fmt::println("  dheadphonmod=<mode>     Dolby Headphone, Table D2.8: {}",
                  ac3::meta::kHeadphoneModeNames);
-    std::println("  adconvtyp=<type>  A/D converter, Table D2.9: {}",
+    fmt::println("  adconvtyp=<type>  A/D converter, Table D2.9: {}",
                  ac3::meta::kAdConverterNames);
-    std::println("  encinfo           AC-3 Annex D: set the encoder's own reserved bit "
+    fmt::println("  encinfo           AC-3 Annex D: set the encoder's own reserved bit "
                  "(§D2.3.1.12)");
-    std::println();
-    std::println("  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2) - "
+    fmt::println();
+    fmt::println("  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2) - "
                  "implied by every informational option below, and by dsurexmod=/"
                  "dheadphonmod=/adconvtyp= above");
-    std::println("  bsmod=<service>   type of service, Table 5.7: {}", ac3::meta::kBsmodNames);
-    std::println("  dsurmod=<mode>    Dolby Surround, 2/0 only, Table 5.11: {}",
+    fmt::println("  bsmod=<service>   type of service, Table 5.7: {}", ac3::meta::kBsmodNames);
+    fmt::println("  dsurmod=<mode>    Dolby Surround, 2/0 only, Table 5.11: {}",
                  ac3::meta::kSurroundModeNames);
-    std::println("  mixlevel=<dB SPL>       peak mixing level, 80..111 (§5.4.2.14)");
-    std::println("  roomtyp=<type>    mixing room, Table 5.12: {}", ac3::meta::kRoomTypeNames);
-    std::println("  mixlevel2=/roomtyp2=    Ch2's own pair, layout 1+1 only (§5.4.2.22/23)");
-    std::println("  langcod / langcod2      emit the reserved 0xFF language byte "
+    fmt::println("  mixlevel=<dB SPL>       peak mixing level, 80..111 (§5.4.2.14)");
+    fmt::println("  roomtyp=<type>    mixing room, Table 5.12: {}", ac3::meta::kRoomTypeNames);
+    fmt::println("  mixlevel2=/roomtyp2=    Ch2's own pair, layout 1+1 only (§5.4.2.22/23)");
+    fmt::println("  langcod / langcod2      emit the reserved 0xFF language byte "
                  "(§5.4.2.12); AC-3 only");
-    std::println("  copyright         set copyrightb (§5.4.2.24; default clear)");
-    std::println("  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)");
-    std::println("  sourcefscod       E-AC-3: the source was sampled at twice fscod's rate "
+    fmt::println("  copyright         set copyrightb (§5.4.2.24; default clear)");
+    fmt::println("  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)");
+    fmt::println("  sourcefscod       E-AC-3: the source was sampled at twice fscod's rate "
                  "(§E2.3.1.63)");
-    std::println("  timecode=<code>   AC-3 bsid 8 only: {} (§5.4.2.26-28)",
+    fmt::println("  timecode=<code>   AC-3 bsid 8 only: {} (§5.4.2.26-28)",
                  ac3::meta::kTimeCodeSyntax);
-    std::println();
-    std::println("  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB "
+    fmt::println();
+    fmt::println("  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB "
                  "(§E2.3.1.13); pgmscl2= is Ch2's, extpgmscl= the external "
                  "programme's (§E2.3.1.17)");
-    std::println("  mixdef=<option>   E-AC-3 mixing-parameter block, Table E2.6: "
+    fmt::println("  mixdef=<option>   E-AC-3 mixing-parameter block, Table E2.6: "
                  "none | premix | reserved | ext");
-    std::println("  premixcmp=<sel>:<src>:<scale>   dynrng|compr : external|local : 0..7 "
+    fmt::println("  premixcmp=<sel>:<src>:<scale>   dynrng|compr : external|local : 0..7 "
                  "(§E2.3.1.19-21)");
-    std::println("  mixdata=<0..4095> the twelve bits mixdef=reserved reserves (§E2.3.1.23)");
-    std::println("  extmix=<L>,<C>,<R>,<Ls>,<Rs>,<LFE>[,<dmix>]   mixdef=ext external channel "
+    fmt::println("  mixdata=<0..4095> the twelve bits mixdef=reserved reserves (§E2.3.1.23)");
+    fmt::println("  extmix=<L>,<C>,<R>,<Ls>,<Rs>,<LFE>[,<dmix>]   mixdef=ext external channel "
                  "scale codes 0..15 (Table E2.8), 'off' for a channel the external "
                  "programme lacks");
-    std::println("  auxmix=<a1>,<a2>  mixdef=ext auxiliary channel scales, same codes");
-    std::println("  speechmix=<d>[,<d1>:<att1>[,<d2>:<att2>]]     mixdef=ext speech "
+    fmt::println("  auxmix=<a1>,<a2>  mixdef=ext auxiliary channel scales, same codes");
+    fmt::println("  speechmix=<d>[,<d1>:<att1>[,<d2>:<att2>]]     mixdef=ext speech "
                  "enhancement data (§E2.3.1.44-51)");
-    std::println("  paninfo=<0..239>[:<0..63>]      E-AC-3 pan position, 1.5° steps clockwise "
+    fmt::println("  paninfo=<0..239>[:<0..63>]      E-AC-3 pan position, 1.5° steps clockwise "
                  "from centre, mono/1+1 only; paninfo2= is Ch2's (§E2.3.1.53-58)");
-    std::println("  blkmixcfg=<b0,..,b5>    E-AC-3 per-block mixing configuration, six 0..31 "
+    fmt::println("  blkmixcfg=<b0,..,b5>    E-AC-3 per-block mixing configuration, six 0..31 "
                  "words or '-' for a block that sends none (§E2.3.1.59-61)");
-    std::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
+    fmt::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
                  "keep whatever frames were already encoded (named beside the intended output as "
                  "<name>.partial.<ext>) instead of discarding them - off by default, matching the "
                  "GUI's own keep-partial-output preference");
-    std::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
+    fmt::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
                  "default §7.9.4 fast path (identical streams to within ~1e-12 coefficient "
                  "error; the direct form is the validation oracle) - applies wherever this "
                  "command encodes, incl. atmos/record/live/eac3-sine; eac3-encode alone has a "
                  "[tools] positional argument whose bare nofastmdct token reaches the same "
                  "field instead; bare fast-mdct (the old opt-in) is a no-op");
-    std::println("  mode=reference    force BOTH transforms onto the spec's own direct "
+    fmt::println("  mode=reference    force BOTH transforms onto the spec's own direct "
                  "evaluations (the forms every fast-path test validates against): the §8.2.3.2 "
                  "forward MDCT wherever this command encodes, and §7.9.4's step-3 inverse in "
                  "'decode' - for runs where bit-for-bit agreement with the spec's stated "
@@ -372,44 +372,51 @@ void print_meta_usage() {
                  "both fast paths: 215-285 dB SNR against reference on 180 s programmes, "
                  "4.5-4.7x faster decodes. Tokens apply in order, so a later fast-mdct=off / "
                  "fast-imdct=off still adjusts one half on its own");
-    std::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
+    fmt::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
                  "(mode=reference's decode half); bare fast-imdct names the default");
-    std::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
+    fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
+                 "channel per block from content - applies wherever this command encodes, "
+                 "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "
+                 "has the equivalent bare nodither token instead. Real dither values are "
+                 "decoder-defined, so this is for a run that needs bit-for-bit agreement "
+                 "with another decoder more than it needs dither's own perceptual benefit "
+                 "(tools/checks/verify_gold_reference.sh is the one that does)");
+    fmt::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                  "signature (needs signing-key=); see docs/concepts/object-signing.md");
-    std::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
+    fmt::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
                  "against signing-key= instead of just playing it - a mismatch refuses the "
                  "command; omitted (the default) decodes signed and unsigned streams alike, "
                  "unchecked");
-    std::println("  signing-key=<path>      the key file sign-objects/verify-objects use "
+    fmt::println("  signing-key=<path>      the key file sign-objects/verify-objects use "
                  "(or AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)");
-    std::println();
-    std::println("source options (encode/eac3-encode; any order, after the positional "
+    fmt::println("");
+    fmt::println("source options (encode/eac3-encode; any order, after the positional "
                  "arguments):");
-    std::println("  src=<path>        an additional input source; repeat for more than one");
-    std::println("  map=<spec>        {}", plan::kAssignmentSyntax);
-    std::println("                    once given, every loaded channel must appear - explicit "
+    fmt::println("  src=<path>        an additional input source; repeat for more than one");
+    fmt::println("  map=<spec>        {}", plan::kAssignmentSyntax);
+    fmt::println("                    once given, every loaded channel must appear - explicit "
                  "'none' silences the goes-nowhere warning without giving it anywhere to go");
-    std::println("  offset=<sourceIndex>:<seconds>   leading silence ahead of that source's own "
+    fmt::println("  offset=<sourceIndex>:<seconds>   leading silence ahead of that source's own "
                  "channels (seconds >= 0), same 0-based numbering as src=");
-    std::println("                    the programme is still as long as the longest one once "
+    fmt::println("                    the programme is still as long as the longest one once "
                  "every offset is applied");
-    std::println();
-    std::println("record/live options (record, live; any order, after the positional "
+    fmt::println("");
+    fmt::println("record/live options (record, live; any order, after the positional "
                  "arguments):");
-    std::println("  container=mkv     write straight to Matroska instead of the bare elementary");
-    std::println("                    stream this writes by default - same shape of choice as");
-    std::println("                    the GUI's own Container setting");
-    std::println("  container=raw     the default, spelled out");
-    std::println();
-    std::println("live options (live; any order, after the positional arguments):");
-    std::println("  capture2=<index>  a second capture device, clock-conformed to the first "
+    fmt::println("  container=mkv     write straight to Matroska instead of the bare elementary");
+    fmt::println("                    stream this writes by default - same shape of choice as");
+    fmt::println("                    the GUI's own Container setting");
+    fmt::println("  container=raw     the default, spelled out");
+    fmt::println("");
+    fmt::println("live options (live; any order, after the positional arguments):");
+    fmt::println("  capture2=<index>  a second capture device, clock-conformed to the first "
                  "(see 'devices')");
-    std::println();
-    std::println("qc options (qc; any order, after the positional arguments):");
-    std::println("  preset=<name>     gate the measurement against a named delivery spec");
-    std::println("                    {}", ac3::meta::kQcPresetNames);
-    std::println("  preset=all        gate against every preset above");
-    std::println("                    omitted: measure and report only, no gate");
+    fmt::println("");
+    fmt::println("qc options (qc; any order, after the positional arguments):");
+    fmt::println("  preset=<name>     gate the measurement against a named delivery spec");
+    fmt::println("                    {}", ac3::meta::kQcPresetNames);
+    fmt::println("  preset=all        gate against every preset above");
+    fmt::println("                    omitted: measure and report only, no gate");
 }
 
 bool parse_options(std::span<char*> tokens, Options& out) {
@@ -482,7 +489,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 out.fast_mdct = false;
                 continue;
             }
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: the fast MDCT is the default; 'fast-mdct=off' forces the "
                          "direct §8.2.3.2 transform (got '{}')",
                          token);
@@ -497,9 +504,23 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 out.fast_imdct = false;
                 continue;
             }
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: the fast IMDCT is the default; 'fast-imdct=off' forces the "
                          "direct §7.9.4 step-3 evaluation (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "dither") {
+            // No bare-word form: unlike fast-mdct, dither has no prior
+            // opt-in spelling to keep parsing, so only the value form -
+            // the direction that still needs saying - exists at all.
+            if (value == "off") {
+                out.dither = false;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: dither is content-decided by default; 'dither=off' pins "
+                         "dithflag at 0 unconditionally (got '{}')",
                          token);
             return false;
         }
@@ -521,7 +542,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 out.fast_imdct = false;
                 continue;
             }
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: mode is 'performance' (the default) or 'reference' (got '{}')",
                          token);
             return false;
@@ -537,7 +558,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             ac3::meta::ProfileId id{};
             if (!ac3::meta::parse_profile(value, id)) {
-                std::println(stderr, "error: unknown DRC profile '{}' ({})", value,
+                fmt::println(stderr, "error: unknown DRC profile '{}' ({})", value,
                              ac3::meta::kProfileNames);
                 return false;
             }
@@ -547,7 +568,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "ceiling" || key == "dialogue") {
             double db = 0.0;
             if (!parse_double(value, db)) {
-                std::println(stderr, "error: {} needs a level in dBFS", key);
+                fmt::println(stderr, "error: {} needs a level in dBFS", key);
                 return false;
             }
             if (!out.p.heavy) {
@@ -566,7 +587,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             // just applies whatever dynrng2 the stream carries.
             ac3::meta::ProfileId id{};
             if (!ac3::meta::parse_profile(value, id)) {
-                std::println(stderr, "error: unknown DRC profile '{}' ({})", value,
+                fmt::println(stderr, "error: unknown DRC profile '{}' ({})", value,
                              ac3::meta::kProfileNames);
                 return false;
             }
@@ -576,7 +597,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "ceiling2" || key == "dialogue2") {
             double db = 0.0;
             if (!parse_double(value, db)) {
-                std::println(stderr, "error: {} needs a level in dBFS", key);
+                fmt::println(stderr, "error: {} needs a level in dBFS", key);
                 return false;
             }
             if (!out.p.heavy2) {
@@ -596,7 +617,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             const auto n = parse_u32_or(value, 0);
             if (n < 1 || n > 31) {
-                std::println(stderr, "error: dialnorm must be auto or 1..31 (§5.4.2.8)");
+                fmt::println(stderr, "error: dialnorm must be auto or 1..31 (§5.4.2.8)");
                 return false;
             }
             out.p.dialnorm = static_cast<int>(n);
@@ -609,7 +630,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             const auto n = parse_u32_or(value, 0);
             if (n < 1 || n > 31) {
-                std::println(stderr, "error: dialnorm2 must be auto or 1..31 (§5.4.2.16)");
+                fmt::println(stderr, "error: dialnorm2 must be auto or 1..31 (§5.4.2.16)");
                 return false;
             }
             out.p.dialnorm2 = static_cast<int>(n);
@@ -623,7 +644,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             } else if (value == "-6") {
                 out.p.cmixlev = ac3::meta::CentreMixLevel::kMinus6dB;
             } else {
-                std::println(stderr, "error: cmixlev must be -3, -4.5 or -6 (Table 5.9)");
+                fmt::println(stderr, "error: cmixlev must be -3, -4.5 or -6 (Table 5.9)");
                 return false;
             }
             continue;
@@ -636,7 +657,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             } else if (value == "off") {
                 out.p.surmixlev = ac3::meta::SurroundMixLevel::kSilent;
             } else {
-                std::println(stderr, "error: surmixlev must be -3, -6 or off (Table 5.10)");
+                fmt::println(stderr, "error: surmixlev must be -3, -6 or off (Table 5.10)");
                 return false;
             }
             continue;
@@ -649,7 +670,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             const auto n = parse_u32_or(value, 99);
             if (n > 31) {
-                std::println(stderr, "error: lfemix must be off or 0..31 (§E2.3.1.11)");
+                fmt::println(stderr, "error: lfemix must be off or 0..31 (§E2.3.1.11)");
                 return false;
             }
             out.p.lfemix = static_cast<int>(n);
@@ -668,7 +689,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             } else if (value == "none") {
                 out.p.dmixmod = ac3::meta::DownmixMode::kNotIndicated;
             } else {
-                std::println(stderr, "error: dmixmod must be ltrt, loro or none (Table D2.2)");
+                fmt::println(stderr, "error: dmixmod must be ltrt, loro or none (Table D2.2)");
                 return false;
             }
             continue;
@@ -677,7 +698,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             key == "lorosurmixlev") {
             ac3::meta::MixLevel level{};
             if (!parse_mix_level(value, level)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: {} must be +3, +1.5, 0, -1.5, -3, -4.5, -6 or off "
                              "(Tables D2.3-D2.6)",
                              key);
@@ -688,7 +709,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             // decoder receiving one substitutes 0.841 - so the level asked for
             // is not the level applied. Refuse rather than write it.
             if (surround && !ac3::meta::valid_surround_mix_level(level)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: {} must be -1.5, -3, -4.5, -6 or off - Tables D2.4/D2.6 "
                              "reserve the three louder codes",
                              key);
@@ -721,7 +742,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 ok = ac3::meta::parse_ad_converter(value, out.p.adconvtyp);
             }
             if (!ok) {
-                std::println(stderr, "error: {} must be one of: {}", key,
+                fmt::println(stderr, "error: {} must be one of: {}", key,
                              key == "dsurexmod"      ? ac3::meta::kSurroundExModeNames
                              : key == "dheadphonmod" ? ac3::meta::kHeadphoneModeNames
                                                      : ac3::meta::kAdConverterNames);
@@ -732,7 +753,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "bsmod") {
             out.p.infomdat = true;
             if (!ac3::meta::parse_bsmod(value, out.p.info.bsmod)) {
-                std::println(stderr, "error: bsmod must be one of: {} (Table 5.7)",
+                fmt::println(stderr, "error: bsmod must be one of: {} (Table 5.7)",
                              ac3::meta::kBsmodNames);
                 return false;
             }
@@ -741,7 +762,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "dsurmod") {
             out.p.infomdat = true;
             if (!ac3::meta::parse_surround_mode(value, out.p.info.dsurmod)) {
-                std::println(stderr, "error: dsurmod must be one of: {} (Table 5.11)",
+                fmt::println(stderr, "error: dsurmod must be one of: {} (Table 5.11)",
                              ac3::meta::kSurroundModeNames);
                 return false;
             }
@@ -750,7 +771,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "mixlevel" || key == "mixlevel2") {
             const auto db = parse_u32_or(value, 0);
             if (db < 80 || db > 111) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: {} is a peak mixing level of 80..111 dB SPL (§5.4.2.14)",
                              key);
                 return false;
@@ -766,7 +787,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "roomtyp" || key == "roomtyp2") {
             ac3::meta::RoomType room{};
             if (!ac3::meta::parse_room_type(value, room)) {
-                std::println(stderr, "error: {} must be one of: {} (Table 5.12)", key,
+                fmt::println(stderr, "error: {} must be one of: {} (Table 5.12)", key,
                              ac3::meta::kRoomTypeNames);
                 return false;
             }
@@ -785,7 +806,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             } else if (value == "off") {
                 out.p.info.origbs = false;
             } else {
-                std::println(stderr, "error: origbs must be on or off (§5.4.2.25)");
+                fmt::println(stderr, "error: origbs must be on or off (§5.4.2.25)");
                 return false;
             }
             continue;
@@ -794,7 +815,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             ac3::meta::TimeCodeCoarse coarse;
             ac3::meta::TimeCodeFine fine;
             if (!ac3::meta::parse_timecode(value, coarse, fine)) {
-                std::println(stderr, "error: timecode is {} (§5.4.2.26-28)",
+                fmt::println(stderr, "error: timecode is {} (§5.4.2.26-28)",
                              ac3::meta::kTimeCodeSyntax);
                 return false;
             }
@@ -805,7 +826,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "pgmscl" || key == "pgmscl2" || key == "extpgmscl") {
             int code = 0;
             if (!parse_pgm_scale(value, code)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: {} is mute or a level in -50..+12 dB (§E2.3.1.13)", key);
                 return false;
             }
@@ -830,7 +851,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             } else if (value == "ext") {
                 out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
             } else {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: mixdef must be none, premix, reserved or ext "
                              "(Table E2.6)");
                 return false;
@@ -840,7 +861,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "premixcmp") {
             ac3::meta::PremixCompression premix;
             if (!parse_premix(value, premix)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: premixcmp is <dynrng|compr>:<external|local>:<0..7> "
                              "(§E2.3.1.19-21)");
                 return false;
@@ -858,7 +879,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "mixdata") {
             const auto bits = parse_u32_or(value, 0xFFFF);
             if (bits > 0x0FFF) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: mixdata is the twelve bits mixdef=reserved reserves, "
                              "0..4095 (§E2.3.1.23)");
                 return false;
@@ -872,7 +893,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             const std::size_t wanted = key == "extmix" ? 6 : 2;
             if (!parse_scale_list(value, scales) || scales.size() < wanted ||
                 scales.size() > wanted + (key == "extmix" ? 1 : 0)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: {} takes {} Table E2.8 codes (0..15 or 'off'){}", key,
                              wanted,
                              key == "extmix" ? ", optionally a seventh for the downmix scale"
@@ -900,7 +921,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "speechmix") {
             ac3::meta::SpeechEnhancement speech;
             if (!parse_speech(value, speech)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: speechmix is <0..31>[,<0..31>:<0..3>[,<0..31>:<0..7>]] "
                              "(§E2.3.1.44-51)");
                 return false;
@@ -912,7 +933,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "paninfo" || key == "paninfo2") {
             ac3::meta::PanInfo pan;
             if (!parse_pan(value, pan)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: {} is <0..239>[:<0..63>] - 1.5 degree steps clockwise "
                              "from centre (§E2.3.1.54)",
                              key);
@@ -925,7 +946,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "blkmixcfg") {
             std::array<std::optional<int>, ac3::kBlocksPerFrame> words{};
             if (!parse_block_mix_config(value, words)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: blkmixcfg is six comma-separated 0..31 words, '-' for a "
                              "block that sends none (§E2.3.1.59-61)");
                 return false;
@@ -936,7 +957,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (key == "src") {
             if (value.empty()) {
-                std::println(stderr, "error: src= needs a file path");
+                fmt::println(stderr, "error: src= needs a file path");
                 return false;
             }
             out.sources.emplace_back(value);
@@ -944,7 +965,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (key == "map") {
             if (value.empty()) {
-                std::println(stderr, "error: map= needs a spec ({})", plan::kAssignmentSyntax);
+                fmt::println(stderr, "error: map= needs a spec ({})", plan::kAssignmentSyntax);
                 return false;
             }
             out.map_spec = std::string{value};
@@ -964,7 +985,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 ok = ok && parse_double(seconds_text, seconds) && seconds >= 0.0;
             }
             if (!ok) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: offset= needs <sourceIndex>:<seconds> (seconds >= 0)");
                 return false;
             }
@@ -980,7 +1001,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             const bool ok =
                 ec == std::errc{} && ptr == value.data() + value.size() && index >= 0;
             if (!ok) {
-                std::println(stderr, "error: capture2= needs a non-negative device index");
+                fmt::println(stderr, "error: capture2= needs a non-negative device index");
                 return false;
             }
             out.capture2 = index;
@@ -992,7 +1013,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             } else if (value == "raw") {
                 out.matroska_container = false;
             } else {
-                std::println(stderr, "error: container must be raw or mkv (got '{}')", token);
+                fmt::println(stderr, "error: container must be raw or mkv (got '{}')", token);
                 return false;
             }
             continue;
@@ -1001,7 +1022,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             if (value != "all") {
                 ac3::meta::QcPresetId id{};
                 if (!ac3::meta::parse_qc_preset(value, id)) {
-                    std::println(stderr, "error: unknown qc preset '{}' ({} | all)", value,
+                    fmt::println(stderr, "error: unknown qc preset '{}' ({} | all)", value,
                                  ac3::meta::kQcPresetNames);
                     return false;
                 }
@@ -1011,13 +1032,13 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (key == "signing-key") {
             if (value.empty()) {
-                std::println(stderr, "error: signing-key= needs a key file path");
+                fmt::println(stderr, "error: signing-key= needs a key file path");
                 return false;
             }
             out.signing_key = std::string{value};
             continue;
         }
-        std::println(stderr, "error: unknown option '{}'", token);
+        fmt::println(stderr, "error: unknown option '{}'", token);
         print_meta_usage();
         return false;
     }
@@ -1033,10 +1054,10 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
     }
     const int dialnorm = ac3::meta::dialnorm_from_lkfs(*lkfs);
     if (programme.empty()) {
-        std::println(out, "measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", *lkfs, field,
+        fmt::println(out, "measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", *lkfs, field,
                      dialnorm);
     } else {
-        std::println(out, "{} measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", programme, *lkfs,
+        fmt::println(out, "{} measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", programme, *lkfs,
                      field, dialnorm);
     }
     return dialnorm;
@@ -1067,7 +1088,7 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
                               std::string_view in2_path) {
     if (layout != "1+1") {
         if (!in2_path.empty()) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: a second input file is only meaningful with layout 1+1 "
                          "(got layout '{}')",
                          layout);
@@ -1077,7 +1098,7 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
     }
     if (in2_path.empty()) {
         if (wav.channels.size() != 2) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: layout 1+1 needs either one two-channel file (Ch1, Ch2) or "
                          "two mono files; the source has {} channel(s) and no second file "
                          "was given",
@@ -1087,7 +1108,7 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
         return true;
     }
     if (wav.channels.size() != 1) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: layout 1+1 with a second input file needs the first file to be "
                      "mono (Ch1); it has {} channels",
                      wav.channels.size());
@@ -1095,16 +1116,16 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
     }
     auto second = ac3::io::read_wav(std::string{in2_path});
     if (!second) {
-        std::println(stderr, "error: {}: {}", in2_path, ac3::io::describe(second.error()));
+        fmt::println(stderr, "error: {}: {}", in2_path, ac3::io::describe(second.error()));
         return false;
     }
     if (second->channels.size() != 1) {
-        std::println(stderr, "error: {} must be mono (Ch2); it has {} channels", in2_path,
+        fmt::println(stderr, "error: {} must be mono (Ch2); it has {} channels", in2_path,
                      second->channels.size());
         return false;
     }
     if (second->sample_rate != wav.sample_rate) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: {} is {} Hz, but the first file is {} Hz - both programmes must "
                      "share a sample rate",
                      in2_path, second->sample_rate, wav.sample_rate);
@@ -1132,14 +1153,14 @@ bool write_frames(std::string_view path, std::span<const std::vector<std::byte>>
         }
         std::cout.flush();
         if (!std::cout) {
-            std::println(stderr, "error: cannot write to stdout");
+            fmt::println(stderr, "error: cannot write to stdout");
             return false;
         }
         return true;
     }
     std::ofstream out{std::string{path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {} for writing", path);
+        fmt::println(stderr, "error: cannot open {} for writing", path);
         return false;
     }
     for (const auto& frame : frames) {
@@ -1156,18 +1177,18 @@ bool write_frames_or_mux(std::string_view path, bool matroska, const matroska::A
     }
     const auto file = matroska::mux(track, frames);
     if (!file) {
-        std::println(stderr, "error: {}", matroska::describe(file.error()));
+        fmt::println(stderr, "error: {}", matroska::describe(file.error()));
         return false;
     }
     std::ofstream out{std::string{path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {} for writing", path);
+        fmt::println(stderr, "error: cannot open {} for writing", path);
         return false;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
              static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return false;
     }
     return true;
@@ -1193,7 +1214,7 @@ bool EncodedStreamSink::open(std::string_view path, bool keep_partial, bool defe
     if (!stdio_ && !defer_) {
         file_.open(path_, std::ios::binary);
         if (!file_) {
-            std::println(stderr, "error: cannot open {} for writing", path_);
+            fmt::println(stderr, "error: cannot open {} for writing", path_);
             return false;
         }
     }
@@ -1222,7 +1243,7 @@ bool EncodedStreamSink::push(std::span<const std::byte> frame) {
         file_.write(reinterpret_cast<const char*>(frame.data()),
                     static_cast<std::streamsize>(frame.size()));
         if (!file_) {
-            std::println(stderr, "error: cannot write to {}", path_);
+            fmt::println(stderr, "error: cannot write to {}", path_);
             return false;
         }
     }
@@ -1244,14 +1265,14 @@ bool EncodedStreamSink::close() {
                         static_cast<std::streamsize>(buffered_.size()));
         std::cout.flush();
         if (!std::cout) {
-            std::println(stderr, "error: cannot write to stdout");
+            fmt::println(stderr, "error: cannot write to stdout");
             return false;
         }
         return true;
     }
     file_.close();
     if (file_.fail()) {
-        std::println(stderr, "error: cannot write to {}", path_);
+        fmt::println(stderr, "error: cannot write to {}", path_);
         return false;
     }
     return true;
@@ -1277,7 +1298,7 @@ void EncodedStreamSink::abort() {
                             static_cast<std::streamsize>(buffered_.size()));
             std::cout.flush();
             if (std::cout) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "note: the {} frames already encoded were written to stdout",
                              frames_);
             }
@@ -1294,12 +1315,12 @@ void EncodedStreamSink::abort() {
         std::filesystem::rename(std::filesystem::path{path_}, std::filesystem::path{partial},
                                  ec);
         if (!ec) {
-            std::println(stderr, "note: the {} frames already encoded are kept at {}", frames_,
+            fmt::println(stderr, "note: the {} frames already encoded are kept at {}", frames_,
                          partial);
         } else {
             // Same stance as write_partial_output: report, but the ORIGINAL
             // error stays the one that matters.
-            std::println(stderr, "note: could not move the partial output to {} ({})", partial,
+            fmt::println(stderr, "note: could not move the partial output to {} ({})", partial,
                          ec.message());
         }
     } else {
@@ -1331,7 +1352,7 @@ bool Pcm16RawWavSink::open(std::string_view path, std::uint32_t sample_rate,
     {
         std::ofstream create{path_, std::ios::binary | std::ios::trunc};
         if (!create) {
-            std::println(stderr, "error: cannot open {} for writing", path_);
+            fmt::println(stderr, "error: cannot open {} for writing", path_);
             return false;
         }
         // Field for field ac3::io::write_wav_pcm16_raw's header (format tag
@@ -1351,13 +1372,13 @@ bool Pcm16RawWavSink::open(std::string_view path, std::uint32_t sample_rate,
         create.write("data", 4);
         put_u32(create, 0);
         if (!create) {
-            std::println(stderr, "error: cannot write to {}", path_);
+            fmt::println(stderr, "error: cannot write to {}", path_);
             return false;
         }
     }
     file_.open(path_, std::ios::binary | std::ios::in | std::ios::out);
     if (!file_) {
-        std::println(stderr, "error: cannot open {} for writing", path_);
+        fmt::println(stderr, "error: cannot open {} for writing", path_);
         return false;
     }
     file_.seekp(0, std::ios::end);
@@ -1369,7 +1390,7 @@ bool Pcm16RawWavSink::push(std::span<const std::byte> bytes) {
     file_.write(reinterpret_cast<const char*>(bytes.data()),
                 static_cast<std::streamsize>(bytes.size()));
     if (!file_) {
-        std::println(stderr, "error: cannot write to {}", path_);
+        fmt::println(stderr, "error: cannot write to {}", path_);
         return false;
     }
     data_bytes_ += bytes.size();
@@ -1385,7 +1406,7 @@ bool Pcm16RawWavSink::close() {
     put_u32(file_, data_bytes);
     file_.close();
     if (file_.fail()) {
-        std::println(stderr, "error: cannot write to {}", path_);
+        fmt::println(stderr, "error: cannot write to {}", path_);
         return false;
     }
     return true;
@@ -1415,14 +1436,14 @@ bool write_repeated_frame(std::string_view path, std::span<const std::byte> fram
         const bool ok = emit(std::cout);
         std::cout.flush();
         if (!ok || !std::cout) {
-            std::println(stderr, "error: cannot write to stdout");
+            fmt::println(stderr, "error: cannot write to stdout");
             return false;
         }
         return true;
     }
     std::ofstream out{std::string{path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {} for writing", path);
+        fmt::println(stderr, "error: cannot open {} for writing", path);
         return false;
     }
     return emit(out);
@@ -1440,14 +1461,14 @@ void write_partial_output(std::string_view out_path, bool keep_partial,
         // here. So the frames already encoded go straight to stdout instead,
         // the closest equivalent a single output stream can offer.
         if (write_frames(out_path, frames)) {
-            std::println(stderr, "note: the {} frames already encoded were written to stdout",
+            fmt::println(stderr, "note: the {} frames already encoded were written to stdout",
                          frames.size());
         }
         return;
     }
     const auto partial = partial_output_path(out_path);
     if (write_frames(partial, frames)) {
-        std::println(stderr, "note: the {} frames already encoded are kept at {}", frames.size(),
+        fmt::println(stderr, "note: the {} frames already encoded are kept at {}", frames.size(),
                      partial);
     }
 }
@@ -1545,7 +1566,7 @@ std::expected<void, ac3::io::WavError> PlanarWavSink::close() {
     }
     for (std::size_t s = 0; s < slots_.size(); ++s) {
         if (slots_[s].size() != consumed_[s]) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "warning: dropped a ragged tail the substreams never evened out");
             break;
         }
@@ -1612,13 +1633,13 @@ std::string meter_bar(double db, int width) {
 void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
     const auto acmod = meter.acmod();
     const bool lfe = meter.lfe();
-    std::println(out, "");
-    std::println(out, "per-channel levels ({}):", ac3::analysis::layout_name(acmod, lfe));
-    std::println(out, "  {:<4} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms",
+    fmt::println(out, "");
+    fmt::println(out, "per-channel levels ({}):", ac3::analysis::layout_name(acmod, lfe));
+    fmt::println(out, "  {:<4} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms",
                 "peak (-60..0 dBFS)", "clipped");
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
         const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];
-        std::println(out, "  {:<4} {:>8.2f} {:>8.2f}  [{}] {}",
+        fmt::println(out, "  {:<4} {:>8.2f} {:>8.2f}  [{}] {}",
                      ac3::analysis::channel_name(acmod, lfe, ch), stats.peak_db(),
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
                      stats.clipped_samples > 0 ? std::to_string(stats.clipped_samples) : "-");
@@ -1636,7 +1657,7 @@ void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
         // A perfectly centred image leaves a vanishing negative y, which
         // rounds to a correct but ridiculous "-0°".
         const double azimuth = std::round(field.azimuth_deg);
-        std::println(out, "  soundfield: {:.0f}° azimuth, focus {:.2f} (1.0 = a single speaker)",
+        fmt::println(out, "  soundfield: {:.0f}° azimuth, focus {:.2f} (1.0 = a single speaker)",
                      azimuth == 0.0 ? 0.0 : azimuth, field.magnitude);
     }
 }
@@ -1644,17 +1665,17 @@ void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
 void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds) {
     const bool narrow = meter.channel_count() > 2;
     const int width = narrow ? 8 : 14;
-    std::string line = std::format("{:6.1f} s", seconds);
+    std::string line = fmt::format("{:6.1f} s", seconds);
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
         const auto& level = meter.levels()[static_cast<std::size_t>(ch)];
-        line += std::format(
+        line += fmt::format(
             "  {:>3} [{}]", ac3::analysis::channel_name(meter.acmod(), meter.lfe(), ch),
             meter_bar(level.peak_db, width));
         if (!narrow) {
-            line += std::format(" {:>6.1f} {:<4}", level.peak_db, level.clipped ? "CLIP" : "");
+            line += fmt::format(" {:>6.1f} {:<4}", level.peak_db, level.clipped ? "CLIP" : "");
         }
     }
-    std::print("\r{}", line);
+    fmt::print("\r{}", line);
     // Without a newline nothing reaches the console on its own: stdout is
     // block-buffered the moment it is redirected, and a meter nobody sees
     // until the run ends is not a meter.
@@ -1665,7 +1686,7 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
                     std::string& label) {
     if (const auto id = ac3::plan::parse_layout(name)) {
         if (!ac3::plan::carries(codec, *id)) {
-            std::println(stderr, "error: {} cannot carry {} - {}", ac3::plan::codec_label(codec),
+            fmt::println(stderr, "error: {} cannot carry {} - {}", ac3::plan::codec_label(codec),
                          ac3::plan::layout(*id).label,
                          ac3::plan::describe(ac3::plan::PlanError::kLayoutNeedsEac3));
             return false;
@@ -1677,18 +1698,18 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
     }
     const auto custom = ac3::plan::parse_channels(name);
     if (!custom) {
-        std::println(stderr, "error: unknown layout '{}' ({})", name,
+        fmt::println(stderr, "error: unknown layout '{}' ({})", name,
                      ac3::plan::layout_names(codec));
         return false;
     }
     const auto allocated = ac3::eac3::chanmap::allocate(*custom);
     if (!allocated) {
-        std::println(stderr, "error: channel selection '{}' is invalid - {}", name,
+        fmt::println(stderr, "error: channel selection '{}' is invalid - {}", name,
                      ac3::eac3::chanmap::describe(allocated.error()));
         return false;
     }
     if (codec == ac3::plan::Codec::kAc3 && !allocated->dependents.empty()) {
-        std::println(stderr, "error: {} cannot carry '{}' - {}", ac3::plan::codec_label(codec),
+        fmt::println(stderr, "error: {} cannot carry '{}' - {}", ac3::plan::codec_label(codec),
                      name, ac3::plan::describe(ac3::plan::PlanError::kLayoutNeedsEac3));
         return false;
     }
@@ -1708,7 +1729,7 @@ std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_vie
         case 16000: if (eac3) return ac3::SampleRate::k16000; break;
         default: break;
     }
-    std::println(stderr, "error: sample rate {} is not legal for {} (need {})", hz, codec,
+    fmt::println(stderr, "error: sample rate {} is not legal for {} (need {})", hz, codec,
                 eac3 ? "32/44.1/48 kHz, or 16/22.05/24 kHz" : "32/44.1/48 kHz");
     return std::nullopt;
 }
@@ -1716,7 +1737,7 @@ std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_vie
 std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std::size_t channels) {
     auto routing = plan::route(plan::resolve(p), channels, p.meta.cmixlev, p.meta.surmixlev);
     if (!routing) {
-        std::println(stderr, "error: {} channels - {}", channels,
+        fmt::println(stderr, "error: {} channels - {}", channels,
                      plan::describe(plan::PlanError::kNoSourceLayout));
         return std::nullopt;
     }
@@ -1731,19 +1752,19 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
     const auto key = ac3::signing::load_signing_key(meta.signing_key.value_or(""));
     if (!key) {
         if (key.error().kind == ac3::signing::KeyErrorKind::kAbsent) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: verify-objects needs a key — pass signing-key=<path>, or set "
                          "AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY");
         } else {
-            std::println(stderr, "error: {}", key.error().message);
+            fmt::println(stderr, "error: {}", key.error().message);
         }
         return std::nullopt;
     }
     const auto summary = ac3::signing::verify_atmos_stream(stream, *key);
-    std::println("  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
+    fmt::println("  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
                  summary.valid, summary.mismatch, summary.no_container);
     if (summary.mismatch > 0) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: object signature verification failed ({} of {} signed frames did "
                      "not match the supplied key)",
                      summary.mismatch, summary.valid + summary.mismatch);

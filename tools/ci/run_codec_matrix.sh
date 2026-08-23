@@ -221,12 +221,14 @@ run_ffmpeg_check eac3_silence.ec3
 
 # "atten:N" and "noatten" alone tune spectral extension's notch but do not,
 # by themselves, turn spx on (see parse_tools in src/forge/src/encoder/plan.cpp)
-# - so they round-trip like "none". "nofastmdct" is the same shape one step
-# further: not a coding tool at all, just the direct-form forward MDCT
-# instead of the default fast path, so its stream differs from "none"'s only
-# at the coefficient-rounding level. Anything that actually sets
-# coupling/spx/aht does not round-trip like "none", per the note above.
-for tools in none "atten:2" noatten nofastmdct; do
+# - so they round-trip like "none". "nofastmdct" and "nodither" are the same
+# shape one step further: neither is a coding tool at all - nofastmdct only
+# changes the forward transform's rounding, nodither only pins §7.3.4's
+# dithflag at 0 instead of deciding it from content - so their streams differ
+# from "none"'s at the coefficient/dither level, not the syntax level.
+# Anything that actually sets coupling/spx/aht does not round-trip like
+# "none", per the note above.
+for tools in none "atten:2" noatten nofastmdct nodither; do
     safe=$(echo "$tools" | tr ':+' '__')
     run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"

@@ -16,7 +16,7 @@
 #include <cmath>
 #include <expected>
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -258,7 +258,7 @@ QString build_dash_mpd(const mp4::AudioTrack& track, std::span<const mp4::MediaS
     }
     const double total_seconds =
         static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-    return QString::fromStdString(std::format(
+    return QString::fromStdString(fmt::format(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
         "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
@@ -5925,7 +5925,7 @@ QString EncoderController::writeOutput(const QString& path,
             return QStringLiteral("Could not write init.mp4 to \"%1\".").arg(path);
         }
         for (const auto& segment : fragmented->media_segments) {
-            const auto name = std::format("segment{}.m4s", segment.sequence_number);
+            const auto name = fmt::format("segment{}.m4s", segment.sequence_number);
             if (!write_bytes_to_path(dir / name, segment.bytes)) {
                 return QStringLiteral("Could not write %1 to \"%2\".")
                     .arg(QString::fromStdString(name), path);
@@ -5937,7 +5937,7 @@ QString EncoderController::writeOutput(const QString& path,
         // identical construction.
         const mp4::HlsOptions hls_options{
             .channels_attribute = built->oba_complexity_index
-                                      ? std::format("{}/JOC", *built->oba_complexity_index)
+                                      ? fmt::format("{}/JOC", *built->oba_complexity_index)
                                       : std::string{}};
         const auto media_playlist =
             mp4::build_hls_media_playlist(built->track, fragmented->media_segments, hls_options);

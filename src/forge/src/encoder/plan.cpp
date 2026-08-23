@@ -656,6 +656,8 @@ bool parse_tools(std::string_view text, Tools& out) {
             out.fast_mdct = true;
         } else if (token == "nofastmdct") {
             out.fast_mdct = false;  // the direct §8.2.3.2 reference form
+        } else if (token == "nodither") {
+            out.dither = false;  // dithflag pinned at 0, not content-decided
         } else if (token == "all") {
             out.coupling = true;
             out.spx = true;
@@ -693,6 +695,9 @@ std::string format_tools(const Tools& tools) {
         if (!tools.fast_mdct) {
             add("nofastmdct");
         }
+        if (!tools.dither) {
+            add("nodither");
+        }
         return out;
     }
     if (tools.coupling) {
@@ -720,6 +725,9 @@ std::string format_tools(const Tools& tools) {
     // "fastmdct" on every command line while saying nothing.
     if (!tools.fast_mdct) {
         add("nofastmdct");
+    }
+    if (!tools.dither) {
+        add("nodither");
     }
     return out.empty() ? std::string{"none"} : out;
 }
@@ -972,6 +980,7 @@ EncoderConfig ac3_config(const Plan& plan) {
             .coupling = plan.tools.coupling && fullbw_channel_count(cp.bed_acmod) >= 2,
             .cplbegf = plan.tools.cplbegf,
             .fast_mdct = plan.tools.fast_mdct,
+            .dither = plan.tools.dither,
             .drc = plan.meta.drc,
             .heavy = plan.meta.heavy,
             .drc2 = cp.bed_acmod == Acmod::kDualMono
@@ -1006,6 +1015,7 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.gaqmod = tools.gaqmod;
     config.transient_prenoise = tools.transient_prenoise;
     config.fast_mdct = tools.fast_mdct;
+    config.dither = tools.dither;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its

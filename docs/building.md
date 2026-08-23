@@ -7,10 +7,10 @@ Every command here has been run on the configuration described under
 
 | | Version | Notes |
 |---|---|---|
-| A compiler | MSVC (VS 2026), clang-cl 21, GCC 16, or Clang 21 | C++23. `std::expected`, `std::print` and deducing-`this` are all used. One [preset](#presets) per compiler; all seven platform/compiler legs are required, green CI (GCC 16 covers two of them — `linux-gcc` and `linux-gcc-arm64`; Clang 21 covers three — `linux-llvm`, `linux-llvm-arm64` and `macos-llvm`, each as a separate leg, though `macos-llvm` deliberately tracks Homebrew's unpinned `llvm` formula, currently also 21, rather than an exact pin) — see [Verified configuration](#verified-configuration). |
+| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23. `std::expected` and deducing-`this` are both used. Formatted output goes through {fmt} (`fmt::format`/`fmt::print`), not `std::format`/`std::print` — see [Options](#options) and `docs/platforms/android.md`. One [preset](#presets) per compiler; all seven platform/compiler legs are required, green CI (GCC 16 covers two of them — `linux-gcc` and `linux-gcc-arm64`; Clang 22 covers three — `linux-llvm`, `linux-llvm-arm64` and `macos-llvm`, each as a separate leg, though `macos-llvm` deliberately tracks Homebrew's unpinned `llvm` formula, currently also 22, rather than an exact pin) — see [Verified configuration](#verified-configuration). |
 | CMake | ≥ 3.28 | `cmake_minimum_required(VERSION 3.28...4.3)`. |
 | Ninja | any recent | The presets hard-code the Ninja generator. |
-| vcpkg | any recent | Supplies Catch2 (needed only when tests are on); with `-DVCPKG_MANIFEST_FEATURES=adm`, the Boost header libraries `AC3FORGE_BUILD_ADM=ON` needs; and with `-DVCPKG_MANIFEST_FEATURES=profiling`, the Tracy profiler `AC3FORGE_ENABLE_TRACY=ON` needs — see [Options](#options). None of the three is required for a default build. |
+| vcpkg | any recent | Supplies fmt (a base dependency, needed by every build — see `cmake/Fmt.cmake`) and Catch2 (needed only when tests are on); with `-DVCPKG_MANIFEST_FEATURES=adm`, the Boost header libraries `AC3FORGE_BUILD_ADM=ON` needs; and with `-DVCPKG_MANIFEST_FEATURES=profiling`, the Tracy profiler `AC3FORGE_ENABLE_TRACY=ON` needs — see [Options](#options). vcpkg itself is never strictly required, though: fmt and Catch2 both fall back to a `FetchContent` build from source when no local copy is found (`AC3FORGE_FETCH_FMT`/`AC3FORGE_FETCH_CATCH2`, both default `ON`), and Boost/Tracy are opt-in features nobody gets by default. |
 | Qt | 6.5+ prebuilt | GUI only. **Never from vcpkg** — see [Qt](#qt). |
 | ALSA (`libasound2-dev`) | any recent | Linux only, optional. Live capture/monitor/passthrough — see [Linux audio](#linux-audio). |
 | PipeWire (`libpipewire-0.3-dev`) | any recent | Linux only, optional, used only when ALSA is not — see [Linux audio](#linux-audio). |
@@ -91,9 +91,9 @@ each with a matching `build-<platform>[-debug]` and `test-<platform>[-debug]` pr
 | Windows | MSVC | `config-windows-msvc[-debug]` | `build-windows-msvc[-debug]` | `test-windows-msvc[-debug]` |
 | Windows | clang-cl | `config-windows-llvm[-debug]` | `build-windows-llvm[-debug]` | `test-windows-llvm[-debug]` |
 | Linux | GCC 16 | `config-linux-gcc[-debug]` | `build-linux-gcc[-debug]` | `test-linux-gcc[-debug]` |
-| Linux | Clang 21 | `config-linux-llvm[-debug]` | `build-linux-llvm[-debug]` | `test-linux-llvm[-debug]` |
+| Linux | Clang 22 | `config-linux-llvm[-debug]` | `build-linux-llvm[-debug]` | `test-linux-llvm[-debug]` |
 | Linux (arm64) | GCC 16 | `config-linux-gcc-arm64[-debug]` | `build-linux-gcc-arm64[-debug]` | `test-linux-gcc-arm64[-debug]` |
-| Linux (arm64) | Clang 21 | `config-linux-llvm-arm64[-debug]` | `build-linux-llvm-arm64[-debug]` | `test-linux-llvm-arm64[-debug]` |
+| Linux (arm64) | Clang 22 | `config-linux-llvm-arm64[-debug]` | `build-linux-llvm-arm64[-debug]` | `test-linux-llvm-arm64[-debug]` |
 | macOS | Homebrew LLVM | `config-macos-llvm[-debug]` | `build-macos-llvm[-debug]` | `test-macos-llvm[-debug]` |
 
 The two `-arm64` rows are the same `linux.gcc.toolchain.cmake`/`linux.llvm.toolchain.cmake` files as
@@ -189,6 +189,7 @@ platform/compiler fragment matches your machine.
 |---|---|---|
 | `AC3FORGE_BUILD_CLI` | `ON` | Build `ac3cli`. |
 | `AC3FORGE_BUILD_GUI` | `ON` on the two Windows presets, `OFF` on Linux and macOS | Build `ac3gui`. Requires Qt. Off by default outside Windows because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
+| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
 | `AC3FORGE_BUILD_TESTS` | `ON` | Build the Catch2 suite. Requires Catch2. |
 | `AC3FORGE_FETCH_CATCH2` | `ON` | When no local Catch2 3 is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v3.15.3 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `tests/CMakeLists.txt`. Irrelevant when `AC3FORGE_BUILD_TESTS` is off. |
 | `AC3FORGE_BUILD_EXAMPLES` | `ON` | Build `examples/`, and register them as tests. |
@@ -216,7 +217,7 @@ without the preset and pass the generator and build type by hand.
 ## Building on Linux
 
 `config-linux-gcc` and `config-linux-llvm` (each with a `-debug` variant, same as the Windows
-presets) are GCC 16 and Clang 21 respectively. They do **not** share the `debug`/`release` bare
+presets) are GCC 16 and Clang 22 respectively. They do **not** share the `debug`/`release` bare
 names used elsewhere in this document — there is no `cmake --preset debug` on any platform; see
 [Presets](#presets) above.
 
@@ -229,8 +230,8 @@ ctest --preset test-linux-gcc-debug
 
 Substitute `linux-llvm` for `linux-gcc` to build with Clang instead. `VCPKG_ROOT` works the same
 way as on Windows: it must point at a vcpkg checkout for the toolchain file the preset
-references, even though (as on Windows) it supplies nothing but Catch2. This project's own
-convention keeps that checkout under `/opt/vcpkg`, but any path works — there is nothing
+references, even though (as on Windows) it supplies nothing but fmt and Catch2. This project's
+own convention keeps that checkout under `/opt/vcpkg`, but any path works — there is nothing
 Linux-specific about vcpkg here.
 
 ### GUI on Linux
@@ -358,7 +359,7 @@ alone already has today.
 
 #### What has and has not been verified
 
-**ALSA.** Verified on WSL2 Ubuntu 26.04 with gcc 15.2 and clang 21.1, in every configuration:
+**ALSA.** Verified on WSL2 Ubuntu 26.04 with gcc 15.2 and clang 22.1, in every configuration:
 with libasound present and absent, and under ASan+UBSan with leak detection. The full suite
 passes in all of them. The device-independent halves of the backend — device-name construction,
 channel-status derivation, the negotiation, the render and capture threads, start/stop, and the
@@ -373,7 +374,7 @@ has been asked to lock onto the result. Whether a given output accepts a bitstre
 per-device anyway — `ac3cli outputs` probes each one and says.
 
 **PipeWire.** Verified on the same WSL2 Ubuntu 26.04 host with libpipewire-0.3 1.6.2, gcc 15.2
-and clang 21.1, with `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON` forcing the
+and clang 22.1, with `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON` forcing the
 selection (WSL2's image has both sets of headers installed, and ALSA wins by default — see
 above). The full suite passes on both compilers. There is no PipeWire session running in that
 environment at all (no `pipewire`/`wireplumber` daemon, confirmed by `pw_context_connect()`
@@ -514,7 +515,7 @@ The Linux instructions were run on:
 | | |
 |---|---|
 | OS | Ubuntu 26.04 (WSL2) |
-| Compilers | GCC 15.2.0 and Clang 21.1.x, both tried |
+| Compilers | GCC 15.2.0 and Clang 22.1.x, both tried |
 | CMake | ≥ 3.28, Ninja generator |
 | Qt | 6.10.2, apt-packaged (`qt6-base-dev`, `qt6-declarative-dev`) |
 | ALSA | `libasound2-dev`, both present and as the no-ALSA fallback — see [Linux audio](#linux-audio) |
