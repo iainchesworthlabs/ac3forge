@@ -203,10 +203,21 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    escaped every gate above — reaching it needed an input *shape*, not an option combination.
    Bounded to two minutes per pull request; `fuzz.yml`'s `encoder-space-nightly` runs it deeper.
    Every failure prints a case seed that regenerates the exact input (`--replay <seed>`).
-3. **The Python references in `tools/`.** Independent transcriptions of the same spec text.
+3. **Somebody else's bitstreams.** Points 1 and 2 both decode something this project encoded.
+   Reading a stream *nobody here produced* is a different question, and the one that found five
+   Annex E parsing defects in a single sitting once anything actually asked it. Two tiers, both
+   automated: `tools/checks/verify_gold_reference.sh` decodes the six committed Dolby Encoding
+   Engine and FFmpeg streams in `tests/golden/external-baseline/` on every gold-reference leg,
+   and the nightly `Interop` workflow runs `tools/checks/verify_fate_interop.py` over seven
+   SHA-256-pinned commercial-encoder excerpts fetched from FFmpeg's FATE archive. Reach for this
+   one whenever you touch decoder syntax the encoder here never emits — and read
+   [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#third-party-bitstreams)
+   first, because there are no free AC-3 or E-AC-3 conformance vectors and this is the
+   substitute, not the real thing.
+4. **The Python references in `tools/`.** Independent transcriptions of the same spec text.
    Weaker than a decoder — two transcriptions can share a misreading — but they catch slips a
    self-consistent round trip cannot.
-4. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
+5. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
 
 Neither decoder covers everything, and the gaps do not overlap: see the [verification-gap
 table](https://iainchesworthlabs.github.io/ac3forge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
