@@ -14,7 +14,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -381,14 +380,11 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
         // src= without map=: every loaded channel becomes its own object, in
         // load order - the natural generalisation of what one file does, and
         // the only reading that does not silently drop somebody's second file.
-        std::size_t index = 0;
         for (std::size_t s = 0; s < sources->shapes.size(); ++s) {
             for (std::size_t c = 0; c < sources->shapes[s].channels; ++c) {
                 assignment.set(s, c, {.kind = plan::DestinationKind::kObject});
-                ++index;
             }
         }
-        std::ignore = index;
     }
 
     const auto slots = object_slots_from_assignment(assignment, sources->shapes);

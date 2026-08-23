@@ -1298,6 +1298,19 @@ std::string_view container_note(RecordingSink::Container container) {
 
 std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
                                           ac3::SampleRate rate) {
+    // dialnorm=auto measures a whole programme's BS.1770 loudness before
+    // encoding it, which a live capture has not got: the programme does not
+    // exist yet when the first frame has to be encoded. Refused rather than
+    // silently ignored, the same stance atmos-adm takes for the same reason -
+    // "a silently ignored metadata flag looks exactly like metadata that did
+    // not work" (parse_options' own comment). Every other metadata option
+    // reaches the encoder through plan::ac3_config/eac3_config below.
+    if (meta.p.measure_dialnorm || meta.p.measure_dialnorm2) {
+        std::println(stderr,
+                     "error: dialnorm=auto needs a whole programme to measure, which a live "
+                     "capture has not got yet; pass dialnorm=<1..31> explicitly");
+        return std::nullopt;
+    }
     TakePlan take;
     take.plan.bitrate_kbps = bitrate;
     take.plan.sample_rate = rate;
@@ -1338,8 +1351,9 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
         return std::nullopt;
     }
     take.eac3 = take.plan.codec == ac3::plan::Codec::kEac3;
-    take.coded_channels =
-        static_cast<int>(ac3::plan::coded_channels(ac3::plan::resolve(take.plan)).size());
+    const auto channel_plan = ac3::plan::resolve(take.plan);
+    take.coded_channels = static_cast<int>(ac3::plan::coded_channels(channel_plan).size());
+    take.rendered_channels = ac3::plan::rendered_channel_count(channel_plan);
     return take;
 }
 
@@ -1348,7 +1362,7 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
     return RecordingSink::Config{.container = meta.container,
                                  .eac3 = take.eac3,
                                  .sample_rate = sample_rate_hz,
-                                 .channels = take.coded_channels};
+                                 .channels = take.rendered_channels};
 }
 
 std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,

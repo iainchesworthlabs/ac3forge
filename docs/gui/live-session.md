@@ -339,7 +339,7 @@ capabilities this page describes, through the same code where the code is sharea
 - **Wide layouts and E-AC-3.** `record` and `live mode=channels` take `layout=` and `codec=`
   (see [CLI → Options & grammars](../cli/metadata-options.md#layout-and-codec)) and place the
   captured channels onto them by direction through the same `plan::route` this page's own
-  [layout switcher](#the-layout-switcher) drives. Neither is stereo-AC-3-only any more.
+  [layout switcher](#switching-layout-mid-session) drives. Neither is stereo-AC-3-only any more.
 - **Container choice**, and **take durability** with it. Both commands take
   `container=raw|mkv|ts|spdif` (see
   [CLI → Options & grammars](../cli/metadata-options.md#container)) and write through

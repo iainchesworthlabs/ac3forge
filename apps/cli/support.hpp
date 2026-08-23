@@ -550,7 +550,15 @@ struct TakePlan {
     ac3::plan::Plan plan;
     std::string label;
     bool eac3 = false;
+    // What the encoder is fed: bed plus every dependent substream's channels.
     int coded_channels = 0;
+    // What a decoder renders from them - fewer than coded_channels wherever a
+    // dependent REPLACES a bed channel (7.1 renders 8 speakers from 10 coded).
+    // The container and the monitor both want this one: 'mkv'/'ts' scanning
+    // the same finished stream count the channels it renders (ac3::io::scan),
+    // so a streamed take must declare the same number the after-the-fact wrap
+    // would, and MonitorSink is fed the decoder's own rendered channels.
+    int rendered_channels = 0;
 };
 
 // nullopt with the reason already printed: a bad layout name, a layout the

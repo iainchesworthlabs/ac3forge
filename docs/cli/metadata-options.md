@@ -2,14 +2,18 @@
 
 Encoding commands in [Commands](commands.md) take these after their positional arguments, in any
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
-takes none at all; `record` and `live` honor `fast-mdct=off`, `container=`, `layout=`, `codec=`,
-`watchdog=`, `dialnorm=<n>`, `cmixlev=`/`surmixlev=` (which is what their §7.8 fold-down uses) and,
-`live` only, `capture2=`, `objects=`, `map=` and `downmix=`, while accepting but ignoring the rest
-of the metadata group (`drc=`, `heavy`, …); `atmos`, `atmos-path` and `atmos-encode` all apply
-`dialnorm=<n>`, `fast-mdct=off` and the object-signing flags below, and `dialnorm=auto` is silently
-inert on `atmos`/`atmos-path` — of the three Atmos commands, only `atmos-encode` measures, and not
-when `src=`/`map=` are in play (an assembled object set has no single fixed layout to measure a
-whole-programme loudness against). Every command honors `quiet`, `verbose` and `--help`:
+takes none at all; `record` and `live mode=channels` build a real encoder plan, so they honor the
+whole metadata group below (`drc=`, `heavy`, `dialnorm=<n>`, `cmixlev=`/`surmixlev=` — which is
+also what their §7.8 fold-down uses — `mixmeta`, `lfemix=`, `dmixmod=`) alongside `fast-mdct=off`,
+`container=`, `layout=`, `codec=`, `watchdog=` and, `live` only, `capture2=`, `objects=`, `map=`
+and `downmix=`. `dialnorm=auto` is the one they refuse: it measures a whole programme before
+encoding it, and a live capture has not got one yet. `live mode=atmos` encodes the fixed TS 103 420
+shape, so it takes `dialnorm=<n>` and `fast-mdct=off` from the group and nothing else. `atmos`,
+`atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off` and the object-signing
+flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path` — of the three Atmos
+commands, only `atmos-encode` measures, and not when `src=`/`map=` are in play (an assembled object
+set has no single fixed layout to measure a whole-programme loudness against). Every command honors
+`quiet`, `verbose` and `--help`:
 
 ```text
 metadata options (any order, after the positional arguments):
@@ -222,8 +226,9 @@ for each row that resolves to nothing.
 Any `<dest>` may carry an optional trailing `@<trim>` — a signed decibel gain in `[-24, 24]`,
 snapped to a tenth of a dB (`L@-3.5`, `obj@2`) — applied as linear gain wherever that channel's
 content reaches the stream: folded into the routing matrix for a bed position or a dual-mono
-programme, or, for `obj`/`objm`, into the object's plane at assembly — which only the GUI
-performs, per the note above. Omitted (no `@`) means no trim, the same as an explicit `@0`.
+programme, or, for `obj`/`objm`, into that object's own plane as it is assembled (by
+`atmos-encode`, `live mode=atmos` or the GUI — see the note above). Omitted (no `@`) means no
+trim, the same as an explicit `@0`.
 
 ```bash
 ac3cli eac3-encode roundtrip-stereo.wav out.ec3 384 none 51 \

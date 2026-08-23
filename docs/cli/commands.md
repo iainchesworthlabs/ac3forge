@@ -209,7 +209,16 @@ dialnorm check:
 
 Add `preset=<name>` (or `preset=all`) to gate that same measurement against a named delivery spec instead of just reporting it — see [Options & grammars](metadata-options.md#qc-options-qc-preset) for the exact preset numbers and the primary source cited for each, and this page's own exit-code note below.
 
-`qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes — non-zero otherwise, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` exits non-zero solely on a genuine decode error.
+`qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` is non-zero solely on a genuine input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
+
+```bash
+ac3cli qc out.ec3 preset=ebu-r128-s2
+case $? in
+  0) echo "in spec" ;;
+  6) echo "out of spec" ;;
+  *) echo "qc could not run at all" ;;
+esac
+```
 
 ### Containers
 

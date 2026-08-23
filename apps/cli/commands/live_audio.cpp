@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <tuple>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -14,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -31,10 +31,10 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
-#include "ac3/sinks/iec61937.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/sinks/iec61937.hpp"
 #include "recording_sink.hpp"
 
 namespace ac3cli::commands {
@@ -425,15 +425,20 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             return kExitUsage;
         }
     }
-    // What the receiver leg and the container are told this stream is: the
-    // 5.1 bed for an object session, the routed plan's coded channels
-    // otherwise.
+    // Two different counts, both needed. `coded_channels` is what the encoder
+    // is fed and what the meter shows; `rendered_channels` is what a decoder
+    // hands back, which is fewer wherever a dependent REPLACES a bed channel
+    // (7.1 renders 8 speakers from 10 coded) - so it is what the monitor sink
+    // is opened with, since interleave_reordered below produces exactly that
+    // many. An object session's bed is 5.1 either way.
     const std::size_t coded_channels =
         atmos ? 6 : static_cast<std::size_t>(routing->coded_channels);
+    const std::size_t rendered_channels = atmos ? 6 : static_cast<std::size_t>(
+                                                          take->rendered_channels);
     const auto bed_acmod = atmos ? ac3::Acmod::k3_2 : channel_plan.bed_acmod;
     const bool bed_lfe = atmos ? true : channel_plan.bed_lfe;
     const std::size_t bed_channels =
-        static_cast<std::size_t>(ac3::fullbw_channel_count(bed_acmod)) + (bed_lfe ? 1 : 0);
+        static_cast<std::size_t>(ac3::fullbw_channel_count(bed_acmod) + (bed_lfe ? 1 : 0));
 
     auto resolve_render_device = [&](int index) -> std::optional<ac3::audio::RenderDeviceInfo> {
         if (index < 0) {
@@ -455,7 +460,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                          monitor_device);
         } else {
             const auto mstarted = monitor_sink.start(
-                target->id, rate_hz, static_cast<std::uint16_t>(coded_channels));
+                target->id, rate_hz, static_cast<std::uint16_t>(rendered_channels));
             if (!mstarted) {
                 std::println(stderr, "warning: monitor unavailable: {}",
                              ac3::audio::describe(mstarted.error()));
@@ -882,10 +887,23 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const auto stats = capture.stats();
     // Finalized whether or not the session ended early: every unit already
     // pushed is on disk and playable, which is the whole reason a take
-    // streams rather than accumulating (roadmap IO9).
-    if (const auto why = sink.close(); !why.empty()) {
-        std::println(stderr, "error: {}: {}", out_path, why);
+    // streams rather than accumulating (roadmap IO9). A close() complaint is
+    // reported either way, but a lost device is the more useful diagnosis of
+    // the two and wins the exit code - a session that captured nothing before
+    // the device vanished ends as a device failure, not as a disk one.
+    const auto close_problem = sink.close();
+    if (!close_problem.empty() && !device_lost) {
+        std::println(stderr, "error: {}: {}", out_path, close_problem);
         return kExitOutput;
+    }
+    if (device_lost) {
+        std::println(stderr,
+                     "error: \"{}\" stopped delivering audio for {} ms; the session was stopped "
+                     "and what had already been written is kept (watchdog=0 disables this){}",
+                     lost_is_slave && device2 != nullptr ? device2->name : device.name,
+                     meta.watchdog.count(),
+                     close_problem.empty() ? "" : " - " + close_problem);
+        return kExitRuntime;
     }
     status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
                    eac3 ? "E-AC-3 access units" : "AC-3 frames", bitrate,
@@ -906,14 +924,6 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         status_println(status, "capture2 drift: {:+.1f} ppm", slave_drift->drift_ppm());
     }
     print_channel_summary(meter, status);
-    if (device_lost) {
-        std::println(stderr,
-                     "error: \"{}\" stopped delivering audio for {} ms; the session was stopped "
-                     "and what had already been written is kept (watchdog=0 disables this)",
-                     lost_is_slave && device2 != nullptr ? device2->name : device.name,
-                     meta.watchdog.count());
-        return kExitRuntime;
-    }
     return encode_failed ? kExitUsage : kExitOk;
 }
 

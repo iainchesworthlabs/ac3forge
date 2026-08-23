@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -20,10 +21,10 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
-#include "ac3/sinks/iec61937.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/sinks/iec61937.hpp"
 #include "recording_sink.hpp"
 
 namespace ac3cli::commands {
@@ -242,10 +243,23 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     capture.stop();
     const auto stats = capture.stats();
     // Finalized whether or not the device dropped: everything already pushed
-    // is on disk and playable, which is the whole reason a take streams.
-    if (const auto why = sink.close(); !why.empty()) {
-        std::println(stderr, "error: {}: {}", out_path, why);
+    // is on disk and playable, which is the whole reason a take streams. A
+    // close() complaint is reported, but a lost device is the more useful
+    // diagnosis of the two and wins the exit code - a take that captured
+    // nothing before the device vanished ends as a device failure, not as a
+    // disk one.
+    const auto close_problem = sink.close();
+    if (!close_problem.empty() && !device_lost) {
+        std::println(stderr, "error: {}: {}", out_path, close_problem);
         return kExitOutput;
+    }
+    if (device_lost) {
+        std::println(stderr,
+                     "error: \"{}\" stopped delivering audio for {} ms; the take was stopped and "
+                     "what had already been written is kept (watchdog=0 disables this){}",
+                     device.name, meta.watchdog.count(),
+                     close_problem.empty() ? "" : " - " + close_problem);
+        return kExitRuntime;
     }
     status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
                    take->eac3 ? "access units" : "frames", bitrate, take->label, out_path,
@@ -253,13 +267,6 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     status_println(status, "captured {} frames, {} silence-filled, {} dropped",
                    stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
     print_channel_summary(meter, status);
-    if (device_lost) {
-        std::println(stderr,
-                     "error: \"{}\" stopped delivering audio for {} ms; the take was stopped and "
-                     "what had already been written is kept (watchdog=0 disables this)",
-                     device.name, meta.watchdog.count());
-        return kExitRuntime;
-    }
     return kExitOk;
 }
 
