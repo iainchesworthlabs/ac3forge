@@ -882,6 +882,12 @@ def race_trend(json_out=None):
 # never-runs-in-CI boundary docs/landscape.md documents for the numbers.
 
 
+# How many seconds of each leg the spectrogram images cover. See the
+# centring code in render_spectrograms() for why this is capped rather than
+# rendering whole fixtures.
+SPECTROGRAM_SPAN_S = 10.0
+
+
 def _decode_baseline(coded_path, tag):
     scratch = BUILD / f"spectrogram_{tag}.wav"
     run(["ffmpeg", "-v", "error", "-y", "-i", str(coded_path), "-c:a", "pcm_f32le", str(scratch)])
@@ -960,14 +966,26 @@ def render_spectrograms(out_dir):
             panels.append((tool_label, d))
 
         # Same span for every row - align()'s own overlap trim can differ by
-        # a handful of samples between calls.
+        # a handful of samples between calls - and capped at
+        # SPECTROGRAM_SPAN_S, centred, mainly so every leg's image is drawn
+        # at a comparable time scale instead of squeezing 30 s of programme
+        # material into the width a 3 s synthetic fixture gets. It trims the
+        # PNGs too, but only somewhat - most of a programme leg's file size
+        # is spectral detail, not duration (1.78 MB whole, 1.43 MB capped,
+        # against 0.49 MB for a synthetic leg) - so this is a legibility
+        # change first and a size one second. What the image is for, showing
+        # what each encoder did to the spectrum, reads the same either way.
         n = min(p[1].shape[0] for p in panels)
+        span = int(SPECTROGRAM_SPAN_S * RATE)
+        offset = (n - span) // 2 if n > span else 0
+        n = min(n, span)
 
         fig, axes = plt.subplots(len(panels), 1, figsize=(11, 2.0 * len(panels)), sharex=True)
         if len(panels) == 1:
             axes = [axes]
         for ax, (label, data) in zip(axes, panels):
-            mono = data[:n].mean(axis=1) if data.ndim > 1 else data[:n]
+            chunk = data[offset:offset + n]
+            mono = chunk.mean(axis=1) if chunk.ndim > 1 else chunk
             _plot_spectrogram(ax, mono, f"{name} - {label}")
         axes[-1].set_xlabel("seconds")
         fig.tight_layout()
