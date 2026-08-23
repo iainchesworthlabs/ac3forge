@@ -143,6 +143,15 @@ never both.
 ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
 ```
 
+Turning it off drops TS 103 420 §8.3.1's `addbsi` object marker along with the container, so the
+stream doesn't *advertise* an object layer either. That marker (`flag_ec3_extension_type_a` plus
+§8.3.2.2's `complexity_index_type_a`) is the only thing a reader has to go on: it is what
+`ac3::io::scan` reports as `ScannedStream::oba_complexity_index`, what
+`ac3::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
+`ac3cli fmp4` writes as an HLS `CHANNELS="<N>/JOC"` attribute, and what FFmpeg keys its
+"Dolby Digital Plus + Dolby Atmos" profile off. Left in, all four would claim objects that were
+never encoded — the same empty-promise this mode exists to avoid.
+
 Full program: [`examples/atmos_fallback.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_fallback.cpp)
 — encodes the same objects both ways and confirms both decode as an ordinary 5.1 bed.
 

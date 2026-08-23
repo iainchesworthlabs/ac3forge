@@ -23,6 +23,7 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/oba/atmos.hpp"
 
 namespace {
@@ -109,9 +110,27 @@ int main() {
     std::printf("same %zu bytes either way (CBR); largest bed sample difference: %.5f\n",
                 with_container.size(), max_bed_diff);
 
+    // TS 103 420 §8.3.1's addbsi object marker follows the container, because
+    // it is the only thing a reader has to go on: ac3::io::scan reports it as
+    // oba_complexity_index, ac3::io::build_codec_config_box turns it into the
+    // dec3 box's Dolby Atmos extension, `ac3cli fmp4` writes it as an HLS
+    // CHANNELS="<N>/JOC" attribute, and FFmpeg reports "Dolby Digital Plus +
+    // Dolby Atmos" off it. Left on the container-less stream, all four would
+    // claim an object layer that is not there - an empty promise, the same
+    // thing an empty container would be.
+    const auto scan_with = ac3::io::scan(with_container);
+    const auto scan_without = ac3::io::scan(without_container);
+    const bool marker_with = scan_with && scan_with->oba_complexity_index.has_value();
+    const bool marker_without = scan_without && scan_without->oba_complexity_index.has_value();
+    std::printf("object marker: %s with the container, %s without it\n",
+                marker_with ? "present" : "absent", marker_without ? "present" : "absent");
+
     // Both decode as an ordinary 5.1 bed through this project's own decoder,
     // which - like any decoder that ignores the container - never looks for
     // emdf_protection at all. Only a decoder that DOES validate it treats the
     // two streams differently, and that is the whole point of the toggle.
-    return (bed_with.channels.size() == 6 && bed_without.channels.size() == 6) ? 0 : 1;
+    return (bed_with.channels.size() == 6 && bed_without.channels.size() == 6 && marker_with &&
+            !marker_without)
+               ? 0
+               : 1;
 }

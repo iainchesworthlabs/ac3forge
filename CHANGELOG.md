@@ -12,6 +12,24 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ac3cli atmos ... bed51` no longer advertises an object layer it deliberately did not
+  encode.** `AtmosConfig::emit_object_metadata` decided whether the EMDF container (OAMD + JOC)
+  was written, but `AtmosEncoder` set TS 103 420 §8.3.1's `addbsi` object marker
+  (`flag_ec3_extension_type_a` plus §8.3.2.2's `complexity_index_type_a`) unconditionally. That
+  marker is the only thing any reader has to go on, so a `bed51` stream — whose whole purpose is
+  to omit the container and play as a plain 5.1 bed on a decoder that would otherwise refuse an
+  object container it cannot validate — still claimed objects downstream: `ac3::io::scan`
+  reported an `oba_complexity_index`, `ac3::io::build_codec_config_box` wrote the `dec3` box's
+  Dolby Atmos extension, `ac3cli fmp4` wrote `CHANNELS="<N>/JOC"` into its HLS playlists, and
+  FFmpeg reported the profile as "Dolby Digital Plus + Dolby Atmos". The marker now follows the
+  container, which is the same objects-or-nothing rule that already ruled out emitting an empty
+  container. This changes `bed51` output bytes: the `addbsi` element shrinks to a single zero
+  `addbsie` bit and the freed bits go back to the mantissas (the frame size is unchanged — this
+  is CBR). `objects` mode is unaffected. The FFmpeg-oracle matrix now asserts the profile for
+  both modes rather than only that each decodes.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

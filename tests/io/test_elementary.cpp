@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
@@ -30,6 +29,44 @@ std::vector<std::vector<float>> tone(int channels) {
 
 void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
     out.insert(out.end(), bytes.begin(), bytes.end());
+}
+
+// `frames` access units of real, multi-frame object audio - not
+// build_silent_access_unit: addbsi parsing has to land on the right bit
+// offset regardless of what audio rides along after it, and going through
+// the real encoder is what this project's tests do whenever an actual
+// encoder is available for the case (see "scan reads an AC-3 elementary
+// stream" above). `emit_objects` picks AtmosConfig::emit_object_metadata,
+// which decides both the EMDF container and the TS 103 420 §8.3.1 addbsi
+// marker that goes with it.
+std::vector<std::byte> atmos_stream(bool emit_objects, int objects, int frames) {
+    ac3::oba::AtmosEncoder encoder{
+        {.bitrate_kbps = 448, .emit_object_metadata = emit_objects}, objects};
+    std::vector<std::vector<float>> sources(static_cast<std::size_t>(objects),
+                                            std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views;
+    for (auto& source : sources) {
+        views.emplace_back(source);
+    }
+    std::vector<ac3::oba::ObjectPlacement> placement(
+        static_cast<std::size_t>(objects),
+        {.position = {.x = 0.5, .y = 0.5, .z = 0.0}, .gain = 1.0});
+
+    std::vector<std::byte> stream;
+    for (int f = 0; f < frames; ++f) {
+        for (int obj = 0; obj < objects; ++obj) {
+            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+                const double t = (f * ac3::kSamplesPerFrame + n) / 48000.0;
+                sources[static_cast<std::size_t>(obj)][static_cast<std::size_t>(n)] =
+                    static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi *
+                                                      (440.0 * static_cast<double>(obj + 1)) * t));
+            }
+        }
+        const auto unit = encoder.encode_frame(views, placement);
+        REQUIRE(unit.has_value());
+        append(stream, unit->bytes);
+    }
+    return stream;
 }
 
 }  // namespace
@@ -192,38 +229,8 @@ TEST_CASE("scan reads bsid/bsmod/bit_rate_code straight off the bsi", "[elementa
 }
 
 TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
-    // Real, multi-frame object audio (not build_silent_access_unit): addbsi
-    // parsing has to land on the right bit offset regardless of what audio
-    // rides along after it, but going through the real encoder is what this
-    // project's tests do whenever an actual FrameEncoder is available for
-    // the case - see "scan reads an AC-3 elementary stream" above.
     constexpr int kObjects = 2;
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
-    std::vector<std::vector<float>> sources(kObjects,
-                                            std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::span<const float>> views;
-    for (auto& source : sources) {
-        views.emplace_back(source);
-    }
-    std::array<ac3::oba::ObjectPlacement, kObjects> placement{};
-    for (auto& p : placement) {
-        p = {.position = {.x = 0.5, .y = 0.5, .z = 0.0}, .gain = 1.0};
-    }
-
-    std::vector<std::byte> stream;
-    for (int f = 0; f < 3; ++f) {
-        for (int obj = 0; obj < kObjects; ++obj) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
-                const double t = (f * ac3::kSamplesPerFrame + n) / 48000.0;
-                sources[static_cast<std::size_t>(obj)][static_cast<std::size_t>(n)] =
-                    static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi *
-                                                      (440.0 * static_cast<double>(obj + 1)) * t));
-            }
-        }
-        const auto unit = encoder.encode_frame(views, placement);
-        REQUIRE(unit.has_value());
-        append(stream, unit->bytes);
-    }
+    const auto stream = atmos_stream(/*emit_objects=*/true, kObjects, 3);
 
     const auto scanned = ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
@@ -231,4 +238,27 @@ TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
     // §8.3.2.2: object_count is bed-first (the LFE, always present in this
     // encoder's dynamic-only program) then the dynamic objects.
     CHECK(*scanned->oba_complexity_index == kObjects + 1);
+}
+
+// The other half of the objects-or-nothing fallback rule (docs/concepts/
+// atmos-joc.md, "The fallback rule: objects, or nothing"; AtmosConfig::
+// emit_object_metadata's own comment). bed51 omits the EMDF container so the
+// bed stays playable on a decoder that validates emdf_protection - and it
+// must omit TS 103 420 §8.3.1's addbsi marker with it, because that marker is
+// the ONLY thing a reader has to go on: ac3::io::build_codec_config_box writes
+// the dec3 box's Atmos extension off it, `ac3cli fmp4` writes CHANNELS="<N>/JOC"
+// off it, and FFmpeg reports "Dolby Digital Plus + Dolby Atmos" off it. Left
+// in, all three would advertise an object layer that was never encoded - a
+// promise as empty as an empty container would be.
+TEST_CASE("scan reports no Atmos marker for a bed51 stream", "[elementary]") {
+    const auto stream = atmos_stream(/*emit_objects=*/false, 2, 3);
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    // Still an ordinary 5.1 E-AC-3 stream, which is the whole point of the
+    // mode - it is only the object layer that is gone.
+    CHECK(scanned->kind == ac3::io::StreamKind::kEac3);
+    CHECK(scanned->acmod == ac3::Acmod::k3_2);
+    CHECK(scanned->lfe);
+    CHECK_FALSE(scanned->oba_complexity_index.has_value());
 }

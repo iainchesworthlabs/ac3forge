@@ -60,11 +60,16 @@ struct AtmosConfig {
     // decoding and refuses the whole stream if the field does not validate,
     // rather than falling back. With no container there is no sync word to find,
     // so it decodes the bed as ordinary 5.1. The choice is objects-or-nothing,
-    // never both. The 5.1 MIX is the same either way (the same float bed is
-    // encoded); the decoded samples are not bit-identical across the two,
-    // because the frame's rate control gives the freed skip-field bytes back to
-    // the mantissas, so the bed here is encoded at slightly higher fidelity.
-    // See encode_frame().
+    // never both - which is why turning this off also drops TS 103 420 §8.3.1's
+    // addbsi object marker (flag_ec3_extension_type_a and §8.3.2.2's complexity
+    // index): that marker is what every reader keys an object layer off
+    // (ac3::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
+    // attribute, FFmpeg's "Dolby Digital Plus + Dolby Atmos" profile), and a
+    // stream with no container has no object layer to advertise. The 5.1 MIX is
+    // the same either way (the same float bed is encoded); the decoded samples
+    // are not bit-identical across the two, because the frame's rate control
+    // gives the freed skip-field and addbsi bytes back to the mantissas, so the
+    // bed here is encoded at slightly higher fidelity. See encode_frame().
     bool emit_object_metadata = true;
     // §7.9.4 fast N/4-FFT forward MDCT (see mdct.hpp's mdct512_forward), on
     // by default - see eac3::FrameConfig::fast_mdct, which is what the bed's
