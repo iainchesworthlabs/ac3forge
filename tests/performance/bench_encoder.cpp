@@ -145,7 +145,12 @@ int main(int argc, char** argv) {
         bench_plain_51(), bench_plain_51(/*fast_mdct=*/true), bench_atmos_4obj(),
         bench_atmos_4obj(/*fast_mdct=*/true),
         // The same object encode with the reconstruction matrix estimated in
-        // §7.1's QMF instead of over MDCT bins (AtmosConfig::joc_domain).
+        // §7.1's QMF instead of over MDCT bins (AtmosConfig::joc_domain) -
+        // which is the DEFAULT, while the two rows above stay pinned to
+        // kMdctBand. A row here names a configuration, not "whatever the
+        // default is" (the same relationship plain_51 has to
+        // plain_51_fast_mdct), so the trend series stay continuous across a
+        // default change instead of taking a step nobody can read later.
         bench_atmos_4obj(/*fast_mdct=*/true, ac3::joc::Domain::kQmf)};
 
     for (const auto& r : results) {
