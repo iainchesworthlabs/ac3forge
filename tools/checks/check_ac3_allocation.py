@@ -42,6 +42,7 @@ Usage (repo root, after building):
 """
 
 import argparse
+import itertools
 import sys
 from pathlib import Path
 
@@ -52,9 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # bucket), not here (tools/checks/, correctness-gate bucket) - it just also
 # happens to be the one place CLI path/WAV IO/alignment helpers already live.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ci"))
-import itertools
-
-import quality_race as qr
+import quality_race as qr  # CLI path, WAV IO, alignment
 
 REPO = Path(__file__).resolve().parent.parent.parent
 SOURCE = REPO / "tests" / "golden" / "audio" / "reference_51.wav"
