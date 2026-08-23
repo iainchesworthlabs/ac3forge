@@ -83,7 +83,8 @@ rather than a test.
 
 **Two exceptions, inside `src/` only** (the apps and tests are free of both). `<format>` is
 absent from the NDK's bundled libc++, so library code builds its strings by concatenation
-instead — see [Android](docs/platforms/android.md) and `src/forge/src/version.cpp`. And
+instead — see [docs/platforms/android.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/android.md)
+and `src/forge/src/version.cpp`. And
 `<charconv>`'s **floating-point** `from_chars`/`to_chars` — the latter of which is what
 `std::format` uses to print a `double` — are unavailable both there and at the macOS wheel's
 deployment target, so library code reaches decimals through `strtod` and a classic-locale
