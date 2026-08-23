@@ -165,3 +165,24 @@ TEST_CASE("monotonicity: more snr offset never allocates fewer bits", "[bitalloc
         previous = total;
     }
 }
+
+// Found by fuzz/fuzz_signing_verify (roadmap VX3), through
+// ac3::signing's own frame walk: a frame whose fields make an allocation
+// region empty reached the §7.2.2.4 band walk, whose upper bound is
+// kMaskTab[end - 1] - and `end - 1` on end == 0 indexes that 256-entry table
+// at SIZE_MAX. UBSan reported the pointer overflow; the shipped NDEBUG build
+// had nothing between the caller and it, since the only statement of the
+// contract was a debug assert.
+//
+// The reproducer is committed as
+// fuzz/regressions/fuzz_signing_verify/empty-bitalloc-region-ub. This is the
+// same call with nothing else around it, and it is a UBSan trip (not a
+// CHECK failure) against the pre-fix function - so run it under the
+// sanitizer preset for the failing half of the evidence.
+TEST_CASE("compute_bit_allocation on an empty region allocates nothing", "[bitalloc]") {
+    const std::vector<std::uint8_t> exps;
+    std::vector<std::uint8_t> bap;
+    const ac3::BitAllocCodes codes{};
+    ac3::compute_bit_allocation(exps, ac3::SampleRate::k48000, codes, 22, 9, bap, {});
+    CHECK(bap.empty());
+}

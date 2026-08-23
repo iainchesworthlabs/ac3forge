@@ -596,6 +596,41 @@ TEST_CASE("a file with no axml chunk still parses, with an empty ADM model", "[a
     REQUIRE(doc->audio.frame_count() == 2);
 }
 
+// Found by fuzz/fuzz_adm_parse (roadmap VX3) in its first minute: bw64's
+// numberOfFrames() is the <data> chunk's DECLARED size over the block
+// alignment, so a sixty-byte file claiming four gigabytes of PCM made
+// read_pcm allocate four gigabytes. The reproducer is committed as
+// fuzz/regressions/fuzz_adm_parse/oversized-data-chunk-oom; this is the same
+// shape as a unit test, and it fails (out of memory, or a bad_alloc) against
+// the pre-fix read_pcm.
+//
+// 0x7FFFFF00 rather than the fuzzer's own 0xF7FFFF07: the exact value does not
+// matter as long as it is far past the file, and a value with the top bit
+// clear keeps this a plain oversized 32-bit ckSize rather than something a
+// reader might read as an RF64 escape.
+TEST_CASE("an oversized declared data chunk is bounded by the real file size", "[adm]") {
+    const auto fmt = build_fmt_chunk(1, 48000, 16);
+    const auto real_data = build_pcm16_data(4);
+
+    Bytes body;
+    append_chunk(body, "fmt ", fmt);
+    append_chunk(body, "data", real_data, 0x7FFFFF00u);
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    auto doc = ac3adm::parse_bw64(stream);
+    // Whether this parses or is refused is not the point - it must not try to
+    // allocate the two gigabytes the <data> header asks for. What it does do
+    // is read no more frames than the file could possibly hold.
+    if (doc.has_value()) {
+        CHECK(doc->audio.frame_count() <= file.size());
+    }
+}
+
 TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "[adm][model]") {
     std::istringstream stream(wrap_axml_only(kDirectSpeakersAdmXml));
     auto doc = ac3adm::parse_bw64(stream);

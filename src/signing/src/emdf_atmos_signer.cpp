@@ -60,9 +60,21 @@ struct Parsed {
     std::vector<Hole> holes;
 };
 
+// Which operation is driving parse(). The subset assertion below is a
+// SIGNING-side contract check - "you handed the signer a frame it does not
+// claim to handle" - and must not fire for verification, which by design runs
+// on streams its caller did not produce: `ac3cli decode ... verify-objects`
+// points it at whatever arrived, and an E-AC-3 stream that is not ac3forge
+// Atmos is an ordinary input there, answered with kNoContainer, not a
+// programming error. Before this distinction existed, a Debug build aborted
+// on `decode <plain stereo>.ec3 out.wav verify-objects` - found while
+// building fuzz/fuzz_signing_verify.cpp, which itself runs under NDEBUG and
+// so could never have caught it.
+enum class Operation : std::uint8_t { kSign, kVerify };
+
 // Walk one syncframe of the ac3forge atmos subset, recording the A-holes and the
 // container. Mirrors tools/references/eac3_parse.py for this configuration.
-Parsed parse(std::span<const std::byte> frame) {
+Parsed parse(std::span<const std::byte> frame, Operation op) {
     Parsed out;
     // Set the moment any per-block field this parser walks turns out to be
     // structurally invalid - see the spx validity check below for why that
@@ -93,7 +105,9 @@ Parsed parse(std::span<const std::byte> frame) {
     if (strmtyp == 1) { if (r.read(1)) (void)r.read(16); }
     const int nfchans = fullbw_channels(acmod);
     const int nblks = (numblkscod == 3) ? 6 : (numblkscod + 1);
-    assert(strmtyp == 0 && acmod == 7 && lfeon == 1 && numblkscod == 3);
+    if (op == Operation::kSign) {
+        assert(strmtyp == 0 && acmod == 7 && lfeon == 1 && numblkscod == 3);
+    }
 
     put_hole(0, 31);  // sync + strmtyp + substreamid + frmsiz
 
@@ -608,8 +622,8 @@ struct TagContext {
 };
 
 std::optional<TagContext> compute_tag_context(std::span<const std::byte> frame,
-                                               const SigningKey& key) {
-    Parsed p = parse(frame);
+                                               const SigningKey& key, Operation op) {
+    Parsed p = parse(frame, op);
     if (!p.has_container) return std::nullopt;
 
     // Reconstruct A: excise holes, pack MSB-first, round to nearest 16-bit word.
@@ -670,7 +684,7 @@ std::optional<TagContext> compute_tag_context(std::span<const std::byte> frame,
 
 bool sign_atmos_frame(std::span<std::byte> frame, const SigningKey& key) {
     if (key.empty()) return false;
-    const auto ctx = compute_tag_context(frame, key);
+    const auto ctx = compute_tag_context(frame, key, Operation::kSign);
     if (!ctx) return false;
 
     // write protection_bits_primary (np bits) at prim_off. Bounds-checked for
@@ -712,7 +726,7 @@ int sign_atmos_stream(std::span<std::byte> stream, const SigningKey& key) {
 }
 
 VerifyResult verify_atmos_frame(std::span<const std::byte> frame, const SigningKey& key) {
-    const auto ctx = compute_tag_context(frame, key);
+    const auto ctx = compute_tag_context(frame, key, Operation::kVerify);
     if (!ctx) return VerifyResult::kNoContainer;
 
     // Compare the digest just computed against whatever tag bits the frame

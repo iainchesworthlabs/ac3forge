@@ -12,6 +12,30 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **Fuzzing for the object and metadata layer** (roadmap `VX3`). Five new libFuzzer harnesses
+  over the parsers that read attacker-controlled bytes out of the skip field in every Atmos
+  frame, which until now were reached only indirectly through `fuzz_eac3_decode`:
+  `fuzz_emdf_parse` (`emdf::parse_container`), `fuzz_oamd_parse` (`oba::parse_payload`),
+  `fuzz_joc_parse` (`joc::parse_payload`), `fuzz_signing_verify`
+  (`signing::verify_atmos_stream`/`verify_atmos_frame`, the one signing operation that runs on a
+  stream its caller did not produce — key and stream both fuzzed), and, behind
+  `-DAC3FORGE_BUILD_ADM=ON`, `fuzz_adm_parse` (`ac3adm::parse_bw64`). Each is seeded from the
+  real containers and payloads inside the Atmos streams `fuzz/generate-seeds.sh` already
+  encodes, extracted by a new `fuzz/metadata-seeds.py`. The first four join `fuzz/run.sh`'s
+  default list and so the existing `Fuzz Regress`/`Fuzz Short`/`Fuzz Nightly` jobs; the ADM one
+  is opt-in (`AC3FORGE_FUZZ_ADM=1`) and gets its own nightly job, because `ac3adm` is the one
+  library here with a third-party dependency footprint.
+- **A CRC-repairing custom mutator** for `fuzz_ac3_decode` and `fuzz_eac3_decode`
+  (`fuzz/crc_mutator.hpp`). Both decoders check their CRC words before reading a single bit of
+  the frame behind them, so a mutation landing in a skip field — where the EMDF container, and
+  therefore all object metadata, lives — was rejected two orders of magnitude before the parser
+  it was aimed at. The mutator re-stamps crc1 and crc2 after mutating, crc1 through the same
+  GF(2) polynomial inverse the encoder uses (it precedes the region it protects, so it is solved
+  for rather than recomputed), and deliberately leaves one mutation in four unrepaired so the
+  bad-CRC rejection path stays reachable.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

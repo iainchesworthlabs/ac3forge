@@ -121,6 +121,22 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                             std::span<std::uint8_t> bap, const BitAllocRegion& region) {
     AC3_ZONE_SCOPED_N("compute_bit_allocation");
     assert(exps.size() == bap.size());
+    // An empty region allocates nothing, and says so by returning before the
+    // band walk below - which is not merely pointless on an empty region but
+    // undefined on one: §7.2.2.4 runs from kMaskTab[start] to
+    // kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing kMaskTab
+    // at SIZE_MAX. Reported by fuzz_signing_verify (roadmap VX3).
+    //
+    // No encode path produces an empty region, and the assert below still
+    // says so for a caller's benefit. But `exps` reaches here, through both
+    // the decoder and ac3::signing's own frame walk, sized by a field value
+    // a hostile stream picks - and this project has been here before
+    // (8386c8f: a decoder shifting by an unvalidated exponent). A contract
+    // that only a debug assert enforces is not enforced in the builds that
+    // ship.
+    if (exps.empty()) {
+        return;
+    }
     const int end = static_cast<int>(exps.size());
     assert(end >= 1 && end <= 253);
     assert(region.start >= 0 && region.start < end);

@@ -57,6 +57,10 @@ fuzz build fails on both in each case.
 Like `ci.yml`'s own leg-status table, this is a point-in-time result, not a
 standing guarantee - re-run it yourself rather than trusting an old number.
 
+The section below is the original four harnesses' measurement; the roadmap
+VX3 harnesses have their own, further down under "Status: the VX3 harnesses",
+along with what they found.
+
 Two full bounded passes ran locally before this landed (Docker: `ubuntu:26.04`
 + LLVM 21, matching CI's `linux-llvm` leg, since this was developed on a
 Windows host with no native libFuzzer). The first pass used a Debug build and
@@ -73,7 +77,8 @@ the second pass, 180s/harness:
 | `fuzz_wav_read`      |      13,370 | 56 files / 14MB   | clean  |
 
 No crash, hang, or sanitizer report across ~45M total executions between the
-two passes; `fuzz/regressions/` is empty as of this commit. `fuzz_scan`'s exec
+two passes; `fuzz/regressions/` was empty at that commit (it is not any
+more - see "Status: the VX3 harnesses"). `fuzz_scan`'s exec
 count dwarfs the decode harnesses' because a format-sniff is orders of
 magnitude cheaper than a real IMDCT-and-bit-allocation decode - expected, not
 a sign anything is under-tested relative to its own cost.

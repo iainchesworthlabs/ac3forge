@@ -72,6 +72,13 @@ struct VerifySummary {
 };
 
 // Checks every syncframe in `stream` against `key`, without modifying it.
+//
+// Unlike sign_atmos_stream, this does NOT assert on a frame outside the
+// ac3forge Atmos subset in debug builds: verifying runs on a stream the
+// caller did not produce (`ac3cli decode ... verify-objects` points it at
+// whatever arrived), so a plain non-Atmos E-AC-3 frame is an ordinary input
+// answered with kNoContainer, not a caller error. See Operation in
+// emdf_atmos_signer.cpp.
 [[nodiscard]] AC3SIGNING_EXPORT VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
                                                                    const SigningKey& key);
 

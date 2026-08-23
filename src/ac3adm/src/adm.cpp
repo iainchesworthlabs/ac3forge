@@ -1,7 +1,9 @@
 #include "ac3adm/ac3adm.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -109,7 +111,9 @@ std::vector<ChnaEntry> read_chna(const bw64::Bw64Reader& reader) {
     return entries;
 }
 
-PcmAudio read_pcm(bw64::Bw64Reader& reader) {
+// `file_bytes` is the size of the file `reader` was opened on - see the
+// frame-count clamp below for why the PCM read needs it.
+PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
     PcmAudio audio;
     audio.sample_rate = reader.sampleRate();
     audio.bits_per_sample = reader.bitDepth();
@@ -117,7 +121,30 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader) {
     if (channel_count == 0) {
         return audio;
     }
-    const auto frame_count = reader.numberOfFrames();
+    // The block alignment is recomputed here rather than read back through
+    // bw64::Bw64Reader::blockAlignment(), because numberOfFrames() divides by
+    // it: a <fmt > declaring fewer than 8 bits per channel makes it zero, so
+    // asking the reader for a frame count first would be the division that
+    // crashes.
+    const auto block_align = static_cast<std::uint64_t>(channel_count) * reader.bitDepth() / 8;
+    if (block_align == 0) {
+        return audio;
+    }
+    // numberOfFrames() is the <data> chunk's DECLARED size over that
+    // alignment - what the file claims, not what it holds. A sixty-byte file
+    // is free to claim four gigabytes of PCM (or, in RF64, sixteen exabytes
+    // through <ds64>), and sizing a buffer straight from that figure is an
+    // out-of-memory that any hostile - or merely truncated - file triggers at
+    // will. fuzz_adm_parse found exactly that within a minute of first being
+    // pointed at this function.
+    //
+    // The file's own size is the bound: <data> cannot hold more than the file
+    // does. It is a generous bound rather than a tight one, since the RIFF
+    // header and the fmt/chna/axml chunks all take space away from <data>,
+    // but it is finite and it comes from the same bytes the reader was handed
+    // rather than from a field inside them. A well-formed file is unaffected:
+    // its declared size is at most its real one, so the clamp never binds.
+    const auto frame_count = std::min(reader.numberOfFrames(), file_bytes / block_align);
     std::vector<float> interleaved(static_cast<std::size_t>(frame_count) * channel_count);
     reader.seek(0);
     reader.read(interleaved.data(), frame_count);
@@ -202,10 +229,17 @@ std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
         return std::unexpected(AdmError::kCannotOpen);
     }
 
+    // The bound read_pcm clamps the declared frame count against. Taken from
+    // the filesystem rather than from any field in the file, which is the
+    // whole point; a stat failure leaves it at zero, which reads no PCM at
+    // all rather than trusting the declaration.
+    std::error_code size_error;
+    const auto file_bytes = std::filesystem::file_size(path, size_error);
+
     AdmDocument document;
     try {
         document.chna = read_chna(*reader);
-        document.audio = read_pcm(*reader);
+        document.audio = read_pcm(*reader, size_error ? 0 : file_bytes);
     } catch (const std::exception&) {
         return std::unexpected(AdmError::kOther);
     }
