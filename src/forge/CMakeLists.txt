@@ -143,6 +143,8 @@ target_sources(forge_objects
         src/oba/oamd.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
+        src/verify/eac3_mirror.cpp
+        src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
         src/verify/selfcheck.cpp
         src/version.cpp)
