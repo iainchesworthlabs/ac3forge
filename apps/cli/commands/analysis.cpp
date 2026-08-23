@@ -431,6 +431,15 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
         for (const auto& channel : out.channels) {
             views.emplace_back(channel);
         }
+        // meter is engaged on every path that reaches here: either this very
+        // iteration's !have_first block just emplaced it (the dual-mono arm
+        // above returns instead of falling through), or a PRIOR iteration's
+        // !have_first block did and have_first now skips straight past it.
+        // clang-tidy's checker does not carry that across the loop's back
+        // edge - the same reasoning the sibling meter->push() calls in
+        // measure_qc_ac3/measure_qc_eac3_bed rely on, where a same-iteration
+        // dual_mono guard happens to keep it within the checker's reach.
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         meter->push(views);
     }
 
