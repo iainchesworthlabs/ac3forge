@@ -190,7 +190,8 @@ target_compile_features(forge_objects PUBLIC cxx_std_23)
 target_link_libraries(forge_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
     "$<BUILD_INTERFACE:ac3::coverage>"
-    "$<BUILD_INTERFACE:ac3::tracy>")
+    "$<BUILD_INTERFACE:ac3::tracy>"
+    "$<BUILD_INTERFACE:ac3::fmt>")
 
 # --- Static+shared plumbing -------------------------------------------------
 # PIC is required for any object code that might end up in a shared library

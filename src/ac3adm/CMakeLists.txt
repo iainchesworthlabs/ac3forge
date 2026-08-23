@@ -29,10 +29,12 @@
 # for why (libadm's own C++ namespace is `adm`, which is also why this
 # module's namespace is `ac3adm` and not `adm`).
 #
-# NOT wired into the Android/Shield CMake tree - see apps/android's own
-# notes on why matroska/mp4/mpegts stay out of it (std::format on NDK r26),
-# and this module adds an even less NDK-friendly dependency (Boost) on top
-# of a capability (ADM ingest) the Android app has no use for at all.
+# NOT wired into the Android/Shield CMake tree - matroska/mp4/mpegts stay out
+# of that tree too (see apps/android's own notes - not an NDK build-gap issue
+# any more, now that the project uses {fmt} rather than std::format; it's
+# purely because the app has no use for them), and this module adds an even
+# less NDK-friendly dependency (Boost) on top of a capability (ADM ingest)
+# the Android app has no use for at all either.
 # ---------------------------------------------------------------------------
 
 # Only checked when this module is actually being configured - AC3FORGE_BUILD_ADM=OFF

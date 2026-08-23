@@ -448,12 +448,17 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence",
     // dithflag[0] at bit 69, immediately followed by dithflag[1].
     constexpr std::size_t kDithflagBit0 = 40 + 27 + 2;
 
-    // Baseline: dithflag == 0 (the encoder's own default) must still decode
-    // to literal zero throughout - confirms the "off" half of §7.3.4 still
-    // holds after adding the "on" half.
+    // Baseline: dithflag == 0 must still decode to literal zero throughout -
+    // confirms the "off" half of §7.3.4 still holds after adding the "on"
+    // half. The flags are cleared by hand rather than taken on trust from the
+    // encoder: it decides them from content now (src/forge/src/encoder/
+    // dither.hpp), and this test is about the DECODER, so both sides of the
+    // comparison have to be stated here.
+    auto cleared = *frame;
+    patch_bits(cleared, kDithflagBit0, 2, 0b00);
     {
         ac3::FrameDecoder decoder;
-        const auto decoded = decoder.decode_frame(*frame);
+        const auto decoded = decoder.decode_frame(cleared);
         REQUIRE(decoded.has_value());
         for (const float v : decoded->channels[0]) {
             CHECK(v == 0.0f);
@@ -463,7 +468,7 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence",
         }
     }
 
-    auto patched = *frame;
+    auto patched = cleared;
     patch_bits(patched, kDithflagBit0, 1, 1);  // dithflag[0] = 1
 
     // Determinism: two independent decoder instances given the same patched
@@ -511,7 +516,12 @@ TEST_CASE("dithflag=1 on a coupled channel dithers independently of its sibling"
     // move just because coupling is on.
     constexpr std::size_t kDithflagBit0 = 40 + 27 + 2;
 
-    auto patched = *frame;
+    // Both directions are patched by hand - the encoder chooses these flags
+    // from content now, so neither the "off" baseline nor the "on" case can
+    // be assumed from what it happened to write.
+    auto cleared = *frame;
+    patch_bits(cleared, kDithflagBit0, 2, 0b00);
+    auto patched = cleared;
     patch_bits(patched, kDithflagBit0, 2, 0b11);  // dithflag[0] = dithflag[1] = 1
 
     ac3::FrameDecoder decoder;

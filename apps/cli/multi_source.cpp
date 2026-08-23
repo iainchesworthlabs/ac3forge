@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <optional>
-#include <print>
+#include <fmt/base.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -39,7 +39,7 @@ std::optional<LoadedSources> load_sources(
     std::span<const std::pair<std::size_t, double>> offsets) {
     auto primary = ac3::io::read_wav(std::string{in_path});
     if (!primary) {
-        std::println(stderr, "error: {}: {}", in_path, ac3::io::describe(primary.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(primary.error()));
         return std::nullopt;
     }
     LoadedSources out;
@@ -50,11 +50,11 @@ std::optional<LoadedSources> load_sources(
     for (const auto& path : extra) {
         auto wav = ac3::io::read_wav(path);
         if (!wav) {
-            std::println(stderr, "error: {}: {}", path, ac3::io::describe(wav.error()));
+            fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(wav.error()));
             return std::nullopt;
         }
         if (wav->sample_rate != out.sample_rate) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: {} is {} Hz, but {} is {} Hz - every source must share a "
                          "sample rate",
                          path, wav->sample_rate, in_path, out.sample_rate);
@@ -83,7 +83,7 @@ std::optional<plan::Routing> routing_for_sources(const plan::Plan& p, const Load
                                                  const std::optional<std::string>& map_spec) {
     if (!map_spec) {
         if (sources.shapes.size() > 1) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: more than one source needs map= to say where each channel "
                          "goes ({})",
                          plan::kAssignmentSyntax);
@@ -93,7 +93,7 @@ std::optional<plan::Routing> routing_for_sources(const plan::Plan& p, const Load
     }
     plan::Assignment assignment;
     if (!plan::parse_assignment(*map_spec, sources.shapes, assignment)) {
-        std::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
+        fmt::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
         return std::nullopt;
     }
     const auto target = plan::resolve(p);
@@ -111,7 +111,7 @@ std::optional<plan::Routing> routing_for_sources(const plan::Plan& p, const Load
                                 plan::DestinationKind::kProgramme1,
                                 plan::DestinationKind::kProgramme2}) {
             for (const auto& [s, c] : assignment.rows_of(kind)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "warning: {}.{} maps to '{}', which this command has no way to "
                              "carry - that channel contributes nothing to the output",
                              s, c, plan::format_destination(assignment.at(s, c)));
@@ -121,7 +121,7 @@ std::optional<plan::Routing> routing_for_sources(const plan::Plan& p, const Load
     auto routing = dual_mono ? plan::dual_mono_routing(sources.shapes, assignment)
                              : plan::route(target, sources.shapes, assignment);
     if (!routing) {
-        std::println(stderr, "error: map= does not resolve to a valid routing for this format");
+        fmt::println(stderr, "error: map= does not resolve to a valid routing for this format");
         return std::nullopt;
     }
     return routing;
@@ -154,7 +154,7 @@ void gather_frame(const LoadedSources& sources, std::size_t start,
 void print_routing(const plan::Plan& p, const plan::Routing& routing, std::string_view label,
                    FILE* out) {
     if (routing.is_permutation()) {
-        std::println(out, "  source carried directly into {}", label);
+        fmt::println(out, "  source carried directly into {}", label);
         return;
     }
     const auto names = plan::coded_channel_names(plan::resolve(p));
@@ -169,9 +169,9 @@ void print_routing(const plan::Plan& p, const plan::Routing& routing, std::strin
             silent += names[static_cast<std::size_t>(c)];
         }
     }
-    std::println(out, "  {} source channels rendered onto {}", routing.source_channels, label);
+    fmt::println(out, "  {} source channels rendered onto {}", routing.source_channels, label);
     if (!silent.empty()) {
-        std::println(out, "  silent (the source carries nothing that belongs there): {}", silent);
+        fmt::println(out, "  silent (the source carries nothing that belongs there): {}", silent);
     }
 }
 

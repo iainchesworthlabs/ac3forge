@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <numbers>
 #include <span>
 #include <string>
@@ -445,7 +445,7 @@ TEST_CASE("HLS media playlist lists every fragment in order with EXT-X-MAP and c
     // from the SAME segments the playlist was built from, not copy-pasted
     // from hls.cpp's own formula.
     for (const auto& segment : fixture.fragmented.media_segments) {
-        const auto expected_uri = std::format("segment{}.m4s", segment.sequence_number);
+        const auto expected_uri = fmt::format("segment{}.m4s", segment.sequence_number);
         CHECK(playlist.find(expected_uri) != std::string::npos);
     }
     // TARGETDURATION must be an integer >= every #EXTINF value (RFC 8216
@@ -453,7 +453,7 @@ TEST_CASE("HLS media playlist lists every fragment in order with EXT-X-MAP and c
     const double max_seconds = 3.0 * static_cast<double>(ac3::kSamplesPerFrame) /
                                static_cast<double>(fixture.track.sample_rate);
     const auto target = static_cast<std::uint64_t>(std::ceil(max_seconds));
-    CHECK(playlist.find(std::format("#EXT-X-TARGETDURATION:{}\n", target)) != std::string::npos);
+    CHECK(playlist.find(fmt::format("#EXT-X-TARGETDURATION:{}\n", target)) != std::string::npos);
 }
 
 TEST_CASE("HLS master playlist signals CODECS and CHANNELS correctly", "[hls]") {
@@ -463,7 +463,7 @@ TEST_CASE("HLS master playlist signals CODECS and CHANNELS correctly", "[hls]") 
         const auto master = mp4::build_hls_master_playlist(
             fixture.track, fixture.fragmented.media_segments, "audio.m3u8", mp4::HlsOptions{});
         CHECK(master.find("CODECS=\"ec-3\"") != std::string::npos);
-        CHECK(master.find(std::format("CHANNELS=\"{}\"", fixture.track.channels)) !=
+        CHECK(master.find(fmt::format("CHANNELS=\"{}\"", fixture.track.channels)) !=
               std::string::npos);
         // Audio-only content self-references: the URI after EXT-X-STREAM-INF
         // is the same media playlist EXT-X-MEDIA already names (see
@@ -501,9 +501,9 @@ TEST_CASE("DASH adaptation set snippet carries the correct codecs, timescale and
     CHECK(snippet.find("</AdaptationSet>") != std::string::npos);
     CHECK(snippet.find("mimeType=\"audio/mp4\"") != std::string::npos);
     CHECK(snippet.find("codecs=\"ec-3\"") != std::string::npos);
-    CHECK(snippet.find(std::format("audioSamplingRate=\"{}\"", fixture.track.sample_rate)) !=
+    CHECK(snippet.find(fmt::format("audioSamplingRate=\"{}\"", fixture.track.sample_rate)) !=
           std::string::npos);
-    CHECK(snippet.find(std::format("timescale=\"{}\"", fixture.track.sample_rate)) !=
+    CHECK(snippet.find(fmt::format("timescale=\"{}\"", fixture.track.sample_rate)) !=
           std::string::npos);
     CHECK(snippet.find("initialization=\"init.mp4\"") != std::string::npos);
     CHECK(snippet.find("media=\"segment$Number$.m4s\"") != std::string::npos);

@@ -51,7 +51,8 @@ target_link_libraries(ac3cli
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
-        ac3::warnings)
+        ac3::warnings
+        ac3::fmt)
 
 # ac3::forge, matroska::matroska, mp4::mp4 and mpegts::mpegts are link-only here, but
 # installed and packaged in their own right elsewhere - see
