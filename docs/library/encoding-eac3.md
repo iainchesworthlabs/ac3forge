@@ -73,6 +73,26 @@ extension all separately taking over the top of the spectrum) — the boundaries
 rule are untouched, so nothing here needed reinventing beyond that band count and clamping the
 last active band to wherever this channel's own coding actually stops.
 
+The bit allocation parameters are transmitted rather than inherited (`bamode` 1). Table E1.4's
+own `bamode == 0` defaults are not §8.2.12's basic-encoder set — most of the two agree, but
+`floorcod` is 0x7 against §8.2.12's 4 — so "inherit" was never the same thing as "what AC-3
+does". Sending them costs `baie` plus eleven bits in block 0 and one bit in each of the other
+five, 17 a frame; it buys `dbpbcod` 3, the one departure the AC-3 encoder measured its way to
+(see [Encoding AC-3](encoding-ac3.md)), which lifts the masking curve over bands quieter than
+`dbknee` and sends their bits to bands that hold energy. `floorcod` stays at 0x7: it is the
+lowest of the eight and never binds, which the same sweep confirmed here as it had for AC-3.
+
+Dither substitution (§7.3.4) works exactly as it does on AC-3 — see
+[Encoding AC-3](encoding-ac3.md#dither-substitution) for the rule — with `dithflage` set so the
+per-channel flags are transmitted rather than defaulting to on. One narrowing is specific to this
+generation: dither is held off entirely for any frame that uses spectral extension. The encoder
+holds a reconstruction of what the decoder will produce there, because the extension bands are
+scaled to match the copy source's own energy, and the decoder's dither values are not
+reproducible from the encoder's side — the sequence a bin receives depends on how many zero-bit
+bins the decoder walked before it, across every stream and block. Rather than shadow that
+traversal order, the tool that would disturb it is switched off. An AHT channel is left out of
+the judgement too: its zero-`hebap` bins reconstruct as literal zero whatever the flag says.
+
 `FrameConfig::dialnorm2` (see "Dual mono" in [Encoding AC-3](encoding-ac3.md)) works exactly
 the same way here: set it alongside `dialnorm` when `acmod` is `kDualMono`. Dual mono is always a
 lone independent substream with no dependents — 1+1 has no bed/dependent split to make — so

@@ -5,10 +5,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <memory>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -74,7 +74,7 @@ struct QcResult {
 std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
-        std::println(stderr, "error: not a valid AC-3 stream");
+        fmt::println(stderr, "error: not a valid AC-3 stream");
         return std::nullopt;
     }
     ac3::FrameDecoder decoder;
@@ -92,7 +92,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded) {
-            std::println(stderr, "error: {}", ac3::describe(decoded.error()));
+            fmt::println(stderr, "error: {}", ac3::describe(decoded.error()));
             return std::nullopt;
         }
         if (!have_first) {
@@ -183,7 +183,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
 std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream, int programme) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
-        std::println(stderr, "error: not a valid E-AC-3 stream");
+        fmt::println(stderr, "error: not a valid E-AC-3 stream");
         return std::nullopt;
     }
     // Heap-allocated (PREfast's C6262, alert #93): Eac3Decoder's per-block
@@ -255,7 +255,7 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream, int p
     for (const auto& frame : *frames) {
         const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
-            std::println(stderr, "error: decode failed (code {})",
+            fmt::println(stderr, "error: decode failed (code {})",
                          static_cast<int>(decoded.error()));
             return std::nullopt;
         }
@@ -273,7 +273,7 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream, int p
     }
 
     if (!have_first) {
-        std::println(stderr, "error: no independent substream frames for programme {}",
+        fmt::println(stderr, "error: no independent substream frames for programme {}",
                      programme);
         return std::nullopt;
     }
@@ -313,27 +313,27 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream, int p
 // requested gate passed (or none was requested at all) - run_qc's own exit
 // code is exactly this, ANDed across every programme it reports.
 bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::string>& preset_arg) {
-    const std::string heading = p.label.empty() ? std::string{} : std::format("{}: ", p.label);
-    std::println("{}measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):", heading);
+    const std::string heading = p.label.empty() ? std::string{} : fmt::format("{}: ", p.label);
+    fmt::println("{}measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):", heading);
     if (p.integrated_lkfs) {
-        std::println("  integrated loudness  {:>+8.2f} LKFS", *p.integrated_lkfs);
-        std::println("  loudness range       {}", p.lra_lu ? std::format("{:>7.2f} LU", *p.lra_lu)
+        fmt::println("  integrated loudness  {:>+8.2f} LKFS", *p.integrated_lkfs);
+        fmt::println("  loudness range       {}", p.lra_lu ? fmt::format("{:>7.2f} LU", *p.lra_lu)
                                                              : std::string{"n/a"});
     } else {
-        std::println("  integrated loudness  no audio above the -70 LKFS absolute gate");
-        std::println("  loudness range       n/a");
+        fmt::println("  integrated loudness  no audio above the -70 LKFS absolute gate");
+        fmt::println("  loudness range       n/a");
     }
-    std::println("  true peak            {}",
-                 p.true_peak_dbtp ? std::format("{:>+8.2f} dBTP", *p.true_peak_dbtp)
+    fmt::println("  true peak            {}",
+                 p.true_peak_dbtp ? fmt::format("{:>+8.2f} dBTP", *p.true_peak_dbtp)
                                    : std::string{"n/a"});
-    std::println("{}embedded metadata:", heading);
-    std::println("  dialnorm             {:>3}  (claims dialogue at {:.2f} LKFS)", p.dialnorm,
+    fmt::println("{}embedded metadata:", heading);
+    fmt::println("  dialnorm             {:>3}  (claims dialogue at {:.2f} LKFS)", p.dialnorm,
                  -static_cast<double>(p.dialnorm));
     if (p.compr) {
-        std::println("  compr                present, {:+.2f} dB",
+        fmt::println("  compr                present, {:+.2f} dB",
                      ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)));
     } else {
-        std::println("  compr                absent");
+        fmt::println("  compr                absent");
     }
     if (p.integrated_lkfs) {
         // §5.4.2.8: dialnorm states how far dialogue sits below digital
@@ -343,45 +343,45 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
         const double claimed_lkfs = -static_cast<double>(p.dialnorm);
         const double delta = *p.integrated_lkfs - claimed_lkfs;
         const int implied = ac3::meta::dialnorm_from_lkfs(*p.integrated_lkfs);
-        std::println("{}dialnorm check:", heading);
-        std::println("  claimed              {:>+8.2f} LKFS  (from dialnorm {})", claimed_lkfs,
+        fmt::println("{}dialnorm check:", heading);
+        fmt::println("  claimed              {:>+8.2f} LKFS  (from dialnorm {})", claimed_lkfs,
                      p.dialnorm);
-        std::println("  delta                {:>+8.2f} dB    (measured - claimed; positive = "
+        fmt::println("  delta                {:>+8.2f} dB    (measured - claimed; positive = "
                      "measured is louder)",
                      delta);
-        std::println("  measurement-derived dialnorm would be {}{}", implied,
-                     implied == p.dialnorm ? " (matches)" : std::format(", not {}", p.dialnorm));
+        fmt::println("  measurement-derived dialnorm would be {}{}", implied,
+                     implied == p.dialnorm ? " (matches)" : fmt::format(", not {}", p.dialnorm));
     }
 
     if (!preset_arg) {
         return true;
     }
     bool all_pass = true;
-    std::println("{}gates:", heading);
+    fmt::println("{}gates:", heading);
     const auto check_one = [&](ac3::meta::QcPresetId id) {
         const auto preset = ac3::meta::qc_preset(id);
         const auto name = ac3::meta::qc_preset_name(id);
         const auto verdict = ac3::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
-        std::println("  {}:", name);
+        fmt::println("  {}:", name);
         if (p.integrated_lkfs) {
-            std::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured {:+.2f} LKFS   "
+            fmt::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured {:+.2f} LKFS   "
                          "delta {:+.2f} LU   {}",
                          preset.target_lkfs, preset.tolerance_lu, *p.integrated_lkfs,
                          *verdict.loudness_delta_lu, verdict.loudness_pass ? "PASS" : "FAIL");
         } else {
-            std::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured n/a   FAIL",
+            fmt::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured n/a   FAIL",
                          preset.target_lkfs, preset.tolerance_lu);
         }
         if (p.true_peak_dbtp) {
-            std::println("    true peak  limit  <= {:+.1f} dBTP        measured {:+.2f} dBTP        "
+            fmt::println("    true peak  limit  <= {:+.1f} dBTP        measured {:+.2f} dBTP        "
                          "{}",
                          preset.max_true_peak_dbtp, *p.true_peak_dbtp,
                          verdict.true_peak_pass ? "PASS" : "FAIL");
         } else {
-            std::println("    true peak  limit  <= {:+.1f} dBTP        measured n/a   FAIL",
+            fmt::println("    true peak  limit  <= {:+.1f} dBTP        measured n/a   FAIL",
                          preset.max_true_peak_dbtp);
         }
-        std::println("    verdict: {}", verdict.pass() ? "PASS" : "FAIL");
+        fmt::println("    verdict: {}", verdict.pass() ? "PASS" : "FAIL");
         if (!verdict.pass()) {
             all_pass = false;
         }
@@ -400,7 +400,7 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
             // its own "preset" handling) - kept as a defensive fallback
             // rather than an assert, since main.cpp has no
             // exception-based unreachable() convention of its own.
-            std::println(stderr, "error: unknown qc preset '{}'", *preset_arg);
+            fmt::println(stderr, "error: unknown qc preset '{}'", *preset_arg);
             all_pass = false;
         }
     }
@@ -414,7 +414,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
                     std::optional<int> want_programme) {
     const auto ids = ac3::programme_ids(stream);
     if (!ids || ids->empty()) {
-        std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+        fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return 1;
     }
     // §E2.3.1.2: levels are per programme. Two independent substreams are two
@@ -426,11 +426,11 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     }
     const auto units = ac3::split_access_units(stream, *programme);
     if (!units || units->empty()) {
-        std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+        fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return 1;
     }
     if (ids->size() > 1) {
-        std::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
+        fmt::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
                      ac3cli::format_programme_ids(*ids));
     }
     ac3::Eac3Decoder decoder{{.programme = programme}};
@@ -439,7 +439,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
-            std::println(stderr, "error: {}: decode failed (code {})", in_path,
+            fmt::println(stderr, "error: {}: decode failed (code {})", in_path,
                          static_cast<int>(decoded.error()));
             return 1;
         }
@@ -454,7 +454,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
         if (totals.empty()) {
             first = out;
             totals.resize(out.channels.size());
-            std::println("{}: {} access units, {} substreams each, {} channels, {} Hz",
+            fmt::println("{}: {} access units, {} substreams each, {} channels, {} Hz",
                          in_path, units->size(), out.substream_count,
                          out.channels.size(), sample_rate_hz(out.sample_rate));
         }
@@ -471,9 +471,9 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
             }
         }
     }
-    std::println("");
-    std::println("per-channel levels:");
-    std::println("  {:<6} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms", "peak (-60..0 dBFS)",
+    fmt::println("");
+    fmt::println("per-channel levels:");
+    fmt::println("  {:<6} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms", "peak (-60..0 dBFS)",
                  "clipped");
     // Dual mono has no Table E2.5 location - `layout` is left empty for
     // exactly that case (see decode_access_unit) - so Ch1/Ch2 name themselves
@@ -481,10 +481,10 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     const bool dual_mono = first.acmod == ac3::Acmod::kDualMono;
     for (std::size_t ch = 0; ch < totals.size(); ++ch) {
         const auto& stats = totals[ch];
-        const std::string name = dual_mono ? std::format("Ch{}", ch + 1)
+        const std::string name = dual_mono ? fmt::format("Ch{}", ch + 1)
                                            : std::string{ac3::eac3::chanmap::name(
                                                  first.layout[static_cast<int>(ch)])};
-        std::println("  {:<6} {:>8.2f} {:>8.2f}  [{}] {}", name, stats.peak_db(),
+        fmt::println("  {:<6} {:>8.2f} {:>8.2f}  [{}] {}", name, stats.peak_db(),
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
                      stats.clipped_samples > 0 ? std::to_string(stats.clipped_samples) : "-");
     }
@@ -552,12 +552,12 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
            std::optional<int> want_programme) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
+        fmt::println(stderr, "error: cannot read {}", in_path);
         return 1;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
-        std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
     std::optional<QcResult> result;
@@ -567,7 +567,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         // neither of them has.
         const auto ids = ac3::programme_ids(stream);
         if (!ids || ids->empty()) {
-            std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+            fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return 1;
         }
         const auto programme = ac3cli::choose_programme(*ids, want_programme);
@@ -575,7 +575,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
             return 1;
         }
         if (ids->size() > 1) {
-            std::println("qc: programme {} of {} ({})", *programme, ids->size(),
+            fmt::println("qc: programme {} of {} ({})", *programme, ids->size(),
                          ac3cli::format_programme_ids(*ids));
         }
         result = measure_qc_eac3(stream, *programme);
@@ -585,7 +585,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
     if (!result) {
         return 1;
     }
-    std::println("qc: {} ({}, {}, {} Hz, {} {}, {:.2f} s)", in_path, result->codec_label,
+    fmt::println("qc: {} ({}, {}, {} Hz, {} {}, {:.2f} s)", in_path, result->codec_label,
                  result->layout_label, result->sample_rate_hz, result->unit_count,
                  result->unit_label, result->seconds);
     bool all_pass = true;
@@ -602,7 +602,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
 int run_levels(std::string_view in_path, std::optional<int> want_programme) {
     const auto bytes = read_all(in_path);
     if (bytes.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
+        fmt::println(stderr, "error: cannot read {}", in_path);
         return 1;
     }
     // A syncframe opens with 0x0B77 (§5.4.1.1); anything else is treated as a
@@ -619,7 +619,7 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
         }
         const auto frames = ac3::split_frames(bytes);
         if (!frames || frames->empty()) {
-            std::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
+            fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return 1;
         }
         ac3::FrameDecoder decoder;
@@ -627,13 +627,13 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
-                std::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
                 return 1;
             }
             if (!meter) {
                 meter.emplace(decoded->acmod, decoded->lfe,
                               sample_rate_hz(decoded->sample_rate));
-                std::println("{}: {} frames, {}, {} kbps, {} Hz", in_path, frames->size(),
+                fmt::println("{}: {} frames, {}, {} kbps, {} Hz", in_path, frames->size(),
                              ac3::analysis::layout_name(decoded->acmod, decoded->lfe),
                              decoded->bitrate_kbps, sample_rate_hz(decoded->sample_rate));
             }
@@ -664,19 +664,19 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
 
     const auto wav = ac3::io::read_wav(std::string{in_path});
     if (!wav) {
-        std::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
         return 1;
     }
     const auto layout = ac3::io::ac3_layout_for(wav->channels.size());
     if (!layout) {
-        std::println(stderr, "error: levels handles 1 to 6 channels ({} given)",
+        fmt::println(stderr, "error: levels handles 1 to 6 channels ({} given)",
                      wav->channels.size());
         return 1;
     }
     const double seconds = wav->sample_rate > 0
                                ? static_cast<double>(wav->frame_count()) / wav->sample_rate
                                : 0.0;
-    std::println("{}: {} Hz, {:.2f} s, shown in A/52 order as {}", in_path, wav->sample_rate,
+    fmt::println("{}: {} Hz, {:.2f} s, shown in A/52 order as {}", in_path, wav->sample_rate,
                  seconds, ac3::analysis::layout_name(layout->acmod, layout->lfe));
 
     ac3::analysis::LevelMeter meter{layout->acmod, layout->lfe, wav->sample_rate};
@@ -696,7 +696,7 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
 int run_loudness(std::string_view in_path) {
     const auto wav = ac3::io::read_wav(std::string{in_path});
     if (!wav) {
-        std::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
         return 1;
     }
     ac3::SampleRate sr{};
@@ -705,7 +705,7 @@ int run_loudness(std::string_view in_path) {
         case 44100: sr = ac3::SampleRate::k44100; break;
         case 32000: sr = ac3::SampleRate::k32000; break;
         default:
-            std::println(stderr, "error: sample rate {} is not legal for AC-3", wav->sample_rate);
+            fmt::println(stderr, "error: sample rate {} is not legal for AC-3", wav->sample_rate);
             return 1;
     }
     // The BS.1770 channel weighting depends on which coded positions are
@@ -713,32 +713,32 @@ int run_loudness(std::string_view in_path) {
     // (Table 5.8) rather than assumed.
     const auto layout = ac3::io::ac3_layout_for(wav->channels.size());
     if (!layout) {
-        std::println(stderr, "error: {} channels is not an AC-3 layout",
+        fmt::println(stderr, "error: {} channels is not an AC-3 layout",
                      wav->channels.size());
         return 1;
     }
     const auto dialnorm = measured_dialnorm(*wav, sr, layout->acmod, layout->lfe);
     if (!dialnorm) {
-        std::println("no audio above the -70 LKFS absolute gate: loudness undefined");
+        fmt::println("no audio above the -70 LKFS absolute gate: loudness undefined");
         return 1;
     }
     // Reporting the answer was missing where this came from, so the command
     // measured the programme and then said nothing about it.
-    std::println("{}: {} Hz, {}", in_path, wav->sample_rate,
+    fmt::println("{}: {} Hz, {}", in_path, wav->sample_rate,
                  ac3::analysis::layout_name(layout->acmod, layout->lfe));
-    std::println("  dialogue level -{} LKFS -> dialnorm {}", *dialnorm, *dialnorm);
+    fmt::println("  dialogue level -{} LKFS -> dialnorm {}", *dialnorm, *dialnorm);
     return 0;
 }
 
 int run_spdif(std::string_view in_path, std::string_view out_path) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
+        fmt::println(stderr, "error: cannot read {}", in_path);
         return 1;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
-        std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
     const bool eac3 = *bsid > 8;
@@ -770,7 +770,7 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
     if (!ok) {
         sink.abort();
         if (!sink_failed) {
-            std::println(stderr, "error: {} is not a valid {} stream", in_path,
+            fmt::println(stderr, "error: {} is not a valid {} stream", in_path,
                          eac3 ? "E-AC-3" : "AC-3");
         }
         return 1;
@@ -785,10 +785,10 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
     if (!sink.close()) {
         return 1;
     }
-    std::println("wrapped {} into IEC 61937 bursts -> {} ({} Hz carrier)",
+    fmt::println("wrapped {} into IEC 61937 bursts -> {} ({} Hz carrier)",
                  eac3 ? "E-AC-3 access units" : "AC-3 frames", out_path, carrier_rate);
-    std::println("play bit-exactly (100% volume, exclusive/passthrough output) to light up");
-    std::println("a receiver's Dolby Digital{} indicator.", eac3 ? " Plus" : "");
+    fmt::println("play bit-exactly (100% volume, exclusive/passthrough output) to light up");
+    fmt::println("a receiver's Dolby Digital{} indicator.", eac3 ? " Plus" : "");
     return 0;
 }
 

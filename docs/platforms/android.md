@@ -56,8 +56,14 @@ linked into one shared object (`ac3forge_jni.so`), and a static STL would duplic
 (locale, iostream init) if anything else in the process ever pulled in libc++ too.
 
 The r26 pin also reaches into the library itself: r26's bundled libc++ does not implement
-`<format>`, so shared library code avoids it outright — `src/forge/src/version.cpp` builds its
-version string by plain concatenation and cites this page for why.
+`<format>` at all unless the compiler is invoked with `-fexperimental-library`, which nothing in
+this project's Android build passes. Rather than avoiding formatted output file by file to route
+around that, the whole project uses [{fmt}](https://github.com/fmtlib/fmt) — `fmt::format`/
+`fmt::print` in place of `std::format`/`std::print` everywhere, not just here — since {fmt} has no
+such gap (see `cmake/Fmt.cmake` and `CONTRIBUTING.md`'s code-conventions section). That single
+choice is also what lets `mp4::mp4`'s HLS/DASH signaling helpers build for Android at all; see the
+note in `apps/android/app/src/main/cpp/CMakeLists.txt` for why this app still doesn't link them
+regardless (it never muxes a file).
 
 `minSdk = 26` (Oreo) is a hard floor, not a target: `monitor.cpp` depends on AAudio outright, which
 does not exist below API 26, and there is no fallback path. Real Shield TV hardware (2017 model
