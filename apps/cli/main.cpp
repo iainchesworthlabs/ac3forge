@@ -24,6 +24,7 @@
 #include "commands/decode.hpp"
 #include "commands/encode.hpp"
 #include "commands/live_audio.hpp"
+#include "commands/stream_tools.hpp"
 #include "commands/synth.hpp"
 #include "support.hpp"
 
@@ -83,6 +84,16 @@ struct Args {
         int value = 0;
         const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
         return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
+    }
+    // Every positional argument from index i onward, for the one command
+    // whose argument list is variadic ('cat' joins as many inputs as it is
+    // given). Returned as string_views over argv, which outlives the call.
+    [[nodiscard]] std::vector<std::string_view> tail(std::size_t i) const {
+        std::vector<std::string_view> out;
+        for (; i < a.size(); ++i) {
+            out.emplace_back(a[i]);
+        }
+        return out;
     }
 };
 
@@ -148,13 +159,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 26 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 31 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 26> kCommands{{
+constexpr std::array<Command, 31> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -242,6 +253,35 @@ constexpr std::array<Command, 26> kCommands{{
      "JOC-reconstructed object as its own object_NN.wav there",
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3)); }},
+    {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
+     "decode and re-encode, carrying dialnorm, compr and the mix metadata across - the "
+     "DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the "
+     "output name's suffix, or from codec=",
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_transcode(x.str(1), x.str(2), x.u32(3, 448), x.str(4), x.meta);
+     }},
+    {"metadata", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
+     "rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the "
+     "audio is copied through untouched, not re-encoded",
+     Needs::kNothing,
+     [](const Args& x) { return run_metadata(x.str(1), x.str(2), x.meta); }},
+    {"normalize", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
+     "measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio "
+     "untouched",
+     Needs::kNothing,
+     [](const Args& x) { return run_normalize(x.str(1), x.str(2), x.meta); }},
+    {"cut", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds]",
+     "extract on access-unit boundaries; nothing is re-encoded", Needs::kNothing,
+     [](const Args& x) { return run_cut(x.str(1), x.str(2), x.str(3), x.str(4)); }},
+    {"cat", 4, "<out.ac3|out.ec3> <in1> <in2> [in3...]",
+     "join streams end to end (output FIRST, since the input list is variadic); refuses "
+     "inputs whose codec, rate, layout or substream shape differ",
+     Needs::kNothing,
+     [](const Args& x) {
+         const auto inputs = x.tail(2);
+         return run_cat(x.str(1), inputs);
+     }},
     {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report", Needs::kNothing,
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
@@ -424,6 +464,16 @@ void print_usage() {
     std::println("");
     std::println("For decode, drc=<scale> applies §7.7.1 partial compression (0 = ignore,");
     std::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
+    std::println("");
+    std::println("transcode/metadata/normalize/cut/cat work on an ALREADY-encoded stream.");
+    std::println("       Only transcode re-encodes - it exists because DD+ and DD are different");
+    std::println("       codecs and nothing else bridges them; it carries dialnorm, compr and");
+    std::println("       the mix metadata across rather than resetting them, and folds a");
+    std::println("       layout AC-3 cannot code down to 5.1 per §7.8. The other four never");
+    std::println("       touch a coded coefficient: metadata/normalize rewrite bsi fields in");
+    std::println("       place and re-stamp the CRCs, cut/cat move whole access units.");
+    std::println("       Convertible substreams (strmtyp 2) are out of scope for all five,");
+    std::println("       the same way 'validate' already refuses them.");
     std::println("");
     std::println("qc measures a stream's real BS.1770-4/EBU Tech 3342 loudness and compares it");
     std::println("       against the dialnorm/compr it embeds - preset=<name> also gates that");

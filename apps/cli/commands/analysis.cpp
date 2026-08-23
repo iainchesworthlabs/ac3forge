@@ -521,6 +521,37 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 
 }  // namespace
 
+std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream) {
+    const auto bsid = ac3::stream_bsid(stream);
+    if (!bsid) {
+        std::println(stderr, "error: too short to hold a syncframe");
+        return std::nullopt;
+    }
+    // The same two measurement passes `qc` runs, which is the point: a
+    // stream's loudness must not depend on which command asked.
+    const auto result = *bsid > 8 ? measure_qc_eac3(stream) : measure_qc_ac3(stream);
+    if (!result) {
+        return std::nullopt;
+    }
+    StreamLoudness out;
+    for (const auto& programme : result->programmes) {
+        if (programme.label == "Ch1") {
+            out.ch1_lkfs = programme.integrated_lkfs;
+        } else if (programme.label == "Ch2") {
+            out.ch2_lkfs = programme.integrated_lkfs;
+        } else {
+            out.integrated_lkfs = programme.integrated_lkfs;
+        }
+    }
+    // Dual mono has no whole-programme figure of its own; Ch1's is what a
+    // caller wanting "the" loudness of such a stream means, and reporting it
+    // here keeps every caller from having to special-case the layout.
+    if (!out.integrated_lkfs) {
+        out.integrated_lkfs = out.ch1_lkfs;
+    }
+    return out;
+}
+
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
