@@ -88,6 +88,10 @@ int choose_chbwcod(std::uint32_t bitrate_kbps, int nfchans,
                    std::span<const std::uint8_t> peak_exponents, SampleRate sample_rate,
                    int previous_chbwcod) {
     const int ceiling = rate_ceiling_chbwcod(bitrate_kbps, nfchans);
+    const int per_channel_kbps = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
+    if (per_channel_kbps >= kContentNarrowingCeiling) {
+        return ceiling;
+    }
     const int content = chbwcod_for_endmant(audible_endmant(peak_exponents, sample_rate));
     int target = std::min(ceiling, content);
     if (previous_chbwcod >= 0) {

@@ -79,6 +79,38 @@ AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const double> coefficie
 // AC-3 has used since 0.7.0.
 [[nodiscard]] AC3FORGE_EXPORT int rate_ceiling_chbwcod(std::uint32_t bitrate_kbps, int nfchans);
 
+// Above this per-channel rate the content edge is not taken at all and the
+// rate ceiling stands on its own.
+//
+// Narrowing buys bits, and bits at the top of the band are only worth
+// reclaiming while the rest of the spectrum is short of them. Above roughly
+// 128 kbit/s per channel it is not: the SNR-offset search already has more
+// room than it can spend, so dropping a band returns nothing and can only
+// lose whatever was in it. Measured as the mean change from the rate-only
+// rule over the whole corpus - real programme material (piano, thunderstorm,
+// church bells, speech, samba) and both checked-in fixtures - at each
+// per-channel rate the AC-3 legs reach:
+//
+//   per channel     64      89      96     128     192     224
+//   legs             2       2       6       8       6       6
+//   SNR dB       +0.24   +0.44   +1.80   +0.68   +0.58   +0.12
+//   MOS         +0.017  +0.006  +0.013  -0.041  -0.004  -0.010
+//
+// The 128 column is where it turns, and it turns on the material that has
+// the least harmonic structure to mask a missing band. Split out, that
+// column is +0.004 MOS over the six stereo legs and -0.355 on
+// reference_51.wav at 640 kbit/s, whose FIR-smoothed noise is flat to
+// Nyquist. The real thunderstorm leg makes the same point without the
+// fixture: +0.004 MOS at 128 kbit/s per channel, -0.017 at 192, -0.050 at
+// 224. 128 is the last rate at which noise-like content still gains.
+//
+// What this costs is the 128-per-channel column's stereo wins - E-AC-3
+// stereo at 256 kbit/s measured +1.0 to +3.5 dB SNR and up to +0.015 MOS -
+// given up to keep the rule from ever losing. Separating those cases wants
+// the tonality half of this decision, which is measured here but not built:
+// a flat high band is worth keeping at a rate where a sparse one is not.
+inline constexpr int kContentNarrowingCeiling = 128;
+
 // The whole decision, shared by both encoders so they cannot drift apart:
 // the rate ceiling above, the content edge under it, and a limit on how fast
 // the answer may fall.

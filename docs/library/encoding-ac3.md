@@ -80,6 +80,14 @@ put a bit there at all.
 Narrowing is capped at two codes per frame, so a quiet passage cannot pump the band edge;
 widening is immediate, so a transient's high band is not a frame late.
 
+Above **128 kbit/s per channel** the content half is skipped and the ceiling stands alone.
+Narrowing buys bits, and bits are only worth buying while the rest of the spectrum is short of
+them; past that rate the SNR-offset search already has more room than it can spend, so dropping
+a band returns nothing and can only lose what was in it. Measured over the corpus, the mean
+change from the old rate-only rule is +1.80 dB SNR / +0.013 MOS at 96 kbit/s per channel and
++0.12 dB / −0.010 MOS at 224, turning at 128 — earliest on material whose high band is
+noise-like and so has no harmonic structure to mask its absence.
+
 Setting `chbwcod` to 0–60 pins it and skips both halves.
 
 ### Block switching

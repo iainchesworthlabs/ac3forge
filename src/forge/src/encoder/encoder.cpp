@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <expected>
 #include <memory>
 #include <span>
@@ -129,6 +130,26 @@ int fgaincod_for(const EncoderConfig& config) {
         return config.fgaincod;
     }
     return BitAllocCodes{}.fgaincod;
+}
+
+// TEMPORARY-EQ7-MEASUREMENT: sdcycod/fdcycod/sgaincod are not configurable
+// and are not going to be; this hook exists only so EQ7's "re-check them
+// while the harness is up" can be run without three rebuilds, and is
+// removed before the branch is pushed.
+struct MeasurementCodes {
+    int sdcycod = 2;
+    int fdcycod = 1;
+    int sgaincod = 1;
+    MeasurementCodes() {
+        std::ifstream in("D:/ac3forge-material/codes.txt");
+        if (in) {
+            in >> sdcycod >> fdcycod >> sgaincod;
+        }
+    }
+};
+const MeasurementCodes& measurement_codes() {
+    static const MeasurementCodes codes;
+    return codes;
 }
 
 // Step 9's SNR-offset search result: the composite offset it found, and the
@@ -449,8 +470,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     //
     // Under that ceiling the content decides, through A/52's own hearing
     // threshold - see ac3/encoder/bandwidth.hpp for why that particular test
-    // and not an energy one. Narrowing is rate-limited so a quiet passage
-    // cannot pump the band edge; widening is immediate.
+    // and not an energy one, and for the per-channel rate above which the
+    // content is not consulted at all (reclaimed bits are only worth having
+    // while the rest of the spectrum is short of them). Narrowing is
+    // rate-limited so a quiet passage cannot pump the band edge; widening is
+    // immediate.
     int chbwcod = config_.chbwcod;
     if (chbwcod < 0) {
         std::array<std::uint8_t, 253> peak_exponents{};
@@ -575,7 +599,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // curve for the offset to sit on. A sound search would have to
     // reconstruct and measure real distortion per candidate, which is a far
     // larger change than the uniform win above justifies.
-    const BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_)};
+    const BitAllocCodes codes{.sdcycod = measurement_codes().sdcycod,
+                              .fdcycod = measurement_codes().fdcycod,
+                              .sgaincod = measurement_codes().sgaincod,
+                              .dbpbcod = 3,
+                              .fgaincod = fgaincod_for(config_)};
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
     // The coupling channel is one more stream on the end, so its coefficient

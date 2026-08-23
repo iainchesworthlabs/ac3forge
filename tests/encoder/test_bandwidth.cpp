@@ -201,24 +201,45 @@ TEST_CASE("choose_chbwcod holds the rate ceiling and rate-limits narrowing") {
     CHECK(choose_chbwcod(192, 5, full, rate, -1) == 25);
 
     // Nor does an empty spectrum collapse the band in one frame once the
-    // encoder has a previous value to fall from.
-    CHECK(choose_chbwcod(640, 5, quiet, rate, 60) == 60 - kMaxNarrowStep);
-    CHECK(choose_chbwcod(640, 5, quiet, rate, 60 - kMaxNarrowStep) ==
-          60 - 2 * kMaxNarrowStep);
+    // encoder has a previous value to fall from. 448 kbit/s 5.1 is 89 per
+    // channel - under the ceiling above which the content is not consulted.
+    CHECK(choose_chbwcod(448, 5, quiet, rate, 59) == 59 - kMaxNarrowStep);
+    CHECK(choose_chbwcod(448, 5, quiet, rate, 59 - kMaxNarrowStep) ==
+          59 - 2 * kMaxNarrowStep);
 
     // The first frame has nothing to fall from and takes the content's
     // answer outright.
-    CHECK(choose_chbwcod(640, 5, quiet, rate, -1) == 0);
+    CHECK(choose_chbwcod(448, 5, quiet, rate, -1) == 0);
 
     // Widening is not rate-limited: one frame is enough to go from a
     // collapsed band back to the ceiling.
-    CHECK(choose_chbwcod(640, 5, full, rate, 0) == 60);
+    CHECK(choose_chbwcod(448, 5, full, rate, 0) == 59);
+}
+
+TEST_CASE("choose_chbwcod stops consulting the content when bits are plentiful") {
+    using ac3::encoder::choose_chbwcod;
+    using ac3::encoder::kContentNarrowingCeiling;
+    using ac3::encoder::rate_ceiling_chbwcod;
+    const auto rate = ac3::SampleRate::k48000;
+    const auto quiet = loud_everywhere(ac3::kMaxExponent);
+
+    // 640 kbit/s 5.1 is 128 per channel, exactly the ceiling: an entirely
+    // empty spectrum still gets the full band, because there is nothing the
+    // reclaimed bits could be spent on.
+    CHECK(640 / 5 >= kContentNarrowingCeiling);
+    CHECK(choose_chbwcod(640, 5, quiet, rate, -1) == rate_ceiling_chbwcod(640, 5));
+    CHECK(choose_chbwcod(384, 2, quiet, rate, -1) == rate_ceiling_chbwcod(384, 2));
+
+    // One rate step below it, the same silence narrows all the way.
+    CHECK(576 / 5 < kContentNarrowingCeiling);
+    CHECK(choose_chbwcod(576, 5, quiet, rate, -1) == 0);
 }
 
 TEST_CASE("AC-3 narrows chbwcod to the content under the rate ceiling") {
-    // 448 kbit/s stereo is 224 per channel, so the rate ceiling is 60 and
-    // whatever chbwcod comes out is the content's own answer.
-    const ac3::EncoderConfig config{.bitrate_kbps = 448, .acmod = ac3::Acmod::k2_0};
+    // 192 kbit/s stereo is 96 per channel: under the ceiling above which
+    // the content is not consulted, and the rate ceiling there is already
+    // 60 - so whatever chbwcod comes out is the content's own answer.
+    const ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
     const int wide_code = ac3_chbwcod(encode_ac3(config, 20000.0, 8));
     const int narrow_code = ac3_chbwcod(encode_ac3(config, 8000.0, 8));
 
@@ -231,7 +252,7 @@ TEST_CASE("AC-3 narrows chbwcod to the content under the rate ceiling") {
 
     // A pinned chbwcod still overrides the whole decision.
     const ac3::EncoderConfig pinned{
-        .bitrate_kbps = 448, .chbwcod = 44, .acmod = ac3::Acmod::k2_0};
+        .bitrate_kbps = 192, .chbwcod = 44, .acmod = ac3::Acmod::k2_0};
     CHECK(ac3_chbwcod(encode_ac3(pinned, 8000.0, 4)) == 44);
 }
 
