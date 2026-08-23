@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/base.h>
 #include <fmt/format.h>
 #include <memory>
 #include <optional>

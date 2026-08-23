@@ -4,6 +4,7 @@
 #include <exception>
 #include <cstdint>
 #include <cstdio>
+#include <fmt/base.h>
 #include <fmt/format.h>
 #include <span>
 #include <string>

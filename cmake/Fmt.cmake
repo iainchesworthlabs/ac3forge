@@ -57,6 +57,19 @@ if(NOT fmt_FOUND)
         SYSTEM
         EXCLUDE_FROM_ALL)
     FetchContent_MakeAvailable(fmt)
+
+    # fmt's own CMakeLists does not set POSITION_INDEPENDENT_CODE on its
+    # `fmt` target, and a plain FetchContent build defaults to whatever the
+    # ambient (unset) value is - fine for a static-only consumer, but
+    # forge_shared (src/forge/CMakeLists.txt) links every dependency,
+    # including this one, into a real .so/.dll. Confirmed the hard way: the
+    # WASM leg and the manylinux wheel build (neither wires vcpkg's toolchain
+    # in, so both take this fallback) both failed linking libac3forge.so with
+    # "relocation ... can not be used when making a shared object; recompile
+    # with -fPIC" pointing straight at fmt's own object file. Desktop builds
+    # never hit this: vcpkg's fmt port already builds PIC-correct for
+    # whichever linkage its triplet asks for.
+    set_target_properties(fmt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 add_library(ac3_fmt INTERFACE)

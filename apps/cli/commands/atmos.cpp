@@ -8,7 +8,7 @@
 #include <fstream>
 #include <numbers>
 #include <optional>
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <span>
 #include <sstream>
 #include <string>

@@ -16,7 +16,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <vector>
 
 #include "ac3/version.hpp"

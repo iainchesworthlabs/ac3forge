@@ -8,7 +8,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <span>
 #include <string>
 #include <string_view>

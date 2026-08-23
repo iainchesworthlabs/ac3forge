@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <span>
 #include <string>
 #include <string_view>
