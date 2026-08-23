@@ -980,6 +980,11 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         auto& block = trace->blocks[static_cast<std::size_t>(blk)];
         block.entered = true;
         block.bit_offset = bit_offset;
+        // Per block, from a frame-level flag, because this encoder couples
+        // either every block or none (see CouplingPlan) - which is also what
+        // leaves ncplregs at 1. A per-block coupling decision would have to
+        // be read from wherever it is made instead, or this trace would
+        // describe a frame the emitter below does not write.
         block.cplinu = cpl.in_use;
         block.ecplinu = cpl.in_use && cpl.enhanced;
         block.cplstrtmant = cpl.in_use ? cpl.strtmant : 0;
