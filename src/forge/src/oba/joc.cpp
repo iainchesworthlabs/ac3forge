@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/bitreader.hpp"
@@ -396,6 +397,14 @@ namespace {
     // most kNumBands's largest entry.
     std::array<std::array<double, 23>, kNumChannels5X> mix{};
 
+    // The three matrices §6.6.5's ramp runs between, resolved once. Each
+    // missing one falls back to the next newer, which turns the ramp that
+    // would have used it into a constant - the same "nothing meaningful to
+    // ramp from" behaviour a splice (seq_count == 0) gets.
+    const double* const current = params.matrix.data();
+    const double* const previous = has_previous ? state.previous_matrix.data() : current;
+    const double* const older = has_older ? state.older_matrix.data() : previous;
+
     for (int slot = 0; slot < dsp::kQmfSlotsPerFrame; ++slot) {
         for (int ch = 0; ch < kNumChannels5X; ++ch) {
             const std::span<const float, dsp::kQmfHop> hop{
@@ -413,19 +422,15 @@ namespace {
         // the rest belong to the frame just parsed. Getting this wrong is
         // silent - it just applies every matrix 576 samples early on 37% of
         // the audio - which is why the two cases are spelled out.
-        const double* from = params.matrix.data();
-        const double* to = params.matrix.data();
-        double frac = 1.0;
-        if (slot < dsp::kQmfDelaySlots) {
-            to = has_previous ? state.previous_matrix.data() : params.matrix.data();
-            from = has_older ? state.older_matrix.data() : to;
-            frac = static_cast<double>(dsp::kQmfSlotsPerFrame - dsp::kQmfDelaySlots + slot + 1) /
-                   static_cast<double>(dsp::kQmfSlotsPerFrame);
-        } else {
-            from = has_previous ? state.previous_matrix.data() : params.matrix.data();
-            frac = static_cast<double>(slot - dsp::kQmfDelaySlots + 1) /
-                   static_cast<double>(dsp::kQmfSlotsPerFrame);
-        }
+        const bool previous_frame = slot < dsp::kQmfDelaySlots;
+        const double* const from = previous_frame ? older : previous;
+        const double* const to = previous_frame ? previous : current;
+        const double frac =
+            previous_frame
+                ? static_cast<double>(dsp::kQmfSlotsPerFrame - dsp::kQmfDelaySlots + slot + 1) /
+                      static_cast<double>(dsp::kQmfSlotsPerFrame)
+                : static_cast<double>(slot - dsp::kQmfDelaySlots + 1) /
+                      static_cast<double>(dsp::kQmfSlotsPerFrame);
 
         for (int object = 0; object < objects; ++object) {
             for (int ch = 0; ch < kNumChannels5X; ++ch) {

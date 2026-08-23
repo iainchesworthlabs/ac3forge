@@ -24,6 +24,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 
 namespace {
 

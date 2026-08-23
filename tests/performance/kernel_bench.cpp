@@ -20,6 +20,7 @@
 // against one pure tone's degenerate, single-bin spectrum does not cost what
 // it costs against broadband program material.
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -36,9 +37,9 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/io/wav.hpp"
-#include "ac3/dsp/qmf.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/joc_tables.hpp"

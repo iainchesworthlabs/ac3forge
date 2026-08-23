@@ -107,7 +107,7 @@ struct FrameParameters {
 // --- Audio reconstruction -----------------------------------------------
 
 // Which domain reconstruct() applies the matrix in.
-enum class Domain {
+enum class Domain : std::uint8_t {
     // The 512-sample MDCT, four bins to a §7.1 subband. Cheaper, and the
     // domain this project's own encoder estimated its matrices in before
     // the filterbank existed.

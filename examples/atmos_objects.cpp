@@ -26,6 +26,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 
 int main() {
     constexpr int kObjects = 3;
