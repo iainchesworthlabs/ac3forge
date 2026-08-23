@@ -81,6 +81,13 @@ struct Prober::Impl {
     ProbeAccessUnit unit;
     std::uint64_t samples = 0;
     bool first_unit = true;
+    // The stream-wide identity fields are taken from the FIRST syncframe of
+    // the first access unit, which is its independent substream. A dedicated
+    // flag, not "no syncframes recorded yet": the per-frame record is only
+    // kept when detail was asked for, so without it every frame of the first
+    // unit would have looked like the first one - and the last dependent's
+    // acmod would have overwritten the bed's.
+    bool first_frame = true;
     // Locations the program occupies once every dependent of the FIRST access
     // unit has been unioned in (§E3.8.2). Later units are assumed to match,
     // exactly as scan() assumes it.
@@ -242,7 +249,8 @@ std::expected<void, ScanError> Prober::push(std::span<const std::byte> unit) {
         }
         const auto frame = unit.subspan(offset, header->bytes);
 
-        if (impl.first_unit && out.syncframes.empty()) {
+        if (impl.first_frame) {
+            impl.first_frame = false;
             impl.report.kind = header->kind;
             impl.report.bsid = header->bsid;
             impl.report.bsmod = header->bsmod;
