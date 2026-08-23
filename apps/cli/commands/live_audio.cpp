@@ -106,7 +106,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         if (scanned && scanned->channels > static_cast<int>(device_channels)) {
             output.target = device_channels == 1 ? ac3::DownmixTarget::kMono
                                                  : ac3::DownmixTarget::kLoRo;
-            std::println("  {} channels on a {}-channel output: folding to {} (§7.8)",
+            fmt::println("  {} channels on a {}-channel output: folding to {} (§7.8)",
                          scanned->channels, device_channels,
                          output.target == ac3::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
         }
