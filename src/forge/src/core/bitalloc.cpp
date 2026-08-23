@@ -62,7 +62,11 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     int k = kMaskTab[static_cast<std::size_t>(start)];
     int lastbin = 0;
     do {
-        lastbin = std::min(
+        // std::min<int>, not deduced: kBandStart/kBandSize hold std::int32_t,
+        // which on arm-none-eabi is `long int` rather than `int` - so the two
+        // arguments are different types there and deduction fails. Spelled out
+        // at every such site in this file.
+        lastbin = std::min<int>(
             kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
         bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
         ++j;
@@ -231,7 +235,8 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                 (dbknee - bndpsd[static_cast<std::size_t>(bin)]) >> 2;
         }
         mask[static_cast<std::size_t>(bin)] =
-            std::max(excite[static_cast<std::size_t>(bin)], hth[static_cast<std::size_t>(bin)]);
+            std::max<int>(excite[static_cast<std::size_t>(bin)],
+                          hth[static_cast<std::size_t>(bin)]);
     }
 
     // §7.2.2.6: delta bit allocation. mask[]/psd[] units are 128 per exponent
@@ -282,9 +287,9 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
         int j = kMaskTab[static_cast<std::size_t>(kStart)];
         int lastbin = 0;
         do {
-            lastbin = std::min(kBandStart[static_cast<std::size_t>(j)] +
-                                   kBandSize[static_cast<std::size_t>(j)],
-                               end);
+            lastbin = std::min<int>(kBandStart[static_cast<std::size_t>(j)] +
+                                        kBandSize[static_cast<std::size_t>(j)],
+                                    end);
             int m = mask[static_cast<std::size_t>(j)];
             m -= snroffset;
             m -= floor;

@@ -28,6 +28,16 @@
 # this problem: matroska_static under the matroska:: namespace already lands
 # on the intended matroska::matroska_static with no stutter.)
 # ---------------------------------------------------------------------------
+# Roadmap PF7's minimum-footprint decoder profile builds something different
+# enough - static only, decode only, no exceptions, no direct-form transform
+# tables - that it gets its own file rather than a dozen conditionals through
+# this one. Off by default; the root CMakeLists.txt refuses the combination of
+# this option with anything that would need the full library.
+if(AC3FORGE_MINIMAL_DECODER)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
+    return()
+endif()
+
 add_library(forge_objects OBJECT)
 add_library(forge_static STATIC)
 add_library(forge_shared SHARED)
@@ -115,6 +125,7 @@ target_sources(forge_objects
         src/core/fft.cpp
         src/core/mantissas.cpp
         src/core/mdct.cpp
+        src/core/transform/reference/reference_transform.cpp
         src/decoder/decoder.cpp
         src/decoder/eac3_decoder.cpp
         src/decoder/transient_prenoise.cpp
@@ -171,6 +182,25 @@ else()
     target_include_directories(forge_objects PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
 endif()
+
+# The same mechanism again, for the build-profile facts every source asks
+# through ac3/internal/profile.hpp (roadmap PF7): full/ says the direct-form
+# transform tables are present, minimal/ says they are not, and CMake picks
+# the directory rather than any source picking with an #ifdef.
+#
+# ac3::forge itself is always the full profile - the minimum-footprint
+# decoder is a SEPARATE target (forge_minimal, below), not a reconfiguration
+# of this one, so turning the option on never changes what an ordinary build
+# produces.
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/full")
+
+# src/core/ on the include path so the CMake-selected
+# src/core/transform/<variant>/reference_transform.cpp can include the
+# declaration it implements the same way mdct.cpp includes it - quote-relative
+# lookup only reaches a file's own directory, and the two variants live one
+# level down from the header they share.
+target_include_directories(forge_objects PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
 
 target_compile_features(forge_objects PUBLIC cxx_std_23)
 

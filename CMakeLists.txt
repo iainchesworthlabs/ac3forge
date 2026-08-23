@@ -81,6 +81,17 @@ option(AC3FORGE_BUILD_MATROSKA "Build the standalone Matroska container writer (
 option(AC3FORGE_BUILD_MP4 "Build the standalone MP4/ISOBMFF container writer (src/mp4)" ON)
 option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src/mpegts)" ON)
 
+# Roadmap PF7: the minimum-footprint decoder profile. Not a "build X too"
+# option like the ones above - it REPLACES what src/forge builds with a single
+# decode-only static library for a target with a few hundred kilobytes of RAM
+# and no operating system (see cmake/MinimalDecoder.cmake and
+# docs/building.md). Off by default, and the guard below refuses it alongside
+# anything that needs the full library, so an ordinary configure is unaffected
+# and a half-configured one fails here rather than deep inside a subdirectory.
+option(AC3FORGE_MINIMAL_DECODER
+    "Build ONLY the decode-only, exception-free, table-trimmed ac3::forge_minimal (roadmap PF7)"
+    OFF)
+
 # apps/cli, apps/gui, tests/ and examples/ all link matroska::matroska, mp4::mp4 and
 # mpegts::mpegts unconditionally - none of them are written to cope with any of the three being
 # absent. AC3FORGE_BUILD_MATROSKA=OFF, AC3FORGE_BUILD_MP4=OFF or AC3FORGE_BUILD_MPEGTS=OFF only
@@ -105,6 +116,40 @@ if(NOT AC3FORGE_BUILD_MPEGTS AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR
         "AC3FORGE_BUILD_GUI, AC3FORGE_BUILD_TESTS and AC3FORGE_BUILD_EXAMPLES to all be OFF too - "
         "they all link mpegts::mpegts unconditionally.")
 endif()
+
+# AC3FORGE_MINIMAL_DECODER's own version of the three guards above. Everything listed here
+# either links the full ac3::forge (CLI, GUI, tests, examples, the C API) or is a module the
+# profile deliberately leaves out (the container writers, the ADM reader); none of them build
+# against a decode-only archive, and several would not even configure for a bare-metal target.
+# Name every offender at once rather than failing on the first, so a caller assembling the
+# option set gets one message instead of six configures.
+if(AC3FORGE_MINIMAL_DECODER)
+    set(_ac3_minimal_conflicts "")
+    foreach(_opt IN ITEMS AC3FORGE_BUILD_CLI AC3FORGE_BUILD_GUI AC3FORGE_BUILD_TESTS
+                          AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
+                          AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM
+                          AC3FORGE_BUILD_PYTHON AC3FORGE_BUILD_FUZZERS)
+        if(${_opt})
+            list(APPEND _ac3_minimal_conflicts "${_opt}")
+        endif()
+    endforeach()
+    if(_ac3_minimal_conflicts)
+        list(JOIN _ac3_minimal_conflicts "=OFF, " _ac3_minimal_message)
+        message(FATAL_ERROR
+            "AC3FORGE_MINIMAL_DECODER=ON needs ${_ac3_minimal_message}=OFF - none of them build "
+            "against a decode-only archive. The config-*-minimal presets in CMakePresets.json "
+            "already set them; see docs/building.md's minimum-footprint decoder profile.")
+    endif()
+    unset(_ac3_minimal_conflicts)
+    unset(_ac3_minimal_message)
+endif()
+
+# ac3::minimal_profile - the compile/link options the profile above adds. Not
+# beside include(Sanitizers)/include(Coverage)/include(Tracy) up top because,
+# unlike those three, this one is driven by an option() declared in this
+# section rather than by a bare cache variable, and a module cannot read an
+# option that has not been declared yet. No-op when the profile is off.
+include(MinimalDecoder)
 
 # ac3adm::ac3adm (src/ac3adm) is a READER, not a writer like the three container modules above -
 # roadmap item B1 phase 1 ("ADM BWF reader feeding the JOC encoder", see ROADMAP.md), parsing
@@ -159,7 +204,12 @@ add_subdirectory(src/forge)
 # Web Audio API in JS instead, not from this library), and nothing a WASM
 # configure builds needs it anyway (AC3FORGE_BUILD_CLI/GUI/TESTS are all OFF
 # there, and examples/wasm_decode_demo does not link ac3::audio).
-if(NOT EMSCRIPTEN)
+#
+# Skipped under AC3FORGE_MINIMAL_DECODER for a different reason than under
+# Emscripten but with the same effect: a bare-metal target has no audio
+# device, no backend directory would match it, and the profile's whole point
+# is that nothing outside the decode path is compiled.
+if(NOT EMSCRIPTEN AND NOT AC3FORGE_MINIMAL_DECODER)
     add_subdirectory(src/audio)
 endif()
 
@@ -169,7 +219,12 @@ endif()
 # embedded, so unlike the old quarantine overlay this is committed and built by
 # default. After src/forge so it can reuse the codec's parsing primitives; before
 # apps/cli so ac3cli can link it.
-add_subdirectory(src/signing)
+# Not under AC3FORGE_MINIMAL_DECODER: object SIGNING is a production-side
+# concern, and verification is opt-in even in a full build - neither is on a
+# decode path a set-top box has to run.
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    add_subdirectory(src/signing)
+endif()
 
 # A standalone container writer, kept apart from the codec on purpose: it
 # depends on nothing of ac3::forge and knows nothing about AC-3. Gated by
@@ -226,7 +281,13 @@ endif()
 # targets through this package - AC3FORGE_BUILD_ADM users consume ac3adm::ac3adm from an in-tree
 # add_subdirectory() build, not from a `find_package(ac3forge)` installed one, for now. ac3::admbridge
 # (src/admbridge) is excluded for the same reason - it transitively depends on ac3adm::ac3adm.
-include(InstallLibrary)
+# Not under AC3FORGE_MINIMAL_DECODER: the exported package describes
+# ac3::forge_static/ac3::forge_shared, neither of which exists in that
+# profile, and an embedded integrator consumes ac3::forge_minimal from an
+# in-tree add_subdirectory() build rather than from find_package().
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    include(InstallLibrary)
+endif()
 
 # The pybind11 extension module - after ac3::forge exists (it links straight against it, the
 # same way examples/ does), independent of everything below: it needs none of CLI/GUI/tests/
@@ -273,8 +334,20 @@ if(EMSCRIPTEN)
     add_subdirectory(apps/wasm)
 endif()
 
+# The minimum-footprint decoder probe (roadmap PF7, docs/building.md). Gated on
+# the profile rather than on an option of its own, for the same reason
+# apps/wasm is gated on EMSCRIPTEN: outside that profile there is no
+# ac3::forge_minimal for it to link, so there is nothing to opt in or out of.
+if(AC3FORGE_MINIMAL_DECODER)
+    add_subdirectory(apps/baremetal)
+endif()
+
 # After every target's install() rules (apps/cli, apps/gui) have been declared.
-include(Packaging)
+# Nothing to package under AC3FORGE_MINIMAL_DECODER - no application is built
+# and nothing is installed (see include(InstallLibrary) above).
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    include(Packaging)
+endif()
 
 message(STATUS "ac3forge ${PROJECT_VERSION_FULL}")
 message(STATUS "  Build CLI      : ${AC3FORGE_BUILD_CLI}")

@@ -370,8 +370,14 @@ std::optional<DecodedProgram> parse_payload(std::span<const std::byte> payload) 
         if (!is_anchored) {
             const auto x_code = r.read(6);
             const auto y_code = r.read(6);
-            obj.position.x = static_cast<double>(std::min(x_code, 62u)) / 62.0;
-            obj.position.y = static_cast<double>(std::min(y_code, 62u)) / 62.0;
+            // std::min<std::uint32_t> spelled out, not deduced: BitReader::read
+            // returns std::uint32_t, and on a 32-bit target (arm-none-eabi,
+            // where the minimum-footprint decoder profile runs) that is
+            // `unsigned long` while 62u is `unsigned int` - two different types,
+            // so deduction fails outright. Same everywhere else this file and
+            // core/bitalloc.cpp pin a std::min/std::max argument type.
+            obj.position.x = static_cast<double>(std::min<std::uint32_t>(x_code, 62u)) / 62.0;
+            obj.position.y = static_cast<double>(std::min<std::uint32_t>(y_code, 62u)) / 62.0;
             const auto z_sign = r.read(1);
             const auto z_mag = r.read(4);
             obj.position.z = (z_sign == 0 ? -1.0 : 1.0) * static_cast<double>(z_mag) / 15.0;

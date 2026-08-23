@@ -26,6 +26,7 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/internal/profile.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
@@ -450,6 +451,17 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
     std::span<const std::byte> frame) {
+    // The direct-form (reference) transform is a CMake-selected translation
+    // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
+    // tables out of the build (roadmap PF7; src/core/reference_transform.hpp).
+    // Asking for it there is refused rather than silently served by the fast
+    // path: fast_imdct == false exists so a caller can validate against the
+    // arithmetic the spec writes down, and substituting a different one would
+    // defeat the only reason to set it. Constant-folded away in every ordinary
+    // build, where kReferenceTransformAvailable is true.
+    if (!config_.fast_imdct && !internal::kReferenceTransformAvailable) {
+        return std::unexpected(DecodeError::kUnsupported);
+    }
     if (frame.size() < 8) {
         return std::unexpected(DecodeError::kTruncated);
     }
