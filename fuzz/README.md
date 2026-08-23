@@ -96,7 +96,7 @@ ASan/UBSan, 300 s per harness from the committed seed corpus:
 | `fuzz_oamd_parse`     | 49,730,651 | 165,218 |  173 | clean  |
 | `fuzz_joc_parse`      | 12,319,988 |  40,930 |   99 | clean  |
 | `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **UBSan report at exec ~70k** |
-| `fuzz_adm_parse`      |     ~1,000 |     n/a |  n/a | **out-of-memory in the first minute** |
+| `fuzz_adm_parse`      |     ~1,000 |     n/a |  n/a | **out-of-memory in the first minute, three times over** |
 
 `fuzz_oamd_parse`'s exec rate is two orders of magnitude above
 `fuzz_signing_verify`'s for the obvious reason: an OAMD payload is tens of
@@ -105,8 +105,8 @@ a whole frame's message A bit by bit and runs HMAC-SHA-256 over it.
 
 ### What they found
 
-Three real defects, all fixed in the same change, all with a committed
-reproducer under `fuzz/regressions/`:
+Four real defects, all fixed in the same change, each with a committed
+reproducer under `fuzz/regressions/` where the harness produced one:
 
 1. **`compute_bit_allocation` indexed `kMaskTab` at `SIZE_MAX`** on an empty
    allocation region. §7.2.2.4's band walk ends at `kMaskTab[end - 1]`, and
@@ -115,11 +115,21 @@ reproducer under `fuzz/regressions/`:
    and the pointer overflow - the same shape as `8386c8f`, the bug this
    directory was created for. Reached through `ac3::signing`'s own frame
    walk, but the guard is in the library, so the decoder is covered too.
+   (`fuzz_signing_verify`, UBSan.)
 2. **`ac3adm::read_pcm` sized its buffer from the DECLARED `<data>` chunk
    size**: a 104-byte file claiming ~4 GB of PCM allocated ~4 GB
    (`malloc(8321498636)`). Bounded by the real file size now, which for a
-   well-formed file never binds.
-3. **`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so
+   well-formed file never binds. (`fuzz_adm_parse`, first minute.)
+3. **Any other over-claiming chunk did the same thing one layer down.**
+   libbw64 materialises every chunk it reads except `<data>` into a
+   `std::vector` sized straight from the chunk header, inside `readFile()` -
+   so a 99-byte file whose `<axml>` claims four gigabytes asked for four
+   gigabytes before any ac3forge code ran. Reported twice, at two different
+   chunk ids, one of them using RF64's `0xFFFFFFFF` escape value.
+   `adm.cpp`'s new `chunk_sizes_fit()` refuses it. The allocation itself is
+   in third-party code and the residual gap is stated in that function's own
+   comment rather than papered over. (`fuzz_adm_parse`.)
+4. **`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so
    a Debug build aborted on `ac3cli decode <plain stereo>.ec3 out.wav
    verify-objects` - an ordinary input for an operation whose whole job is
    checking streams its caller did not produce. Found while writing the
