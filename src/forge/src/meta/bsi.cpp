@@ -9,6 +9,7 @@
 #include <system_error>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/meta/mixing.hpp"
 
 namespace ac3::meta {
 
@@ -44,9 +45,8 @@ bool parse_int(std::string_view text, int& out) {
         return false;
     }
     int value = 0;
-    const auto* const end = text.data() + text.size();
-    const auto result = std::from_chars(text.data(), end, value);
-    if (result.ec != std::errc{} || result.ptr != end || value < 0) {
+    const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (ec != std::errc{} || ptr != text.data() + text.size() || value < 0) {
         return false;
     }
     out = value;

@@ -56,9 +56,8 @@ bool parse_double(std::string_view text, double& out) {
 // "-1" are refused rather than silently becoming 3 and a fallback.
 bool parse_index(std::string_view text, int high, int& out) {
     int value = 0;
-    const auto* const end = text.data() + text.size();
-    const auto [ptr, ec] = std::from_chars(text.data(), end, value);
-    if (ec != std::errc{} || ptr != end || value < 0 || value > high) {
+    const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (ec != std::errc{} || ptr != text.data() + text.size() || value < 0 || value > high) {
         return false;
     }
     out = value;
