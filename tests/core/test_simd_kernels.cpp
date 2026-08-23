@@ -32,7 +32,7 @@
 //
 // So this file compares each vector kernel against a scalar reference IN THE
 // SAME BINARY and requires bit-for-bit equality, never a tolerance. On a
-// generic build most of it is a tautology that costs a few milliseconds; on
+// generic build much of it is a tautology that costs a few milliseconds; on
 // the x86_64 and aarch64 builds - which is to say on every CI leg that is
 // not deliberately forced to generic - it is the whole argument.
 //
@@ -132,7 +132,13 @@ void check_fft_bit_exact(std::uint64_t seed) {
     std::array<double, P> ref_re = re;
     std::array<double, P> ref_im = im;
 
-    ac3::internal::fft_radix2_forward<P>(tables, re, im);
+    // fft_radix2_forward_vector, not fft_radix2_forward: the latter is the
+    // dispatcher, and on a generic build it forwards to the reference, which
+    // would make this compare a function with itself. Naming the vector form
+    // directly checks it on EVERY build - including the generic one, where it
+    // is not what the library runs but is still code that must be right if
+    // someone forces AC3FORGE_SIMD or ports the seam to a new architecture.
+    ac3::internal::fft_radix2_forward_vector<P>(tables, re, im);
     ac3::internal::fft_radix2_forward_reference<P>(tables, ref_re, ref_im);
 
     std::size_t mismatches = 0;

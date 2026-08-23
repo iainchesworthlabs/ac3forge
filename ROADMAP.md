@@ -367,14 +367,19 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   direct forms — the oracle every fast path is validated against — stay exercised against FFmpeg.
 - [ ] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
   `macos-llvm` all score exactly 6.0 dB below every x86 leg on every channel of the gold gate.
-  `docs/building.md` and `ci.yml` blame Homebrew's libm, which the glibc/GCC arm64 rows
-  contradict: it is architectural (FMA contraction), not a libm. Test `-ffp-contract=off`, pin
-  the policy in CMake, then either a cross-leg bitstream-hash gate or a documented, accepted
-  divergence. Fix the two docs either way. Partially done by PF5: `-ffp-contract=off` is pinned
-  project-wide and `docs/building.md` now has a "Floating-point contraction" section that
-  replaces the libm explanation. What remains is the decision the measurement supports — whether
-  the arm64 and macOS legs now match x86, and therefore whether a cross-leg bitstream-hash gate
-  is worth having or the residue is an accepted divergence.
+  `docs/building.md` and `ci.yml` blamed Homebrew's libm, which the glibc/GCC arm64 rows
+  contradict: it is architectural, not a libm-package difference. FMA contraction was the leading
+  hypothesis for what "architectural" meant — PF5 tested it directly by pinning
+  `-ffp-contract=off` project-wide, on every leg, and **the hypothesis is falsified**: the arm64
+  and macOS legs still measure ~61.8 dB against x86's ~67.8 dB, unchanged to within run-to-run
+  noise from the numbers before the flag existed. `docs/building.md` now carries that measurement
+  under "Floating-point contraction" in place of the libm explanation, and the flag stays pinned
+  regardless — it is what the SIMD seam's own bit-exactness argument needs, independent of this
+  question. What survives is the correlation with architecture itself: every low-scoring leg is
+  aarch64 (`macos-llvm`'s GitHub-hosted runner is Apple Silicon), which points at aarch64's own
+  compiled libm producing different last-bit `std::cos`/`std::sin` results in the transform
+  twiddle tables (`kAnalysisWindow`, `Twiddles`, `FftRadix2Tables`) — untested, and the next step
+  before either a cross-leg bitstream-hash gate or a documented, accepted divergence.
 - [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. `docs/building.md` records that
   nothing verifies MSVC, GCC and Clang round the pipeline identically and that they do not.
   Audit the encoder's decision points for floating-point dependence (or move them to integer),
@@ -447,11 +452,19 @@ directory; there is still no threading anywhere in the codec core.
   is the gate rather than a tolerance, held by `tests/core/test_simd_kernels.cpp` and by the
   codec matrix producing byte-identical output across builds. Done ahead of PF1–PF4 rather than
   after: they are independent, and the sequencing note was about which kernels to pick, which the
-  existing Tracy and `ac3kernelbench` numbers already answered. VX11's `-ffp-contract` policy IS
-  part of this — it is pinned off project-wide, since contraction is what would break the
-  bit-exactness argument on aarch64. Not done, and left for PF4 and a later item: the `len = 2`
-  FFT stage, the direct-form transforms (reductions — reassociating them would change the
-  reference path's numbers), and AVX2/NEON-wider dispatch.
+  existing Tracy and `ac3kernelbench` numbers already answered. `-ffp-contract=off` is pinned
+  project-wide as part of this, for the SIMD seam's own bit-exactness argument (contraction would
+  let the compiler re-fuse a vector op back into an FMA the intrinsics cannot express) — but that
+  is independent of VX11's question, which this item's own measurement answered in the negative:
+  see VX11 below. A build with no vector unit (`generic`, WASM's real case today) runs the FFT
+  butterfly's plain scalar loop rather than a hand-unrolled one — measured to matter and by how
+  much, not assumed: Clang's own vectoriser handles the plain loop better than the unrolled form
+  (down to 0.71× on `generic`), while GCC's does not (up to 1.75× the other way), so the choice is
+  the architecture seam's (`arch::kHasSimd`) rather than baked into the kernel. Not done, and left
+  for PF4, WASM's own arch directory, and a later item: the `len = 2` FFT stage, the direct-form
+  transforms (reductions — reassociating them would change the reference path's numbers), a WASM
+  `simd128` directory (no `emsdk` on this session's machine to verify one against), and
+  AVX2/NEON-wider dispatch.
 - [ ] **PF6 (M)** — A latency budget: document end-to-end encoder latency (lookahead, transient
   detection, tpn hold-back), expose it (`ac3forge_encoder_latency_samples()`), and make EQ11's
   short syncframes the low-latency mode. The first question an engine or conferencing integrator

@@ -40,17 +40,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 ### Changed
 
 - **Floating-point contraction is pinned off** (`-ffp-contract=off`, `/fp:precise` on MSVC,
-  `/clang:-ffp-contract=off` on clang-cl), project-wide. GCC and Clang fuse `a * b + c` into a
-  single FMA by default, which is architecture-dependent — FMA is a base ARMv8-A instruction and
-  absent from baseline x86-64 — so the same source computed different numbers on different CI
-  legs. That is the standing explanation for the gold-reference gate's arm64 and macOS legs
-  scoring 6.02 dB below every x86 leg, a gap that is exactly one AC-3 exponent step rather than
-  the vague cross-libm difference the documentation used to claim (a libm cannot explain three
-  legs on two different C libraries landing on the same offset). Contraction would also break the
-  SIMD seam's bit-exactness argument, so the two changes belong together. No measurable cost on
-  x86-64, where the flag is a no-op — proven by the corpus comparison above being byte-identical
-  against a build without it. Roadmap `VX11` carries what remains: whether the legs now agree
-  closely enough for a cross-leg bitstream-hash gate.
+  `/clang:-ffp-contract=off` on clang-cl), project-wide — for the SIMD seam's bit-exactness
+  argument, which needs the compiler not to silently re-fuse a vector operation into an FMA the
+  seam's intrinsics cannot express. No measurable cost on x86-64, where the flag is a no-op —
+  proven by the corpus comparison above being byte-identical against a build without it.
+  **Tested and ruled out as the explanation for roadmap `VX11`'s gold-reference gap**: the leading
+  hypothesis for why `linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` score 6.02 dB (exactly
+  one AC-3 exponent step) below every x86 leg was FMA contraction, since it is architecture-
+  dependent in exactly that pattern. With the flag pinned on every leg, the gap is unchanged —
+  those three legs still measure ~61.8 dB against x86's ~67.8 dB. `docs/building.md`'s
+  "Floating-point contraction" section carries the measurement and the surviving hypothesis (all
+  three low-scoring legs are aarch64, which points at libm's own architecture-specific
+  `sin`/`cos` in the transform twiddle tables); `VX11` stays open.
 - **`ac3kernelbench` gained the fast inverse transforms.** `imdct512_windowed_fast`,
   `imdct256_pair_windowed` and `imdct256_pair_windowed_fast` join the per-kernel trend series; the
   bench previously timed only the direct inverse, which has not been the default since 0.9.0, so

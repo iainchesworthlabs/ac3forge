@@ -33,6 +33,10 @@ namespace ac3::internal::arch {
 
 inline constexpr const char* kSimdName = "x86_64-sse2";
 
+// Real vector instructions behind every type below - see the generic
+// header for what reads this and why.
+inline constexpr bool kHasSimd = true;
+
 struct f64x2 {
     __m128d v;
 

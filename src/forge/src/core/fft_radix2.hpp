@@ -71,16 +71,15 @@ void fft_radix2_bitreverse(const FftRadix2Tables<P>& t, std::span<double, P> re,
     }
 }
 
-// The scalar butterfly loop, kept as the REFERENCE the vector form below is
-// checked against rather than as a fallback: the generic arch directory
-// already provides a complete scalar implementation of the seam, so nothing
-// in the library ever calls this. tests/core/test_simd_kernels.cpp does, and
-// asserts the two agree bit-for-bit on every leg - which on an x86_64 or
-// aarch64 build is the whole claim the PF5 work rests on, and on a generic
-// build is a tautology that costs one cheap test.
+// The scalar butterfly loop: both the REFERENCE the vector form below is
+// checked against, and what a build with no vector unit actually runs (see
+// fft_radix2_forward's own comment for why those are the same choice).
 //
-// It is deliberately still the original loop, unchanged and unclever: the
-// value of a reference is that it is obviously right, not that it is fast.
+// Deliberately still the original loop, unchanged and unclever: the value of
+// a reference is that it is obviously right, not that it is fast.
+// tests/core/test_simd_kernels.cpp asserts the two forms agree bit-for-bit,
+// which on an x86_64 or aarch64 build is the whole claim the PF5 work rests
+// on, and on a generic build is a tautology that costs one cheap test.
 template <std::size_t P>
 void fft_radix2_forward_reference(const FftRadix2Tables<P>& t, std::span<double, P> re,
                                   std::span<double, P> im) {
@@ -106,25 +105,16 @@ void fft_radix2_forward_reference(const FftRadix2Tables<P>& t, std::span<double,
     }
 }
 
-// In place over separate re/im arrays: on return (re, im) hold
-// A[k] = sum_m a[m] * exp(-2*pi*i*m*k/P) for k = 0..P-1 (unnormalized
-// forward transform). Split arrays rather than std::complex so the
-// butterfly's four independent multiply-add chains stay contiguous in j,
-// which is what lets the loop below run two butterflies per iteration.
+// Two butterflies per iteration through the arch seam (ROADMAP PF5).
 //
-// The hottest kernel in the codec (ROADMAP PF5): every fast MDCT and every
-// fast IMDCT - the default on both the encode and the decode path since
-// 0.9.0 - is one call to this, 36 times a frame for a 5.1 encode and once
-// per channel per block on decode.
-//
-// VECTORISATION AND WHY IT IS BIT-EXACT. Within one stage, butterfly j
-// touches only re/im[i+j] and re/im[i+j+half], so consecutive j are disjoint
-// whenever half >= 2 and can be evaluated together. Each lane then performs
-// exactly the multiplies, subtracts and adds the reference above performs
-// for that j, in the same order, on the same values - the seam's operations
-// are one IEEE-754 operation each and -ffp-contract=off (top-level
-// CMakeLists.txt) stops the compiler fusing any of them. So the result is
-// not "accurate to 1e-15", it is the same doubles.
+// WHY IT IS BIT-EXACT. Within one stage, butterfly j touches only
+// re/im[i+j] and re/im[i+j+half], so consecutive j are disjoint whenever
+// half >= 2 and can be evaluated together. Each lane then performs exactly
+// the multiplies, subtracts and adds the reference above performs for that
+// j, in the same order, on the same values - the seam's operations are one
+// IEEE-754 operation each, and -ffp-contract=off (top-level CMakeLists.txt)
+// stops the compiler fusing any of them. So the result is not "accurate to
+// 1e-15", it is the same doubles.
 //
 // The len = 2 stage (half == 1) stays scalar. Vectorising it would mean
 // pairing ADJACENT butterflies, whose operands interleave rather than run
@@ -133,8 +123,8 @@ void fft_radix2_forward_reference(const FftRadix2Tables<P>& t, std::span<double,
 // P = 512 - and the radix-4 codelets ROADMAP PF4 describes remove the stage
 // altogether rather than vectorising it.
 template <std::size_t P>
-void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
-                        std::span<double, P> im) {
+void fft_radix2_forward_vector(const FftRadix2Tables<P>& t, std::span<double, P> re,
+                               std::span<double, P> im) {
     fft_radix2_bitreverse<P>(t, re, im);
 
     double* const rp = re.data();
@@ -177,6 +167,39 @@ void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
                 (ui - vi).store(ip + i + j + half);
             }
         }
+    }
+}
+
+// In place over separate re/im arrays: on return (re, im) hold
+// A[k] = sum_m a[m] * exp(-2*pi*i*m*k/P) for k = 0..P-1 (unnormalized
+// forward transform). Split arrays rather than std::complex so the
+// butterfly's four independent multiply-add chains stay contiguous in j,
+// which is what lets the vector form above run two butterflies at once.
+//
+// The hottest kernel in the codec (ROADMAP PF5): every fast MDCT and every
+// fast IMDCT - the default on both the encode and the decode path since
+// 0.9.0 - is one call to this, 36 times a frame for a 5.1 encode and once
+// per channel per block on decode.
+//
+// A build with no vector unit runs the plain loop, and that is a measurement
+// rather than a tidiness preference. A manual two-wide unroll costs
+// something when there is no vector instruction at the end of it: the
+// compiler's own vectoriser now has an interleaved access pattern to
+// re-derive rather than a plain loop to analyse. Clang 21 LOSES 0.68-0.99x
+// on a generic build for exactly that reason, while GCC 15 GAINS 1.5-1.7x
+// (its vectoriser never gets the plain loop at all). Neither form is right
+// for "no SIMD" in general, which is what makes the choice the architecture
+// seam's rather than this kernel's - see arch::kHasSimd's own comment in the
+// generic header. Where there is a vector unit the intrinsics settle it and
+// both compilers gain, so both branches here are the fast one for their own
+// target.
+template <std::size_t P>
+void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
+                        std::span<double, P> im) {
+    if constexpr (arch::kHasSimd) {
+        fft_radix2_forward_vector<P>(t, re, im);
+    } else {
+        fft_radix2_forward_reference<P>(t, re, im);
     }
 }
 

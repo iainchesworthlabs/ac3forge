@@ -629,13 +629,41 @@ carry the types, not three copies of an FFT:
 
 | Kernel | Where | Note |
 |---|---|---|
-| radix-2 FFT butterflies | `src/forge/src/core/fft_radix2.hpp` | The hottest kernel in the codec — every fast MDCT and fast IMDCT is one call to it. Stages with `half >= 2` run two butterflies at a time; the `len = 2` stage stays scalar (its operands interleave rather than run contiguously, and ROADMAP PF4's radix-4 codelets remove the stage rather than vectorising it). |
+| radix-2 FFT butterflies | `src/forge/src/core/fft_radix2.hpp` | The hottest kernel in the codec — every fast MDCT and fast IMDCT is one call to it. Stages with `half >= 2` run two butterflies at a time; the `len = 2` stage stays scalar (its operands interleave rather than run contiguously, and ROADMAP PF4's radix-4 codelets remove the stage rather than vectorising it). A `generic` build runs the plain loop instead — see below. |
 | DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT. Their memory access is strided, so the gather and scatter ends stay scalar and only the arithmetic goes two-wide. |
 | analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. |
 | IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Steps 2 and 4 of both inverses. |
 | `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. |
 | §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. |
 | `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. |
+
+**The `generic` build is not just "the same code without intrinsics".** The seam exports
+`arch::kHasSimd`, and the FFT butterfly reads it: with no vector unit it runs the plain reference
+loop rather than the two-wide one. That is a measurement, not tidiness. A manual two-wide unroll
+costs something when there is no vector instruction at the end of it — the compiler's own
+vectoriser is handed an interleaved access pattern to re-derive instead of a plain loop to
+analyse. Timed in one process, alternating between the two forms so host load cannot bias it:
+
+| | P = 64 | P = 128 | P = 512 |
+|---|---|---|---|
+| GCC 15.2, generic | 1.75× | 1.59× | 1.62× |
+| GCC 15.2, x86_64 | 1.71× | 1.56× | 1.75× |
+| Clang 21.1, generic | 1.16× | **0.71×** | **0.85×** |
+| Clang 21.1, x86_64 | 1.26× | 1.18× | 1.11× |
+
+(unrolled form relative to the plain loop; above 1.00 is faster). Neither form is right for "no
+SIMD" in general — Clang's vectoriser already handles the plain loop well and GCC's does not get
+it at all — which is exactly why the choice belongs to the architecture seam rather than to the
+kernel. Where there *is* a vector unit the intrinsics settle it and both compilers gain.
+
+The conservative branch is the one taken, and its cost is on the record: a GCC `generic` build
+forfeits that 1.6×. The platform that reaches `generic` automatically is WebAssembly, whose
+toolchain is Clang — the row that *loses* 29% on the unrolled form — and no configuration should
+end up slower than it was before the vector kernels existed. WASM would be better served by an
+arch directory of its own (`simd128` via `<wasm_simd128.h>`); that is follow-up work rather than
+part of this, since the only CI job that touches WASM builds it without running it. Only the
+butterfly reads `kHasSimd`: the other kernels are elementwise with no in-place read-modify-write,
+so the two-wide form is the same work either way.
 
 **What is not, and why.** The direct-form (`mode=reference`) MDCT and IMDCT are dot products, and
 splitting a reduction into per-lane partial sums reassociates the additions — which changes the
@@ -681,28 +709,40 @@ instruction, so every arm64 and Apple-silicon leg contracts, while x86-64 has no
 and this project passes no `-march=`, so no x86 leg does. The same source computes different
 numbers on different legs purely because of what the instruction set offers.
 
-The [gold-reference gate](#gold-reference-correctness-gate) has been recording exactly that:
-`linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` score about 61.8 dB where every x86 leg
-scores about 67.8 dB. That gap is 6.02 dB, which is not a vague "floating-point differences"
-number — it is precisely one AC-3 exponent step (§7.2.2.2's PSD units are 128 per exponent, and
-one exponent is 6.02 dB). Contraction was the standing hypothesis for it; the CI legs on this
-change are the measurement. Earlier text here and in `ci.yml` blamed Homebrew's libm for the macOS
-row, which the glibc/GCC arm64 rows always contradicted — a libm cannot explain three legs on two
-different C libraries landing on the same offset.
+The [gold-reference gate](#gold-reference-correctness-gate) has been recording a 6.02 dB
+gap since the arm64 legs were added — `linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` score
+about 61.8 dB where every x86 leg scores about 67.8 dB. That number is not a vague
+"floating-point differences" figure: it is precisely one AC-3 exponent step (§7.2.2.2's PSD units
+are 128 per exponent, and one exponent is 6.02 dB). FMA contraction was the standing hypothesis —
+it is architecture-dependent in exactly the way the gap is (present on every leg that has FMA as a
+base instruction, absent on every leg that does not) — and pinning `-ffp-contract=off` project-wide
+was this item's test of it.
 
-Contraction also breaks the SIMD seam's correctness argument outright, which is why the two
-changes belong together: the seam maps every operation to one IEEE-754 add, subtract or multiply
-so a vectorised kernel is bit-identical to the scalar loop it replaced, and that only holds if the
-scalar loop is not silently getting a fused form the intrinsics cannot express. "Use intrinsics"
-is not by itself a defence — Clang will happily re-fuse a NEON `vmulq_f64` and `vsubq_f64` pair
-back into `vfmsq_f64` when contraction is on.
+**The test came back negative.** With the flag applied on every leg, the three low-scoring legs
+still measure 61.83–61.87 dB against 67.73–67.90 dB on x86 — the same numbers, to within normal
+run-to-run noise, as before the flag existed. Contraction is therefore ruled out, not confirmed,
+as the explanation for this gap; the correlation that matters is architecture (aarch64 in all
+three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compiler family or libm
+package. The most likely remaining cause is aarch64's own compiled `libm` (glibc ships an
+architecture-specific `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean
+bit-identical machine code) producing different last-bit results in the transform twiddle tables
+(`kAnalysisWindow`, `Twiddles`, `FftRadix2Tables`) that are all built from `std::cos`/`std::sin` —
+untested as of this change, and the natural next step.
+
+The flag stays pinned regardless of that result, for an unrelated and unconditional reason: it is
+what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
+IEEE-754 add, subtract or multiply so a vectorised kernel is bit-identical to the scalar loop it
+replaced, and that only holds if the scalar loop is not silently getting a fused form the
+intrinsics cannot express — Clang will happily re-fuse a NEON `vmulq_f64` and `vsubq_f64` pair
+back into `vfmsq_f64` when contraction is on. That argument does not depend on whether contraction
+also explains the gold-gate gap, which it turns out not to.
 
 Measured cost: none on x86-64, where the flag is a no-op because baseline x86-64 has no FMA
 instruction to emit — proven, not assumed, by the corpus comparison above coming out
 byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
-inner loops and buys agreement with every other leg for it. ROADMAP VX11 carries the rest of that
-item: deciding whether the remaining cross-leg divergence becomes a bitstream-hash gate or a
-documented, accepted difference.
+inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers. ROADMAP
+VX11 stays open: the contraction hypothesis is now closed out, and the libm hypothesis above is
+where it picks up.
 
 ## Gold-reference correctness gate
 
