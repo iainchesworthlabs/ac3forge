@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <span>
 #include <string>
@@ -44,7 +45,7 @@ int main() {
     // Ask the bitstream what it is rather than asserting it.
     const auto scanned = ac3::io::scan(elementary);
     if (!scanned) {
-        std::printf("scan failed\n");
+        fmt::printf("scan failed\n");
         return 1;
     }
 
@@ -68,12 +69,12 @@ int main() {
 
     const auto file = matroska::mux(track, frames);
     if (!file) {
-        std::printf("mux failed: %.*s\n",
+        fmt::printf("mux failed: %.*s\n",
                     static_cast<int>(matroska::describe(file.error()).size()),
                     matroska::describe(file.error()).data());
         return 1;
     }
 
-    std::printf("%zu bytes of Matroska from %zu frames\n", file->size(), frames.size());
+    fmt::printf("%zu bytes of Matroska from %zu frames\n", file->size(), frames.size());
     return 0;
 }

@@ -41,7 +41,7 @@ target_compile_features(ac3audio PUBLIC cxx_std_23)
 # cmake/Coverage.cmake). Plain, not $<BUILD_INTERFACE:...>-wrapped: this
 # target is never installed (see the header comment above), so it has no
 # install(EXPORT) graph to keep the dependency out of.
-target_link_libraries(ac3audio PRIVATE ac3::forge ac3::warnings ac3::coverage)
+target_link_libraries(ac3audio PRIVATE ac3::forge ac3::warnings ac3::coverage ac3::fmt)
 
 # ---------------------------------------------------------------------------
 # The backend tree.
