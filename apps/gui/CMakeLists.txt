@@ -19,10 +19,19 @@ qt_add_executable(ac3gui
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
-    recording_sink.cpp
-    recording_sink.hpp
+    ../common/recording_sink.cpp
+    ../common/recording_sink.hpp
     system_theme.cpp
     system_theme.hpp)
+
+# RecordingSink moved to apps/common when `ac3cli record`/`live` started
+# writing their takes through the same class (roadmap IO9) - see that
+# header's own comment. Compiled straight into this target as it always was
+# (the source line above); apps/common has no CMakeLists.txt and no library
+# target of its own, because a one-class static library shared by exactly two
+# executables in the same build would be more machinery than the thing it
+# wraps.
+target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # The QML lives in qml/ on disk but belongs at the root of the QML module, so
 # every file is aliased to its bare name. Left alone, Qt lays the module out as

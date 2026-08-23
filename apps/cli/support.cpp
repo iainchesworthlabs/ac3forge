@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +38,7 @@
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
 #include "platform/stdio_binary.hpp"
+#include "usage.hpp"
 
 namespace ac3cli {
 
@@ -84,84 +86,79 @@ std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback) {
     return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
 }
 
-void print_meta_usage() {
-    std::println("metadata options (any order, after the positional arguments):");
-    std::println("  drc=<profile>     §7.7.1 dynamic range control per block");
-    std::println("                    {}", ac3::meta::kProfileNames);
-    std::println("  heavy             §7.7.2 heavy compression: a peak ceiling in the");
-    std::println("                    mono downmix, at syncframe resolution");
-    std::println("  ceiling=<dBFS>    that ceiling (default -0.5)");
-    std::println("  dialogue=<dBFS>   where heavy compression puts dialogue (default -20)");
-    std::println("  drc2=<profile>    Ch2's own DRC profile, layout 1+1 only (§7.7.1) - not "
-                 "inherited from drc=, set both to compress both programmes alike");
-    std::println("  heavy2            Ch2's own heavy compression, layout 1+1 only (§7.7.2.2)");
-    std::println("  ceiling2=<dBFS>   that ceiling for Ch2 (default -0.5)");
-    std::println("  dialogue2=<dBFS>  where Ch2's heavy compression puts dialogue (default -20)");
-    std::println("  dialnorm=auto     measure BS.1770 loudness and derive dialnorm (§5.4.2.8)");
-    std::println("  dialnorm=<1..31>  set it directly (default 31)");
-    std::println("  dialnorm2=auto | <1..31>   Ch2's own dialnorm, layout 1+1 only "
-                 "(§5.4.2.16, default 31)");
-    std::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
-    std::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
-    std::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
-    std::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
-    std::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
-    std::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
-                 "keep whatever frames were already encoded (named beside the intended output as "
-                 "<name>.partial.<ext>) instead of discarding them - off by default, matching the "
-                 "GUI's own keep-partial-output preference");
-    std::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
-                 "default §7.9.4 fast path (identical streams to within ~1e-12 coefficient "
-                 "error; the direct form is the validation oracle) - applies wherever this "
-                 "command encodes, incl. atmos/record/live/eac3-sine; eac3-encode alone has a "
-                 "[tools] positional argument whose bare nofastmdct token reaches the same "
-                 "field instead; bare fast-mdct (the old opt-in) is a no-op");
-    std::println("  mode=reference    force BOTH transforms onto the spec's own direct "
-                 "evaluations (the forms every fast-path test validates against): the §8.2.3.2 "
-                 "forward MDCT wherever this command encodes, and §7.9.4's step-3 inverse in "
-                 "'decode' - for runs where bit-for-bit agreement with the spec's stated "
-                 "arithmetic matters more than speed. mode=performance (the default) keeps "
-                 "both fast paths: 215-285 dB SNR against reference on 180 s programmes, "
-                 "4.5-4.7x faster decodes. Tokens apply in order, so a later fast-mdct=off / "
-                 "fast-imdct=off still adjusts one half on its own");
-    std::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
-                 "(mode=reference's decode half); bare fast-imdct names the default");
-    std::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
-                 "signature (needs signing-key=); see docs/concepts/object-signing.md");
-    std::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
-                 "against signing-key= instead of just playing it - a mismatch refuses the "
-                 "command; omitted (the default) decodes signed and unsigned streams alike, "
-                 "unchecked");
-    std::println("  signing-key=<path>      the key file sign-objects/verify-objects use "
-                 "(or AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)");
-    std::println();
-    std::println("source options (encode/eac3-encode; any order, after the positional "
-                 "arguments):");
-    std::println("  src=<path>        an additional input source; repeat for more than one");
-    std::println("  map=<spec>        {}", plan::kAssignmentSyntax);
-    std::println("                    once given, every loaded channel must appear - explicit "
-                 "'none' silences the goes-nowhere warning without giving it anywhere to go");
-    std::println("  offset=<sourceIndex>:<seconds>   leading silence ahead of that source's own "
-                 "channels (seconds >= 0), same 0-based numbering as src=");
-    std::println("                    the programme is still as long as the longest one once "
-                 "every offset is applied");
-    std::println();
-    std::println("record/live options (record, live; any order, after the positional "
-                 "arguments):");
-    std::println("  container=mkv     write straight to Matroska instead of the bare elementary");
-    std::println("                    stream this writes by default - same shape of choice as");
-    std::println("                    the GUI's own Container setting");
-    std::println("  container=raw     the default, spelled out");
-    std::println();
-    std::println("live options (live; any order, after the positional arguments):");
-    std::println("  capture2=<index>  a second capture device, clock-conformed to the first "
-                 "(see 'devices')");
-    std::println();
-    std::println("qc options (qc; any order, after the positional arguments):");
-    std::println("  preset=<name>     gate the measurement against a named delivery spec");
-    std::println("                    {}", ac3::meta::kQcPresetNames);
-    std::println("  preset=all        gate against every preset above");
-    std::println("                    omitted: measure and report only, no gate");
+// --- verbosity ------------------------------------------------------------
+// One pair of file-scope flags rather than a field on Options threaded to
+// every printer: `quiet`/`verbose` describe the invocation, not any one
+// command's arguments, and main() settles both before the first handler runs
+// (see set_verbosity's own header comment in support.hpp).
+namespace {
+bool g_quiet = false;
+bool g_verbose = false;
+}  // namespace
+
+void set_verbosity(bool quiet, bool verbose) {
+    // quiet wins if somebody passes both: "print nothing" is the safer
+    // reading of a contradictory command line for a tool whose stdout may be
+    // carrying a bitstream.
+    g_quiet = quiet;
+    g_verbose = verbose && !quiet;
+}
+
+bool verbose_mode() { return g_verbose; }
+
+bool quiet_mode() { return g_quiet; }
+
+// A run this long or longer prints the progress line without being asked -
+// 500 access units is 16 s of audio at 48 kHz, past the point where a silent
+// terminal starts to look like a hang. Shorter runs stay silent unless
+// `verbose` asks, so the ordinary two-second encode is as quiet as it was.
+constexpr std::uint64_t kProgressUnits = 500;
+
+// How often the line is rewritten. Wall clock, not a frame count: what makes
+// a progress line readable is a steady refresh rate, and a frame takes wildly
+// different amounts of time across bitrates, layouts and tool sets.
+constexpr std::chrono::milliseconds kProgressInterval{100};
+
+void Progress::start(std::string_view verb, std::uint64_t total) {
+    active_ = !quiet_mode() && (verbose_mode() || total >= kProgressUnits);
+    verb_ = std::string{verb};
+    total_ = total;
+    done_ = 0;
+    last_ = std::chrono::steady_clock::now();
+}
+
+void Progress::tick(std::uint64_t done) {
+    done_ = done;
+    if (!active_) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_ < kProgressInterval) {
+        return;
+    }
+    last_ = now;
+    if (total_ > 0) {
+        std::print(stderr, "\r  {} {:>8} / {} units ({:>3}%)   ", verb_, done_, total_,
+                   done_ * 100 / total_);
+    } else {
+        std::print(stderr, "\r  {} {:>8} units   ", verb_, done_);
+    }
+    // Same reason print_live_meter flushes: stderr is unbuffered on most
+    // platforms but not guaranteed to be, and a progress line nobody sees
+    // until the run ends is not a progress line.
+    (void)std::fflush(stderr);
+}
+
+void Progress::finish() {
+    if (!active_) {
+        return;
+    }
+    active_ = false;
+    if (total_ > 0) {
+        std::println(stderr, "\r  {} {:>8} / {} units (100%)   ", verb_, done_, total_);
+    } else {
+        std::println(stderr, "\r  {} {:>8} units   ", verb_, done_);
+    }
 }
 
 bool parse_options(std::span<char*> tokens, Options& out) {
@@ -172,6 +169,14 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         const std::string_view value =
             eq == std::string_view::npos ? std::string_view{} : token.substr(eq + 1);
 
+        if (token == "quiet" || token == "verbose") {
+            // Recorded on Options for a command that wants to reason about
+            // them (run_live names its legs only when verbose), but the
+            // printers themselves read the file-scope flags set_verbosity
+            // settles - see support.hpp.
+            (token == "quiet" ? out.quiet : out.verbose) = true;
+            continue;
+        }
         if (token == "couple" || token == "heavy" || token == "heavy2" || token == "mixmeta" ||
             token == "keep-partial" || token == "fast-mdct") {
             if (token == "heavy") {
@@ -493,10 +498,10 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
     }
     const int dialnorm = ac3::meta::dialnorm_from_lkfs(*lkfs);
     if (programme.empty()) {
-        std::println(out, "measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", *lkfs, field,
+        status_println(out, "measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", *lkfs, field,
                      dialnorm);
     } else {
-        std::println(out, "{} measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", programme, *lkfs,
+        status_println(out, "{} measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", programme, *lkfs,
                      field, dialnorm);
     }
     return dialnorm;
@@ -576,7 +581,14 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
 
 bool is_stdio_path(std::string_view path) { return path == "-"; }
 
-FILE* status_stream(std::string_view out_path) { return is_stdio_path(out_path) ? stderr : stdout; }
+FILE* status_stream(std::string_view out_path) {
+    if (quiet_mode()) {
+        return nullptr;
+    }
+    return is_stdio_path(out_path) ? stderr : stdout;
+}
+
+FILE* status_stream() { return quiet_mode() ? nullptr : stdout; }
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames) {
     if (is_stdio_path(path)) {
@@ -1070,15 +1082,18 @@ std::string meter_bar(double db, int width) {
 }
 
 void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
+    if (out == nullptr) {
+        return;
+    }
     const auto acmod = meter.acmod();
     const bool lfe = meter.lfe();
-    std::println(out, "");
-    std::println(out, "per-channel levels ({}):", ac3::analysis::layout_name(acmod, lfe));
-    std::println(out, "  {:<4} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms",
+    status_println(out, "");
+    status_println(out, "per-channel levels ({}):", ac3::analysis::layout_name(acmod, lfe));
+    status_println(out, "  {:<4} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms",
                 "peak (-60..0 dBFS)", "clipped");
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
         const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];
-        std::println(out, "  {:<4} {:>8.2f} {:>8.2f}  [{}] {}",
+        status_println(out, "  {:<4} {:>8.2f} {:>8.2f}  [{}] {}",
                      ac3::analysis::channel_name(acmod, lfe, ch), stats.peak_db(),
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
                      stats.clipped_samples > 0 ? std::to_string(stats.clipped_samples) : "-");
@@ -1096,12 +1111,15 @@ void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
         // A perfectly centred image leaves a vanishing negative y, which
         // rounds to a correct but ridiculous "-0°".
         const double azimuth = std::round(field.azimuth_deg);
-        std::println(out, "  soundfield: {:.0f}° azimuth, focus {:.2f} (1.0 = a single speaker)",
+        status_println(out, "  soundfield: {:.0f}° azimuth, focus {:.2f} (1.0 = a single speaker)",
                      azimuth == 0.0 ? 0.0 : azimuth, field.magnitude);
     }
 }
 
 void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds) {
+    if (quiet_mode()) {
+        return;
+    }
     const bool narrow = meter.channel_count() > 2;
     const int width = narrow ? 8 : 14;
     std::string line = std::format("{:6.1f} s", seconds);

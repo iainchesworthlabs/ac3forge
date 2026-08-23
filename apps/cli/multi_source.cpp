@@ -154,7 +154,7 @@ void gather_frame(const LoadedSources& sources, std::size_t start,
 void print_routing(const plan::Plan& p, const plan::Routing& routing, std::string_view label,
                    FILE* out) {
     if (routing.is_permutation()) {
-        std::println(out, "  source carried directly into {}", label);
+        status_println(out, "  source carried directly into {}", label);
         return;
     }
     const auto names = plan::coded_channel_names(plan::resolve(p));
@@ -169,9 +169,9 @@ void print_routing(const plan::Plan& p, const plan::Routing& routing, std::strin
             silent += names[static_cast<std::size_t>(c)];
         }
     }
-    std::println(out, "  {} source channels rendered onto {}", routing.source_channels, label);
+    status_println(out, "  {} source channels rendered onto {}", routing.source_channels, label);
     if (!silent.empty()) {
-        std::println(out, "  silent (the source carries nothing that belongs there): {}", silent);
+        status_println(out, "  silent (the source carries nothing that belongs there): {}", silent);
     }
 }
 

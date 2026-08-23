@@ -427,6 +427,42 @@ run fmp4 atmos_4.ec3 fmp4_atmos 4
 cat fmp4_atmos/init.mp4 $(ls -v fmp4_atmos/segment*.m4s) > fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos/audio.m3u8
+# --- Self-description: help, the generated man page, the generated shell
+# completions (roadmap IO8). Cheap, but they are generated from main.cpp's
+# command table at runtime, so a command or option row that cannot render at
+# all fails right here rather than in whatever packaging step consumes the
+# man page later. `help <command>` is run against a command with every topic
+# section a row can carry.
+run help
+run help eac3-encode
+run help exit-codes
+run man
+for shell in bash zsh fish powershell; do
+    run completions "$shell"
+done
+# The documented exit-code scheme itself (roadmap IO8): a usage error, an
+# unreadable input and a failed QC gate each come back with their own code
+# now, not the undifferentiated 1 every failure used to return. Captured with
+# `|| rc=$?` rather than run through `run`, which asserts a clean 0 - and
+# because `set -e` would otherwise take a deliberate failure as the end of the
+# script.
+count=$((count + 1))
+echo "[$count] exit-code scheme: usage (1), input (2), qc gate (0 or 6)"
+rc=0
+"$CLI" encode >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 1 ] || { echo "a usage error should exit 1, got $rc" >&2; exit 1; }
+: > not_a_stream.ac3
+rc=0
+"$CLI" decode not_a_stream.ac3 not_a_stream.wav >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] || { echo "an unreadable input should exit 2, got $rc" >&2; exit 1; }
+rc=0
+"$CLI" qc bootstrap_51.ac3 preset=all >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || [ "$rc" -eq 6 ] || { echo "qc should exit 0 or 6, got $rc" >&2; exit 1; }
+# quiet prints nothing at all on a clean run; the payload still lands.
+"$CLI" sine quiet_probe.ac3 1 192 1000 50 stereo quiet > quiet_probe.log 2>&1
+[ ! -s quiet_probe.log ] || { echo "quiet should print nothing, got:" >&2; cat quiet_probe.log >&2; exit 1; }
+[ -s quiet_probe.ac3 ] || { echo "quiet should still write the stream" >&2; exit 1; }
+
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts

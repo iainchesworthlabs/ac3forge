@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
@@ -28,7 +29,7 @@ int run_devices() {
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
         std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         std::println("no active capture endpoints found");
@@ -49,16 +50,16 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
         std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         std::println(stderr, "error: no capture endpoints available");
-        return 1;
+        return kExitUnavailable;
     }
     if (device_index < 0 || static_cast<std::size_t>(device_index) >= devices->size()) {
         std::println(stderr, "error: device index {} out of range (see 'ac3cli devices')",
                      device_index);
-        return 1;
+        return kExitUsage;
     }
     const auto& device = (*devices)[static_cast<std::size_t>(device_index)];
 
@@ -72,17 +73,17 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                          "error: device runs at {} Hz; AC-3 needs 32, 44.1 or 48 kHz "
                          "(change the endpoint's shared-mode format in Windows sound settings)",
                          device.sample_rate);
-            return 1;
+            return kExitUnavailable;
     }
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
         std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-        return 1;
+        return kExitUnavailable;
     }
     const auto channels = capture.channels();
-    std::println("recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
+    status_println(status_stream(), "recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
                  capture.sample_rate(), channels, seconds);
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
@@ -126,7 +127,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         auto frame = encoder->encode_frame(views);
         if (!frame) {
             std::println(stderr, "error: bitrate must be a legal AC-3 rate");
-            return 1;
+            return kExitUsage;
         }
         frames.push_back(std::move(*frame));
         // One frame is 32 ms at 48 kHz, so the meter redraws about 30 times a
@@ -134,7 +135,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
                                     capture.sample_rate());
     }
-    std::println("");
+    status_println(status_stream(), "");
 
     capture.stop();
     const auto stats = capture.stats();
@@ -146,13 +147,13 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                                      .channels = 2,
                                      .samples_per_frame = ac3::kSamplesPerFrame};
     if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
-        return 1;
+        return kExitOutput;
     }
-    std::println("wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
+    status_println(status_stream(), "wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
                  meta.matroska_container ? " (Matroska)" : "");
-    std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+    status_println(status_stream(), "captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
-    print_channel_summary(meter);
+    print_channel_summary(meter, status_stream());
     return 0;
 }
 
@@ -160,7 +161,7 @@ int run_outputs() {
     const auto devices = ac3::audio::enumerate_render_devices();
     if (!devices) {
         std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         std::println("no active render endpoints found");
@@ -192,12 +193,12 @@ int run_play(std::string_view in_path, int device_index) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         std::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return 1;
+        return kExitInput;
     }
     const bool eac3 = *bsid > 8;
 
@@ -207,7 +208,7 @@ int run_play(std::string_view in_path, int device_index) {
         const auto split = ac3::split_access_units(stream);
         if (!split || split->empty()) {
             std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
-            return 1;
+            return kExitInput;
         }
         units = *split;
         content_rate =
@@ -217,7 +218,7 @@ int run_play(std::string_view in_path, int device_index) {
         const auto split = ac3::split_frames(stream);
         if (!split || split->empty()) {
             std::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
-            return 1;
+            return kExitInput;
         }
         units = *split;
         content_rate =
@@ -233,11 +234,11 @@ int run_play(std::string_view in_path, int device_index) {
     // answer was a COM failure.
     if (!devices) {
         std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         std::println(stderr, "error: no render endpoints available");
-        return 1;
+        return kExitUnavailable;
     }
     std::string device_id;
     std::string device_name = "default endpoint";
@@ -245,7 +246,7 @@ int run_play(std::string_view in_path, int device_index) {
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
             std::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
                          device_index);
-            return 1;
+            return kExitUsage;
         }
         const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
         device_id = chosen.id;
@@ -256,7 +257,7 @@ int run_play(std::string_view in_path, int device_index) {
             std::println(stderr,
                          "error: \"{}\" does not accept {} over IEC 61937 (see 'ac3cli outputs')",
                          chosen.name, eac3 ? "E-AC-3" : "AC-3");
-            return 1;
+            return kExitUnavailable;
         }
     }
 
@@ -266,9 +267,9 @@ int run_play(std::string_view in_path, int device_index) {
         eac3 ? ac3::audio::BitstreamFormat::kEac3 : ac3::audio::BitstreamFormat::kAc3);
     if (!started) {
         std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-        return 1;
+        return kExitUnavailable;
     }
-    std::println("streaming {} {} to \"{}\" ({} Hz{})…", units.size(),
+    status_println(status_stream(), "streaming {} {} to \"{}\" ({} Hz{})…", units.size(),
                  eac3 ? "access units" : "frames", device_name, content_rate,
                  eac3 ? ", carrier 4x that" : " carrier");
 
@@ -279,7 +280,7 @@ int run_play(std::string_view in_path, int device_index) {
             auto result = eac3_packer.push(unit);
             if (!result) {
                 std::println(stderr, "error: burst wrap failed");
-                return 1;
+                return kExitRuntime;
             }
             if (!*result) {
                 continue;  // accumulating; nothing to submit yet
@@ -289,7 +290,7 @@ int run_play(std::string_view in_path, int device_index) {
             const auto wrapped = ac3::iec61937::wrap_frame(unit);
             if (!wrapped) {
                 std::println(stderr, "error: burst wrap failed");
-                return 1;
+                return kExitRuntime;
             }
             burst = *wrapped;
         }
@@ -305,7 +306,7 @@ int run_play(std::string_view in_path, int device_index) {
     }
     const auto stats = sink.stats();
     sink.stop();
-    std::println("submitted {} bursts, rendered {}, {} underruns", stats.bursts_submitted,
+    status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns", stats.bursts_submitted,
                  stats.bursts_rendered, stats.underruns);
     return 0;
 }

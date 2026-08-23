@@ -1,10 +1,13 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <expected>
 #include <fstream>
 #include <optional>
+#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -45,7 +48,22 @@ std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback);
 // a command line that says nothing about metadata produces exactly the stream
 // it produced before this layer existed.
 
-void print_meta_usage();
+// --- verbosity -------------------------------------------------------------
+// Set once by main(), from the `quiet`/`verbose` tokens, and read by every
+// status printer below. A global rather than another field threaded through
+// every run_* signature: the two tokens are properties of the invocation, not
+// of any one command's arguments, and every command already takes an Options
+// it would otherwise have to reach into at ~90 separate print sites.
+void set_verbosity(bool quiet, bool verbose);
+
+// True when `verbose` was given: the progress line runs whatever the run's
+// length, and the routing/source decisions name themselves as they are made.
+[[nodiscard]] bool verbose_mode();
+
+// True when `quiet` was given. Only the progress/status printers need to ask;
+// everything else goes through status_stream()/status_println(), which
+// already account for it.
+[[nodiscard]] bool quiet_mode();
 
 // Everything a command accepts after its positional arguments, in any order.
 // The metadata group is ac3::plan::Metadata verbatim; drc_scale is decode-
@@ -132,6 +150,12 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // The two verbosity tokens, recorded here as well as in the file-scope
+    // flags set_verbosity settles (see above): a command that wants to reason
+    // about them - run_live names each leg only when verbose - reads them off
+    // the Options it already has rather than calling back into a global.
+    bool quiet = false;
+    bool verbose = false;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain
@@ -202,7 +226,67 @@ bool is_stdio_path(std::string_view path);
 // "encoded N frames..." landing in the middle of that stream would corrupt
 // whatever is reading it downstream. The same split ffmpeg and friends make
 // between their progress/log output and the media they actually pipe.
+// Under `quiet` this returns nullptr instead - "nowhere" - which every
+// status printer here treats as "print nothing". nullptr rather than the
+// platform's null device: a FILE* to NUL/dev/null would need a per-platform
+// name in a tree that deliberately has no preprocessor conditionals, and a
+// discarded write is cheaper than a real one to a real handle anyway.
+//
+// What quiet does NOT silence is a REPORTING command's report - 'levels',
+// 'loudness', 'qc', 'devices' and 'outputs' print their answer with plain
+// std::println, because that answer is the command's output rather than
+// commentary on it. Silencing those would leave the command doing nothing
+// observable at all.
 FILE* status_stream(std::string_view out_path);
+
+// The same, for a command with no "-"-capable output path to protect: stdout,
+// or nowhere under quiet.
+FILE* status_stream();
+
+// std::println with a "nowhere" destination: a no-op when `out` is nullptr
+// (see status_stream above), an ordinary println otherwise. Every status line
+// in this CLI goes through this, so `quiet` is honoured in one place rather
+// than at each site.
+template <typename... Args>
+void status_println(FILE* out, std::format_string<Args...> fmt, Args&&... args) {
+    if (out != nullptr) {
+        std::println(out, fmt, std::forward<Args>(args)...);
+    }
+}
+
+inline void status_println(FILE* out) {
+    if (out != nullptr) {
+        std::println(out, "");
+    }
+}
+
+// A one-line "done / total" report on stderr for a run long enough to be
+// worth watching, rewritten in place the way print_live_meter's own line is.
+// stderr, never stdout: a '-' output owns stdout, and a progress line in the
+// middle of a piped elementary stream would corrupt whatever is reading it.
+//
+// Off for a short run unless `verbose` asked for it, and off entirely under
+// `quiet` - a two-second encode that prints a progress bar is noise, and the
+// point of the token pair is that a script can choose. start() decides once;
+// tick() and finish() do nothing at all when it decided no.
+class Progress {
+   public:
+    // `verb` leads the line ("encoding", "decoding"); `total` is the unit
+    // count when it is known up front (frames or access units), 0 when it is
+    // not - the line then counts up without a percentage.
+    void start(std::string_view verb, std::uint64_t total);
+    void tick(std::uint64_t done);
+    // Prints the finished line and ends it, so a captured log keeps the
+    // final count instead of a half-overwritten one.
+    void finish();
+
+   private:
+    bool active_ = false;
+    std::string verb_;
+    std::uint64_t total_ = 0;
+    std::uint64_t done_ = 0;
+    std::chrono::steady_clock::time_point last_{};
+};
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames);
 

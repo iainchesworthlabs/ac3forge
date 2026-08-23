@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
@@ -40,15 +41,15 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         std::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     if (!apply_object_verification(stream, meta)) {
-        return 1;
+        return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return 1;
+        return kExitInput;
     }
     const bool eac3 = *bsid > 8;
 
@@ -58,12 +59,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         const auto devices = ac3::audio::enumerate_render_devices();
         if (!devices) {
             std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-            return 1;
+            return kExitUnavailable;
         }
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
             std::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
                          device_index);
-            return 1;
+            return kExitUsage;
         }
         device_id = (*devices)[static_cast<std::size_t>(device_index)].id;
         device_name = (*devices)[static_cast<std::size_t>(device_index)].name;
@@ -81,7 +82,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         const auto units = ac3::split_access_units(stream);
         if (!units || units->empty()) {
             std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
-            return 1;
+            return kExitInput;
         }
         // Heap-allocated (PREfast's C6262, alert #9): Eac3Decoder grew
         // several KB of per-block scratch members (alert #63's fix), which
@@ -94,7 +95,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             if (!decoded) {
                 std::println(stderr, "error: decode failed (code {})",
                              static_cast<int>(decoded.error()));
-                return 1;
+                return kExitInput;
             }
             if (!decoded->has_value()) {
                 // §3.7: held back pending transient pre-noise processing
@@ -121,9 +122,9 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started) {
                     std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-                    return 1;
+                    return kExitUnavailable;
                 }
-                std::println("monitoring {} ({} channels, {} Hz) on \"{}\"…", in_path,
+                status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…", in_path,
                              order.size(), sample_rate_hz(out.sample_rate), device_name);
                 // Same object-count line run_decode_eac3 reports (see
                 // report_decoded_objects) - this path still only plays the
@@ -153,7 +154,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         const auto frames = ac3::split_frames(stream);
         if (!frames || frames->empty()) {
             std::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
-            return 1;
+            return kExitInput;
         }
         ac3::FrameDecoder decoder;
         std::vector<std::size_t> order;
@@ -161,7 +162,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
                 std::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
-                return 1;
+                return kExitInput;
             }
             if (order.empty()) {
                 order = ac3::io::wav_channel_order(decoded->acmod, decoded->lfe);
@@ -169,9 +170,9 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started) {
                     std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-                    return 1;
+                    return kExitUnavailable;
                 }
-                std::println("monitoring {} ({} channels, {} Hz) on \"{}\"…", in_path,
+                status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…", in_path,
                              order.size(), sample_rate_hz(decoded->sample_rate), device_name);
             }
             play(interleave_reordered(decoded->channels, order));
@@ -184,7 +185,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     }
     const auto stats = sink.stats();
     sink.stop();
-    std::println("played {} {}, {} underruns", units_played, eac3 ? "access units" : "frames",
+    status_println(status_stream(), "played {} {}, {} underruns", units_played, eac3 ? "access units" : "frames",
                  stats.underruns);
     return 0;
 }
@@ -194,19 +195,19 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             std::string_view mode, const Options& meta) {
     if (mode != "channels" && mode != "atmos") {
         std::println(stderr, "error: mode is 'channels' (default) or 'atmos'");
-        return 1;
+        return kExitUsage;
     }
     const bool atmos = mode == "atmos";
 
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
         std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (capture_device < 0 || static_cast<std::size_t>(capture_device) >= devices->size()) {
         std::println(stderr, "error: capture device index {} out of range (see 'ac3cli devices')",
                      capture_device);
-        return 1;
+        return kExitUsage;
     }
     const auto& device = (*devices)[static_cast<std::size_t>(capture_device)];
 
@@ -218,7 +219,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         std::println(stderr,
                      "error: capture2 device index {} out of range (see 'ac3cli devices')",
                      *meta.capture2);
-        return 1;
+        return kExitUsage;
     }
     const ac3::audio::DeviceInfo* device2 =
         meta.capture2 ? &(*devices)[static_cast<std::size_t>(*meta.capture2)] : nullptr;
@@ -232,7 +233,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             std::println(stderr,
                          "error: \"{}\" runs at {} Hz; AC-3/E-AC-3 need 32, 44.1 or 48 kHz",
                          device.name, device.sample_rate);
-            return 1;
+            return kExitUnavailable;
     }
 
     // capture2's own rate only has to be a legal AC-3 rate itself - it does
@@ -250,7 +251,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              "error: capture2 \"{}\" runs at {} Hz; AC-3/E-AC-3 need 32, 44.1 "
                              "or 48 kHz",
                              device2->name, device2->sample_rate);
-                return 1;
+                return kExitUnavailable;
         }
         nominal_ratio =
             static_cast<double>(device.sample_rate) / static_cast<double>(device2->sample_rate);
@@ -260,7 +261,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
         std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-        return 1;
+        return kExitUnavailable;
     }
     const auto channels = capture.channels();
     const auto rate_hz = capture.sample_rate();
@@ -281,7 +282,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         const auto started2 = capture2.start(device2->id, device2->kind);
         if (!started2) {
             std::println(stderr, "error: {}", ac3::audio::describe(started2.error()));
-            return 1;
+            return kExitUnavailable;
         }
         capture2_channels = capture2.channels();
         slave_resampler.emplace(capture2_channels);
@@ -290,7 +291,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              capture2_channels);
         slave_out.resize(static_cast<std::size_t>(ac3::kSamplesPerFrame) * capture2_channels);
         slave_resampler->reset();
-        std::println("capture2: \"{}\", {} ch @ {} Hz (nominal ratio {:.6f})", device2->name,
+        status_println(status_stream(), "capture2: \"{}\", {} ch @ {} Hz (nominal ratio {:.6f})", device2->name,
                      device2->channels, device2->sample_rate, nominal_ratio);
     }
 
@@ -331,7 +332,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              ac3::audio::describe(mstarted.error()));
             } else {
                 monitoring = true;
-                std::println("monitoring on \"{}\"", target->name.empty() ? "default endpoint"
+                status_println(status_stream(), "monitoring on \"{}\"", target->name.empty() ? "default endpoint"
                                                                           : target->name);
             }
         }
@@ -360,7 +361,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              ac3::audio::describe(pstarted.error()));
             } else {
                 passing_through = true;
-                std::println("passthrough ({}) on \"{}\"", atmos ? "E-AC-3" : "AC-3",
+                status_println(status_stream(), "passthrough ({}) on \"{}\"", atmos ? "E-AC-3" : "AC-3",
                              target->name.empty() ? "default endpoint" : target->name);
             }
         }
@@ -572,7 +573,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
                                     rate_hz);
     }
-    std::println("");
+    status_println(status_stream(), "");
 
     capture.stop();
     if (device2) {
@@ -591,7 +592,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         const auto pstats = passthrough_sink.stats();
         passthrough_sink.stop();
-        std::println("passthrough: {} bursts submitted, {} rendered, {} underruns",
+        status_println(status_stream(), "passthrough: {} bursts submitted, {} rendered, {} underruns",
                      pstats.bursts_submitted, pstats.bursts_rendered, pstats.underruns);
     }
     const auto stats = capture.stats();
@@ -606,17 +607,17 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         .channels = atmos ? 6 : 2,
         .samples_per_frame = ac3::kSamplesPerFrame};
     if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
-        return 1;
+        return kExitOutput;
     }
-    std::println("wrote {} {} ({} kbps) to {}{}", frames.size(),
+    status_println(status_stream(), "wrote {} {} ({} kbps) to {}{}", frames.size(),
                  atmos ? "E-AC-3 access units" : "AC-3 frames", bitrate, out_path,
                  meta.matroska_container ? " (Matroska)" : "");
-    std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+    status_println(status_stream(), "captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
     if (slave_drift.has_value()) {
-        std::println("capture2 drift: {:+.1f} ppm", slave_drift->drift_ppm());
+        status_println(status_stream(), "capture2 drift: {:+.1f} ppm", slave_drift->drift_ppm());
     }
-    print_channel_summary(meter);
+    print_channel_summary(meter, status_stream());
     return 0;
 }
 

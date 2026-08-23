@@ -1,7 +1,15 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp multi_source.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp)
+add_executable(ac3cli main.cpp support.cpp usage.cpp multi_source.cpp ../common/recording_sink.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp)
+
+# ../common/recording_sink.cpp: the take writer 'record' and 'live' stream
+# their output through (roadmap IO9), shared verbatim with the GUI rather
+# than reimplemented - see apps/common/recording_sink.hpp's own comment for
+# why it sits there and not in either app. Compiled straight in; apps/common
+# has no library target, matching how tests/CMakeLists.txt already compiles
+# the same file into ac3tests.
+target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # ac3cli's platform-specific code: putting stdin/stdout into binary mode for
 # the "-" stdin/stdout file-argument convention (see platform/stdio_binary.hpp
@@ -75,3 +83,82 @@ include(GNUInstallDirs)
 install(TARGETS ac3cli
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT runtime
     BUNDLE DESTINATION "." COMPONENT runtime)
+
+# ---------------------------------------------------------------------------
+# The man page and the four shell completions (roadmap IO8).
+#
+# GENERATED, not written: `ac3cli man` and `ac3cli completions <shell>` render
+# both from main.cpp's own command table (see apps/cli/usage.cpp), so a new
+# command or option reaches the man page, all four completion scripts and the
+# --help text at once and cannot be forgotten in one of them. That is the
+# whole reason to generate rather than check in five hand-maintained files.
+#
+# The cost of generating from the binary is that the binary has to run, which
+# a cross build cannot do - the linux-gcc-arm64/linux-llvm-arm64 presets build
+# aarch64 objects on an x86_64 host, and Emscripten builds no ac3cli at all.
+# There, these files are simply not produced and not installed: a packaging
+# run on the target arch (or a native build of the same source) produces
+# them, and a cross-built .deb without a man page is a smaller loss than a
+# build that fails outright or a checked-in file that silently goes stale.
+# The status message says which happened rather than leaving it to be
+# discovered from a missing file.
+if(CMAKE_CROSSCOMPILING)
+    message(STATUS "  CLI man page   : skipped (cross build cannot run ac3cli)")
+else()
+    set(AC3CLI_DOC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    file(MAKE_DIRECTORY "${AC3CLI_DOC_DIR}")
+
+    # DEPENDS ac3cli, not just $<TARGET_FILE:ac3cli>: the command table lives
+    # in the binary, so the artefacts have to be regenerated whenever it is
+    # relinked, not only when the file name changes.
+    add_custom_command(
+        OUTPUT "${AC3CLI_DOC_DIR}/ac3cli.1"
+        COMMAND "${CMAKE_COMMAND}"
+                "-DAC3_RUN_COMMAND=$<TARGET_FILE:ac3cli>;man"
+                "-DAC3_RUN_OUTPUT=${AC3CLI_DOC_DIR}/ac3cli.1"
+                -P "${PROJECT_SOURCE_DIR}/cmake/RunToFile.cmake"
+        DEPENDS ac3cli
+        COMMENT "Generating ac3cli.1 from ac3cli's own command table"
+        VERBATIM)
+
+    # <shell> -> the file name that shell's completion loader expects. bash
+    # and zsh look their file up by a fixed name (the command / _command);
+    # fish and PowerShell want a suffixed script. PowerShell has no
+    # convention-driven search path at all, so its script goes under the
+    # project's own share directory for the user to dot-source from $PROFILE
+    # - which is what `ac3cli completions powershell` itself says.
+    set(AC3CLI_COMPLETION_SHELLS bash zsh fish powershell)
+    set(AC3CLI_COMPLETION_FILES ac3cli _ac3cli ac3cli.fish ac3cli.ps1)
+    set(AC3CLI_COMPLETION_DESTS
+        "${CMAKE_INSTALL_DATAROOTDIR}/bash-completion/completions"
+        "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions"
+        "${CMAKE_INSTALL_DATAROOTDIR}/fish/vendor_completions.d"
+        "${CMAKE_INSTALL_DATAROOTDIR}/ac3forge/completions")
+
+    set(AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/ac3cli.1")
+    foreach(index RANGE 3)
+        list(GET AC3CLI_COMPLETION_SHELLS ${index} shell)
+        list(GET AC3CLI_COMPLETION_FILES ${index} completion_file)
+        list(GET AC3CLI_COMPLETION_DESTS ${index} completion_dest)
+        add_custom_command(
+            OUTPUT "${AC3CLI_DOC_DIR}/${completion_file}"
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DAC3_RUN_COMMAND=$<TARGET_FILE:ac3cli>;completions;${shell}"
+                    "-DAC3_RUN_OUTPUT=${AC3CLI_DOC_DIR}/${completion_file}"
+                    -P "${PROJECT_SOURCE_DIR}/cmake/RunToFile.cmake"
+            DEPENDS ac3cli
+            COMMENT "Generating ${shell} completions for ac3cli"
+            VERBATIM)
+        list(APPEND AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/${completion_file}")
+        install(FILES "${AC3CLI_DOC_DIR}/${completion_file}"
+            DESTINATION "${completion_dest}" COMPONENT runtime)
+    endforeach()
+
+    # ALL, so a plain `cmake --build` produces them: they are install()'d
+    # unconditionally below, and an install of a target that was never built
+    # is a hard CMake error rather than a missing file.
+    add_custom_target(ac3cli_docs ALL DEPENDS ${AC3CLI_GENERATED_DOCS})
+
+    install(FILES "${AC3CLI_DOC_DIR}/ac3cli.1"
+        DESTINATION "${CMAKE_INSTALL_MANDIR}/man1" COMPONENT runtime)
+endif()
