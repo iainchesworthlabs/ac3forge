@@ -79,6 +79,7 @@ add_executable(ac3tests
     meta/test_mixing.cpp
     containers/test_mp4.cpp
     containers/test_mpegts.cpp
+    quality/test_distortion.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp

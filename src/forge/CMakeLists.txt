@@ -141,6 +141,7 @@ target_sources(forge_objects
         src/oba/joc.cpp
         src/oba/motion.cpp
         src/oba/oamd.cpp
+        src/quality/distortion.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/mirror.cpp
