@@ -809,7 +809,11 @@ ApplicationWindow {
         fileMode: FileDialog.SaveFile
         nameFilters: [qsTr("Keyframe columns (*.txt)"), qsTr("Object scene (*.json)"),
                       qsTr("All files (*)")]
-        defaultSuffix: "txt"
+        // Follows the chosen filter rather than sitting at "txt": defaultSuffix
+        // is what a name typed WITHOUT an extension gets, so a fixed "txt"
+        // would hand someone who picked "Object scene" a .txt file and, by the
+        // suffix rule below, the column format they did not ask for.
+        defaultSuffix: selectedNameFilter.index === 1 ? "json" : "txt"
         currentFolder: window.outputFolderUrl()
         selectedFile: window.outputFolderUrl() + "/" + window.exportedPathsName()
         onAccepted: {
