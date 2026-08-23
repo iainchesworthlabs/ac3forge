@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fmt/printf.h>
 #include <fstream>
 #include <span>
 #include <string>
@@ -425,15 +426,15 @@ int main(int argc, char** argv) {
     }));
 
     for (const auto& r : results) {
-        std::printf("%-28s %10llu iters  %10.1f ns/call\n", r.name.c_str(),
+        fmt::printf("%-28s %10llu iters  %10.1f ns/call\n", r.name.c_str(),
                     static_cast<unsigned long long>(r.iters), r.ns_per_call);
     }
     // Not printed for its value - just to anchor g_sink as observably used.
-    std::printf("(checksum %.6f)\n", g_sink);
+    fmt::printf("(checksum %.6f)\n", g_sink);
 
     if (!json_out.empty()) {
         write_json(results, json_out);
-        std::printf("wrote %s\n", json_out.c_str());
+        fmt::printf("wrote %s\n", json_out.c_str());
     }
 
     return 0;

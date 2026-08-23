@@ -1,6 +1,6 @@
 #include "mp4/dash.hpp"
 
-#include <format>
+#include <fmt/format.h>
 
 #include "manifest_detail.hpp"
 
@@ -27,9 +27,9 @@ namespace {
             ++run;
         }
         if (run > 1) {
-            out += std::format("        <S d=\"{}\" r=\"{}\"/>\n", duration, run - 1);
+            out += fmt::format("        <S d=\"{}\" r=\"{}\"/>\n", duration, run - 1);
         } else {
-            out += std::format("        <S d=\"{}\"/>\n", duration);
+            out += fmt::format("        <S d=\"{}\"/>\n", duration);
         }
         i += run;
     }
@@ -65,7 +65,7 @@ std::string build_dash_adaptation_set(const AudioTrack& track,
     // every real sample), but not something to ship deliberately when the
     // exact, spec-correct alternative is no harder to build from the same
     // MediaSegment list.
-    return std::format(
+    return fmt::format(
         "<AdaptationSet mimeType=\"audio/mp4\" segmentAlignment=\"true\">\n"
         "  <Representation id=\"{}\" codecs=\"{}\" bandwidth=\"{}\" audioSamplingRate=\"{}\">\n"
         "    <SegmentTemplate timescale=\"{}\" initialization=\"{}\" media=\"{}\" "

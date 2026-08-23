@@ -13,7 +13,8 @@
     {
       "name": "vcpkg-cmake-config",
       "host": true
-    }
+    },
+    "fmt"
   ],
   "features": {
     "matroska": {

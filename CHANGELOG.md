@@ -26,6 +26,30 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   the sum `fft.hpp` states it computes. Two cases now do, on six consecutive real-audio-shaped
   blocks and on genuinely complex input (what §E3.5.5.1 step 5 actually hands it), at the same
   1e-10 bound the rest of the library's fast paths are held to.
+- **E-AC-3 encoder input-space fuzzing** (`tools/ci/fuzz_eac3_encoder_space.py`, roadmap `VX1`).
+  The AC-3 encoder-space harness said outright where it stopped — "Scope: AC-3 only [...] E-AC-3's
+  own space [...] is a real remaining gap" — and this is that gap. It draws random legal
+  `eac3-encode`/`atmos-encode` configurations (Annex E tool tokens with their band-edge pins,
+  `fscod2` half sample rates, CBR and VBR, every layout including the ones needing dependent
+  substreams, Atmos object counts) crossed with the AC-3 harness's adversarial per-block PCM
+  generator, which it imports rather than copies. Because FFmpeg does not read E-AC-3 whole — no
+  second dependent substream, no model of enhanced coupling or transient pre-noise, no `fscod2`
+  decode — every case is classified by which oracle can actually read it, and the cells FFmpeg
+  cannot decode still get their *framing* checked: by a walk over the four fields that fix E-AC-3
+  framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
+  and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
+  on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
+
+### Fixed
+
+- **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
+  §E2.3.1.3's 11-bit `frmsiz` word count can signal at the chosen sample rate — every layout,
+  reachable by typing two ordinary numbers, since both a nominal Table 5.18 bitrate and an Annex E
+  half sample rate are legal on their own and nothing in the CLI's grammar marks the pair. In
+  practice: above 320 kbps at 16 kHz, above 448 at 22.05 kHz, above 512 at 24 kHz. A release build
+  refused it without naming a cause; any build with assertions live aborted. It now reports the
+  limit, the word count needed and the way out. `atmos-encode` was never affected. Found by the
+  new E-AC-3 encoder-space harness above.
 
 ### Changed
 
@@ -59,7 +83,49 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   faster on its own (74.8 → 17.1 µs, before `PF4` compounds it to 6.9× — 73.4 → 10.6 µs), and a
   30-second 15-object decode drops from 6.47 s to 4.83 s. Encoder output is byte-identical across the
   corpus, so this is a speed choice and not an output one.
+- **E-AC-3 transmits its bit allocation parameters** (`bamode` 1, roadmap `EQ3`) instead of
+  inheriting Table E1.4's `bamode == 0` defaults - which are not §8.2.12's basic-encoder set, and
+  in particular pinned `dbpbcod` at 2. The frame now states `{sdcycod 2, fdcycod 1, sgaincod 1,
+  dbpbcod 3, floorcod 7}`, at a cost of 17 bits a frame. `dbpbcod` 3 is the departure the AC-3
+  encoder measured its way to in 0.7.0, and it carries over: swept 0-3 across 96/128/192 kbit/s
+  stereo and 192/256/384/640 kbit/s 5.1, it wins every cell by +1.2 to +3.0 dB SNR against the
+  old value, with ViSQOL MOS up in every cell too. `floorcod` was swept as well and stays at 7 -
+  the lowest of the eight, so the floor never binds. Both reference encoders in
+  `tests/golden/external-baseline/` emit exactly this set.
+- **`dithflag` is decided from content** in both encoders (roadmap `EQ4`), per full-bandwidth
+  channel per block, where it was previously written as a fixed 0. §7.3.4's dither exists to fill
+  the bins the allocator gave no bits to; the encoders now compare the energy the decoder will
+  not receive against the energy the dither would put there instead, and set the flag only where
+  the first is at least as large as the second. Digital silence always reads clear. A
+  block-switched channel never dithers - two interleaved half transforms share one coefficient
+  set there - which is also exactly what Dolby's own encoder does in the reference stream. On
+  E-AC-3 dither is additionally held off for any frame using spectral extension, whose
+  copy-source reconstruction the encoder could not otherwise mirror. The flag is transmitted
+  either way, so none of this costs bits; it trades a little waveform SNR for perceptual quality,
+  which is what the tool is for.
 
+  Measured on `tools/ci/quality_race.py`'s own material, decoded by FFmpeg 8.0.1, ViSQOL in audio
+  mode. The E-AC-3 rows carry both changes; the AC-3 rows carry only the dither one. Full tables,
+  every rate and tool set, are in the pull request.
+
+  | leg | before | after |
+  |---|---|---|
+  | AC-3 stereo 192 | 41.82 dB / 4.246 MOS | 41.12 dB / 4.344 MOS |
+  | AC-3 5.1 448 | 21.96 dB / 3.956 MOS | 20.91 dB / 4.268 MOS |
+  | AC-3 5.1 448, committed fixture | 39.95 dB / 3.670 MOS | 38.92 dB / 3.913 MOS |
+  | E-AC-3 stereo 96, no tools | 25.79 dB / 3.799 MOS | 26.75 dB / 4.307 MOS |
+  | E-AC-3 stereo 192, `auto` | 40.42 dB / 4.395 MOS | 40.98 dB / 4.414 MOS |
+  | E-AC-3 5.1 192, no tools | 10.02 dB / 1.326 MOS | 12.14 dB / 2.340 MOS |
+  | E-AC-3 5.1 256, `cpl` | 15.44 dB / 2.364 MOS | 15.36 dB / 2.875 MOS |
+- **`std::format`/`std::print`/`std::printf` replaced with {fmt}'s `fmt::format`/`fmt::print`/
+  `fmt::printf` everywhere.** NDK r26's bundled libc++ has no `<format>` at all unless the
+  compiler is invoked with `-fexperimental-library`, which the Android build never does; {fmt}
+  (the library `std::format` was standardized from) has no such gap, so the codebase now uses it
+  uniformly instead of avoiding standard formatting file by file. The handful of pre-existing
+  `%`-specifier call sites moved to `fmt::printf` with their format strings unchanged, rather than
+  being rewritten to `{}`-style. `fmt` is a new base vcpkg dependency (falls back to
+  `FetchContent` when no local copy is found — see `cmake/Fmt.cmake`); no public API is affected,
+  since every use is confined to implementation files.
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
@@ -68,6 +134,32 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   in a ledger so older references still resolve. The DAMF reader (`B2`) moves to "Deliberately
   not on the list" (no public specification); an IAB (SMPTE ST 2098-2) reader replaces it now
   that SMPTE's catalogue is free.
+
+### Added
+
+- **`dither=off` / `nodither`** (`EncoderConfig::dither`, `eac3::FrameConfig::dither`,
+  `plan::Tools::dither`) pins §7.3.4 `dithflag` at 0 unconditionally, the deterministic behaviour
+  from before content-decided dither existed. Real dither values are decoder-defined - two
+  independent, spec-correct decoders given the same dithered stream diverge in the dithered bins
+  by design - so this exists for the one caller that needs bit-for-bit agreement between two
+  decodes of the same bitstream more than it needs dither's own perceptual benefit:
+  `tools/checks/verify_gold_reference.sh`, whose 55 dB decoder-agreement gate content-decided
+  dither would otherwise fail on legitimate, spec-permitted divergence rather than a real bug.
+  AC-3 has no `tools=` string, so `dither=off` is the CLI option surface `fast-mdct=off` already
+  established there; E-AC-3's `tools=` string takes the equivalent bare `nodither` token.
+
+### Fixed
+
+- **E-AC-3 `snroffststr` 0x2 read the wrong fields.** The per-channel fine-offset strategy's
+  parse consumed one value per coded channel and none for the coupling channel, so a conforming
+  stream using it would have desynced whenever coupling was on, and the shared channel would have
+  allocated against an offset nobody sent. §7.2.2.1.1's all-zero test now includes
+  `cplfsnroffst` too. Nothing emits this strategy - not this project's encoder, not FFmpeg's, not
+  Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
+  note at the code and roadmap `EQ2`.
+
+
+
 
 ## [0.9.0-beta.1] - 2026-08-22
 
