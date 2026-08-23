@@ -250,6 +250,20 @@ struct FrameConfig {
     // regardless of this flag.
     bool fast_mdct = true;
 
+    // §7.3.4 dithflag, decided per channel per block from content (see
+    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // config field here, except a frame using spectral extension, which
+    // always dithers off (see the note where step 8a decides it). false pins
+    // dithflag at 0 unconditionally in every frame, the deterministic
+    // behaviour from before this existed: real dither values are
+    // decoder-defined (the spec's own "any reasonably random sequence"), so
+    // two independent, spec-correct decoders given the same dithered stream
+    // diverge in the dithered bins by design - which is exactly what breaks
+    // a bit-for-bit comparison between this project's own decoder and an
+    // external one (tools/checks/verify_gold_reference.sh). That gate sets
+    // this false; nothing else needs to.
+    bool dither = true;
+
     // TS 103 420 §8.3. An object-audio stream sets flag_ec3_extension_type_a in
     // the addbsi field of whichever substream carries the EMDF container, and
     // follows it with the number of bed, ISF and dynamic objects (§8.3.2.2 caps

@@ -16,7 +16,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <print>
+#include <fmt/base.h>
 #include <vector>
 
 #include "ac3/version.hpp"
@@ -125,8 +125,8 @@ bool report_meters(EncoderController* controller, const MeterTrace& trace, int d
     const auto names = controller->channelNames();
     const auto levels = controller->channelLevels();
     const double floor_db = controller->meterFloorDb();
-    std::println("smoke: {} level publishes while live", trace.publishes);
-    std::println("smoke: {:<10} {:>6} {:>10} {:>10} {:>10} {:>10}", "ch", "fed", "live min",
+    fmt::println("smoke: {} level publishes while live", trace.publishes);
+    fmt::println("smoke: {:<10} {:>6} {:>10} {:>10} {:>10} {:>10}", "ch", "fed", "live min",
                  "live max", "peak", "rms");
 
     bool every_fed_channel_moved = true;
@@ -140,7 +140,7 @@ bool report_meters(EncoderController* controller, const MeterTrace& trace, int d
         // source has nothing that belongs there. Requiring it to move would
         // only be satisfied by inventing a signal.
         const bool fed = entry.value(QStringLiteral("fed"), true).toBool();
-        std::println("smoke: {:<10} {:>6} {:>10.2f} {:>10.2f} {:>10.2f} {:>10.2f}",
+        fmt::println("smoke: {:<10} {:>6} {:>10.2f} {:>10.2f} {:>10.2f} {:>10.2f}",
                      names[ch].toStdString(), fed ? "yes" : "no", low, high,
                      entry.value(QStringLiteral("peakDb")).toDouble(),
                      entry.value(QStringLiteral("rmsDb")).toDouble());
@@ -152,7 +152,7 @@ bool report_meters(EncoderController* controller, const MeterTrace& trace, int d
     const bool passed =
         drawn == names.size() && every_fed_channel_moved && trace.publishes >= min_publishes;
     if (!passed) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "smoke: FAILED ({} meters for {} channels, {} publishes of at least {}, "
                      "all fed channels moved {})",
                      drawn, names.size(), trace.publishes, min_publishes,
@@ -186,20 +186,20 @@ bool apply_properties(EncoderController* controller, QObject* root, const QStrin
     for (const auto& token : tokens) {
         const auto eq = token.indexOf(QLatin1Char('='));
         if (eq <= 0) {
-            std::println(stderr, "smoke: '{}' is not prop=value", token.toStdString());
+            fmt::println(stderr, "smoke: '{}' is not prop=value", token.toStdString());
             return false;
         }
         const QString name = token.left(eq);
         const QString text = token.mid(eq + 1);
         if (name == QLatin1String("preset")) {
             controller->applyChannelPreset(text);
-            std::println("smoke: preset = {} -> {}", text.toStdString(),
+            fmt::println("smoke: preset = {} -> {}", text.toStdString(),
                          controller->channelShapeName().toStdString());
             continue;
         }
         if (name == QLatin1String("src2")) {
             controller->addSourceFile(QUrl::fromLocalFile(text));
-            std::println("smoke: src2 = {} -> {} sources loaded", text.toStdString(),
+            fmt::println("smoke: src2 = {} -> {} sources loaded", text.toStdString(),
                          controller->sourceModel().size());
             continue;
         }
@@ -210,18 +210,18 @@ bool apply_properties(EncoderController* controller, QObject* root, const QStrin
             index = target->metaObject()->indexOfProperty(name.toUtf8().constData());
         }
         if (index < 0) {
-            std::println(stderr, "smoke: no property named '{}'", name.toStdString());
+            fmt::println(stderr, "smoke: no property named '{}'", name.toStdString());
             return false;
         }
         const auto property = target->metaObject()->property(index);
         QVariant value{text};
         if (!value.convert(property.metaType()) ||
             !property.write(target, value)) {
-            std::println(stderr, "smoke: could not set {} to '{}'", name.toStdString(),
+            fmt::println(stderr, "smoke: could not set {} to '{}'", name.toStdString(),
                          text.toStdString());
             return false;
         }
-        std::println("smoke: {} = {}", name.toStdString(),
+        fmt::println("smoke: {} = {}", name.toStdString(),
                      property.read(target).toString().toStdString());
     }
     return true;
@@ -239,13 +239,13 @@ int meters_drawn(QQmlApplicationEngine& engine) {
 
 EncoderController* smoke_controller(QQmlApplicationEngine& engine) {
     if (engine.rootObjects().isEmpty()) {
-        std::println(stderr, "smoke: no root object; the QML failed to load");
+        fmt::println(stderr, "smoke: no root object; the QML failed to load");
         return nullptr;
     }
     auto* controller =
         engine.singletonInstance<EncoderController*>("Ac3Forge", "EncoderController");
     if (controller == nullptr) {
-        std::println(stderr, "smoke: EncoderController singleton is not registered");
+        fmt::println(stderr, "smoke: EncoderController singleton is not registered");
     }
     return controller;
 }
@@ -260,7 +260,7 @@ int run_smoke(QQmlApplicationEngine& engine, const QString& in_path, const QStri
 
     controller->loadSourceFile(QUrl::fromLocalFile(in_path));
     if (!controller->sourceReady()) {
-        std::println(stderr, "smoke: source not usable: {}",
+        fmt::println(stderr, "smoke: source not usable: {}",
                      controller->status().toStdString());
         return 1;
     }
@@ -269,16 +269,16 @@ int run_smoke(QQmlApplicationEngine& engine, const QString& in_path, const QStri
     if (!apply_properties(controller, engine.rootObjects().first(), properties)) {
         return 1;
     }
-    std::println("smoke: {}", controller->routingSummary().toStdString());
-    std::println("smoke: writing .{}", controller->outputSuffix().toStdString());
+    fmt::println("smoke: {}", controller->routingSummary().toStdString());
+    fmt::println("smoke: writing .{}", controller->outputSuffix().toStdString());
 
     const auto trace = watch_meters(controller);
 
     QObject::connect(controller, &EncoderController::encodeFinished, controller,
                      [&engine, controller, shot_path, trace](bool ok, const QString& message) {
-                         std::println("smoke: {}", message.toStdString());
+                         fmt::println("smoke: {}", message.toStdString());
                          if (!shot_path.isEmpty()) {
-                             std::println("smoke: window grab -> {}",
+                             fmt::println("smoke: window grab -> {}",
                                           save_window(engine, shot_path)
                                               ? shot_path.toStdString()
                                               : std::string{"FAILED"});
@@ -287,7 +287,7 @@ int run_smoke(QQmlApplicationEngine& engine, const QString& in_path, const QStri
                          // meters follow the CODED channels, and which those
                          // are is only settled once the plan has been applied.
                          const int drawn = meters_drawn(engine);
-                         std::println("smoke: layout {} · QML instantiated {} channel meters",
+                         fmt::println("smoke: layout {} · QML instantiated {} channel meters",
                                       controller->layoutName().toStdString(), drawn);
                          // A short file encodes inside a single 30 Hz publish
                          // window, so one update is all this mode can demand.
@@ -295,7 +295,7 @@ int run_smoke(QQmlApplicationEngine& engine, const QString& in_path, const QStri
                          // easier to diagnose next to what the meters saw.
                          const bool meters_ok = report_meters(controller, *trace, drawn, 1);
                          const bool passed = ok && meters_ok;
-                         std::println("smoke: {}", passed ? "OK" : "failed");
+                         fmt::println("smoke: {}", passed ? "OK" : "failed");
                          QCoreApplication::exit(passed ? 0 : 1);
                      });
 
@@ -331,40 +331,40 @@ int run_smoke_record(QQmlApplicationEngine& engine, int device, double seconds,
     }
     const auto devices = controller->captureDevices();
     if (device < 0 || device >= devices.size()) {
-        std::println(stderr, "smoke: capture device {} out of range ({} available)", device,
+        fmt::println(stderr, "smoke: capture device {} out of range ({} available)", device,
                      devices.size());
         for (qsizetype i = 0; i < devices.size(); ++i) {
-            std::println(stderr, "smoke:   {} {}", i, devices[i].toStdString());
+            fmt::println(stderr, "smoke:   {} {}", i, devices[i].toStdString());
         }
         return 1;
     }
-    std::println("smoke: recording {:.1f} s from {}", seconds,
+    fmt::println("smoke: recording {:.1f} s from {}", seconds,
                  devices[device].toStdString());
 
     const auto trace = watch_meters(controller);
 
     controller->startRecording(device, QUrl::fromLocalFile(out_path));
     if (!controller->recording()) {
-        std::println(stderr, "smoke: recording did not start: {}",
+        fmt::println(stderr, "smoke: recording did not start: {}",
                      controller->status().toStdString());
         return 1;
     }
-    std::println("smoke: layout {} ({} channels)", controller->layoutName().toStdString(),
+    fmt::println("smoke: layout {} ({} channels)", controller->layoutName().toStdString(),
                  controller->channelNames().size());
     const int drawn = meters_drawn(engine);
     if (drawn < 0) {
-        std::println(stderr, "smoke: the channelMeters repeater is not in the scene");
+        fmt::println(stderr, "smoke: the channelMeters repeater is not in the scene");
         controller->stopRecording();
         return 1;
     }
-    std::println("smoke: QML instantiated {} channel meters", drawn);
+    fmt::println("smoke: QML instantiated {} channel meters", drawn);
 
     const auto millis = static_cast<int>(seconds * 1000.0);
     if (!shot_path.isEmpty()) {
         // Grabbed mid-run, on purpose: a still taken afterwards would show the
         // totals the display settles on, not the live state being checked.
         QTimer::singleShot(millis * 7 / 10, controller, [&engine, shot_path] {
-            std::println("smoke: window grab -> {}", save_window(engine, shot_path)
+            fmt::println("smoke: window grab -> {}", save_window(engine, shot_path)
                                                          ? shot_path.toStdString()
                                                          : std::string{"FAILED"});
         });
@@ -373,13 +373,13 @@ int run_smoke_record(QQmlApplicationEngine& engine, int device, double seconds,
     // The capture thread can only stall on something outside this process, so
     // the run must not be able to hang a script forever.
     QTimer::singleShot(millis + 15000, controller, [] {
-        std::println(stderr, "smoke: FAILED (recording never finished)");
+        fmt::println(stderr, "smoke: FAILED (recording never finished)");
         QCoreApplication::exit(1);
     });
 
     QObject::connect(controller, &EncoderController::encodeFinished, controller,
                      [controller, drawn, seconds, trace](bool ok, const QString& message) {
-                         std::println("smoke: {}", message.toStdString());
+                         fmt::println("smoke: {}", message.toStdString());
                          // One AC-3 frame is 32 ms and the recorder publishes
                          // per frame, so a run this long owes roughly this
                          // many updates. Half of that is a generous floor for
@@ -389,7 +389,7 @@ int run_smoke_record(QQmlApplicationEngine& engine, int device, double seconds,
                          const bool meters_ok =
                              report_meters(controller, *trace, drawn, expected);
                          const bool passed = ok && meters_ok;
-                         std::println("smoke: {}", passed ? "OK" : "failed");
+                         fmt::println("smoke: {}", passed ? "OK" : "failed");
                          QCoreApplication::exit(passed ? 0 : 1);
                      });
 
@@ -413,60 +413,60 @@ int run_smoke_live(QQmlApplicationEngine& engine, int device, double seconds,
     }
     const auto devices = controller->captureDevices();
     if (device < 0 || device >= devices.size()) {
-        std::println(stderr, "smoke: capture device {} out of range ({} available)", device,
+        fmt::println(stderr, "smoke: capture device {} out of range ({} available)", device,
                      devices.size());
         for (qsizetype i = 0; i < devices.size(); ++i) {
-            std::println(stderr, "smoke:   {} {}", i, devices[i].toStdString());
+            fmt::println(stderr, "smoke:   {} {}", i, devices[i].toStdString());
         }
         return 1;
     }
-    std::println("smoke: live session {:.1f} s from {}", seconds, devices[device].toStdString());
+    fmt::println("smoke: live session {:.1f} s from {}", seconds, devices[device].toStdString());
 
     const auto trace = watch_meters(controller);
 
     controller->startLiveSession(device, false, -1, true, QUrl::fromLocalFile(out_path));
     if (!controller->liveActive()) {
-        std::println(stderr, "smoke: live session did not start: {}",
+        fmt::println(stderr, "smoke: live session did not start: {}",
                      controller->status().toStdString());
         return 1;
     }
-    std::println("smoke: layout {} ({} channels)", controller->layoutName().toStdString(),
+    fmt::println("smoke: layout {} ({} channels)", controller->layoutName().toStdString(),
                  controller->channelNames().size());
     const int drawn = meters_drawn(engine);
     if (drawn < 0) {
-        std::println(stderr, "smoke: the channelMeters repeater is not in the scene");
+        fmt::println(stderr, "smoke: the channelMeters repeater is not in the scene");
         controller->stopLiveSession();
         return 1;
     }
-    std::println("smoke: QML instantiated {} channel meters", drawn);
+    fmt::println("smoke: QML instantiated {} channel meters", drawn);
 
     const auto millis = static_cast<int>(seconds * 1000.0);
     if (!shot_path.isEmpty()) {
         QTimer::singleShot(millis * 7 / 10, controller, [&engine, shot_path] {
-            std::println("smoke: window grab -> {}", save_window(engine, shot_path)
+            fmt::println("smoke: window grab -> {}", save_window(engine, shot_path)
                                                          ? shot_path.toStdString()
                                                          : std::string{"FAILED"});
         });
     }
     QTimer::singleShot(millis, controller, [controller] { controller->stopLiveSession(); });
     QTimer::singleShot(millis + 15000, controller, [] {
-        std::println(stderr, "smoke: FAILED (live session never finished)");
+        fmt::println(stderr, "smoke: FAILED (live session never finished)");
         QCoreApplication::exit(1);
     });
 
     QObject::connect(
         controller, &EncoderController::encodeFinished, controller,
         [controller, drawn, seconds, trace](bool ok, const QString& message) {
-            std::println("smoke: {}", message.toStdString());
+            fmt::println("smoke: {}", message.toStdString());
             const auto expected = static_cast<int>(seconds * 1000.0 / 32.0) / 2;
             const bool meters_ok = report_meters(controller, *trace, drawn, expected);
             // The one thing a plain recording cannot check: that frames were
             // actually counted as they were produced, not just at the end.
             const bool frames_ok = controller->liveFramesEncoded() > 0;
-            std::println("smoke: {} frames encoded live, {} dropped", controller->liveFramesEncoded(),
+            fmt::println("smoke: {} frames encoded live, {} dropped", controller->liveFramesEncoded(),
                          controller->liveFramesDropped());
             const bool passed = ok && meters_ok && frames_ok;
-            std::println("smoke: {}", passed ? "OK" : "failed");
+            fmt::println("smoke: {}", passed ? "OK" : "failed");
             QCoreApplication::exit(passed ? 0 : 1);
         });
 
@@ -485,7 +485,7 @@ int run_smoke_shot(QQmlApplicationEngine& engine, const QString& shot_path,
     if (!in_path.isEmpty()) {
         controller->loadSourceFile(QUrl::fromLocalFile(in_path));
         if (!controller->sourceReady()) {
-            std::println(stderr, "smoke: source not usable: {}",
+            fmt::println(stderr, "smoke: source not usable: {}",
                          controller->status().toStdString());
             return 1;
         }
@@ -500,7 +500,7 @@ int run_smoke_shot(QQmlApplicationEngine& engine, const QString& shot_path,
     // a fresh window rather than grabbing on the same tick.
     QTimer::singleShot(50, controller, [&engine, shot_path] {
         const bool ok = save_window(engine, shot_path);
-        std::println("smoke: window grab -> {}",
+        fmt::println("smoke: window grab -> {}",
                      ok ? shot_path.toStdString() : std::string{"FAILED"});
         QCoreApplication::exit(ok ? 0 : 1);
     });
@@ -550,7 +550,7 @@ int main(int argc, char* argv[]) {
          {":/fonts/Archivo-Regular.ttf", ":/fonts/Archivo-Medium.ttf",
           ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf"}) {
         if (QFontDatabase::addApplicationFont(QLatin1String(face)) < 0) {
-            std::println(stderr, "could not register bundled font {}", face);
+            fmt::println(stderr, "could not register bundled font {}", face);
         }
     }
     QFont default_font = QGuiApplication::font();

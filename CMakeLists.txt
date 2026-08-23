@@ -51,6 +51,11 @@ include(Coverage)
 # manifest feature resolved - see vcpkg.json); a plain configure is unaffected.
 include(Tracy)
 
+# ac3::fmt - {fmt}, used everywhere instead of std::format/std::print (see
+# cmake/Fmt.cmake). Unlike Tracy above, this is a base dependency: always
+# resolved, never opt-in.
+include(Fmt)
+
 # Sources carry spec citations with non-ASCII glyphs (section marks, degrees,
 # arrows). Tell MSVC both the source and execution charsets are UTF-8 so it
 # neither mis-decodes them nor warns; harmless everywhere else.

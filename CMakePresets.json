@@ -79,7 +79,7 @@
     {
       "name": "linux-llvm",
       "hidden": true,
-      "description": "Linux/LLVM 21 toolchain selection. GUI off for the same reason as linux-gcc.",
+      "description": "Linux/LLVM 22 toolchain selection. GUI off for the same reason as linux-gcc.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.llvm.toolchain.cmake",
@@ -109,7 +109,7 @@
     {
       "name": "linux-llvm-arm64",
       "hidden": true,
-      "description": "Linux/LLVM 21 toolchain selection, arm64 (Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu target). Same toolchain file as linux-llvm - cmake/toolchains/linux.llvm.toolchain.cmake already resolves aarch64 vs x86_64 from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. GUI off for the same reason as linux-gcc.",
+      "description": "Linux/LLVM 22 toolchain selection, arm64 (Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu target). Same toolchain file as linux-llvm - cmake/toolchains/linux.llvm.toolchain.cmake already resolves aarch64 vs x86_64 from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. GUI off for the same reason as linux-gcc.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.llvm.toolchain.cmake",

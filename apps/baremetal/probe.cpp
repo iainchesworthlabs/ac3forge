@@ -31,7 +31,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <span>
-#include <vector>
 
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
