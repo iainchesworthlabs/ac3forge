@@ -1093,7 +1093,7 @@ TEST_CASE("eac3-encode and atmos-encode accept '-' for input and output", "[cli]
 // in two places, neither caught by the round-trip test above because it
 // never turns dialnorm=auto or src=/map= on: finish_measurement() (behind
 // every dialnorm=auto/dialnorm2=auto path) printed its "measured N LKFS ->
-// dialnorm M" line with the no-stream std::println overload, which always
+// dialnorm M" line with the no-stream fmt::println overload, which always
 // targets stdout regardless of out_path; and run_eac3_encode_multi/
 // run_encode_multi's own final summary/routing report used that same
 // unconditional stdout instead of threading status_stream(out_path) through

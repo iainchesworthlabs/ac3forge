@@ -23,7 +23,7 @@ for (int frame = 0; frame < 31; ++frame) {  // 48000 / 1536, near enough
 
     const auto encoded = encoder->encode_frame(views);
     if (!encoded) {
-        std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+        fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
         return 1;
     }
     write(stream, *encoded);  // one complete syncframe

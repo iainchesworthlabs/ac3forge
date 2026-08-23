@@ -48,6 +48,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   | E-AC-3 stereo 192, `auto` | 40.42 dB / 4.395 MOS | 40.98 dB / 4.414 MOS |
   | E-AC-3 5.1 192, no tools | 10.02 dB / 1.326 MOS | 12.14 dB / 2.340 MOS |
   | E-AC-3 5.1 256, `cpl` | 15.44 dB / 2.364 MOS | 15.36 dB / 2.875 MOS |
+- **`std::format`/`std::print`/`std::printf` replaced with {fmt}'s `fmt::format`/`fmt::print`/
+  `fmt::printf` everywhere.** NDK r26's bundled libc++ has no `<format>` at all unless the
+  compiler is invoked with `-fexperimental-library`, which the Android build never does; {fmt}
+  (the library `std::format` was standardized from) has no such gap, so the codebase now uses it
+  uniformly instead of avoiding standard formatting file by file. The handful of pre-existing
+  `%`-specifier call sites moved to `fmt::printf` with their format strings unchanged, rather than
+  being rewritten to `{}`-style. `fmt` is a new base vcpkg dependency (falls back to
+  `FetchContent` when no local copy is found — see `cmake/Fmt.cmake`); no public API is affected,
+  since every use is confined to implementation files.
+
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
