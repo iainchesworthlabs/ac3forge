@@ -240,6 +240,76 @@ bsmod/full-service/associated-service granularity those fields carry, and a gues
 be actively misleading where an absent optional field is not; a decoder still gets everything it
 needs to play the stream from the AC-3/E-AC-3 bitstream's own `bsmod`/`acmod`.
 
+### Demuxing: `mpegts::demux`, `mpegts::Reader`
+
+`mpegts/reader.hpp`, same library. The read side of `mpegts::mux`/`Writer`, codec-blind in the
+same sense: it locks to the packet grid, follows PAT to PMT to an elementary PID, reassembles
+PES, and hands the payloads back as opaque bytes.
+
+**What comes back is not the same shape as the sibling readers.** A Matroska `SimpleBlock` and an
+MP4 sample each hold exactly one access unit, so `matroska::demux`/`mp4::demux` hand back access
+units. A PES packet makes no such promise — it may carry one, several, or (with the unbounded
+`PES_packet_length` form broadcast uses) a run ending only when the next one starts. So this
+reader hands back **PES payloads**, and what they concatenate to is the elementary stream:
+
+```cpp
+const auto out = mpegts::demux(file_bytes);
+if (!out) {
+    fmt::println(stderr, "{}", mpegts::describe(out.error()));
+    return 1;
+}
+std::vector<std::byte> elementary_stream;
+for (const auto& payload : out->payloads) {
+    elementary_stream.insert(elementary_stream.end(), payload.begin(), payload.end());
+}
+const auto scanned = ac3::io::scan(elementary_stream);
+```
+
+This is exactly what `ac3::io::scan` wants, and re-framing PES payloads into access units is its
+job, not this module's — doing it here would mean this container-blind module knowing what an
+AC-3 syncframe is.
+
+**Both broadcast signalling profiles**, unlike the writer. `mux` implements DVB only (see above)
+and says why. A reader has no such luxury: an ATSC capture uses `stream_type` 0x81/0x87 instead
+of DVB's descriptors, and a third family of files names the codec through a
+`registration_descriptor`'s `'AC-3'`/`'EAC3'` `format_identifier`. All three are recognised on
+read, reported as `ReadStream::signalling` (`CodecSignalling::kAtscStreamType` /
+`kDvbDescriptor` / `kRegistrationDescriptor`) so a caller remuxing back out knows which it was.
+
+**Three packet grids**, detected rather than assumed: 188 bytes (ISO/IEC 13818-1's own), 192
+(M2TS — a Blu-ray/AVCHD rip, each packet prefixed by a 4-byte arrival timestamp), and 204 (a
+capture that kept its Reed-Solomon parity). The grid is found by where the `0x47` sync byte
+repeats at a consistent stride, several packets in a row — a stray `0x47` in payload cannot fake
+that — which also means a capture that starts mid-packet (the normal way a transport stream is
+acquired: wherever the tuner happened to be) still locks on.
+
+```cpp
+mpegts::Reader reader{};
+const auto on_payload = [&](std::span<const std::byte> payload) {
+    elementary_stream.insert(elementary_stream.end(), payload.begin(), payload.end());
+};
+for (auto chunk = read_next_chunk(); !chunk.empty(); chunk = read_next_chunk()) {
+    if (!reader.push(chunk, on_payload)) { /* ... */ }
+}
+if (!reader.finish(on_payload)) { /* ... */ }
+```
+
+`Reader::finish` takes the callback — unlike the Matroska and MP4 readers' — because it can
+genuinely still emit: the unbounded PES form ends only at the next
+`payload_unit_start_indicator` or at end of input, so the last payload of a capture is only
+complete here.
+
+**Untrusted input, and more so than the sibling formats.** A transport stream is designed to be
+tuned into mid-flight and to survive bit errors, so "malformed" is the ordinary case here, not
+the exceptional one. Every PSI section's CRC-32 (the non-reflected CRC-32/MPEG-2 variant,
+self-checked against the standard test vector) is verified before the PAT/PMT it carries is
+believed — a bit-damaged PMT is thrown away rather than locking onto a wrong PID for the rest of
+the file. `ReadOptions` bounds the PES and PSI section sizes the reader will assemble (the
+unbounded PES form has no ceiling of its own otherwise) and how far it will search for the packet
+grid. `fuzz/fuzz_mpegts_demux.cpp` drives both entry points with arbitrary bytes — this is also
+the container reader most likely to find a genuine hang rather than a crash, since the sync
+search, section reassembly and PES reassembly are all loops a hostile stream can try to stall.
+
 ## Fragmented MP4/CMAF + HLS/DASH: `mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`
 
 ROADMAP.md's A2, the streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
@@ -324,6 +394,7 @@ own `describe()` overload beside `MuxError`'s:
 |---|---|
 | `mp4::DemuxError` | `kNotIsobmff`; `kTruncated`; `kMalformed` (a box, sample table or fragment layout that cannot be parsed); `kNoAudioTrack`; `kLimitExceeded`; `kMoovAfterMdat` (`Reader` only — the sample table follows the data it indexes; use `demux`). |
 | `matroska::DemuxError` | `kNotMatroska` (no EBML header where one has to be); `kTruncated` (the input ends before any track was described — a cut *after* one is not an error, see above); `kMalformed` (a vint, element or block layout that cannot be parsed, including a lace whose declared sizes overrun its block); `kNoAudioTrack` (Tracks held nothing selectable, or the requested `track_number` is absent); `kLimitExceeded` (an element size or nesting depth beyond `ReadOptions`). |
+| `mpegts::DemuxError` | `kNotTransportStream` (no 188/192/204-byte sync grid found within `ReadOptions::max_sync_search_bytes`); `kNoProgramme` (no PAT, or no PMT for the programme it named — including one whose CRC failed); `kNoAudioStream` (the PMT held no AC-3/E-AC-3 elementary stream under any of the three signalling forms); `kMalformed` (a PES or section layout that cannot be parsed); `kLimitExceeded` (a PES packet or PSI section beyond `ReadOptions`). |
 
 ## Bitstream sinks (`ac3::audio`)
 

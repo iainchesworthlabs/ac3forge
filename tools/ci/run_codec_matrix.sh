@@ -503,4 +503,20 @@ cmp -s atmos_4.ec3 demux_fmp4_atmos.ec3 || {
     exit 1
 }
 
+# And through MPEG-TS: the writer implements the DVB profile (stream_type
+# 0x06 plus a descriptor), so this is the one leg above that also proves the
+# reader's DVB path end to end, not just the ATSC/registration paths the
+# reader-side unit tests cover on their own.
+run demux enc_51.ts demux_ts_51.ac3
+cmp -s enc_51.ac3 demux_ts_51.ac3 || {
+    echo "demux enc_51.ts did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux atmos_4.ts demux_ts_atmos.ec3
+cmp -s atmos_4.ec3 demux_ts_atmos.ec3 || {
+    echo "demux atmos_4.ts did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+run_ffmpeg_check demux_ts_atmos.ec3
+
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

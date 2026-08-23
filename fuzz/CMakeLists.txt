@@ -60,7 +60,7 @@ target_link_options(forge_objects PUBLIC -fsanitize=address,undefined,fuzzer-no-
 # Same PUBLIC-on-the-OBJECT-library reasoning as forge_objects above: the
 # usage requirements propagate through the static/shared wrappers to
 # whatever finally links matroska::matroska - here, each harness.
-foreach(container_target IN ITEMS matroska_objects mp4_objects)
+foreach(container_target IN ITEMS matroska_objects mp4_objects mpegts_objects)
     target_compile_options(${container_target} PUBLIC
         -fsanitize=address,undefined,fuzzer-no-link
         -fno-sanitize-recover=undefined
@@ -122,6 +122,12 @@ ac3forge_add_container_fuzzer(fuzz_matroska_demux matroska::matroska)
 # wider attack surface than Matroska's in-line framing
 # (src/mp4/src/reader.cpp).
 ac3forge_add_container_fuzzer(fuzz_mp4_demux mp4::mp4)
+
+# mpegts::demux + mpegts::Reader: sync search, PSI section reassembly and PES
+# reassembly, all loops driven by self-declared lengths over a format that is
+# EXPECTED to arrive damaged - the harness most likely to find a hang rather
+# than a crash (src/mpegts/src/reader.cpp).
+ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
 
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
 # drives them (src/forge/src/decoder/decoder.cpp).

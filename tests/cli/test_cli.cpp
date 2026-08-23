@@ -2276,6 +2276,16 @@ TEST_CASE("demux recovers the exact elementary stream a container wrapped",
         const auto es = dir / "demux_ac3_mp4.ac3";
         check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mp4");
     }
+
+    SECTION("E-AC-3 through MPEG-TS") {
+        const auto es = dir / "demux_eac3_ts.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "ts");
+    }
+
+    SECTION("AC-3 through MPEG-TS") {
+        const auto es = dir / "demux_ac3_ts.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "ts");
+    }
 }
 
 TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
