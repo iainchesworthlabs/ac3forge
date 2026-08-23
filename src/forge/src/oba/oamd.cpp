@@ -578,7 +578,7 @@ struct ObjectLayout {
             }
         }
         if ((present & kZone) != 0) {
-            object.zone = static_cast<ZoneConstraint>(r.read(3));
+            object.zone = static_cast<ZoneConstraint>(static_cast<std::uint8_t>(r.read(3)));
             object.enable_elevation = r.read(1) != 0;
         }
         if ((present & kSize) != 0) {

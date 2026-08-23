@@ -295,8 +295,9 @@ std::expected<std::optional<std::vector<DecodedPayload>>, ParseError> parse_cont
     if (primary == 0) {
         return std::unexpected(ParseError::kUnsupportedConfig);
     }
-    r.skip(protection_bits(primary));    // protection_bits_primary
-    r.skip(protection_bits(secondary));  // protection_bits_secondary
+    // protection_bits_primary / protection_bits_secondary
+    r.skip(static_cast<std::size_t>(protection_bits(primary)));
+    r.skip(static_cast<std::size_t>(protection_bits(secondary)));
 
     if (r.overflowed()) {
         return std::unexpected(ParseError::kTruncated);

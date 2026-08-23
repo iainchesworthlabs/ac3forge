@@ -206,8 +206,8 @@ struct Program {
 // count is just a popcount - unlike Table 12, where a set bit can name a pair.
 [[nodiscard]] constexpr int nonstd_bed_channel_count(std::uint32_t assignment) {
     int count = 0;
-    for (int bit = 0; bit < 17; ++bit) {
-        count += (assignment >> bit) & 1u;
+    for (unsigned bit = 0; bit < 17U; ++bit) {
+        count += static_cast<int>((assignment >> bit) & 1U);
     }
     return count;
 }

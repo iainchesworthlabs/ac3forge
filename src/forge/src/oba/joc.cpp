@@ -257,7 +257,15 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
                             dequantize(sparse_offset, shape.fine_quant);
                     }
                 }
-                int previous = 0;
+                // Pseudocode 2's coefficient differential is against
+                // joc_mix_mtx_q[ch][pb-1] for the channel THIS band names -
+                // which is the previous band's decoded value only if that
+                // band named the same channel, and the sparse offset
+                // otherwise, since that is what every unnamed channel holds.
+                // A single running "previous" would carry a value across a
+                // channel change that the clause never puts there.
+                std::array<int, kMaxChannels> previous{};
+                previous.fill(sparse_offset);
                 for (int band = 0; band < bands; ++band) {
                     const int value = huff_decode(vec_table, r);
                     if (value < 0) {
@@ -273,9 +281,10 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
                         band == 0 ? raw
                                   : (channel_idx[static_cast<std::size_t>(band - 1)] + raw) %
                                         channels;
-                    const int code = band == 0 ? (sparse_offset + value) % steps
-                                               : (previous + value) % steps;
-                    previous = code;
+                    const int code =
+                        (previous[static_cast<std::size_t>(named)] + value) % steps;
+                    previous.fill(sparse_offset);
+                    previous[static_cast<std::size_t>(named)] = code;
                     params.at(object, dp, named, band) = dequantize(code, shape.fine_quant);
                 }
             } else {
@@ -449,7 +458,8 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
                     const double previous =
                         has_ramp ? state.previous_matrix[previous_index] : dq[0];
                     const double m =
-                        has_ramp ? interpolate(shape, previous, dq, ts) : dq[shape.data_points - 1];
+                        has_ramp ? interpolate(shape, previous, dq, ts)
+                                 : dq[static_cast<std::size_t>(shape.data_points - 1)];
                     sum += m * bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
                 }
                 object_mdct[static_cast<std::size_t>(bin)] = sum;
