@@ -69,6 +69,7 @@ add_executable(ac3tests
     containers/test_fmp4.cpp
     core/test_frame.cpp
     sinks/test_iec61937.cpp
+    sinks/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
