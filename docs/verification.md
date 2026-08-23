@@ -82,6 +82,13 @@ suite (max peak-normalized relative error ~3e-12 forward, 7.8e-14 inverse; end-t
 real material). The fast paths are the default, because that evidence was reviewed and accepted
 before each default flipped.
 
+One nearby switch is deliberately **not** part of this pair: `joc-domain=qmf|mdct`, which selects
+where JOC's reconstruction matrix is estimated and applied. The two transforms above are the same
+answer computed two ways; the two JOC domains are different answers about 5 dB apart, so folding
+them into a speed preference would make `mode=performance` quietly pick the worse one. The default
+is already the domain TS 103 420 §6.6.6 states, so `mode=reference` has nothing to add either. See
+[Atmos & JOC](concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
+
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
 against an external decoder, or isolating a suspected transform defect — and `mode=performance`

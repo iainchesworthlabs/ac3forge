@@ -4,7 +4,7 @@ Encoding commands in [Commands](commands.md) take these after their positional a
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
 takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=` and (`live`
 only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
-`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`
+`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`, `joc-domain=`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
 — of the three Atmos commands, only `atmos-encode` measures:
 
@@ -50,6 +50,10 @@ metadata options (any order, after the positional arguments):
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction matrix over 256
+                    MDCT bins instead of the default §7.1 64-band complex QMF - cheaper, ~5 dB
+                    worse per object, and not the domain a licensed decoder reconstructs in.
+                    Not part of mode= in either direction (=qmf names the default)
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -421,6 +425,19 @@ Optional positional arguments, when omitted:
   `mode=reference fast-mdct=off` is redundant but harmless, and `mode=performance fast-imdct=off`
   runs a fast encode with a reference decode. `eac3-encode`'s `[tools]` positional still wins
   the forward-MDCT half if both are given, exactly as it does against `fast-mdct=off`.
+- **`joc-domain=qmf|mdct`**: which domain JOC's reconstruction matrix is estimated in (on
+  `atmos`, `atmos-path` and `atmos-encode`) and applied in (on `decode`). `qmf` — the default —
+  is TS 103 420 §7.1's 64-subband complex filterbank, which is what §6.6.6 describes and what a
+  licensed decoder runs. `mdct` selects the 256-bin MDCT approximation this project used before
+  it had a filterbank: cheaper on the encode side, but about 5 dB worse per object (22.8 dB
+  against 27.7–28.6 dB mean per-object SNR over four placements; 20.2 dB against 26.5 dB on
+  moving objects), and correct only against a decoder given the same token. Use it to reproduce
+  output from before 0.9.0, not for new material. Unlike `fast-mdct=off` / `fast-imdct=off` this
+  is **not** part of `mode=` in either direction: those two are the same answer computed two
+  ways, agreeing to ~1e-12, while these are different answers — see
+  [Atmos & JOC](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
+  domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
+  them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →
