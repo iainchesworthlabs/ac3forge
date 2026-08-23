@@ -4,11 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <format>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -116,7 +116,7 @@ std::string bed_label(const ac3::oba::Program& program) {
     if (program.dynamic_only) {
         return program.lfe ? "LFE only" : "none";
     }
-    return std::format("{} channel(s)", ac3::oba::bed::channel_count(program.bed));
+    return fmt::format("{} channel(s)", ac3::oba::bed::channel_count(program.bed));
 }
 
 // dialnorm is transmitted as 1..31 meaning -1..-31 dB LKFS (§5.4.2.8); 0 is
@@ -130,24 +130,24 @@ int dialnorm_db(int code) { return -code; }
 
 void print_range(std::string_view label, const io::MinMax& range, std::string_view unit) {
     if (!range.seen) {
-        std::println("{:<16}absent", label);
+        fmt::println("{:<16}absent", label);
         return;
     }
     if (range.constant()) {
-        std::println("{:<16}{}{}", label, range.min, unit);
+        fmt::println("{:<16}{}{}", label, range.min, unit);
         return;
     }
-    std::println("{:<16}{}{} .. {}{}", label, range.min, unit, range.max, unit);
+    fmt::println("{:<16}{}{} .. {}{}", label, range.min, unit, range.max, unit);
 }
 
 void print_table(std::string_view path, const io::ProbeReport& report) {
-    std::println("{:<16}{}", "file", path);
-    std::println("{:<16}{} (bsid {})", "codec", codec_label(report.kind), report.bsid);
-    std::println("{:<16}{} Hz{}", "sample rate", ac3::sample_rate_hz(report.sample_rate),
+    fmt::println("{:<16}{}", "file", path);
+    fmt::println("{:<16}{} (bsid {})", "codec", codec_label(report.kind), report.bsid);
+    fmt::println("{:<16}{} Hz{}", "sample rate", ac3::sample_rate_hz(report.sample_rate),
                  report.reduced_rate ? " (fscod2 reduced rate)" : "");
-    std::println("{:<16}{} ({})", "bsmod", report.bsmod,
+    fmt::println("{:<16}{} ({})", "bsmod", report.bsmod,
                  bsmod_label(report.bsmod, report.acmod));
-    std::println("{:<16}{} (acmod {}, lfeon {})", "layout",
+    fmt::println("{:<16}{} (acmod {}, lfeon {})", "layout",
                  ac3::analysis::layout_name(report.acmod, report.lfe),
                  static_cast<int>(report.acmod), report.lfe ? 1 : 0);
     if (report.layout.count > 0) {
@@ -156,38 +156,38 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
             locations += locations.empty() ? "" : " ";
             locations += ac3::eac3::chanmap::name(location);
         }
-        std::println("{:<16}{} channel(s): {}", "renders", report.rendered_channels, locations);
+        fmt::println("{:<16}{} channel(s): {}", "renders", report.rendered_channels, locations);
     } else {
-        std::println("{:<16}{} channel(s), no Table E2.5 layout (dual mono)", "renders",
+        fmt::println("{:<16}{} channel(s), no Table E2.5 layout (dual mono)", "renders",
                      report.rendered_channels);
     }
-    std::println("{:<16}{} per syncframe (numblkscod {})", "blocks",
+    fmt::println("{:<16}{} per syncframe (numblkscod {})", "blocks",
                  report.kind == io::StreamKind::kAc3
                      ? ac3::kBlocksPerFrame
                      : ac3::eac3::blocks_per_syncframe(report.numblkscod),
                  report.numblkscod);
 
-    std::println("{:<16}{} per access unit", "substreams", report.substreams_per_unit);
+    fmt::println("{:<16}{} per access unit", "substreams", report.substreams_per_unit);
     for (const auto& sub : report.substreams) {
         std::string chanmap = "-";
         if (sub.chanmap) {
-            chanmap = std::format("chanmap 0x{:04x}", *sub.chanmap);
+            chanmap = fmt::format("chanmap 0x{:04x}", *sub.chanmap);
         }
-        std::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "",
+        fmt::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "",
                      strmtyp_token(sub.strmtyp), sub.substreamid,
                      ac3::analysis::layout_name(sub.acmod, sub.lfe), sub.syncframes, chanmap);
     }
 
-    std::println("{:<16}{} ({} syncframe(s)), {} bytes", "access units", report.access_units,
+    fmt::println("{:<16}{} ({} syncframe(s)), {} bytes", "access units", report.access_units,
                  report.syncframes, report.bytes);
-    std::println("{:<16}{:.3f} s", "duration", report.duration_seconds);
+    fmt::println("{:<16}{:.3f} s", "duration", report.duration_seconds);
     if (report.nominal_bitrate_kbps) {
-        std::println("{:<16}{:.1f} kbit/s measured, {} kbit/s declared (frmsizecod)", "bit rate",
+        fmt::println("{:<16}{:.1f} kbit/s measured, {} kbit/s declared (frmsizecod)", "bit rate",
                      report.bitrate_kbps, *report.nominal_bitrate_kbps);
     } else {
-        std::println("{:<16}{:.1f} kbit/s measured", "bit rate", report.bitrate_kbps);
+        fmt::println("{:<16}{:.1f} kbit/s measured", "bit rate", report.bitrate_kbps);
     }
-    std::println("{:<16}{} ({} .. {} bytes per access unit)", "rate control",
+    fmt::println("{:<16}{} ({} .. {} bytes per access unit)", "rate control",
                  report.variable_bitrate ? "variable" : "constant",
                  report.min_access_unit_bytes, report.max_access_unit_bytes);
 
@@ -218,56 +218,56 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
     }
 
     if (report.emdf_payload_ids.empty()) {
-        std::println("{:<16}none", "EMDF");
+        fmt::println("{:<16}none", "EMDF");
     } else {
         std::string ids;
         for (const int id : report.emdf_payload_ids) {
             ids += ids.empty() ? "" : ", ";
             const auto label = emdf_payload_label(id);
-            ids += label.empty() ? std::format("{}", id) : std::format("{} ({})", id, label);
+            ids += label.empty() ? fmt::format("{}", id) : fmt::format("{} ({})", id, label);
         }
-        std::println("{:<16}payload id(s) {}", "EMDF", ids);
+        fmt::println("{:<16}payload id(s) {}", "EMDF", ids);
     }
     if (report.program) {
-        std::println("{:<16}{} object(s): bed {}, {} dynamic, in {} frame(s)", "object audio",
+        fmt::println("{:<16}{} object(s): bed {}, {} dynamic, in {} frame(s)", "object audio",
                      ac3::oba::object_count(*report.program), bed_label(*report.program),
                      report.program->dynamic_objects, report.object_frames);
     } else if (report.oba_complexity_index) {
-        std::println("{:<16}addbsi marker only, no OAMD payload parsed", "object audio");
+        fmt::println("{:<16}addbsi marker only, no OAMD payload parsed", "object audio");
     } else {
-        std::println("{:<16}none", "object audio");
+        fmt::println("{:<16}none", "object audio");
     }
     if (report.oba_complexity_index) {
-        std::println("{:<16}{}", "complexity", *report.oba_complexity_index);
+        fmt::println("{:<16}{}", "complexity", *report.oba_complexity_index);
     }
-    std::println("{:<16}{}", "JOC", report.joc ? "present" : "absent");
-    std::println("{:<16}{}", "authenticity",
+    fmt::println("{:<16}{}", "JOC", report.joc ? "present" : "absent");
+    fmt::println("{:<16}{}", "authenticity",
                  report.authenticity_tagged_frames > 0
-                     ? std::format("tag in {} of {} syncframe(s)",
+                     ? fmt::format("tag in {} of {} syncframe(s)",
                                    report.authenticity_tagged_frames, report.syncframes)
                      : std::string{"no tag"});
 
-    std::println("{:<16}{} of {} syncframe(s) valid", "CRC",
+    fmt::println("{:<16}{} of {} syncframe(s) valid", "CRC",
                  report.syncframes - report.crc_failures, report.syncframes);
     if (report.parse_failures > 0) {
-        std::println("{:<16}{} syncframe(s) refused by the parser{}", "parse errors",
+        fmt::println("{:<16}{} syncframe(s) refused by the parser{}", "parse errors",
                      report.parse_failures,
                      report.first_parse_error
-                         ? std::format(" (first: {})", ac3::describe(*report.first_parse_error))
+                         ? fmt::format(" (first: {})", ac3::describe(*report.first_parse_error))
                          : std::string{});
     }
 
     const auto& tools = report.tools;
     if (tools.blocks == 0) {
-        std::println("{:<16}no block was parsed", "tools");
+        fmt::println("{:<16}no block was parsed", "tools");
         return;
     }
     const auto usage = [&](std::string_view name, std::uint64_t count) {
         if (count > 0) {
-            std::println("  {:<14}{} of {} block(s)", name, count, tools.blocks);
+            fmt::println("  {:<14}{} of {} block(s)", name, count, tools.blocks);
         }
     };
-    std::println("{:<16}{} block(s) parsed", "tools", tools.blocks);
+    fmt::println("{:<16}{} block(s) parsed", "tools", tools.blocks);
     usage("coupling", tools.coupling);
     usage("enh coupling", tools.enhanced_coupling);
     usage("spx", tools.spectral_extension);
@@ -277,38 +277,38 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
     usage("delta ba", tools.delta_bit_alloc);
     usage("skip field", tools.skip_field);
     if (tools.aht_frames > 0) {
-        std::println("  {:<14}{} of {} syncframe(s)", "aht", tools.aht_frames,
+        fmt::println("  {:<14}{} of {} syncframe(s)", "aht", tools.aht_frames,
                      report.syncframes);
     }
     if (tools.transient_prenoise_frames > 0) {
-        std::println("  {:<14}{} of {} syncframe(s)", "tpnp", tools.transient_prenoise_frames,
+        fmt::println("  {:<14}{} of {} syncframe(s)", "tpnp", tools.transient_prenoise_frames,
                      report.syncframes);
     }
-    std::println("  {:<14}reuse {}, D15 {}, D25 {}, D45 {}", "exponents", tools.exp_strategy[0],
+    fmt::println("  {:<14}reuse {}, D15 {}, D25 {}, D45 {}", "exponents", tools.exp_strategy[0],
                  tools.exp_strategy[1], tools.exp_strategy[2], tools.exp_strategy[3]);
 }
 
 // --- per-frame dump, human-readable ----------------------------------------
 
 void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
-    std::println("");
-    std::println("access unit {} @ {} ({} bytes, t={:.4f}s)", unit.index, unit.byte_offset,
+    fmt::println("");
+    fmt::println("access unit {} @ {} ({} bytes, t={:.4f}s)", unit.index, unit.byte_offset,
                  unit.bytes, unit.start_seconds);
     for (const auto& frame : unit.syncframes) {
-        std::println("  {} id {} @ {}: {} bytes, {}, {}, dialnorm {} dB{}{}",
+        fmt::println("  {} id {} @ {}: {} bytes, {}, {}, dialnorm {} dB{}{}",
                      strmtyp_token(frame.header.strmtyp), frame.header.substreamid,
                      frame.byte_offset, frame.header.bytes,
                      ac3::analysis::layout_name(frame.header.acmod, frame.header.lfe),
                      frame.crc_valid ? "crc ok" : "CRC BAD",
                      dialnorm_db(frame.header.dialnorm),
-                     frame.header.compr ? std::format(", compr {}", *frame.header.compr)
+                     frame.header.compr ? fmt::format(", compr {}", *frame.header.compr)
                                         : std::string{},
                      frame.authenticity_tag ? ", signed" : "");
         if (frame.parse_error) {
-            std::println("    parse error: {}", ac3::describe(*frame.parse_error));
+            fmt::println("    parse error: {}", ac3::describe(*frame.parse_error));
         }
         if (frame.objects) {
-            std::println("    objects: {} total, {} dynamic, bed {}",
+            fmt::println("    objects: {} total, {} dynamic, bed {}",
                          ac3::oba::object_count(frame.objects->program),
                          frame.objects->program.dynamic_objects,
                          bed_label(frame.objects->program));
@@ -320,7 +320,7 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
         for (int index = 0; index < syntax.block_count; ++index) {
             const auto& block = syntax.blocks[static_cast<std::size_t>(index)];
             if (!block.entered) {
-                std::println("    blk {}: not reached", index);
+                fmt::println("    blk {}: not reached", index);
                 continue;
             }
             std::string tools;
@@ -346,10 +346,10 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
                     block.exp_strategy[static_cast<std::size_t>(stream)]);
             }
             if (block.coupling) {
-                strategies += std::format(
+                strategies += fmt::format(
                     " cpl:{}", exp_strategy_token(block.exp_strategy[ac3::kCouplingSyntaxStream]));
             }
-            std::println("    blk {}: {:<28} exp [{}]", index,
+            fmt::println("    blk {}: {:<28} exp [{}]", index,
                          tools.empty() ? "-" : tools, strategies);
         }
     }
@@ -674,7 +674,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     } else {
         file.open(std::string{in_path}, std::ios::binary);
         if (!file) {
-            std::println(stderr, "error: cannot open {}", in_path);
+            fmt::println(stderr, "error: cannot open {}", in_path);
             return 1;
         }
     }
@@ -724,7 +724,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     while (true) {
         const auto unit = reader.next();
         if (!unit) {
-            std::println(stderr, "error: {} at byte {}", ac3::io::describe(unit.error()),
+            fmt::println(stderr, "error: {} at byte {}", ac3::io::describe(unit.error()),
                          reader.byte_offset());
             return 1;
         }
@@ -732,7 +732,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
             break;
         }
         if (const auto pushed = prober.push(*unit); !pushed) {
-            std::println(stderr, "error: {} at byte {}", ac3::io::describe(pushed.error()),
+            fmt::println(stderr, "error: {} at byte {}", ac3::io::describe(pushed.error()),
                          reader.byte_offset());
             return 1;
         }
@@ -740,7 +740,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
 
     const auto report = prober.report();
     if (report.access_units == 0) {
-        std::println(stderr, "error: {}", ac3::io::describe(io::ScanError::kEmpty));
+        fmt::println(stderr, "error: {}", ac3::io::describe(io::ScanError::kEmpty));
         return 1;
     }
     if (meta.json) {
@@ -755,7 +755,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     } else {
         // The dump has already gone out unit by unit; the summary follows it,
         // in the same order the JSON form puts them.
-        std::println("");
+        fmt::println("");
         print_table(in_path, report);
     }
 

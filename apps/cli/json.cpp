@@ -3,8 +3,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <format>
-#include <print>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <string>
 #include <string_view>
 
@@ -19,7 +19,7 @@ namespace {
 // those bytes are already valid JSON string content and re-encoding them would
 // only risk mangling them.
 //
-// Returns the finished token rather than writing as it goes: one std::print
+// Returns the finished token rather than writing as it goes: one fmt::print
 // per value beats one per character, and the caller has nowhere to put a
 // partially-written string if formatting were to throw part-way.
 std::string quoted(std::string_view text) {
@@ -39,7 +39,7 @@ std::string quoted(std::string_view text) {
             default: break;
         }
         if (byte < 0x20) {
-            out += std::format("\\u{:04x}", byte);
+            out += fmt::format("\\u{:04x}", byte);
             continue;
         }
         out.push_back(raw);
@@ -50,15 +50,17 @@ std::string quoted(std::string_view text) {
 
 }  // namespace
 
-// std::print rather than std::fputs throughout: this project's CI runs
+// fmt::print rather than std::fputs throughout: this project's CI runs
 // clang-tidy's cert-err33-c, which (rightly) refuses a discarded stdio return
 // value, and every other status line in this CLI already goes out through
-// std::print/std::println. main.cpp's top-level handler catches the
-// std::format_error/std::system_error that can escape it.
+// fmt::print/fmt::println (see CHANGELOG.md's "std::format/std::print/
+// std::printf replaced with {fmt}" entry - NDK r26's bundled libc++ has no
+// <format> at all). main.cpp's top-level handler catches the fmt::format_error
+// that can escape it.
 void JsonWriter::indent() {
-    std::print(out_, "\n");
+    fmt::print(out_, "\n");
     for (std::size_t level = 0; level < empty_.size(); ++level) {
-        std::print(out_, "  ");
+        fmt::print(out_, "  ");
     }
 }
 
@@ -74,7 +76,7 @@ void JsonWriter::separate() {
         return;
     }
     if (!empty_.back()) {
-        std::print(out_, ",");
+        fmt::print(out_, ",");
     }
     empty_.back() = false;
     indent();
@@ -82,7 +84,7 @@ void JsonWriter::separate() {
 
 void JsonWriter::begin_object() {
     separate();
-    std::print(out_, "{{");
+    fmt::print(out_, "{{");
     empty_.push_back(true);
 }
 
@@ -97,12 +99,12 @@ void JsonWriter::end_object() {
     if (!was_empty) {
         indent();
     }
-    std::print(out_, "}}");
+    fmt::print(out_, "}}");
 }
 
 void JsonWriter::begin_array() {
     separate();
-    std::print(out_, "[");
+    fmt::print(out_, "[");
     empty_.push_back(true);
 }
 
@@ -114,35 +116,35 @@ void JsonWriter::end_array() {
     if (!was_empty) {
         indent();
     }
-    std::print(out_, "]");
+    fmt::print(out_, "]");
 }
 
 void JsonWriter::key(std::string_view name) {
     separate();
-    std::print(out_, "{}: ", quoted(name));
+    fmt::print(out_, "{}: ", quoted(name));
     after_key_ = true;
 }
 
 void JsonWriter::value(std::string_view text) {
     separate();
-    std::print(out_, "{}", quoted(text));
+    fmt::print(out_, "{}", quoted(text));
 }
 
 void JsonWriter::value(const char* text) { value(std::string_view{text}); }
 
 void JsonWriter::value(bool flag) {
     separate();
-    std::print(out_, "{}", flag ? "true" : "false");
+    fmt::print(out_, "{}", flag ? "true" : "false");
 }
 
 void JsonWriter::value(std::int64_t number) {
     separate();
-    std::print(out_, "{}", number);
+    fmt::print(out_, "{}", number);
 }
 
 void JsonWriter::value(std::uint64_t number) {
     separate();
-    std::print(out_, "{}", number);
+    fmt::print(out_, "{}", number);
 }
 
 void JsonWriter::value(double number, int decimals) {
@@ -151,12 +153,12 @@ void JsonWriter::value(double number, int decimals) {
         return;
     }
     separate();
-    std::print(out_, "{:.{}f}", number, decimals);
+    fmt::print(out_, "{:.{}f}", number, decimals);
 }
 
 void JsonWriter::value_null() {
     separate();
-    std::print(out_, "null");
+    fmt::print(out_, "null");
 }
 
 void JsonWriter::member(std::string_view name, std::string_view text) {
@@ -194,6 +196,6 @@ void JsonWriter::member_null(std::string_view name) {
     value_null();
 }
 
-void JsonWriter::finish() { std::print(out_, "\n"); }
+void JsonWriter::finish() { fmt::print(out_, "\n"); }
 
 }  // namespace ac3cli

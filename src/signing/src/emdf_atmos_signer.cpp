@@ -230,12 +230,19 @@ Parsed parse(std::span<const std::byte> frame) {
             r.skip(static_cast<std::size_t>((nblks - 1) * (4 + bl)));
         }
     }
-    // dbaflde deliberately left out here - it is a real, content-driven case
-    // this parser now handles per block (see the audblk loop below), not an
-    // assumption to hold at zero. The other three are fixed constants in this
-    // encoder's output (see eac3_frame.cpp), and a frame that varies any of
-    // them lays its blocks out differently from here on.
-    if (snroffststr != 0 || bamode != 0 || frmfgaincode != 0) {
+    // dbaflde and bamode are deliberately left out here - both are real,
+    // content-driven fields this parser handles per block (see the audblk
+    // loop below: bamode==0's Table E1.4 defaults apply until baie first
+    // fires, generically, off whatever bamode actually says), not
+    // assumptions to hold at zero. Dropping bamode from this check was
+    // itself required once real content started putting bamode==1 on the
+    // wire (roadmap EQ3) rather than it being a merely hypothetical value.
+    // frmfgaincode is a fixed constant in this encoder's own output (see
+    // eac3_frame.cpp), and a frame that varies it lays its blocks out
+    // differently from here on - returned rather than asserted, like every
+    // other early return in this function: has_authenticity_tag hands this
+    // parser arbitrary frames, where a shape outside its subset is not a bug.
+    if (snroffststr != 0 || frmfgaincode != 0) {
         return out;
     }
 
@@ -243,8 +250,14 @@ Parsed parse(std::span<const std::byte> frame) {
     std::array<std::vector<std::uint8_t>, 5> exps;  // decoded exponents per fbw channel
     std::array<int, 5> endmant{};
     std::vector<std::uint8_t> lfeexps;
-    const BitAllocCodes codes{.sdcycod = 2, .fdcycod = 1, .sgaincod = 1,
-                              .dbpbcod = 2, .floorcod = 7, .fgaincod = 4};
+    // Table E1.4's bamode == 0 defaults, which is what applies until a baie
+    // in the audblk loop below replaces them. Read from the bitstream rather
+    // than copied from the encoder's own kAllocCodes on purpose: this parser
+    // has to size mantissa fields exactly as a decoder would, and a constant
+    // duplicated here is a constant that can silently fall out of step - as
+    // it did the moment bamode went to 1.
+    BitAllocCodes codes{.sdcycod = 2, .fdcycod = 1, .sgaincod = 1,
+                        .dbpbcod = 2, .floorcod = 7, .fgaincod = 4};
     const SampleRate sr = SampleRate::k48000;  // fscod 0
 
     // Spectral extension state, persisting block to block exactly like
@@ -375,12 +388,20 @@ Parsed parse(std::span<const std::byte> frame) {
             lfeexps.assign(std::size_t(kLfeEndmant), 0);
             decode_exponents(absexp, grps, ExpStrategy::kD15, lfeexps);
         }
-        // bamode==0: default codes; snroffststr==0: frame SNR. baie/snroffste
-        // themselves are correctly absent here, not just skipped: this
-        // project's own encoder (eac3_frame.cpp) omits both flag bits
-        // entirely whenever bamode/snroffststr are 0 at the frame level,
-        // rather than writing a flag that always reads false - there is
-        // nothing in the bitstream at this point to consume.
+        // bamode==1: the allocation parameters are transmitted, so baie is a
+        // real bit here and block 0 carries the eleven that follow it (see
+        // kAllocCodes in eac3_frame.cpp). snroffststr==0 keeps the SNR half
+        // absent, and that absence is real rather than skipped: this
+        // project's encoder omits snroffste entirely at the frame level
+        // rather than writing a flag that always reads false, so there is
+        // nothing there to consume.
+        if (bamode && r.read(1)) {  // baie
+            codes.sdcycod = int(r.read(2));
+            codes.fdcycod = int(r.read(2));
+            codes.sgaincod = int(r.read(2));
+            codes.dbpbcod = int(r.read(2));
+            codes.floorcod = int(r.read(3));
+        }
         int csnroffst = frmcsnroffst, fsnroffst = frmfsnroffst;
         if (strmtyp == 0) { if (r.read(1)) (void)r.read(10); }  // convsnroffste
         // dbaflde IS a real per-block field once set at the frame level -
