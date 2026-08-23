@@ -216,7 +216,8 @@ TEST_CASE("tool tokens survive a round trip") {
     const std::vector<std::string> tokens = {"none",    "cpl",     "spx",       "aht",
                                              "cpl:4",   "spx:5",   "aht:0",     "cpl+spx",
                                              "cpl+spx+aht", "cpl:4+spx:5+aht:2",
-                                             "nofastmdct", "cpl+nofastmdct"};
+                                             "nofastmdct", "cpl+nofastmdct",
+                                             "nodither", "cpl+nodither"};
     for (const auto& token : tokens) {
         ac3::plan::Tools tools{};
         INFO("token " << token);
@@ -255,6 +256,29 @@ TEST_CASE("the fast MDCT is on by default and negated like noatten") {
     ac3::plan::Tools none{};
     REQUIRE(ac3::plan::parse_tools("none", none));
     CHECK(none.fast_mdct);
+}
+
+TEST_CASE("dithflag is content-decided by default and negated like nofastmdct") {
+    // Default-on since EQ4 landed - see EncoderConfig::dither / eac3::
+    // FrameConfig::dither for why real dither values are decoder-defined and
+    // "nodither" exists at all (tools/checks/verify_gold_reference.sh's own
+    // bit-for-bit comparison against an external decoder is the one caller
+    // that needs it). No legacy opt-in spelling: unlike fast_mdct, dither's
+    // default was never off, so there is no prior era's token to keep
+    // parsing.
+    CHECK(ac3::plan::Tools{}.dither);
+
+    ac3::plan::Tools off{};
+    REQUIRE(ac3::plan::parse_tools("nodither", off));
+    CHECK_FALSE(off.dither);
+    // Not a coding tool: a decoder that never receives a set dithflag still
+    // decodes every stream correctly.
+    CHECK_FALSE(off.any());
+
+    // "none" means no CODING tools; it does not drag dither off with it.
+    ac3::plan::Tools none{};
+    REQUIRE(ac3::plan::parse_tools("none", none));
+    CHECK(none.dither);
 }
 
 TEST_CASE("a tool token out of range is rejected rather than clamped") {

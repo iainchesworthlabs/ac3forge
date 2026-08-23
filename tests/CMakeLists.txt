@@ -253,6 +253,7 @@ target_link_libraries(ac3tests
         mpegts::mpegts
         ac3::warnings
         ac3::coverage
+        ac3::fmt
         Catch2::Catch2WithMain)
 
 include(Catch)
