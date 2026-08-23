@@ -299,6 +299,26 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         CHECK(scanned->programmes[1].access_units.size() ==
               static_cast<std::size_t>(kFrames));
 
+        // A programme's access unit ends at the NEXT independent substream of
+        // any programme, not at its own next frame - otherwise I0's span
+        // swallows the I1 frame sitting between them and a muxer writes both
+        // programmes into one track while declaring one. 448 and 96 kbit/s at
+        // 48 kHz over 1536 samples are 1792 and 384 bytes.
+        for (const auto& unit : scanned->programmes[0].access_units) {
+            CHECK(unit.size() == 1792);
+        }
+        for (const auto& unit : scanned->programmes[1].access_units) {
+            CHECK(unit.size() == 384);
+        }
+        // And every byte of the stream is accounted for exactly once.
+        std::size_t covered = 0;
+        for (const auto& programme : scanned->programmes) {
+            for (const auto& unit : programme.access_units) {
+                covered += unit.size();
+            }
+        }
+        CHECK(covered == stream.size());
+
         // The scalar summary is the FIRST programme's, and access_units is
         // its units alone - never both programmes' spliced together, which is
         // what a muxer would otherwise write into one track.
@@ -309,23 +329,30 @@ TEST_CASE("a second independent substream is a second programme, not more frames
               scanned->programmes[0].access_units.front().data());
     }
 
-    SECTION("the dec3 box declares both independent substreams") {
+    SECTION("the dec3 box describes the programme the track would carry") {
         const auto scanned = ac3::io::scan(stream);
         REQUIRE(scanned.has_value());
         const auto box = ac3::io::build_codec_config_box(*scanned);
-        REQUIRE(box.size() >= 2);
-        // §F.6: data_rate(13) then num_ind_sub(3), which counts one less than
-        // the substreams - so two programmes read back as 1.
+        REQUIRE(box.size() >= 4);
+        // §F.6: data_rate(13) then num_ind_sub(3), counting one less than the
+        // substreams. ONE, because a container track carries one programme
+        // and ScannedStream::access_units - what a muxer puts in it - is the
+        // first programme's units alone. A box declaring two programmes over
+        // a track holding one would be worse than no signalling at all; see
+        // build_codec_config_box's own comment and roadmap IO6.
         const auto low = std::to_integer<std::uint32_t>(box[1]);
-        CHECK((low & 0x07) == 1);
-        // Each programme contributes its own per-substream block, so the box
-        // grew by one of them (3 bytes for a dependent-free programme) over
-        // the single-programme shape.
-        const auto single = ac3::io::scan(encode(
-            {.independent = bed(448, 27)}, 2, std::array<double, 1>{kMainTone}));
+        CHECK((low & 0x07) == 0);
+        // data_rate describes those same units - the first programme's own
+        // 448 kbit/s, not the 544 the whole stream spends.
+        const auto data_rate = (std::to_integer<std::uint32_t>(box[0]) << 5) | (low >> 3);
+        CHECK(data_rate == 448);
+        // And the box is byte-for-byte the shape a single-programme stream of
+        // that same first programme produces: the second programme changes
+        // nothing a track carrying only the first should declare.
+        const auto single = ac3::io::scan(
+            encode({.independent = bed(448, 27)}, 2, std::array<double, 1>{kMainTone}));
         REQUIRE(single.has_value());
-        const auto single_box = ac3::io::build_codec_config_box(*single);
-        CHECK(box.size() == single_box.size() + 3);
+        CHECK(box == ac3::io::build_codec_config_box(*single));
     }
 }
 

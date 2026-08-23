@@ -344,13 +344,27 @@ done
 # with programme=0 above rather than fold both together.
 run decode eac3enc_2pgm.ec3 eac3enc_2pgm_default.wav
 cmp eac3enc_2pgm_p0.wav eac3enc_2pgm_default.wav
-# No FFmpeg check: ff_ac3_parse_header rejects substreamid != 0 for an
-# INDEPENDENT substream exactly as it does for a dependent one, and the raw
-# E-AC-3 demuxer hands it I0 and I1 as one packet - so the second programme's
-# presence makes FFmpeg refuse every packet and emit nothing at all, main
-# programme included. Measured against ffmpeg 8.0.1 and recorded in
-# docs/verification.md's own note; skipped here rather than tolerated, the
-# same way 7.1.4 is.
+# No FFmpeg check on the RAW stream: ff_ac3_parse_header rejects
+# substreamid != 0 for an INDEPENDENT substream exactly as it does for a
+# dependent one, and the raw E-AC-3 demuxer hands it I0 and I1 as one packet -
+# so the second programme's presence makes FFmpeg refuse every packet and emit
+# nothing at all, main programme included. Measured against ffmpeg 8.0.1 and
+# recorded in docs/verification.md's own note; skipped here rather than
+# tolerated, the same way 7.1.4 is.
+#
+# Muxing IS checked against FFmpeg, and is the one place an oracle reaches
+# this feature at all. A container track carries one programme, so `mkv`/`mp4`
+# write the first programme's access units alone (with a warning) - which
+# means FFmpeg reads the result perfectly even though it refuses the raw
+# stream the units came out of. That makes this row a direct regression guard
+# on the access-unit BOUNDARIES: a programme's unit has to end at the next
+# independent substream of any programme, not at its own next frame, or each
+# span swallows the other programme's frame and FFmpeg refuses the container
+# too.
+run mkv eac3enc_2pgm.ec3 eac3enc_2pgm.mkv
+run_ffmpeg_check eac3enc_2pgm.mkv
+run mp4 eac3enc_2pgm.ec3 eac3enc_2pgm.mp4
+run_ffmpeg_check eac3enc_2pgm.mp4
 
 # --- Atmos: object counts, orbit rates, both container modes ----------------
 # Always a 5.1 bed (JOC/OAMD ride in the same independent substream's EMDF

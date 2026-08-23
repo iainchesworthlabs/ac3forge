@@ -163,9 +163,15 @@ packets carry a main programme FFmpeg reads perfectly well on its own — splitt
 programme first and handing FFmpeg only I0's access units strict-decodes clean, while I1's alone
 give `invalid frame type` / `unable to determine channel mode`. So FFmpeg remains usable as an
 oracle on each programme's frames, but only after the stream has been demultiplexed by programme,
-which is what `ac3::split_access_units(stream, programme)` does. `tools/ci/run_codec_matrix.sh`
-skips the FFmpeg check on its two-programme row rather than tolerating a failure, the same way it
-does for 7.1.4.
+which is what `ac3::split_access_units(stream, programme)` does.
+
+That demultiplexing is what the container path already performs — a track carries one programme,
+so `ac3cli mkv`/`mp4` write the first programme's access units (and warn about the rest) — and
+FFmpeg strict-decodes the *result* cleanly. `tools/ci/run_codec_matrix.sh` therefore skips the
+FFmpeg check on the raw two-programme stream, the same way it does for 7.1.4, but keeps it on the
+muxed file: that check is a direct guard on the access-unit boundaries, since a programme's unit
+has to end at the next independent substream of *any* programme rather than at its own next
+frame, or each span swallows the other programme's frame and FFmpeg refuses the container too.
 
 **Enhanced coupling and transient pre-noise processing have no external oracle at all — not even
 the partial one 7.1.4 gets.** FFmpeg's own Annex E parser was never written to read either

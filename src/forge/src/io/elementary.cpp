@@ -408,6 +408,17 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         // the stream, which is what made a two-programme stream look like one
         // programme running at twice the frame rate.
         if (sub->strmtyp == static_cast<int>(eac3::StreamType::kIndependent)) {
+            // Close whichever programme's unit was open, not this one's: a
+            // programme's access unit ends at the next INDEPENDENT substream
+            // of ANY programme, because that is where its own dependents stop
+            // and someone else's substreams begin. Running it to this
+            // programme's own next frame instead would swallow every other
+            // programme's frame sitting in between - a span twice the size it
+            // should be, which a container would then declare and hand a
+            // player whole.
+            if (current != nullptr) {
+                close_unit(*current, offset);
+            }
             auto found = std::ranges::find(programmes, sub->substreamid,
                                            [](const ProgrammeScan& p) {
                                                return p.summary.substreamid;
@@ -428,8 +439,6 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
                 fresh.summary.bsmod = sub->bsmod;
                 fresh.locations = bed_locations(sub->acmod, sub->lfe);
                 found = programmes.insert(at, std::move(fresh));
-            } else {
-                close_unit(*found, offset);
             }
             current = &*found;
             current->unit_start = offset;
@@ -461,6 +470,10 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         ++current->substreams;
         offset += sub->bytes;
     }
+    // Only the last programme to open one can still have a unit open - every
+    // other was closed the moment the next independent substream arrived - but
+    // close_unit already no-ops on a closed one, so this needs no bookkeeping
+    // of its own to say which.
     for (auto& p : programmes) {
         close_unit(p, offset);
     }

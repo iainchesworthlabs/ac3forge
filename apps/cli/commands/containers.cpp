@@ -28,6 +28,23 @@ namespace ac3cli::commands {
 
 namespace {
 
+// A container track carries one programme. ac3::io::scan hands back the FIRST
+// programme's access units for exactly that reason - two independent
+// substreams (§E2.3.1.2) are alternatives rather than layers, and splicing
+// their units into one track is not something a player can undo - so a stream
+// carrying more than one loses the rest here. Said out loud rather than left
+// for someone to notice a missing commentary later; carrying every programme,
+// a track each, is roadmap IO2/IO6.
+void warn_if_programmes_dropped(const ac3::io::ScannedStream& scanned) {
+    if (scanned.programmes.size() <= 1) {
+        return;
+    }
+    std::println(stderr,
+                 "warning: this stream carries {} programmes (§E2.3.1.2 independent "
+                 "substreams); only programme {} is muxed - a container track carries one",
+                 scanned.programmes.size(), scanned.programmes.front().substreamid);
+}
+
 bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream out{path, std::ios::binary};
     if (!out) {
@@ -96,6 +113,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
         std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
+    warn_if_programmes_dropped(*scanned);
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
@@ -147,6 +165,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
+    warn_if_programmes_dropped(*scanned);
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
@@ -201,6 +220,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
+    warn_if_programmes_dropped(*scanned);
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
@@ -290,6 +310,7 @@ int run_ts(std::string_view in_path, std::string_view out_path) {
         std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
+    warn_if_programmes_dropped(*scanned);
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
 
     // scan()'s access units pass to the muxer as the views they already are
