@@ -59,8 +59,16 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     // what ac3::eac3::frame_words() fixes per bitrate for this project's CBR
     // encoder, so the first access unit's own size is the exact rate, not an
     // estimate: kbps = bytes * 8 * sample_rate / samples_per_frame / 1000.
-    const auto first_unit_bytes =
-        stream.access_units.empty() ? std::size_t{0} : stream.access_units.front().size();
+    //
+    // Summed across programmes: §F.6's data_rate describes the BITSTREAM, and
+    // a stream carrying a second independent substream spends that
+    // programme's rate on top of the first one's within the same frame period.
+    std::size_t first_unit_bytes = 0;
+    for (const auto& programme : stream.programmes) {
+        if (!programme.access_units.empty()) {
+            first_unit_bytes += programme.access_units.front().size();
+        }
+    }
     const std::uint64_t data_rate_bps = static_cast<std::uint64_t>(first_unit_bytes) * 8 *
                                         sample_rate_hz(stream.sample_rate);
     constexpr std::uint64_t kDenominator = static_cast<std::uint64_t>(kSamplesPerFrame) * 1000;
@@ -71,48 +79,62 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     // not a real-world case.
     constexpr std::uint32_t kMaxDataRate = (1U << 13) - 1;
     w.put(static_cast<std::uint32_t>(std::min<std::uint64_t>(data_rate_kbps, kMaxDataRate)), 13);
-    // num_ind_sub: ac3::io::scan() groups an access unit as exactly one
-    // independent substream plus whatever dependents follow it before the
-    // next independent one (scan_eac3's close_unit) - so there is always
-    // exactly one loop iteration below, encoded as num_ind_sub == 0 (the
-    // field counts "one less than" the substream count, mirroring frmsiz's
-    // own "value plus one" convention elsewhere in this syntax).
-    w.put(0, 3);  // num_ind_sub
+    // num_ind_sub: one loop iteration per programme ac3::io::scan() found -
+    // one independent substream plus whatever dependents follow it before the
+    // next independent one (scan_eac3's close_unit). The field counts "one
+    // less than" the substream count, mirroring frmsiz's own "value plus one"
+    // convention elsewhere in this syntax, and §F.6 caps it at eight the same
+    // way §E2.3.1.2 caps the substreams themselves.
+    //
+    // scan() never returns an empty programme list on success; the fallback
+    // to one keeps the subtraction defined regardless.
+    const ScannedProgramme absent{};
+    const auto programme_count = std::max<std::size_t>(stream.programmes.size(), 1);
+    w.put(static_cast<std::uint32_t>(programme_count - 1), 3);  // num_ind_sub
 
-    w.put(box_fscod(stream.sample_rate), 2);             // fscod
-    w.put(static_cast<std::uint32_t>(stream.bsid), 5);   // bsid
-    w.put(0, 1);                                         // reserved
-    // asvc: the associated-service flag. This project has no concept of an
-    // associated service for the streams it produces - every stream here is
-    // a single, self-contained programme - so 0 is the objectively correct
-    // value, not a placeholder for a field ScannedStream simply doesn't
-    // carry yet.
-    w.put(0, 1);                                         // asvc
-    w.put(static_cast<std::uint32_t>(stream.bsmod), 3);  // bsmod
-    w.put(static_cast<std::uint32_t>(stream.acmod), 3);  // acmod
-    w.put(stream.lfe ? 1U : 0U, 1);                       // lfeon
-    w.put(0, 3);                                          // reserved
-    // substreams_per_unit counts every substream of the first access unit,
-    // independent one included (ScannedStream's own comment) - so the
-    // dependent count is one less, floored at 0 for a stream scan() rejected
-    // before ever reaching here (it never returns with substreams_per_unit
-    // == 0 on success, but this keeps the subtraction defined regardless).
-    const auto num_dep_sub =
-        stream.substreams_per_unit > 0 ? stream.substreams_per_unit - 1 : std::size_t{0};
-    w.put(static_cast<std::uint32_t>(num_dep_sub), 4);  // num_dep_sub
-    if (num_dep_sub > 0) {
-        // chan_loc: Annex F's own per-location channel bitmap - a DIFFERENT
-        // vocabulary from this project's internal Table E2.5 chanmap
-        // locations (eac3::chanmap), and deliberately not translated into it
-        // in this first cut (see this file's own PR description). No audio
-        // is misdescribed by leaving it 0: the sample entry's channelcount
-        // (mp4::AudioTrack::channels, Table E2.5-derived and exact) is what a
-        // player actually opens the file with, and the elementary stream in
-        // mdat is unaffected either way - only this one informational field
-        // undercounts which extra positions the dependent(s) add.
-        w.put(0, 9);  // chan_loc
-    } else {
-        w.put(0, 1);  // reserved
+    for (std::size_t i = 0; i < programme_count; ++i) {
+        // §F.6 repeats the whole per-substream block for each independent
+        // substream, so a second programme's own layout and service type are
+        // declared rather than the first one's being repeated.
+        const ScannedProgramme& programme =
+            i < stream.programmes.size() ? stream.programmes[i] : absent;
+        w.put(box_fscod(stream.sample_rate), 2);                // fscod
+        w.put(static_cast<std::uint32_t>(programme.bsid), 5);   // bsid
+        w.put(0, 1);                                            // reserved
+        // asvc: the associated-service flag. A/52 §5.4.2.2 puts the service
+        // type in bsmod, and 2-7 are the associated services (audio
+        // description, commentary, emergency and the rest) a receiver mixes
+        // against a main one; 0-1 are complete main services. So this is
+        // exactly "is this programme's own bsmod an associated one", read off
+        // the bitstream rather than assumed - which for a single-programme
+        // stream still comes out 0, as it always did.
+        w.put(programme.bsmod >= 2 ? 1U : 0U, 1);                 // asvc
+        w.put(static_cast<std::uint32_t>(programme.bsmod), 3);    // bsmod
+        w.put(static_cast<std::uint32_t>(programme.acmod), 3);    // acmod
+        w.put(programme.lfe ? 1U : 0U, 1);                        // lfeon
+        w.put(0, 3);                                              // reserved
+        // substreams_per_unit counts every substream of this programme's
+        // first access unit, its independent one included (ScannedProgramme's
+        // own comment) - so the dependent count is one less, floored at 0.
+        const auto num_dep_sub = programme.substreams_per_unit > 0
+                                     ? programme.substreams_per_unit - 1
+                                     : std::size_t{0};
+        w.put(static_cast<std::uint32_t>(num_dep_sub), 4);  // num_dep_sub
+        if (num_dep_sub > 0) {
+            // chan_loc: Annex F's own per-location channel bitmap - a
+            // DIFFERENT vocabulary from this project's internal Table E2.5
+            // chanmap locations (eac3::chanmap), and deliberately not
+            // translated into it in this first cut (see this file's own PR
+            // description). No audio is misdescribed by leaving it 0: the
+            // sample entry's channelcount (mp4::AudioTrack::channels, Table
+            // E2.5-derived and exact) is what a player actually opens the
+            // file with, and the elementary stream in mdat is unaffected
+            // either way - only this one informational field undercounts
+            // which extra positions the dependent(s) add.
+            w.put(0, 9);  // chan_loc
+        } else {
+            w.put(0, 1);  // reserved
+        }
     }
 
     if (stream.oba_complexity_index) {

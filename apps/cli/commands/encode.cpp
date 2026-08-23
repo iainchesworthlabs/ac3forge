@@ -50,6 +50,173 @@ bool vbr_or_error(std::string_view text, std::optional<ac3::eac3::VbrConfig>& ou
     return false;
 }
 
+// A second programme's own input file (programme2=), read one frame at a time.
+//
+// Its own reader rather than a second pass through the primary path's
+// streaming state: the two sources are consumed in lockstep but are otherwise
+// unrelated - different channel counts, different lengths, different routings
+// - and the primary's inline state is already threaded through a long
+// function. Streams like the primary does, falling back to a whole-file read
+// for the inputs WavStreamReader declines (stdin among them), so a second
+// programme costs no more memory than the first for the ordinary file case.
+class ProgrammeSource {
+   public:
+    bool open(std::string_view path) {
+        if (!is_stdio_path(path) && stream_.open(std::string{path}).has_value()) {
+            streaming_ = true;
+            hold_.assign(channels(), 0.0f);
+            return true;
+        }
+        auto whole = read_wav_arg(path);
+        if (!whole) {
+            std::println(stderr, "error: {}: {}", path, ac3::io::describe(whole.error()));
+            return false;
+        }
+        whole_ = std::move(*whole);
+        return true;
+    }
+
+    [[nodiscard]] std::uint32_t sample_rate() const {
+        return streaming_ ? stream_.sample_rate() : whole_.sample_rate;
+    }
+    [[nodiscard]] std::size_t channels() const {
+        return streaming_ ? stream_.channels() : whole_.channels.size();
+    }
+    [[nodiscard]] std::size_t frame_count() const {
+        return streaming_ ? static_cast<std::size_t>(stream_.frame_count())
+                          : whole_.frame_count();
+    }
+
+    // Fills `dest` (one vector per channel, each kSamplesPerFrame long) with
+    // the samples starting at `start`. Past end-of-file every channel holds
+    // its own last real sample rather than dropping to zero, for exactly the
+    // reason the primary path does: a sudden drop to silence is itself a
+    // transient the encoder would (correctly) spend a block switch on, for a
+    // discontinuity that only exists because the file ended mid-frame. The
+    // streaming form ignores `start` beyond checking it advances in order,
+    // which the single encode loop guarantees.
+    bool fill(std::size_t start, std::vector<std::vector<float>>& dest,
+              std::string_view path) {
+        const std::size_t frames = frame_count();
+        if (!streaming_) {
+            for (std::size_t c = 0; c < dest.size(); ++c) {
+                const float hold = frames > 0 ? whole_.channels[c][frames - 1] : 0.0f;
+                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                    const std::size_t at = start + static_cast<std::size_t>(i);
+                    dest[c][static_cast<std::size_t>(i)] =
+                        at < frames ? whole_.channels[c][at] : hold;
+                }
+            }
+            return true;
+        }
+        const std::size_t want =
+            std::min<std::size_t>(ac3::kSamplesPerFrame, frames - std::min(frames, consumed_));
+        std::vector<std::span<float>> dst(dest.size());
+        for (std::size_t c = 0; c < dest.size(); ++c) {
+            dst[c] = std::span{dest[c]}.first(want);
+        }
+        if (want > 0) {
+            const auto got = stream_.read_planar(dst, want);
+            if (!got || *got != want) {
+                std::println(stderr, "error: {}: {}", path,
+                             ac3::io::describe(got ? ac3::io::WavError::kTruncated
+                                                   : got.error()));
+                return false;
+            }
+            consumed_ += want;
+        }
+        for (std::size_t c = 0; c < dest.size(); ++c) {
+            if (want > 0) {
+                hold_[c] = dest[c][want - 1];
+            }
+            std::fill(dest[c].begin() + static_cast<std::ptrdiff_t>(want), dest[c].end(),
+                      hold_[c]);
+        }
+        return true;
+    }
+
+   private:
+    bool streaming_ = false;
+    ac3::io::WavStreamReader stream_;
+    ac3::io::WavData whole_;
+    std::vector<float> hold_;
+    std::size_t consumed_ = 0;
+};
+
+// The second programme's plan, its source and its routing, or std::nullopt on
+// anything the operator got wrong (already reported). `rate` is the primary
+// programme's sample rate: every substream of an access unit codes the same
+// frame period, so a second programme sampled differently cannot ride along.
+struct SecondProgramme {
+    plan::Plan p;
+    std::string label;
+    ProgrammeSource source;
+    plan::Routing routing;
+};
+
+std::unique_ptr<SecondProgramme> open_second_programme(const Options& meta, ac3::SampleRate rate,
+                                                       std::uint32_t primary_kbps,
+                                                       const plan::Tools& tools) {
+    auto out = std::make_unique<SecondProgramme>();
+    if (!out->source.open(*meta.programme2)) {
+        return nullptr;
+    }
+    const auto second_rate = wav_sample_rate(out->source.sample_rate(), "E-AC-3", true);
+    if (!second_rate) {
+        return nullptr;
+    }
+    if (*second_rate != rate) {
+        std::println(stderr,
+                     "error: programme2= is {} Hz but the primary programme is {} Hz - every "
+                     "substream of an access unit codes the same frame period",
+                     out->source.sample_rate(), sample_rate_hz(rate));
+        return nullptr;
+    }
+    out->p.codec = plan::Codec::kEac3;
+    out->p.sample_rate = rate;
+    // Half the primary's rate by default: an associated service is normally
+    // much narrower than the main mix, and it is spent ON TOP of the
+    // primary's, not carved out of it.
+    out->p.bitrate_kbps = meta.programme2_bitrate.value_or(std::max<std::uint32_t>(primary_kbps / 2, 32));
+    out->p.tools = tools;
+    // Its own dialnorm, never the primary's - see Options::programme2_dialnorm.
+    // The rest of `meta.p` belongs to the primary programme: a second
+    // programme's DRC profile, mix metadata and downmix levels are its own,
+    // and this first cut does not offer a way to say what they are.
+    out->p.meta.dialnorm = meta.programme2_dialnorm;
+    if (meta.programme2_layout.empty()) {
+        const auto id = plan::layout_for_source(out->source.channels());
+        if (!id) {
+            std::println(stderr, "error: programme2= has {} channels - {}",
+                         out->source.channels(),
+                         plan::describe(plan::PlanError::kNoSourceLayout));
+            return nullptr;
+        }
+        out->p.layout = *id;
+        out->label = std::string(plan::layout(*id).label);
+    } else if (!resolve_layout(meta.programme2_layout, plan::Codec::kEac3, out->p, out->label)) {
+        return nullptr;
+    }
+    if (plan::resolve(out->p).bed_acmod == ac3::Acmod::kDualMono) {
+        // 1+1 is itself two programmes sharing one syncframe (§E1.3), levelled
+        // by dialnorm and dialnorm2. Stacking it inside a second independent
+        // substream would mean three programmes described by two different
+        // mechanisms, with only one dialnorm reachable from here - refuse it
+        // rather than emit something whose second half cannot be levelled.
+        std::println(stderr,
+                     "error: programme2-layout=1+1 is not supported: 1+1 already carries two "
+                     "programmes in one substream. Use it on the primary programme, or give "
+                     "programme2 a layout of its own");
+        return nullptr;
+    }
+    auto routing = routing_or_error(out->p, out->source.channels());
+    if (!routing) {
+        return nullptr;
+    }
+    out->routing = std::move(*routing);
+    return out;
+}
+
 }  // namespace
 
 int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
@@ -258,6 +425,18 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                          "error: use either a second positional file or src=/map=, not both");
             return 1;
         }
+        if (meta.programme2) {
+            // src=/map= route several sources onto ONE programme's channels;
+            // programme2= adds a second programme with its own source and its
+            // own routing. Combining them is not ambiguous so much as
+            // unimplemented - the multi-source path has no notion of a second
+            // programme to assign channels to - so say so rather than
+            // silently ignore one of them.
+            std::println(stderr,
+                         "error: programme2= and src=/map= cannot be combined yet - the "
+                         "multi-source router assigns channels to one programme");
+            return 1;
+        }
         return run_eac3_encode_multi(in_path, out_path, bitrate, tools, layout, vbr, meta);
     }
     // The same streaming-vs-whole-file split as run_encode, for the same
@@ -361,26 +540,64 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         return 1;
     }
 
-    ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
+    // §E2.3.1.2's second independent substream, when one was asked for: its
+    // own source, layout, rate and dialnorm, riding in the same access units.
+    auto second = meta.programme2 ? open_second_programme(meta, *sr, bitrate, p.tools) : nullptr;
+    if (meta.programme2 && !second) {
+        return 1;
+    }
+    auto config = plan::eac3_config(p);
+    if (second) {
+        config.additional.push_back(plan::eac3_programme(second->p));
+    }
+    ac3::eac3::AccessUnitEncoder encoder{config};
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
-    assert(static_cast<int>(nchans) == encoder.channel_count());
+    const std::size_t second_nchans =
+        second ? static_cast<std::size_t>(second->routing.coded_channels) : 0;
+    assert(static_cast<int>(nchans + second_nchans) == encoder.channel_count());
     // The classic path has exactly one source, always index 0 in offset='s
     // numbering - see LoadedSources::offset_samples for the multi-source
     // equivalent of this same leading silence.
     const std::size_t offset = offset_samples_for(meta.offsets, 0, src_rate);
     const std::size_t frame_count =
         streaming ? static_cast<std::size_t>(stream_in.frame_count()) : wav->frame_count();
-    const std::size_t total = offset + frame_count;
+    // A second programme keeps the run going to whichever source is longer -
+    // the two programmes share the frame period, so the shorter one holds its
+    // last sample rather than the stream ending early on the longer one.
+    const std::size_t total =
+        std::max(offset + frame_count, second ? second->source.frame_count() : 0);
 
     std::vector<std::vector<float>> source(src_channels,
                                            std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(nchans + second_nchans,
+                                          std::vector<float>(ac3::kSamplesPerFrame));
     std::vector<std::span<const float>> in(source.size());
     std::vector<std::span<float>> out(nchans);
-    std::vector<std::span<const float>> views(nchans);
+    // Every coded channel of the access unit: the first programme's, then the
+    // second's - the same order encode_access_unit expects them, and the same
+    // order the substreams themselves go on the wire.
+    std::vector<std::span<const float>> views(nchans + second_nchans);
     for (std::size_t c = 0; c < nchans; ++c) {
         out[c] = block[c];
+    }
+    for (std::size_t c = 0; c < views.size(); ++c) {
         views[c] = block[c];
+    }
+    // The second programme's own per-frame source and coded-channel spans,
+    // aliasing the tail of `block` so one encode call sees both programmes.
+    std::vector<std::vector<float>> second_source;
+    std::vector<std::span<const float>> second_in;
+    std::vector<std::span<float>> second_out(second_nchans);
+    if (second) {
+        second_source.assign(second->source.channels(),
+                             std::vector<float>(ac3::kSamplesPerFrame));
+        second_in.resize(second_source.size());
+        for (std::size_t c = 0; c < second_source.size(); ++c) {
+            second_in[c] = second_source[c];
+        }
+        for (std::size_t c = 0; c < second_nchans; ++c) {
+            second_out[c] = block[nchans + c];
+        }
     }
     // The encoded access units leave as they are produced - see
     // EncodedStreamSink; its stats also feed the VBR report below, which
@@ -451,6 +668,13 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
             }
         }
         plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+        if (second) {
+            if (!second->source.fill(start, second_source, *meta.programme2)) {
+                out_sink.abort();
+                return 1;
+            }
+            plan::render(second->routing, second_in, second_out, ac3::kSamplesPerFrame);
+        }
         auto unit = encoder.encode_access_unit(views);
         if (!unit) {
             std::println(stderr, "error: the encoder cannot express this configuration");
@@ -492,6 +716,14 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                      plan::format_tools(p.tools), out_path);
     }
     print_routing(p, *routing, label, status);
+    if (second) {
+        std::println(status,
+                     "  programme 1 (§E2.3.1.2 I1): {} kbps, {}, {} coded channels, "
+                     "dialnorm {} from {}",
+                     second->p.bitrate_kbps, second->label, second_nchans,
+                     second->p.meta.dialnorm, *meta.programme2);
+        print_routing(second->p, second->routing, second->label, status);
+    }
     return 0;
 }
 

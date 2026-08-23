@@ -180,7 +180,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
 // frame so dependent-substream frames are still decoded (consuming their own
 // overlap-add state and catching any parse error) even though this only ever
 // measures what comes back independent.
-std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
+std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream, int programme) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         std::println(stderr, "error: not a valid E-AC-3 stream");
@@ -206,6 +206,15 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
     // comment above).
     auto ingest = [&](const ac3::DecodedSubstream& sub) {
         if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
+            return;
+        }
+        // §E2.3.1.2: one programme is measured. A second independent
+        // substream is a different piece of audio - a commentary, a second
+        // language - levelled to its own dialnorm, so folding it into the
+        // same BS.1770 meter would report a loudness neither programme has.
+        // Its frames are still DECODED above (overlap-add state, parse
+        // errors); only the measurement skips them.
+        if (sub.substreamid != programme) {
             return;
         }
         if (!have_first) {
@@ -264,7 +273,8 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
     }
 
     if (!have_first) {
-        std::println(stderr, "error: no independent substream frames");
+        std::println(stderr, "error: no independent substream frames for programme {}",
+                     programme);
         return std::nullopt;
     }
     // have_first is checked just above and only ingest() sets it, in the same
@@ -400,13 +410,30 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
 // E-AC-3's own level report. The rendered layout is a chanmap rather than an
 // acmod, so it cannot go through LevelMeter's Table 5.8 naming; the figures
 // still come from ac3::analysis, so a level reads the same here as anywhere.
-int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path) {
-    const auto units = ac3::split_access_units(stream);
+int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
+                    std::optional<int> want_programme) {
+    const auto ids = ac3::programme_ids(stream);
+    if (!ids || ids->empty()) {
+        std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+        return 1;
+    }
+    // §E2.3.1.2: levels are per programme. Two independent substreams are two
+    // separate pieces of audio, so one set of per-channel figures across both
+    // would describe neither.
+    const auto programme = ac3cli::choose_programme(*ids, want_programme);
+    if (!programme) {
+        return 1;
+    }
+    const auto units = ac3::split_access_units(stream, *programme);
     if (!units || units->empty()) {
         std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return 1;
     }
-    ac3::Eac3Decoder decoder;
+    if (ids->size() > 1) {
+        std::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
+                     ac3cli::format_programme_ids(*ids));
+    }
+    ac3::Eac3Decoder decoder{{.programme = *programme}};
     std::vector<ac3::analysis::ChannelSummary> totals;
     ac3::DecodedAccessUnit first{};
     for (const auto& unit : *units) {
@@ -521,7 +548,8 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 
 }  // namespace
 
-int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg) {
+int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
+           std::optional<int> want_programme) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         std::println(stderr, "error: cannot read {}", in_path);
@@ -532,7 +560,28 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
-    const auto result = *bsid > 8 ? measure_qc_eac3(stream) : measure_qc_ac3(stream);
+    std::optional<QcResult> result;
+    if (*bsid > 8) {
+        // §E2.3.1.2: one programme is measured - see measure_qc_eac3's own
+        // ingest() for why folding two into one meter reports a loudness
+        // neither of them has.
+        const auto ids = ac3::programme_ids(stream);
+        if (!ids || ids->empty()) {
+            std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+            return 1;
+        }
+        const auto programme = ac3cli::choose_programme(*ids, want_programme);
+        if (!programme) {
+            return 1;
+        }
+        if (ids->size() > 1) {
+            std::println("qc: programme {} of {} ({})", *programme, ids->size(),
+                         ac3cli::format_programme_ids(*ids));
+        }
+        result = measure_qc_eac3(stream, *programme);
+    } else {
+        result = measure_qc_ac3(stream);
+    }
     if (!result) {
         return 1;
     }
@@ -550,7 +599,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
 
 // What is actually in a file, channel by channel — the answer both front ends
 // are built to show, without having to encode anything to get it.
-int run_levels(std::string_view in_path) {
+int run_levels(std::string_view in_path, std::optional<int> want_programme) {
     const auto bytes = read_all(in_path);
     if (bytes.empty()) {
         std::println(stderr, "error: cannot read {}", in_path);
@@ -566,7 +615,7 @@ int run_levels(std::string_view in_path) {
         // turn a wider syntax away at - bsid only decides which reader runs.
         const auto bsid = ac3::stream_bsid(bytes);
         if (bsid && *bsid > 8) {
-            return run_levels_eac3(bytes, in_path);
+            return run_levels_eac3(bytes, in_path, want_programme);
         }
         const auto frames = ac3::split_frames(bytes);
         if (!frames || frames->empty()) {

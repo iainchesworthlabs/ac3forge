@@ -146,6 +146,25 @@ void print_meta_usage() {
     std::println("                    the programme is still as long as the longest one once "
                  "every offset is applied");
     std::println();
+    std::println("programme options (eac3-encode; any order, after the positional arguments):");
+    std::println("  programme2=<path> author a SECOND programme into the same stream, as a "
+                 "second independent substream (§E2.3.1.2's I1) - the multi-language / "
+                 "associated-service shape of broadcast DD+. Its own audio, layout, rate and "
+                 "dialnorm; a decoder plays one programme or the other, never both");
+    std::println("  programme2-layout=<name>   its layout ({}); omitted follows its own source",
+                 plan::layout_names(plan::Codec::kEac3));
+    std::println("  programme2-bitrate=<kbps>  its own rate, spent ON TOP of the primary's "
+                 "(substreams share a frame period, not a frame); omitted is half the primary's");
+    std::println("  programme2-dialnorm=<1..31>  its own dialnorm (§5.4.2.8, default 31) - not "
+                 "inherited, since a commentary or description track is levelled independently "
+                 "of the mix it plays against");
+    std::println();
+    std::println("programme options (decode, qc, levels; any order, after the positional "
+                 "arguments):");
+    std::println("  programme=<0..7>  which programme of a multi-programme stream to work on, "
+                 "by the §E2.3.1.2 substreamid of its independent substream; omitted takes the "
+                 "first the stream carries");
+    std::println();
     std::println("record/live options (record, live; any order, after the positional "
                  "arguments):");
     std::println("  container=mkv     write straight to Matroska instead of the bare elementary");
@@ -477,6 +496,59 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             out.signing_key = std::string{value};
             continue;
         }
+        if (key == "programme") {
+            // §E2.3.1.2 numbers independent substreams I0-I7, so the id is
+            // the whole of what selects a programme - there is no separate
+            // index. Checked against what the stream actually carries by the
+            // command itself, which is the only place that knows.
+            const auto id = parse_u32_or(value, 8);
+            if (id > 7) {
+                std::println(stderr, "error: programme= needs a substream id 0..7 (got '{}')",
+                             token);
+                return false;
+            }
+            out.programme = static_cast<int>(id);
+            continue;
+        }
+        if (key == "programme2") {
+            if (value.empty()) {
+                std::println(stderr, "error: programme2= needs an input file path");
+                return false;
+            }
+            out.programme2 = std::string{value};
+            continue;
+        }
+        if (key == "programme2-layout") {
+            if (value.empty()) {
+                std::println(stderr, "error: programme2-layout= needs a layout name ({})",
+                             plan::layout_names(plan::Codec::kEac3));
+                return false;
+            }
+            out.programme2_layout = std::string{value};
+            continue;
+        }
+        if (key == "programme2-bitrate") {
+            const auto kbps = parse_u32_or(value, 0);
+            if (kbps == 0) {
+                std::println(stderr,
+                             "error: programme2-bitrate= needs a rate in kbit/s (got '{}')",
+                             token);
+                return false;
+            }
+            out.programme2_bitrate = kbps;
+            continue;
+        }
+        if (key == "programme2-dialnorm") {
+            const auto dialnorm = parse_u32_or(value, 0);
+            if (dialnorm < 1 || dialnorm > 31) {
+                std::println(stderr,
+                             "error: programme2-dialnorm= needs 1..31 (§5.4.2.8; got '{}')",
+                             token);
+                return false;
+            }
+            out.programme2_dialnorm = static_cast<int>(dialnorm);
+            continue;
+        }
         std::println(stderr, "error: unknown option '{}'", token);
         print_meta_usage();
         return false;
@@ -577,6 +649,34 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
 bool is_stdio_path(std::string_view path) { return path == "-"; }
 
 FILE* status_stream(std::string_view out_path) { return is_stdio_path(out_path) ? stderr : stdout; }
+
+std::string format_programme_ids(std::span<const int> ids) {
+    std::string out;
+    for (const int id : ids) {
+        if (!out.empty()) {
+            out += ", ";
+        }
+        out += std::format("{}", id);
+    }
+    return out;
+}
+
+std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted) {
+    assert(!ids.empty());
+    // Omitted takes the first programme the stream carries rather than a
+    // hard-coded 0: §E2.3.1.2 numbers independent substreams from 0, but a
+    // stream someone has already cut a programme out of need not still start
+    // at one, and refusing it would be refusing a stream that decodes fine.
+    if (!wanted) {
+        return ids.front();
+    }
+    if (std::ranges::find(ids, *wanted) == ids.end()) {
+        std::println(stderr, "error: no programme {} in this stream (it carries {})", *wanted,
+                     format_programme_ids(ids));
+        return std::nullopt;
+    }
+    return *wanted;
+}
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames) {
     if (is_stdio_path(path)) {

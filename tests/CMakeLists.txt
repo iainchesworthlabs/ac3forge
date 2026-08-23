@@ -60,6 +60,7 @@ add_executable(ac3tests
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
     decoder/test_eac3_decoder.cpp
+    decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
