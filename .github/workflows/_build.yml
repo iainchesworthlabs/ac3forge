@@ -56,6 +56,14 @@ on:
         description: "github.ref_name at the call site, for the same reason as persist_quality_trend above. Empty when persist_quality_trend is false."
         type: string
         default: ""
+      publish_conformance_vectors:
+        description: >-
+          Run the conformance-vector generator's determinism check and upload the bundle as an
+          artifact for release.yml to attach (roadmap VX20, docs/conformance-vectors.md). The
+          generator itself runs on the linux-gcc leg either way - see that step's own comment;
+          this input only adds the second, verifying pass and the upload. Set by release.yml.
+        type: boolean
+        default: false
     secrets:
       ATMOS_SIGNING_KEY:
         description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the Shield app signs Atmos objects at runtime - on any build, debug or release. Unset -> no asset is written and the app streams the safe unsigned bed51. A signed APK contains this key and must never be distributed."
@@ -254,6 +262,7 @@ jobs:
             release_package: true
             alsa_fallback: true
             gold_reference: true
+            conformance_vectors: true
 
           - name: "Linux LLVM (clang)"
             runner: ${{ needs.check-runners.outputs.linux_runner }}
@@ -730,6 +739,59 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+
+      # Roadmap VX20: the conformance vector set - one stream per coding tool,
+      # layout and sample rate this encoder can produce, each with the PCM it
+      # was encoded from and the expected decode hashes, published as a
+      # release asset so another decoder implementer has something concrete to
+      # test against (docs/conformance-vectors.md).
+      #
+      # It runs on EVERY call, not just a release, deliberately: the generator
+      # drives real ac3cli command lines, and an option rename would otherwise
+      # rot it silently until the next tag - by which point the fix is
+      # blocking a release rather than a pull request. The release-only extra
+      # is --check-determinism, which regenerates the whole bundle a second
+      # time and fails if a single hash moved; that doubles the runtime, which
+      # is worth paying once per release and not once per push.
+      #
+      # One leg only. Encoded output is not bit-identical across compilers or
+      # architectures yet (docs/building.md; roadmap VX11/VX12), so a second
+      # leg's bundle would differ from this one's for no useful reason - the
+      # manifest records the toolchain that built it either way. linux-gcc is
+      # the leg that carries it because it is the x86-64 reference toolchain
+      # and already a release_package leg.
+      #
+      # python3 is not in the container bootstrap: nothing else in this job
+      # needs it.
+      - name: Install python3 (conformance vectors)
+        if: matrix.conformance_vectors
+        run: apt-get install -y -qq --no-install-recommends python3
+
+      - name: Generate conformance vectors
+        if: matrix.conformance_vectors
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+          PUBLISH: ${{ inputs.publish_conformance_vectors }}
+        run: |
+          set -euo pipefail
+          cli="build/config-${PRESET}/bin/ac3cli"
+          version="$("$cli" --version | head -1 | awk '{print $NF}')"
+          extra=""
+          if [ "$PUBLISH" = "true" ]; then
+            extra="--check-determinism --archive"
+          fi
+          # Word-split on purpose: $extra is either empty or two flags.
+          # shellcheck disable=SC2086
+          python3 tools/generators/gen_conformance_vectors.py --cli "$cli" --out "dist/ac3forge-conformance-vectors-${version}" $extra
+
+      - name: Upload conformance vectors
+        if: matrix.conformance_vectors && inputs.publish_conformance_vectors
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-vectors
+          path: dist/*.tar.gz
+          if-no-files-found: error
 
       # The other side of the ALSA switch: a Linux machine without libasound's
       # development headers must still configure, build and pass everything,
