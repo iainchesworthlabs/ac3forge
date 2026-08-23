@@ -80,6 +80,7 @@ add_executable(ac3tests
     containers/test_mp4.cpp
     containers/test_mpegts.cpp
     quality/test_distortion.cpp
+    quality/test_perceptual.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp

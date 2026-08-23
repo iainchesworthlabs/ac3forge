@@ -142,6 +142,7 @@ target_sources(forge_objects
         src/oba/motion.cpp
         src/oba/oamd.cpp
         src/quality/distortion.cpp
+        src/quality/perceptual.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/mirror.cpp
