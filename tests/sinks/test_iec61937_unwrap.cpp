@@ -1,13 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
-#include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/tables.hpp"
@@ -173,6 +172,58 @@ TEST_CASE("unwrap_stream: E-AC-3 bursts round-trip back to the exact access unit
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
     CHECK((*decoded)->channels.size() == 2);
+}
+
+TEST_CASE("unwrap_stream: a burst carrying six one-block syncframes comes back whole",
+          "[iec61937][unwrap]") {
+    // The Annex E case this project's own encoder never produces: numblkscod
+    // 0 (Table E2.4), one block per syncframe, so Eac3BurstPacker has to
+    // accumulate six access units before a burst is complete. Hand-built for
+    // the same reason test_iec61937.cpp hand-builds them - the packer reads
+    // only bsid/fscod/numblkscod from the header and never looks at the body.
+    // The reader's side of it is that Pd covers the whole concatenation, not
+    // one syncframe, which is exactly what a stream that came back one-sixth
+    // of its length would prove wrong.
+    const auto one_block = [](std::size_t payload_words, std::byte fill) {
+        std::vector<std::byte> frame(6 + payload_words * 2, fill);
+        frame[0] = std::byte{0x0B};
+        frame[1] = std::byte{0x77};
+        frame[2] = std::byte{0x00};
+        frame[3] = std::byte{0x00};
+        // fscod 0 | numblkscod 0 | acmod 2 | lfeon 0
+        frame[4] = static_cast<std::byte>(2 << 1);
+        frame[5] = static_cast<std::byte>((16 << 3) | 0x7);  // bsid 16 | dialnorm bits
+        return frame;
+    };
+    std::vector<std::vector<std::byte>> units;
+    std::vector<std::byte> expected;
+    ac3::iec61937::Eac3BurstPacker packer;
+    std::vector<std::byte> carrier;
+    for (int i = 0; i < 6; ++i) {
+        auto unit = one_block(8 + static_cast<std::size_t>(i),
+                              static_cast<std::byte>(0xA0 + i));
+        expected.insert(expected.end(), unit.begin(), unit.end());
+        const auto burst = packer.push(unit);
+        REQUIRE(burst.has_value());
+        // Only the sixth completes a burst: five blocks is not a burst period.
+        CHECK(burst->has_value() == (i == 5));
+        if (*burst) {
+            carrier.insert(carrier.end(), (**burst).begin(), (**burst).end());
+        }
+        units.push_back(std::move(unit));
+    }
+    REQUIRE(carrier.size() == ac3::iec61937::kEac3BurstBytes);
+
+    BurstReader reader;
+    std::vector<std::byte> out;
+    REQUIRE(reader.push(carrier, out).has_value());
+    REQUIRE(reader.finish().has_value());
+    CHECK(reader.bursts() == 1);
+    CHECK(reader.data_type() == BurstDataType::kEac3);
+    REQUIRE(reader.last_header().has_value());
+    CHECK(reader.last_header()->payload_bytes == expected.size());
+    CHECK(out.size() == expected.size());
+    CHECK(std::equal(out.begin(), out.end(), expected.begin(), expected.end()));
 }
 
 TEST_CASE("unwrap_stream: reads the burst header back, bsmod included", "[iec61937][unwrap]") {
