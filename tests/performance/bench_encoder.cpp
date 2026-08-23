@@ -25,6 +25,7 @@
 // them honest: a decode number is only meaningful against a stream whose
 // tools and rate are known.
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -33,6 +34,7 @@
 #include <fstream>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ac3/core/tables.hpp"
@@ -274,14 +276,25 @@ void write_json(const std::vector<Result>& results, const std::string& path) {
 int main(int argc, char** argv) {
     std::string json_out;
     std::string wav_path = perf::kReference51Wav;
+    // --only <name>, repeatable: run just these workloads. CI never passes it
+    // (a trend run has to produce every series), but re-measuring one series
+    // by hand should not cost the other eight - on a machine shared with
+    // other work, a short run that can be repeated many times is worth far
+    // more than one long one.
+    std::vector<std::string> only;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--json-out" && i + 1 < argc) {
             json_out = argv[++i];
         } else if (arg == "--wav" && i + 1 < argc) {
             wav_path = argv[++i];
+        } else if (arg == "--only" && i + 1 < argc) {
+            only.emplace_back(argv[++i]);
         }
     }
+    const auto wanted = [&only](std::string_view name) {
+        return only.empty() || std::ranges::find(only, name) != only.end();
+    };
 
     const ac3::io::WavData audio =
         perf::load_real_audio(wav_path, 6, static_cast<std::size_t>(ac3::kSamplesPerFrame));
@@ -289,23 +302,56 @@ int main(int argc, char** argv) {
     perf::FrameSource two_channel{audio, perf::kStereoChannels};
     perf::FrameSource four_object{audio, perf::kFourObjectChannels};
 
-    // Setup, before anything is timed.
-    const std::vector<std::byte> ac3_stream = encode_ac3_stream(six_channel);
-    const std::vector<std::byte> eac3_stream = encode_eac3_stream(six_channel);
-    const std::vector<std::byte> atmos_stream = encode_atmos_stream(four_object);
+    // Setup, before anything is timed - and only for the decode workloads
+    // actually selected, so --only on an encode series does not pay for three
+    // encode passes it will not read.
+    std::vector<std::byte> ac3_stream;
+    std::vector<std::byte> eac3_stream;
+    std::vector<std::byte> atmos_stream;
+    if (wanted("ac3_51_decode")) {
+        ac3_stream = encode_ac3_stream(six_channel);
+    }
+    if (wanted("eac3_51_decode")) {
+        eac3_stream = encode_eac3_stream(six_channel);
+    }
+    if (wanted("atmos_4obj_decode")) {
+        atmos_stream = encode_atmos_stream(four_object);
+    }
 
     std::vector<Result> results;
-    results.push_back(bench_ac3_51(six_channel, /*fast_mdct=*/false));
-    results.push_back(bench_ac3_51(six_channel, /*fast_mdct=*/true));
-    results.push_back(
-        bench_eac3_auto("eac3_51_auto", six_channel, ac3::Acmod::k3_2, /*lfe=*/true, 448));
-    results.push_back(
-        bench_eac3_auto("eac3_stereo_auto", two_channel, ac3::Acmod::k2_0, /*lfe=*/false, 192));
-    results.push_back(bench_atmos_4obj(four_object, /*fast_mdct=*/false));
-    results.push_back(bench_atmos_4obj(four_object, /*fast_mdct=*/true));
-    results.push_back(bench_ac3_decode(ac3_stream));
-    results.push_back(bench_eac3_decode("eac3_51_decode", eac3_stream));
-    results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
+    if (wanted("plain_51")) {
+        results.push_back(bench_ac3_51(six_channel, /*fast_mdct=*/false));
+    }
+    if (wanted("plain_51_fast_mdct")) {
+        results.push_back(bench_ac3_51(six_channel, /*fast_mdct=*/true));
+    }
+    if (wanted("eac3_51_auto")) {
+        results.push_back(
+            bench_eac3_auto("eac3_51_auto", six_channel, ac3::Acmod::k3_2, /*lfe=*/true, 448));
+    }
+    if (wanted("eac3_stereo_auto")) {
+        results.push_back(bench_eac3_auto("eac3_stereo_auto", two_channel, ac3::Acmod::k2_0,
+                                          /*lfe=*/false, 192));
+    }
+    if (wanted("atmos_4obj")) {
+        results.push_back(bench_atmos_4obj(four_object, /*fast_mdct=*/false));
+    }
+    if (wanted("atmos_4obj_fast_mdct")) {
+        results.push_back(bench_atmos_4obj(four_object, /*fast_mdct=*/true));
+    }
+    if (wanted("ac3_51_decode")) {
+        results.push_back(bench_ac3_decode(ac3_stream));
+    }
+    if (wanted("eac3_51_decode")) {
+        results.push_back(bench_eac3_decode("eac3_51_decode", eac3_stream));
+    }
+    if (wanted("atmos_4obj_decode")) {
+        results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
+    }
+    if (results.empty()) {
+        std::fprintf(stderr, "ac3bench: --only matched no workload\n");
+        return 1;
+    }
 
     for (const auto& r : results) {
         std::printf("%-20s %5d frames  %9.3f ms total  %6.3f ms/frame  (budget %.3f ms/frame)\n",
