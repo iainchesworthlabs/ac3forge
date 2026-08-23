@@ -63,6 +63,17 @@ scripts for why. Every number on this page is that one runner's; nothing here is
 cross-platform comparison, and a number from a developer machine is not comparable
 to one of these rows.
 
+Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
+show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
+targeted is smaller than this page's own run-to-run variance on a shared runner, so
+the effect is real but not visible against that noise floor in a 200-frame series.
+Isolated from the rest of the frame - the exact per-bin loop, `~9,100` conversions
+sized like one real 5.1 frame's worth, minimum of several runs - it measured
+~50 µs before and ~30 µs after per frame's worth of calls (a 1.5-1.8× speedup on that
+slice), consistent with the ~33-38 µs the change targeted. The gate that actually
+matters for this change is byte-identical output, not a timing number: see the PF2
+commit message for the corpus that was checked.
+
 `tools/ci/append_performance_history.py` appends every `develop`/`main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
