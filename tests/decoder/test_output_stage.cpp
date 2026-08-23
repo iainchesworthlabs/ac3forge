@@ -84,7 +84,7 @@ TEST_CASE("the output stage is a bit-exact no-op until it is asked for something
     CHECK(stage.latency_samples() == 0);
 }
 
-TEST_CASE("Lo/Ro reproduces §7.8's own coefficients, normalised", "[decoder][output]") {
+TEST_CASE("Lo/Ro reproduces the section 7.8 coefficients, normalised", "[decoder][output]") {
     // 3/2 with clev -3 dB and slev -6 dB: left takes L at 1, C at 0.7071 and
     // Ls at 0.5, so §7.8.1's divisor is 1 + 0.7071 + 0.5 = 2.2071. Reading
     // the coefficients back off an impulse is the only test that distinguishes
@@ -119,7 +119,7 @@ TEST_CASE("Lo/Ro reproduces §7.8's own coefficients, normalised", "[decoder][ou
     }
 }
 
-TEST_CASE("§7.8.1's normalisation bounds a REAL matrix by the loudest coded sample",
+TEST_CASE("section 7.8.1 normalisation bounds a REAL matrix by the loudest coded sample",
           "[decoder][output]") {
     // The clause exists to prevent overload, and for a matrix of plain
     // coefficients this is the claim it makes: with every channel
@@ -167,7 +167,7 @@ TEST_CASE("Lt/Rt's phase shift can overshoot, and RF mode is what bounds it",
     CHECK(rf.rf_protection_db() < 0.0);
 }
 
-TEST_CASE("a mono fold takes §7.8's own 1/0 branch", "[decoder][output]") {
+TEST_CASE("a mono fold takes the section 7.8 1/0 branch", "[decoder][output]") {
     ac3::OutputStage stage{{.target = ac3::DownmixTarget::kMono}};
     auto channels = impulse_at(5, 1);  // the centre channel
     const ac3::MixLevels levels{.loro_clev = ac3::meta::level::kMinus3dB,
