@@ -1052,7 +1052,13 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     }
     if (retain_last_block) {
         if (!retained_) {
-            retained_.emplace();
+            // Aggregate-initialised rather than emplace()d: Retained is an
+            // aggregate, and libstdc++'s optional::emplace() goes through
+            // is_constructible_v, which clang does not satisfy for an
+            // aggregate with no constructor of its own. MSVC accepts the
+            // emplace form, so this is exactly the kind of difference the
+            // Linux legs exist to catch.
+            retained_ = Retained{};
         }
         retained_->nchans = nchans;
         // A swap rather than a copy: the buffer retained_ was holding comes
