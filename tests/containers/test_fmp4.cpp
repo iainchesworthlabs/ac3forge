@@ -726,8 +726,9 @@ TEST_CASE("FragmentWriter refuses what fragment() refuses", "[fmp4]") {
               .error() == mp4::MuxError::kInvalidTrack);
     // No codec_config payload at all: the sample entry would have no
     // dac3/dec3 child to describe the codec with.
-    CHECK(mp4::FragmentWriter::create({.sample_rate = 48000, .channels = 2}).error() ==
-          mp4::MuxError::kInvalidTrack);
+    CHECK(mp4::FragmentWriter::create(
+              mp4::AudioTrack{.sample_rate = 48000, .channels = 2, .codec_config = {}})
+              .error() == mp4::MuxError::kInvalidTrack);
     CHECK(mp4::FragmentWriter::create(track, {.frames_per_fragment = 0}).error() ==
           mp4::MuxError::kInvalidOptions);
     // Unlike fragment(), an empty session is not an error - kNoFrames is a
@@ -773,8 +774,9 @@ TEST_CASE("FragmentWriter's playlist window rolls, and the live manifests roll w
     // FIRST listed segment's number (3, not 1), and neither
     // #EXT-X-PLAYLIST-TYPE:VOD nor #EXT-X-ENDLIST appears while the
     // presentation is still growing.
-    const auto live =
-        mp4::build_hls_media_playlist(fixture.track, window, mp4::HlsOptions{.vod = false});
+    mp4::HlsOptions live_options;
+    live_options.vod = false;
+    const auto live = mp4::build_hls_media_playlist(fixture.track, window, live_options);
     CHECK(live.find("#EXT-X-MEDIA-SEQUENCE:3\n") != std::string::npos);
     CHECK(live.find("#EXT-X-ENDLIST") == std::string::npos);
     CHECK(live.find("#EXT-X-PLAYLIST-TYPE") == std::string::npos);

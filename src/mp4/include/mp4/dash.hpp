@@ -60,7 +60,7 @@ struct DashOptions {
     // commented-out alternative. Caller-supplied for the third time and the
     // same reason: an acmod/chanmap-to-channel-map mapping is AC-3 semantics,
     // not container syntax.
-    std::string dolby_channel_configuration;
+    std::string dolby_channel_configuration{};
 };
 
 // Which kind of Media Presentation Description build_dash_mpd() wraps an
@@ -80,10 +80,10 @@ struct MpdOptions {
     // rather than read off a clock here, because mp4:: has no clock: no file
     // I/O, no time, nothing but bytes in and bytes out, which is also what
     // keeps this testable without either.
-    std::string availability_start_time;
+    std::string availability_start_time{};
     // Dynamic only, optional: when this MPD instance itself was generated
     // (@publishTime). Empty omits the attribute.
-    std::string publish_time;
+    std::string publish_time{};
     // Dynamic only: how often a player should come back for a new MPD
     // (@minimumUpdatePeriod) and how far back the origin keeps segments
     // reachable (@timeShiftBufferDepth). The second should match whatever
