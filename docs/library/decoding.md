@@ -67,6 +67,12 @@ panned into it, which is exactly why an Atmos-unaware decoder can play the strea
   `syncinfo` as the syncword alone), and `crc2` is the frame's last field covering everything
   before it, so re-stamping is a plain forward recompute.
 
+A rewritten frame is sized to the content it actually holds — §E2.3.1.3 makes `frmsiz` an
+arbitrary per-frame word count, unlike AC-3's index into Table 5.18. So the output is smaller
+than the input, which is the point for a delivery rendition, but a constant-rate input does not
+stay constant-rate: alongside the container, whatever auxdata padding the encoder used to hit
+its target rate goes too. A frame with nothing to remove is copied byte for byte.
+
 The container is **removed, not emptied**: an EMDF container with no payloads would still signal
 an object layer for a stream that no longer has one, and this project's rule is that a stream
 carries objects or omits the container entirely (see [Atmos & JOC](../concepts/atmos-joc.md)).

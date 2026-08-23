@@ -7,33 +7,33 @@ ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
 
 Usage:
   ac3cli --version    print version and git provenance, then exit
-  ac3cli silence      <out.ac3> [seconds] [bitrate_kbps]
-  ac3cli sine         <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli orbit        <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
-  ac3cli atmos        <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
-  ac3cli atmos-path   <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored keyframe file instead of the built-in orbit)
-  ac3cli atmos-encode <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a keyframe file (same format as atmos-path), objects it doesn't mention keep their default placement)
-  ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
+  ac3cli silence       <out.ac3> [seconds] [bitrate_kbps]
+  ac3cli sine          <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
+  ac3cli orbit         <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
+  ac3cli atmos         <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
+  ac3cli atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored keyframe file instead of the built-in orbit)
+  ac3cli atmos-encode  <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a keyframe file (same format as atmos-path), objects it doesn't mention keep their default placement)
+  ac3cli atmos-adm     <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
   ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
-  ac3cli record       <out.ac3> [seconds] [bitrate_kbps] [device_index]
-  ac3cli live         <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
-  ac3cli encode       <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
-  ac3cli eac3-silence <out.ec3> [seconds] [bitrate_kbps] [layout]
-  ac3cli eac3-sine    <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
-  ac3cli decode       <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
-  ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
-  ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
-  ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
-  ac3cli spdif        <in.ac3> <out.wav>                      (IEC 61937 wrap as playable PCM16 WAV)
-  ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
-  ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
-  ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
-  ac3cli ts           <in.ac3|in.ec3> <out.ts> [dvb|atsc]     (wrap as an MPEG-2 Transport Stream (DVB profile by default))
+  ac3cli record        <out.ac3> [seconds] [bitrate_kbps] [device_index]
+  ac3cli live          <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
+  ac3cli encode        <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
+  ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
+  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  ac3cli decode        <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
+  ac3cli levels        <in.wav|in.ac3|in.ec3>                 (per-channel peak/RMS report)
+  ac3cli loudness      <in.wav>                               (BS.1770-4 loudness -> dialnorm)
+  ac3cli qc            <in.ac3|in.ec3> [preset=<name>|all]    (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
+  ac3cli spdif         <in.ac3> <out.wav>                     (IEC 61937 wrap as playable PCM16 WAV)
+  ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file)
+  ac3cli mp4           <in.ac3|in.ec3> <out.mp4>              (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
+  ac3cli fmp4          <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
+  ac3cli ts            <in.ac3|in.ec3> <out.ts> [dvb|atsc]    (wrap as an MPEG-2 Transport Stream (DVB profile by default))
   ac3cli devices                                              (input and loopback capture endpoints)
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
-  ac3cli play         <in.ac3|in.ec3> [device_index]          (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
-  ac3cli monitor      <in.ac3|in.ec3> [device_index]          (decode and play on an ordinary (non-bitstreamed) output)
+  ac3cli play          <in.ac3|in.ec3> [device_index]         (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
+  ac3cli monitor       <in.ac3|in.ec3> [device_index]         (decode and play on an ordinary (non-bitstreamed) output)
 ```
 
 ## By category
@@ -178,8 +178,14 @@ for what it does and does not touch.
 
 The container is removed, not emptied — an empty container would still tell every downstream
 signalling path (`dec3`'s Atmos extension, an HLS `CHANNELS="<N>/JOC"` attribute) that objects
-are present. A stream with no object layer is copied through unchanged; an AC-3 stream is
-refused, since Annex E is where skip fields and substreams live.
+are present. The same goes for the `addbsi` marker on its own: a stream that signals objects it
+does not carry gets that signalling removed too. A stream with no object layer at all is copied
+through unchanged; an AC-3 stream is refused, since Annex E is where skip fields and substreams
+live.
+
+Rewritten frames are sized to their real content, so the output is smaller than the input and a
+constant-rate input does not stay constant-rate — the encoder's rate-filling auxdata padding
+goes along with the container. The reported byte count says how much.
 
 This is what `fmp4 … fallback-51` uses to write the paired 5.1 rendition Apple's HLS authoring
 requirements ask for beside an Atmos one.

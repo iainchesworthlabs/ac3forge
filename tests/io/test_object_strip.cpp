@@ -187,17 +187,30 @@ TEST_CASE("strip_objects re-derives frmsiz and re-stamps crc2", "[io][strip]") {
     }
 }
 
-TEST_CASE("strip_objects passes through what has no object layer", "[io][strip]") {
-    SECTION("an Atmos-shaped stream with the container switched off") {
-        const Bytes bed51 = encode_atmos_stream(3, /*emit_objects=*/false);
-        const auto stripped = ac3::io::strip_objects(bed51);
-        REQUIRE(stripped.has_value());
-        CHECK(stripped->frames_total == 3);
-        CHECK(stripped->frames_stripped == 0);
-        CHECK(stripped->bytes_removed == 0);
-        CHECK(stripped->bytes == bed51);
-    }
+// 'bed51' mode emits no EMDF container but still writes TS 103 420 §8.3.1's
+// addbsi object-audio marker - src/forge/src/oba/atmos.cpp sets
+// oba_complexity_index on the encoder config unconditionally - so scan reports
+// an object layer for a stream that has none, and anything reading that
+// (a dec3 box's Atmos extension, an HLS CHANNELS="<N>/JOC" attribute) claims
+// objects that were never encoded. Taking the marker out is the same rule the
+// container itself follows: objects, or no signalling at all.
+TEST_CASE("strip_objects removes an object marker left without a container", "[io][strip]") {
+    const Bytes bed51 = encode_atmos_stream(3, /*emit_objects=*/false);
+    const auto before = ac3::io::scan(bed51);
+    REQUIRE(before.has_value());
+    REQUIRE(before->oba_complexity_index.has_value());
 
+    const auto stripped = ac3::io::strip_objects(bed51);
+    REQUIRE(stripped.has_value());
+    CHECK(stripped->frames_total == 3);
+    CHECK(stripped->frames_stripped == 3);
+    const auto after = ac3::io::scan(stripped->bytes);
+    REQUIRE(after.has_value());
+    CHECK_FALSE(after->oba_complexity_index.has_value());
+    CHECK(decode_all(stripped->bytes) == decode_all(bed51));
+}
+
+TEST_CASE("strip_objects passes through what has no object layer", "[io][strip]") {
     SECTION("a stream of a shape the frame walker does not map") {
         // A stereo E-AC-3 stream is outside ac3::emdf::walk_frame's scope,
         // but it plainly has no object layer either - so it comes back

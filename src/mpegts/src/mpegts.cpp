@@ -102,13 +102,13 @@ Bytes build_pat_section(std::uint16_t transport_stream_id, std::uint16_t program
 // for AC-3/E-AC-3 (unlike ATSC's 0x81/0x87 below), so a DVB-conformant
 // demuxer is expected to find 0x06 plus one of the DVB descriptors in the
 // PMT and treat the PID as AC-3/E-AC-3 on that basis alone (ETSI EN 300 468
-// D.2/D.4, and A/52:2018 Annex A section A3's own note on the two systems'
+// D.2/D.4, and A/52:2018 Annex A §A3's own note on the two systems'
 // opposite choices).
 constexpr std::uint8_t kStreamTypePrivateData = 0x06;
-// A/52:2018 Annex A section A4.1: "The value of stream_type for AC-3 shall be
+// A/52:2018 Annex A §A4.1: "The value of stream_type for AC-3 shall be
 // 0x81."
 constexpr std::uint8_t kStreamTypeAtscAc3 = 0x81;
-// A/52:2018 Annex G section G3.1: "E-AC-3 bit streams shall be identified
+// A/52:2018 Annex G §G3.1: "E-AC-3 bit streams shall be identified
 // with a stream_type value of 0x87 when transmitted as PES streams
 // conforming to ATSC-published standards."
 constexpr std::uint8_t kStreamTypeAtscEac3 = 0x87;
@@ -116,8 +116,8 @@ constexpr std::uint8_t kStreamTypeAtscEac3 = 0x87;
 // ISO/IEC 13818-1 Table 2-22's audio stream_id range ('110x xxxx') does not
 // apply to either profile: both put the audio in PES private data, which
 // Table 2-19 puts under stream_id 0xBD (private_stream_1) - DVB by way of
-// stream_type 0x06, ATSC by saying so outright (A/52 Annex A section A4.2 and
-// Annex G section G3.2, both "shall be 0xBD (indicating private_stream_1)").
+// stream_type 0x06, ATSC by saying so outright (A/52 Annex A §A4.2 and
+// Annex G §G3.2, both "shall be 0xBD (indicating private_stream_1)").
 // Unlike a DVD-Video private_stream_1, neither carries an extra sub-stream-id
 // byte in front of the payload (that convention is specific to DVD-Video's
 // own multiplexing rules) - the PES payload here is the raw AC-3/E-AC-3
@@ -128,10 +128,10 @@ constexpr std::uint8_t kPesStreamIdPrivateStream1 = 0xBD;
 constexpr std::uint8_t kTagDvbAc3Descriptor = 0x6A;
 // ETSI EN 300 468 Annex D.4, Table D.7.
 constexpr std::uint8_t kTagDvbEnhancedAc3Descriptor = 0x7A;
-// A/52:2018 Annex A section A4.3, Table A4.1: "The value for the AC-3
+// A/52:2018 Annex A §A4.3, Table A4.1: "The value for the AC-3
 // descriptor tag is 0x81."
 constexpr std::uint8_t kTagAtscAc3Descriptor = 0x81;
-// A/52:2018 Annex G section G3.5, Table G.1: "The value assigned to the
+// A/52:2018 Annex G §G3.5, Table G.1: "The value assigned to the
 // E-AC-3_audio_descriptor() tag is 0xCC."
 constexpr std::uint8_t kTagAtscEac3Descriptor = 0xCC;
 
@@ -398,6 +398,12 @@ Bytes build_atsc_ac3_descriptor(const ServiceInfo& s) {
     // strictly more informative than the "maximum number of channels" form
     // the msb-set half of the table offers, and always available here.
     const unsigned num_channels = static_cast<unsigned>(acmod);
+    // Table A4.1 branches on `bsmod < 2` literally, not on "is this a main
+    // service" - so bsmod 0b111 with acmod > 1, which Table 5.7 calls a MAIN
+    // audio service (karaoke), still takes the asvcflags branch. Following
+    // the standard's own condition rather than the semantics it usually
+    // implies is deliberate: a receiver parses this descriptor by that
+    // condition, so anything else desynchronises it.
     const bool main_service = svc < 0x2;
     const bool extended = main_service ? s.mainid.has_value() : s.asvc.has_value();
 

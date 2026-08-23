@@ -52,13 +52,13 @@
 //     by the AC3_descriptor (tag 0x6A) or enhanced_AC-3_descriptor (tag
 //     0x7A) ETSI EN 300 468 Annex D.3/D.5 define. DVB registers no
 //     stream_type of its own, so the descriptor tag IS the identification
-//     (EN 300 468 D.2, and A/52:2018 Annex A section A3's own note on the
+//     (EN 300 468 D.2, and A/52:2018 Annex A §A3's own note on the
 //     two systems' opposite choices).
 //   - ATSC (BroadcastProfile::kAtsc): stream_type 0x81 for AC-3 (A/52:2018
-//     Annex A section A4.1) or 0x87 for E-AC-3 (Annex G section G3.1),
+//     Annex A §A4.1) or 0x87 for E-AC-3 (Annex G §G3.1),
 //     identified by the AC-3_audio_stream_descriptor (tag 0x81, Annex A
-//     section A4.3, Table A4.1) or the E-AC-3_audio_descriptor (tag 0xCC,
-//     Annex G section G3.5, Table G.1). ATSC chose the stream_type as the
+//     §A4.3, Table A4.1) or the E-AC-3_audio_descriptor (tag 0xCC,
+//     Annex G §G3.5, Table G.1). ATSC chose the stream_type as the
 //     unique identification and the descriptor as configuration detail - the
 //     mirror image of DVB's choice.
 //
@@ -121,7 +121,7 @@ struct SubstreamService {
 // what a default-constructed AudioTrack produces: complete main, stereo, no
 // surround-mode indication, no service associations.
 struct ServiceInfo {
-    // A/52 section 5.4.2.2, Table 5.7 - identical in meaning to EN 300 468
+    // A/52 §5.4.2.2, Table 5.7 - identical in meaning to EN 300 468
     // Table D.4's service type flags and A/52 Table G.2's
     // audio_service_type, which is why one field feeds all three.
     // `bsmod_present` is false for an E-AC-3 stream that never sent
@@ -130,8 +130,8 @@ struct ServiceInfo {
     // both tables' own value for an ordinary programme.
     int bsmod = 0;
     bool bsmod_present = true;
-    // Section 5.4.2.3, Table 5.8 audio coding mode, and whether the LFE
-    // channel is on (section 5.4.2.10). With `channels` these drive the
+    // §5.4.2.3, Table 5.8 audio coding mode, and whether the LFE
+    // channel is on (§5.4.2.10). With `channels` these drive the
     // number-of-channels field both registries carry - EN 300 468 Table D.5,
     // A/52 Table A4.5 (AC-3) and Table G.3 (E-AC-3).
     int acmod = 2;
@@ -140,10 +140,10 @@ struct ServiceInfo {
     // separates EN 300 468 Table D.5's "> 2 channels" from its "> 5.1
     // channels", and A/52 Table G.3's 0b100 from its 0b101.
     int channels = 2;
-    // Section 5.4.1.3 / E2.3.1.6. Carried as the descriptors' own bsid field
+    // §5.4.1.3 / E2.3.1.6. Carried as the descriptors' own bsid field
     // in both registries (8 or 6 for AC-3, 16 for E-AC-3).
     int bsid = 8;
-    // Section 5.4.2.8 dsurmod: 0 = not indicated, 1 = not Dolby Surround
+    // §5.4.2.8 dsurmod: 0 = not indicated, 1 = not Dolby Surround
     // encoded, 2 = Dolby Surround encoded. Carried verbatim as ATSC's
     // surround_mode (Table A4.4) and, for a 2-channel stream, selects
     // between EN 300 468 Table D.5's 0b010 and 0b011 and A/52 Table G.3's
@@ -154,13 +154,13 @@ struct ServiceInfo {
     // than exact" msb clear. Neither registry's E-AC-3 descriptor has an
     // equivalent field.
     int bit_rate_code = 0;
-    // Section 5.4.1.1 fscod, carried as ATSC's sample_rate_code (Table A4.2,
+    // §5.4.1.1 fscod, carried as ATSC's sample_rate_code (Table A4.2,
     // whose 0/1/2 are fscod's own 48/44.1/32 kHz). DVB's descriptors have no
     // sample-rate field.
     int sample_rate_code = 0;
-    // A/52 Annex G section 3.5 / EN 300 468 D.5 mixinfoexists. E-AC-3 only.
+    // A/52 Annex G §3.5 / EN 300 468 D.5 mixinfoexists. E-AC-3 only.
     bool mix_metadata = false;
-    // Bit n set when independent substream n is present (section E2.3.1.2),
+    // Bit n set when independent substream n is present (§E2.3.1.2),
     // as ac3::io::ScannedStream::independent_substreams reports it. This is
     // what answers EN 300 468 Table D.5's "elementary stream contains
     // multiple programmes carried in independent substreams", which no

@@ -184,7 +184,8 @@ std::string_view describe(StripError error) {
         case StripError::kNotEac3:
             return "not an E-AC-3 stream: only Annex E frames can carry an object layer";
         case StripError::kUnsupportedFrame:
-            return "frame carries an object layer in a bitstream shape this build cannot rewrite";
+            return "frame carries a skip field or object-audio marker in a bitstream shape this "
+                   "build cannot rewrite";
         case StripError::kFrameSizeDependentField:
             return "frame carries blkstrtinfo, whose width depends on the frame size";
     }

@@ -59,7 +59,7 @@ struct SubstreamService {
     bool bsmod_present = false;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
-    // The four Annex G section 3.5 mixinfoexists conditions, for THIS
+    // The four Annex G §3.5 mixinfoexists conditions, for THIS
     // substream - see ScannedStream::mix_metadata, which is the same
     // question asked of independent substream 0.
     bool mix_metadata = false;
