@@ -95,8 +95,16 @@ ASan/UBSan, 300 s per harness from the committed seed corpus:
 | `fuzz_emdf_parse`     |  4,982,134 |  16,551 |  120 | clean  |
 | `fuzz_oamd_parse`     | 49,730,651 | 165,218 |  173 | clean  |
 | `fuzz_joc_parse`      | 12,319,988 |  40,930 |   99 | clean  |
-| `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **UBSan report at exec ~70k** |
+| `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **two memory errors, one after the other** |
 | `fuzz_adm_parse`      |     ~1,000 |     n/a |  n/a | **out-of-memory in the first minute, three times over** |
+
+The two harnesses that found something stopped at the first report each time,
+so their numbers are where they stopped, not a budget they survived. Both are
+clean over a full budget once the findings below are fixed: `fuzz_adm_parse`
+47,732 executions in 300 s (it is the slowest harness here by a distance -
+`parse_bw64` has no in-memory overload, so every execution spools the input
+to a temporary file and reopens it by path), and `fuzz_signing_verify`
+likewise clean over 420 s from a fresh corpus.
 
 `fuzz_oamd_parse`'s exec rate is two orders of magnitude above
 `fuzz_signing_verify`'s for the obvious reason: an OAMD payload is tens of
