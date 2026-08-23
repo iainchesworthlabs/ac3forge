@@ -34,6 +34,16 @@
 #   nightly            random legal encoder configurations crossed with
 #                      adversarial PCM, every resulting stream held against
 #                      both this project's decoder and FFmpeg's strict decode.
+#                      Both encoders: tools/ci/fuzz_encoder_space.py for AC-3
+#                      and tools/ci/fuzz_eac3_encoder_space.py for E-AC-3
+#                      (roadmap VX1 - Annex E tool tokens, fscod2 half rates,
+#                      VBR, the layouts needing dependent substreams, Atmos
+#                      object counts). They share a PCM generator and nothing
+#                      else; the E-AC-3 half additionally classifies each case
+#                      by what FFmpeg can read, since it cannot read a second
+#                      dependent substream, enhanced coupling, transient
+#                      pre-noise or fscod2 audio, and holds those cells
+#                      against ffprobe's syncframe walk instead.
 #                      Not a libFuzzer target and not part of fuzz/run.sh - it
 #                      drives the real ac3cli, so it builds the CLI the way
 #                      ci.yml's ffmpeg-validate job does rather than the
@@ -50,7 +60,7 @@
 # This is a bounded, time-boxed run, not continuous (OSS-Fuzz-style) fuzzing
 # infrastructure - see fuzz/README.md.
 #
-# All four run in the same ubuntu:26.04 + LLVM 21 container ci.yml's
+# All four run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
 # linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
 # set (-Werror included) as every other target - the fuzz build used to be the
 # one exception, on the assumption it carried a sign-conversion/double-promotion
@@ -88,7 +98,11 @@ on:
         type: number
         default: 600
       encoder_space_seconds:
-        description: "Encoder input-space budget, in seconds"
+        description: "AC-3 encoder input-space budget, in seconds"
+        type: number
+        default: 900
+      eac3_encoder_space_seconds:
+        description: "E-AC-3 encoder input-space budget, in seconds"
         type: number
         default: 900
 
@@ -125,14 +139,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      # Also installs libclang-rt-${LLVM_VERSION}-dev (ASan/UBSan/libFuzzer's
+      # static runtime archives) unconditionally - see that package's own
+      # comment in the script - so fuzzing needs no separate install step for
+      # it.
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Replay seeds + regression corpus (no mutation)
         run: bash fuzz/run.sh regress
@@ -160,14 +172,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Fuzz (bounded mutation budget)
         run: bash fuzz/run.sh run
@@ -203,14 +209,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       # The differential harnesses' own oracle (fuzz/differential_oracle.hpp
       # shells out to it at run time) - the same package
@@ -258,14 +258,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Fuzz (deeper bounded mutation budget)
         run: bash fuzz/run.sh run
@@ -300,6 +294,7 @@ jobs:
     env:
       AC3CLI: build/config-linux-llvm/bin/ac3cli
       ENCODER_SPACE_SECONDS: ${{ github.event.inputs.encoder_space_seconds || 900 }}
+      EAC3_ENCODER_SPACE_SECONDS: ${{ github.event.inputs.eac3_encoder_space_seconds || 900 }}
     steps:
       - name: Bootstrap container
         run: |
@@ -316,7 +311,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         run: bash .github/toolchain/03-llvm-toolchain.sh
 
       - uses: ./.github/actions/setup-vcpkg
@@ -340,10 +335,28 @@ jobs:
       - name: Encoder input-space fuzz (deeper budget, both decoders)
         run: python3 tools/ci/fuzz_encoder_space.py --seconds "$ENCODER_SPACE_SECONDS"
 
+      # The E-AC-3 half (roadmap VX1). Its own envelope first, for the same
+      # reason the AC-3 one runs first, plus the oracle model: the gap table
+      # decides which cells get an FFmpeg decode and which get the framing
+      # oracle instead, so a stale entry silently narrows what the deeper run
+      # below actually checks.
+      - name: E-AC-3 encoder oracle model (what this FFmpeg can actually read)
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles
+
+      - name: E-AC-3 encoder acceptance envelope (rate floors + the frmsiz ceiling)
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope
+
+      - name: E-AC-3 encoder input-space fuzz (deeper budget, both decoders)
+        run: >
+          python3 tools/ci/fuzz_eac3_encoder_space.py
+          --seconds "$EAC3_ENCODER_SPACE_SECONDS"
+
       - name: Upload failing inputs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: encoder-space-nightly-artifacts
-          path: fuzz-encoder-artifacts/
+          path: |
+            fuzz-encoder-artifacts/
+            fuzz-eac3-encoder-artifacts/
           if-no-files-found: ignore
