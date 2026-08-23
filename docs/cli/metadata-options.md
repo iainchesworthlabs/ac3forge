@@ -305,6 +305,78 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
 
+## Programme options (`eac3-encode`): `programme2=`
+
+```text
+programme options (eac3-encode; any order, after the positional arguments):
+  programme2=<path> author a SECOND programme into the same stream, as a second independent
+                    substream (§E2.3.1.2's I1)
+  programme2-layout=<name>   its layout; omitted follows its own source
+  programme2-bitrate=<kbps>  its own rate, spent ON TOP of the primary's; omitted is half
+  programme2-dialnorm=<1..31>  its own dialnorm (§5.4.2.8, default 31)
+```
+
+A/52 Annex E allows eight *independent* substreams (I0–I7) in one elementary stream. That is a
+different thing from the dependent substreams a wide layout uses: a dependent extends one
+programme's soundfield, while a second independent substream is a whole second programme with its
+own layout, rate and level. Broadcast DD+ uses them for the services §5.4.2.2 names — a second
+language, an audio description, a commentary — so one stream carries the main mix and the
+alternatives, and a receiver plays one of them.
+
+```bash
+ac3cli eac3-encode film51.wav out.ec3 448 none 51 off     programme2=commentary.wav programme2-layout=mono     programme2-bitrate=96 programme2-dialnorm=20
+```
+
+That writes I0 as 5.1 at 448 kbit/s and I1 as mono at 96 kbit/s, one access unit of each per
+frame period. The rates **add**: substreams share a frame period rather than a frame, so the file
+above runs at 544 kbit/s, not 448.
+
+`programme2-dialnorm=` is deliberately not inherited from `dialnorm=`. A commentary or
+description track is levelled independently of the mix it plays against — that independence is
+the reason it is carried as a separate programme at all — so leaving it unset gives it the
+default 31 rather than quietly copying the main programme's measurement onto it.
+
+Not yet supported, and refused rather than ignored:
+
+- `programme2-layout=1+1`. 1+1 already carries two programmes in one substream, levelled by
+  `dialnorm`/`dialnorm2`; nesting it inside a second independent substream would mean three
+  programmes described two different ways with only one of the levels reachable. Use 1+1 on the
+  primary programme instead, or give `programme2` a layout of its own.
+- `programme2=` together with `src=`/`map=`. The multi-source router assigns channels to one
+  programme.
+- Labelling a programme as a service (`bsmod`) or supplying the mixing metadata a receiver would
+  use to mix an associated service against the main one — that is roadmap `DC3`/`DC4`, and this
+  is the structural half.
+
+One thing worth knowing before shipping such a stream: **FFmpeg refuses it outright**, and not
+only the second programme — see
+[Validation → Where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+
+## Programme options (`decode`, `qc`, `levels`): `programme=`
+
+```text
+programme options (decode, qc, levels; any order, after the positional arguments):
+  programme=<0..7>  which programme of a multi-programme stream to work on, by the §E2.3.1.2
+                    substreamid of its independent substream; omitted takes the first the
+                    stream carries
+```
+
+The decode-side half of `programme2=` above. All three commands work on exactly one programme —
+never a fold of several, since two programmes are alternatives rather than layers and mixing them
+would give a WAV that splices unrelated audio, or a loudness figure neither programme has.
+
+```bash
+ac3cli decode out.ec3 main.wav                # programme 0
+ac3cli decode out.ec3 commentary.wav programme=1
+ac3cli levels out.ec3 programme=1
+ac3cli qc out.ec3 programme=1 preset=atsc-a85
+```
+
+Omitting it takes the first programme the stream carries. When there is more than one, each
+command says which it picked and what else was there (`programme 0 of 2 (0, 1)`), so a
+multi-programme stream is never handled silently. Asking for a programme the stream does not
+carry is an error that lists the ones it does. Ignored for AC-3, which has no substream layer.
+
 ## Qc options (`qc`): `preset=`
 
 ```text

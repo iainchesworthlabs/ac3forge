@@ -19,7 +19,7 @@ Usage:
   ac3cli encode       <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli eac3-silence <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine    <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source; programme2= adds a second independent substream)
   ac3cli decode       <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
   ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
@@ -175,6 +175,16 @@ It decodes on the fast (FFT) inverse-transform path by default; `mode=reference`
 `fast-imdct=off` selects the spec's direct evaluation instead — see
 [Validation → Performance and reference modes](../verification.md#performance-and-reference-modes)
 for what each mode is for, and [Options & grammars](metadata-options.md) for the token rules.
+
+A stream carrying more than one programme (a second independent substream — a second language,
+an audio description) is handled one programme at a time: `decode`, `levels` and `qc` all take
+`programme=<0..7>`, and without it take the first the stream carries while saying what else was
+there. See [Options & grammars](metadata-options.md) for the token, and `eac3-encode`'s
+`programme2=` for authoring such a stream.
+
+```bash
+ac3cli decode out.ec3 commentary.wav programme=1
+```
 
 For an Atmos stream, add `objects_dir` to also export each object's reconstructed audio:
 

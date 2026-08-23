@@ -322,6 +322,36 @@ run eac3-encode mono_a.wav eac3enc_11_twofile.ec3 192 none 1+1 off mono_b.wav he
 run decode eac3enc_11_twofile.ec3 eac3enc_11_twofile.wav
 run_ffmpeg_check eac3enc_11_twofile.ec3
 
+# --- Multiple independent substreams: two PROGRAMMES, not two layers -------
+# §E2.3.1.2's I0/I1 - the multi-language / associated-service shape of
+# broadcast DD+ (roadmap DC5). Not the same thing as 1+1 above: 1+1 puts two
+# programmes in ONE substream's two coded channels, this puts them in two
+# substreams with independent layouts, rates and dialnorms.
+#
+# The two sources are genuinely different audio (bootstrap_51.wav's 440 Hz
+# against mono_b.wav's 660 Hz), so a decode that spliced the programmes shows
+# up as the wrong tone rather than as a level, and each programme is decoded,
+# levelled and QC'd on its own.
+run eac3-encode bootstrap_51.wav eac3enc_2pgm.ec3 256 none 51 off \
+    programme2=mono_b.wav programme2-layout=mono programme2-bitrate=96 \
+    programme2-dialnorm=20
+for programme in 0 1; do
+    run decode eac3enc_2pgm.ec3 "eac3enc_2pgm_p${programme}.wav" "programme=${programme}"
+    run levels eac3enc_2pgm.ec3 "programme=${programme}"
+    run qc eac3enc_2pgm.ec3 "programme=${programme}"
+done
+# Omitting programme= takes the first the stream carries, so this must agree
+# with programme=0 above rather than fold both together.
+run decode eac3enc_2pgm.ec3 eac3enc_2pgm_default.wav
+cmp eac3enc_2pgm_p0.wav eac3enc_2pgm_default.wav
+# No FFmpeg check: ff_ac3_parse_header rejects substreamid != 0 for an
+# INDEPENDENT substream exactly as it does for a dependent one, and the raw
+# E-AC-3 demuxer hands it I0 and I1 as one packet - so the second programme's
+# presence makes FFmpeg refuse every packet and emit nothing at all, main
+# programme included. Measured against ffmpeg 8.0.1 and recorded in
+# docs/verification.md's own note; skipped here rather than tolerated, the
+# same way 7.1.4 is.
+
 # --- Atmos: object counts, orbit rates, both container modes ----------------
 # Always a 5.1 bed (JOC/OAMD ride in the same independent substream's EMDF
 # container, never a dependent one), so FFmpeg reads all of these - it is how
