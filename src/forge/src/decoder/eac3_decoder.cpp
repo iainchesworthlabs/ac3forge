@@ -1806,7 +1806,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 if (!joc_slot) {
                     joc_slot = std::make_unique<joc::ReconstructionState>();
                 }
-                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot);
+                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
+                                                    false, config_.joc_domain);
             }
         }
     }
