@@ -84,6 +84,72 @@ count dwarfs the decode harnesses' because a format-sniff is orders of
 magnitude cheaper than a real IMDCT-and-bit-allocation decode - expected, not
 a sign anything is under-tested relative to its own cost.
 
+## Status: the VX3 harnesses
+
+Same caveat as the section above - a point-in-time result, not a standing
+guarantee. Measured on WSL2 Ubuntu 26.04, Clang 21, `RelWithDebInfo` +
+ASan/UBSan, 300 s per harness from the committed seed corpus:
+
+| Harness              | Executions | exec/s  | cov  | Result |
+|-----------------------|-----------:|--------:|-----:|--------|
+| `fuzz_emdf_parse`     |  4,982,134 |  16,551 |  120 | clean  |
+| `fuzz_oamd_parse`     | 49,730,651 | 165,218 |  173 | clean  |
+| `fuzz_joc_parse`      | 12,319,988 |  40,930 |   99 | clean  |
+| `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **UBSan report at exec ~70k** |
+| `fuzz_adm_parse`      |     ~1,000 |     n/a |  n/a | **out-of-memory in the first minute** |
+
+`fuzz_oamd_parse`'s exec rate is two orders of magnitude above
+`fuzz_signing_verify`'s for the obvious reason: an OAMD payload is tens of
+bytes and its parse is a bit walk, while a signing verification reconstructs
+a whole frame's message A bit by bit and runs HMAC-SHA-256 over it.
+
+### What they found
+
+Three real defects, all fixed in the same change, all with a committed
+reproducer under `fuzz/regressions/`:
+
+1. **`compute_bit_allocation` indexed `kMaskTab` at `SIZE_MAX`** on an empty
+   allocation region. §7.2.2.4's band walk ends at `kMaskTab[end - 1]`, and
+   `end - 1` on `end == 0` is `-1`. The contract was stated only by a debug
+   `assert`, so the shipped NDEBUG build had nothing between a hostile frame
+   and the pointer overflow - the same shape as `8386c8f`, the bug this
+   directory was created for. Reached through `ac3::signing`'s own frame
+   walk, but the guard is in the library, so the decoder is covered too.
+2. **`ac3adm::read_pcm` sized its buffer from the DECLARED `<data>` chunk
+   size**: a 104-byte file claiming ~4 GB of PCM allocated ~4 GB
+   (`malloc(8321498636)`). Bounded by the real file size now, which for a
+   well-formed file never binds.
+3. **`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so
+   a Debug build aborted on `ac3cli decode <plain stereo>.ec3 out.wav
+   verify-objects` - an ordinary input for an operation whose whole job is
+   checking streams its caller did not produce. Found while writing the
+   harness rather than by it: these builds are NDEBUG, so the harness could
+   not have caught this one itself.
+
+### What the mutator bought
+
+`fuzz_ac3_decode` and `fuzz_eac3_decode`, 300 s each from an identical fresh
+corpus and the same `-seed`, once with the custom mutator and once with it
+compiled out. Both grown corpora were then replayed through the SAME binary
+with `-runs=0`, so the coverage figures are comparable rather than each
+being read off its own build:
+
+| Harness            | Mutator | Executions | Corpus | `cov` | `ft` |
+|---------------------|---------|-----------:|-------:|------:|-----:|
+| `fuzz_eac3_decode` | off     |      3,366 |    271 |  1151 | 3851 |
+| `fuzz_eac3_decode` | on      |      4,546 |    233 |  **1284** | **4147** |
+| `fuzz_ac3_decode`  | off     |     12,739 |    283 |   713 | 2384 |
+| `fuzz_ac3_decode`  | on      |     12,860 |    295 |  **787** | **2723** |
+
++11.6% and +10.4% edge coverage, +7.7% and +14.2% features, for the same
+wall-clock budget - and on E-AC-3, 35% more executions as well, because a
+frame that clears the CRC gets decoded rather than dropped, which is a
+cheaper path per input than the corpus churn the rejected ones caused.
+The mutator's re-stamping half also has its own portable unit test
+(`tests/core/test_crc_mutator.cpp`), so a crc1 solved wrongly would fail the
+ordinary test suite on every platform rather than only showing up as a
+coverage number that quietly stopped improving.
+
 ## Entry points covered
 
 | Harness              | Calls                                                              |
@@ -418,9 +484,14 @@ gitignored; `fuzz/run.sh` creates it on demand.
 - `fuzz-nightly` - a 10-minute-per-harness mutation budget on a daily
   schedule, plus `workflow_dispatch` with a configurable budget for an
   on-demand deeper run. Crash-only harnesses only - see `fuzz-differential`.
+- `fuzz-adm-nightly` - `fuzz_adm_parse` on its own, same daily schedule and
+  `workflow_dispatch`. Its own job because it is the only harness here not
+  built by default: it needs vcpkg's `adm` feature plus the `FetchContent`
+  pulls of libbw64 and libadm, which nothing else in this file touches. See
+  "The ADM harness is opt-in" above.
 - `encoder-space-nightly` - the encoder input-space search above, on the same
   daily schedule and `workflow_dispatch`, with a 15-minute default budget.
-  Shares none of the machinery of the other four (no libFuzzer, no sanitizer
+  Shares none of the machinery of the other five (no libFuzzer, no sanitizer
   runtime, not in `fuzz/run.sh`): it builds the plain `linux-llvm` CLI with
   vcpkg and a pinned `ffmpeg`, the way `ci.yml`'s `ffmpeg-validate` job does.
 
@@ -430,9 +501,9 @@ job in this file - everything it needs is already built and pinned there, and
 unlike `fuzz-short` it runs on pull requests rather than push only, because it
 is cheap enough relative to the job it rides on.
 
-`fuzz-short`, `fuzz-differential` and `fuzz-nightly` run with
-`continue-on-error: true`, the same convention `ci.yml` uses for its other
-unproven legs: none has multiple clean fuzzing runs behind it yet. That is a
+`fuzz-short`, `fuzz-differential`, `fuzz-nightly` and `fuzz-adm-nightly` run
+with `continue-on-error: true`, the same convention `ci.yml` uses for its
+other unproven legs: none has multiple clean fuzzing runs behind it yet. That is a
 question of track record, and it is not settled by the build being
 warnings-clean - a bounded mutation run can still surface something on any
 given night. `fuzz-regress` is cheap enough to make a required

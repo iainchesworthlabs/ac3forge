@@ -54,6 +54,7 @@ add_executable(ac3tests
     core/test_bitwriter.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
+    core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
@@ -100,6 +101,17 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
+# half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
+# builds under Clang with -fsanitize=fuzzer, but the header's
+# restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
+# frame-size tables, and whether it produces a crc1 the decoder accepts is
+# exactly the kind of thing that should be checked on every platform rather
+# than inferred from a coverage number on one. Same shape as the signing/src
+# include just above: a directory outside the public include tree, on this
+# target's path only.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
 # test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
 # committed programme-material fixtures rather than a synthetic signal - the delta bit
