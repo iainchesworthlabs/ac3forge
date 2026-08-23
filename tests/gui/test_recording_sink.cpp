@@ -30,6 +30,11 @@
 // mux-equality contract, the IEC 61937 WAV carrier), and equal to the
 // incremental writer's own composed output for Matroska (whose streamed form
 // differs from mux() by design - the unknown-size Segment).
+//
+// The fragmented-MP4 cases below exercise Fmp4FolderWriter, which the sink
+// only delegates to: EncoderController's own live session writes its folder
+// through the same class, so what is asserted here holds for both of the
+// GUI's write-as-you-go paths.
 
 namespace fs = std::filesystem;
 

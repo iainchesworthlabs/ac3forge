@@ -774,15 +774,24 @@ TEST_CASE("FragmentWriter's playlist window rolls, and the live manifests roll w
     // FIRST listed segment's number (3, not 1), and neither
     // #EXT-X-PLAYLIST-TYPE:VOD nor #EXT-X-ENDLIST appears while the
     // presentation is still growing.
-    mp4::HlsOptions live_options;
-    live_options.vod = false;
-    const auto live = mp4::build_hls_media_playlist(fixture.track, window, live_options);
+    const auto live =
+        mp4::build_hls_media_playlist(fixture.track, window, mp4::HlsOptions{.vod = false});
     CHECK(live.find("#EXT-X-MEDIA-SEQUENCE:3\n") != std::string::npos);
     CHECK(live.find("#EXT-X-ENDLIST") == std::string::npos);
     CHECK(live.find("#EXT-X-PLAYLIST-TYPE") == std::string::npos);
     CHECK(live.find("segment3.m4s") != std::string::npos);
     CHECK(live.find("segment4.m4s") != std::string::npos);
     CHECK(live.find("segment1.m4s") == std::string::npos);
+
+    // Before the first segment closes there is nothing to list, and a
+    // manifest builder handed an empty window has to say so rather than
+    // reach past the end of it - @startNumber falls back to its own default.
+    const std::span<const mp4::SegmentInfo> nothing_yet;
+    const auto empty = mp4::build_dash_adaptation_set(fixture.track, nothing_yet);
+    CHECK(empty.find("startNumber=\"1\"") != std::string::npos);
+    CHECK(empty.find("<S ") == std::string::npos);
+    CHECK(mp4::build_hls_media_playlist(fixture.track, nothing_yet)
+              .find("#EXT-X-MEDIA-SEQUENCE") == std::string::npos);
 
     // The DASH half of the same fact: @startNumber is the window's first
     // segment and the timeline's first <S> states its decode time, so a

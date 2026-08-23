@@ -47,7 +47,7 @@ struct HlsOptions {
     // module never reads; the caller (which already read
     // oba_complexity_index off the bitstream to build the dec3 box, see
     // ac3::io::build_codec_config_box) is the one that knows.
-    std::string channels_attribute;
+    std::string channels_attribute{};
     // #EXT-X-VERSION. 7 is the first version whose #EXT-X-MAP may appear in
     // a plain (non-I-frame-only) Media Playlist, which every fMP4 media
     // playlist needs (RFC 8216 §7's compatibility table).

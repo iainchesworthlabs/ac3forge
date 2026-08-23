@@ -30,9 +30,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `container=fmp4`, which makes the output path a directory written as the session runs -
   `init.mp4`, a `segment*.m4s` per closed fragment, and playlists and MPD rewritten alongside,
   live-shaped while running and closed to VOD/static at the end - plus `fmp4-window=<n>` for a
-  rolling origin. The GUI's live session records the same way with **fragmented MP4/CMAF**
-  selected, where before it fell back to writing the plain elementary stream. Plain MP4 is now
-  the only Container choice that still does.
+  rolling origin. The GUI records the same way with **fragmented MP4/CMAF** selected, in both a
+  live session and a recording, where before a live session fell back to writing the plain
+  elementary stream and a recording accumulated the whole take before writing it. fMP4 joins
+  Matroska as the second container a live session can write natively; S/PDIF, MP4 and MPEG-TS
+  still fall back there.
 - **DASH signalling for Dolby Atmos/JOC, and the `ceao` brand** (ROADMAP `IO5`).
   `mp4/dash.hpp` said there was no established convention to point at; DASH-IF IOP Part 8
   v5.0.0 §5.3.2 names the two supplemental descriptors ETSI TS 103 420 clause D.2 defines

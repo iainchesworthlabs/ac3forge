@@ -10,10 +10,8 @@
 
 #include "ac3/io/wav.hpp"
 #include "ac3/sinks/iec61937.hpp"
+#include "fmp4_folder_writer.hpp"
 #include "matroska/matroska.hpp"
-#include "mp4/dash.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
 #include "mpegts/mpegts.hpp"
 
 // Streams a recording's encoded frames to their destination as they are
@@ -28,8 +26,9 @@
 // own unknown-size Segment pattern - the file differs from the one-shot
 // mux()'s by exactly that, as that class's comment describes); MPEG-TS via
 // mpegts::Writer (whose bytes are contract-identical to mux()'s); fragmented
-// MP4/CMAF via mp4::FragmentWriter, into a DIRECTORY rather than a file
-// (whose media segments are likewise contract-identical to mp4::fragment()'s);
+// MP4/CMAF into a DIRECTORY rather than a file, through the Fmp4FolderWriter
+// EncoderController's own live session shares (whose media segments are
+// likewise contract-identical to mp4::fragment()'s);
 // the IEC 61937 WAV carrier via per-frame wrapping into
 // ac3::io::WavPcm16StreamWriter, whose closed file is byte-identical to
 // write_wav_pcm16_raw over the same bursts. Plain MP4 is the one deliberately
@@ -81,16 +80,6 @@ class RecordingSink {
 
    private:
     [[nodiscard]] bool write_file(std::span<const std::byte> bytes);
-    // kFmp4 only. start_fmp4 builds the mp4::AudioTrack the fragmenter needs
-    // by scanning the first access unit - its dac3/dec3 payload, channel map
-    // and TS 103 420 object marker are all bitstream syntax, which is why it
-    // cannot happen in open(); the same re-scan EncoderController::writeOutput
-    // and ac3cli's own fmp4 do before wrapping frames they just encoded.
-    // write_fmp4_manifests rewrites the playlists and MPD - live-shaped while
-    // the take runs, closed at the end.
-    [[nodiscard]] std::string start_fmp4(std::span<const std::byte> first_frame);
-    [[nodiscard]] std::string write_fmp4_manifests(bool finished);
-    [[nodiscard]] std::string push_fmp4(std::span<const std::byte> frame);
 
     Config config_;
     std::string path_;
@@ -103,12 +92,6 @@ class RecordingSink {
     std::optional<mpegts::Writer> mpegts_;
     ac3::io::WavPcm16StreamWriter wav_;
     ac3::iec61937::Eac3BurstPacker packer_;
-    // ...and kFmp4 writes a directory of its own files through these.
-    std::filesystem::path fmp4_dir_;
-    std::optional<mp4::FragmentWriter> fmp4_;
-    mp4::AudioTrack fmp4_track_;
-    mp4::HlsOptions fmp4_hls_;
-    mp4::DashOptions fmp4_dash_;
-    std::string fmp4_availability_start_;
-    std::size_t fmp4_segments_ = 0;
+    // ...and kFmp4 writes a folder of its own files through this.
+    Fmp4FolderWriter fmp4_;
 };

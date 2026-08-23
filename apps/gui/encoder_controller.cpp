@@ -45,6 +45,7 @@
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
 #include "mpegts/mpegts.hpp"
+#include "fmp4_folder_writer.hpp"
 #include "recording_sink.hpp"
 
 namespace plan = ac3::plan;
@@ -555,10 +556,19 @@ struct EncoderController::Source {
 // separate spool for either container any more, and so nothing to fold
 // together at the end: finalize() below is the whole of what a clean stop
 // still has to do.
+//
+// Fragmented MP4/CMAF is the third incremental shape and the only one that is
+// not a file at all: `fmp4` writes a FOLDER of segments and manifests, and
+// `stream` stays closed for it entirely (see openLiveOutputWriters).
 struct EncoderController::LiveOutputWriters {
     std::ofstream stream;
     QString path;  // the real destination the user chose
     bool matroska = false;
+    // Engaged for fragmented MP4/CMAF instead of `stream`. Unlike Matroska's
+    // writer below this needs nothing from the coded channel count - its
+    // track comes from a scan of the first access unit - so it is fully set
+    // up by openLiveOutputWriters and starts writing on the first push.
+    std::optional<Fmp4FolderWriter> fmp4;
     // Only engaged when matroska is set - constructed once the coded channel
     // count is known (routing/atmos bed resolved), just after this struct is
     // opened, back on the GUI thread in runLiveSession before the worker
@@ -3652,27 +3662,41 @@ std::unique_ptr<EncoderController::LiveOutputWriters> EncoderController::openLiv
     auto writers = std::make_unique<LiveOutputWriters>();
     writers->path = path;
     writers->matroska = container_index_ == kContainerMatroska;
-    // Only Matroska is special-cased for a live session: matroska::Writer is
-    // the only INCREMENTAL muxer this codebase has. mp4::mux/mp4::fragment
-    // and mpegts::mux are batch APIs - every frame has to be known up front
-    // (see mp4.hpp/mpegts.hpp's own header comments) - so there is no
-    // equivalent live writer for MP4/fMP4/MPEG-TS to build here. Selecting
-    // one of those three containers for a live session therefore falls
-    // through to the same plain elementary-stream write S/PDIF already
-    // falls through to today, rather than gaining a new failure mode.
+    // Two containers are special-cased for a live session, and they are
+    // exactly the two with an INCREMENTAL writer behind them:
+    // matroska::Writer and mp4::FragmentWriter. mp4::mux and mpegts::mux are
+    // batch APIs - every frame has to be known up front (see
+    // mp4.hpp/mpegts.hpp's own header comments) - so MP4, S/PDIF and MPEG-TS
+    // still fall through to the same plain elementary-stream write, rather
+    // than gaining a new failure mode.
+    //
     // Matroska's own track/writer construction needs the CODED channel count
     // (routing/atmos bed), which is not resolved yet at this point - see
     // runLiveSession, which constructs `writers->writer` and writes its
     // header the moment that count is known, still on the GUI thread before
-    // the worker starts. Only the file itself opens here: a bad destination
-    // path is refused now, exactly like a bad device choice already is, not
-    // discovered as a mid-take failure minutes in.
-    writers->stream.open(writers->path.toStdString(), std::ios::binary);
-    if (!writers->stream) {
-        setStatus(QStringLiteral("Could not open \"%1\" for writing.")
-                      .arg(QFileInfo(writers->path).fileName()));
-        emit encodeRefused(status_);
-        return nullptr;
+    // the worker starts. fMP4's does not: its track comes from a scan of the
+    // first access unit, so it is fully set up here. Either way only the
+    // destination itself is touched now: a bad path is refused at this point,
+    // exactly like a bad device choice already is, not discovered as a
+    // mid-take failure minutes in.
+    if (container_index_ == kContainerFmp4) {
+        // A folder rather than a file (EncoderController::outputIsFolder),
+        // so `stream` stays closed and every write goes through `fmp4`.
+        writers->fmp4.emplace();
+        if (const auto problem = writers->fmp4->open(writers->path.toStdString());
+            !problem.empty()) {
+            setStatus(QString::fromStdString(problem));
+            emit encodeRefused(status_);
+            return nullptr;
+        }
+    } else {
+        writers->stream.open(writers->path.toStdString(), std::ios::binary);
+        if (!writers->stream) {
+            setStatus(QStringLiteral("Could not open \"%1\" for writing.")
+                          .arg(QFileInfo(writers->path).fileName()));
+            emit encodeRefused(status_);
+            return nullptr;
+        }
     }
     if (live_wav_safety_copy_) {
         auto safety = std::make_unique<ac3::io::WavStreamWriter>();
@@ -4223,6 +4247,12 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
         // asserting, per this project's "no exceptions for stream-level
         // failure" rule, so this loop honours that instead of ignoring it.
         std::optional<matroska::MuxError> mux_error;
+        // The same for the fragmented-MP4 folder, which reports its failures
+        // as user-facing strings rather than an enum (Fmp4FolderWriter) -
+        // reachable here in a way mux_error is not, since every segment and
+        // manifest write is a real file operation that a full or vanished
+        // disk can refuse mid-take.
+        QString fmp4_error;
         // The one-shot capture->monitor latency measurement: only attempted
         // once monitoring is on and the pipeline has run for about a second
         // (past whatever startup transient the first few frames carry), and
@@ -4540,7 +4570,21 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
             }
 
             if (write_to_disk && writers) {
-                if (writers->matroska && writers->writer) {
+                if (writers->fmp4) {
+                    // A CMAF media segment leaves for disk every time a
+                    // fragment closes (about 1.5 s), with the HLS playlists
+                    // and the MPD rewritten beside it - live-shaped until the
+                    // stop below closes them. Nothing here holds the take in
+                    // RAM: mp4::FragmentWriter buffers one fragment's frames
+                    // and the segment window's bookkeeping, and no more, so
+                    // memory stays bounded for a session of any length -
+                    // exactly the property the Matroska path below gives.
+                    if (const auto problem = writers->fmp4->push(unit_bytes);
+                        !problem.empty()) {
+                        fmp4_error = QString::fromStdString(problem);
+                        break;
+                    }
+                } else if (writers->matroska && writers->writer) {
                     // Push straight into the writer's current cluster and
                     // write back whatever it hands back - empty on most
                     // calls (a cluster spans about a second), the just-closed
@@ -4576,6 +4620,8 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                 const auto flush_at = std::chrono::steady_clock::now();
                 if (flush_at - last_disk_flush_at >= kDiskFlushInterval) {
                     last_disk_flush_at = flush_at;
+                    // fMP4 has no long-lived stream to flush - each segment
+                    // and manifest is written and closed as it is produced.
                     writers->stream.flush();
                     if (writers->wav_safety) {
                         writers->wav_safety->flush_header();
@@ -4627,8 +4673,22 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
             problem = QStringLiteral("Matroska muxing failed: %1")
                           .arg(QString::fromUtf8(why.data(), static_cast<qsizetype>(why.size())));
         }
+        if (problem.isEmpty() && !fmp4_error.isEmpty()) {
+            problem = fmp4_error;
+        }
         if (write_to_disk && writers) {
-            if (writers->matroska && writers->writer) {
+            if (writers->fmp4) {
+                // Flushes the trailing partial fragment and rewrites the
+                // playlists and MPD in their finished VOD/static form. Every
+                // segment already on disk is complete and listed by the last
+                // manifest write either way, so an interrupted session leaves
+                // a folder that still plays up to where it stopped - the same
+                // honest guarantee the Matroska path gives.
+                const auto closed = writers->fmp4->close();
+                if (!closed.empty() && fmp4_error.isEmpty()) {
+                    fmp4_error = QString::fromStdString(closed);
+                }
+            } else if (writers->matroska && writers->writer) {
                 // The trailing partial cluster - whatever the loop above
                 // never reached the time budget to close on its own. Nothing
                 // else needs closing: Segment's size was written unknown by

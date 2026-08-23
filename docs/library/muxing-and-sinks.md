@@ -267,19 +267,21 @@ for (const auto& frame : frames) {
         write(std::format("segment{}.m4s", (*closed)->sequence_number), (*closed)->bytes);
         // Rebuild the manifests from the rolling window each time a segment closes.
         write("audio.m3u8", mp4::build_hls_media_playlist(track, writer->window(),
-                                                          {.vod = false}));
-        write("manifest.mpd", mp4::build_dash_mpd(
-            track, writer->window(),
-            mp4::build_dash_adaptation_set(track, writer->window()),
-            {.is_static = false, .availability_start_time = now_iso8601()}));
+                                                          mp4::HlsOptions{.vod = false}));
+        write("manifest.mpd",
+              mp4::build_dash_mpd(track, writer->window(),
+                                  mp4::build_dash_adaptation_set(track, writer->window()),
+                                  mp4::MpdOptions{.is_static = false,
+                                                  .availability_start_time = now_iso8601()}));
     }
 }
 ```
 
 `window()` hands back `SegmentInfo` — a `MediaSegment`'s bookkeeping without its bytes, so a
-rolling window of hundreds of segments costs nothing to keep. `FragmentOptions::
-playlist_window_segments` bounds it (0, the default, keeps every segment). All three manifest
-builders take `SegmentInfo` spans, with `MediaSegment` overloads for batch callers.
+rolling window of hundreds of segments costs nothing to keep.
+`FragmentOptions::playlist_window_segments` bounds it (0, the default, keeps every segment). All
+three manifest builders take `SegmentInfo` spans, with `MediaSegment` overloads for batch
+callers.
 
 Live manifests differ from VOD ones only in what they omit and where they start.
 `HlsOptions::vod = false` drops `#EXT-X-PLAYLIST-TYPE:VOD` and `#EXT-X-ENDLIST`, leaving

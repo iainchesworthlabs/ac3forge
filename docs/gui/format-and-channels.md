@@ -83,12 +83,12 @@ codecs; there is no Atmos-specific signaling on this path — DVB's descriptors 
 marker, unlike MP4's dec3 box or fMP4's HLS playlist above. Honestly two commands here too
 (`ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts`).
 
-**MP4 (.mp4)** is the one container that does not carry over to a **live session** — see
-[Live capture & session → Take durability](live-session.md#take-durability) for why (in short:
-`moov`/`stco` need every frame's final offset, so `mp4::mux` is a batch API with no incremental
-writer). Selecting it and starting a live session still writes the plain elementary stream, the
-same file Elementary stream itself would produce live. Every other choice — S/PDIF, fragmented
-MP4/CMAF and MPEG-TS included — records live in its own container.
+Of those five, only **fragmented MP4/CMAF** carries over to a **live session** the way Matroska
+does — it gained an incremental writer (`mp4::FragmentWriter`) in this release, and `ac3cli live`
+a `container=fmp4` token to match. S/PDIF, MP4 and MPEG-TS still fall back to writing the plain
+elementary stream when a live session starts, the same file Elementary stream itself would
+produce live; see [Live capture & session → Take
+durability](live-session.md#take-durability) for what separates the three.
 
 ## Rate mode: Constant or Variable
 

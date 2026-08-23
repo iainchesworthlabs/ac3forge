@@ -274,7 +274,7 @@ class Fmp4SessionWriter {
 
    private:
     [[nodiscard]] std::string start(std::span<const std::byte> first_frame);
-    [[nodiscard]] std::string write_manifests(bool finished);
+    [[nodiscard]] std::string write_manifests(const mp4::FragmentWriter& writer, bool finished);
 
     std::filesystem::path dir_;
     std::uint32_t frames_per_fragment_ = 48;

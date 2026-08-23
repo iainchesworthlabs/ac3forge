@@ -39,6 +39,9 @@
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/dash.hpp"
+#include "mp4/hls.hpp"
+#include "mp4/mp4.hpp"
 #include "platform/stdio_binary.hpp"
 
 namespace ac3cli {
@@ -745,8 +748,9 @@ std::string Fmp4SessionWriter::start(std::span<const std::byte> first_frame) {
     return {};
 }
 
-std::string Fmp4SessionWriter::write_manifests(bool finished) {
-    const auto window = writer_->window();
+std::string Fmp4SessionWriter::write_manifests(const mp4::FragmentWriter& writer,
+                                              bool finished) {
+    const auto window = writer.window();
     auto hls = hls_;
     hls.vod = finished;
     const auto media = mp4::build_hls_media_playlist(track_, window, hls);
@@ -788,7 +792,14 @@ std::string Fmp4SessionWriter::push(std::span<const std::byte> frame) {
             return problem;
         }
     }
-    auto segment = writer_->push(frame);
+    // start() above engages writer_ on every path that returns empty, but
+    // clang-tidy's bugprone-unchecked-optional-access does not trace an
+    // optional's engagement across a member-function call - the same false
+    // positive gui/encoder_controller.cpp already works around by binding
+    // the optional's value once.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    auto& writer = *writer_;
+    auto segment = writer.push(frame);
     if (!segment) {
         return std::string{mp4::describe(segment.error())};
     }
@@ -800,14 +811,15 @@ std::string Fmp4SessionWriter::push(std::span<const std::byte> frame) {
         return std::format("cannot write {} to {}", name, dir_.string());
     }
     ++segments_;
-    return write_manifests(false);
+    return write_manifests(writer, false);
 }
 
 std::string Fmp4SessionWriter::close() {
     if (!open_ || !writer_) {
         return {};
     }
-    auto segment = writer_->finalize();
+    auto& writer = *writer_;
+    auto segment = writer.finalize();
     if (!segment) {
         return std::string{mp4::describe(segment.error())};
     }
@@ -818,7 +830,7 @@ std::string Fmp4SessionWriter::close() {
         }
         ++segments_;
     }
-    return write_manifests(true);
+    return write_manifests(writer, true);
 }
 
 std::string partial_output_path(std::string_view path) {
