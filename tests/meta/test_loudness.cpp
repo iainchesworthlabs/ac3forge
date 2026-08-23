@@ -488,7 +488,7 @@ TEST_CASE("widening 5.1 to 7.1.4 adds channels the meter counts but does not sur
     bed_meter.push(bed_channels);
 
     std::vector<std::span<const float>> wide_channels(12, tone);
-    wide_channels[wide.index_of(Location::kLfe)] = silence;
+    wide_channels[static_cast<std::size_t>(wide.index_of(Location::kLfe))] = silence;
     ac3::meta::LoudnessMeter wide_meter{ac3::SampleRate::k48000, wide};
     wide_meter.push(wide_channels);
 
@@ -501,9 +501,11 @@ TEST_CASE("widening 5.1 to 7.1.4 adds channels the meter counts but does not sur
     // channels for 11.82. The reading rises by 10*log10(11.82/5.82).
     const double expected_gain = 10.0 * std::log10(11.82 / 5.82);
     CHECK(*wide_lkfs - *bed_lkfs == Catch::Approx(expected_gain).margin(0.02));
-    // Had the six new channels been surround-weighted, the rise would have
-    // been 10*log10((5.82 + 6*1.41)/5.82) - a full 1.2 dB higher, far outside
-    // the margin above.
+    // Had the six new channels been surround-weighted instead, the rise
+    // would have been 10*log10((5.82 + 6*1.41)/5.82) = 3.90 dB rather than
+    // 3.08 - an 0.82 dB error, forty times the margin checked above. Asserted
+    // so the discrimination is explicit: the check above is not merely
+    // consistent with the right answer, it excludes the plausible wrong one.
     const double wrong_gain = 10.0 * std::log10((5.82 + 6.0 * 1.41) / 5.82);
-    CHECK(wrong_gain - expected_gain > 1.0);
+    CHECK(wrong_gain - expected_gain > 0.5);
 }

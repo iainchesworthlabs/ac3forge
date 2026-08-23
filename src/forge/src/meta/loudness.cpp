@@ -115,26 +115,23 @@ constexpr std::array<std::array<double, kTruePeakTaps>, kTruePeakPhases> kTruePe
 std::optional<double> position_weight(eac3::chanmap::Location location) {
     using Location = eac3::chanmap::Location;
     switch (location) {
-        // |theta| < 60 degrees, so Table 4's first column: unity. Table 5
-        // lists these as M+000 (C), M±030 (L/R) and M±SC (Lc/Rc, the
-        // "screen" pair between centre and the L/R pair), all 1.00.
-        case Location::kCentre:
-        case Location::kLeft:
-        case Location::kRight:
-        case Location::kLc:
-        case Location::kRc:
-            return 1.0;
-        // 60 <= |theta| <= 120 at |phi| < 30: Table 4's +1.5 dB sector, and
-        // the only sector that gets it. Table 5 confirms all three pairs at
-        // 1.41 - M±110 (Ls/Rs, the 5.1 surrounds Annex 1's own Table 3
-        // already weighted 1.41, which is why a 5.1 layout measures the same
-        // through either algorithm), M±090 (Lsd/Rsd, the direct-radiating
-        // side surrounds a 7.1 layout uses) and M±060 (Lw/Rw, the wides).
+        // Annex 3 weights "each channel except the LFE channels", so an
+        // LFE-type location is not a term in the sum at all.
+        case Location::kLfe:
+        case Location::kLfe2:
+            return std::nullopt;
+
+        // Table 4's one non-unity cell: 60 <= |theta| <= 120 at |phi| < 30.
+        // Table 5 confirms all three pairs at 1.41 - M±110 (Ls/Rs, the 5.1
+        // surrounds Annex 1's own Table 3 already weighted 1.41, which is why
+        // a 5.1 layout measures the same through either algorithm), M±090
+        // (Lsd/Rsd, the direct-radiating side surrounds a 7.1 layout uses)
+        // and M±060 (Lw/Rw, the wides).
         //
         // Ls/Rs and Lsd/Rsd are robust to the exact angle assumed: anywhere
-        // from 90 to 110 degrees is inside the sector. Lw/Rw sit right on
-        // its 60-degree edge, which Table 4 includes ("60 <= |theta|") and
-        // Table 5's M±060 row then states outright at 1.41.
+        // from 90 to 110 degrees is inside the sector. Lw/Rw sit right on its
+        // 60-degree edge, which Table 4 includes ("60 <= |theta|") and Table
+        // 5's M±060 row then states outright at 1.41.
         case Location::kLeftSurround:
         case Location::kRightSurround:
         case Location::kLsd:
@@ -142,20 +139,40 @@ std::optional<double> position_weight(eac3::chanmap::Location location) {
         case Location::kLw:
         case Location::kRw:
             return kSurroundWeight;
-        // 120 < |theta| <= 180, Table 4's third column: back to unity. The
-        // 7.1 rear pair is M±135 and a lone rear centre is M+180, both 1.00
-        // in Table 5 - so widening 5.1 to 7.1 adds two channels that are NOT
-        // surround-weighted, even though "surround" is what they are called.
+
+        // Everything else is unity. That is three different cells of Table 4,
+        // listed together because the answer is the same and a switch with
+        // three identical branches is worse to read than one:
+        //
+        //   |theta| < 60 (first column)      - M+000 (C), M±030 (L/R) and
+        //                                      M±SC (Lc/Rc, the "screen" pair
+        //                                      inboard of L/R).
+        //   120 < |theta| <= 180 (third)     - M±135 (Lrs/Rrs, the 7.1 rear
+        //                                      pair) and M+180 (Cs). So
+        //                                      widening 5.1 to 7.1 adds two
+        //                                      channels that are NOT
+        //                                      surround-weighted, whatever
+        //                                      their names suggest.
+        //   |phi| >= 30 (the "else" row)     - every upper-layer and top
+        //                                      position, whatever its azimuth:
+        //                                      U+000/U±030/U±045/U±090/U±110/
+        //                                      U±135/U+180 and T+000 are all
+        //                                      1.00 in Table 5, so no height
+        //                                      channel is ever
+        //                                      surround-weighted. Robust to
+        //                                      the exact elevation assumed,
+        //                                      since any plausible height
+        //                                      angle is at or above 30
+        //                                      degrees and the row spans the
+        //                                      whole azimuth circle.
+        case Location::kLeft:
+        case Location::kCentre:
+        case Location::kRight:
+        case Location::kLc:
+        case Location::kRc:
         case Location::kLrs:
         case Location::kRrs:
         case Location::kCs:
-            return 1.0;
-        // |phi| >= 30 degrees, Table 4's "else" row: unity whatever the
-        // azimuth. Every upper-layer and top position in Table 5 is 1.00 -
-        // U+000/U±030/U±045/U±090/U±110/U±135/U+180 and T+000 alike - so no
-        // height channel is ever surround-weighted. These are robust too:
-        // any plausible height elevation is at or above 30 degrees, and the
-        // row covers the whole azimuth circle.
         case Location::kVhl:
         case Location::kVhr:
         case Location::kVhc:
@@ -163,10 +180,6 @@ std::optional<double> position_weight(eac3::chanmap::Location location) {
         case Location::kRts:
         case Location::kTs:
             return 1.0;
-        // Annex 3 weights "each channel except the LFE channels".
-        case Location::kLfe:
-        case Location::kLfe2:
-            return std::nullopt;
     }
     return std::nullopt;
 }
@@ -219,20 +232,32 @@ LoudnessMeter::LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe) {
     std::iota(slots.begin(), slots.end(), 0);
 
     std::vector<double> weights(static_cast<std::size_t>(fullbw), 1.0);
-    // Which coded positions are surrounds depends on acmod (Table 5.8): the
-    // single S of 2/1 and 3/1 sits last, and 2/2 and 3/2 end with Ls, Rs.
-    switch (acmod) {
-        case Acmod::k2_1:
-        case Acmod::k3_1:
-            weights.back() = kSurroundWeight;
-            break;
-        case Acmod::k2_2:
-        case Acmod::k3_2:
-            weights[weights.size() - 2] = kSurroundWeight;
-            weights.back() = kSurroundWeight;
-            break;
-        default:
-            break;
+    // Which coded positions are surrounds depends on acmod (Table 5.8): 2/1
+    // and 3/1 end with a single S, 2/2 and 3/2 end with Ls and Rs, and no
+    // other mode has any. In every case they are the LAST coded channels, so
+    // the count is the only thing that varies.
+    const std::size_t surrounds = [acmod]() -> std::size_t {
+        switch (acmod) {
+            case Acmod::k2_1:
+            case Acmod::k3_1:
+                return 1;
+            case Acmod::k2_2:
+            case Acmod::k3_2:
+                return 2;
+            default:
+                return 0;
+        }
+    }();
+    // Clamped rather than subtracted outright. Table 5.8 guarantees a mode is
+    // at least as wide as its own surround count - 2/1 codes three channels,
+    // 3/2 five - but at -O3 GCC cannot see through fullbw_channel_count() to
+    // prove `weights` is even non-empty, and -Werror=null-dereference fires
+    // on the indexing if it cannot. std::min costs nothing and makes the
+    // bound something the compiler can check rather than something it has to
+    // take on trust.
+    for (std::size_t i = weights.size() - std::min(surrounds, weights.size());
+         i < weights.size(); ++i) {
+        weights[i] = kSurroundWeight;
     }
     init(rate, fullbw + (lfe ? 1 : 0), slots, weights);
 }
