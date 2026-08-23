@@ -109,11 +109,12 @@ RATE = 48000
 # exist to carry.
 NORMALISE_PEAK = 0.7079
 
-# Bump when any entry in SOURCES changes - a different source file, a
-# different excerpt window, a different normalisation. tests/golden/audio/
-# corpus.json carries this, tools/checks/check_corpus.py enforces the hashes
-# under it, and a PR diff that moves it is saying "the fixtures themselves
-# changed", which is a different kind of review from "the encoder changed".
+# Bump when any fixture's committed bytes change - a different source file, a
+# different excerpt window, a different normalisation, a regenerated synthetic
+# fixture, a recaptured bitstream. tests/golden/audio/corpus.json carries this,
+# tools/checks/check_corpus.py enforces the hashes under it, and a PR diff that
+# moves it is saying "the fixtures themselves changed", which is a different
+# kind of review from "the encoder changed".
 CORPUS_VERSION = 1
 
 SOURCES = [
