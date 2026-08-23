@@ -2,7 +2,7 @@
 # macOS LLVM/Clang Toolchain Configuration
 #
 # Chainloaded by the config-macos-llvm* presets via
-# VCPKG_CHAINLOAD_TOOLCHAIN_FILE. LLVM 21 is the pinned version.
+# VCPKG_CHAINLOAD_TOOLCHAIN_FILE. LLVM 22 is the pinned version.
 #
 # Deliberately prefers Homebrew/MacPorts LLVM over Apple's bundled clang: the
 # codec leans on C++23 library features (std::to_chars, <format>, ranges) whose
@@ -51,19 +51,19 @@ message(STATUS "Target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 set(_LLVM_BIN_HINTS
     "/opt/homebrew/opt/llvm/bin"
     "/usr/local/opt/llvm/bin"
-    "/opt/local/libexec/llvm-21/bin"
+    "/opt/local/libexec/llvm-22/bin"
     "/opt/local/bin"
     "/opt/homebrew/bin"
     "/usr/local/bin"
     "/usr/bin")
 
 find_program(CMAKE_C_COMPILER
-    NAMES clang-21 clang
+    NAMES clang-22 clang
     HINTS ${_LLVM_BIN_HINTS}
     REQUIRED)
 
 find_program(CMAKE_CXX_COMPILER
-    NAMES clang++-21 clang++
+    NAMES clang++-22 clang++
     HINTS ${_LLVM_BIN_HINTS}
     REQUIRED)
 
@@ -110,7 +110,7 @@ if(EXISTS "${_LLVM_LIBCXX_INCLUDE}")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT}")
 else()
     # Apple's clang - fall back to the SDK libc++. C++23 library coverage then
-    # depends on the Xcode version rather than on LLVM 21.
+    # depends on the Xcode version rather than on LLVM 22.
     message(STATUS "No LLVM libc++ at ${_LLVM_LIBCXX_INCLUDE}; using the SDK's")
     add_compile_options(-stdlib=libc++)
     add_link_options(-stdlib=libc++)

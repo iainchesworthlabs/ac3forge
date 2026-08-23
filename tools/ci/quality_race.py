@@ -540,13 +540,20 @@ CI_51_KBPS = 256
 # fidelity for the banded envelope on purpose (see spectral_scores'
 # docstring) - that is why their SNR floors are lower and LSD ceilings
 # higher than "none"/"cpl" rather than every row sharing one bar.
-# "auto" resolves to a different tool set per leg - at these two rates it
-# picks aht for stereo (192 kbit/s, 96 per channel) and cpl+spx+aht for 5.1
-# (256 kbit/s, 51 per channel) - so its floor is that set's floor rather than
-# a number of its own. Measured 2026-08-17 against a real build: stereo
-# 40.42 dB SNR / 5.96 dB LSD, 5.1 14.08 dB / 7.70 dB, both comfortably inside
-# the bars below. A change to the rate policy that silently flipped either leg
-# to the wrong set would land well under them.
+# "auto" resolves to a different tool set per leg, and since the tool
+# decisions read the frame's own spectrum as well as the rate (see
+# eac3_frame.cpp's own "What the content says" block) that set depends on the
+# material here, not only on the bitrate - so its floor is the floor of the
+# sets it can reach rather than a number of its own. Measured 2026-08-23
+# against a real build on make_material()/make_material_51(): stereo 41.55 dB
+# SNR / 6.08 dB LSD, 5.1 14.29 dB / 7.59 dB, both comfortably inside the bars
+# below. A change to the policy that silently flipped either leg to the wrong
+# set would land well under them.
+#
+# One thing this leg is load-bearing for beyond its own numbers: it is
+# strict-decoded by FFmpeg, so it is what catches `auto` reaching for a tool
+# FFmpeg cannot read. That is not hypothetical - it is how enhanced coupling
+# was found to be unshippable in `auto` (docs/library/encoding-eac3.md).
 CI_EAC3_THRESHOLDS = {
     "stereo": {
         "none": (28.0, 7.5),

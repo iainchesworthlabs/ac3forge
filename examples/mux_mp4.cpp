@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <span>
 #include <string>
@@ -47,7 +48,7 @@ int main() {
     // Ask the bitstream what it is rather than asserting it.
     const auto scanned = ac3::io::scan(elementary);
     if (!scanned) {
-        std::printf("scan failed\n");
+        fmt::printf("scan failed\n");
         return 1;
     }
 
@@ -74,11 +75,11 @@ int main() {
 
     const auto file = mp4::mux(track, frames);
     if (!file) {
-        std::printf("mux failed: %.*s\n", static_cast<int>(mp4::describe(file.error()).size()),
+        fmt::printf("mux failed: %.*s\n", static_cast<int>(mp4::describe(file.error()).size()),
                     mp4::describe(file.error()).data());
         return 1;
     }
 
-    std::printf("%zu bytes of MP4 from %zu frames\n", file->size(), frames.size());
+    fmt::printf("%zu bytes of MP4 from %zu frames\n", file->size(), frames.size());
     return 0;
 }
