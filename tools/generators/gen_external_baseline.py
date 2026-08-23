@@ -240,12 +240,23 @@ def invoke_ffmpeg(wav, kbps, codec, out):
 # that confirms this path does not.
 #
 # It also removes a whole class of mistake rather than just the Ls one. The
-# single-file path reads SMPTE order (L C R Ls Rs LFE) where this project's
-# WAVs are Microsoft/WAVE order (FL FR FC LFE BL BR), so it needed a
-# permutation table, and getting that wrong cost a suspiciously consistent
-# ~15 dB on both 5.1 legs before anyone noticed. wav_list's documented order
-# IS this project's WAV order, so the split below is a plain de-interleave
-# with no permutation to get wrong.
+# single-file path is documented as reading SMPTE order (L C R Ls Rs LFE)
+# where this project's WAVs are Microsoft/WAVE order (FL FR FC LFE BL BR), so
+# it needed a permutation table - and re-measured while this was being
+# replaced, it does not honour that order either. Feeding it a correctly
+# SMPTE-permuted file and decoding the result gives back, in WAVE positions:
+#
+#   L, C, R, ~silence, Rs, LFE     (rms 0.2131 0.0960 0.2131 0.0073 0.0351 0.2156)
+#   against a source of
+#   L, R, C, LFE,      Ls, Rs      (rms 0.2144 0.2144 0.0966 0.2294 0.0219 0.0358)
+#
+# i.e. the input's own order straight through, with Ls gone. So the
+# permutation makes it worse rather than better, and turning off the
+# surround phase shift and the LFE filter changes none of it - the drop is
+# independent of both, exactly as the earlier tone probe reported.
+#
+# wav_list's documented order IS this project's WAV order, so the split below
+# is a plain de-interleave with no permutation to get wrong.
 def split_for_dee(wav_path, scratch_dir, tag):
     """Interleaved PCM16 WAV -> one mono WAV per channel; returns DEE's
     colon-joined --input argument."""

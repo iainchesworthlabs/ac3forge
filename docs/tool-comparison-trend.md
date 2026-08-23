@@ -101,7 +101,16 @@ the column was never populated. Rows from that point on carry real numbers.
   const REGRESSION_WINDOW = 10;
   const REGRESSION_DROP_DB = 0.5;
   const TABLE_ROWS = 40;
-  const LEGS = ["ac3-51-448", "eac3-stereo-192", "eac3-51-256"];
+  // Mirrors tools/ci/quality_race.py's TREND_LEGS, in the same order. Legs
+  // added at baseline version 2 have no history before that, so their series
+  // simply start where they start rather than being back-filled. The three
+  // programme_* legs are measured on real speech and music; the reference_*
+  // ones on the synthesized fixtures the first baseline used, which is why
+  // both kinds are here and neither replaced the other - see
+  // tools/generators/README.md.
+  const LEGS = ["ac3-51-448", "eac3-stereo-192", "eac3-51-256",
+                "eac3-stereo-96", "eac3-stereo-64",
+                "ac3-music-stereo-192", "eac3-music-stereo-96", "eac3-speech-stereo-64"];
   // Every variant tools/ci/quality_race.py's `trend` mode can emit - see
   // EAC3_VARIANTS/EAC3_SELF_VARIANTS there. AC-3's only row is "landscape"
   // (no tool tokens exist for it); the others simply never appear for that
