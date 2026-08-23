@@ -29,6 +29,64 @@ following it.
 Both formats put `bsid` at bit 40 deliberately, so a reader can tell them apart before
 committing to a layout. `ac3::stream_bsid` exposes that on its own.
 
+`ScannedStream` also carries the raw syntax values a container writer needs but cannot
+re-derive: `bsid`, `bsmod` (with `bsmod_present`, since Annex E carries it only inside
+`infomdate`), `bit_rate_code`, `dsurmod`, `mix_metadata`, `oba_complexity_index`, and — for
+E-AC-3 — `independent_substreams` plus a `SubstreamService` for substreams 1–3. Those feed
+`ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
+both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
+`independent_substreams` is an *observation* of which substream ids appear; it deliberately does
+not change how `scan` groups access units, which stays one-programme (ROADMAP.md's DC5).
+
+## Object-layer strip
+
+`ac3/io/object_strip.hpp`. The inverse of the object encoder, at the bitstream level: it takes
+the EMDF/JOC object layer out of a Dolby Digital Plus stream without decoding anything.
+
+```cpp
+const auto stripped = ac3::io::strip_objects(joc_stream);
+if (!stripped) {
+    // describe(stripped.error()) says why
+}
+// stripped->bytes is a plain DD+ 5.1 stream; the bed decodes identically.
+```
+
+A DD+ JOC stream is an ordinary 5.1 E-AC-3 stream that happens to carry an EMDF container —
+OAMD positions plus JOC side information — inside the per-block skip fields the standard already
+requires a decoder to step over. The bed underneath is the **full mix**, every object already
+panned into it, which is exactly why an Atmos-unaware decoder can play the stream at all. So the
+5.1 rendition of a JOC stream does not need re-encoding; it needs the container taken out:
+
+- every exponent and mantissa is copied bit for bit, so the result decodes to sample-identical
+  PCM (the tests assert exactly that, and FFmpeg's own decode of both streams agrees);
+- the skip fields go entirely, along with TS 103 420 §8.3.1's `addbsi` object-audio marker, so
+  nothing downstream — a `dec3` box's Atmos extension, an HLS `CHANNELS="<N>/JOC"` attribute —
+  still claims an object layer;
+- `frmsiz` is re-derived for the shorter frame, the auxdata padding is re-laid, and `crc2` is
+  re-stamped. Unlike an AC-3 syncframe an E-AC-3 one has no `crc1` (Annex E dropped it, leaving
+  `syncinfo` as the syncword alone), and `crc2` is the frame's last field covering everything
+  before it, so re-stamping is a plain forward recompute.
+
+The container is **removed, not emptied**: an EMDF container with no payloads would still signal
+an object layer for a stream that no longer has one, and this project's rule is that a stream
+carries objects or omits the container entirely (see [Atmos & JOC](../concepts/atmos-joc.md)).
+
+Frames with no object layer pass through byte for byte — including frames of a bitstream shape
+this build cannot rewrite, since a frame with neither the `addbsi` marker nor a skip field has
+nothing to strip whatever its shape. A frame that *does* carry an object layer in a shape the
+frame walker (`ac3/emdf/frame_layout.hpp`) does not map is refused with `kUnsupportedFrame`
+rather than passed through, because passing it through would hand back a stream still carrying
+the objects this function promises to remove. An AC-3 stream is refused outright
+(`kNotEac3`): Annex E is where substreams and skip fields live.
+
+This is the inverse of `ac3::signing`'s in-place EMDF rewrite and, like it, needs no key —
+taking a container out is not authenticating one. Both share one bit-accurate frame walk
+(`ac3::emdf::walk_frame`) so the two cannot drift apart.
+
+`ac3cli strip-objects in.ec3 out.ec3` is the command-line front end, and `ac3cli fmp4 …
+fallback-51` uses it to write the paired 5.1 HLS rendition Apple's authoring requirements ask
+for beside an Atmos one.
+
 ## Decoding
 
 `ac3/decoder/decoder.hpp`. Two classes, one per generation.

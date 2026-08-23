@@ -14,6 +14,7 @@ Usage:
   ac3cli atmos-path   <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored keyframe file instead of the built-in orbit)
   ac3cli atmos-encode <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a keyframe file (same format as atmos-path), objects it doesn't mention keep their default placement)
   ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
+  ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
   ac3cli record       <out.ac3> [seconds] [bitrate_kbps] [device_index]
   ac3cli live         <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
   ac3cli encode       <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
@@ -28,7 +29,7 @@ Usage:
   ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
   ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
   ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
-  ac3cli ts           <in.ac3|in.ec3> <out.ts>                (wrap as an MPEG-2 Transport Stream (DVB profile))
+  ac3cli ts           <in.ac3|in.ec3> <out.ts> [dvb|atsc]     (wrap as an MPEG-2 Transport Stream (DVB profile by default))
   ac3cli devices                                              (input and loopback capture endpoints)
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
   ac3cli play         <in.ac3|in.ec3> [device_index]          (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
@@ -152,6 +153,37 @@ for the parser and the mapping layer this command drives, and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
 
+### Object-layer strip
+
+| Command | What it does |
+|---|---|
+| `strip-objects` | Takes the JOC/OAMD object layer **out** of a Dolby Digital Plus stream without decoding it, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical |
+
+```bash
+ac3cli strip-objects atmos.ec3 bed51.ec3
+```
+
+```text
+stripped 63 of 63 frame(s) in atmos.ec3 -> bed51.ec3 (7032 bytes removed, 105864 left)
+  3/2 + LFE at 48000 Hz, no object metadata remains
+```
+
+JOC's bed is the full mix — every object is already panned into it, which is what makes an
+Atmos DD+ stream play on an Atmos-unaware decoder at all. So the 5.1 rendition of a JOC stream
+needs no re-encode, only the object layer removed: the EMDF container in the per-block skip
+fields and TS 103 420 §8.3.1's `addbsi` marker come out, `frmsiz` and `crc2` are re-derived
+around what is left, and every exponent and mantissa is copied bit for bit. Decoding the result
+gives sample-identical PCM. See [Object-layer strip](../library/decoding.md#object-layer-strip)
+for what it does and does not touch.
+
+The container is removed, not emptied — an empty container would still tell every downstream
+signalling path (`dec3`'s Atmos extension, an HLS `CHANNELS="<N>/JOC"` attribute) that objects
+are present. A stream with no object layer is copied through unchanged; an AC-3 stream is
+refused, since Annex E is where skip fields and substreams live.
+
+This is what `fmp4 … fallback-51` uses to write the paired 5.1 rendition Apple's HLS authoring
+requirements ask for beside an Atmos one.
+
 ### Decoding & inspection
 
 | Command | What it does |
@@ -214,8 +246,39 @@ Add `preset=<name>` (or `preset=all`) to gate that same measurement against a na
 | `spdif` | Wraps AC-3 or E-AC-3 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. For feeding a receiver through an ordinary audio path |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones |
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
-| `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
-| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals `CHANNELS="<N>/JOC"` in the HLS playlists automatically |
+| `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per whichever broadcast profile the optional third argument names — `dvb` (the default) or `atsc`. See below |
+| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals `CHANNELS="<N>/JOC"` in the HLS playlists automatically, and `fallback-51` additionally writes the paired 5.1 rendition |
+
+#### `ts` broadcast profiles
+
+ATSC and DVB both register AC-3/E-AC-3 for MPEG-TS carriage, with different, non-interoperable
+signalling — so a stream satisfies one of them, never a bit of each:
+
+```bash
+ac3cli ts programme.ec3 programme.ts atsc
+```
+
+| | `dvb` (default) | `atsc` |
+|---|---|---|
+| AC-3 `stream_type` | `0x06` (PES private data) | `0x81` (A/52 Annex A §A4.1) |
+| E-AC-3 `stream_type` | `0x06` | `0x87` (A/52 Annex G §G3.1) |
+| AC-3 descriptor | `AC3_descriptor`, tag `0x6A` (ETSI EN 300 468 Table D.6) | `AC-3_audio_stream_descriptor`, tag `0x81` (A/52 Table A4.1) |
+| E-AC-3 descriptor | `enhanced_AC-3_descriptor`, tag `0x7A` (Table D.7) | `E-AC-3_audio_descriptor`, tag `0xCC` (A/52 Table G.1) |
+
+Either way the descriptor's identification fields are read off the bitstream, not guessed: the
+service type (`bsmod`), the channel mode and rendered channel count, the surround mode
+(`dsurmod`), `bsid`, whether mixing metadata is present, and which independent substreams the
+stream uses. Two values are not in any bitstream, because they describe how services in a
+multiplex *relate* rather than what one stream contains, so they are omitted unless given:
+
+| Option | What it says |
+|---|---|
+| `mainid=<0-7>` | The main-service number this service is, or that an associated service points at |
+| `asvc=<mask>` | Which main services an **associated** service may be reproduced with, one bit each — decimal or `0xNN` |
+
+```bash
+ac3cli ts commentary.ac3 commentary.ts atsc asvc=0x05
+```
 
 ### Live & hardware
 

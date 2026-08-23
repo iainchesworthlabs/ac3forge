@@ -157,6 +157,16 @@ void print_meta_usage() {
     std::println("  capture2=<index>  a second capture device, clock-conformed to the first "
                  "(see 'devices')");
     std::println();
+    std::println("container options (fmp4, ts; any order, after the positional arguments):");
+    std::println("  fallback-51       fmp4: also write the object-stripped 5.1 companion");
+    std::println("                    rendition into the same #EXT-X-MEDIA group, per Apple's");
+    std::println("                    HLS Authoring Specification. Ignored for a stream with");
+    std::println("                    no object layer, which has no companion to write");
+    std::println("  mainid=<0-7>      ts: the main-service number this service is, or that an");
+    std::println("                    associated service points at. Omitted by default");
+    std::println("  asvc=<mask>       ts: which main services an ASSOCIATED service may be");
+    std::println("                    reproduced with, one bit each (decimal or 0xNN)");
+    std::println();
     std::println("qc options (qc; any order, after the positional arguments):");
     std::println("  preset=<name>     gate the measurement against a named delivery spec");
     std::println("                    {}", ac3::meta::kQcPresetNames);
@@ -172,6 +182,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         const std::string_view value =
             eq == std::string_view::npos ? std::string_view{} : token.substr(eq + 1);
 
+        if (token == "fallback-51") {
+            out.hls_fallback_51 = true;
+            continue;
+        }
         if (token == "couple" || token == "heavy" || token == "heavy2" || token == "mixmeta" ||
             token == "keep-partial" || token == "fast-mdct") {
             if (token == "heavy") {
@@ -189,6 +203,36 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (token == "fast-imdct") {
             out.fast_imdct = true;
+            continue;
+        }
+        if (key == "mainid") {
+            // A/52 Table A4.6 / EN 300 468 D.3: a number 0-7 naming a main
+            // audio service, which associated services then point at.
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 7) {
+                std::println(stderr, "error: mainid must be 0-7 (got '{}')", token);
+                return false;
+            }
+            out.mainid = static_cast<int>(parsed);
+            continue;
+        }
+        if (key == "asvc") {
+            // Eight bits, one per main service this associated service may be
+            // reproduced with; bit 7 is main service 7. Accepts decimal or
+            // 0x-prefixed hex, since it reads as a mask far more often than
+            // as a number.
+            const bool hex = value.starts_with("0x") || value.starts_with("0X");
+            const std::string_view digits = hex ? value.substr(2) : value;
+            unsigned parsed = 0;
+            const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(),
+                                                   parsed, hex ? 16 : 10);
+            if (ec != std::errc{} || ptr != digits.data() + digits.size() || parsed > 255) {
+                std::println(stderr, "error: asvc must be 0-255 or 0x00-0xFF (got '{}')", token);
+                return false;
+            }
+            out.asvc = static_cast<int>(parsed);
             continue;
         }
         if (token == "sign-objects") {

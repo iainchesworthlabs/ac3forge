@@ -489,6 +489,68 @@ TEST_CASE("HLS master playlist signals CODECS and CHANNELS correctly", "[hls]") 
     }
 }
 
+// Apple's HLS Authoring Specification for Apple Devices asks for a plain
+// 5.1 rendition alongside an Atmos one, IN THE SAME EXT-X-MEDIA group, so a
+// client that cannot render the object layer selects the bed instead of
+// failing. ac3::io::strip_objects is what produces that companion; this is
+// the manifest half.
+TEST_CASE("HLS master playlist lists several renditions in one group", "[hls]") {
+    const auto fixture = make_real_fixture();
+    auto bed_track = fixture.track;
+    bed_track.channels = 6;
+
+    const std::array<mp4::HlsRendition, 2> renditions{
+        mp4::HlsRendition{.track = fixture.track,
+                          .segments = fixture.fragmented.media_segments,
+                          .media_playlist_uri = "audio.m3u8",
+                          .name = "Dolby Atmos",
+                          .channels_attribute = "12/JOC",
+                          .is_default = true},
+        mp4::HlsRendition{.track = bed_track,
+                          .segments = fixture.fragmented.media_segments,
+                          .media_playlist_uri = "bed51/audio.m3u8",
+                          .name = "5.1",
+                          .channels_attribute = {},
+                          .is_default = false}};
+    const auto master = mp4::build_hls_master_playlist(renditions);
+
+    // Both renditions, one group, exactly one DEFAULT=YES between them.
+    CHECK(master.find("NAME=\"Dolby Atmos\",DEFAULT=YES,AUTOSELECT=YES,CHANNELS=\"12/JOC\"") !=
+          std::string::npos);
+    CHECK(master.find("NAME=\"5.1\",DEFAULT=NO,AUTOSELECT=YES,CHANNELS=\"6\"") !=
+          std::string::npos);
+    CHECK(master.find("URI=\"bed51/audio.m3u8\"") != std::string::npos);
+    std::size_t groups = 0;
+    for (std::size_t at = master.find("GROUP-ID=\"audio\""); at != std::string::npos;
+         at = master.find("GROUP-ID=\"audio\"", at + 1)) {
+        ++groups;
+    }
+    CHECK(groups == 2);
+
+    // One variant, pointing at the default rendition's own playlist.
+    const auto stream_inf = master.find("#EXT-X-STREAM-INF:");
+    REQUIRE(stream_inf != std::string::npos);
+    CHECK(master.find("#EXT-X-STREAM-INF:", stream_inf + 1) == std::string::npos);
+    const auto next_line = master.find('\n', stream_inf);
+    const auto uri_end = master.find('\n', next_line + 1);
+    CHECK(master.substr(next_line + 1, uri_end - next_line - 1) == "audio.m3u8");
+}
+
+TEST_CASE("the single-rendition master playlist is the one-element multi form", "[hls]") {
+    const auto fixture = make_real_fixture();
+    const mp4::HlsOptions options{.channels_attribute = "12/JOC"};
+    const auto one = mp4::build_hls_master_playlist(
+        fixture.track, fixture.fragmented.media_segments, "audio.m3u8", options);
+    const std::array<mp4::HlsRendition, 1> renditions{
+        mp4::HlsRendition{.track = fixture.track,
+                          .segments = fixture.fragmented.media_segments,
+                          .media_playlist_uri = "audio.m3u8",
+                          .name = "Audio",
+                          .channels_attribute = "12/JOC",
+                          .is_default = true}};
+    CHECK(one == mp4::build_hls_master_playlist(renditions, options));
+}
+
 // --- DASH ----------------------------------------------------------------
 
 TEST_CASE("DASH adaptation set snippet carries the correct codecs, timescale and segment template",

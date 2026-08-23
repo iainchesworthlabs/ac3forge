@@ -12,7 +12,60 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **MPEG-TS ATSC profile beside DVB** (roadmap `IO6`). `mpegts::mux` now writes either
+  registry's identification, chosen per stream with `MuxOptions::profile` and on the command
+  line with `ac3cli ts <in> <out> atsc`. ATSC uses `stream_type` 0x81 for AC-3 (A/52:2018
+  Annex A §A4.1) or 0x87 for E-AC-3 (Annex G §G3.1), with the `AC-3_audio_stream_descriptor`
+  (tag 0x81, Table A4.1) or `E-AC-3_audio_descriptor` (tag 0xCC, Table G.1); DVB keeps
+  `stream_type` 0x06 and ETSI EN 300 468 Annex D's descriptors, and remains the default, so an
+  existing caller's output is unchanged.
+
+  Both profiles' descriptors are now **populated** rather than left blank. `ac3::io::scan`
+  gained the service granularity they need — `bsmod` with a `bsmod_present` flag (Annex E
+  carries it only inside `infomdate`), `dsurmod`, the four Annex G §3.5 conditions behind
+  `mixinfoexists`, which independent substream ids the stream uses, and a per-substream
+  description for substreams 1–3 — and `mpegts::` maps those A/52 values onto each registry's
+  own tables (EN 300 468 Tables D.1–D.8, A/52 Tables A4.2–A4.6 and G.2–G.6). `component_type`,
+  `bsid`, `mixinfoexists` and `substream1`–`3` now carry real values; `mainid` and `asvc`, which
+  describe how services in a multiplex relate rather than what one stream contains, come from
+  new `mainid=`/`asvc=` options and are omitted when not given rather than zero-filled. Where a
+  standard's own table cannot express something (A/52 Table G.5 reserves complete-main and
+  emergency as substream service types; Table G.6 reserves 1+1), the field is omitted rather
+  than approximated.
+
+- **`ac3cli strip-objects in.ec3 out.ec3`** (roadmap `IO7`) — takes the JOC/OAMD object layer
+  out of a Dolby Digital Plus stream at the bitstream level, leaving a plain DD+ 5.1 stream
+  whose bed audio is **bit-identical**. JOC's bed is the full mix, so the 5.1 rendition of a JOC
+  stream needs no re-encode: `ac3::io::strip_objects` removes the EMDF container from the
+  per-block skip fields and TS 103 420 §8.3.1's `addbsi` object marker, re-derives `frmsiz` for
+  the shorter frame, re-lays the auxdata padding and re-stamps `crc2`, and copies every exponent
+  and mantissa across unchanged. Both the in-repo decoder and FFmpeg produce identical PCM from
+  before and after, and FFmpeg stops reporting the result as "Dolby Digital Plus + Dolby Atmos".
+  The container is removed, not emptied — an empty one would still signal an object layer that
+  is no longer there.
+
+  `ac3cli fmp4 … fallback-51` uses it to write the paired rendition Apple's HLS Authoring
+  Specification asks for beside an Atmos one: the JOC rendition where it always was, the
+  stripped 5.1 companion under `bed51/`, and one master playlist listing both with
+  `CHANNELS="<N>/JOC"` and `CHANNELS="6"` in the same `#EXT-X-MEDIA` group.
+  `mp4::build_hls_master_playlist` gained a multi-rendition overload for that; the
+  single-rendition form is unchanged and now delegates to it.
+
 ### Changed
+
+- **The E-AC-3 syncframe walk is shared** between `ac3::signing` and the new object strip, as
+  `ac3::emdf::walk_frame` (`ac3/emdf/frame_layout.hpp`). Signing needs the regions excluded from
+  its authenticated message; the strip needs the skip fields' exact bit ranges — both need the
+  same bit-accurate map of exponent strategies, spectral-extension geometry, delta bit
+  allocation and mantissa widths, and two copies of that would drift apart one fix at a time.
+  Object-layer signals (the `addbsi` marker and `skipflde`) are readable for any E-AC-3 frame,
+  in scope or not, which is what lets the strip pass an ordinary stereo stream through untouched
+  instead of refusing it.
+
+- **`ac3cli`'s usage listing** pads the command-name column to 14 characters. At 13 the longest
+  name ran straight into its own argument list with no separating space.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list

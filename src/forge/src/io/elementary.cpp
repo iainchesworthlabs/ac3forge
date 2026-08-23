@@ -68,13 +68,23 @@ constexpr int kBsidBitOffset = 40;
 // cmixlev, surmixlev and dsurmod acmod brought with it (§5.4.2). bsid/bsmod
 // are captured, not skipped: build_codec_config_box() (ac3/io/dec3.hpp) needs
 // both to fill in AC3SpecificBox's own bsid/bsmod fields (ETSI TS 102 366
-// Annex F §F.4).
-std::expected<void, ScanError> read_ac3_bsi(BitReader& r, int& bsid, int& bsmod, Acmod& acmod,
-                                            bool& lfe) {
-    bsid = static_cast<int>(r.read(5));
-    bsmod = static_cast<int>(r.read(3));
+// Annex F §F.4). dsurmod is captured for the same reason one level out - the
+// MPEG-TS descriptors' surround-mode field (see ScannedStream::dsurmod) -
+// and, like bsmod, is transmitted unconditionally in AC-3 rather than inside
+// an optional payload the way Annex E moved it.
+struct Ac3Bsi {
+    int bsid = 0;
+    int bsmod = 0;
+    Acmod acmod = Acmod::k2_0;
+    bool lfe = false;
+    int dsurmod = 0;  // §5.4.2.8; 0 = not indicated, and the value for any acmod but 2/0
+};
+
+std::expected<void, ScanError> read_ac3_bsi(BitReader& r, Ac3Bsi& out) {
+    out.bsid = static_cast<int>(r.read(5));
+    out.bsmod = static_cast<int>(r.read(3));
     const auto raw = r.read(3);
-    acmod = static_cast<Acmod>(raw);
+    out.acmod = static_cast<Acmod>(raw);
     if ((raw & 0x1) && raw != 0x1) {
         r.skip(2);  // cmixlev
     }
@@ -82,9 +92,9 @@ std::expected<void, ScanError> read_ac3_bsi(BitReader& r, int& bsid, int& bsmod,
         r.skip(2);  // surmixlev
     }
     if (raw == 0x2) {
-        r.skip(2);  // dsurmod
+        out.dsurmod = static_cast<int>(r.read(2));  // dsurmod
     }
-    lfe = r.read(1) != 0;
+    out.lfe = r.read(1) != 0;
     return r.overflowed() ? std::unexpected(ScanError::kTruncated)
                           : std::expected<void, ScanError>{};
 }
@@ -114,19 +124,20 @@ std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stre
         if (first) {
             BitReader r{stream.subspan(offset)};
             r.skip(kBsidBitOffset);
-            int bsid = 0;
-            int bsmod = 0;
-            Acmod acmod = Acmod::k2_0;
-            bool lfe = false;
-            if (const auto ok = read_ac3_bsi(r, bsid, bsmod, acmod, lfe); !ok) {
+            Ac3Bsi bsi;
+            if (const auto ok = read_ac3_bsi(r, bsi); !ok) {
                 return std::unexpected(ok.error());
             }
             out.sample_rate = rate;
-            out.acmod = acmod;
-            out.lfe = lfe;
-            out.channels = fullbw_channel_count(acmod) + (lfe ? 1 : 0);
-            out.bsid = bsid;
-            out.bsmod = bsmod;
+            out.acmod = bsi.acmod;
+            out.lfe = bsi.lfe;
+            out.channels = fullbw_channel_count(bsi.acmod) + (bsi.lfe ? 1 : 0);
+            out.bsid = bsi.bsid;
+            out.bsmod = bsi.bsmod;
+            // §5.4.2.2 puts bsmod in every AC-3 syncframe unconditionally,
+            // unlike Annex E - so it is always "present" here.
+            out.bsmod_present = true;
+            out.dsurmod = bsi.dsurmod;
             // Table 5.18: frmsizecod's high bits already index kBitratesKbps
             // above; AC3SpecificBox's bit_rate_code (ETSI TS 102 366 Annex F
             // §F.4) is exactly that same index.
@@ -143,6 +154,7 @@ std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stre
 
 struct Substream {
     int strmtyp = 0;
+    int substreamid = 0;
     std::size_t bytes = 0;
     SampleRate sample_rate = SampleRate::k48000;
     // 0x3 doubles as "fscod2 was used" (always six blocks), matching
@@ -151,7 +163,10 @@ struct Substream {
     // unmodified for a value nothing ever actually transmits as 0x3 outright.
     int numblkscod = 3;
     int bsid = 0;
-    int bsmod = 0;  // 0 (not indicated) unless infomdate carried one
+    int bsmod = 0;             // 0 unless infomdate carried one - see bsmod_present
+    bool bsmod_present = false;
+    int dsurmod = 0;           // §E2.3.2.3, inside infomdate and only when acmod is 2/0
+    bool mix_metadata = false;  // Annex G §3.5's four mixinfoexists conditions
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     std::uint16_t chanmap = 0;  // 0 when chanmape was clear
@@ -168,7 +183,7 @@ struct Substream {
 // read_eac3_substream above already re-derives everything up through
 // chanmap on its own. A scan is a much smaller job than a decode and has no
 // business depending on the decoder's private Bsi/parse_bsi.
-void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
+void skip_mixing_metadata(BitReader& r, Substream& s, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     if (acmod > 0x2) {
         r.skip(2);  // dmixmod
@@ -183,10 +198,25 @@ void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
         r.skip(5);  // lfemixlevcod
     }
     if (s.strmtyp != static_cast<int>(eac3::StreamType::kDependent)) {
-        if (r.read(1) != 0) r.skip(6);  // pgmscl
+        // pgmscle, extpgmscle, mixdef > 0 and paninfoe are exactly the four
+        // conditions A/52 Annex G §3.5 lists for mixinfoexists (and ETSI
+        // EN 300 468 D.5 words as "contains metadata ... to control mixing
+        // with another AC-3 or Enhanced AC-3 stream"), so each is recorded
+        // as it is walked rather than only skipped.
+        if (r.read(1) != 0) {  // pgmscle
+            r.skip(6);         // pgmscl
+            s.mix_metadata = true;
+        }
         if (acmod == 0x0 && r.read(1) != 0) r.skip(6);  // pgmscl2
-        if (r.read(1) != 0) r.skip(6);  // extpgmscl
-        switch (r.read(2)) {            // mixdef
+        if (r.read(1) != 0) {  // extpgmscle
+            r.skip(6);         // extpgmscl
+            s.mix_metadata = true;
+        }
+        const auto mixdef = r.read(2);
+        if (mixdef != 0) {
+            s.mix_metadata = true;
+        }
+        switch (mixdef) {
             case 0x1: r.skip(1 + 1 + 3); break;  // premixcmpsel, drcsrc, premixcmpscl
             case 0x2: r.skip(12); break;         // mixdata
             case 0x3: {
@@ -200,7 +230,10 @@ void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
             default: break;
         }
         if (acmod < 0x2) {
-            if (r.read(1) != 0) r.skip(8 + 6);  // panmean, paninfo
+            if (r.read(1) != 0) {  // paninfoe
+                r.skip(8 + 6);     // panmean, paninfo
+                s.mix_metadata = true;
+            }
             if (acmod == 0x0 && r.read(1) != 0) r.skip(8 + 6);
         }
         if (r.read(1) != 0) {  // frmmixcfginfoe
@@ -220,9 +253,11 @@ void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
 void skip_informational_metadata(BitReader& r, Substream& s) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     s.bsmod = static_cast<int>(r.read(3));
+    s.bsmod_present = true;
     r.skip(1 + 1);  // copyrightb, origbs
     if (acmod == 0x2) {
-        r.skip(2 + 2);  // dsurmod, dheadphonmod
+        s.dsurmod = static_cast<int>(r.read(2));  // dsurmod
+        r.skip(2);                                // dheadphonmod
     }
     if (acmod >= 0x6) {
         r.skip(2);  // dsurexmod
@@ -241,7 +276,7 @@ std::expected<Substream, ScanError> read_eac3_substream(std::span<const std::byt
     r.skip(16);  // syncword
     Substream s;
     s.strmtyp = static_cast<int>(r.read(2));
-    r.skip(3);  // substreamid
+    s.substreamid = static_cast<int>(r.read(3));
     s.bytes = (static_cast<std::size_t>(r.read(11)) + 1) * 2;
     const auto fscod = r.read(2);
     if (fscod == 0x3) {
@@ -367,7 +402,33 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
                 out.lfe = sub->lfe;
                 out.bsid = sub->bsid;
                 out.bsmod = sub->bsmod;
+                out.bsmod_present = sub->bsmod_present;
+                out.dsurmod = sub->dsurmod;
+                out.mix_metadata = sub->mix_metadata;
                 locations = bed_locations(sub->acmod, sub->lfe);
+            }
+            // §E2.3.1.2: which independent substream ids the stream actually
+            // uses, over the WHOLE stream rather than the first access unit -
+            // a second programme's substream need not start at byte zero. See
+            // ScannedStream::independent_substreams on why this is only an
+            // observation of the ids present.
+            out.independent_substreams = static_cast<std::uint8_t>(
+                out.independent_substreams | (1u << (sub->substreamid & 0x7)));
+            // Substreams 1-3 are the ones a PMT descriptor can describe
+            // individually (EN 300 468 Table D.8, A/52 Table G.4); the first
+            // occurrence of each wins, the same "first access unit decides"
+            // rule the main service's own fields follow above.
+            if (sub->substreamid >= 1 && sub->substreamid <= 3) {
+                auto& slot = out.associated_substreams[static_cast<std::size_t>(
+                    sub->substreamid - 1)];
+                if (!slot.present) {
+                    slot = SubstreamService{.present = true,
+                                            .bsmod = sub->bsmod,
+                                            .bsmod_present = sub->bsmod_present,
+                                            .acmod = sub->acmod,
+                                            .lfe = sub->lfe,
+                                            .mix_metadata = sub->mix_metadata};
+                }
             }
         } else if (first_unit) {
             // §E3.8.2: a dependent's channels overwrite the bed's where they

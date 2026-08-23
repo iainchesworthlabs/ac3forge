@@ -121,6 +121,7 @@ target_sources(forge_objects
         src/dsp/biquad.cpp
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
+        src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
         src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
@@ -130,6 +131,7 @@ target_sources(forge_objects
         src/encoder/transient.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/object_strip.cpp
         src/io/wav.cpp
         src/io/wav_stream_reader.cpp
         src/io/wav_stream_writer.cpp

@@ -4,6 +4,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "mp4/export.hpp"
 #include "mp4/mp4.hpp"
@@ -72,16 +73,54 @@ struct HlsOptions {
 // place this claim, and its citation, live.
 [[nodiscard]] MP4_EXPORT std::string_view hls_codec_string(const AudioTrack& track);
 
-// A minimal master playlist (RFC 8216 §4.3.4): one #EXT-X-MEDIA audio
-// rendition plus one #EXT-X-STREAM-INF variant referencing it - the
-// self-referencing pattern real audio-only HLS content uses (there is no
-// separate video Media Playlist for the variant to point at; the audio
-// rendition IS the variant), with CODECS and, when
-// HlsOptions::channels_attribute is set, CHANNELS carrying the
-// Atmos-signaling worked example HlsOptions documents. BANDWIDTH (a REQUIRED
-// EXT-X-STREAM-INF attribute) is the average bits/second these segments
-// require - an approximation a single-representation asset has no better
-// answer for.
+// One audio rendition of a master playlist's #EXT-X-MEDIA group (RFC 8216
+// §4.3.4.1): its own Media Playlist, its own CHANNELS value, its own segments
+// for the bandwidth arithmetic.
+//
+// More than one exists for a reason Apple's HLS Authoring Specification for
+// Apple Devices spells out for Dolby Atmos: alongside the CHANNELS="<N>/JOC"
+// rendition an asset should carry an equivalent 5.1 bitstream with
+// CHANNELS="6" IN THE SAME GROUP, so a client that cannot render the object
+// layer selects the plain bed rather than the asset failing to play. The two
+// renditions are the same programme at the same duration, which is what makes
+// them interchangeable inside one group - see ac3::io::strip_objects
+// (ac3/io/object_strip.hpp), which produces exactly that companion without
+// re-encoding anything.
+struct HlsRendition {
+    AudioTrack track{};
+    // Views the caller's own FragmentedOutput::media_segments.
+    std::span<const MediaSegment> segments{};
+    // Relative to the master playlist.
+    std::string media_playlist_uri{};
+    // #EXT-X-MEDIA's NAME, a human-readable label; REQUIRED by RFC 8216
+    // §4.3.4.1 and shown in a player's audio-track picker.
+    std::string name{"Audio"};
+    // CHANNELS, per HlsOptions::channels_attribute's own note. Empty means
+    // the track's plain channel count.
+    std::string channels_attribute{};
+    // DEFAULT=YES. Exactly one rendition in a group should carry it; the
+    // #EXT-X-STREAM-INF URI points at that one's Media Playlist.
+    bool is_default = false;
+};
+
+// A master playlist (RFC 8216 §4.3.4) over one or more audio renditions: an
+// #EXT-X-MEDIA line each, all sharing one GROUP-ID, plus a single
+// #EXT-X-STREAM-INF variant referencing that group - the self-referencing
+// pattern real audio-only HLS content uses (there is no separate video Media
+// Playlist for the variant to point at; the audio rendition IS the variant),
+// so its URI is the default rendition's own playlist.
+//
+// BANDWIDTH (a REQUIRED EXT-X-STREAM-INF attribute) is the largest of the
+// renditions' average bits/second: a client plays exactly one of them, so the
+// variant needs the bandwidth of whichever it might pick, and an average
+// across an asset is the only honest answer a batch fragmenter has (see
+// manifest_detail::estimate_bandwidth_bps). CODECS comes from the default
+// rendition's track.
+[[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
+    std::span<const HlsRendition> renditions, const HlsOptions& options = {});
+
+// The single-rendition form, unchanged: one #EXT-X-MEDIA named "Audio",
+// DEFAULT=YES, with HlsOptions::channels_attribute as its CHANNELS.
 [[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     std::string_view media_playlist_uri, const HlsOptions& options = {});

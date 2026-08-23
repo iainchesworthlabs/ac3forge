@@ -4,6 +4,10 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "manifest_detail.hpp"
 
@@ -69,14 +73,27 @@ std::string build_hls_media_playlist(const AudioTrack& track,
     return out;
 }
 
-std::string build_hls_master_playlist(const AudioTrack& track,
-                                      std::span<const MediaSegment> segments,
-                                      std::string_view media_playlist_uri,
+std::string build_hls_master_playlist(std::span<const HlsRendition> renditions,
                                       const HlsOptions& options) {
-    const auto bandwidth = estimate_bandwidth_bps(segments, track.sample_rate);
-    const std::string channels = options.channels_attribute.empty()
-                                     ? std::format("{}", track.channels)
-                                     : options.channels_attribute;
+    if (renditions.empty()) {
+        return {};
+    }
+    // The variant follows whichever rendition claims DEFAULT=YES; with none
+    // claiming it, the first listed stands in, so a caller that forgot the
+    // flag still gets a playable master rather than a variant pointing
+    // nowhere.
+    std::size_t default_index = 0;
+    for (std::size_t i = 0; i < renditions.size(); ++i) {
+        if (renditions[i].is_default) {
+            default_index = i;
+            break;
+        }
+    }
+    std::uint64_t bandwidth = 0;
+    for (const auto& rendition : renditions) {
+        bandwidth = std::max(
+            bandwidth, estimate_bandwidth_bps(rendition.segments, rendition.track.sample_rate));
+    }
 
     std::string out;
     out += "#EXTM3U\n";
@@ -85,18 +102,42 @@ std::string build_hls_master_playlist(const AudioTrack& track,
     // whole of any sample it starts (true of every AC-3/E-AC-3 access unit
     // this module ever writes - see mp4.hpp), so this asset qualifies.
     out += "#EXT-X-INDEPENDENT-SEGMENTS\n";
+    for (std::size_t i = 0; i < renditions.size(); ++i) {
+        const auto& rendition = renditions[i];
+        const std::string channels = rendition.channels_attribute.empty()
+                                         ? std::format("{}", rendition.track.channels)
+                                         : rendition.channels_attribute;
+        // AUTOSELECT=YES on every rendition, DEFAULT on exactly one: RFC 8216
+        // §4.3.4.1 lets a client pick a non-default rendition on its own when
+        // AUTOSELECT is set, which is precisely what a client that cannot
+        // render the object layer has to do to reach the 5.1 companion.
+        out += std::format(
+            "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"{}\",DEFAULT={},AUTOSELECT=YES,"
+            "CHANNELS=\"{}\",URI=\"{}\"\n",
+            rendition.name, i == default_index ? "YES" : "NO", channels,
+            rendition.media_playlist_uri);
+    }
     // Audio-only content has no separate video rendition for the variant to
     // point at, so the #EXT-X-STREAM-INF URI below is the SAME media
-    // playlist this #EXT-X-MEDIA line names - real audio-only HLS assets
-    // (podcasts, music) use exactly this self-referencing pattern.
-    out += std::format(
-        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"Audio\",DEFAULT=YES,AUTOSELECT=YES,"
-        "CHANNELS=\"{}\",URI=\"{}\"\n",
-        channels, media_playlist_uri);
+    // playlist the default #EXT-X-MEDIA line names - real audio-only HLS
+    // assets (podcasts, music) use exactly this self-referencing pattern.
     out += std::format("#EXT-X-STREAM-INF:BANDWIDTH={},CODECS=\"{}\",AUDIO=\"audio\"\n", bandwidth,
-                       hls_codec_string(track));
-    out += std::format("{}\n", media_playlist_uri);
+                       hls_codec_string(renditions[default_index].track));
+    out += std::format("{}\n", renditions[default_index].media_playlist_uri);
     return out;
+}
+
+std::string build_hls_master_playlist(const AudioTrack& track,
+                                      std::span<const MediaSegment> segments,
+                                      std::string_view media_playlist_uri,
+                                      const HlsOptions& options) {
+    const HlsRendition only{.track = track,
+                            .segments = segments,
+                            .media_playlist_uri = std::string{media_playlist_uri},
+                            .name = "Audio",
+                            .channels_attribute = options.channels_attribute,
+                            .is_default = true};
+    return build_hls_master_playlist(std::span{&only, 1}, options);
 }
 
 }  // namespace mp4

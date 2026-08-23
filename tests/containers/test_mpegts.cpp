@@ -179,6 +179,51 @@ std::vector<Bytes> reassemble_pes_payloads(const std::vector<const TsPacket*>& o
     return out;
 }
 
+// The ES loop's first descriptor, as {tag, body}: the PMT this module writes
+// always has one program with one elementary stream and no program-level
+// descriptors, so the loop starts at a fixed offset (see the PAT/PMT test's
+// own walk of the same bytes).
+struct Descriptor {
+    std::uint8_t tag = 0;
+    Bytes body;
+};
+
+Descriptor first_descriptor(const Bytes& pmt) {
+    const std::size_t es_info_length =
+        ((std::to_integer<std::size_t>(pmt[15]) & 0x0Fu) << 8) |
+        std::to_integer<std::size_t>(pmt[16]);
+    REQUIRE(es_info_length >= 2);
+    const std::size_t length = std::to_integer<std::size_t>(pmt[18]);
+    REQUIRE(es_info_length >= 2 + length);
+    Descriptor d;
+    d.tag = std::to_integer<std::uint8_t>(pmt[17]);
+    d.body.assign(pmt.begin() + 19, pmt.begin() + 19 + static_cast<std::ptrdiff_t>(length));
+    return d;
+}
+
+std::uint8_t stream_type_of(const Bytes& pmt) { return std::to_integer<std::uint8_t>(pmt[12]); }
+
+Bytes pmt_of(std::span<const std::byte> file) {
+    const auto packets = parse_packets(file);
+    return section_from_psi_packet(*packets_on_pid(packets, 0x1000).front());
+}
+
+// A 3/2 + LFE complete-main service at 448 kbps, 48 kHz - the values
+// ac3::io::scan reads off this project's own 5.1 output, spelled out here so
+// the descriptor assertions below are against known inputs rather than
+// whatever an encoder happened to produce.
+mpegts::ServiceInfo five_one_service(int bsid) {
+    return mpegts::ServiceInfo{.bsmod = 0,
+                               .bsmod_present = true,
+                               .acmod = 7,
+                               .lfe = true,
+                               .channels = 6,
+                               .bsid = bsid,
+                               .dsurmod = 0,
+                               .bit_rate_code = 15,  // Table A4.3: 448 kbit/s, exact
+                               .sample_rate_code = 0};
+}
+
 }  // namespace
 
 TEST_CASE("MPEG-TS output parses as well-formed TS packets with a valid PAT/PMT", "[mpegts]") {
@@ -255,20 +300,252 @@ TEST_CASE("MPEG-TS access units round-trip byte-for-byte through PES", "[mpegts]
 TEST_CASE("MPEG-TS descriptor identifies AC-3 vs Enhanced AC-3", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD), frame_of(64, 0xEF)};
 
-    const auto ac3_file = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2}, frames);
+    const auto ac3_file = mpegts::mux(
+        {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+         .service = {.acmod = 2, .channels = 2, .bsid = 8}},
+        frames);
     REQUIRE(ac3_file.has_value());
-    const auto ac3_packets = parse_packets(*ac3_file);
-    const auto ac3_pmt = section_from_psi_packet(*packets_on_pid(ac3_packets, 0x1000).front());
-    CHECK(std::to_integer<std::uint8_t>(ac3_pmt[17]) == 0x6A);
-    CHECK(std::to_integer<std::uint8_t>(ac3_pmt[18]) == 1);  // descriptor_length: flags byte only
+    const auto ac3 = first_descriptor(pmt_of(*ac3_file));
+    CHECK(ac3.tag == 0x6A);
 
-    const auto eac3_file =
-        mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 6}, frames);
+    const auto eac3_file = mpegts::mux(
+        {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = five_one_service(16)},
+        frames);
     REQUIRE(eac3_file.has_value());
-    const auto eac3_packets = parse_packets(*eac3_file);
-    const auto eac3_pmt = section_from_psi_packet(*packets_on_pid(eac3_packets, 0x1000).front());
-    CHECK(std::to_integer<std::uint8_t>(eac3_pmt[17]) == 0x7A);
-    CHECK(std::to_integer<std::uint8_t>(eac3_pmt[18]) == 1);
+    const auto eac3 = first_descriptor(pmt_of(*eac3_file));
+    CHECK(eac3.tag == 0x7A);
+}
+
+// ETSI EN 300 468 Table D.6/D.7 with Table D.1's component_type: the DVB
+// descriptors used to leave every optional field out because ac3::io::scan
+// could not supply one. Every byte below is decoded against the standard's
+// own field positions, not against what the builder happened to emit.
+TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
+    const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
+
+    SECTION("AC-3, 5.1 complete main") {
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = five_one_service(8)},
+            frames);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        CHECK(d.tag == 0x6A);
+        REQUIRE(d.body.size() == 3);
+        // component_type_flag + bsid_flag set, mainid/asvc clear, the four
+        // reserved_flags "always set to 0b0".
+        CHECK(std::to_integer<std::uint8_t>(d.body[0]) == 0xC0);
+        // Table D.1: b7 Enhanced AC-3 flag (0 = AC-3), b6 full service,
+        // b5-b3 service type (000 = CM), b2-b0 channels (100 = > 2 channels;
+        // 5.1 is not "> 5.1", which is Table D.5's next rung up).
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0x44);
+        // "The three msb should always be set to 0b000."
+        CHECK(std::to_integer<std::uint8_t>(d.body[2]) == 8);
+    }
+
+    SECTION("E-AC-3 sets the Enhanced AC-3 flag and can go past 5.1") {
+        auto service = five_one_service(16);
+        service.channels = 12;  // 7.1.4, two dependents' worth of extra channels
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 12, .service = service}, frames);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        CHECK(d.tag == 0x7A);
+        REQUIRE(d.body.size() == 3);
+        CHECK(std::to_integer<std::uint8_t>(d.body[0]) == 0xC0);
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0xC5);  // E-AC-3, full, CM, > 5.1
+        CHECK(std::to_integer<std::uint8_t>(d.body[2]) == 16);
+    }
+
+    SECTION("a Dolby Surround encoded stereo mix reads as Table D.5's 0b011") {
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+             .service = {.acmod = 2, .channels = 2, .bsid = 8, .dsurmod = 2}},
+            frames);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0x43);
+    }
+
+    SECTION("an associated service's full-service flag follows Table D.4") {
+        // Music and effects: "full service flag ... set to 0b0".
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+             .service = {.bsmod = 1, .acmod = 2, .channels = 2, .bsid = 8}},
+            frames);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0x0A);  // AC-3, not full, ME, stereo
+    }
+
+    SECTION("mainid and asvc appear only when the caller supplies them") {
+        auto service = five_one_service(16);
+        service.mainid = 3;
+        service.asvc = std::uint8_t{0x0A};
+        service.mix_metadata = true;
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 5);
+        // component_type + bsid + mainid + asvc flags, plus mixinfoexists,
+        // which Table D.7 makes a value bit rather than a presence flag.
+        CHECK(std::to_integer<std::uint8_t>(d.body[0]) == 0xF8);
+        CHECK(std::to_integer<std::uint8_t>(d.body[3]) == 3);
+        CHECK(std::to_integer<std::uint8_t>(d.body[4]) == 0x0A);
+    }
+
+    SECTION("a second independent substream reads as Table D.5's multi-programme value") {
+        auto service = five_one_service(16);
+        service.independent_substreams = 0x03;  // I0 and I1
+        service.associated_substreams[0] =
+            mpegts::SubstreamService{.present = true, .bsmod = 2, .acmod = 1};  // VI, mono
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 4);
+        CHECK(std::to_integer<std::uint8_t>(d.body[0]) == 0xC4);  // + substream1_flag
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0xC6);  // E-AC-3, full, CM, multi-prog
+        // Table D.8: mixing metadata 0, full service 1 (VI is unconstrained),
+        // service type 010 (VI), channels 000 (mono).
+        CHECK(std::to_integer<std::uint8_t>(d.body[3]) == 0x50);
+    }
+}
+
+// A/52:2018 Annex A Table A4.1 and Annex G Table G.1, plus the stream_type
+// values sections A4.1 and G3.1 assign. ATSC identifies the stream by
+// stream_type and describes it in the descriptor; DVB does the reverse.
+TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]") {
+    const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
+    const mpegts::MuxOptions atsc{.profile = mpegts::BroadcastProfile::kAtsc};
+
+    SECTION("AC-3: stream_type 0x81, AC-3_audio_stream_descriptor 0x81") {
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = five_one_service(8)},
+            frames, atsc);
+        REQUIRE(file.has_value());
+        const auto pmt = pmt_of(*file);
+        CHECK(stream_type_of(pmt) == 0x81);
+        const auto d = first_descriptor(pmt);
+        CHECK(d.tag == 0x81);
+        // Three bytes: the descriptor terminates at the first allowed
+        // termination point, which A/52 puts immediately before langcod.
+        REQUIRE(d.body.size() == 3);
+        // sample_rate_code (Table A4.2: 0b000 = 48 kHz) then bsid.
+        CHECK(std::to_integer<std::uint8_t>(d.body[0]) == 0x08);
+        // bit_rate_code (Table A4.3: index 15 = 448 kbit/s, msb clear for
+        // "exact") then surround_mode (Table A4.4: 0b00, not indicated).
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0x3C);
+        // bsmod, then Table A4.5's num_channels (msb clear, so the low three
+        // bits ARE acmod: 0b111 = 3/2), then full_svc.
+        CHECK(std::to_integer<std::uint8_t>(d.body[2]) == 0x0F);
+    }
+
+    SECTION("E-AC-3: stream_type 0x87, E-AC-3_audio_descriptor 0xCC") {
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = five_one_service(16)},
+            frames, atsc);
+        REQUIRE(file.has_value());
+        const auto pmt = pmt_of(*file);
+        CHECK(stream_type_of(pmt) == 0x87);
+        const auto d = first_descriptor(pmt);
+        CHECK(d.tag == 0xCC);
+        REQUIRE(d.body.size() == 3);
+        // reserved '1', bsid_flag, then mainid/asvc/mixinfoexists/substream1-3
+        // all clear.
+        CHECK(std::to_integer<std::uint8_t>(d.body[0]) == 0xC0);
+        // reserved '1', full_service_flag, audio_service_type (Table G.2:
+        // 000 = complete main), number_of_channels (Table G.3: 0b100 =
+        // "> 2 channels; <= 3/2 + LFE").
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0xC4);
+        // language_flag, language_flag_2, reserved, then bsid's five bits.
+        CHECK(std::to_integer<std::uint8_t>(d.body[2]) == 0x30);
+    }
+
+    SECTION("a wider E-AC-3 programme reads as Table G.3's 0b101") {
+        auto service = five_one_service(16);
+        service.channels = 8;  // 7.1
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 8, .service = service}, frames, atsc);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0xC5);
+    }
+
+    SECTION("mainid extends the AC-3 descriptor past its first termination point") {
+        auto service = five_one_service(8);
+        service.mainid = 3;
+        service.priority = 1;  // Table A4.6: primary audio
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = service}, frames, atsc);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 7);
+        CHECK(std::to_integer<std::uint8_t>(d.body[3]) == 0xFF);  // langcod, deprecated
+        // mainid (3 bits), priority (2), reserved '111'.
+        CHECK(std::to_integer<std::uint8_t>(d.body[4]) == 0x6F);
+        CHECK(std::to_integer<std::uint8_t>(d.body[5]) == 0x01);  // textlen 0, text_code 1
+        CHECK(std::to_integer<std::uint8_t>(d.body[6]) == 0x3F);  // no language, reserved '111111'
+    }
+
+    SECTION("an associated AC-3 service takes the asvcflags branch instead") {
+        auto service = five_one_service(8);
+        service.bsmod = 5;  // commentary
+        service.asvc = std::uint8_t{0x81};
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = service}, frames, atsc);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 7);
+        CHECK(std::to_integer<std::uint8_t>(d.body[4]) == 0x81);  // asvcflags, not mainid
+    }
+
+    SECTION("a substream A/52 Table G.5 and G.6 cannot describe is omitted, not guessed") {
+        auto service = five_one_service(16);
+        service.independent_substreams = 0x03;
+        // Complete main is "reserved" as a substream service type (Table G.5),
+        // so there is no honest byte to write for this one.
+        service.associated_substreams[0] =
+            mpegts::SubstreamService{.present = true, .bsmod = 0, .acmod = 2};
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames, atsc);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 3);
+        CHECK((std::to_integer<std::uint8_t>(d.body[0]) & 0x04u) == 0);  // substream1_flag clear
+    }
+
+    SECTION("a describable substream does get its Table G.4 byte") {
+        auto service = five_one_service(16);
+        service.independent_substreams = 0x03;
+        service.associated_substreams[0] =
+            mpegts::SubstreamService{.present = true, .bsmod = 2, .acmod = 1};  // VI, mono
+        const auto file = mpegts::mux(
+            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames, atsc);
+        REQUIRE(file.has_value());
+        const auto d = first_descriptor(pmt_of(*file));
+        REQUIRE(d.body.size() == 4);
+        CHECK((std::to_integer<std::uint8_t>(d.body[0]) & 0x04u) != 0);
+        // reserved '1', substream_priority 0, service type 010 (VI),
+        // channels 000 (mono).
+        CHECK(std::to_integer<std::uint8_t>(d.body[3]) == 0x90);
+    }
+}
+
+TEST_CASE("the DVB profile is what a caller gets without asking", "[mpegts]") {
+    const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
+    const auto implicit =
+        mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 6,
+                     .service = five_one_service(16)},
+                    frames);
+    const auto explicit_dvb =
+        mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 6,
+                     .service = five_one_service(16)},
+                    frames, {.profile = mpegts::BroadcastProfile::kDvb});
+    REQUIRE(implicit.has_value());
+    REQUIRE(explicit_dvb.has_value());
+    CHECK(*implicit == *explicit_dvb);
+    CHECK(stream_type_of(pmt_of(*implicit)) == 0x06);
 }
 
 TEST_CASE("MPEG-TS continuity counters increment per PID and wrap at 16", "[mpegts]") {

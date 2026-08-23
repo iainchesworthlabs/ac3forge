@@ -217,15 +217,28 @@ machine-readable output and a single failure exit code. Users arrive with contai
   supplemental properties (ETSI TS 103 420 D.2), the E-AC-3 `AudioChannelConfiguration`, and
   `ceao` as a compatibility brand (`fragment.cpp` writes `iso6`/`cmfc` only).
   `ScannedStream::oba_complexity_index` already supplies the value.
-- [ ] **IO6 (S)** — MPEG-TS ATSC profile (A/52 Annex A descriptors, E-AC-3 type 0x87 with
+- [x] **IO6 (S)** — MPEG-TS ATSC profile (A/52 Annex A descriptors, E-AC-3 type 0x87 with
   0xCC) beside DVB, and the descriptor fields `scan` cannot yet supply — every optional
   identification field is left unset because `bsmod`/service granularity is not exposed. Pairs
-  with DC3 and DC5.
-- [ ] **IO7 (M)** — Object-layer strip without re-encoding: drop the EMDF/JOC skip-field
+  with DC3 and DC5. *Done: `MuxOptions::profile` / `ac3cli ts … atsc`, with `scan` extended to
+  expose `bsmod_present`, `dsurmod`, `mix_metadata`, `independent_substreams` and a per-substream
+  description for substreams 1–3, so both registries' `component_type`/`bsid`/`mixinfoexists`/
+  `substream1-3` carry real values. `mainid`/`asvc` are authoring values no elementary stream
+  carries and come from CLI options. Per-programme grouping — which dependents belong to which
+  independent substream — is still DC5's, so a non-zero independent substream is described by
+  its own bed alone.*
+- [x] **IO7 (M)** — Object-layer strip without re-encoding: drop the EMDF/JOC skip-field
   payload so a DD+ JOC stream yields a bit-identical-bed DD+ 5.1 rendition. Apple's HLS
   authoring requirements want exactly that as the `CHANNELS="6"` companion in the same
   `EXT-X-MEDIA` group (`hls.hpp` is single-rendition). Omit the container entirely rather than
-  leave an empty one — the fallback rule in `docs/concepts/atmos-joc.md`.
+  leave an empty one — the fallback rule in `docs/concepts/atmos-joc.md`. *Done:
+  `ac3::io::strip_objects` / `ac3cli strip-objects`, with `ac3cli fmp4 … fallback-51` writing
+  both renditions and `mp4::build_hls_master_playlist` taking a rendition list. The addbsi
+  object marker comes out with the container, so nothing downstream still signals an object
+  layer. Scope is the frame shape `ac3::emdf::walk_frame` maps — this project's own DD+ JOC
+  output; a frame carrying an object layer in another shape is refused rather than passed
+  through, which DC6 (widening the object parsers to real third-party content) is the natural
+  place to revisit.*
 - [ ] **IO8 (M)** — CLI scripting ergonomics: a documented exit-code scheme (every failure is 1
   today), `quiet`/progress, `help <command>` (the usage block is generated from the command
   table, so this is cheap), a man page and shell completions installed by `Packaging.cmake`.

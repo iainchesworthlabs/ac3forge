@@ -118,9 +118,23 @@ const mpegts::AudioTrack track{
     .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
     .channels = scanned->channels,
     .samples_per_frame = ac3::kSamplesPerFrame,
+    // What the PMT descriptor says about the service. Every field is a plain
+    // A/52 value ac3::io::scan already read off the bitstream.
+    .service = {.bsmod = scanned->bsmod,
+                .bsmod_present = scanned->bsmod_present,
+                .acmod = static_cast<int>(scanned->acmod),
+                .lfe = scanned->lfe,
+                .channels = scanned->channels,
+                .bsid = scanned->bsid,
+                .dsurmod = scanned->dsurmod,
+                .bit_rate_code = scanned->bit_rate_code,
+                .sample_rate_code = static_cast<int>(scanned->sample_rate),
+                .mix_metadata = scanned->mix_metadata,
+                .independent_substreams = scanned->independent_substreams},
 };
 
-const auto file = mpegts::mux(track, frames);
+const auto file = mpegts::mux(track, frames,
+                              {.profile = mpegts::BroadcastProfile::kAtsc});
 ```
 
 Full program: [`examples/mux_ts.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_ts.cpp).
@@ -133,15 +147,38 @@ remapping: a general-purpose multiplexer is out of scope, this is enough for a p
 `ffprobe` to recognize one AC-3/E-AC-3 programme.
 
 **Broadcast profile.** Two standards register AC-3/E-AC-3 for MPEG-TS carriage — ATSC and DVB —
-with different, non-interoperable signalling. This module implements DVB only: `stream_type` 0x06
-(audio carried as PES private data) plus the `AC3_descriptor` (tag `0x6A`) or
-`Enhanced_AC3_descriptor` (tag `0x7A`) DVB defines in ETSI EN 300 468 Annex D.3/D.5, chosen per
-this project's clean-room sourcing rules as the more completely specified of the two registries.
-Every optional identification field in either descriptor (`component_type`/`bsid`/`mainid`/`asvc`
-and, for the enhanced form, `substream1`-`3`) is left unset — `ac3::io::scan` doesn't expose the
-bsmod/full-service/associated-service granularity those fields carry, and a guessed value would
-be actively misleading where an absent optional field is not; a decoder still gets everything it
-needs to play the stream from the AC-3/E-AC-3 bitstream's own `bsmod`/`acmod`.
+with different, non-interoperable signalling, so a stream is written to satisfy one of them,
+never a bit of each. `MuxOptions::profile` picks which:
+
+| | `kDvb` (default) | `kAtsc` |
+|---|---|---|
+| AC-3 `stream_type` | `0x06`, PES private data | `0x81` (A/52 Annex A §A4.1) |
+| E-AC-3 `stream_type` | `0x06` | `0x87` (A/52 Annex G §G3.1) |
+| AC-3 descriptor | `AC3_descriptor`, tag `0x6A` (EN 300 468 Table D.6) | `AC-3_audio_stream_descriptor`, tag `0x81` (A/52 Table A4.1) |
+| E-AC-3 descriptor | `enhanced_AC-3_descriptor`, tag `0x7A` (Table D.7) | `E-AC-3_audio_descriptor`, tag `0xCC` (A/52 Table G.1) |
+| What identifies the stream | the descriptor tag — DVB registers no `stream_type` of its own | the `stream_type` — ATSC treats the descriptor as configuration detail |
+
+Both descriptors describe the same service in different bit layouts, so a caller supplies the
+underlying A/52 field values once, as `mpegts::ServiceInfo`, and the module maps them onto
+whichever registry's tables the profile calls for — EN 300 468 Tables D.1–D.8, A/52 Tables
+A4.2–A4.6 and G.2–G.6. That mapping is descriptor syntax, which is this module's job; reading
+those values off the bitstream is `ac3::io::scan`'s, which is why `ServiceInfo` is plain
+integers and `mpegts::` still links nothing from `ac3::forge`.
+
+`ac3::io::ScannedStream` supplies every one of them: `bsmod` (with `bsmod_present`, since
+Annex E only carries it inside `infomdate`), `acmod`, `lfe`, the rendered `channels`, `bsid`,
+`dsurmod`, `bit_rate_code`, `mix_metadata` for `mixinfoexists`, and `independent_substreams`
+with `associated_substreams` for the `substream1`–`3` fields. Two values are *not* in any
+bitstream, because they describe how services in a multiplex relate rather than what one stream
+contains — `mainid` and `asvc` — and those stay unset unless the caller supplies them
+(`ac3cli ts ... mainid=3`, `asvc=0x0A`). An unset optional field is omitted rather than
+zero-filled: a receiver already handles an absent one, where an invented main-service number
+links the wrong services.
+
+Two places where the standards' own tables cannot express something this project can read, and
+the field is omitted rather than approximated: A/52 Table G.5 reserves complete-main and
+emergency as *substream* service types, and Table G.6 reserves 1+1 as a substream channel mode,
+so an ATSC `substream1`–`3` field for such a substream is left out with its flag clear.
 
 ## Fragmented MP4/CMAF + HLS/DASH: `mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`
 
@@ -174,6 +211,24 @@ const auto master_playlist = mp4::build_hls_master_playlist(
 const auto dash_snippet = mp4::build_dash_adaptation_set(track, fragmented->media_segments);
 ```
 
+A master playlist can carry more than one audio rendition in the same `#EXT-X-MEDIA` group,
+which is what an Atmos asset needs (see the paired-rendition note below):
+
+```cpp
+const std::array<mp4::HlsRendition, 2> renditions{
+    mp4::HlsRendition{.track = joc_track,
+                      .segments = joc.media_segments,
+                      .media_playlist_uri = "audio.m3u8",
+                      .name = "Dolby Atmos",
+                      .channels_attribute = "12/JOC",
+                      .is_default = true},
+    mp4::HlsRendition{.track = bed_track,
+                      .segments = bed.media_segments,
+                      .media_playlist_uri = "bed51/audio.m3u8",
+                      .name = "5.1"}};
+const auto master_playlist = mp4::build_hls_master_playlist(renditions);
+```
+
 Full program: [`examples/mux_fmp4.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_fmp4.cpp).
 
 Both manifest flavors get the `CODECS`/`codecs` attribute right: `mp4::hls_codec_string` (and
@@ -194,6 +249,15 @@ documentation](https://docs.aws.amazon.com/medialive/latest/ug/feature-dolbyatmo
 itself never reads that TS 103 420 object-layer syntax — `HlsOptions::channels_attribute` is
 opaque to it, the same way `AudioTrack::codec_config` is; `ac3cli fmp4` is the caller that
 already has `oba_complexity_index` (it read it to build the `dec3` box) and supplies the string.
+
+**The paired 5.1 rendition.** Apple's authoring specification also asks that an Atmos rendition
+be accompanied by an equivalent 5.1 bitstream carrying `CHANNELS="6"` *in the same
+`#EXT-X-MEDIA` group*, so a client that cannot render the object layer selects the bed rather
+than the asset failing to play. Because JOC's bed already *is* the full mix, that companion
+needs no re-encode: [`ac3::io::strip_objects`](decoding.md#object-layer-strip) removes the
+object layer from the same stream and leaves bit-identical bed audio. `ac3cli fmp4 …
+fallback-51` writes both — the Atmos rendition where it always was, the stripped one under
+`bed51/`, and one master playlist listing both.
 
 The DASH snippet describes exact per-segment durations with a `SegmentTemplate`/`SegmentTimeline`
 (ISO/IEC 23009-1 §5.3.9.6) built from each segment's own duration, rather than one nominal
