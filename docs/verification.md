@@ -132,14 +132,15 @@ Two tiers, both gated in CI:
   with per-fixture floors quoted beside the measured numbers in the script. They also seed the
   decoder fuzzers, so mutation starts from third-party structure rather than only from this
   project's own encoder output.
-- **Fetched** — `tools/checks/verify_fate_interop.py` pulls seven SHA-256-pinned samples from
+- **Fetched** — `tools/checks/verify_fate_interop.py` pulls eight SHA-256-pinned samples from
   FFmpeg's FATE archive and holds each against FFmpeg's own decode. These are excerpts of
   commercially mastered programme material, encoded years ago by whatever encoder the mastering
   house used, and they exercise choices neither this project's encoder nor FFmpeg's makes:
   spectral extension at 128 and 256 kbit/s, 1536 kbit/s, a director's-commentary track, dither
-  in use, and the 3/1 acmod nothing in this tree can encode. Fetched at run time and never
-  committed — they are film excerpts, and pinning by hash is what keeps an upstream change from
-  quietly moving the numbers. Runs nightly in the `Interop` workflow.
+  in use, the 3/1 acmod nothing in this tree can encode, and an A/52 Annex E §E2.3.1.2
+  legacy-core delivery (below). Fetched at run time and never committed — they are film
+  excerpts, and pinning by hash is what keeps an upstream change from quietly moving the
+  numbers. Runs nightly in the `Interop` workflow.
 
 Wiring up the first tier found **five separate Annex E decoder defects** in a single sitting, on
 syntax that no stream this project can encode is able to reach — the three AHT-in-use flags read
@@ -150,7 +151,41 @@ before that. It is the clearest evidence on this page for why a self-consistent 
 independent transcription and a second decoder driven by the same encoder are all still not the
 same thing as reading somebody else's bitstream.
 
-Two divergences are recorded rather than resolved:
+One arrangement fetched third-party structure led to being **added** rather than recorded or
+gated: `the_great_wall_7.1.eac3` is not a plain E-AC-3 elementary stream. Each 4608-byte access
+unit is an AC-3 core syncframe (bsid 6, 3/2+LFE, no E-AC-3 header at all) followed by a
+2304-byte E-AC-3 DEPENDENT substream (chanmap 0x1A00: Ls/Rs replaced, Lrs/Rrs added) - a
+legacy-core-plus-extension delivery, and A/52 Annex E sanctions it explicitly: §E2.3.1.2 states
+"If an AC-3 bit stream is present in the E-AC-3 bit stream, then the AC-3 bit stream shall be
+processed as an independent substream assigned substream ID 0", and §E3.8.2's combining rule
+(bed locations, then each dependent's chanmap overwriting and extending them) does not care
+whether that independent substream happens to be AC-3 syntax or Annex E syntax - only that
+dependents "shall immediately follow the independent substream with which they are associated"
+and agree with it on sample rate and block count, both of which this arrangement satisfies (an
+AC-3 syncframe is always six audblks, matching Annex E's `numblkscod` 3).
+
+Before this, `ac3::io::scan()` and `ac3cli decode` both dispatched on the first frame's bsid
+alone: an AC-3 frame sent the stream down the AC-3 path, which read the core cleanly and then
+refused the following bsid-16 dependent as "valid AC-3 this decoder does not implement (bsid >
+8)". `ac3::split_access_units` had the same gap from the other direction - it read `strmtyp`
+out of byte 2's top two bits unconditionally, which in an AC-3 syncframe are crc1's, not a
+stream-type field, so a core's own checksum could accidentally look like `kIndependent` or
+`kDependent` regardless of what actually followed it.
+
+Both are fixed: `ac3::io::StreamKind` gained `kAc3CoreEac3Extension`, `ac3::io::scan()`
+recognises the alternating bsid pattern as one access unit per core-plus-dependents group, and
+`ac3::has_eac3_extension_substreams()` lets `ac3cli decode` route such a stream to
+`Eac3Decoder` even though its first frame is AC-3. There, `Eac3Decoder::decode_substream` reads
+an AC-3 frame through a private `ac3::FrameDecoder` and presents the result as substream
+(independent, 0), and `decode_access_unit_core`'s existing §E3.8.2 combining - unchanged - lays
+the dependent's channels over it exactly as it would a normal Annex E bed. Measured against
+FFmpeg's own decode of the real FATE sample: 41.69 dB on the worst of the eight rendered
+channels, in the same range as every other spectral-extension-free sample in this corpus. No
+codec-config box is defined for the arrangement (`build_codec_config_box` returns nothing for
+it), so container muxing refuses it explicitly rather than emit a `dac3`/`dec3` box that
+contradicts its own `mdat`; `ac3cli decode` remains the way to read one.
+
+Three divergences are recorded rather than resolved:
 
 - **FFmpeg mis-decodes DEE's stereo E-AC-3 stream.** It reports `exponent 25 is out-of-range`
   and `error decoding the audio block` on frame after frame; measured against the source WAV,
@@ -162,6 +197,15 @@ Two divergences are recorded rather than resolved:
   `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and writes L R C S. The audio agrees — channel 0 at
   48.93 dB, and channels 1 and 2 swapped — but the files cannot be diffed as they stand, so the
   FATE sample that exercises 3/1 is decode-and-parse only.
+- **`the_great_wall_7.1.eac3`'s OAMD payload does not decode.** FFmpeg reports the file as
+  "Dolby Digital Plus + Dolby Atmos", and its arrangement is the real Annex E structure
+  described above, but `ac3::oba::parse_payload` refuses several `object_element` fields
+  (`num_obj_info_blocks`, `sample_offset_code`, `b_object_not_active` among them) to exactly the
+  shape this project's own `AtmosEncoder` emits, and Dolby's commercial encoder does not produce
+  that same shape. This is a pre-existing, generic scope limit of the OAMD parser - equally true
+  of the same payload riding in an ordinary Annex E independent substream - not something the
+  legacy-core support above introduced or could fix on its own, so only the eight rendered audio
+  channels are gated.
 
 ## Where the oracles don't reach
 

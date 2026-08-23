@@ -153,21 +153,33 @@ SAMPLES = [
                 "gated on absolute difference",
         "max_diff_dbfs": -90.0,   # measured -102.33 dBFS loudest channel difference
     },
+    {
+        "path": "eac3/the_great_wall_7.1.eac3",
+        "sha256": "d698981ddc1c10e65d234dd6a02ff2b0f4c88787595c9d3e5adf7f097f2c9e50",
+        "note": "A/52 Annex E §E2.3.1.2 legacy-core delivery, not a plain E-AC-3 "
+                "elementary stream: each 4608-byte access unit is an AC-3 core "
+                "frame (bsid 6, 3/2+LFE) followed by a 2304-byte E-AC-3 "
+                "DEPENDENT substream (chanmap 0x1A00, Ls/Rs + Lrs/Rrs) that "
+                "extends the core to 7.1 per §E3.8.2 - the same rule as an "
+                "ordinary independent-plus-dependent pair, with the AC-3 frame "
+                "standing in as substream 0. No Annex E independent substream "
+                "appears anywhere in the file. FFmpeg reports this as "
+                "\"Dolby Digital Plus + Dolby Atmos\", but the OAMD payload the "
+                "dependent's block skip field carries does not decode here: "
+                "ac3::oba::parse_payload refuses several object_element fields "
+                "(num_obj_info_blocks, sample_offset_code, b_object_not_active "
+                "among them) to exactly the shape this project's own encoder "
+                "emits, and Dolby's commercial encoder does not produce that "
+                "same shape. That is a pre-existing, generic OAMD-parser scope "
+                "limit - unrelated to the legacy-core arrangement, and equally "
+                "true of this same payload riding in an ordinary Annex E "
+                "independent substream - so only the audio channels are gated.",
+        "min_snr_db": 32.0,       # measured 41.69 dB worst channel (Rs)
+    },
 ]
 
 # Considered and left out, so the reasoning is not lost and nobody re-adds it
 # expecting it to work:
-#
-#   eac3/the_great_wall_7.1.eac3
-#     Not an E-AC-3 elementary stream. Each 4608-byte access unit is an AC-3
-#     core frame (bsid 6, 3/2+LFE, no E-AC-3 header at all) followed by a
-#     2304-byte E-AC-3 DEPENDENT substream - a legacy-core-plus-extension
-#     delivery. `ac3cli decode` dispatches on the first frame's bsid, reads
-#     the AC-3 core path, and then refuses the bsid-16 dependent frame that
-#     follows it. Splitting the halves confirms it: the core alone decodes
-#     cleanly here as 5.1 AC-3, and ffprobe reads it as ac3. Supporting the
-#     arrangement is a feature, not a fix, so it is recorded rather than
-#     gated.
 #
 #   ac3/diatonis_invisible_order_anfos_ac3-small.wav, ac3/mp3ac325-4864-small.ts
 #     AC-3 inside a WAV and inside an MPEG-TS. `ac3cli decode` takes

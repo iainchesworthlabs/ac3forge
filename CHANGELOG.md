@@ -39,12 +39,24 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   FFmpeg's own decode, with per-fixture floors quoted beside their measured numbers; the one
   fixture FFmpeg cannot read is scored against the source WAV instead. The same six streams seed
   the decoder fuzzers, so mutation starts from real third-party structure rather than only from
-  this project's own encoder output. A new nightly `Interop` workflow widens the corpus to seven
+  this project's own encoder output. A new nightly `Interop` workflow widens the corpus to eight
   SHA-256-pinned FFmpeg FATE samples — commercially mastered material exercising spectral
-  extension, 1536 kbit/s, a commentary track, dither, and the 3/1 acmod nothing in this tree can
-  encode — fetched at run time rather than committed. `compare_wav.py` gains `--max-diff-dbfs`
-  for near-silent material, where an SNR ratio cannot distinguish an inaudible disagreement from
-  a defect.
+  extension, 1536 kbit/s, a commentary track, dither, the 3/1 acmod nothing in this tree can
+  encode, and (see below) an A/52 Annex E §E2.3.1.2 legacy-core delivery — fetched at run time
+  rather than committed. `compare_wav.py` gains `--max-diff-dbfs` for near-silent material,
+  where an SNR ratio cannot distinguish an inaudible disagreement from a defect.
+- **AC-3 core plus E-AC-3 dependent decode support** (A/52 Annex E §E2.3.1.2). One of the
+  fetched FATE samples, `the_great_wall_7.1.eac3`, turned out not to be a gap in `decode` but a
+  real arrangement the standard sanctions: "If an AC-3 bit stream is present in the E-AC-3 bit
+  stream, then the AC-3 bit stream shall be processed as an independent substream assigned
+  substream ID 0." `ac3::io::scan` recognises the alternating AC-3-core/E-AC-3-dependent pattern
+  as one access unit (a new `StreamKind::kAc3CoreEac3Extension`), and `ac3cli decode` routes such
+  a stream to `Eac3Decoder`, which reads the core through a private `FrameDecoder` and combines
+  it with its dependent exactly as §E3.8.2 combines an ordinary independent-plus-dependent pair.
+  Verified against FFmpeg's own decode of the real FATE sample: 41.69 dB on the worst of the
+  eight rendered channels. No ISOBMFF codec-config box is defined for the arrangement, so
+  `dac3`/`dec3` muxing refuses it explicitly rather than emit a header that contradicts its own
+  `mdat`.
 - **A reference-mode end-to-end gate** (roadmap `VX10`). Since 0.9.0 flipped both transform
   defaults to the fast paths, every CI gate that touched a real stream ran in performance mode
   and the normative direct forms — the oracle each fast path is validated against — were covered

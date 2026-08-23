@@ -27,6 +27,10 @@ namespace ac3::io {
 // size+FourCC header, which is the container muxer's job to write (it is the
 // one that knows the ISOBMFF box-nesting mechanics; see mp4::mux()). The
 // FourCC itself is implied by `stream.kind`: kAc3 -> 'dac3', kEac3 -> 'dec3'.
+//
+// Empty for kAc3CoreEac3Extension, which has no box defined for it - see the
+// function's own comment. A caller that gets an empty vector must not mux the
+// stream; there is no header that would describe it truthfully.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_codec_config_box(
     const ScannedStream& stream);
 
