@@ -3,7 +3,7 @@
 #include <array>
 #include <charconv>
 #include <cstddef>
-#include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -267,9 +267,31 @@ bool parse_timecode(std::string_view text, TimeCodeCoarse& coarse, TimeCodeFine&
     return true;
 }
 
+// Plain concatenation, not std::format, for the reason version.cpp already
+// gives: <format> is not available on every libc++ this library builds
+// against. It bites on macOS too, where the wheels are built against a
+// deployment target of 11.0 and libc++'s type-erased formatting path pulls in
+// a floating-point to_chars that is only available from 13.3 - a std::format
+// call taking nothing but ints still instantiates it.
 std::string format_timecode(const TimeCodeCoarse& coarse, const TimeCodeFine& fine) {
-    return std::format("{:02}:{:02}:{:02}:{:02}.{}", coarse.hours, coarse.minutes,
-                       coarse.eight_seconds * 8 + fine.seconds, fine.frames, fine.sixty_fourths);
+    const auto two_digits = [](int value) {
+        std::string out;
+        if (value < 10) {
+            out += '0';
+        }
+        out += std::to_string(value);
+        return out;
+    };
+    std::string out = two_digits(coarse.hours);
+    out += ':';
+    out += two_digits(coarse.minutes);
+    out += ':';
+    out += two_digits(coarse.eight_seconds * 8 + fine.seconds);
+    out += ':';
+    out += two_digits(fine.frames);
+    out += '.';
+    out += std::to_string(fine.sixty_fourths);
+    return out;
 }
 
 }  // namespace ac3::meta

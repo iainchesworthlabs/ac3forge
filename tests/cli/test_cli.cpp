@@ -453,6 +453,120 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
 // so a malformed token is refused the same way regardless of which command
 // carries it, and 'encode' (Needs::kNothing) lets this run without a real
 // capture device, the same way the offset= tests above do.
+TEST_CASE("the bit stream information tokens reach the wire and round trip",
+          "[cli][bsi]") {
+    // The library-level round trips live in tests/meta/test_bsi.cpp; what is
+    // only reachable here is the GRAMMAR - whether a spelling a person would
+    // actually type parses at all. That is a distinct failure: `extpgmscl=+3`
+    // parsed everywhere except the command line, because std::from_chars does
+    // not accept the leading + a signed decibel figure reads with.
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "bsi_in.wav";
+    const auto channels = make_tone_channels(6, 3000, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    SECTION("AC-3: the informational fields and Annex D come back off the wire") {
+        const auto out_path = dir / "bsi_annexd.ac3";
+        const auto log = dir / "bsi_annexd.log";
+        fs::remove(out_path);
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" 384 51 dmixmod=ltrt ltrtcmixlev=-1.5 lorosurmixlev=off "
+                            "dsurexmod=ex adconvtyp=hdcd bsmod=vi mixlevel=105 roomtyp=large "
+                            "copyright origbs=off langcod",
+                        log) == 0);
+        REQUIRE(fs::exists(out_path));
+
+        const auto decode_log = dir / "bsi_annexd_decode.log";
+        REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" +
+                            (dir / "bsi_annexd.wav").string() + "\"",
+                        decode_log) == 0);
+        const auto text = read_log(decode_log);
+        INFO(text);
+        // dmixmod= alone should have selected bsid 6: on AC-3 there is nowhere
+        // else for a preferred downmix to go.
+        CHECK(text.find("bsid 6") != std::string::npos);
+        CHECK(text.find("visually impaired") != std::string::npos);
+        CHECK(text.find("105 dB SPL") != std::string::npos);
+        CHECK(text.find("large room") != std::string::npos);
+        CHECK(text.find("copyright asserted") != std::string::npos);
+        CHECK(text.find("not the original bit stream") != std::string::npos);
+        CHECK(text.find("Dolby Surround EX") != std::string::npos);
+        CHECK(text.find("A/D converter: HDCD") != std::string::npos);
+    }
+
+    SECTION("AC-3: a time code and Annex D are refused together") {
+        const auto out_path = dir / "bsi_clash.ac3";
+        const auto log = dir / "bsi_clash.log";
+        fs::remove(out_path);
+        CHECK(run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                          "\" 384 51 annexd timecode=01:02:03",
+                      log) != 0);
+        CHECK_FALSE(fs::exists(out_path));
+    }
+
+    SECTION("AC-3: a time code alone round trips through both halves") {
+        const auto out_path = dir / "bsi_timecode.ac3";
+        const auto log = dir / "bsi_timecode.log";
+        fs::remove(out_path);
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" 256 51 timecode=17:43:46:21.39",
+                        log) == 0);
+        const auto decode_log = dir / "bsi_timecode_decode.log";
+        REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" +
+                            (dir / "bsi_timecode.wav").string() + "\"",
+                        decode_log) == 0);
+        const auto text = read_log(decode_log);
+        INFO(text);
+        CHECK(text.find("timecode: 17:43:46:21.39") != std::string::npos);
+    }
+
+    SECTION("E-AC-3: the mixmdate depth and infomdat come back off the wire") {
+        const auto out_path = dir / "bsi_mixdepth.ec3";
+        const auto log = dir / "bsi_mixdepth.log";
+        fs::remove(out_path);
+        // extpgmscl=+3 is the spelling this section exists for; pgmscl=-6 is
+        // the other sign, and mute is the third form.
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" 448 none 51 mixmeta pgmscl=-6 extpgmscl=+3 mixdef=ext "
+                            "premixcmp=compr:local:2 extmix=0,2,0,5,5,off,7 auxmix=1,off "
+                            "speechmix=9,3:1,4:5 blkmixcfg=3,-,7,-,-,31 bsmod=commentary "
+                            "dsurexmod=pliiz mixlevel=98 roomtyp=small sourcefscod",
+                        log) == 0);
+        REQUIRE(fs::exists(out_path));
+
+        const auto decode_log = dir / "bsi_mixdepth_decode.log";
+        REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" +
+                            (dir / "bsi_mixdepth.wav").string() + "\"",
+                        decode_log) == 0);
+        const auto text = read_log(decode_log);
+        INFO(text);
+        CHECK(text.find("commentary") != std::string::npos);
+        CHECK(text.find("Pro Logic IIz") != std::string::npos);
+        CHECK(text.find("98 dB SPL") != std::string::npos);
+        CHECK(text.find("programme scale: -6 dB") != std::string::npos);
+        CHECK(text.find("external programme scale: +3 dB") != std::string::npos);
+        CHECK(text.find("mixdef 3") != std::string::npos);
+        CHECK(text.find("per-block mixing configuration") != std::string::npos);
+        CHECK(text.find("twice the coded rate") != std::string::npos);
+    }
+
+    SECTION("a value outside its field is refused rather than truncated") {
+        const auto out_path = dir / "bsi_bad.ac3";
+        const auto log = dir / "bsi_bad.log";
+        for (const auto* token : {"mixlevel=120", "bsmod=8", "roomtyp=huge",
+                                  "timecode=25:00:00", "pgmscl=+20", "blkmixcfg=1,2,3",
+                                  "extmix=0,2,0,5,5,16", "paninfo=240",
+                                  "premixcmp=dynrng:external:9"}) {
+            fs::remove(out_path);
+            INFO(token);
+            CHECK(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                              "\" 448 none 51 " + token,
+                          log) != 0);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+    }
+}
+
 TEST_CASE("capture2= rejects malformed tokens", "[cli][capture2]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "capture2_parse_in.wav";

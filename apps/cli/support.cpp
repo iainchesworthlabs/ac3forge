@@ -112,6 +112,12 @@ bool parse_pgm_scale(std::string_view text, int& out) {
         out = ac3::meta::kPgmScaleMute;
         return true;
     }
+    // A leading + is how a signed decibel figure reads on a mixing desk and
+    // in this option's own documentation, but from_chars (parse_double) does
+    // not accept one - it is not part of the grammar C++ gives it.
+    if (text.starts_with("+")) {
+        text.remove_prefix(1);
+    }
     double db = 0.0;
     if (!parse_double(text, db) || db < -50.0 || db > 12.0) {
         return false;
