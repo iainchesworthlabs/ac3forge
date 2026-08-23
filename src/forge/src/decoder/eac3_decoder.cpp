@@ -1151,18 +1151,21 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // the shared channel allocating against an offset nobody
                 // sent.
                 //
-                // Spec-derived and unverified, deliberately flagged as such:
-                // nothing in reach emits snroffststr != 0 at all. Neither
-                // FFmpeg 8.0.1's encoder nor Dolby's DEE 6.5.4 ever does
-                // (checked over tests/golden/external-baseline/, every frame
-                // of both E-AC-3 legs), and when this project's own encoder
-                // was made to emit strategies 0x1 and 0x2, FFmpeg's decoder
-                // refused both - with and without an explicit block-0
-                // snroffste - so the block-level element's shape is a
-                // genuinely open question with no oracle to settle it. What
-                // is certain is that the previous reading could not have been
-                // right; this one at least matches the AC-3 group it is
-                // hoisted from.
+                // This is what tools/references/eac3_parse.py - the
+                // independent transcription this project checks itself
+                // against - has always read here, so the two now agree.
+                //
+                // Still unverified against a real stream, deliberately
+                // flagged as such: nothing in reach emits snroffststr != 0 at
+                // all. Neither FFmpeg 8.0.1's encoder nor Dolby's DEE 6.5.4
+                // ever does (checked over tests/golden/external-baseline/,
+                // every frame of both E-AC-3 legs), and when this project's
+                // own encoder was made to emit strategies 0x1 and 0x2 to the
+                // reading above, FFmpeg's decoder refused both - with and
+                // without an explicit block-0 snroffste - so the block-level
+                // element's shape is an open question no oracle can settle.
+                // What is certain either way is that reading nchans values
+                // and no coupling one, as this did, cannot be right.
                 if (frm->cplinu[static_cast<std::size_t>(blk)]) {
                     fsnroffst[static_cast<std::size_t>(kCplStream)] =
                         static_cast<int>(r.read(4));

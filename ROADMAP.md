@@ -65,9 +65,11 @@ both encoders decide from content rather than from the bit rate.
   `tests/golden/external-baseline/`. The AC-3 LFE's own measured `+4` (PR #195) stays as the one
   per-channel departure. On E-AC-3 `snroffststr` 0x1 and 0x2 were both emitted and FFmpeg refused
   both, with and without an explicit block-0 `snroffste`, so this project's reading of Table
-  E1.4's block-level SNR element is wrong somewhere and no encoder in reach emits either strategy
-  to arbitrate from — the encoder stays on 0x0. The decoder's own 0x2 path was fixed in passing
-  (it read no `cplfsnroffst` at all). What is left genuinely untried is the per-BLOCK dimension,
+  E1.4's block-level SNR element disagrees with FFmpeg's somewhere, and no encoder in reach emits
+  either strategy to arbitrate from — the encoder stays on 0x0. Note that the emitted layout
+  matched `tools/references/eac3_parse.py`, this project's independent transcription, so the two
+  readings inside the project agree and it is FFmpeg that differs. The decoder's own 0x2 path was
+  brought into line with that transcription in passing (it read no `cplfsnroffst` at all). What is left genuinely untried is the per-BLOCK dimension,
   which on E-AC-3 needs a bit allocation per block rather than per frame — six times the work in
   the rate search's innermost loop — and has its own measurement to justify that.
 - [x] **EQ3 (S)** — `bamode=1` for E-AC-3. Done: `baie` plus the eleven parameter bits in block
