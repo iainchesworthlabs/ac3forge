@@ -89,15 +89,16 @@ both encoders decide from content rather than from the bit rate.
   two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
   region's fit against the decoder's own rank-one reconstruction, and the energy share above the
   extension frequency. Re-measured on real programme material (six excerpts of a 5.1 theatrical
-  mix, 32–96 kbit/s per channel, ViSQOL MOS-LQO beside SNR): +0.13 MOS and +0.34 dB against the
-  rate-only policy, better in 23 of 36 cells, no (layout, rate) point regressing. The extension
+  mix, 32–96 kbit/s per channel, ViSQOL MOS-LQO beside SNR): +0.11 MOS and +0.36 dB against the
+  rate-only policy, better in 19 of 36 cells, no (layout, rate) point regressing, and the
+  committed fixtures' own landscape numbers unchanged. The extension
   ceiling now moves with content (110 kbit/s per channel where the top end is empty, 55 where it
   is not) instead of sitting at a fixed 56 measured as SNR on fixtures with nothing above
   8.1 kHz. Band edges themselves are still rate-only — `EQ6`/`EQ13`.
 - [x] **EQ10 (M)** — Enhanced coupling and transient pre-noise: measured, and labelled rather
   than made auto-worthy — for two different reasons. Enhanced coupling is the better-sounding of
   the two coupling reconstructions on real material at every (layout, rate) point tried, worth
-  +0.42 MOS-LQO at 64 kbit/s per channel and +0.31 at 77 against `auto`'s own score; every trend
+  +0.54 MOS-LQO at 96 kbit/s stereo through +0.16 at 384 kbit/s 5.1; every trend
   row calls it a loss because every trend row is SNR. It stays out of `auto` because FFmpeg
   misreads §E3.5's syntax as a corrupt frame, and `auto` has to stay decodable. Transient
   pre-noise does not pay at all: over exactly the samples it touches it measures 6.5–24 dB worse

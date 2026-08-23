@@ -666,7 +666,7 @@ struct CoeffView {
     }
 };
 
-// What coupling_fit returns for independent channels of equal level - the
+// What CouplingContent::fit comes to for independent channels of equal level -
 // point the rate ceilings above were themselves measured at, since both
 // fixtures they were measured on are decorrelated above 8 kHz. Content that
 // fits better than this has headroom the rate-only policy never knew about.
@@ -701,8 +701,18 @@ struct CoeffView {
 // 1.0 is a perfect fit - every channel already a scalar multiple of the sum
 // in every band, which is what near-mono material looks like above 8 kHz and
 // exactly the case a rate-only policy cannot see.
-[[nodiscard]] double coupling_fit(const CoeffView& view, int nfchans,
-                                  const BandLayout& bands) {
+struct CouplingContent {
+    // 1.0 is a perfect fit; see coupling_fit_reference for what independent
+    // channels give.
+    double fit = 0.0;
+    // The region's share of the frame's coded energy. Near zero means
+    // coupling has nothing to damage - and something to save anyway, since
+    // an empty band still costs exponents per channel.
+    double energy_share = 0.0;
+};
+
+[[nodiscard]] CouplingContent coupling_content(const CoeffView& view, int nfchans,
+                                               const BandLayout& bands, int endmant) {
     double energy = 0.0;
     double residual = 0.0;
     std::array<double, 256> summed{};
@@ -736,14 +746,21 @@ struct CoeffView {
             }
         }
     }
-    if (!(energy > 0.0)) {
-        // Nothing up here at all. Coupling neither saves nor costs anything,
-        // and calling that a perfect fit would let it in at any rate on the
-        // strength of silence - so it reads as the neutral, decorrelated
-        // answer and the rate policy decides alone.
-        return coupling_fit_reference(nfchans);
+    double total = 0.0;
+    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int ch = 0; ch < nfchans; ++ch) {
+            const auto& bins = view.at(ch, blk);
+            for (int bin = 0; bin < endmant; ++bin) {
+                total += bins[static_cast<std::size_t>(bin)] * bins[static_cast<std::size_t>(bin)];
+            }
+        }
     }
-    return 1.0 - residual / energy;
+    CouplingContent out;
+    out.energy_share = total > 0.0 ? energy / total : 0.0;
+    // Nothing up here at all: no fit to speak of either way, so it reads as
+    // the neutral decorrelated answer and energy_share carries the decision.
+    out.fit = energy > 0.0 ? 1.0 - residual / energy : coupling_fit_reference(nfchans);
+    return out;
 }
 
 // Two things about the extension region that decide whether synthesis can
@@ -869,22 +886,22 @@ inline constexpr double kCouplingFitGain = 1.5;
 //
 // Coupling replaces every coupled channel's own coefficients above the
 // coupling frequency with one shared channel scaled per band. What that
-// leaves is coupling_fit, and on real programme material it is not enough:
-// measured across six excerpts of a 5.1 theatrical mix, standard coupling
-// scored below not coupling at every (layout, rate) point tried - -0.18
-// MOS-LQO at 96 kbit/s stereo, -0.08 at 128, -0.20 at 192, 0.00 at 192
+// leaves is CouplingContent::fit, and on real programme material it is not
+// enough: measured across six excerpts of a 5.1 theatrical mix, standard
+// coupling scored below not coupling at every (layout, rate) point tried -
+// -0.18 MOS-LQO at 96 kbit/s stereo, -0.08 at 128, -0.20 at 192, 0.00 at 192
 // kbit/s 5.1, -0.01 at 256, -0.29 at 384, and -0.13 at 32 kbit/s per channel,
 // the lowest rate this encoder will take. Whole-clip fits there run 0.11 to
 // 0.93, and even the best of them lost.
 //
-// So the threshold is not a tuning knob with a comfortable margin - it is the
-// line above which the region genuinely IS a scalar multiple of its own sum,
-// which is the only case the measurements leave standing. 0.95 is a residual
-// of 5% of the region's energy, about 13 dB down. Frames like that exist in
-// real material (10-25% of frames in the dialogue-led and wide excerpts clear
-// it) and the point of testing per frame rather than per clip is to couple
-// exactly those and leave the rest alone - which is what a rate-only policy,
-// applying one answer to every frame at a given bitrate, could never do.
+// So this is not a tuning knob with a comfortable margin - it is the line
+// above which the region genuinely IS a scalar multiple of its own sum, which
+// is the only case those measurements leave standing. 0.99 is a residual of
+// 1% of the region's energy, 20 dB down. Frames like that do exist in real
+// material - the dialogue-led and wide excerpts clear it on a tenth of their
+// frames - and testing per frame rather than per clip is what lets `auto`
+// couple exactly those and leave the rest alone, which a rate-only policy
+// applying one answer to every frame at a given bitrate could never do.
 inline constexpr double kCouplingMinFit = 0.99;
 
 // And how wide the region has to be before coupling is worth having at all.
@@ -901,23 +918,51 @@ inline constexpr double kCouplingMinFit = 0.99;
 // This is why coupling all but disappears from `auto` now: measured on the
 // real excerpts, `auto` reached for it at four of the six (layout, rate)
 // points and every one of those four was a region synthesis had already
-// squeezed. Removing it is worth +0.13 MOS-LQO on its own.
+// squeezed.
 inline constexpr int kCouplingMinSubBands = 4;
+
+// Below this share of the frame's coded energy the coupling region counts as
+// empty, and neither test above applies - see auto_cplbegf.
+//
+// This one is a boundary, not a plateau: the real excerpts and the
+// band-limited fixtures are only about an order of magnitude apart in what
+// their coupling region carries, because spectral extension leaves coupling a
+// narrow slice whose share is small on any material. Measured against both,
+// 1e-4 is where the fixtures' landscape numbers hold (30.97 -> 31.61 dB at
+// 256 kbit/s 5.1, against 31.63 before any of this) while the real excerpts
+// keep essentially all of their gain (+0.114 MOS-LQO against +0.133 with no
+// empty-region case at all, and no (layout, rate) point regressing either
+// way). Dropping the case entirely is worth those 0.019 MOS and costs 0.66 dB
+// on the recorded series; that trade was made deliberately in the other
+// direction, since 0.019 is inside the noise of a 36-cell ViSQOL average and
+// 0.66 dB is not.
+inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
 
 // Where coupling should start when `auto` is choosing, or kToolOff when it
 // should not be used at all - default_cplbegf's rate answer, against the
 // ceiling this frame's content has earned rather than a fixed one.
-[[nodiscard]] int auto_cplbegf(std::uint32_t bitrate_kbps, int nfchans, double fit,
-                               int subbands) {
+[[nodiscard]] int auto_cplbegf(std::uint32_t bitrate_kbps, int nfchans,
+                               const CouplingContent& coupling, int subbands) {
     const int per_channel = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
-    if (per_channel >= coupling_rate_ceiling(nfchans, fit)) {
+    if (per_channel >= coupling_rate_ceiling(nfchans, coupling.fit)) {
         return kToolOff;
     }
-    // ...and only where the region actually couples, and is worth coupling.
-    // This is `auto`'s policy, not a limit: the `cpl` token still asks for
-    // coupling at any rate, any fit and any width.
-    if (fit < kCouplingMinFit || subbands < kCouplingMinSubBands) {
-        return kToolOff;
+    // A region with nothing in it is the one case that needs neither test. It
+    // cannot be damaged by being described - there is nothing there to
+    // describe wrongly - and it still costs a set of exponents per channel
+    // that coupling collapses into one, so coupling it is close to free and
+    // pays whatever the fit says. This is what the checked-in fixtures are:
+    // reference_51.wav carries 99.9% of its loudest channel's energy below
+    // 100 Hz, and coupling is worth 1.3 dB on it even squeezed to two
+    // sub-bands by spectral extension.
+    if (coupling.energy_share >= kCouplingEmptyRegionShare) {
+        // ...otherwise only where the region actually couples, and is wide
+        // enough to be worth coupling. This is `auto`'s policy, not a limit:
+        // the `cpl` token still asks for coupling at any rate, any fit and
+        // any width.
+        if (coupling.fit < kCouplingMinFit || subbands < kCouplingMinSubBands) {
+            return kToolOff;
+        }
     }
     return cplbegf_geometry(bitrate_kbps, nfchans);
 }
@@ -2116,7 +2161,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     //
     // Under `auto` the rate is again only half of it. What coupling costs
     // this frame is how badly one shared channel plus per-band scale factors
-    // describe its coupling region, and coupling_fit measures exactly that -
+    // describe its coupling region, and coupling_content measures exactly that -
     // at the geometry the decision would actually use, so the number belongs
     // to the region being decided rather than to a nominal one.
     const int cpl_candidate_begf =
@@ -2124,20 +2169,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                         : cplbegf_geometry(tool_reference_kbps, nfchans),
                    0, 15);
     const int cpl_candidate_endf = spx.in_use ? derived_cplendf(spx.begf) : 15;
-    double cpl_fit = coupling_fit_reference(nfchans);
+    CouplingContent cpl_content{.fit = coupling_fit_reference(nfchans), .energy_share = 0.0};
     if (cpl_candidate_endf + 2 >= cpl_candidate_begf) {
         const auto candidate_structure = kDefaultCplBandStructure;
         const int candidate_subbnd = 3 + cpl_candidate_endf - cpl_candidate_begf;
-        cpl_fit = coupling_fit(
+        cpl_content = coupling_content(
             content, nfchans,
             group_bands(kCplFirstBin + kCplBinsPerSubBand * cpl_candidate_begf,
                         candidate_subbnd, kCplBinsPerSubBand,
                         std::span{candidate_structure}.first(
-                            static_cast<std::size_t>(candidate_subbnd))));
+                            static_cast<std::size_t>(candidate_subbnd))),
+            kCplFirstBin + kCplBinsPerSubBand * (cpl_candidate_endf + 3));
     }
     const bool want_coupling =
         config_.auto_tools
-            ? auto_cplbegf(tool_reference_kbps, nfchans, cpl_fit,
+            ? auto_cplbegf(tool_reference_kbps, nfchans, cpl_content,
                            3 + cpl_candidate_endf - cpl_candidate_begf) != kToolOff
             : config_.coupling;
     cpl.in_use = want_coupling && static_cast<std::uint8_t>(config_.acmod) > 0x1 && !any_switched;
@@ -2147,8 +2193,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     //
     // Not because it sounds worse. Measured on six excerpts of a real 5.1
     // theatrical mix it is ahead of standard coupling on ViSQOL MOS-LQO at
-    // every (layout, rate) point tried, and worth +0.42 against `auto`'s own
-    // score at 64 kbit/s per channel and +0.31 at 77 - which is the opposite
+    // every (layout, rate) point tried, by +0.54 MOS-LQO at 96 kbit/s stereo,
+    // +0.31 at 128, +0.18 at 192, and +0.78 / +0.55 / +0.16 at 192 / 256 /
+    // 384 kbit/s 5.1 - which is the opposite
     // of what every SNR trend row has recorded, and the point: a
     // phase-restoring reconstruction built on a full DFT does not preserve
     // the waveform, it preserves what the waveform sounded like.

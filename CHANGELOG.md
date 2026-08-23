@@ -27,11 +27,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
   Measured on real programme material rather than the checked-in fixtures — six 12 s excerpts of
   a 5.1 theatrical mix, six (layout, rate) points from 32 to 96 kbit/s per channel, scored
-  through this project's own decoder with ViSQOL MOS-LQO beside SNR — `auto` comes out +0.13
-  MOS-LQO and +0.34 dB SNR against the rate-only policy, better in 23 of 36 cells and worse in
-  one, with no (layout, rate) point regressing. The fixed 56 it replaces was measured as marginal
-  SNR on fixtures carrying 99.9% of their energy below 8.1 kHz, which is below where either tool
-  operates.
+  through this project's own decoder with ViSQOL MOS-LQO beside SNR — `auto` comes out +0.11
+  MOS-LQO and +0.36 dB SNR against the rate-only policy, better in 19 of 36 cells and worse in
+  six, none of those six by more than 0.03 except one cell that moves the same way with or
+  without this change. No (layout, rate) point regresses: the two biggest gains are +0.32
+  MOS-LQO at 128 kbit/s stereo and +0.16 at 384 kbit/s 5.1. The fixed 56 it replaces was measured
+  as marginal SNR on fixtures carrying 99.9% of their energy below 8.1 kHz, which is below where
+  either tool operates; those fixtures' own landscape numbers are unchanged by this (32.05 dB at
+  192 kbit/s stereo against 31.98 before, 31.61 at 256 kbit/s 5.1 against 31.63).
 
   `tools=auto` output stays decodable by FFmpeg, and the tool tokens (`cpl`, `spx`, `aht`,
   `cpl+ecpl`, `tpn`, …) are unchanged — a caller who names a tool set still gets exactly it.
@@ -44,8 +47,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `docs/library/encoding-eac3.md`.
 
   Enhanced coupling is the better-sounding of the two coupling reconstructions on real material —
-  ahead of standard coupling on MOS-LQO at every (layout, rate) point tried, and worth +0.42
-  against `auto`'s own score at 64 kbit/s per channel and +0.31 at 77. Every trend row records it
+  ahead of standard coupling on MOS-LQO at every (layout, rate) point tried, by +0.54 MOS-LQO at 96 kbit/s stereo, +0.31 at 128 and +0.18 at 192, and +0.78 / +0.55 / +0.16 at 192 / 256 / 384 kbit/s 5.1.
+  Every trend row records it
   as a net loss because every trend row is SNR, and a phase-restoring reconstruction built on a
   full DFT does not preserve the waveform. What keeps it out of `auto` is that FFmpeg's Annex E
   parser has no model of §E3.5 and misreads such a stream as a corrupt frame; `cpl+ecpl` still

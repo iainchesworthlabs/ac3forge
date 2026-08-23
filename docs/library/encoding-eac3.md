@@ -101,10 +101,12 @@ layout, and have their own CI legs. Neither is in `auto`'s set, for different re
 
 **Enhanced coupling (§E3.5)** is not a quality problem. Measured on real programme material —
 six 12 s excerpts of a 5.1 theatrical mix at six (layout, rate) points — it scores *above*
-standard coupling on ViSQOL MOS-LQO at every one of them, and letting `auto` reach for it was
-worth +0.42 MOS at 64 kbit/s per channel and +0.31 at 77. Every SNR trend row records it as a
-loss, and both are true: a phase-restoring reconstruction built on a full DFT does not preserve
-the waveform, it preserves what the waveform sounded like.
+standard coupling on ViSQOL MOS-LQO at every one of them: +0.54 MOS-LQO at 96 kbit/s stereo, +0.31 at 128 and +0.18 at 192, and +0.78 / +0.55 / +0.16 at 192 / 256 / 384 kbit/s 5.1. Every SNR trend
+row records it as a loss, and both are true: a phase-restoring reconstruction built on a full DFT
+does not preserve the waveform, it preserves what the waveform sounded like. (Against `auto`'s
+own set the margin is smaller — once spectral extension is chosen properly it has already taken
+most of the band coupling would have worked on — which is a reason to read the two coupling
+reconstructions against each other rather than against the whole tool set.)
 
 What rules it out is interoperability. FFmpeg's Annex E parser has no model of §E3.5's syntax at
 all — it does not decline an enhanced-coupling stream, it misreads it and reports a corrupt
