@@ -69,9 +69,10 @@ both encoders decide from content rather than from the bit rate.
   either strategy to arbitrate from — the encoder stays on 0x0. Note that the emitted layout
   matched `tools/references/eac3_parse.py`, this project's independent transcription, so the two
   readings inside the project agree and it is FFmpeg that differs. The decoder's own 0x2 path was
-  brought into line with that transcription in passing (it read no `cplfsnroffst` at all). What is left genuinely untried is the per-BLOCK dimension,
-  which on E-AC-3 needs a bit allocation per block rather than per frame — six times the work in
-  the rate search's innermost loop — and has its own measurement to justify that.
+  brought into line with that transcription in passing (it read no `cplfsnroffst` at all). What
+  is left genuinely untried is the per-BLOCK dimension, which on E-AC-3 needs a bit allocation
+  per block rather than per frame — six times the work in the rate search's innermost loop — and
+  has its own measurement to justify that.
 - [x] **EQ3 (S)** — `bamode=1` for E-AC-3. Done: `baie` plus the eleven parameter bits in block
   0 and one bit in each of the other five, 17 a frame, buying `dbpbcod` 3. Swept 0–3 at 96/128/192
   stereo and 192/256/384/640 5.1: 3 wins every cell, +1.2 to +3.0 dB SNR over the `bamode=0`
