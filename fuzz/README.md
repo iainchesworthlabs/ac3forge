@@ -19,11 +19,12 @@ it, so everything here requires upstream Clang - specifically the
 has never exercised, so it is deliberately out of scope; see
 `fuzz/CMakeLists.txt`'s `CMAKE_CXX_COMPILER_FRONTEND_VARIANT` guard).
 
-`.github/toolchain/03-llvm-toolchain.sh` installs the Clang compiler itself
-but not `libclang-rt-<ver>-dev` (the ASan/UBSan/libFuzzer runtime archives):
-none of `ci.yml`'s other Clang legs link a sanitizer, so none of them have
-ever needed it. `fuzz.yml` installs it as an explicit extra step; a local
-Debian/Ubuntu run needs `apt-get install libclang-rt-21-dev` (or your
+`.github/toolchain/03-llvm-toolchain.sh` installs `libclang-rt-<ver>-dev` (the
+ASan/UBSan/libFuzzer runtime archives) unconditionally alongside the Clang
+compiler itself, even though none of `ci.yml`'s other Clang legs link a
+sanitizer - simplest to always have it rather than fork the install for the
+sanitizer/fuzzing presets alone. `fuzz.yml` needs no separate step for it; a
+local Debian/Ubuntu run needs `apt-get install libclang-rt-22-dev` (or your
 distro's equivalent) before `fuzz/run.sh` will link.
 
 ## `-Werror` is on for this build too
@@ -297,7 +298,7 @@ regenerable from the seed). Both harnesses run bounded in `ci.yml`'s
 ## Running locally
 
 ```bash
-# One-time: any Clang 18+ with libFuzzer works; CI pins LLVM 21 the same way
+# One-time: any Clang 18+ with libFuzzer works; CI pins LLVM 22 the same way
 # ci.yml's linux-llvm leg does (.github/toolchain/03-llvm-toolchain.sh).
 fuzz/run.sh                    # build, then run every default-list harness for 60s each
 fuzz/run.sh fuzz_scan          # just one harness
