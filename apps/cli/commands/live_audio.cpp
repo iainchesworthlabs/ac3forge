@@ -912,7 +912,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (atmos) {
         std::size_t bound = 0;
         for (const auto& slot : slots) {
-            bound += slot.taps.empty() ? 0 : 1;
+            bound += slot.taps.empty() ? std::size_t{0} : std::size_t{1};
         }
         status_println(status,
                        "  {} object slots, {} bound to captured channels, {} carried silent",

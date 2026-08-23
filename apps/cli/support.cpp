@@ -1321,7 +1321,8 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
     // or the layout name itself is wrong, and the "AC-3 cannot carry this"
     // diagnosis below can name the layout it is refusing instead of the
     // parser failing first.
-    const std::string_view name = meta.take_layout.empty() ? "stereo" : meta.take_layout;
+    const std::string_view name =
+        meta.take_layout.empty() ? std::string_view{"stereo"} : std::string_view{meta.take_layout};
     take.plan.codec = ac3::plan::Codec::kEac3;
     if (!resolve_layout(name, ac3::plan::Codec::kEac3, take.plan, take.label)) {
         return std::nullopt;
