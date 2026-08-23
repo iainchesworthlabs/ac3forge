@@ -424,23 +424,23 @@ std::expected<FrameMetadata, EditError> edit_frame_metadata(std::span<std::byte>
     }
     if (edit.dialnorm2) {
         write_bits(frame, parsed->at.dialnorm2, static_cast<std::uint32_t>(*edit.dialnorm2), 5);
-        parsed->meta.dialnorm2 = *edit.dialnorm2;
+        parsed->meta.dialnorm2 = edit.dialnorm2;
     }
     if (edit.compr) {
         write_bits(frame, parsed->at.compr, *edit.compr, 8);
-        parsed->meta.compr = *edit.compr;
+        parsed->meta.compr = edit.compr;
     }
     if (edit.compr2) {
         write_bits(frame, parsed->at.compr2, *edit.compr2, 8);
-        parsed->meta.compr2 = *edit.compr2;
+        parsed->meta.compr2 = edit.compr2;
     }
     if (edit.bsmod) {
         write_bits(frame, parsed->at.bsmod, static_cast<std::uint32_t>(*edit.bsmod), 3);
-        parsed->meta.bsmod = *edit.bsmod;
+        parsed->meta.bsmod = edit.bsmod;
     }
     if (edit.dsurmod) {
         write_bits(frame, parsed->at.dsurmod, static_cast<std::uint32_t>(*edit.dsurmod), 2);
-        parsed->meta.dsurmod = *edit.dsurmod;
+        parsed->meta.dsurmod = edit.dsurmod;
     }
     if (const auto ok = restamp_crc(frame); !ok) {
         return std::unexpected(ok.error());

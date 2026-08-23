@@ -1,5 +1,6 @@
 #include "ac3/io/elementary.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -505,8 +506,11 @@ std::optional<std::size_t> access_unit_at_seconds(const ScannedStream& stream, d
     if (rate == 0) {
         return std::nullopt;
     }
+    // std::llround rather than a cast of (x + 0.5): the latter rounds a
+    // negative value the wrong way and loses precision for large x. `seconds`
+    // is already known non-negative here, but the correct primitive is free.
     const auto sample =
-        static_cast<std::uint64_t>(seconds * static_cast<double>(rate) + 0.5);
+        static_cast<std::uint64_t>(std::llround(seconds * static_cast<double>(rate)));
     return access_unit_at_sample(stream, sample);
 }
 

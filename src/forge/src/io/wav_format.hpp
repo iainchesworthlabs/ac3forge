@@ -41,7 +41,11 @@ enum class SampleFormat : std::uint8_t {
         case SampleFormat::kPcm8: return 1;
         case SampleFormat::kPcm16: return 2;
         case SampleFormat::kPcm24: return 3;
-        case SampleFormat::kPcm32: return 4;
+        // 32-bit integer and 32-bit float share a container width and are
+        // deliberately one case: the WIDTH is all this function reports, and
+        // splitting them into two arms that return the same number is the
+        // sort of duplication that drifts.
+        case SampleFormat::kPcm32:
         case SampleFormat::kFloat32: return 4;
         case SampleFormat::kFloat64: return 8;
     }

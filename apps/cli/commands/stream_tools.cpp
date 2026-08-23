@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "../support.hpp"
@@ -27,6 +28,7 @@
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"
+#include "ac3/io/wav.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -300,8 +302,7 @@ class TranscodeEncoder {
         // why the plan carries a HeavyConfig whenever this is engaged - see
         // run_transcode.
         if (compr_) {
-            const auto edited =
-                ac3::io::edit_frame_metadata(frame, {.compr = *compr_});
+            const auto edited = ac3::io::edit_frame_metadata(frame, {.compr = compr_});
             if (!edited) {
                 std::println(stderr, "error: cannot carry compr across: {}",
                              ac3::io::describe(edited.error()));
@@ -386,7 +387,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     std::optional<std::uint8_t> compr_passthrough;
     if (source_meta->compr && !meta.p.heavy) {
         p.meta.heavy.emplace();
-        compr_passthrough = *source_meta->compr;
+        compr_passthrough = source_meta->compr;
     }
 
     // --- layout -------------------------------------------------------------
@@ -802,7 +803,10 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
                  summary->syncframes, out_path);
     std::println(status, "  measured   {:+.2f} LKFS (BS.1770-4 gated)", *measured->integrated_lkfs);
     std::println(status, "  dialnorm   {} -> {} (ATSC A/85 §8)", before->dialnorm, *edit.dialnorm);
-    if (edit.dialnorm2 && before->dialnorm2) {
+    // All three re-checked together: the block above sets dialnorm2 only when
+    // the other two hold, but that is two screens away and nothing local
+    // says so.
+    if (edit.dialnorm2 && before->dialnorm2 && measured->ch2_lkfs) {
         std::println(status, "  dialnorm2  {} -> {} (Ch2 measured {:+.2f} LKFS)",
                      *before->dialnorm2, *edit.dialnorm2, *measured->ch2_lkfs);
     }
@@ -982,6 +986,14 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
         return 1;
     }
 
+    if (!reference) {
+        // Unreachable: the loop above runs at least twice (in_paths.size() >= 2
+        // is checked at the top) and fills this on its first pass. Stated as a
+        // real check rather than an assert, so the report below reads a value
+        // that is checked where it is used.
+        std::println(stderr, "error: nothing was joined");
+        return 1;
+    }
     const auto status = status_stream(out_path);
     const auto rate = ac3::sample_rate_hz(reference->sample_rate);
     std::println(status, "joined {} files, {} {} access units -> {}", in_paths.size(), units,
