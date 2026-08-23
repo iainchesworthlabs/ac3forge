@@ -180,7 +180,7 @@ endif()
 # already exists here whenever it is going to.
 # ---------------------------------------------------------------------------
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli.cpp cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
 endif()
 

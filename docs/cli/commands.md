@@ -21,6 +21,11 @@ Usage:
   ac3cli eac3-sine    <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli decode       <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
+  ac3cli transcode    <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
+  ac3cli metadata     <in.ac3|in.ec3> <out.ac3|out.ec3>       (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
+  ac3cli normalize    <in.ac3|in.ec3> <out.ac3|out.ec3>       (measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio untouched)
+  ac3cli cut          <in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds] (extract on access-unit boundaries; nothing is re-encoded)
+  ac3cli cat          <out.ac3|out.ec3> <in1> <in2> [in3...]  (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
   ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
   ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
@@ -206,6 +211,77 @@ dialnorm check:
 Add `preset=<name>` (or `preset=all`) to gate that same measurement against a named delivery spec instead of just reporting it — see [Options & grammars](metadata-options.md#qc-options-qc-preset) for the exact preset numbers and the primary source cited for each, and this page's own exit-code note below.
 
 `qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes — non-zero otherwise, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` exits non-zero solely on a genuine decode error.
+
+### Stream tools — an encoded stream in, an encoded stream out
+
+Everything above takes PCM. These five take an already-encoded AC-3/E-AC-3 elementary stream,
+and four of them never touch a coded coefficient at all.
+
+| Command | What it does |
+|---|---|
+| `transcode` | Decode and re-encode. The only one here that re-encodes, because DD+ and DD are different codecs and nothing else bridges them — the route to an optical link or an AC-3-only HDMI sink, which had no route at all before |
+| `metadata` | Rewrite `dialnorm`, `compr`, `bsmod`, `dsurmod` on an existing stream and re-stamp its CRCs. The audio bytes are copied through untouched |
+| `normalize` | The measurement-driven case of the above: decode to measure BS.1770-4 integrated loudness, write the `dialnorm` ATSC A/85 §8 implies, change nothing else |
+| `cut` | Extract on access-unit boundaries |
+| `cat` | Join streams end to end |
+
+```bash
+ac3cli transcode programme.ec3 programme.ac3 448
+```
+
+```bash
+ac3cli metadata programme.ac3 delivered.ac3 dialnorm=24 bsmod=2
+```
+
+`transcode` carries the source's metadata across rather than resetting it:
+
+- **`dialnorm`** verbatim. §5.4.2.8 says it "shall affect the sound reproduction level", so a
+  transcode that reset it to 31 would play a programme up to 30 dB loud on a levelled system.
+  `dialnorm=<n>` or `dialnorm=auto` overrides it.
+- **`compr`** verbatim — the source's own 8-bit word is stamped back onto each encoded frame
+  rather than re-derived. §7.7.2's ceiling describes the *programme*, not this generation's
+  coding. Passing `heavy` asks for a freshly derived one instead.
+- **The mix metadata**, converted: AC-3 carries two coarse levels in `bsi` and E-AC-3 carries the
+  richer `mixmdate` group, so crossing between them maps the Lo/Ro pair (or the Lt/Rt pair, when
+  `dmixmod` says that is the intended downmix) onto the nearest level the target format has, by
+  linear coefficient rather than by table position. `dmixmod` and the LFE mix level carry across
+  as they are.
+- **`dynrng`** does not carry. It is a per-*block* word derived from the signal, with no `bsi`
+  field to stamp it into the way `compr` has, so a re-encode has to produce its own — pass
+  `drc=<profile>` for that. The command reports what the source carried, so the difference is
+  visible rather than discovered.
+
+A layout AC-3 cannot code (7.1, 5.1.4, 7.1.4) folds down to 5.1 per §7.8 using the mix levels
+just carried across, and says so on stderr — it is a real change to what the listener hears, not
+a detail. The output codec comes from the output name's suffix (`.ac3`/`.ec3`); `codec=ac3|eac3`
+covers stdout and any name the suffix cannot speak for.
+
+`cut` and `cat` move whole access units — an E-AC-3 access unit being an independent substream
+*plus its dependents*, never one syncframe. A start time inside a unit names that whole unit; a
+cut is never a split. That makes the round trip exact:
+
+```bash
+ac3cli cut programme.ac3 head.ac3 0 0.512
+ac3cli cut programme.ac3 tail.ac3 0.512
+ac3cli cat rejoined.ac3 head.ac3 tail.ac3
+cmp programme.ac3 rejoined.ac3   # identical
+```
+
+`cat` takes its **output first**, unlike every other command here, because the input list is
+variadic. It refuses inputs whose codec, sample rate, coding mode, LFE presence, rendered
+channel count or substream-per-unit count differ from the first — a decoder walking the join has
+no way to be told the format changed.
+
+**Out of scope for all five:** `strmtyp 2` convertible streams — the spec's own no-re-encode
+path to AC-3 — which `ac3::plan::validate` already refuses. Nothing here produces or consumes
+one.
+
+**What `metadata` cannot do:** only fields already on the wire can change. `compr` lives behind
+`compre` and E-AC-3's `bsmod`/`dsurmod` behind `infomdate`; a stream that did not transmit one
+has no bits to overwrite, and inserting them would re-frame the syncframe, which is a re-encode
+by another name. Such a request is refused with a reason rather than half-applied. This
+project's own E-AC-3 encoder never sets `infomdate`, so `bsmod`/`dsurmod` are AC-3-only in
+practice; `dsurmod` additionally exists only for coding mode 2/0 (§5.4.2.7).
 
 ### Containers
 

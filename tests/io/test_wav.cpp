@@ -320,7 +320,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         payload.push_back(static_cast<char>(0x80));  //    0 ->  0.0
         payload.push_back(static_cast<char>(0xFF));  // +127 -> +127/128
         payload.push_back(static_cast<char>(0xC0));  //  +64 -> +0.5
-        const auto path = write_raw("pcm8.wav", canonical_wav(1, 1, 48000, 8, payload));
+        const auto path = write_raw("depth_pcm8.wav", canonical_wav(1, 1, 48000, 8, payload));
         const auto result = ac3::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels.size() == 1);
@@ -337,7 +337,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         put_le24(payload, 8388607);
         put_le24(payload, 4194304);  // +0.5
         put_le24(payload, -1);       // the sign-extension case a naive shift gets wrong
-        const auto path = write_raw("pcm24.wav", canonical_wav(1, 1, 48000, 24, payload));
+        const auto path = write_raw("depth_pcm24.wav", canonical_wav(1, 1, 48000, 24, payload));
         const auto result = ac3::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels[0].size() == 5);
@@ -352,7 +352,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         put_le32(payload, 0x80000000u);  // -2^31 -> -1.0
         put_le32(payload, 0u);
         put_le32(payload, 0x40000000u);  // +0.5
-        const auto path = write_raw("pcm32.wav", canonical_wav(1, 1, 48000, 32, payload));
+        const auto path = write_raw("depth_pcm32.wav", canonical_wav(1, 1, 48000, 32, payload));
         const auto result = ac3::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels[0].size() == 3);
@@ -368,7 +368,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
             put_le32(payload, static_cast<std::uint32_t>(bits & 0xFFFFFFFFu));
             put_le32(payload, static_cast<std::uint32_t>(bits >> 32));
         }
-        const auto path = write_raw("float64.wav", canonical_wav(3, 1, 48000, 64, payload));
+        const auto path = write_raw("depth_float64.wav", canonical_wav(3, 1, 48000, 64, payload));
         const auto result = ac3::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels[0].size() == 4);

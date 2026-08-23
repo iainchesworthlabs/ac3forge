@@ -13,6 +13,7 @@ set(AC3FORGE_EXAMPLES
     encode_eac3
     decode_stream
     metadata
+    stream_edit
     spatial_objects
     atmos_objects
     station_broadcast

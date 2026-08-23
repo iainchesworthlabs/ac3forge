@@ -1,6 +1,7 @@
 #include "ac3/io/wav.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <fstream>
