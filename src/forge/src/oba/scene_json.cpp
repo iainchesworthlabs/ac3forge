@@ -568,6 +568,14 @@ bool read_orientation(Reader& reader, Orientation& out) {
 }  // namespace
 
 std::expected<ObjectScene, SceneError> scene_from_json(std::string_view text) {
+    auto contents = read_scene_json(text);
+    if (!contents) {
+        return std::unexpected(std::move(contents.error()));
+    }
+    return ObjectScene::create(std::move(contents->objects), contents->orientation);
+}
+
+std::expected<SceneContents, SceneError> read_scene_json(std::string_view text) {
     Reader reader{text};
     std::vector<SceneObject> objects;
     Orientation orientation{};
@@ -652,7 +660,7 @@ std::expected<ObjectScene, SceneError> scene_from_json(std::string_view text) {
         reader.fail(SceneErrorKind::kBadField, "a scene needs an 'objects' array");
         return std::unexpected(reader.error());
     }
-    return ObjectScene::create(std::move(objects), orientation);
+    return SceneContents{.objects = std::move(objects), .orientation = orientation};
 }
 
 }  // namespace ac3::oba

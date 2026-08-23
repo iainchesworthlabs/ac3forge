@@ -106,13 +106,12 @@ struct SceneObject {
 // Angles are radians, matching OrbitPath::phase_rad. The serialised form writes
 // radians, so a scene survives a save/load bit-exactly, and reads either unit
 // ("yaw_rad" or "yaw_deg") because 90 is easier to hand-author than 1.5707963.
-// Rotation runs in
-// a centred cube - x and y mapped from [0,1] to [-1,+1] about the room centre,
-// z already being [-1,+1] about ear height per §4.2.1 - applied yaw (about the
-// vertical axis), then pitch (about the left-right axis), then roll (about the
-// front-back axis), and mapped back with a clamp to the room. The clamp is why
-// an extreme pitch on an already-high object flattens against the ceiling
-// rather than leaving the room: OAMD has no coordinates outside it.
+// Rotation runs in a centred cube - x and y mapped from [0,1] to [-1,+1] about
+// the room centre, z already [-1,+1] about ear height per §4.2.1 - applied yaw
+// (about the vertical axis), then pitch (about the left-right axis), then roll
+// (about the front-back axis), and mapped back with a clamp to the room. The
+// clamp is why an extreme pitch on an already-high object flattens against the
+// ceiling rather than leaving the room: OAMD has no coordinates outside it.
 //
 // An all-zero Orientation is an exact no-op, not a rotation by zero: evaluate()
 // returns the authored doubles untouched, so a scene with no orientation
@@ -268,6 +267,19 @@ class AC3FORGE_EXPORT SceneCursor {
     std::vector<std::optional<ObjectPlacement>> live_;
 };
 
+// What a scene file held, before any caller's policy is applied to it: objects
+// in index order - with the keyframe form's gaps present as empty automation -
+// and the orientation, which only the JSON form can carry.
+//
+// Two callers already disagree about what an index the file skipped should be
+// (ac3cli's atmos-path fans it out across the ring, its atmos-encode keeps that
+// channel's existing static placement) and a third will have its own answer, so
+// the decision has to be theirs. Fill the gaps, then ObjectScene::create.
+struct SceneContents {
+    std::vector<SceneObject> objects;
+    Orientation orientation{};
+};
+
 // --- Serialisation --------------------------------------------------------
 
 // JSON, not YAML. The codec library takes no third-party dependencies
@@ -286,6 +298,11 @@ class AC3FORGE_EXPORT SceneCursor {
 [[nodiscard]] AC3FORGE_EXPORT std::string to_json(const ObjectScene& scene);
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<ObjectScene, SceneError> scene_from_json(
+    std::string_view text);
+
+// The same read, stopping short of ObjectScene::create - for a caller that
+// wants to apply its own policy to the objects first. See SceneContents above.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<SceneContents, SceneError> read_scene_json(
     std::string_view text);
 
 // The keyframe grammar ac3cli's atmos-path and atmos-encode have always read,
@@ -312,12 +329,23 @@ scene_objects_from_keyframe_text(std::string_view text);
 // anything a user will reload.
 [[nodiscard]] AC3FORGE_EXPORT std::string to_keyframe_text(const ObjectScene& scene);
 
+// The same, over raw objects rather than a validated scene - so a writer whose
+// indices are SPARSE can keep them. An object with no automation contributes no
+// lines, which is exactly how the format spells a skipped index; the GUI's
+// export needs that, because a bed-pinned channel occupies an index that
+// atmos-encode's own model has no object for.
+[[nodiscard]] AC3FORGE_EXPORT std::string to_keyframe_text(std::span<const SceneObject> objects);
+
 // Reads either form: JSON when the first non-whitespace character is '{',
 // otherwise the keyframe grammar. Sniffing rather than trusting a file
 // extension, because the CLI's argument has always just been a path and both
-// forms have to keep working there. `fallback` supplies the placement for an
-// index the keyframe form skips (see scene_objects_from_keyframe_text) and is
-// unused by the JSON form, which names every object it has.
+// forms have to keep working there.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<SceneContents, SceneError> read_scene(
+    std::string_view text);
+
+// read_scene() plus the simplest possible gap policy: an index the keyframe
+// form skipped becomes an object that sits at `fallback` and never moves. For a
+// caller that has no per-index policy of its own.
 [[nodiscard]] AC3FORGE_EXPORT std::expected<ObjectScene, SceneError> scene_from_text(
     std::string_view text, const ObjectPlacement& fallback = {});
 

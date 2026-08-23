@@ -174,15 +174,15 @@ constexpr std::array<Command, 26> kCommands{{
                           x.str(6, "objects"), x.meta);
      }},
     {"atmos-path", 3, "<out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects]",
-     "objects driven by an authored keyframe file instead of the built-in orbit",
+     "objects driven by an authored scene file instead of the built-in orbit",
      Needs::kNothing,
      [](const Args& x) {
          return run_atmos_path(x.str(1), x.str(2), x.u32(3, 8), x.u32(4, 448), x.u32(5, 0),
                                x.meta);
      }},
     {"atmos-encode", 3, "<in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt]",
-     "every source channel as an object; optional: authored per-object motion from a keyframe "
-     "file (same format as atmos-path), objects it doesn't mention keep their default placement",
+     "every source channel as an object; optional: authored per-object motion from a scene "
+     "file (same formats as atmos-path), objects it doesn't mention keep their default placement",
      Needs::kNothing,
      [](const Args& x) {
          return run_atmos_encode(x.str(1), x.str(2), x.u32(3, 448), x.u32(4, 0), x.meta,
@@ -397,6 +397,12 @@ void print_usage() {
     std::println("       atmos-encode's [paths.txt] takes authored per-object motion the same");
     std::println("       way atmos-path does, keyed by WAV channel index; an object it doesn't");
     std::println("       mention keeps atmos-encode's own default (fanned-out) placement.");
+    std::println("");
+    std::println("atmos-path/atmos-encode scene files come in two forms, told apart by their");
+    std::println("       first character, not their suffix: the keyframe columns");
+    std::println("       'object_index time_s x y z gain lfe_send' per line ('#' comments), or");
+    std::println("       an object scene in JSON (named objects, per-segment interpolation,");
+    std::println("       a scene orientation) starting with '{'. The GUI writes either.");
     std::println("");
     std::println("mkv wraps an AC-3 or E-AC-3 elementary stream in Matroska, taking the");
     std::println("format, packet boundaries, sample rate and channel count from the bitstream");

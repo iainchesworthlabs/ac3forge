@@ -350,10 +350,10 @@ std::expected<std::vector<SceneObject>, SceneError> scene_objects_from_keyframe_
     return by_object;
 }
 
-std::string to_keyframe_text(const ObjectScene& scene) {
+std::string to_keyframe_text(std::span<const SceneObject> objects) {
     std::string out;
-    for (std::size_t i = 0; i < scene.objects().size(); ++i) {
-        for (const auto& point : scene.objects()[i].automation) {
+    for (std::size_t i = 0; i < objects.size(); ++i) {
+        for (const auto& point : objects[i].automation) {
             out += std::format("{} {} {} {} {} {} {}\n", i, point.time_s, point.position.x,
                                point.position.y, point.position.z, point.gain, point.lfe_send);
         }
@@ -361,17 +361,31 @@ std::string to_keyframe_text(const ObjectScene& scene) {
     return out;
 }
 
-std::expected<ObjectScene, SceneError> scene_from_text(std::string_view text,
-                                                       const ObjectPlacement& fallback) {
+std::string to_keyframe_text(const ObjectScene& scene) {
+    return to_keyframe_text(scene.objects());
+}
+
+std::expected<SceneContents, SceneError> read_scene(std::string_view text) {
     const auto first = text.find_first_not_of(" \t\r\n\f\v");
     if (first != std::string_view::npos && text[first] == '{') {
-        return scene_from_json(text);
+        return read_scene_json(text);
     }
     auto objects = scene_objects_from_keyframe_text(text);
     if (!objects) {
         return std::unexpected(std::move(objects.error()));
     }
-    for (auto& object : *objects) {
+    // The keyframe grammar has no column for an orientation, so a file in it
+    // is always an un-turned scene.
+    return SceneContents{.objects = std::move(*objects), .orientation = {}};
+}
+
+std::expected<ObjectScene, SceneError> scene_from_text(std::string_view text,
+                                                       const ObjectPlacement& fallback) {
+    auto contents = read_scene(text);
+    if (!contents) {
+        return std::unexpected(std::move(contents.error()));
+    }
+    for (auto& object : contents->objects) {
         if (object.automation.empty()) {
             object.automation.push_back({.time_s = 0.0,
                                          .position = fallback.position,
@@ -379,7 +393,7 @@ std::expected<ObjectScene, SceneError> scene_from_text(std::string_view text,
                                          .lfe_send = fallback.lfe_send});
         }
     }
-    return ObjectScene::create(std::move(*objects));
+    return ObjectScene::create(std::move(contents->objects), contents->orientation);
 }
 
 }  // namespace ac3::oba
