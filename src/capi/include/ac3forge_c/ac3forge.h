@@ -129,6 +129,47 @@ typedef enum ac3forge_acmod {
 #define AC3FORGE_BLOCKS_PER_FRAME 6
 #define AC3FORGE_SAMPLES_PER_FRAME 1536
 
+/* --------------------------------------------------------------------- *
+ * Latency (roadmap PF6)
+ * --------------------------------------------------------------------- */
+
+/* Mirrors ac3::LatencyBudget: the ALGORITHMIC delay of an encode -> decode
+ * chain, in samples at the coded sample rate. Compute time is a separate
+ * question (docs/performance-trend.md); transport, device buffers and
+ * resampling are the integrator's own to add.
+ *
+ *   frame_samples      Input granularity. Nothing leaves the encoder until a
+ *                      whole frame has gone in.
+ *   transform_samples  The MDCT/IMDCT overlap. This is the one term that is a
+ *                      sample-domain SHIFT: decoded output sample k is input
+ *                      sample k - transform_samples. AC3FORGE_SAMPLES_PER_BLOCK
+ *                      for AC-3 and E-AC-3; twice that for an Atmos OBJECT
+ *                      waveform, whose reconstruction re-transforms the
+ *                      already-decoded bed.
+ *   lookahead_samples  Input the encoder needs beyond the frame it is coding.
+ *                      Zero throughout this library.
+ *   holdback_samples   The E-AC-3 §3.7 transient-pre-noise hold-back: a
+ *                      decoder returns frame N-1's PCM from the call that
+ *                      supplies frame N. One frame period, or zero.
+ *
+ * See docs/library/encoding-ac3.md's Latency section for the measured
+ * numbers and tests/decoder/test_latency.cpp for how they were measured. */
+typedef struct ac3forge_latency {
+    int frame_samples;
+    int transform_samples;
+    int lookahead_samples;
+    int holdback_samples;
+} ac3forge_latency_t;
+
+/* The figure to budget with: the sum of the four terms above. No sample
+ * entering the encoder is delayed by more than this many samples before the
+ * matching decoded sample leaves the decoder. NULL returns 0. */
+AC3FORGEC_EXPORT int ac3forge_latency_total_samples(const ac3forge_latency_t* latency);
+
+/* Milliseconds for a sample count at a coded rate — e.g. 1792 samples at
+ * AC3FORGE_SAMPLE_RATE_48000 is 37.33 ms. */
+AC3FORGEC_EXPORT double ac3forge_latency_ms(int samples, ac3forge_sample_rate_t sample_rate);
+
 /* Table 5.9 (§5.4.2.4) / Table 5.10 (§5.4.2.5). */
 typedef enum ac3forge_centre_mix_level {
     AC3FORGE_CMIXLEV_MINUS_3DB = 0,
@@ -218,6 +259,17 @@ AC3FORGEC_EXPORT void ac3forge_encoder_destroy(ac3forge_encoder_t* encoder);
  * the LFE channel last — the same count encode_frame() below expects. */
 AC3FORGEC_EXPORT size_t ac3forge_encoder_channel_count(const ac3forge_encoder_t* encoder);
 
+/* This encoder's latency budget. Constant for the encoder's whole life: no
+ * field of ac3forge_encoder_config_t moves any term. `out_latency` is left
+ * untouched when either pointer is NULL. */
+AC3FORGEC_EXPORT void ac3forge_encoder_latency(const ac3forge_encoder_t* encoder,
+                                              ac3forge_latency_t* out_latency);
+
+/* The same budget's total — the single number an engine or conferencing
+ * integrator asks for. 1792 samples (37.33 ms at 48 kHz) for every AC-3
+ * configuration. NULL returns 0. */
+AC3FORGEC_EXPORT int ac3forge_encoder_latency_samples(const ac3forge_encoder_t* encoder);
+
 /* An owned, immutable byte buffer — the result type for every function here
  * that produces one encoded frame's worth of bytes. */
 typedef struct ac3forge_bytes ac3forge_bytes_t;
@@ -255,6 +307,13 @@ AC3FORGEC_EXPORT void ac3forge_decoder_config_init(ac3forge_decoder_config_t* co
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_decoder_create(const ac3forge_decoder_config_t* config,
                                                          ac3forge_decoder_t** out_decoder);
 AC3FORGEC_EXPORT void ac3forge_decoder_destroy(ac3forge_decoder_t* decoder);
+
+/* The delay THIS decoder adds on top of the encoder's own budget. Always 0
+ * for AC-3: decode_frame returns a frame's full PCM from the call that
+ * supplies its bytes, and the IMDCT overlap those samples came from is
+ * already the chain's transform term. Present so "encoder plus decoder" is a
+ * sum a caller can write. */
+AC3FORGEC_EXPORT int ac3forge_decoder_latency_samples(const ac3forge_decoder_t* decoder);
 
 /* One decoded syncframe (ac3::DecodedFrame), read through the accessors
  * below. */
@@ -316,6 +375,15 @@ typedef struct ac3forge_eac3_decoder ac3forge_eac3_decoder_t;
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_create(
     const ac3forge_decoder_config_t* config, ac3forge_eac3_decoder_t** out_decoder);
 AC3FORGEC_EXPORT void ac3forge_eac3_decoder_destroy(ac3forge_eac3_decoder_t* decoder);
+
+/* The delay THIS decoder adds, same contract as
+ * ac3forge_decoder_latency_samples(). 0 until some substream's frame sets
+ * transproce, AC3FORGE_SAMPLES_PER_FRAME from then on — §3.7's hold-back is a
+ * property of the stream, not of the decoder, and once engaged it stays
+ * engaged. A caller sizing buffers BEFORE the stream starts should ask the
+ * encoder instead; this reports what has actually happened so far. */
+AC3FORGEC_EXPORT int ac3forge_eac3_decoder_latency_samples(
+    const ac3forge_eac3_decoder_t* decoder);
 
 typedef struct ac3forge_decoded_substream ac3forge_decoded_substream_t;
 typedef struct ac3forge_decoded_access_unit ac3forge_decoded_access_unit_t;
@@ -595,6 +663,22 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_atmos_encoder_create(
 AC3FORGEC_EXPORT void ac3forge_atmos_encoder_destroy(ac3forge_atmos_encoder_t* encoder);
 AC3FORGEC_EXPORT int ac3forge_atmos_encoder_dynamic_object_count(
     const ac3forge_atmos_encoder_t* encoder);
+
+/* The OBJECT path's latency budget — what this encoder is for. Its
+ * transform_samples is 2 * AC3FORGE_SAMPLES_PER_BLOCK, not one: JOC codes a
+ * matrix that pulls objects back out of the decoded bed, and doing that means
+ * a second full MDCT/IMDCT round trip in the decoder. With
+ * config.emit_object_metadata clear there is no container, no JOC and no
+ * second transform, and this collapses to the bed's own budget below. */
+AC3FORGEC_EXPORT void ac3forge_atmos_encoder_latency(const ac3forge_atmos_encoder_t* encoder,
+                                                    ac3forge_latency_t* out_latency);
+AC3FORGEC_EXPORT int ac3forge_atmos_encoder_latency_samples(
+    const ac3forge_atmos_encoder_t* encoder);
+
+/* The 5.1 BED's budget: what a legacy decoder that ignores the container
+ * hears. One transform overlap, like any other E-AC-3 stream. */
+AC3FORGEC_EXPORT void ac3forge_atmos_encoder_bed_latency(const ac3forge_atmos_encoder_t* encoder,
+                                                        ac3forge_latency_t* out_latency);
 
 /* objects: `object_count` (as given to _create) mono spans, each exactly
  * AC3FORGE_SAMPLES_PER_FRAME samples; placements: the same count, one per

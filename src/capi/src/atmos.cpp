@@ -95,4 +95,24 @@ ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
     });
 }
 
+void ac3forge_atmos_encoder_latency(const ac3forge_atmos_encoder_t* encoder,
+                                   ac3forge_latency_t* out_latency) {
+    if (encoder == nullptr || out_latency == nullptr) {
+        return;
+    }
+    *out_latency = ac3forge_c::from_cpp(encoder->impl.latency());
+}
+
+int ac3forge_atmos_encoder_latency_samples(const ac3forge_atmos_encoder_t* encoder) {
+    return encoder == nullptr ? 0 : encoder->impl.latency_samples();
+}
+
+void ac3forge_atmos_encoder_bed_latency(const ac3forge_atmos_encoder_t* encoder,
+                                        ac3forge_latency_t* out_latency) {
+    if (encoder == nullptr || out_latency == nullptr) {
+        return;
+    }
+    *out_latency = ac3forge_c::from_cpp(encoder->impl.bed_latency());
+}
+
 }  // extern "C"
