@@ -39,6 +39,7 @@ depend on them.
 | Transform | long (512-point) or short (2x256-point) blocks, KBD window, chosen per block per channel by a §8.2.2 transient detector | same |
 | Exponents | D15 / D25 / D45, strategy chosen per block from the reuse span (§8.2.8) | the same span rule, per channel per frame, written either as a Table E2.10 code (`expstre` 0) or as per-block strategies (`expstre` 1) — whichever the plan needs |
 | Coupling | yes (§7.4), begin and end frequencies auto or pinned | yes (§E3.3) |
+| Tool selection | coupling/rematrixing/delta always automatic, no toggle | `auto` picks coupling, spectral extension and AHT per frame from the per-channel rate **and** the frame's own spectrum — see [Encoding E-AC-3](library/encoding-eac3.md#how-auto-chooses) |
 | Bit allocation parameters | §8.2.12's basic-encoder set with one measured departure, `dbpbcod` 3 | the same set, transmitted rather than inherited (`bamode` 1, 17 bits a frame) — Table E1.4's own defaults differ from §8.2.12's |
 | Delta bit allocation | automatic (§7.2.2.6), like rematrixing below — no toggle | automatic, same as AC-3 |
 | Dither substitution | `dithflag` decided per channel per block from content (§7.3.4) | the same, except in a frame using spectral extension |
@@ -159,7 +160,14 @@ Enhanced coupling and transient pre-noise processing have no external decode ora
 not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own
 Annex E parser has never read either tool's syntax — so `tools/ci/quality_race.py`'s CI gate scores
 both through this project's own decoder instead (see
-[Validation](verification.md#where-the-oracles-dont-reach)). Transient pre-noise processing's
+[Validation](verification.md#where-the-oracles-dont-reach)). That same gap is why neither is in
+the `auto` tool set, though only one of them earned its way out: enhanced coupling measures
+*better* than standard coupling on real programme material at every bitrate and layout tried and
+is kept out purely so `auto` produces streams FFmpeg can read, while transient pre-noise
+processing measured 6.5–24 dB worse than leaving the audio alone over exactly the samples it
+touches, at every bitrate, with no perceptual movement either way — a reference-correctness tool
+rather than a quality one. [Encoding E-AC-3](library/encoding-eac3.md#what-auto-will-not-choose)
+carries both measurements. Transient pre-noise processing's
 one-frame decoder buffering is an API characteristic, not a gap; [Decoding](library/decoding.md)
 covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
 stating a word count directly, so it has no equivalent and stays CBR.

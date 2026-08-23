@@ -1,9 +1,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -937,6 +939,116 @@ TEST_CASE("keep-partial", "[cli][keep-partial]") {
                                 log);
         CHECK(rc != 0);
         CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
+// Found by tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1) on its first
+// sweep of the Annex E half sample rates.
+//
+// A nominal Table 5.18 bitrate and an Annex E `fscod2` half rate are each
+// legal on their own everywhere else in the CLI, and nothing in its grammar
+// marks the pair. But §E2.3.1.3's frmsiz is an 11-bit word count, so a
+// syncframe can never exceed ac3::eac3::kMaxFrameWords words: above
+// bitrate * kSamplesPerFrame / sample_rate / 16 words the combination is not
+// expressible at all. AccessUnitEncoder reports that by building NO
+// substreams rather than by failing construction, and run_eac3_encode used to
+// meet the resulting channel_count() == 0 with an assert() - a clean (if
+// causeless) refusal in a release build, an abort in any build with
+// assertions live. Every layout was affected, and every one of the three half
+// rates has legal Table 5.18 rates above its ceiling: 320 kbps at 16 kHz,
+// 448 at 22.05 kHz, 512 at 24 kHz are the highest that fit.
+//
+// atmos-encode never took that path and always refused cleanly, which is why
+// tools/ci/run_codec_matrix.sh - whose only WAV source is 48 kHz - could not
+// have seen this.
+TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
+          "[cli][eac3][frmsiz]") {
+    const auto dir = scratch_dir();
+
+    // The exact ceiling per Annex E half rate, and the first legal Table 5.18
+    // rate above it. Written out rather than computed so a change to either
+    // side of the arithmetic has to be stated here too.
+    struct Probe {
+        std::uint32_t sample_rate;
+        std::uint32_t highest_that_fits;
+        std::uint32_t first_that_does_not;
+    };
+    constexpr std::array<Probe, 3> kProbes{{{16000, 320, 384},
+                                            {22050, 448, 512},
+                                            {24000, 512, 576}}};
+
+    for (const auto& probe : kProbes) {
+        const auto tag = std::to_string(probe.sample_rate);
+        INFO("sample rate " << tag);
+        const auto wav_path = dir / ("frmsiz_in_" + tag + ".wav");
+        const auto channels =
+            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame),
+                               probe.sample_rate);
+        REQUIRE(
+            ac3::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate).has_value());
+
+        // The highest rate that fits still encodes - so the check above is a
+        // ceiling, not a blanket refusal of the half rates.
+        {
+            const auto out_path = dir / ("frmsiz_ok_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_ok_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.highest_that_fits) + " none stereo",
+                        log);
+            INFO(read_log(log));
+            CHECK(rc == 0);
+            CHECK(fs::file_size(out_path) > 0);
+        }
+
+        // The first rate that does not is refused, not aborted.
+        {
+            const auto out_path = dir / ("frmsiz_over_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_over_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.first_that_does_not) + " none stereo",
+                        log);
+            const auto text = read_log(log);
+            INFO(text);
+            CHECK(rc != 0);
+            // What actually separates a refusal from the abort this replaced
+            // is the MESSAGE, not the exit code: an assertion failure prints
+            // its own text and never reaches the diagnosis below. The code
+            // itself is deliberately not compared against an exact value -
+            // std::system() hands back the child's own code on Windows but a
+            // POSIX wait status elsewhere, where exit 1 arrives as 256, so
+            // `rc == 1` would be a Windows-only assertion wearing a portable
+            // face.
+            CHECK(text.find("Assertion") == std::string::npos);
+            CHECK(text.find("frmsiz") != std::string::npos);
+            CHECK(text.find("words per syncframe") != std::string::npos);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+
+        // The multi-source entry point builds its own AccessUnitEncoder and
+        // had its own copy of the same assert. A `map=` with no `src=` is
+        // enough to route through it - run_eac3_encode hands off on either
+        // token - and avoids the "more than one source needs map=" refusal a
+        // bare second `src=` would meet first.
+        {
+            const auto out_path = dir / ("frmsiz_multi_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_multi_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.first_that_does_not) +
+                            " none stereo off map=0.0:L,0.1:R",
+                        log);
+            const auto text = read_log(log);
+            INFO(text);
+            CHECK(rc != 0);
+            CHECK(text.find("Assertion") == std::string::npos);
+            CHECK(text.find("frmsiz") != std::string::npos);
+            CHECK_FALSE(fs::exists(out_path));
+        }
     }
 }
 
