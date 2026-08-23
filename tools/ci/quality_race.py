@@ -1097,12 +1097,17 @@ def race_objects(json_out=None):
                              lsd_db=lsd, leak_db=leak, mos_lqo=mos,
                              measured_kbps=float(kbps_measured)))
 
-        every_mos = [r["mos_lqo"] for r in rows]
-        every_leak = [r["leak_db"] for r in rows if r["leak_db"] is not None]
+        # Every mean is taken over `objects` rather than over `rows`, which
+        # the scene row is about to join: averaging a list while appending
+        # the average to it is the kind of thing that works today and breaks
+        # the moment someone moves the append.
+        objects = list(rows)
+        every_mos = [r["mos_lqo"] for r in objects]
+        every_leak = [r["leak_db"] for r in objects if r["leak_db"] is not None]
         rows.append(dict(
             leg=name, bitrate_kbps=kbps, variant="scene",
-            snr_db=float(np.mean([r["snr_db"] for r in rows])),
-            lsd_db=float(np.mean([r["lsd_db"] for r in rows])),
+            snr_db=float(np.mean([r["snr_db"] for r in objects])),
+            lsd_db=float(np.mean([r["lsd_db"] for r in objects])),
             # Averaged over the objects that HAVE a leakage figure: an
             # object occupying every band contributes no measurement rather
             # than a floor value that would drag the scene mean down by
