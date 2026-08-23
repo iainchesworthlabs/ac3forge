@@ -923,8 +923,11 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         return 1;
     }
 
-    const auto type = *reader.data_type();
-    const bool eac3 = type == ac3::iec61937::BurstDataType::kEac3;
+    // Compared as an optional rather than dereferenced: bursts() > 0 does
+    // guarantee data_type() is engaged, but that is an invariant of the
+    // reader rather than something visible here, and the answer wanted is a
+    // bool either way - std::optional's own operator== gives it directly.
+    const bool eac3 = reader.data_type() == ac3::iec61937::BurstDataType::kEac3;
     // stderr when the elementary stream itself is going to stdout, the same
     // convention encode/decode follow (see status_stream's own comment):
     // this report must never land in the middle of the bytes a pipeline is

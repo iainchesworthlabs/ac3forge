@@ -192,6 +192,12 @@ class AC3FORGE_EXPORT BurstReader {
     // False while stepping over a burst of a data type this does not decode:
     // the same consume-N-bytes state, with nothing emitted at the end of it.
     bool emitting_ = false;
+    // The committed burst's word order, held plainly rather than read back out
+    // of order_ below: unpacking happens on a later push() than the header
+    // read, and "order_ is engaged whenever emitting_ is true" is an invariant
+    // no analyser can see. A value nothing has to check cannot be checked
+    // wrongly.
+    WordOrder payload_order_ = WordOrder::kLittleEndian;
     std::optional<BurstDataType> data_type_;
     std::optional<WordOrder> order_;
     std::optional<BurstHeader> last_header_;

@@ -273,7 +273,7 @@ std::expected<void, UnwrapError> BurstReader::push(std::span<const std::byte> ca
                 break;
             }
             if (emitting_) {
-                unpack_payload_words(buffer_, pos_, payload_bytes_, *order_, out);
+                unpack_payload_words(buffer_, pos_, payload_bytes_, payload_order_, out);
                 ++bursts_;
             }
             pos_ += payload_needed_;
@@ -341,6 +341,7 @@ std::expected<void, UnwrapError> BurstReader::push(std::span<const std::byte> ca
                                    .payload_bytes = payload_bytes};
         payload_bytes_ = payload_bytes;
         payload_needed_ = payload_carrier_bytes(payload_bytes);
+        payload_order_ = found->order;
         emitting_ = true;
         pos_ = found->offset + kPreambleBytes;
         state_ = State::kPayload;
@@ -430,7 +431,7 @@ void PassthroughDetector::push(std::span<const float> interleaved, std::uint16_t
         if (type && payload_bytes >= 2 &&
             payload_bytes <= repetition_period(*type) - kPreambleBytes &&
             read_word(view, found->offset + kPreambleBytes, found->order) == kSyncword) {
-            detected_ = *type;
+            detected_ = type;
             order_ = found->order;
             // Keep the carrier from this burst on: everything before it is
             // whatever the capture was doing beforehand, and no reader wants
