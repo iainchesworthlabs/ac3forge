@@ -48,9 +48,11 @@ def flac_streaminfo(path: Path):
     Hand-parsed rather than shelling out to ffprobe: this check has to stay
     stdlib-only so it can run in any job without provisioning, and
     STREAMINFO is fixed-layout and always the first metadata block (RFC 9639
-    section 8.2) - 20 bytes carrying sample rate (20 bits), channels - 1
-    (3 bits), bits per sample - 1 (5 bits) and the total frame count
-    (36 bits), packed across a byte boundary.
+    section 8.2). It is 34 bytes; the four fields wanted here are the 64 bits
+    at offset 10, packed across byte boundaries as sample rate (20 bits),
+    channels - 1 (3), bits per sample - 1 (5) and total interchannel samples
+    (36). Everything before them is the block-size and frame-size pairs
+    (2 + 2 + 3 + 3 bytes); everything after is the MD5.
     """
     with path.open("rb") as f:
         if f.read(4) != b"fLaC":
