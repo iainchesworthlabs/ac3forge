@@ -253,7 +253,6 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Netflix's Atmos Home Mix v2.3 and Amazon were checked and deliberately left out — the first
   two are numerically identical to presets already present and the third has no primary source
   that could be read; `qc.hpp` and `docs/cli/metadata-options.md` record why for each.
-
 - [ ] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 specifies a loudness
   algorithm for object-based audio, and for a combination of channel- and object-based audio, in
   which each object is weighted by its own OAMD position rather than by a fixed speaker slot.
