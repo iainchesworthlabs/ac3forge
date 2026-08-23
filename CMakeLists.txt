@@ -139,8 +139,8 @@ option(AC3FORGE_BUILD_PYTHON "Build the pybind11 Python extension module (python
 # enable_testing() has to run before ANY add_subdirectory() that might contain
 # an add_test() call, not merely before tests/ itself - CTest silently drops
 # an add_test() registered from a directory processed earlier in the same
-# configure pass (confirmed the hard way: apps/gui/tests/'s ac3gui_qml_tests
-# was invisible to `ctest -N` until this moved here). Calling it unconditionally
+# configure pass (confirmed the hard way: apps/gui/tests/'s ac3gui_qml_tests_*
+# entries were invisible to `ctest -N` until this moved here). Calling it unconditionally
 # is harmless when AC3FORGE_BUILD_TESTS is OFF - nothing calls add_test() then.
 if(AC3FORGE_BUILD_TESTS)
     enable_testing()
