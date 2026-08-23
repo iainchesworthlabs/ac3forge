@@ -26,6 +26,7 @@
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/latency.hpp"
 
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
