@@ -14,6 +14,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **Coded bandwidth is decided from the content, not the bit rate alone** (`EQ7`, `EQ8`). AC-3
+  chose `chbwcod` from a per-channel-kbit/s curve; E-AC-3 never chose at all, sending a fixed 60
+  — the whole 23.7 kHz — even at 96 kbit/s per channel, where neither coupling nor spectral
+  extension runs and the frame has about two bits per mantissa to spread across 253 of them.
+  Both encoders now take that rate curve as a ceiling and put the frame's own spectrum under it,
+  testing each band's §7.2.2.3 banded PSD against Table 7.15's absolute hearing threshold — the
+  same `hth` the allocator already floors its masking curve with. Above 128 kbit/s per channel
+  the content is not consulted: reclaimed bits are only worth having while the rest of the
+  spectrum is short of them. Measured on real programme material (CC0/public-domain piano,
+  thunderstorm, church bells, speech and samba, sourced locally — `VX7` has not landed), E-AC-3
+  stereo at 192 kbit/s gains 1.2–2.7 dB SNR and up to +0.034 ViSQOL MOS, with the high-band
+  energy ratio improving alongside; AC-3 5.1 at 448 gains 0.4 dB. Nothing at or above
+  128 kbit/s per channel changes, and a pinned `chbwcod` still overrides both halves.
+
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`

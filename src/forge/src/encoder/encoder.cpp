@@ -123,13 +123,42 @@ int rematrix_band_count(bool cplinu, int cplbegf) {
     return cplbegf > 0 ? 3 : 2;
 }
 
-// §7.2.2.4's fast gain, when the caller has not pinned one. Placeholder for
-// the rate-dependent policy EQ7 measures; see step 0's comment.
-int fgaincod_for(const EncoderConfig& config) {
+// §7.2.2.4's fast gain (Table 7.11), when the caller has not pinned one.
+//
+// The gain is subtracted from a band's psd to form the fast leak, so raising
+// it lowers the excitation the whole masking curve is built on and asks for
+// more precision everywhere; the SNR-offset search then gives that back by
+// shifting the composite. What it really controls is how far a loud band's
+// mask spreads over its quiet neighbours, and the right amount of spreading
+// depends on how much precision there is to spread.
+//
+// §8.2.12 recommends a fixed 4. Measured across the per-channel rate on real
+// programme material (the 5.1 mix; ViSQOL, since waveform SNR prefers 7 at
+// every single rate and so says nothing):
+//
+//   per channel        38     51     64     89    128 kbit/s
+//   best fgaincod       7      6      4      3      0
+//   MOS over 4     +0.099 +0.027  0.000 +0.004 +0.158
+//
+// which is a straight line from 7 at 38 kbit/s per channel to 0 at 128, and
+// is the same shape - in the same direction - as the SNR-only sweep recorded
+// in step 0's comment, which found fgaincod 1 worth +2 dB at 448 and +7 dB
+// at 640 kbit/s 5.1 while regressing at 192. Two independent measurements,
+// two different materials, two different metrics, one curve.
+//
+// Confirmed on a second material at the low end, where the change is
+// largest: reference_51.wav at 192 kbit/s also prefers 7, worth +0.070 MOS.
+int fgaincod_for(const EncoderConfig& config, int nfchans) {
     if (config.fgaincod >= 0) {
         return config.fgaincod;
     }
-    return BitAllocCodes{}.fgaincod;
+    // The line through (38, 7) and (128, 0), rounded rather than truncated.
+    constexpr int kTopKbps = 128;
+    constexpr int kSpanKbps = 90;
+    const int per_channel_kbps =
+        static_cast<int>(config.bitrate_kbps) / std::max(nfchans, 1);
+    const int numerator = (kTopKbps - per_channel_kbps) * 7 + kSpanKbps / 2;
+    return std::clamp(numerator / kSpanKbps, 0, 7);
 }
 
 // TEMPORARY-EQ7-MEASUREMENT: sdcycod/fdcycod/sgaincod are not configurable
@@ -603,7 +632,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                               .fdcycod = measurement_codes().fdcycod,
                               .sgaincod = measurement_codes().sgaincod,
                               .dbpbcod = 3,
-                              .fgaincod = fgaincod_for(config_)};
+                              .fgaincod = fgaincod_for(config_, nfchans)};
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
     // The coupling channel is one more stream on the end, so its coefficient

@@ -75,16 +75,30 @@ both encoders decide from content rather than from the bit rate.
   disabling coupling for the whole frame, the §8.2.4.1 case `docs/library/encoding-ac3.md`
   documents as unhandled; (b) coherence-driven `cplbndstrc`; (c) `ecplangleintrp`, encode and
   decode (the decoder refuses it today).
-- [ ] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. AC-3 narrows
-  `chbwcod` by `per_channel_kbps * 2/3`, E-AC-3 never narrows at all (fixed 60, even at 96
-  kbit/s where spectral extension starts at 8 kHz); `fgaincod` 1 measured +2 dB at 448 and +7 dB
-  at 640 kbit/s but regresses at 192, and the comment in `encoder.cpp` asks for its own
-  measurement pass. The same comment records the band-limited-fixture trap: measure on VX7's
-  material, not the checked-in noise.
-- [ ] **EQ8 (M)** — Close the E-AC-3 stereo/192 gap. The only landscape leg behind both external
-  encoders on every metric: ours loses 2.66 dB above 10 kHz where FFmpeg loses 0.91, and `auto`
-  picks AHT-only because it is SNR-optimal, while `spx`/`all` fix the envelope at a 3 dB SNR
-  cost. Decide the policy with a perceptual score (VX6), not SNR alone.
+- [x] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Both encoders now
+  take the per-channel-rate curve as a ceiling and put the frame's own spectrum under it, band by
+  band against Table 7.15's hearing threshold, up to 128 kbit/s per channel; `fgaincod` follows a
+  measured line from 7 at 38 kbit/s per channel to 0 at 128, replacing §8.2.12's fixed 4. Both
+  decided on ViSQOL, because waveform SNR prefers the narrowest band and the highest `fgaincod`
+  at every rate on every material and so distinguishes nothing. The band-limited-fixture trap
+  turned out to understate itself: real programme material carries *less* energy above 14.7 kHz
+  than `reference_51.wav` does, so an SNR-led bandwidth rule narrows harder on real audio than on
+  the fixture. Measured locally on sourced CC0/public-domain material — VX7 still wants it
+  packaged.
+- [ ] **EQ8 (M)** — Close the E-AC-3 stereo/192 gap. Partly addressed: the coded bandwidth is
+  no longer fixed at 60 there (EQ7), which is worth 1.2–2.7 dB SNR and up to +0.034 MOS on real
+  programme material at that rate and improves the high-band ratio with it. What did not move is
+  the *landscape* number, because `reference_stereo.wav` is FIR-smoothed noise flat to Nyquist:
+  there is nothing inaudible up there to drop, so the leg gains 0.04 dB and the gap to FFmpeg
+  (0.79 dB SNR, LSD 1.97 against 0.83) stands. Two findings for whoever takes the rest. The
+  remaining gap on that material is bit-allocation efficiency, which is EQ2/EQ3's, not a tool
+  choice: no tool set closes it, and `auto`'s AHT is already the SNR-best of them. And AHT
+  itself is SNR-positive but ViSQOL-negative at every rate and both channel counts measured
+  (+0.6 to +1.9 dB SNR against −0.024 to −0.066 MOS over eight rate points), with the worst
+  high-band ratio of any set — which looks like EQ1's whole-frame exponent set (`nchregs == 1`)
+  rather than a rate policy, and wants EQ1 and a listening test (VX9) before `auto` stops
+  choosing it. Needs VX7's material and VX6's column in CI for any of this to be visible to the
+  trend gate.
 - [ ] **EQ9 (L)** — Closed-loop tool decisions. `auto` chooses cpl/spx/aht and their band edges
   from the rate (`default_cplbegf`/`default_spxbegf`), reproducing the best fixed variant on 13
   of 14 measured points but never from content: near-mono material at a high rate never gets
