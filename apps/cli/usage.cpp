@@ -1,6 +1,7 @@
 #include "usage.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <print>
