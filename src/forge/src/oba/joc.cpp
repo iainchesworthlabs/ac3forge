@@ -393,9 +393,15 @@ namespace {
         static_cast<std::size_t>(objects),
         std::vector<float>(static_cast<std::size_t>(kSamplesPerFrame)));
 
-    // The interpolated matrix for one timeslot, one object: 5 channels by at
-    // most kNumBands's largest entry.
-    std::array<std::array<double, 23>, kNumChannels5X> mix{};
+    // The interpolated matrix for one timeslot, one object: 5 channels by
+    // however many parameter bands the frame carries. Sized to Table 50's
+    // widest entry so it never has to be allocated, and asserted against
+    // that table rather than spelled as a literal.
+    constexpr std::size_t kWidestBandCount = 23;
+    static_assert(kWidestBandCount ==
+                      static_cast<std::size_t>(*std::ranges::max_element(kNumBands)),
+                  "Table 50 grew a wider layout than this scratch can hold");
+    std::array<std::array<double, kWidestBandCount>, kNumChannels5X> mix{};
 
     // The three matrices §6.6.5's ramp runs between, resolved once. Each
     // missing one falls back to the next newer, which turns the ramp that
