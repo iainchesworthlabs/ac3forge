@@ -5,11 +5,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <format>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <ios>
 #include <iostream>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -36,13 +36,13 @@ namespace {
 bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream out{path, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {} for writing", path.string());
+        fmt::println(stderr, "error: cannot open {} for writing", path.string());
         return false;
     }
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
     if (!out) {
-        std::println(stderr, "error: write failed for {}", path.string());
+        fmt::println(stderr, "error: write failed for {}", path.string());
         return false;
     }
     return true;
@@ -71,7 +71,7 @@ std::string build_dash_mpd(const mp4::AudioTrack& track,
     }
     const double total_seconds =
         static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-    return std::format(
+    return fmt::format(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
         "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
@@ -88,7 +88,7 @@ std::string build_dash_mpd(const mp4::AudioTrack& track,
 int run_mkv(std::string_view in_path, std::string_view out_path) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return 1;
     }
     // Everything the container needs to declare comes out of the bitstream:
@@ -98,7 +98,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // itself - and nothing could catch it.
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -114,18 +114,18 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
         .samples_per_frame = ac3::kSamplesPerFrame};
     const auto file = matroska::mux(track, units);
     if (!file) {
-        std::println(stderr, "error: {}", matroska::describe(file.error()));
+        fmt::println(stderr, "error: {}", matroska::describe(file.error()));
         return 1;
     }
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot write {}", out_path);
+        fmt::println(stderr, "error: cannot write {}", out_path);
         return 1;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
               static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return 1;
     }
     // Name the layout only when one substream carries the whole thing. With
@@ -133,9 +133,9 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // rendered channel count would just contradict itself.
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
-    std::println("wrote {} {} access units ({}, {} channels, {} bytes) to {}",
+    fmt::println("wrote {} {} access units ({}, {} channels, {} bytes) to {}",
                  units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
                  file->size(), out_path);
     return 0;
@@ -144,12 +144,12 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
 int run_mp4(std::string_view in_path, std::string_view out_path) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return 1;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -166,29 +166,29 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         .codec_config = ac3::io::build_codec_config_box(*scanned)};
     const auto file = mp4::mux(track, units);
     if (!file) {
-        std::println(stderr, "error: {}", mp4::describe(file.error()));
+        fmt::println(stderr, "error: {}", mp4::describe(file.error()));
         return 1;
     }
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot write {}", out_path);
+        fmt::println(stderr, "error: cannot write {}", out_path);
         return 1;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
               static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return 1;
     }
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     const std::string atmos =
         scanned->oba_complexity_index
-            ? std::format(", Atmos complexity {}", *scanned->oba_complexity_index)
+            ? fmt::format(", Atmos complexity {}", *scanned->oba_complexity_index)
             : std::string{};
-    std::println("wrote {} {} access units ({}, {} channels{}, {} bytes) to {}",
+    fmt::println("wrote {} {} access units ({}, {} channels{}, {} bytes) to {}",
                  units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels, atmos,
                  file->size(), out_path);
     return 0;
@@ -198,12 +198,12 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
              std::uint32_t frames_per_fragment) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return 1;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -221,7 +221,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     const auto fragmented = mp4::fragment(
         track, units, mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment});
     if (!fragmented) {
-        std::println(stderr, "error: {}", mp4::describe(fragmented.error()));
+        fmt::println(stderr, "error: {}", mp4::describe(fragmented.error()));
         return 1;
     }
 
@@ -229,7 +229,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     const std::filesystem::path dir{std::string{out_dir}};
     std::filesystem::create_directories(dir, ec);
     if (ec) {
-        std::println(stderr, "error: cannot create directory {} ({})", out_dir, ec.message());
+        fmt::println(stderr, "error: cannot create directory {} ({})", out_dir, ec.message());
         return 1;
     }
 
@@ -237,7 +237,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         return 1;
     }
     for (const auto& segment : fragmented->media_segments) {
-        const auto name = std::format("segment{}.m4s", segment.sequence_number);
+        const auto name = fmt::format("segment{}.m4s", segment.sequence_number);
         if (!write_bytes_to_path(dir / name, segment.bytes)) {
             return 1;
         }
@@ -251,7 +251,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     // field; only this CLI front end, which already has it, does.
     const mp4::HlsOptions hls_options{
         .channels_attribute = scanned->oba_complexity_index
-                                  ? std::format("{}/JOC", *scanned->oba_complexity_index)
+                                  ? fmt::format("{}/JOC", *scanned->oba_complexity_index)
                                   : std::string{}};
     const auto media_playlist =
         mp4::build_hls_media_playlist(track, fragmented->media_segments, hls_options);
@@ -270,13 +270,13 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
 
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     const std::string atmos =
         scanned->oba_complexity_index
-            ? std::format(", Atmos complexity {}", *scanned->oba_complexity_index)
+            ? fmt::format(", Atmos complexity {}", *scanned->oba_complexity_index)
             : std::string{};
-    std::println(
+    fmt::println(
         "wrote {} {} access units ({}, {} channels{}) as {} fragment(s) to {} "
         "(init.mp4, segment*.m4s, audio.m3u8, master.m3u8, manifest.mpd)",
         units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels, atmos,
@@ -287,12 +287,12 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
 int run_ts(std::string_view in_path, std::string_view out_path) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return 1;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -308,25 +308,25 @@ int run_ts(std::string_view in_path, std::string_view out_path) {
         .samples_per_frame = ac3::kSamplesPerFrame};
     const auto file = mpegts::mux(track, units);
     if (!file) {
-        std::println(stderr, "error: {}", mpegts::describe(file.error()));
+        fmt::println(stderr, "error: {}", mpegts::describe(file.error()));
         return 1;
     }
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot write {}", out_path);
+        fmt::println(stderr, "error: cannot write {}", out_path);
         return 1;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
               static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return 1;
     }
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
-    std::println("wrote {} {} access units ({}, {} channels, {} bytes) to {}",
+    fmt::println("wrote {} {} access units ({}, {} channels, {} bytes) to {}",
                  units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
                  file->size(), out_path);
     return 0;
@@ -374,7 +374,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     } else {
         file.open(std::string{in_path}, std::ios::binary);
         if (!file) {
-            std::println(stderr, "error: cannot open {}", in_path);
+            fmt::println(stderr, "error: cannot open {}", in_path);
             return 1;
         }
         in = &file;
@@ -389,7 +389,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
 
     const auto first = read_chunk();
     if (sniff_container(first) != ContainerKind::kMatroska) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: {} is not a container this build reads (expected Matroska/WebM)",
                      in_path);
         return 1;
@@ -411,7 +411,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     };
 
     const auto fail = [&sink](std::string_view message) {
-        std::println(stderr, "error: {}", message);
+        fmt::println(stderr, "error: {}", message);
         sink.abort();
         return 1;
     };
@@ -442,7 +442,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     // The container declares the codec; this command never looks inside an
     // access unit, which is exactly why it can hand one back untouched.
     const auto& track = reader.track();
-    std::println(status_stream(out_path),
+    fmt::println(status_stream(out_path),
                  "wrote {} access units ({}, {} Hz, {} channels, {} bytes) to {}", sink.frames(),
                  track.codec_id, track.sample_rate, track.channels, sink.total_bytes(), out_path);
     return 0;
