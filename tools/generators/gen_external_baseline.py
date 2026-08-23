@@ -16,12 +16,34 @@ otherwise, same graceful-degradation contract as everywhere else this
 project uses it. Installing it here is a one-time, local, opt-in choice by
 whoever regenerates the baseline; it is never required to run this script.
 
-Three fixed legs, matched to bitrate points already established elsewhere
-in this repo so the numbers are comparable to existing tables:
+Eight fixed legs (baseline_version 2; the first three were the whole set at
+version 1 and are unchanged, so their published series stay continuous):
 
-  ac3-51-448        AC-3,   5.1,    448 kbps, reference_51.wav
-  eac3-stereo-192    E-AC-3, stereo, 192 kbps, reference_stereo.wav
-  eac3-51-256        E-AC-3, 5.1,    256 kbps, reference_51.wav
+  ac3-51-448             AC-3,   5.1,    448 kbps, reference_51.wav
+  eac3-stereo-192        E-AC-3, stereo, 192 kbps, reference_stereo.wav
+  eac3-51-256            E-AC-3, 5.1,    256 kbps, reference_51.wav
+  eac3-stereo-96         E-AC-3, stereo,  96 kbps, reference_stereo.wav
+  eac3-stereo-64         E-AC-3, stereo,  64 kbps, reference_stereo.wav
+  ac3-music-stereo-192   AC-3,   stereo, 192 kbps, programme_music_stereo.flac
+  eac3-music-stereo-96   E-AC-3, stereo,  96 kbps, programme_music_stereo.flac
+  eac3-speech-stereo-64  E-AC-3, stereo,  64 kbps, programme_speech_stereo.flac
+
+The two new synthetic stereo legs exist because the Annex E tools were never
+being compared against FFmpeg or DEE at a rate where they run. `auto` enables
+coupling below 12 + 14n kbit/s per channel and spectral extension below 56
+(eac3_frame.cpp's coupling_rate_ceiling/kSpxRateCeiling), and the only stereo
+leg sat at 96 per channel - above both - so every published stereo comparison
+was of an encoder that had chosen no tools at all. 96 kbps total is 48 per
+channel (spectral extension only) and 64 is 32 (both).
+
+The three programme legs are the other half of the same problem: the first
+five are all 2.5-3 s of sin()/noise/FIR, which carries a flat noise plateau
+across its whole top octave and has already produced one measured, fake
+2.1 dB "win" (src/lib/src/encoder/encoder.cpp's chbwcod comment). See
+tools/generators/gen_programme_fixtures.py for the sources, licences and
+measured spectra. Those fixtures ship as FLAC and are materialised to WAV
+under build/ by quality_race.py's materialise_fixture(), which is what the
+`wav` key below goes through.
 
 For each leg: encode with FFmpeg, encode with DEE, encode with the current
 build's ac3cli (a sanity check, not the point of this script - CI's `trend`
@@ -54,20 +76,26 @@ to regenerate the baseline against a new DEE/FFmpeg release - it is the
 only marker distinguishing one baseline generation from the next in a PR
 diff.
 
-Known issue: DEE's two 5.1 legs (ac3-51-448, eac3-51-256) score as
-"unverified" rather than a number - see UNVERIFIED_DEE_LEGS below. This
-installed DEE build (v6.5.4-dme+b56bc97e) reproducibly drops the Ls
-(surround-left) channel's content for a discrete 6-channel 5.1 input,
-confirmed with a per-channel tone probe: the silence is locked to channel
-index 3 regardless of what content is placed there (swapping which
-frequency sits in Ls vs Rs moves the silence with the *position*, not the
-content), independent of WAV-vs-raw-PCM input, dd-vs-ddp codec, and the
-surround_90deg_phase_shift flag. This is DEE's own behavior, not a bug in
-this script or in ac3forge - the stereo E-AC-3 leg (no Ls channel to hit
-this) scores DEE fine (33.32 dB SNR, sane and comparable to FFmpeg's own
-32.81 dB at the same bitrate). The dee.ac3/dee.ec3 bitstreams are still
-written and committed for the 5.1 legs, so re-scoring is free once this is
-understood or a newer DEE build is available.
+Resolved at baseline_version 2: DEE's two 5.1 legs used to score as
+"unverified" rather than a number. This installed DEE build
+(v6.5.4-dme+b56bc97e) reproducibly drops the Ls (surround-left) channel's
+content when 5.1 arrives as ONE discrete 6-channel file, confirmed with a
+per-channel tone probe: the silence was locked to channel index 3 whatever
+content was placed there, independent of WAV-vs-raw-PCM input, dd-vs-ddp
+codec, and the surround_90deg_phase_shift flag.
+
+The fix is DEE's other documented input path. `--input-format wav_list`
+takes one mono WAV per channel ("A list of mono WAVE files, one for each
+channel, in order of L:R:C:LFE:LS:RS:LRS:RRS", per `dee_ddp_encoder
+--morehelp input-format`) and does not lose Ls. Verified by re-measuring
+per-channel RMS through the full encode/decode: 6983/6983/3146/7282/700/1151
+out against 7025/7025/3165/7517/717/1174 in, every channel present including
+index 4. That list order is also this project's own WAV channel order
+(FL FR FC LFE BL BR - ac3::io::ac3_layout_for), unlike the SMPTE order the
+single-multichannel path wants, so split_for_dee() below needs no
+permutation at all where reorder_for_dee() needed _SMPTE_FROM_WAVE_51. The
+single-file path is gone rather than kept as a fallback: it is the one that
+loses a channel.
 
 Usage (repo root, after building ac3cli):  python tools/generators/gen_external_baseline.py
 Set AC3CLI to override the ac3cli binary, same as quality_race.py.
@@ -88,7 +116,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # just also happens to be where its own CLI/WAV-IO/scoring helpers live.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ci"))
 from quality_race import (
-    CLI, decode_scores_ours_fixed, measured_kbps, read_wav_any, read_wav_f32, run, score_fixed,
+    CLI, decode_scores_ours_fixed, materialise_fixture, measured_kbps, read_wav_any, read_wav_f32,
+    run, score_fixed,
 )
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -101,24 +130,28 @@ DEE = Path(r"C:\Program Files\Dolby\Dolby Media Encoder\resources\dee-dir\dee_dd
 # Bump by hand each time this script is rerun to regenerate the baseline
 # against a new DEE or FFmpeg release - the manifest diff this produces is
 # meant to be reviewed like any other change, not silently overwritten.
-BASELINE_VERSION = 1
+#
+# 2: DEE's 5.1 legs stopped being "unverified" (split_for_dee below), five
+#    legs were added (see the module docstring), and every score gained a
+#    real mos_lqo - version 1 was generated in an environment without
+#    visqol-python, so every MOS delta in docs/landscape.md read n/a.
+BASELINE_VERSION = 2
 
-# See the module docstring's "Known issue" - DEE reproducibly drops the Ls
-# channel for discrete 6-channel 5.1 input on this installed build. Legs
-# named here get {"status": "unverified", ...} instead of a numeric DEE
-# score, so the manifest never reports a misleadingly low "DEE quality" for
-# a problem that is actually one silent channel, not a coding-quality gap.
-UNVERIFIED_DEE_LEGS = {
-    "ac3-51-448": "DEE build v6.5.4-dme+b56bc97e drops the Ls channel for "
-                  "discrete 6-channel 5.1 input (confirmed via tone probe, "
-                  "channel-index-locked) - see tools/generators/gen_external_baseline.py's "
-                  "module docstring.",
-    "eac3-51-256": "DEE build v6.5.4-dme+b56bc97e drops the Ls channel for "
-                   "discrete 6-channel 5.1 input (confirmed via tone probe, "
-                   "channel-index-locked) - see tools/generators/gen_external_baseline.py's "
-                   "module docstring.",
-}
+# No leg is unverified any more - see the module docstring. The key is kept,
+# empty, rather than deleted: it is the only place that says what to do when
+# an external tool cannot produce a trustworthy number for a leg, and the
+# next DEE or FFmpeg release is as likely to need it as the last one was.
+# Everything downstream (this script's own main(), quality_race.py's
+# render_spectrograms(), append_external_comparison_history.py's
+# load_baseline_scores(), docs/landscape.md's n/a cells) already handles it.
+UNVERIFIED_DEE_LEGS: dict[str, str] = {}
 
+_SPEECH = AUDIO / "programme_speech_stereo.flac"
+_MUSIC = AUDIO / "programme_music_stereo.flac"
+
+# Mirrored by hand in quality_race.py's TREND_LEGS - see that list's own
+# comment, and this file's docstring for what each leg is for. `wav` may be a
+# FLAC; materialise_fixture() turns it into a WAV path.
 LEGS = [
     dict(name="ac3-51-448", codec="ac3", ext="ac3", dee_codec="dd",
          ffmpeg_codec="ac3", dee_layout="5.1", kbps=448,
@@ -129,6 +162,18 @@ LEGS = [
     dict(name="eac3-51-256", codec="eac3", ext="ec3", dee_codec="ddp",
          ffmpeg_codec="eac3", dee_layout="5.1", kbps=256,
          wav=AUDIO / "reference_51.wav"),
+    dict(name="eac3-stereo-96", codec="eac3", ext="ec3", dee_codec="ddp",
+         ffmpeg_codec="eac3", dee_layout="stereo", kbps=96,
+         wav=AUDIO / "reference_stereo.wav"),
+    dict(name="eac3-stereo-64", codec="eac3", ext="ec3", dee_codec="ddp",
+         ffmpeg_codec="eac3", dee_layout="stereo", kbps=64,
+         wav=AUDIO / "reference_stereo.wav"),
+    dict(name="ac3-music-stereo-192", codec="ac3", ext="ac3", dee_codec="dd",
+         ffmpeg_codec="ac3", dee_layout="stereo", kbps=192, wav=_MUSIC),
+    dict(name="eac3-music-stereo-96", codec="eac3", ext="ec3", dee_codec="ddp",
+         ffmpeg_codec="eac3", dee_layout="stereo", kbps=96, wav=_MUSIC),
+    dict(name="eac3-speech-stereo-64", codec="eac3", ext="ec3", dee_codec="ddp",
+         ffmpeg_codec="eac3", dee_layout="stereo", kbps=64, wav=_SPEECH),
 ]
 
 
@@ -160,39 +205,44 @@ def invoke_ffmpeg(wav, kbps, codec, out):
          "-b:a", f"{kbps}k", str(out)])
 
 
-# DEE's single-multichannel-WAV input path reads SMPTE channel order (see
-# `dee_ddp_encoder --morehelp input-format`: "Single multichannel WAVE file
-# input (SMPTE channel order)") - L, C, R, Ls, Rs, LFE, which is also AC-3's
-# own bitstream channel order for acmod 3/2. This project's own WAV
-# convention (ac3::io::ac3_layout_for, see gen_gold_reference_wav.py) is
-# Microsoft/WAVE order instead: FL, FR, FC, LFE, BL, BR. Feeding DEE a
-# WAVE-order file unchanged silently scrambles which physical channel it
-# thinks is which - confirmed by a suspiciously consistent ~15 dB SNR hit
-# on both 5.1 legs (AC-3 and E-AC-3 alike) before this reorder was added.
-_SMPTE_FROM_WAVE_51 = [0, 2, 1, 4, 5, 3]  # L C R Ls Rs LFE, from FL FR FC LFE BL BR
-
-
-def reorder_for_dee(wav_path, layout, scratch_path):
-    if layout != "5.1":
-        return wav_path
+# DEE's `wav_list` input path: one mono WAV per channel, "in order of
+# L:R:C:LFE:LS:RS:LRS:RRS" (`dee_ddp_encoder --morehelp input-format`).
+#
+# This is the path that works. DEE's other input path - one discrete
+# multichannel WAV - silently drops the Ls channel on this build, which is
+# what left both 5.1 legs unverified at baseline_version 1; see the module
+# docstring for the tone probe that pinned it down and the per-channel RMS
+# that confirms this path does not.
+#
+# It also removes a whole class of mistake rather than just the Ls one. The
+# single-file path reads SMPTE order (L C R Ls Rs LFE) where this project's
+# WAVs are Microsoft/WAVE order (FL FR FC LFE BL BR), so it needed a
+# permutation table, and getting that wrong cost a suspiciously consistent
+# ~15 dB on both 5.1 legs before anyone noticed. wav_list's documented order
+# IS this project's WAV order, so the split below is a plain de-interleave
+# with no permutation to get wrong.
+def split_for_dee(wav_path, scratch_dir, tag):
+    """Interleaved PCM16 WAV -> one mono WAV per channel; returns DEE's
+    colon-joined --input argument."""
     with wave.open(str(wav_path), "rb") as r:
         params = r.getparams()
         raw = r.readframes(r.getnframes())
     ch = params.nchannels
     samples = struct.unpack(f"<{len(raw) // 2}h", raw)
     n = len(samples) // ch
-    out = [0] * (n * ch)
-    for i in range(n):
-        base = i * ch
-        for new_idx, src_idx in enumerate(_SMPTE_FROM_WAVE_51):
-            out[base + new_idx] = samples[base + src_idx]
-    with wave.open(str(scratch_path), "wb") as w:
-        w.setparams(params)
-        w.writeframes(struct.pack(f"<{len(out)}h", *out))
-    return scratch_path
+    paths = []
+    for c in range(ch):
+        out = scratch_dir / f"{tag}_dee_ch{c}.wav"
+        with wave.open(str(out), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(params.sampwidth)
+            w.setframerate(params.framerate)
+            w.writeframes(struct.pack(f"<{n}h", *samples[c::ch]))
+        paths.append(str(out))
+    return ":".join(paths)
 
 
-def invoke_dee(wav, kbps, codec, layout, out):
+def invoke_dee(wav_list_arg, kbps, codec, layout, out):
     """codec is "dd" (AC-3) or "ddp" (E-AC-3).
 
     measure_only + drc_profile=none: DEE's default loudness mode
@@ -202,7 +252,7 @@ def invoke_dee(wav, kbps, codec, layout, out):
     normalization of its own, so this keeps the comparison to coding
     artifacts only, matching what "ours" actually does.
     """
-    run([str(DEE), "--input-format", "wav", "--input", str(wav),
+    run([str(DEE), "--input-format", "wav_list", "--input", wav_list_arg,
          "--encoder", f"{codec}:drc_profile=none",
          "--loudness-management", "measure_only",
          "--data-rate", str(kbps),
@@ -213,15 +263,23 @@ def invoke_dee(wav, kbps, codec, layout, out):
 
 def invoke_ours(wav, kbps, is_eac3, out):
     if is_eac3:
-        # "all" (quality_race.py's EAC3_VARIANTS token, cpl+spx+aht): a bare
-        # `eac3-encode` with no tools argument leaves every Annex E tool off
-        # by default (FrameConfig's own defaults - see
-        # docs/library/encoding-eac3.md's table), which would compare
-        # ac3forge with its hands tied against FFmpeg's/DEE's own automatic
-        # best-effort tool selection. AC-3 has no such toggle at all -
-        # coupling/rematrix/delta bit allocation are unconditionally
-        # automatic there - so only the E-AC-3 branch needs this.
-        run([CLI, "eac3-encode", str(wav), str(out), str(kbps), "all"])
+        # "auto": a bare `eac3-encode` with no tools argument leaves every
+        # Annex E tool off by default (FrameConfig's own defaults - see
+        # docs/library/encoding-eac3.md's table), which would compare ac3forge
+        # with its hands tied against FFmpeg's/DEE's own automatic best-effort
+        # tool selection. "auto" is this encoder's own automatic choice from
+        # the per-channel rate, which is the like-for-like answer to theirs.
+        # AC-3 has no such toggle at all - coupling/rematrix/delta bit
+        # allocation are unconditionally automatic there - so only the E-AC-3
+        # branch needs this.
+        #
+        # This said "all" until baseline_version 2, which forced every tool on
+        # at every rate. quality_race.py's race_trend() had already moved its
+        # own landscape row off "all" for the measured reason in its docstring
+        # (at 192 kbit/s stereo the forced set costs about 10 dB of SNR
+        # against choosing nothing) and its docstring already claimed this
+        # function agreed with it; now it does.
+        run([CLI, "eac3-encode", str(wav), str(out), str(kbps), "auto"])
     else:
         run([CLI, "encode", str(wav), str(out), str(kbps)])
 
@@ -300,7 +358,7 @@ def main():
     for leg in LEGS:
         name, codec, ext, kbps = leg["name"], leg["codec"], leg["ext"], leg["kbps"]
         is_eac3 = codec == "eac3"
-        wav = leg["wav"]
+        wav = materialise_fixture(leg["wav"])
         original = read_wav_any(wav)
         seconds = len(original) / 48000.0
 
@@ -311,10 +369,10 @@ def main():
         dee_out = leg_dir / f"dee.{ext}"
         ours_out = SCRATCH / f"{name}_ours.{ext}"
 
-        dee_wav = reorder_for_dee(wav, leg["dee_layout"], SCRATCH / f"{name}_dee_input.wav")
+        dee_input = split_for_dee(wav, SCRATCH, name)
 
         invoke_ffmpeg(wav, kbps, leg["ffmpeg_codec"], ffmpeg_out)
-        invoke_dee(dee_wav, kbps, leg["dee_codec"], leg["dee_layout"], dee_out)
+        invoke_dee(dee_input, kbps, leg["dee_codec"], leg["dee_layout"], dee_out)
         invoke_ours(wav, kbps, is_eac3, ours_out)
 
         scores = {}

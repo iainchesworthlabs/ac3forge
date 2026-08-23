@@ -22,7 +22,8 @@ simply absent rather than null-padded. A leg's DEE score can itself be
 {"status": "unverified", ...} in the manifest (see
 tools/generators/gen_external_baseline.py's UNVERIFIED_DEE_LEGS) - vs_dee_snr_db is
 omitted for those rather than comparing against a number that was never
-real.
+real. No leg is unverified at baseline_version 2, but the handling stays:
+the next external-tool release is as likely to need it as the last one was.
 
 Mirrors tools/ci/append_quality_history.py closely by design (same shape,
 same trailing-10-run window, same regression thresholds - the underlying
@@ -34,19 +35,22 @@ push, so what lands in history is never a broken run's numbers.
 Also carries through each row's "mos_lqo" (ViSQOL MOS-LQO, see
 quality_race.py's perceptual_score()) when the environment that produced
 trend.json had `visqol-python` installed - null otherwise, same graceful-
-degradation contract as everywhere else this project uses it, not a second
-regression-gated metric: no trailing-window/soft/hard-regression handling
-for it, mirroring lsd_db/hf_db's own read-only treatment here.
+degradation contract as everywhere else this project uses it. Since CI now
+installs it, that column has a trailing-window regression tier of its own -
+soft only, never a job failure; see MOS_REGRESSION_DROP for why it is not
+symmetric with the SNR tiers. lsd_db/hf_db stay read-only here: each is a
+measure of a specific trade the Annex E tools make on purpose, so a move in
+either is not on its own a regression the way a MOS drop is.
 
 `landscape` rows carry a vs_ffmpeg/vs_dee delta for all three of the
 metrics that have one on both sides - snr_db, lsd_db and mos_lqo - so the
 comparison can be read on more than waveform SNR alone. These tools trade
 waveform fidelity for banded envelope fidelity on purpose, and a single-
 metric headline reports that trade as a straight loss. Each delta appears
-only when *both* sides have a real number: mos_lqo predates no baseline
-generated before tools/generators/gen_external_baseline.py grew the column (so most
-rows will not have it yet), and lsd_db is null on the AC-3 leg, where
-race_trend does not score it at all.
+only when *both* sides have a real number: mos_lqo is absent from every
+baseline generated before version 2, which was the first produced in an
+environment that had visqol-python installed, and lsd_db is null on the AC-3
+legs, where race_trend does not score it at all.
 
 Every vs_* key is ours-minus-theirs, including the LSD one where lower is
 better - the arithmetic stays uniform and the presentation layer decides
@@ -68,6 +72,25 @@ from pathlib import Path
 REGRESSION_TRAILING_WINDOW = 10
 REGRESSION_DROP_DB = 0.5
 HARD_REGRESSION_DROP_DB = 10.0
+
+# The MOS tier is soft only - a ::warning::, never a job failure, and no hard
+# counterpart. Three reasons it is not symmetric with the SNR tiers above.
+#
+# ViSQOL's MOS-LQO is a model's prediction of a listening-test result, not a
+# measurement of the signal, so an unexplained move in it is a reason to go
+# and look rather than a reason to refuse a merge - and this project already
+# has a hard gate that IS a measurement (quality_race.py's `ci` mode).
+#
+# It is also scored on a bounded window (quality_race.py's MOS_WINDOW_S), so
+# it says less about the parts of a 30 s fixture outside that window than SNR,
+# which spans the whole thing, does.
+#
+# And it is bounded above at about 4.75, so a drop has nothing like SNR's
+# dynamic range: 0.15 is roughly what one Annex E tool set differs from
+# another by on the low-rate legs (measured: 4.31 vs 4.07 between `auto` and
+# `spx` on eac3-stereo-64), which makes it big enough not to fire on model
+# noise and small enough to catch a tool set silently changing.
+MOS_REGRESSION_DROP = 0.15
 
 
 def load_trend_rows(trend_json: Path):
@@ -92,7 +115,20 @@ def load_baseline_scores(manifest_json: Path):
     return out
 
 
-def trailing_mean(history_path: Path, leg: str, variant: str, window: int):
+def trailing_mean(history_path: Path, leg: str, variant: str, window: int,
+                   metric: str = "snr_db"):
+    """Mean of the last `window` recorded values of `metric` for this
+    leg/variant, or None if there are none.
+
+    Records missing the metric, or carrying it as null, are skipped rather
+    than counted as zero. That matters for mos_lqo specifically: every record
+    written before visqol-python was installed in CI has "mos_lqo": null, and
+    there are thousands of them - averaging those in would put the baseline
+    somewhere near zero and make the first real score look like an enormous
+    improvement, then make the second one look like a regression against it.
+    Skipping them means the MOS window fills up from the first real run
+    onward and simply has no baseline until it does.
+    """
     if not history_path.exists():
         return None
     matches = []
@@ -101,7 +137,9 @@ def trailing_mean(history_path: Path, leg: str, variant: str, window: int):
             continue
         rec = json.loads(line)
         if rec.get("leg") == leg and rec.get("variant") == variant:
-            matches.append(rec["snr_db"])
+            value = rec.get(metric)
+            if value is not None:
+                matches.append(value)
     if not matches:
         return None
     tail = matches[-window:]
@@ -171,6 +209,16 @@ def main() -> int:
                         if entry["mos_lqo"] is not None and score.get("mos_lqo") is not None:
                             entry[f"vs_{tool}_mos_lqo"] = entry["mos_lqo"] - score["mos_lqo"]
         lines.append(json.dumps(entry, sort_keys=True))
+
+        mos_baseline = trailing_mean(history_path, leg, variant,
+                                      REGRESSION_TRAILING_WINDOW, metric="mos_lqo")
+        mos_drop = (None if mos_baseline is None or entry["mos_lqo"] is None
+                    else mos_baseline - entry["mos_lqo"])
+        if mos_drop is not None and mos_drop >= MOS_REGRESSION_DROP:
+            print(f"::warning title=External-comparison trend MOS regression::{leg}/{variant}: "
+                  f"MOS-LQO {entry['mos_lqo']:.2f} is {mos_drop:.2f} below the trailing "
+                  f"{REGRESSION_TRAILING_WINDOW}-run mean ({mos_baseline:.2f}) on {args.branch}. "
+                  "Soft tier only - see MOS_REGRESSION_DROP for why this never fails a run.")
 
         drop = None if baseline is None else baseline - row["snr_db"]
         if drop is not None and drop >= HARD_REGRESSION_DROP_DB:
