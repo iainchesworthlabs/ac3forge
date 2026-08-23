@@ -61,6 +61,18 @@ set_target_properties(mp4_objects PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
+# MSVC's C4251 ("class X needs to have dll-interface...") fires for every
+# PRIVATE STL-typed member of an MP4_EXPORT class (mp4::FragmentWriter's own
+# std::vector buffers and segment window) - pure implementation detail, never
+# touched by a caller except through the class's own (exported) methods.
+# Suppressed here rather than by scattering non-portable #pragma
+# warning(disable:) through headers GCC/Clang also compile - see
+# src/matroska/CMakeLists.txt's identical matroska_objects treatment,
+# including why this is PUBLIC rather than PRIVATE (the warning fires wherever
+# a translation unit parses the dllexport/dllimport-decorated class
+# definition, not only inside this target's own compilation).
+target_compile_options(mp4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
+
 include(GenerateExportHeader)
 set_target_properties(mp4_shared PROPERTIES DEFINE_SYMBOL "MP4_BUILDING_SHARED")
 generate_export_header(mp4_shared
