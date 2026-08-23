@@ -402,7 +402,9 @@ void print_usage() {
     std::println("       first character, not their suffix: the keyframe columns");
     std::println("       'object_index time_s x y z gain lfe_send' per line ('#' comments), or");
     std::println("       an object scene in JSON (named objects, per-segment interpolation,");
-    std::println("       a scene orientation) starting with '{'. The GUI writes either.");
+    // "{{" is std::format's escape for a literal brace, which is what this
+    // line is about - the character a JSON scene file starts with.
+    std::println("       a scene orientation) starting with '{{'. The GUI writes either.");
     std::println("");
     std::println("mkv wraps an AC-3 or E-AC-3 elementary stream in Matroska, taking the");
     std::println("format, packet boundaries, sample rate and channel count from the bitstream");

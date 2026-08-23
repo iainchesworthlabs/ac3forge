@@ -82,7 +82,7 @@ struct SceneObject {
     // never pairs them by name), so the index of this object within the scene
     // is what the encoder actually contracts on, and renaming an object
     // changes nothing about the stream.
-    std::string name;
+    std::string name{};
     // 0 (the default) means a dynamic object: free to move, driven by the
     // automation below. Otherwise a mask of ac3::oba::bed:: labels, meaning
     // the object is speaker-anchored to those channels. A bed-assigned object
@@ -94,7 +94,7 @@ struct SceneObject {
     // At least one point, sorted by time, no two at the same instant -
     // ObjectScene::create enforces all three. One point is legal and means an
     // object that never moves.
-    std::vector<AutomationPoint> automation;
+    std::vector<AutomationPoint> automation{};
 };
 
 // A rotation of the whole scene about the room's centre, applied to positions
@@ -146,7 +146,8 @@ enum class SceneErrorKind : std::uint8_t {
     // is in force is undefined. Rejected rather than silently ordered.
     kDuplicateTime,
     // A recognised field with an unusable value: an unknown interpolation or
-    // bed label, a non-finite time/position/gain, a negative duration.
+    // bed label, a non-finite time/position/gain, an object index no scene
+    // could have.
     kBadValue,
 };
 
@@ -157,7 +158,7 @@ struct SceneError {
     SceneErrorKind kind = SceneErrorKind::kSyntax;
     // 1-based. 0 when the format has no line structure to point at.
     std::size_t line = 0;
-    std::string message;
+    std::string message{};
 };
 
 // The scene. Immutable in shape once created - objects and their automation
@@ -166,8 +167,8 @@ struct SceneError {
 // turn while a session is open.
 class AC3FORGE_EXPORT ObjectScene {
    public:
-    // Sorts each object's automation by time and rejects the four ways a
-    // scene can be unusable (see SceneErrorKind). An empty object LIST is
+    // Sorts each object's automation by time and rejects the ways a scene can
+    // be unusable (see SceneErrorKind). An empty object LIST is
     // legal: a scene with nothing in it evaluates to nothing, which is a
     // sensible starting state for an editor.
     [[nodiscard]] static std::expected<ObjectScene, SceneError> create(
@@ -179,8 +180,9 @@ class AC3FORGE_EXPORT ObjectScene {
     [[nodiscard]] const Orientation& orientation() const { return orientation_; }
     void set_orientation(const Orientation& orientation) { orientation_ = orientation; }
 
-    // The last authored instant in the scene, 0 for an empty one. What a
-    // caller encoding "the whole scene" derives its frame count from.
+    // The last authored instant in the scene - 0 for an empty one, and never
+    // negative. What a caller encoding "the whole scene" derives its frame
+    // count from.
     [[nodiscard]] double duration_s() const;
 
     // Where one object is at time_s.
@@ -272,11 +274,12 @@ class AC3FORGE_EXPORT SceneCursor {
 // and the orientation, which only the JSON form can carry.
 //
 // Two callers already disagree about what an index the file skipped should be
-// (ac3cli's atmos-path fans it out across the ring, its atmos-encode keeps that
-// channel's existing static placement) and a third will have its own answer, so
-// the decision has to be theirs. Fill the gaps, then ObjectScene::create.
+// (ac3cli's atmos-path parks it at room centre under its inverse-root gain law,
+// its atmos-encode keeps that channel's existing fanned-out static placement)
+// and a third will have its own answer, so the decision has to be theirs. Fill
+// the gaps, then ObjectScene::create.
 struct SceneContents {
-    std::vector<SceneObject> objects;
+    std::vector<SceneObject> objects{};
     Orientation orientation{};
 };
 

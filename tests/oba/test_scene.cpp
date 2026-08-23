@@ -216,6 +216,14 @@ TEST_CASE("the keyframe grammar keeps its shape", "[oba][scene]") {
         CHECK(parsed.error().kind == ac3::oba::SceneErrorKind::kSyntax);
     }
 
+    SECTION("an absurd object index is refused rather than sizing a vector by it") {
+        const auto parsed =
+            ac3::oba::scene_objects_from_keyframe_text("999999999999 0 0 0 0 1 0\n");
+        REQUIRE_FALSE(parsed.has_value());
+        CHECK(parsed.error().kind == ac3::oba::SceneErrorKind::kBadValue);
+        CHECK(parsed.error().line == 1);
+    }
+
     SECTION("two points at one instant are refused, not silently ordered") {
         const auto parsed =
             ac3::oba::scene_objects_from_keyframe_text("0 1 0 0 0 1 0\n0 1 1 1 0 1 0\n");

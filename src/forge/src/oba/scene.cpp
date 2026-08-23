@@ -332,6 +332,20 @@ std::expected<std::vector<SceneObject>, SceneError> scene_objects_from_keyframe_
         if (!parse_index(index_token, object)) {
             return std::unexpected(malformed(lineno));
         }
+        // The index sizes the returned vector, so a typo'd one is an
+        // allocation this function would otherwise attempt on a file's say-so.
+        // The ceiling is far above anything an object programme can be -
+        // §8.3.2.2 caps an Atmos programme at 16 objects and §5.5.2's own
+        // object_count field at 31 - and exists only to keep a malformed file
+        // from being a memory question.
+        constexpr std::size_t kMaxObjectIndex = 1023;
+        if (object > kMaxObjectIndex) {
+            return std::unexpected(
+                SceneError{.kind = SceneErrorKind::kBadValue,
+                           .line = lineno,
+                           .message = std::format("object index {} is out of range (0 to {})",
+                                                  object, kMaxObjectIndex)});
+        }
         AutomationPoint point;
         // The seven columns in order, the leading object index already taken.
         const std::array<double*, 6> columns{&point.time_s,    &point.position.x,

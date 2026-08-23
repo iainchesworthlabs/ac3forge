@@ -1829,13 +1829,13 @@ std::vector<ac3::oba::SceneObject> EncoderController::exportableSceneObjects() c
             objects.resize(flat + 1);
         }
         auto& object = objects[flat];
+        const auto object_key = keyForObjectIndex(i);
         // A name for a human reading the file back. The motion preset's own
         // label where the object has one, else its index - the column form
         // has no name field and drops this either way, so nothing depends on
         // it being unique.
-        const auto label = keyForObjectIndex(i)
-                               ? map_value(object_path_labels_, *keyForObjectIndex(i))
-                               : QString();
+        const auto label =
+            object_key ? map_value(object_path_labels_, *object_key) : QString();
         object.name = (label.isEmpty() ? QStringLiteral("object %1").arg(flat) : label)
                           .toStdString();
         const auto keyframes = sortedKeyframes(i);
@@ -1845,7 +1845,6 @@ std::vector<ac3::oba::SceneObject> EncoderController::exportableSceneObjects() c
             // lfe_send law encodeObjects' own fallback applies, so the
             // exported scene reproduces this object's actual placement rather
             // than atmos-encode's own built-in default for it.
-            const auto object_key = keyForObjectIndex(i);
             const auto config = object_key ? map_value(object_configs_, *object_key)
                                            : ObjectConfig{};
             const auto scale = 1.0 / std::sqrt(static_cast<double>(ndynamic));

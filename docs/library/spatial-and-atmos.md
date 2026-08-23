@@ -137,7 +137,7 @@ the one description they share.
 
 It is **metadata and authoring**, deliberately. A scene says where an object is at a moment in
 time; turning that into speaker feeds is the encoder's job, and a room-corrected render is
-[Cavern](https://cavern.sbence.hu/)'s rather than this project's. `Orientation` below is the
+[Cavern](https://github.com/VoidXH/Cavern)'s rather than this project's. `Orientation` below is the
 same kind of thing: it rewrites the coordinates that go into OAMD, so what reaches the
 bitstream is an ordinary scene that happens to have been turned.
 
