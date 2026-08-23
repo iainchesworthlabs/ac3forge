@@ -2104,7 +2104,7 @@ TEST_CASE("demux recovers the exact elementary stream 'mkv' wrapped", "[cli][dem
 
     SECTION("E-AC-3") {
         const auto es = dir / "demux_eac3.ec3";
-        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 5.1", es);
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es);
     }
 
     SECTION("AC-3") {
