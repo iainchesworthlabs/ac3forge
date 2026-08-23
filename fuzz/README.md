@@ -100,16 +100,25 @@ ASan/UBSan, 300 s per harness from the committed seed corpus:
 
 The two harnesses that found something stopped at the first report each time,
 so their numbers are where they stopped, not a budget they survived. Both are
-clean over a full budget once the findings below are fixed: `fuzz_adm_parse`
-47,732 executions in 300 s (it is the slowest harness here by a distance -
-`parse_bw64` has no in-memory overload, so every execution spools the input
-to a temporary file and reopens it by path), and `fuzz_signing_verify`
-likewise clean over 420 s from a fresh corpus.
+clean over a full budget once the findings below are fixed:
 
-`fuzz_oamd_parse`'s exec rate is two orders of magnitude above
-`fuzz_signing_verify`'s for the obvious reason: an OAMD payload is tens of
-bytes and its parse is a bit walk, while a signing verification reconstructs
-a whole frame's message A bit by bit and runs HMAC-SHA-256 over it.
+| Harness               | Executions | exec/s | cov  | Result |
+|------------------------|-----------:|-------:|-----:|--------|
+| `fuzz_signing_verify` |     91,865 |    218 | 1358 | clean, 420 s, fresh corpus |
+| `fuzz_adm_parse`      |     47,732 |    158 |  116 | clean, 300 s |
+
+`fuzz_signing_verify`'s coverage went from 870 at the first report to 1358
+once all three were fixed, which is the point: each defect was a wall the
+mutation engine could not get past.
+
+`fuzz_adm_parse` is the slowest harness here by a distance because
+`parse_bw64` has no in-memory overload - libbw64's reader opens a file by
+path - so every execution spools the input to a temporary file and reopens
+it. `fuzz_oamd_parse`'s rate is three orders of magnitude above it, and two
+above `fuzz_signing_verify`'s, for the equally plain reason that an OAMD
+payload is tens of bytes and its parse is a bit walk, while a signing
+verification reconstructs a whole frame's message A bit by bit and runs
+HMAC-SHA-256 over it.
 
 ### What they found
 
