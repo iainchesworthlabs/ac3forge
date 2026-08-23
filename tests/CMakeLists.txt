@@ -83,6 +83,7 @@ add_executable(ac3tests
     encoder/test_plan.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    oba/test_scene.cpp
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp

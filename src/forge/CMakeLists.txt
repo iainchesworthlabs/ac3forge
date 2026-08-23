@@ -141,6 +141,8 @@ target_sources(forge_objects
         src/oba/joc.cpp
         src/oba/motion.cpp
         src/oba/oamd.cpp
+        src/oba/scene.cpp
+        src/oba/scene_json.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/mirror.cpp
