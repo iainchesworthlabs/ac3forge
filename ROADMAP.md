@@ -126,10 +126,21 @@ both encoders decide from content rather than from the bit rate.
   (tpn stereo/192: 18.0 dB vs 31.7 without). Gate tpn on detected transients with a measured
   pre-echo benefit and ecpl on bands where the angle/chaos fit beats standard coupling; if
   neither pays, say so in `docs/concepts` and keep them as reference-correctness tools.
-- [ ] **EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. The encoder
-  always writes six blocks; the decoder's `numblkscod != 3` path is spec-derived and has never
-  seen a real stream. This is the 256-sample-granularity mode `live` would want. Depends on EQ1
-  (per-block strategies and offsets become mandatory).
+- [x] **EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. Done for
+  `eac3-encode`: `FrameConfig::numblkscod` (default 3, the CLI's `numblkscod:N` tools token),
+  `AccessUnitConfig` refuses substreams that disagree about it, AHT and the hoisted (Table E2.10)
+  exponent form are unavailable below six blocks exactly as Table E1.3 requires, and `convsync`
+  cycles across each group of `6 / blocks_per_syncframe` frames. The decoder's `numblkscod != 3`
+  path — spec-derived, never before driven by a real stream — now is: round-trip tests decode a
+  real access unit at every code, including one with a dependent substream, through
+  `tools/ci/run_codec_matrix.sh`'s FFmpeg strict-decode leg as well as this project's own decoder.
+  **Not done: `atmos-encode`.** OAMD/JOC's object metadata is timed and interpolated across a
+  full six-block frame; extending that to a shorter one is unstarted, not merely unexposed — see
+  `docs/cli/metadata-options.md`'s own note. A CLI-reachable crash surfaced along the way: `auto`
+  tools selection can choose AHT, which a short `numblkscod` forbids outright, and
+  `run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting rejected config instead of
+  reporting it — fixed to the same clean error every other unexpressable configuration already
+  gets.
 - [ ] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. VBR shipped as a
   per-frame quality knob (`VbrConfig`) with no race leg, no trend row and no measured
   rate-distortion curve; add a sweep mode to `quality_race.py`, then a long-run average-rate

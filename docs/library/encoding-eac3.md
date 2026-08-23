@@ -4,8 +4,9 @@
 
 `ac3/encoder/eac3_frame.hpp`. Same shape, different container. E-AC-3 is not an AC-3 variant:
 no `crc1`, an arbitrary 11-bit `frmsiz` instead of a size table (so the 44.1 kHz padding
-alternation disappears), and exponent strategies for all six blocks hoisted into a frame-level
-`audfrm`.
+alternation disappears), exponent strategies planned per frame and written in whichever of Annex
+E's two forms the plan needs (a Table E2.10 code per channel, or per-block), and a syncframe
+that can carry fewer than six blocks.
 
 ```cpp
 // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
@@ -43,6 +44,7 @@ rejects them outright.
 
 | Field | Default | Notes |
 |---|---|---|
+| `numblkscod` | `3` | §E2.3.1.4, Table E2.4: how many 256-sample blocks a syncframe carries — 0/1/2 give 1/2/3 blocks (5.3/10.7/16 ms), the default 3 gives the usual six (32 ms). Every substream of an access unit must agree (`AccessUnitEncoder`'s constructor refuses a mismatch). Below 3, Table E1.3 implies `expstre = 1` and `ahte = 0` — the frame-level (Table E2.10) exponent-strategy form and AHT are both unwritable, so requesting either together with a short `numblkscod` is refused by `validate()` rather than silently dropped. Not available at the three reduced rates, which spend `numblkscod`'s own bits on `fscod2` instead (see below) — `validate()` refuses that combination too. |
 | `spx`, `spxbegf` | `false`, -1 | Spectral extension (§E3.6). Above the extension frequency nothing is coded: the decoder copies a lower band up, blends noise, and scales to a transmitted envelope. Cheaper and cruder than coupling, so the two stack. |
 | `spx_atten`, `spxattencod` | `true`, -1 | The §E3.6.4.2.3 notch across the seam. Six bits per channel per frame. |
 | `aht`, `gaqmod` | `false`, -1 | Adaptive hybrid transform (§E3.4): a second 6-point DCT down each bin across the frame's six blocks. Decided per channel per frame — setting the flag permits it, not forces it. |

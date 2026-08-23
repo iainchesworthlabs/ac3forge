@@ -278,6 +278,27 @@ run eac3-encode bootstrap_51.wav eac3_meta.ec3 192 none 51 \
 run decode eac3_meta.ec3 eac3_meta.wav
 run_ffmpeg_check eac3_meta.ec3
 
+# --- E-AC-3 short syncframes (roadmap EQ11): numblkscod 0/1/2, each a real
+# stream through both decoders for the first time - the decoder's own
+# numblkscod != 3 path existed only because it is spec-derived, never because
+# a real stream had driven it. "cpl+numblkscod:1" covers an explicit tool
+# stacked on a short frame - AHT is the one tool a short syncframe cannot
+# carry at all (Table E1.3 has no ahte bit below six blocks; validate()
+# refuses aht/auto_tools together with numblkscod != 3, since auto may turn
+# AHT on), which is why this row pins coupling explicitly rather than asking
+# for "auto". numblkscod:0 also runs at 71 so a dependent substream (§E3.8.2's
+# overwrite, and the multi-substream access-unit assembly) is exercised at the
+# shortest frame too, not just the bed alone. ------------------------------
+for tools in "numblkscod:0" "numblkscod:1" "numblkscod:2" "cpl+numblkscod:1"; do
+    safe=$(echo "$tools" | tr ':+' '__')
+    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
+    run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
+    run_ffmpeg_check "eac3enc_${safe}.ec3"
+done
+run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 256 "numblkscod:0" 71
+run decode eac3_numblkscod0_71.ec3 eac3_numblkscod0_71_decoded.wav
+run_ffmpeg_check eac3_numblkscod0_71.ec3
+
 # --- E-AC-3 VBR: quality-targeted rate control (eac3-encode's [vbr] arg,
 # default "off" - everything above this point never touched it) -------------
 # bitrate_kbps still matters in vbr mode - it feeds the coupling/spx

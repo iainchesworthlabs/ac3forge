@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -102,10 +101,14 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     const std::size_t total = sources->total_frames;
     const auto source_channels = static_cast<std::size_t>(routing->source_channels);
+    // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
+    // (the "numblkscod:N" tools token) to something below its default 3.
+    const auto samples_per_frame = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * ac3::kSamplesPerBlock);
 
     std::vector<std::vector<float>> source(source_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+                                           std::vector<float>(samples_per_frame));
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(samples_per_frame));
     std::vector<std::span<const float>> in(source_channels);
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -118,11 +121,11 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     // and the real encode loop after it, so the two can never render this
     // programme two different ways.
     auto route_frame = [&](std::size_t start) {
-        gather_frame(*sources, start, source);
+        gather_frame(*sources, start, source, static_cast<int>(samples_per_frame));
         for (std::size_t c = 0; c < source_channels; ++c) {
             in[c] = source[c];
         }
-        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+        plan::render(*routing, in, out, samples_per_frame);
     };
 
     const auto cp = plan::resolve(p);
@@ -159,7 +162,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         } else if (want_dialnorm) {
             whole.emplace(*sr, cp.bed_acmod, cp.bed_lfe);
         }
-        for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+        for (std::size_t start = 0; start < total; start += samples_per_frame) {
             route_frame(start);
             if (whole) {
                 whole->push(views);
@@ -196,7 +199,17 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     }
 
     ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
-    assert(static_cast<int>(nchans) == encoder.channel_count());
+    // Reachable now that a tools combination alone can make validate() refuse
+    // the plan - "auto" may turn AHT on, which a short numblkscod (the
+    // "numblkscod:N" token) forbids outright (Table E1.3 has no ahte bit
+    // below six blocks) - so this is a real, CLI-reachable error rather than
+    // an internal invariant: report it the same way encode_access_unit's own
+    // per-frame rejection below does, not an assert that would abort instead
+    // of leaving the caller a message.
+    if (static_cast<int>(nchans) != encoder.channel_count()) {
+        fmt::println(stderr, "error: the encoder cannot express this configuration");
+        return 1;
+    }
     // Streamed out as encoded, exactly as run_eac3_encode below - the
     // multi-source shape only differs on the INPUT side (route_frame over
     // whole sources), not in what leaves.
@@ -204,7 +217,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     if (!out_sink.open(out_path, meta.keep_partial)) {
         return 1;
     }
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    for (std::size_t start = 0; start < total; start += samples_per_frame) {
         route_frame(start);
         auto unit = encoder.encode_access_unit(views);
         if (!unit) {
@@ -229,7 +242,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                                       : static_cast<double>(out_sink.total_bytes()) /
                                             static_cast<double>(out_sink.frames());
         const double mean_kbps = mean_bytes * 8.0 * static_cast<double>(sources->sample_rate) /
-                                 (1000.0 * ac3::kSamplesPerFrame);
+                                 (1000.0 * static_cast<double>(samples_per_frame));
         fmt::println(status,
                      "encoded {} E-AC-3 access units (vbr {}, {} Hz, {}, {} coded channels, "
                      "tools: {}) to {}",
@@ -365,7 +378,17 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
 
     ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
-    assert(static_cast<int>(nchans) == encoder.channel_count());
+    // See run_eac3_encode_multi's identical check: a tools combination alone
+    // (auto + a short numblkscod) can now make validate() refuse the plan, so
+    // this is a real, CLI-reachable error rather than an internal invariant.
+    if (static_cast<int>(nchans) != encoder.channel_count()) {
+        fmt::println(stderr, "error: the encoder cannot express this configuration");
+        return 1;
+    }
+    // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
+    // (the "numblkscod:N" tools token) to something below its default 3.
+    const auto samples_per_frame = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * ac3::kSamplesPerBlock);
     // The classic path has exactly one source, always index 0 in offset='s
     // numbering - see LoadedSources::offset_samples for the multi-source
     // equivalent of this same leading silence.
@@ -374,9 +397,8 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         streaming ? static_cast<std::size_t>(stream_in.frame_count()) : wav->frame_count();
     const std::size_t total = offset + frame_count;
 
-    std::vector<std::vector<float>> source(src_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> source(src_channels, std::vector<float>(samples_per_frame));
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(samples_per_frame));
     std::vector<std::span<const float>> in(source.size());
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -397,7 +419,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     std::vector<float> stream_hold(src_channels, 0.0f);
     std::vector<std::span<float>> stream_dst(src_channels);
     std::size_t consumed = 0;
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    for (std::size_t start = 0; start < total; start += samples_per_frame) {
         // Hold the last real sample past end-of-file rather than dropping to
         // hard zero - see run_encode's identical padding for why: a sudden
         // drop to silence is itself a transient the encoder would (correctly)
@@ -406,12 +428,11 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         // samples, offset= silence is real silence, not padding.
         if (streaming) {
             const std::size_t lead =
-                start < offset ? std::min<std::size_t>(offset - start, ac3::kSamplesPerFrame)
-                               : 0;
+                start < offset ? std::min<std::size_t>(offset - start, samples_per_frame) : 0;
             std::size_t want = 0;
-            if (lead < ac3::kSamplesPerFrame) {
+            if (lead < samples_per_frame) {
                 const std::size_t remaining = frame_count - std::min(frame_count, consumed);
-                want = std::min<std::size_t>(ac3::kSamplesPerFrame - lead, remaining);
+                want = std::min<std::size_t>(samples_per_frame - lead, remaining);
             }
             for (std::size_t c = 0; c < src_channels; ++c) {
                 std::fill_n(source[c].begin(), lead, 0.0f);
@@ -439,20 +460,19 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         } else {
             for (std::size_t c = 0; c < source.size(); ++c) {
                 const float hold = frame_count > 0 ? wav->channels[c][frame_count - 1] : 0.0f;
-                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-                    const std::size_t at = start + static_cast<std::size_t>(i);
+                for (std::size_t i = 0; i < samples_per_frame; ++i) {
+                    const std::size_t at = start + i;
                     if (at < offset) {
-                        source[c][static_cast<std::size_t>(i)] = 0.0f;
+                        source[c][i] = 0.0f;
                         continue;
                     }
                     const std::size_t shifted = at - offset;
-                    source[c][static_cast<std::size_t>(i)] =
-                        shifted < frame_count ? wav->channels[c][shifted] : hold;
+                    source[c][i] = shifted < frame_count ? wav->channels[c][shifted] : hold;
                 }
                 in[c] = source[c];
             }
         }
-        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+        plan::render(*routing, in, out, samples_per_frame);
         auto unit = encoder.encode_access_unit(views);
         if (!unit) {
             fmt::println(stderr, "error: the encoder cannot express this configuration");
@@ -477,7 +497,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                                       : static_cast<double>(out_sink.total_bytes()) /
                                             static_cast<double>(out_sink.frames());
         const double mean_kbps = mean_bytes * 8.0 * static_cast<double>(src_rate) /
-                                 (1000.0 * ac3::kSamplesPerFrame);
+                                 (1000.0 * static_cast<double>(samples_per_frame));
         fmt::println(status,
                      "encoded {} E-AC-3 access units (vbr {}, {} Hz, {}, {} coded channels, "
                      "tools: {}) to {}",

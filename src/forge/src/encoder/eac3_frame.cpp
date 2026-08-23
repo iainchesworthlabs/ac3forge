@@ -155,18 +155,6 @@ constexpr std::size_t kMaxSkipBytes = 511;
 // block; a decoder that scans for the EMDF sync word should not care.
 constexpr int kMetadataBlock = 0;
 
-// §5.4.3.25: whether the coupling channel's exponents can be banded with this
-// strategy at all. ncplgrps covers the coupling region exactly - there is
-// none of the "+3 then round" slack §7.1.3 gives a full-bandwidth channel -
-// so the bin count has to be an exact multiple of three times the group size.
-// Standard coupling's uniform 12-bin sub-bands always are; enhanced
-// coupling's Table E3.9 sub-bands are 6 bins wide at the bottom, so an odd
-// number of those cannot carry D45.
-[[nodiscard]] bool coupling_strategy_fits(int bins, ExpStrategy strategy) {
-    const int group = exponent_group_size(strategy);
-    return group > 0 && bins % (3 * group) == 0;
-}
-
 // §5.4.3.58-60, at the position Annex E's audblk gives it: after the delta
 // bit allocation fields and before the quantized mantissas. Getting that
 // order wrong does not fail to parse - it shifts every mantissa in the block,
@@ -447,9 +435,16 @@ struct Payload {
     bool ahte = false;  // some stream uses the adaptive hybrid transform
     // §E2.3.2.1: clear hoists every stream's exponent strategy into one
     // Table E2.10 code per stream (ChannelPlan::frmexpstr); set spells the
-    // strategies out per block. See choose_expstre for which one a frame
-    // takes - and why a syncframe shorter than six blocks has no choice.
+    // strategies out per block. A syncframe shorter than six blocks has no
+    // choice - Table E1.3 implies expstre = 1 there and carries no bit for
+    // it - so encode_frame sets this unconditionally true in that case
+    // rather than running the cost comparison that picks it otherwise.
     bool expstre = false;
+    // §E2.3.1.64: which frame of every group of 6 / blocks_per_syncframe
+    // frames starts that group, for a device converting this stream to
+    // classic six-block AC-3 - see FrameConfig::numblkscod. Meaningless (and
+    // never read) at the default numblkscod, where the bit does not exist.
+    bool convsync = false;
     // §3.7: sized to nfchans wherever set at all (transproce implies every
     // vector below is). This encoder's own heuristic - see where these are
     // filled in, right after block switching is decided - not a spec
@@ -493,6 +488,7 @@ struct Payload {
         fsnroffst = 0;
         ahte = false;
         expstre = false;
+        convsync = false;
         transproce = false;
         chintransproc.clear();
         transprocloc.clear();
@@ -825,6 +821,7 @@ inline constexpr int kSpxRateCeiling = 56;
 void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
                 const Payload& payload, std::span<const std::byte> metadata = {}) {
     const int nfchans = fullbw_channel_count(config.acmod);
+    const int nblks = blocks_per_syncframe(config.numblkscod);
     const bool dependent = config.strmtyp == StreamType::kDependent;
     const auto& cpl = payload.cpl;
     const auto& spx = payload.spx;
@@ -934,13 +931,16 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     w.put(words - 1, 11);  // frmsiz is words - 1
     // §E2.3.1.3: fscod2 replaces numblkscod when a rate is one of the three
     // Annex E-only reduced rates - the block count is then implicitly always
-    // six, so numblkscod's bits are never sent in that case.
+    // six, so numblkscod's bits are never sent in that case. validate()
+    // refuses config.numblkscod != 3 together with a reduced rate, so the
+    // implicit six blocks and this branch's own silence about numblkscod
+    // never disagree with what the rest of this function assumes.
     if (is_reduced_rate(config.sample_rate)) {
         w.put(0x3, 2);                                                // fscod
         w.put(static_cast<std::uint32_t>(fscod_family(config.sample_rate)), 2);  // fscod2
     } else {
         w.put(static_cast<std::uint32_t>(config.sample_rate), 2);  // fscod (not 0x3)
-        w.put(3, 2);  // numblkscod: six blocks per syncframe
+        w.put(static_cast<std::uint32_t>(config.numblkscod), 2);  // numblkscod
     }
     w.put(static_cast<std::uint32_t>(config.acmod), 3);
     w.put(config.lfe ? 1 : 0, 1);
@@ -1022,7 +1022,12 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         }
     }
     w.put(0, 1);  // infomdate
-    // convsync is absent because numblkscod == 0x3; strmtyp != 0x2.
+    // §E2.3.1.64: only an independent substream at a short syncframe carries
+    // this - see FrameConfig::numblkscod's own comment for what the value
+    // means and how payload.convsync is chosen.
+    if (config.strmtyp == StreamType::kIndependent && nblks != kBlocksPerFrame) {
+        w.put(payload.convsync ? 1 : 0, 1);  // convsync
+    }
     if (config.oba_complexity_index) {
         // TS 103 420 §8.3.1 fixes the addbsi contents for an object-audio
         // stream: seven reserved bits, the extension flag, then the complexity
@@ -1037,8 +1042,19 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     }
 
     // --- audfrm (Table E1.3) ---
-    w.put(payload.expstre ? 1 : 0, 1);
-    w.put(payload.ahte ? 1 : 0, 1);
+    // Table E1.3: expstre and ahte exist only at a full six-block syncframe;
+    // below that they are implied 1 and 0 respectively and carry no bits at
+    // all - there is no Table E2.10 code shorter than six blocks to hoist
+    // into, and nothing this encoder builds ever flags an AHT stream at a
+    // short syncframe (validate() refuses the combination up front). Which
+    // strategy FORM gets written below therefore does not read payload.expstre
+    // directly - it reads use_per_block_strategies, which is forced true here
+    // regardless of what the (six-block-only) run planner decided.
+    const bool use_per_block_strategies = nblks != kBlocksPerFrame || payload.expstre;
+    if (nblks == kBlocksPerFrame) {
+        w.put(payload.expstre ? 1 : 0, 1);
+        w.put(payload.ahte ? 1 : 0, 1);
+    }
     w.put(kSnroffststr, 2);
     w.put(payload.transproce ? 1 : 0, 1);
     w.put(blkswe ? 1 : 0, 1);
@@ -1051,17 +1067,18 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
 
     if (static_cast<std::uint8_t>(config.acmod) > 0x1) {
         w.put(cpl.in_use ? 1 : 0, 1);  // cplinu[0] (cplstre[0] is implied 1)
-        for (int blk = 1; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 1; blk < nblks; ++blk) {
             w.put(0, 1);  // cplstre[blk] = 0, so cplinu inherits block 0's
         }
     }
     // The strategies themselves, in whichever of the two forms audfrm's
-    // expstre selected. Both describe the same run plan; the frame-level one
-    // is five bits a stream against twelve, and is what a six-block frame
-    // therefore takes whenever it can express its plan (which, Table E2.10
-    // being a complete enumeration, is always).
-    if (payload.expstre) {
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+    // expstre selected - per-block always below six blocks (Table E1.3 has no
+    // shorter Table E2.10 code to hoist into), otherwise whichever the run
+    // planner found cheaper. The frame-level one is five bits a stream
+    // against twelve, so a six-block frame takes it whenever it can express
+    // its plan (which, Table E2.10 being a complete enumeration, is always).
+    if (use_per_block_strategies) {
+        for (int blk = 0; blk < nblks; ++blk) {
             if (cpl.in_use) {
                 w.put(static_cast<std::uint32_t>(strategy_at(cpl_stream, blk)),
                       2);  // cplexpstr[blk]
@@ -1085,19 +1102,25 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     // channels took - D15 or reuse, no banding to choose - so it sits
     // outside the branch above.
     if (config.lfe) {
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             w.put(fresh(nfchans, blk) ? 1 : 0, 1);  // lfeexpstr
         }
     }
     // The whole converter-exponent element is gated on strmtyp == 0x0: only an
     // independent substream can be converted back to AC-3, so a dependent
-    // sends none of it. For an independent substream numblkscod == 0x3 implies
-    // convexpstre, and the strategies always follow; they describe how a
-    // converter would code this frame, so mirroring the real strategy is the
-    // honest value.
+    // sends none of it. At a six-block syncframe numblkscod == 0x3 implies
+    // convexpstre, and the strategies always follow. Below six blocks
+    // convexpstre is a real, transmitted bit (Table E1.3) - this project
+    // implements no E-AC-3-to-AC-3 converter and has no real converter
+    // strategy to offer one, so it is sent clear rather than filled with
+    // convexpstr data nothing produced.
     if (!dependent) {
-        for (int ch = 0; ch < nfchans; ++ch) {
-            w.put(0, 5);  // convexpstr[ch]
+        if (nblks == kBlocksPerFrame) {
+            for (int ch = 0; ch < nfchans; ++ch) {
+                w.put(0, 5);  // convexpstr[ch]
+            }
+        } else {
+            w.put(0, 1);  // convexpstre
         }
     }
     // §E2.2.3's AHT block. Each flag exists only where that stream's exponents
@@ -1159,13 +1182,19 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             }
         }
     }
-    // audfrm still ends with the block-start info flag whenever numblkscod
-    // != 0. Omitting this one bit shifts every audio block along, which a
-    // decoder reads as spectral extension being switched on.
-    w.put(0, 1);  // blkstrtinfoe
+    // audfrm still ends with the block-start info flag, but only when there
+    // is more than one block for it to describe a start offset within
+    // (Table E1.3: absent entirely at numblkscod == 0x0, one real block).
+    // Present and clear at every other block count - this encoder never
+    // starts a block anywhere but its own natural boundary - omitting the bit
+    // where it IS present shifts every audio block along, which a decoder
+    // reads as spectral extension being switched on.
+    if (nblks != 1) {
+        w.put(0, 1);  // blkstrtinfoe
+    }
 
-    // --- audblk x6 (Table E1.4) ---
-    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+    // --- audblk x nblks (Table E1.4) ---
+    for (int blk = 0; blk < nblks; ++blk) {
         const bool first = blk == 0;
         if (blkswe) {
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -1598,6 +1627,29 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
     if (config.dialnorm < 1 || config.dialnorm > 31) {
         return std::unexpected(FrameError::kInvalidDialnorm);
     }
+    // Table E2.4: the four legal numblkscod values.
+    if (config.numblkscod < 0 || config.numblkscod > 3) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
+    // §E2.3.1.3: fscod2 replaces numblkscod outright at the three reduced
+    // rates - a reduced-rate frame is implicitly always six blocks, because
+    // there is no bit left to say otherwise. A caller asking for a short
+    // syncframe there is asking for two mutually exclusive things at once.
+    if (is_reduced_rate(config.sample_rate) && config.numblkscod != 3) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
+    const int blocks = blocks_per_syncframe(config.numblkscod);
+    // §E2.2.3 gates the whole adaptive hybrid transform on nchregs == 1 - one
+    // exponent region for the whole frame - which needs a set that survives
+    // six blocks to be worth the vector-quantizer machinery it drags in. A
+    // one-, two- or three-block frame has nothing for it to save against a
+    // plain scalar allocation, and Table E1.3 does not even carry the ahte
+    // bit below code 3 (it is implied 0) - so a caller asking for AHT at a
+    // short syncframe is asking for a tool the wire format has no room to
+    // switch on.
+    if (blocks != kBlocksPerFrame && (config.aht || config.auto_tools)) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
     // §E2.3.1.3: frmsiz is an arbitrary 11-bit word count rather than an
     // index into Table 5.18 the way AC-3's frmsizecod is, so unlike AC-3 any
     // bitrate that lands on a legal word count is expressible here - not
@@ -1616,7 +1668,7 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
     } else {
-        const auto words = frame_words(config.sample_rate, config.bitrate_kbps);
+        const auto words = frame_words(config.sample_rate, config.bitrate_kbps, blocks);
         if (words < 1 || words > kMaxFrameWords) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
@@ -1812,13 +1864,18 @@ FrameMetadata derive_metadata(const FrameConfig& config,
                               std::optional<meta::HeavyCompressor>* heavy2 = nullptr) {
     const bool dual_mono = config.acmod == Acmod::kDualMono;
     const int nfchans = fullbw_channel_count(config.acmod);
+    // §7.7 words exist per block of the actual syncframe, not per the array's
+    // full 6-slot capacity - see FrameConfig::numblkscod. `channels` itself is
+    // only nblks * kSamplesPerBlock samples long, so reading past nblks here
+    // would run off the end of it, not merely compute a word nobody reads.
+    const int nblks = blocks_per_syncframe(config.numblkscod);
     FrameMetadata out;
     out.dynrng.fill(meta::kDynrngUnity);
     out.dynrng2.fill(meta::kDynrngUnity);
     if (range) {
         std::array<std::span<const float>, 5> block_view{};
         const int level_chans = dual_mono ? 1 : nfchans;
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             for (int ch = 0; ch < level_chans; ++ch) {
                 block_view[static_cast<std::size_t>(ch)] =
                     channels[static_cast<std::size_t>(ch)].subspan(
@@ -1831,7 +1888,7 @@ FrameMetadata derive_metadata(const FrameConfig& config,
     }
     if (dual_mono && range2 && *range2) {
         std::array<std::span<const float>, 1> block_view{};
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             block_view[0] = channels[1].subspan(
                 static_cast<std::size_t>(blk) * kSamplesPerBlock, kSamplesPerBlock);
             const double level = meta::level_dbfs(std::span{block_view});
@@ -1898,9 +1955,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     const int nfchans = fullbw_channel_count(config_.acmod);
     const int nchans = channel_count();
+    // §E2.3.1.4: how many of the kBlocksPerFrame-capacity arrays below are
+    // real this frame - see FrameConfig::numblkscod. Every loop that walks
+    // "the frame's blocks" bounds itself by this, not by kBlocksPerFrame;
+    // entries at or past it keep the all-quiet/all-false default
+    // reset_for_frame left them at, and nothing downstream reads them.
+    const int nblks = blocks_per_syncframe(config_.numblkscod);
+    const int frame_samples = nblks * kSamplesPerBlock;
     assert(static_cast<int>(channels.size()) == nchans);
     for (const auto& channel : channels) {
-        assert(channel.size() == kSamplesPerFrame);
+        assert(static_cast<int>(channel.size()) == frame_samples);
         (void)channel;
     }
 
@@ -1985,7 +2049,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                                        : kDefaultSpxAttenCod,
                                                    0, kSpxAttenCodes - 1)
                                       : -1);
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             spx.send[static_cast<std::size_t>(blk)] = blk % 2 == 0;
         }
     }
@@ -2006,7 +2070,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     bool any_switched = false;
     for (int ch = 0; ch < nfchans; ++ch) {
         const auto& pcm = channels[static_cast<std::size_t>(ch)];
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             // §8.2.2 defines blksw from the analysis window's SECOND half -
             // exactly this block period's 256 NEW samples, a contiguous
             // slice of the frame's own PCM. The window's first half was last
@@ -2042,7 +2106,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         payload.transprocloc.assign(static_cast<std::size_t>(nfchans), 0);
         payload.transproclen.assign(static_cast<std::size_t>(nfchans), 0);
         for (int ch = 0; ch < nfchans; ++ch) {
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            for (int blk = 0; blk < nblks; ++blk) {
                 if (blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
                     payload.chintransproc[static_cast<std::size_t>(ch)] = true;
                     payload.transprocloc[static_cast<std::size_t>(ch)] = blk * kSamplesPerBlock;
@@ -2176,7 +2240,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     for (int ch = 0; ch < nchans; ++ch) {
         const auto& pcm = channels[static_cast<std::size_t>(ch)];
         auto& hist = history_[static_cast<std::size_t>(ch)];
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             auto& time = time_scratch_;
             AC3_ZONE_BEGIN(zone_gather, "step2_gather");
             for (int n = 0; n < 512; ++n) {
@@ -2210,8 +2274,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
         for (int n = 0; n < 256; ++n) {
-            hist[static_cast<std::size_t>(n)] =
-                static_cast<double>(pcm[static_cast<std::size_t>(1280 + n)]);
+            hist[static_cast<std::size_t>(n)] = static_cast<double>(
+                pcm[static_cast<std::size_t>(frame_samples - kSamplesPerBlock + n)]);
         }
     }
 
@@ -2255,7 +2319,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // 3 and 5, so any per-block term in the scale reaches the decoder
         // multiplied by the wrong block's value.
         const double scale = static_cast<double>(nfchans);
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             cpl.send[static_cast<std::size_t>(blk)] = blk % 2 == 0;
             auto& shared = coeffs_at(cpl_stream, blk);
             shared.fill(0.0);
@@ -2366,11 +2430,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             zero_angle.assign(static_cast<std::size_t>(bins), 0.0);
             auto& half_angle = state_->ecpl_half_angle;
             half_angle.assign(static_cast<std::size_t>(bins), 0.5);
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            for (int blk = 0; blk < nblks; ++blk) {
                 const auto& prev = blk > 0 ? coeffs_at(cpl_stream, blk - 1) : kZero;
                 const auto& curr = coeffs_at(cpl_stream, blk);
                 const auto& next =
-                    blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
+                    blk + 1 < nblks ? coeffs_at(cpl_stream, blk + 1) : kZero;
                 auto& zr = ecpl_zr_scratch_;
                 auto& zi = ecpl_zi_scratch_;
                 ecpl_channel_spectrum(prev, curr, next, zr, zi);
@@ -2448,7 +2512,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (config_.acmod == Acmod::k2_0) {
         AC3_ZONE_SCOPED_N("step4_rematrix");
         const int nrematbd = rematrix_band_count(cpl, spx);
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             auto& left = coeffs_at(0, blk);
             auto& right = coeffs_at(1, blk);
             for (int band = 0; band < nrematbd; ++band) {
@@ -2515,7 +2579,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             continue;
         }
         std::array<double, kBlocksPerFrameSize> energy{};
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             for (int bin = stream_start(s); bin < stream_end(s); ++bin) {
                 const double value = coeffs_at(s, blk)[static_cast<std::size_t>(bin)];
                 energy[static_cast<std::size_t>(blk)] += value * value;
@@ -2605,7 +2669,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         run.start_block = 0;
         run.strategy = ExpStrategy::kD15;
         encode_run(plan, run, raw, is_cpl);
-        set_run_delta(s, plan, run, 0, kBlocksPerFrame);
+        set_run_delta(s, plan, run, 0, nblks);
         plan.run_of_block = {};
         plan.frmexpstr = 0;
     };
@@ -2678,7 +2742,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             column.assign(span, 0);
             for (int bin = plan.start; bin < plan.endmant; ++bin) {
                 std::array<double, kBlocksPerFrameSize> blocks{};
-                for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                for (int blk = 0; blk < nblks; ++blk) {
                     blocks[static_cast<std::size_t>(blk)] =
                         coeffs_at(s, blk)[static_cast<std::size_t>(bin)];
                 }
@@ -2701,7 +2765,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         } else {
             AC3_ZONE_SCOPED_N("step5_fixed_extract");
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            for (int blk = 0; blk < nblks; ++blk) {
                 const auto& source = coeffs_at(s, blk);
                 auto& out = fixed_at(s, blk);
                 for (int bin = plan.start; bin < plan.endmant; ++bin) {
@@ -2770,7 +2834,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             bits += 4 + 7 * static_cast<std::uint32_t>(run.coded.groups.size() +
                                                        run.cpl_coded.groups.size());
         }
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             const auto& run = p.run_at(blk);
             const std::array<std::span<const std::uint8_t>, 1> view{
                 std::span{run.bap}.subspan(static_cast<std::size_t>(p.start))};
@@ -2834,9 +2898,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             internal::ExponentRunInput input{
                 .exps = std::span{block_exps}.subspan(
                     static_cast<std::size_t>(s) * kBlocksPerFrame * kCoefficientsPerBlock,
-                    static_cast<std::size_t>(kBlocksPerFrame) * kCoefficientsPerBlock),
+                    static_cast<std::size_t>(nblks) * kCoefficientsPerBlock),
                 .bins = static_cast<int>(span),
-                .blocks = kBlocksPerFrame,
+                .blocks = nblks,
                 .precision = std::span{coded_mask}.subspan(
                     static_cast<std::size_t>(s) * kCoefficientsPerBlock, span),
                 .boundary = {},
@@ -2876,8 +2940,18 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     // Which set of proposals to take forward. The form actually written is
     // settled after the checks below, from the plans that survive them.
-    const bool prefer_per_block =
-        plan_runs && per_block_score + 7LL * signalled_streams < hoisted_score;
+    //
+    // Below six blocks the "hoisted" candidate is not merely more expensive -
+    // it is unwritable. It still scores under strategy_for_span, the general
+    // §8.2.8 rule, because that rule has nothing to do with numblkscod; what
+    // is missing is the Table E2.10 CODE to carry it in, since Table E1.3
+    // does not include frmchexpstr/frmcplexpstr at all below a six-block
+    // syncframe (expstre is implied 1). So the per-block candidate is taken
+    // regardless of the score comparison, the same way payload.expstre itself
+    // is forced below.
+    const bool prefer_per_block = plan_runs && (nblks != kBlocksPerFrame ||
+                                                per_block_score + 7LL * signalled_streams <
+                                                    hoisted_score);
 
     // --- 6d. Build the chosen plan ------------------------------------------
     for (int s = 0; s < streams; ++s) {
@@ -2934,7 +3008,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             if (cost >= single_cost[static_cast<std::size_t>(s)]) {
                 auto& raw_again = state_->exp_raw;
                 raw_again.assign(span, kMaxExponent);
-                for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                for (int blk = 0; blk < nblks; ++blk) {
                     const auto current = block_exps_at(s, blk, span);
                     for (std::size_t bin = 0; bin < span; ++bin) {
                         raw_again[bin] = std::min(raw_again[bin], current[bin]);
@@ -2951,7 +3025,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // LFE's own code is never transmitted (its strategy is a per-block
         // bit) and is left at whatever its layout gives.
         std::array<bool, kBlocksPerFrame> fresh_blocks{};
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             fresh_blocks[static_cast<std::size_t>(blk)] = plan.fresh_at(blk);
         }
         plan.frmexpstr = frame_exp_strategy_code(fresh_blocks);
@@ -2961,21 +3035,40 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // give its span, since that is five bits a stream against twelve. A single
     // stream wanting a strategy the table cannot express takes the whole frame
     // to the per-block form - expstre is one bit for all of them.
-    payload.expstre = false;
-    for (int s = 0; s < streams; ++s) {
-        const auto& plan = payload.chans[static_cast<std::size_t>(s)];
-        if (config_.lfe && s == nfchans) {
-            continue;  // lfeexpstr is a per-block bit in either form
+    //
+    // A syncframe shorter than six blocks has no choice to make here at all:
+    // Table E1.3 implies expstre = 1 and carries no bit for it (there is no
+    // Table E2.10 code shorter than six blocks to hoist into), so the
+    // comparison below - which is meaningless off a plan the DP already
+    // restricted to nblks blocks - is skipped outright.
+    if (nblks != kBlocksPerFrame) {
+        payload.expstre = true;
+    } else {
+        payload.expstre = false;
+        for (int s = 0; s < streams; ++s) {
+            const auto& plan = payload.chans[static_cast<std::size_t>(s)];
+            if (config_.lfe && s == nfchans) {
+                continue;  // lfeexpstr is a per-block bit in either form
+            }
+            for (int r = 0; r < plan.nruns; ++r) {
+                const int span_blocks =
+                    (r + 1 < plan.nruns ? plan.runs[static_cast<std::size_t>(r + 1)].start_block
+                                        : nblks) -
+                    plan.runs[static_cast<std::size_t>(r)].start_block;
+                payload.expstre =
+                    payload.expstre || plan.runs[static_cast<std::size_t>(r)].strategy !=
+                                           strategy_for_span(span_blocks);
+            }
         }
-        for (int r = 0; r < plan.nruns; ++r) {
-            const int span_blocks =
-                (r + 1 < plan.nruns ? plan.runs[static_cast<std::size_t>(r + 1)].start_block
-                                    : kBlocksPerFrame) -
-                plan.runs[static_cast<std::size_t>(r)].start_block;
-            payload.expstre =
-                payload.expstre || plan.runs[static_cast<std::size_t>(r)].strategy !=
-                                       strategy_for_span(span_blocks);
-        }
+    }
+    // §E2.3.1.64: this frame starts a new group-of-6/nblks whenever the
+    // counter has cycled - see FrameConfig::numblkscod's own comment. Every
+    // frame at the default numblkscod is trivially "the whole group" and the
+    // bit does not exist, so the counter is never advanced there.
+    if (config_.strmtyp == StreamType::kIndependent && nblks != kBlocksPerFrame) {
+        const int group = kBlocksPerFrame / nblks;
+        payload.convsync = convsync_counter_ == 0;
+        convsync_counter_ = (convsync_counter_ + 1) % group;
     }
     // The seeds were derived from the single-set plan above; block 0's set may
     // have changed with it, so they are re-derived from whatever run 0 now is.
@@ -3089,7 +3182,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // A block costs what the allocation of the run it reads costs, so the
         // per-block sum is over runs rather than one figure multiplied out.
         last_bits = aht_bits;
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             bap_views.clear();
             for (int s = 0; s < streams; ++s) {
                 const auto& plan = payload.chans[static_cast<std::size_t>(s)];
@@ -3336,7 +3429,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const bool cpl_weighable = cpl_plan != nullptr && !cpl_plan->aht;
         for (int ch = 0; ch < nfchans; ++ch) {
             const auto& plan = payload.chans[static_cast<std::size_t>(ch)];
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            for (int blk = 0; blk < nblks; ++blk) {
                 internal::DitherBallot ballot;
                 if (!plan.aht) {
                     const auto& run = plan.run_at(blk);
@@ -3372,7 +3465,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // step neither copies tokens nor allocates - the same closed loop the
     // AC-3 encoder's block_tokens_ runs.
     MantissaBlockWriter writer;
-    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+    for (int blk = 0; blk < nblks; ++blk) {
         writer.reset();
         const auto emit_stream = [&](int s) {
             auto& plan = payload.chans[static_cast<std::size_t>(s)];
@@ -3542,7 +3635,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         };
 
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int blk = 0; blk < nblks; ++blk) {
             for (int ch = 0; ch < nfchans; ++ch) {
                 const auto at = coord_slot(blk, ch);
                 if (!spx.send[static_cast<std::size_t>(blk)]) {
@@ -3587,7 +3680,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     // itself couple.
                     static constexpr std::array<double, 256> kZero{};
                     const auto neighbor = [&](int b, std::array<double, 256>& dst) -> auto& {
-                        if (b < 0 || b >= kBlocksPerFrame) {
+                        if (b < 0 || b >= nblks) {
                             return kZero;
                         }
                         rebuild(cpl_stream, b, cpl.strtmant, cpl.endmant, dst);
@@ -3734,9 +3827,12 @@ std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
 
     for (std::size_t i = 0; i < config.dependents.size(); ++i) {
         FrameConfig dep = config.dependents[i];
-        // Every substream codes the same 1536 samples of one program, so a
-        // dependent cannot disagree with its parent about the sample rate.
-        if (dep.sample_rate != config.independent.sample_rate) {
+        // Every substream codes the same samples of one program, so a
+        // dependent cannot disagree with its parent about the sample rate or
+        // how many blocks a syncframe holds - see AccessUnitConfig's own
+        // comment for why a decoder has no way to align a mismatch.
+        if (dep.sample_rate != config.independent.sample_rate ||
+            dep.numblkscod != config.independent.numblkscod) {
             return std::unexpected(FrameError::kInvalidSubstream);
         }
         dep.strmtyp = StreamType::kDependent;
@@ -3871,10 +3967,15 @@ std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
     const FrameMetadata metadata =
         derive_metadata(config_.independent, std::span{tail_}.first(independent_fbw),
                         channels.first(independent_count), range_, heavy_, &range2_, &heavy2_);
+    // substream_configs required every substream to share one numblkscod, so
+    // the independent's own is every substream's - and hence the access
+    // unit's real sample count, kSamplesPerFrame only at the default.
+    const int frame_samples =
+        blocks_per_syncframe(config_.independent.numblkscod) * kSamplesPerBlock;
     for (std::size_t ch = 0; ch < independent_fbw; ++ch) {
         for (int n = 0; n < kSamplesPerBlock; ++n) {
             tail_[ch][static_cast<std::size_t>(n)] = static_cast<double>(
-                channels[ch][static_cast<std::size_t>(kSamplesPerFrame - kSamplesPerBlock + n)]);
+                channels[ch][static_cast<std::size_t>(frame_samples - kSamplesPerBlock + n)]);
         }
     }
 

@@ -28,8 +28,28 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   same table the stationary legs do, on material whose level moves between the blocks of a frame
   — onsets closer together than 32 ms, hard gates, decays that leave a frame's loudest block
   20–30 dB above its quietest. The `ci` gate carries it as a seventh row set with its own floors.
+- **E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync` (roadmap `EQ11`).**
+  `eac3::FrameConfig::numblkscod` (default 3, six blocks) shortens a syncframe to 1/2/3 blocks —
+  `eac3-encode`'s `numblkscod:N` tools token — for the 5.3/10.7/16 ms latency a live path wants
+  instead of 32 ms. Every substream of an access unit must agree on it; AHT and the hoisted
+  (Table E2.10) exponent-strategy form are unavailable below six blocks, exactly as Table E1.3
+  requires, so asking for either together with a short syncframe is refused rather than silently
+  dropped. `convsync` is written on the first frame of every group of `6 / blocks_per_syncframe`
+  frames, matching what a device converting the stream back to six-block AC-3 would need. The
+  decoder's `numblkscod != 3` path — present only because it is spec-derived, never before
+  exercised by a real stream — is now driven by real audio at every code, including with a
+  dependent substream, verified by this project's own decoder and by FFmpeg's strict decode
+  (`tools/ci/run_codec_matrix.sh`). `atmos-encode` does not take the token yet: OAMD/JOC's object
+  metadata is timed across a full six-block frame, and shortening that is unstarted work.
 
 ### Fixed
+
+- **A CLI-reachable configuration could crash `eac3-encode` instead of erroring.** `auto` tool
+  selection can turn AHT on, which a short `numblkscod` (`EQ11`, above) forbids outright;
+  `run_eac3_encode`/`run_eac3_encode_multi` asserted that the encoder accepted the resulting
+  config rather than checking, so `numblkscod:N` combined with `auto` at a rate that picks AHT
+  aborted the process. It now reports "the encoder cannot express this configuration", the same
+  message every other unexpressable configuration already gets.
 
 - **`deltbaie` 0 means retain, not "no delta" (E-AC-3).** Outside block 0 a clear `deltbaie`
   tells the decoder to keep the delta bit allocation the previous block left in place (§5.4.3.47).

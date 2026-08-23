@@ -77,7 +77,7 @@ TEST_CASE("a loud block on its own does not drag the frame's scale down",
     // its exponents describe nothing but itself.
     bool block3_is_fresh = false;
     for (int i = 0; i < plan.count; ++i) {
-        block3_is_fresh = block3_is_fresh || plan.starts[i] == 3;
+        block3_is_fresh = block3_is_fresh || plan.starts[static_cast<std::size_t>(i)] == 3;
     }
     CHECK(block3_is_fresh);
 }
@@ -134,16 +134,17 @@ TEST_CASE("the hoisted form only ever states Table E2.10's own strategies",
     const auto plan = ac3::internal::plan_exponent_runs(input_for(exps, kBins));
     std::array<bool, ac3::kBlocksPerFrame> fresh{};
     for (int i = 0; i < plan.count; ++i) {
-        fresh[static_cast<std::size_t>(plan.starts[i])] = true;
-        const int span = plan.starts[i + 1] - plan.starts[i];
-        CHECK(plan.strategy[static_cast<std::size_t>(i)] == ac3::strategy_for_span(span));
+        const auto ui = static_cast<std::size_t>(i);
+        fresh[static_cast<std::size_t>(plan.starts[ui])] = true;
+        const int span = plan.starts[ui + 1] - plan.starts[ui];
+        CHECK(plan.strategy[ui] == ac3::strategy_for_span(span));
     }
     const int code = ac3::eac3::frame_exp_strategy_code(fresh);
     for (int i = 0; i < plan.count; ++i) {
-        for (int blk = plan.starts[i]; blk < plan.starts[i + 1]; ++blk) {
-            const auto expected = blk == plan.starts[i]
-                                      ? plan.strategy[static_cast<std::size_t>(i)]
-                                      : ac3::ExpStrategy::kReuse;
+        const auto ui = static_cast<std::size_t>(i);
+        for (int blk = plan.starts[ui]; blk < plan.starts[ui + 1]; ++blk) {
+            const auto expected =
+                blk == plan.starts[ui] ? plan.strategy[ui] : ac3::ExpStrategy::kReuse;
             CHECK(ac3::eac3::frame_exp_strategy(code, blk) == expected);
         }
     }
@@ -190,10 +191,10 @@ TEST_CASE("the per-block form states D15 where the table would force D45",
     CHECK(free_form.score < hoisted.score);
     bool states_d15_on_a_short_run = false;
     for (int i = 0; i < free_form.count; ++i) {
-        const int span = free_form.starts[i + 1] - free_form.starts[i];
-        states_d15_on_a_short_run =
-            states_d15_on_a_short_run ||
-            (span < 4 && free_form.strategy[static_cast<std::size_t>(i)] == ac3::ExpStrategy::kD15);
+        const auto ui = static_cast<std::size_t>(i);
+        const int span = free_form.starts[ui + 1] - free_form.starts[ui];
+        states_d15_on_a_short_run = states_d15_on_a_short_run ||
+                                    (span < 4 && free_form.strategy[ui] == ac3::ExpStrategy::kD15);
     }
     CHECK(states_d15_on_a_short_run);
 }
@@ -248,9 +249,10 @@ TEST_CASE("every plan tiles the frame exactly once", "[eac3][exponents]") {
             const auto plan = ac3::internal::plan_exponent_runs(input);
             REQUIRE(plan.count >= 1);
             CHECK(plan.starts[0] == 0);
-            CHECK(plan.starts[plan.count] == ac3::kBlocksPerFrame);
+            CHECK(plan.starts[static_cast<std::size_t>(plan.count)] == ac3::kBlocksPerFrame);
             for (int i = 1; i < plan.count; ++i) {
-                CHECK(plan.starts[i] > plan.starts[i - 1]);
+                const auto ui = static_cast<std::size_t>(i);
+                CHECK(plan.starts[ui] > plan.starts[ui - 1]);
             }
         }
     }
