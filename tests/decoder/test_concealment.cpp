@@ -406,26 +406,71 @@ TEST_CASE("an access unit whose dependent will not decode still renders its bed"
         units.push_back(std::move(unit));
     }
 
-    // Damage only the dependent half of one unit, leaving the bed intact.
-    // Its own frame starts where the bed's ends, so corrupting the tail of
-    // the unit corrupts the dependent and nothing else.
-    auto& target = units[3];
-    target[target.size() - 8] ^= std::byte{0xFF};
+    // The dependent's own frame starts where the bed's ends, so corrupting the
+    // tail of a unit corrupts the dependent and nothing else.
+    const auto break_dependent = [](std::vector<std::byte>& unit) {
+        unit[unit.size() - 8] ^= std::byte{0xFF};
+    };
 
-    ac3::Eac3Decoder decoder{{.concealment = ac3::ConcealmentPolicy::kRepeatFade}};
-    bool saw_bed_only = false;
-    for (std::size_t i = 0; i < units.size(); ++i) {
-        const auto decoded = decoder.decode_access_unit(units[i]);
+    SECTION("a dependent with history of its own is concealed from it, keeping the layout") {
+        // The preferred outcome, and the one that keeps the height layer:
+        // concealment is tried at the SUBSTREAM level first, so a dependent
+        // that has decoded before is reconstructed from its own previous
+        // block rather than dropped.
+        auto damaged = units;
+        break_dependent(damaged[3]);
+        ac3::Eac3Decoder decoder{{.concealment = ac3::ConcealmentPolicy::kRepeatFade}};
+        bool saw_repeat = false;
+        for (std::size_t i = 0; i < damaged.size(); ++i) {
+            const auto decoded = decoder.decode_access_unit(damaged[i]);
+            REQUIRE(decoded.has_value());
+            REQUIRE(decoded->has_value());
+            const auto& unit = **decoded;
+            // The programme keeps every rendered channel throughout: 5.1 plus
+            // the dependent's two heights.
+            CHECK(unit.layout.count == 8);
+            if (i == 3) {
+                REQUIRE(unit.concealed.has_value());
+                CHECK(unit.concealed->action == ac3::ConcealmentAction::kRepeatFade);
+                saw_repeat = true;
+            }
+        }
+        CHECK(saw_repeat);
+    }
+
+    SECTION("a dependent with nothing to conceal from is dropped, and the bed is rendered") {
+        // The fallback: damage the dependent's very FIRST frame, so that
+        // identity has no retained block to reconstruct from. Rather than
+        // failing the whole access unit - which is what happened before,
+        // since §E3.8.2 assembly needs every substream in the one call - the
+        // bed is rendered on its own and the narrowing is reported.
+        auto damaged = units;
+        break_dependent(damaged[0]);
+        ac3::Eac3Decoder decoder{{.concealment = ac3::ConcealmentPolicy::kRepeatFade}};
+        const auto decoded = decoder.decode_access_unit(damaged[0]);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
         const auto& unit = **decoded;
-        if (unit.concealed && unit.concealed->action == ac3::ConcealmentAction::kBedOnly) {
-            saw_bed_only = true;
-            // The bed's own channels are real, not substituted - that is what
-            // makes kBedOnly a different report from kRepeatFade.
-            CHECK(unit.layout.count == 6);
-            CHECK(rms(unit.channels[0]) > 0.01);
-        }
+        REQUIRE(unit.concealed.has_value());
+        CHECK(unit.concealed->action == ac3::ConcealmentAction::kBedOnly);
+        // The bed's own channels are real, not substituted - that is what
+        // makes kBedOnly a different report from kRepeatFade - and the layout
+        // is the bed's 5.1 rather than the 8 the stream promised.
+        CHECK(unit.layout.count == 6);
+        CHECK(rms(unit.channels[0]) > 0.01);
     }
-    CHECK(saw_bed_only);
+
+    SECTION("without concealment a damaged dependent still fails the unit") {
+        auto damaged = units;
+        break_dependent(damaged[3]);
+        ac3::Eac3Decoder decoder;
+        bool failed = false;
+        for (const auto& unit : damaged) {
+            if (!decoder.decode_access_unit(unit)) {
+                failed = true;
+                break;
+            }
+        }
+        CHECK(failed);
+    }
 }

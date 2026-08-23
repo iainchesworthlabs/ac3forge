@@ -21,8 +21,9 @@ namespace {
 // is 2/(pi*n) for odd n and zero for even n. 127 taps puts the usable band
 // (within about half a decibel of true quadrature) from roughly 350 Hz to
 // just under Nyquist at 48 kHz, which covers everything a Dolby Surround
-// decoder steers on. The even taps really are zero, so the convolution below
-// costs half of what the tap count suggests.
+// decoder steers on. Half the taps are exactly zero, so the convolution costs
+// half of what the tap count suggests - see its own comment for which half,
+// which is a parity that is easy to get backwards.
 //
 // The group delay is exactly the middle tap, and it is a whole number of
 // samples - that is the reason for choosing an odd length. The direct (L, R,
@@ -397,7 +398,14 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
             };
             for (std::size_t i = 0; i < length; ++i) {
                 double shifted = 0.0;
-                for (int tap = 1; tap < kHilbertTaps; tap += 2) {
+                // The kernel's non-zero taps sit at EVEN indices, not odd
+                // ones: a tap is zero for even n, and n is (index -
+                // kHilbertDelay) with kHilbertDelay itself odd, so the parity
+                // flips between the two. Walking the odd indices instead
+                // visits nothing but zeros, which is a silent failure - a
+                // shift of zero still produces plausible Lt/Rt audio, just
+                // with the surround left in phase.
+                for (int tap = 0; tap < kHilbertTaps; tap += 2) {
                     shifted += kernel[static_cast<std::size_t>(tap)] *
                                sample_at(static_cast<std::ptrdiff_t>(i) - tap);
                 }

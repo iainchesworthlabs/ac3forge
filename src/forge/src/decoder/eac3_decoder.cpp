@@ -485,25 +485,32 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     }
     // Which identity's history to reconstruct from. strmtyp and substreamid
     // sit at fixed positions immediately after the sync word, so a frame
-    // damaged anywhere past its header still names itself; one damaged in the
-    // header does not, and falls back on the last identity that decoded. That
-    // fallback is right for the overwhelmingly common one-identity stream and
-    // no worse than refusing for any other - a wrong guess conceals from the
-    // wrong history, a refusal drops the audio outright.
+    // damaged anywhere past its header still names itself - which is the
+    // shape nearly all transport corruption takes, and the CRC failure that
+    // brought us here says nothing about where in the frame the damage is.
+    //
+    // The identity is NOT second-guessed when that read succeeds. An earlier
+    // version fell back on the last identity that decoded whenever the named
+    // one had no retained block, which sounds forgiving and is actively
+    // wrong: the first dependent of a stream would then be reconstructed from
+    // the BED's history, producing a six-channel "dependent" that the §E3.8.2
+    // assembly rightly refuses. Returning the error instead lets
+    // decode_access_unit_core do the right thing with it - render the bed
+    // alone - which is a real answer rather than a plausible-looking wrong
+    // one.
     std::size_t slot = 0;
-    if (frame.size() >= 3) {
-        BitReader peek{frame};
-        peek.skip(16);
+    BitReader peek{frame};
+    if (frame.size() >= 5 && peek.read(16) == kSyncWord) {
         const auto strmtyp = peek.read(2);
         const auto substreamid = peek.read(3);
         slot = static_cast<std::size_t>(strmtyp * 8 + substreamid);
     } else if (last_identity_ >= 0) {
+        // No usable header at all: the last identity that decoded is the only
+        // guess available, and it is the right one for the single-identity
+        // stream that covers nearly every case.
         slot = static_cast<std::size_t>(last_identity_);
     } else {
         return decoded;
-    }
-    if (!retained_[slot] && last_identity_ >= 0) {
-        slot = static_cast<std::size_t>(last_identity_);
     }
     if (auto concealed = conceal(decoded.error(), slot)) {
         return std::optional<DecodedSubstream>(std::move(*concealed));
@@ -2176,12 +2183,18 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 
         auto decoded = decode_substream(frame);
         if (!decoded) {
-            // §7.10, the access-unit-level case: a DEPENDENT that will not
-            // decode and could not be concealed (nothing retained for it yet)
-            // does not have to take the program down with it - the bed is a
-            // self-sufficient rendering of the same programme, just narrower
-            // than the stream promised. The independent substream is a
-            // different matter: without it there is no program at all.
+            // §7.10, the access-unit-level case. Concealment is tried at
+            // the SUBSTREAM level first (decode_substream above), so a
+            // dependent that has decoded before is reconstructed from its own
+            // previous block and never reaches here - which keeps the
+            // programme at its full rendered width, height layer included.
+            // This is the fallback for the dependent that has nothing to be
+            // reconstructed FROM: its first frame, or a new identity
+            // appearing mid-stream. Dropping it beats failing the whole
+            // access unit, because the bed is a self-sufficient rendering of
+            // the same programme - just narrower than the stream promised.
+            // The independent substream is a different matter: without it
+            // there is no program at all.
             if (config_.concealment != ConcealmentPolicy::kNone &&
                 bsi->strmtyp == StreamType::kDependent && keys.size() > 1) {
                 bed_only = decoded.error();

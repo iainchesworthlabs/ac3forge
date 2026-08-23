@@ -91,6 +91,15 @@ struct OutputConfig {
     // shifted one. Clearing it gives the sign-only matrix - no latency, and
     // what a lot of hardware actually implements - at the cost of the
     // surround sum no longer being in quadrature.
+    //
+    // One consequence worth knowing before choosing between them: a phase
+    // shifter preserves ENERGY, not peak. §7.8.1's normalisation bounds a sum
+    // of plain COEFFICIENTS, so it bounds Lo/Ro, mono and the sign-only Lt/Rt
+    // by the loudest coded sample - but it cannot bound the shifted path,
+    // whose response at a discontinuity is unbounded. A shifted Lt/Rt fold can
+    // therefore come out louder than its inputs were. That follows from what
+    // §7.8.2 asks for rather than from anything decided here; kRf below is
+    // what does guarantee a ceiling.
     bool ltrt_phase_shift = true;
     // kRf's ceiling, as a linear sample magnitude. Full scale by default: RF
     // mode's promise is that the fold does not clip, and a decoder that held

@@ -119,19 +119,52 @@ TEST_CASE("Lo/Ro reproduces §7.8's own coefficients, normalised", "[decoder][ou
     }
 }
 
-TEST_CASE("§7.8.1's normalisation bounds a fold by the loudest coded sample",
+TEST_CASE("§7.8.1's normalisation bounds a REAL matrix by the loudest coded sample",
           "[decoder][output]") {
-    // The clause exists to prevent overload, and this is the claim it makes:
-    // with every channel simultaneously at full scale - the worst case a
-    // matrix can be handed - the fold still does not exceed full scale.
-    for (const auto target :
-         {ac3::DownmixTarget::kLoRo, ac3::DownmixTarget::kLtRt, ac3::DownmixTarget::kMono}) {
+    // The clause exists to prevent overload, and for a matrix of plain
+    // coefficients this is the claim it makes: with every channel
+    // simultaneously at full scale - the worst case a matrix can be handed -
+    // the fold still does not exceed full scale.
+    //
+    // Lt/Rt with its phase shift is deliberately NOT in this list, and the
+    // next test says why.
+    for (const auto target : {ac3::DownmixTarget::kLoRo, ac3::DownmixTarget::kMono}) {
         ac3::OutputStage stage{{.target = target}};
         std::vector<std::vector<float>> channels(5, std::vector<float>(256, 1.0F));
         stage.apply(channels, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
         INFO("target " << static_cast<int>(target));
         CHECK(peak_of(channels) <= 1.0 + 1e-6);
     }
+    // Lt/Rt's sign-only matrix is a matrix of plain coefficients like the
+    // other two, and is bounded like them.
+    ac3::OutputStage sign_only{
+        {.target = ac3::DownmixTarget::kLtRt, .ltrt_phase_shift = false}};
+    std::vector<std::vector<float>> channels(5, std::vector<float>(256, 1.0F));
+    sign_only.apply(channels, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
+    CHECK(peak_of(channels) <= 1.0 + 1e-6);
+}
+
+TEST_CASE("Lt/Rt's phase shift can overshoot, and RF mode is what bounds it",
+          "[decoder][output]") {
+    // A Hilbert transformer preserves ENERGY, not peak: its response at a
+    // discontinuity is unbounded, so §7.8.1's coefficient normalisation -
+    // which bounds a sum of plain coefficients - cannot bound the shifted
+    // path the way it bounds the other folds. That is a property of what
+    // §7.8.2 asks for rather than a defect in how it is done here, and the
+    // honest thing is to state it and point at the tool that does bound it.
+    std::vector<std::vector<float>> stepped(5, std::vector<float>(256, 1.0F));
+    ac3::OutputStage shifted{{.target = ac3::DownmixTarget::kLtRt}};
+    shifted.apply(stepped, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
+    CHECK(peak_of(stepped) > 1.0);
+
+    // RF mode is the mode whose whole promise is that nothing clips, and it
+    // holds for exactly the same input.
+    std::vector<std::vector<float>> guarded(5, std::vector<float>(256, 1.0F));
+    ac3::OutputStage rf{
+        {.target = ac3::DownmixTarget::kLtRt, .mode = ac3::OperatingMode::kRf}};
+    rf.apply(guarded, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
+    CHECK(peak_of(guarded) <= 1.0 + 1e-6);
+    CHECK(rf.rf_protection_db() < 0.0);
 }
 
 TEST_CASE("a mono fold takes §7.8's own 1/0 branch", "[decoder][output]") {
@@ -167,70 +200,84 @@ TEST_CASE("Lt/Rt's surround really is phase shifted 90 degrees, and the direct p
           "delayed to match",
           "[decoder][output]") {
     // Two separate claims, both worth stating, because getting one right and
-    // the other wrong is the plausible failure: the surround must come out in
-    // quadrature (not merely filtered), and L/R must come out delayed by the
-    // filter's own group delay (not left where they were, which would smear
-    // the front image against the surround).
+    // the other wrong is the plausible failure - and one of them WAS wrong
+    // when this test was first written (the convolution walked the kernel's
+    // zero taps, so the "shift" was no shift at all, which sounds entirely
+    // plausible and is simply not Lt/Rt).
+    //
+    // The two are checked with different signals on purpose. Delay is checked
+    // with an impulse, because a delayed sine is just a phase-shifted sine and
+    // correlating one against the other proves nothing. Quadrature is checked
+    // with a tone, because that is the only thing quadrature means.
     constexpr int kLength = 8192;
-    constexpr double kHz = 1000.0;
     ac3::OutputStage stage{{.target = ac3::DownmixTarget::kLtRt}};
     const int latency = stage.latency_samples();
     REQUIRE(latency > 0);
 
-    // Ls carries a tone, L carries the same tone: Lt = L(delayed) - shift(Ls),
-    // Rt = L(delayed) + shift(Ls). Their difference is twice the shifted
-    // surround and their sum is twice the delayed front, so the two claims
-    // separate cleanly.
-    std::vector<std::vector<float>> channels(5, std::vector<float>(kLength, 0.0F));
-    for (int i = 0; i < kLength; ++i) {
-        const auto value = static_cast<float>(
-            0.5 * std::sin(2.0 * std::numbers::pi * kHz * static_cast<double>(i) / 48000.0));
-        channels[0][static_cast<std::size_t>(i)] = value;  // L
-        channels[3][static_cast<std::size_t>(i)] = value;  // Ls
+    SECTION("the direct path comes out delayed by exactly the filter's group delay") {
+        // L and R together, so the fold is symmetric and the surround path
+        // contributes nothing: whatever comes out is the direct path alone.
+        std::vector<std::vector<float>> channels(5, std::vector<float>(kLength, 0.0F));
+        channels[0][100] = 1.0F;  // L
+        channels[2][100] = 1.0F;  // R
+        stage.apply(channels, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
+        REQUIRE(channels.size() == 2);
+        std::size_t peak_at = 0;
+        double best = 0.0;
+        for (std::size_t i = 0; i < channels[0].size(); ++i) {
+            if (std::abs(static_cast<double>(channels[0][i])) > best) {
+                best = std::abs(static_cast<double>(channels[0][i]));
+                peak_at = i;
+            }
+        }
+        CHECK(peak_at == 100U + static_cast<std::size_t>(latency));
+        CHECK(best > 0.0);
     }
-    stage.apply(channels, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
-    REQUIRE(channels.size() == 2);
 
-    // Well past the filter's transient, and away from the end.
-    const std::size_t start = static_cast<std::size_t>(latency) + 512;
-    const std::size_t stop = static_cast<std::size_t>(kLength) - 512;
+    SECTION("the surround sum comes out in quadrature with where it went in") {
+        // Ls alone: Lt = -shift(Ls), Rt = +shift(Ls), so the difference IS
+        // the shifted surround with nothing else mixed into it.
+        constexpr double kHz = 1000.0;
+        std::vector<std::vector<float>> channels(5, std::vector<float>(kLength, 0.0F));
+        for (int i = 0; i < kLength; ++i) {
+            channels[3][static_cast<std::size_t>(i)] = static_cast<float>(
+                0.5 * std::sin(2.0 * std::numbers::pi * kHz * static_cast<double>(i) / 48000.0));
+        }
+        stage.apply(channels, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
+        REQUIRE(channels.size() == 2);
 
-    // The sum is the delayed direct path: it should line up with the input
-    // tone delayed by exactly `latency`, not with the undelayed one.
-    double aligned = 0.0;
-    double undelayed = 0.0;
-    double reference = 0.0;
-    for (std::size_t i = start; i < stop; ++i) {
-        const double sum =
-            0.5 * (static_cast<double>(channels[0][i]) + static_cast<double>(channels[1][i]));
-        const double at_lag =
-            0.5 * std::sin(2.0 * std::numbers::pi * kHz *
-                           static_cast<double>(i - static_cast<std::size_t>(latency)) / 48000.0);
-        const double at_zero =
-            0.5 * std::sin(2.0 * std::numbers::pi * kHz * static_cast<double>(i) / 48000.0);
-        aligned += sum * at_lag;
-        undelayed += sum * at_zero;
-        reference += at_lag * at_lag;
+        // Well past the filter's transient, and away from the end.
+        const auto start = static_cast<std::size_t>(latency) + 512;
+        const auto stop = static_cast<std::size_t>(kLength) - 512;
+        double with_sine = 0.0;
+        double with_cosine = 0.0;
+        for (std::size_t i = start; i < stop; ++i) {
+            const double difference =
+                0.5 * (static_cast<double>(channels[1][i]) - static_cast<double>(channels[0][i]));
+            const double phase = 2.0 * std::numbers::pi * kHz *
+                                 static_cast<double>(i - static_cast<std::size_t>(latency)) /
+                                 48000.0;
+            with_sine += difference * std::sin(phase);
+            with_cosine += difference * std::cos(phase);
+        }
+        // In quadrature with the input tone at the filter's own delay: the
+        // cosine component is everything, the sine component is nothing.
+        INFO("sine " << with_sine << ", cosine " << with_cosine);
+        CHECK(std::abs(with_cosine) > 20.0 * std::abs(with_sine));
+        // And it is a shift, not an attenuation to nothing - the failure the
+        // zero-tap bug produced would satisfy a quadrature test on its own.
+        CHECK(std::abs(with_cosine) > 100.0);
     }
-    // The direct path is normalised by §7.8.1, so what is asserted is the
-    // ALIGNMENT: correlation with the delayed tone dominates.
-    CHECK(aligned / reference > 0.2);
-    CHECK(std::abs(aligned) > 4.0 * std::abs(undelayed));
 
-    // The difference is the shifted surround. In quadrature with the delayed
-    // tone means: correlation with it ~0, correlation with its 90-degree
-    // partner (a cosine) large.
-    double with_sine = 0.0;
-    double with_cosine = 0.0;
-    for (std::size_t i = start; i < stop; ++i) {
-        const double difference =
-            0.5 * (static_cast<double>(channels[1][i]) - static_cast<double>(channels[0][i]));
-        const double phase = 2.0 * std::numbers::pi * kHz *
-                             static_cast<double>(i - static_cast<std::size_t>(latency)) / 48000.0;
-        with_sine += difference * std::sin(phase);
-        with_cosine += difference * std::cos(phase);
+    SECTION("the two outputs still take the surround in opposite polarity") {
+        std::vector<std::vector<float>> channels(5, std::vector<float>(kLength, 0.0F));
+        channels[3][100] = 1.0F;
+        stage.apply(channels, ac3::Acmod::k3_2, false, ac3::MixLevels{}, 31);
+        for (std::size_t i = 0; i < channels[0].size(); ++i) {
+            REQUIRE(static_cast<double>(channels[0][i]) ==
+                    Catch::Approx(-static_cast<double>(channels[1][i])).margin(1e-9));
+        }
     }
-    CHECK(std::abs(with_cosine) > 20.0 * std::abs(with_sine));
 }
 
 TEST_CASE("dialnorm normalises onto the -31 dBFS reference and never boosts",
@@ -471,9 +518,10 @@ TEST_CASE("a folded decode of real coded audio keeps every channel's content",
         }
     }
 
-    // Every channel's tone survives the fold: the last frame's Lo must carry
-    // energy at L's 200 Hz, C's 800 Hz and Ls's 1600 Hz, none of which it
-    // would if the matrix had dropped a channel.
+    // Every channel's tone survives the fold. `hz` is in Table 5.8 coded
+    // order, so 200 Hz is L, 400 Hz is C, 800 Hz is R, 1600 Hz is Ls and
+    // 3200 Hz is Rs - and Lo takes L, C and Ls but not R, which is what
+    // makes the last check below a real claim rather than a restatement.
     const auto last = folding.decode_frame(frames.back());
     REQUIRE(last.has_value());
     const auto energy_at = [&](double target_hz) {
@@ -488,10 +536,10 @@ TEST_CASE("a folded decode of real coded audio keeps every channel's content",
         }
         return std::sqrt(real * real + imag * imag) / static_cast<double>(pcm.size());
     };
-    CHECK(energy_at(200.0) > 0.01);   // L
-    CHECK(energy_at(800.0) > 0.01);   // C
-    CHECK(energy_at(1600.0) > 0.005); // Ls
-    // R's 400 Hz belongs to the OTHER output, so its absence here is the
-    // check that the two sides did not simply get the same sum.
-    CHECK(energy_at(400.0) < energy_at(200.0));
+    CHECK(energy_at(200.0) > 0.01);    // L, at unity into Lo
+    CHECK(energy_at(400.0) > 0.005);   // C, at clev into both
+    CHECK(energy_at(1600.0) > 0.002);  // Ls, at slev into Lo only
+    // R goes to Ro and not to Lo, so its near-absence here is what says the
+    // two outputs are not simply the same sum twice.
+    CHECK(energy_at(800.0) < 0.2 * energy_at(200.0));
 }

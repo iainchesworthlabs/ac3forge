@@ -102,8 +102,15 @@ mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`
 fallbacks where a field is simply not there.
 
 §7.8.1's normalisation — "attenuating all downmix coefficients equally, such that the sum of
-coefficients used to create any single output channel never exceeds 1" — means a fold can never
-be louder than the loudest coded sample. That is why there is no soft-clip anywhere in this path.
+coefficients used to create any single output channel never exceeds 1" — means a fold of plain
+coefficients can never be louder than the loudest coded sample. That is why there is no soft-clip
+anywhere in this path.
+
+The one exception is Lt/Rt *with* its phase shift: a phase shifter preserves energy, not peak, so
+that fold can come out louder than its inputs were even though every coefficient is normalised.
+That follows from what §7.8.2 asks for rather than from anything decided here —
+`ltrt_phase_shift = false` and `kRf` are the two ways to get a bounded output, and the second is
+the one that guarantees it.
 
 Lt/Rt's surround sum is genuinely phase shifted, through a 127-tap Hilbert transformer, with the
 direct path delayed to match; `OutputStage::latency_samples()` reports the resulting 63 samples of
