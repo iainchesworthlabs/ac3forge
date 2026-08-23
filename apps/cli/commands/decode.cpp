@@ -90,12 +90,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // would splice two unrelated pieces of audio together.
     const auto ids = ac3::programme_ids(stream);
     if (!ids) {
-        std::println(stderr, "error: stream framing failed (code {})",
+        fmt::println(stderr, "error: stream framing failed (code {})",
                      static_cast<int>(ids.error()));
         return 1;
     }
     if (ids->empty()) {
-        std::println(stderr, "error: no programmes in stream");
+        fmt::println(stderr, "error: no programmes in stream");
         return 1;
     }
     const auto programme = choose_programme(*ids, meta.programme);
@@ -112,7 +112,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         return 1;
     }
     if (ids->size() > 1) {
-        std::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
+        fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
                      ids->size(), format_programme_ids(*ids));
     }
     ac3::Eac3Decoder decoder{

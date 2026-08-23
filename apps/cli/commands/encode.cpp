@@ -69,7 +69,7 @@ class ProgrammeSource {
         }
         auto whole = read_wav_arg(path);
         if (!whole) {
-            std::println(stderr, "error: {}: {}", path, ac3::io::describe(whole.error()));
+            fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(whole.error()));
             return false;
         }
         whole_ = std::move(*whole);
@@ -118,7 +118,7 @@ class ProgrammeSource {
         if (want > 0) {
             const auto got = stream_.read_planar(dst, want);
             if (!got || *got != want) {
-                std::println(stderr, "error: {}: {}", path,
+                fmt::println(stderr, "error: {}: {}", path,
                              ac3::io::describe(got ? ac3::io::WavError::kTruncated
                                                    : got.error()));
                 return false;
@@ -175,7 +175,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
         return nullptr;
     }
     if (*second_rate != rate) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: programme2= is {} Hz but the primary programme is {} Hz - every "
                      "substream of an access unit codes the same frame period",
                      out->source.sample_rate(), sample_rate_hz(rate));
@@ -197,7 +197,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
     if (meta.programme2_layout.empty()) {
         const auto id = plan::layout_for_source(out->source.channels());
         if (!id) {
-            std::println(stderr, "error: {} has {} channels - {}", out->path,
+            fmt::println(stderr, "error: {} has {} channels - {}", out->path,
                          out->source.channels(),
                          plan::describe(plan::PlanError::kNoSourceLayout));
             return nullptr;
@@ -213,7 +213,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
         // substream would mean three programmes described by two different
         // mechanisms, with only one dialnorm reachable from here - refuse it
         // rather than emit something whose second half cannot be levelled.
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: programme2-layout=1+1 is not supported: 1+1 already carries two "
                      "programmes in one substream. Use it on the primary programme, or give "
                      "programme2 a layout of its own");
@@ -443,7 +443,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
             // unimplemented - the multi-source path has no notion of a second
             // programme to assign channels to - so say so rather than
             // silently ignore one of them.
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: programme2= and src=/map= cannot be combined yet - the "
                          "multi-source router assigns channels to one programme");
             return 1;
@@ -732,7 +732,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     }
     print_routing(p, *routing, label, status);
     if (second) {
-        std::println(status,
+        fmt::println(status,
                      "  programme 1 (§E2.3.1.2 I1): {} kbps, {}, {} coded channels, "
                      "dialnorm {} from {}",
                      second->p.bitrate_kbps, second->label, second_nchans,

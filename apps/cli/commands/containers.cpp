@@ -39,7 +39,7 @@ void warn_if_programmes_dropped(const ac3::io::ScannedStream& scanned) {
     if (scanned.programmes.size() <= 1) {
         return;
     }
-    std::println(stderr,
+    fmt::println(stderr,
                  "warning: this stream carries {} programmes (§E2.3.1.2 independent "
                  "substreams); only programme {} is muxed - a container track carries one",
                  scanned.programmes.size(), scanned.programmes.front().substreamid);
