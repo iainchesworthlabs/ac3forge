@@ -150,18 +150,26 @@ before that. It is the clearest evidence on this page for why a self-consistent 
 independent transcription and a second decoder driven by the same encoder are all still not the
 same thing as reading somebody else's bitstream.
 
-Two divergences are recorded rather than resolved:
+One divergence is recorded rather than resolved:
 
 - **FFmpeg mis-decodes DEE's stereo E-AC-3 stream.** It reports `exponent 25 is out-of-range`
   and `error decoding the audio block` on frame after frame; measured against the source WAV,
   FFmpeg's decode scores 14.3 dB where `ac3cli`'s scores 33.7 dB — and `ac3cli` lands within
   0.6 dB of its own score on FFmpeg's encode of the same source at the same rate. So that one
   fixture has no FFmpeg oracle and is scored against the source WAV instead.
-- **`wav_channel_order` writes acmods 2/1 and 3/1 in bitstream order** (L C R S), on the stated
-  grounds that no WAV convention claims a mono-surround slot, while FFmpeg maps 3/1 onto
-  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and writes L R C S. The audio agrees — channel 0 at
-  48.93 dB, and channels 1 and 2 swapped — but the files cannot be diffed as they stand, so the
-  FATE sample that exercises 3/1 is decode-and-parse only.
+
+A second was found and fixed rather than recorded:
+
+- **`wav_channel_order` used to write acmods 2/1 and 3/1 in bitstream order** (L C R S), on the
+  stated grounds that no WAV convention claims a mono-surround slot, while FFmpeg mapped 3/1 onto
+  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and wrote L R C S. That premise was wrong:
+  `WAVE_FORMAT_EXTENSIBLE` does define `SPEAKER_BACK_CENTER` (`0x100`), which is exactly FFmpeg's
+  mono-surround slot for both 2/1 and 3/1. `wav_channel_order` now places every acmod by WAV
+  speaker position rather than bitstream order — the practical effect is C swapping with R and
+  the LFE moving up to fourth, on top of the mono-surround fix — and the FATE sample that
+  exercises 3/1 (`millers_crossing_4.0.ac3`) went from decode-and-parse-only to a compared sample
+  once the two decoders' channel orders agreed: channel 0 (L) at 48.93 dB, and a near-silent
+  surround channel gated on absolute difference at a −46.0 dBFS floor (measured −55.31 dBFS).
 
 ## Where the oracles don't reach
 
