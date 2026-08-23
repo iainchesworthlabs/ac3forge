@@ -56,6 +56,14 @@ metadata options (any order, after the positional arguments):
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per channel per block from
+                    content - the same reach as fast-mdct=off (encode/sine and the
+                    atmos/record/live session builders); eac3-encode's [tools] positional can
+                    also reach this field via a bare nodither token. Real dither values are
+                    decoder-defined (the spec's own "any reasonably random sequence"), so this
+                    is for a run that needs bit-for-bit agreement between two decoders of the
+                    same stream more than it needs dither's own perceptual benefit -
+                    tools/checks/verify_gold_reference.sh is the one caller that does
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -81,7 +89,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | all
+        nofastmdct | nodither | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -90,9 +98,10 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         atten:N pins the SPX notch depth, noatten removes it;
         ecpl only takes effect alongside cpl (e.g. cpl+ecpl);
         nofastmdct forces the direct-form forward MDCT instead of the
-        default §7.9.4 fast path — the fast MDCT is not a coding tool
-        (nothing in the bitstream's syntax changes), so 'none' and 'all'
-        both leave it alone, and the older opt-in spelling 'fastmdct'
+        default §7.9.4 fast path, nodither pins dithflag at 0 instead of
+        deciding it from content — neither is a coding tool (nothing in
+        the bitstream's syntax changes either way), so 'none' and 'all'
+        both leave them alone, and the older opt-in spelling 'fastmdct'
         still parses as a no-op
 ```
 

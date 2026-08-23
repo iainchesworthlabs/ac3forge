@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <numbers>
-#include <print>
+#include <fmt/base.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -75,14 +75,14 @@ std::uint64_t frame_count(std::uint32_t seconds) {
 int run_silence(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate) {
     const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = bitrate});
     if (!frame) {
-        std::println(stderr, "error: bitrate must be one of the 19 legal AC-3 rates");
+        fmt::println(stderr, "error: bitrate must be one of the 19 legal AC-3 rates");
         return 1;
     }
     const std::uint64_t count = (static_cast<std::uint64_t>(seconds) * 48000 + 1535) / 1536;
     if (!write_repeated_frame(out_path, *frame, count)) {
         return 1;
     }
-    std::println("wrote {} silent frames to {}", count, out_path);
+    fmt::println("wrote {} silent frames to {}", count, out_path);
     return 0;
 }
 
@@ -103,6 +103,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
     p.tools.search = meta.search;
+    p.tools.dither = meta.dither;
     const auto config = plan::ac3_config(p);
     const auto cp = plan::resolve(p);
 
@@ -140,7 +141,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
         meter.process(views);
         auto frame = encoder->encode_frame(views);
         if (!frame) {
-            std::println(stderr, "error: bitrate must be a legal AC-3 rate");
+            fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
             out_sink.abort();
             return 1;
         }
@@ -152,7 +153,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
     if (!out_sink.close()) {
         return 1;
     }
-    std::println("wrote {} {} frames ({} kbps) to {}", count, label, bitrate, out_path);
+    fmt::println("wrote {} {} frames ({} kbps) to {}", count, label, bitrate, out_path);
     print_channel_summary(meter);
     return 0;
 }
@@ -170,6 +171,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     // 'sine'/'encode's identical assignment.
     p.tools.fast_mdct = meta.fast_mdct;
     p.tools.search = meta.search;
+    p.tools.dither = meta.dither;
     const auto config = plan::eac3_config(p);
     const auto cp = plan::resolve(p);
 
@@ -198,7 +200,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
         n0 += ac3::kSamplesPerFrame;
         auto unit = encoder.encode_access_unit(views);
         if (!unit) {
-            std::println(stderr, "error: invalid E-AC-3 configuration");
+            fmt::println(stderr, "error: invalid E-AC-3 configuration");
             out_sink.abort();
             return 1;
         }
@@ -210,7 +212,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     if (!out_sink.close()) {
         return 1;
     }
-    std::println("wrote {} E-AC-3 {} access units ({} coded channels, {} substreams, "
+    fmt::println("wrote {} E-AC-3 {} access units ({} coded channels, {} substreams, "
                  "bsid 16) to {}",
                  count, label, nchans, config.dependents.size() + 1, out_path);
     return 0;
@@ -277,7 +279,7 @@ int run_orbit(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
         meter.process(views);
         auto frame = encoder->encode_frame(views);
         if (!frame) {
-            std::println(stderr, "error: bitrate must be a legal AC-3 rate");
+            fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
             out_sink.abort();
             return 1;
         }
@@ -289,7 +291,7 @@ int run_orbit(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     if (!out_sink.close()) {
         return 1;
     }
-    std::println("wrote {} 5.1 frames: 440 Hz tone orbiting every {} s -> {}", count,
+    fmt::println("wrote {} 5.1 frames: 440 Hz tone orbiting every {} s -> {}", count,
                  orbit_seconds, out_path);
     // An orbit visits every speaker equally, so the summary's job here is to
     // show that no channel was left out and none dominates.
@@ -306,14 +308,14 @@ int run_eac3_silence(std::string_view out_path, std::uint32_t seconds, std::uint
     }
     const auto unit = ac3::eac3::build_silent_access_unit(plan::eac3_config(p));
     if (!unit) {
-        std::println(stderr, "error: invalid E-AC-3 configuration");
+        fmt::println(stderr, "error: invalid E-AC-3 configuration");
         return 1;
     }
     const std::uint64_t count = frame_count(seconds);
     if (!write_repeated_frame(out_path, unit->bytes, count)) {
         return 1;
     }
-    std::println("wrote {} silent E-AC-3 {} access units ({} substreams, "
+    fmt::println("wrote {} silent E-AC-3 {} access units ({} substreams, "
                  "{} bytes each, bsid 16) to {}",
                  count, label, unit->substream_count(), unit->bytes.size(), out_path);
     return 0;

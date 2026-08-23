@@ -38,7 +38,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <format>
+#include <fmt/format.h>
 #include <thread>
 
 #include "alsa_support.hpp"
@@ -245,7 +245,7 @@ std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices() {
         const bool loopback = entry.card_id == kLoopbackCardId;
         DeviceInfo info{
             .id = alsa::hw_device_name(entry.card_id, entry.device),
-            .name = std::format("{}: {}", entry.card_name, entry.device_name),
+            .name = fmt::format("{}: {}", entry.card_name, entry.device_name),
             .kind = loopback ? DeviceKind::kLoopback : DeviceKind::kInput,
             .sample_rate = 0,
             .channels = 0,
