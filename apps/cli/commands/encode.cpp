@@ -50,6 +50,50 @@ bool vbr_or_error(std::string_view text, std::optional<ac3::eac3::VbrConfig>& ou
     return false;
 }
 
+// Whether AccessUnitEncoder accepted the configuration at all, and if not, why
+// in terms a caller can act on.
+//
+// AccessUnitEncoder's constructor cannot fail: a configuration its own
+// substream_configs() rejects leaves it holding NO substreams rather than
+// reporting anything, so channel_count() answers 0 and the first
+// encode_access_unit() call returns an error whose text ("the encoder cannot
+// express this configuration") names no cause. Zero is unambiguous - a built
+// encoder always codes at least the independent substream - so it is checked
+// here, before a frame is attempted, and diagnosed.
+//
+// The reachable cause is the rate/sample-rate pair. §E2.3.1.3's frmsiz is an
+// 11-bit word count, so a syncframe can never exceed kMaxFrameWords words
+// however legal both halves are on their own: at the Annex E half rates a
+// nominal Table 5.18 bitrate the CLI accepts everywhere else runs past it -
+// every rate above 320 kbps at 16 kHz, above 448 at 22.05 kHz and above 512 at
+// 24 kHz. Both are ordinary things to type, nothing in the CLI's own grammar
+// marks the combination, and before this check the zero met the assert() below
+// instead - which is compiled out under NDEBUG, so a release build fell
+// through to encode_access_unit's causeless message while any build with
+// assertions live aborted outright. atmos-encode, which never took this path,
+// refused cleanly throughout. Found by tools/ci/fuzz_eac3_encoder_space.py.
+bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint32_t bitrate,
+                          ac3::SampleRate rate, bool vbr) {
+    if (encoder.channel_count() != 0) {
+        return true;
+    }
+    // VBR sizes each syncframe from the content, so frame_words() does not
+    // describe it and quoting a word count would be a guess.
+    if (!vbr) {
+        const auto words = ac3::eac3::frame_words(rate, bitrate);
+        if (words > ac3::eac3::kMaxFrameWords) {
+            std::println(stderr,
+                         "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
+                         "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
+                         "bitrate or raise the sample rate",
+                         bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
+            return false;
+        }
+    }
+    std::println(stderr, "error: the encoder cannot express this configuration");
+    return false;
+}
+
 }  // namespace
 
 int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
@@ -196,6 +240,9 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     }
 
     ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
+    if (!eac3_config_accepted(encoder, bitrate, *sr, p.vbr.has_value())) {
+        return 1;
+    }
     assert(static_cast<int>(nchans) == encoder.channel_count());
     // Streamed out as encoded, exactly as run_eac3_encode below - the
     // multi-source shape only differs on the INPUT side (route_frame over
@@ -364,6 +411,9 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     }
 
     ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
+    if (!eac3_config_accepted(encoder, bitrate, *sr, p.vbr.has_value())) {
+        return 1;
+    }
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     assert(static_cast<int>(nchans) == encoder.channel_count());
     // The classic path has exactly one source, always index 0 in offset='s

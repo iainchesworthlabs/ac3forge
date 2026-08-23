@@ -12,6 +12,33 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **E-AC-3 encoder input-space fuzzing** (`tools/ci/fuzz_eac3_encoder_space.py`, roadmap `VX1`).
+  The AC-3 encoder-space harness said outright where it stopped — "Scope: AC-3 only [...] E-AC-3's
+  own space [...] is a real remaining gap" — and this is that gap. It draws random legal
+  `eac3-encode`/`atmos-encode` configurations (Annex E tool tokens with their band-edge pins,
+  `fscod2` half sample rates, CBR and VBR, every layout including the ones needing dependent
+  substreams, Atmos object counts) crossed with the AC-3 harness's adversarial per-block PCM
+  generator, which it imports rather than copies. Because FFmpeg does not read E-AC-3 whole — no
+  second dependent substream, no model of enhanced coupling or transient pre-noise, no `fscod2`
+  decode — every case is classified by which oracle can actually read it, and the cells FFmpeg
+  cannot decode still get their *framing* checked: by a walk over the four fields that fix E-AC-3
+  framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
+  and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
+  on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
+
+### Fixed
+
+- **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
+  §E2.3.1.3's 11-bit `frmsiz` word count can signal at the chosen sample rate — every layout,
+  reachable by typing two ordinary numbers, since both a nominal Table 5.18 bitrate and an Annex E
+  half sample rate are legal on their own and nothing in the CLI's grammar marks the pair. In
+  practice: above 320 kbps at 16 kHz, above 448 at 22.05 kHz, above 512 at 24 kHz. A release build
+  refused it without naming a cause; any build with assertions live aborted. It now reports the
+  limit, the word count needed and the way out. `atmos-encode` was never affected. Found by the
+  new E-AC-3 encoder-space harness above.
+
 ### Changed
 
 - **E-AC-3 transmits its bit allocation parameters** (`bamode` 1, roadmap `EQ3`) instead of
