@@ -172,10 +172,10 @@ struct ChannelPlan {
     std::array<bool, kBlocksPerFrame> blksw{};
     // §7.2.2.6: computed once per frame (like `decoded` above, since Table
     // E2.10 code 0 gives this stream one exponent set for all six blocks
-    // anyway) from the real coefficients, EXCEPT for an AHT stream - its
-    // actual coded quantity is the AHT-transformed coefficient, not the raw
-    // MDCT bin, so measuring the raw bin against it would compare the wrong
-    // signal; left at its default (no segments) rather than risk that.
+    // anyway) from the real coefficients. The coupling stream carries its own
+    // through `cpldeltbae` like any fbw channel; the LFE never has one,
+    // having no bitstream field to carry it, and an AHT stream is left out on
+    // measured grounds. See the delta block in encode_frame for both.
     DeltaSegments delta;
 };
 
@@ -1227,17 +1227,39 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
                 w.put(static_cast<std::uint32_t>(cpl.sleak), 3);
             }
         }
-        // §E2.3.2.9/§5.4.3.47-57: present in every block once dbaflde is set,
-        // even a block with nothing to say (deltbaie = 0). This encoder never
-        // reuses ('00') a previous block's state - the correction is computed
-        // once per frame (see ChannelPlan::delta), so every block that wants
-        // one resends the identical segments as fresh ('01') info; a channel
-        // with none says '10' (no delta).
+        // §E2.3.2.9/§5.4.3.47-57: the deltbaie bit is present in every block
+        // once dbaflde is set, but the segments behind it are sent ONCE, in
+        // block 0.
+        //
+        // Outside block 0, deltbaie == 0 does not mean "no delta this block":
+        // it means "keep whatever delta state the previous block left in
+        // place" (§5.4.3.47, and §7.2.2.6's "the delta bit allocation values
+        // are not updated") - the retain rule both this project's decoders
+        // implement. Here the correction is computed once per frame and
+        // covers all six blocks (Table E2.10 code 0 gives every stream one
+        // exponent set for the whole frame, see ChannelPlan::delta), so what
+        // blocks 1-5 would retain is bit-for-bit what block 0 sent, and
+        // resending it is pure overhead.
+        //
+        // That overhead is not small: at up to 8 segments of 12 bits plus a
+        // 3-bit count, one stream's segments run to 99 bits, and a 5.1 frame
+        // has six streams carrying them. Sending that six times over rather
+        // than once costs around 3000 bits of a 128 kbit/s frame's 4096 -
+        // which is most of what made an earlier attempt at coupling-aware
+        // delta regress exactly that configuration.
+        //
+        // Staleness, the failure mode the AC-3 emitter has to track state to
+        // avoid (see delta_needs_emit there), cannot arise here: AC-3's delta
+        // belongs to an exponent RUN and changes between blocks, so a block
+        // wanting none has to say so explicitly with '10'; this frame's
+        // segments are the same in every block by construction, so retaining
+        // them is always what the encoder's own allocation did too.
         if (dbaflde) {
             bool any_delta = cpl.in_use && payload.chans.back().delta.deltnseg > 0;
             for (int ch = 0; ch < nfchans && !any_delta; ++ch) {
                 any_delta = payload.chans[static_cast<std::size_t>(ch)].delta.deltnseg > 0;
             }
+            any_delta = any_delta && first;
             w.put(any_delta ? 1 : 0, 1);  // deltbaie
             if (any_delta) {
                 // §5.4.3.47-57's syntax table sends every stream's 2-bit
@@ -1436,6 +1458,9 @@ struct FrameEncoder::FrameState {
     std::vector<std::uint8_t> exp_axis;
     std::vector<std::int32_t> aht_column;
     std::vector<double> delta_peak_mag;
+    // §7.2.2.6 segments held aside while the frame is fitted without them,
+    // so the keep/drop comparison in encode_frame can put them back.
+    std::vector<DeltaSegments> delta_snapshot;
     std::vector<double> spx_recon;
     std::vector<double> spx_gains;
     std::vector<double> spx_synth;
@@ -2278,6 +2303,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         raw.assign(span, kMaxExponent);
         auto& axis_exps = state_->exp_axis;
         axis_exps.assign(span, 0);
+        // §7.2.2.6's real-coefficient curve, filled by whichever branch below
+        // owns this stream's axis (see the delta block after them). Sized to
+        // endmant with zeros below `start`, which choose_delta_segments never
+        // reads, so it lines up with plan.decoded index for index.
+        auto& peak_mag = state_->delta_peak_mag;
+        peak_mag.assign(static_cast<std::size_t>(plan.endmant), 0.0);
 
         if (plan.aht) {
             AC3_ZONE_SCOPED_N("step5_aht_transform");
@@ -2296,6 +2327,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
                     plan.aht_fixed[static_cast<std::size_t>(bin)][j] =
                         to_fixed25(transformed[j]);
+                    peak_mag[static_cast<std::size_t>(bin)] =
+                        std::max(peak_mag[static_cast<std::size_t>(bin)],
+                                 std::abs(transformed[j]));
                 }
             }
             // The same "worst case wins" rule as below, down the transform
@@ -2316,8 +2350,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 const auto& source = coeffs_at(s, blk);
                 auto& out = fixed_at(s, blk);
                 for (int bin = plan.start; bin < plan.endmant; ++bin) {
-                    out[static_cast<std::size_t>(bin)] =
-                        to_fixed25(source[static_cast<std::size_t>(bin)]);
+                    const double value = source[static_cast<std::size_t>(bin)];
+                    out[static_cast<std::size_t>(bin)] = to_fixed25(value);
+                    peak_mag[static_cast<std::size_t>(bin)] = std::max(
+                        peak_mag[static_cast<std::size_t>(bin)], std::abs(value));
                 }
                 extract_exponents(
                     std::span{out}.subspan(static_cast<std::size_t>(plan.start), span),
@@ -2347,35 +2383,53 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // there - so the comparison needs that same per-bin max, not an
         // average, or it would measure the (intentional) gap between
         // "loudest block" and "typical block" instead of real quantization
-        // error and bias toward spurious cuts. See the ChannelPlan::delta
-        // comment for why AHT streams skip this.
-        // LFE is excluded too: §E2.3.2.9's deltbae[ch] loop is bounded by
+        // error and bias toward spurious cuts. `peak_mag` above is exactly
+        // that per-bin max, filled by whichever branch owns this stream.
+        //
+        // The AXIS matters as much as the maximum, which is why an AHT
+        // stream is left out. Its quantized quantity is not the MDCT bin at
+        // all but the six DCT coefficients taken down it, and its exponents
+        // normalise THOSE, so the only coherent comparison is against the
+        // transform output - `peak_mag` on an AHT stream holds exactly that
+        // (max over the transform axis, mirroring how the exponent itself is
+        // derived) rather than the raw bin.
+        //
+        // Made coherent and then measured, it still loses. The DCT is there
+        // to CONCENTRATE the six blocks into one large coefficient and five
+        // small ones, so the axis maximum sits far above the bin's typical
+        // coded magnitude by design - and the gap that opens between the
+        // exponent-derived curve and the real one is that intended
+        // concentration, not quantization error. Correcting for it moves
+        // bits on the strength of a measurement of the transform's own gain.
+        // Measured against this file's material (tools/ci/quality_race.py,
+        // AHT-carrying variants): 5.1 at 128 kbit/s lost 1.48 dB SNR on the
+        // `auto` variant and 1.00 dB on `aht` with AHT streams included,
+        // where excluding them turned the same two points into +1.39 and
+        // +0.07; stereo at 96 kbit/s gained 0.52 dB more on `aht` from the
+        // exclusion. Every AHT-carrying point was at least as good without
+        // it, so it stays off - the frame's non-AHT streams still carry
+        // their own corrections.
+        //
+        // Both the coupling channel and every fbw channel are in §7.2.2.6's
+        // scope even in a frame where coupling is active, and §E2.3.2.9's
+        // syntax carries both (`cpldeltbae` alongside `deltbae[ch]`). A
+        // coupled fbw channel's eligible region is just its own narrow
+        // below-cplstrtmant baseband, since `endmant` already stops there;
+        // the coupling channel's is the shared high band, and at this point
+        // `coeffs_at(cpl_stream, ...)` is the §7.4.1 average divided back
+        // down to one channel's natural level, so the real-vs-quantized
+        // comparison means the same thing for it as for a real recorded
+        // channel. The side-info cost that made an earlier attempt regress
+        // 128 kbit/s 5.1 is bounded generically at step 8 below: delta is a
+        // pure quality refinement, so it is dropped and re-measured for
+        // every stream whenever it would be the reason a frame fails to fit.
+        //
+        // LFE stays excluded: §E2.3.2.9's deltbae[ch] loop is bounded by
         // nfchans, so LFE has no delta bit allocation field to carry one in -
         // computing and applying one anyway would let the encoder's own
         // allocation diverge from what a decoder, which never receives it,
         // would reconstruct.
-        //
-        // Delta is skipped entirely whenever coupling is in use this frame -
-        // not just for the coupling channel itself - deliberately narrowing
-        // this first cut's scope: the coupling channel is a synthesized
-        // average of the coupled channels rather than a real recorded
-        // signal, and even leaving ONLY the fbw channels' own narrow
-        // below-cplstrtmant region eligible, the extra side-info overhead
-        // was enough to break the tightest coupling scenarios (128 kbit/s
-        // 5.1, exactly the case coupling exists to rescue). Getting a
-        // coupling-aware version of this heuristic right needs more care
-        // than this phase has room for.
-        if (!plan.aht && !is_lfe && !cpl.in_use) {
-            auto& peak_mag = state_->delta_peak_mag;
-            peak_mag.assign(static_cast<std::size_t>(plan.endmant), 0.0);
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-                const auto& c = coeffs_at(s, blk);
-                for (int bin = plan.start; bin < plan.endmant; ++bin) {
-                    peak_mag[static_cast<std::size_t>(bin)] =
-                        std::max(peak_mag[static_cast<std::size_t>(bin)],
-                                std::abs(c[static_cast<std::size_t>(bin)]));
-                }
-            }
+        if (!is_lfe && !plan.aht) {
             plan.delta = choose_delta_segments(peak_mag, plan.decoded, plan.start);
         }
         plan.bap.assign(static_cast<std::size_t>(plan.endmant), 0);
@@ -2452,6 +2506,37 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         any_delta_applied = false;
         side_bits = measure_side_bits();
         return true;
+    };
+    // Fitting is the floor, not the test. §7.2.2.6 corrections buy SHAPE -
+    // a band the exponent-only curve reads wrong gets its allocation moved -
+    // and they pay for it in side info, which comes out of the same frame
+    // the mantissas do. Where the mantissa budget is large the trade is
+    // free; where it is small it is not, and 5.1 at 128 kbit/s is the case
+    // that proves it: side info is already about three quarters of a 4096-bit
+    // frame there, leaving roughly 1050 bits of mantissas, so a hundred-odd
+    // bits of segments is a tenth of everything the audio gets.
+    //
+    // So the decision is closed-loop rather than assumed: fit the frame both
+    // ways and keep whichever reaches the higher composite SNR offset, which
+    // is the same quantity the rate search below already maximises. A tie
+    // goes to the corrections - at equal offset the corrected allocation is
+    // the better-shaped one, which is the whole point of having them. This
+    // needs the segments back if the comparison goes their way, hence the
+    // snapshot; kept in the frame-lifetime state rather than allocated per
+    // call, like everything else on this path.
+    auto& delta_snapshot = state_->delta_snapshot;
+    const auto snapshot_delta = [&] {
+        delta_snapshot.resize(payload.chans.size());
+        for (std::size_t i = 0; i < payload.chans.size(); ++i) {
+            delta_snapshot[i] = payload.chans[i].delta;
+        }
+    };
+    const auto restore_delta = [&] {
+        for (std::size_t i = 0; i < payload.chans.size(); ++i) {
+            payload.chans[i].delta = delta_snapshot[i];
+        }
+        any_delta_applied = true;
+        side_bits = measure_side_bits();
     };
 
     std::vector<std::span<const std::uint8_t>> bap_views;
@@ -2572,6 +2657,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         fixed_budget = words * 16 - side_bits - kTailBits;
         lo = search(*fixed_budget);
+        if (any_delta_applied) {
+            const int lo_with_delta = lo;
+            snapshot_delta();
+            drop_delta_and_remeasure();
+            const std::uint32_t bare_budget = words * 16 - side_bits - kTailBits;
+            const int lo_without_delta = search(bare_budget);
+            if (lo_without_delta > lo_with_delta) {
+                fixed_budget = bare_budget;
+                lo = lo_without_delta;
+            } else {
+                restore_delta();
+                fixed_budget = words * 16 - side_bits - kTailBits;
+                lo = search(*fixed_budget);
+            }
+        }
     } else {
         const auto& vbr = *config_.vbr;
         const int composite = std::clamp(
@@ -2582,6 +2682,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         if (!sized) {
             return std::unexpected(FrameError::kInvalidBitrate);
+        }
+        // The VBR dual of the CBR test above: quality is pinned, so the
+        // frame cannot answer with a higher offset - it answers with its
+        // size. Corrections that do not shrink the frame are not earning
+        // their side info here either.
+        if (any_delta_applied) {
+            snapshot_delta();
+            drop_delta_and_remeasure();
+            const auto bare = vbr_size_for(bits_at(composite), vbr);
+            if (bare && bare->words <= sized->words) {
+                sized = bare;
+            } else {
+                restore_delta();
+                sized = vbr_size_for(bits_at(composite), vbr);
+                if (!sized) {
+                    return std::unexpected(FrameError::kInvalidBitrate);
+                }
+            }
         }
         lo = composite;
         words = sized->words;

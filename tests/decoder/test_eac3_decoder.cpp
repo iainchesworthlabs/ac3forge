@@ -867,6 +867,99 @@ TEST_CASE("E-AC-3 coupling round-trips are near-transparent", "[eac3][decoder][c
     }
 }
 
+TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decoder][coupling]") {
+    // §7.2.2.6 corrections used to be skipped for every stream in any frame
+    // where coupling was in use, which left two things unexercised at once:
+    // the encoder never emitted `cpldeltbae`, and the decoder never read it.
+    // The moment the first was fixed the second desynchronised every coupled
+    // frame carrying a correction - the two bits went out and nothing
+    // consumed them, so every field after them was read at the wrong offset.
+    //
+    // This pins both halves. dbaflde is a frame-level flag (Table E1.3),
+    // nine bits into audfrm - expstre, ahte, the two-bit snroffststr,
+    // transproce, blkswe, dithflage, bamode, frmfgaincode - which for a
+    // stereo independent substream with no compression word, mixing metadata
+    // or addbsi starts at bit 54, the same bsi length the malformed-coupling
+    // test above counts off emit_frame. Reading it directly is what makes
+    // this a test of coupled frames that REALLY carry corrections, rather
+    // than one that would keep passing if the encoder quietly stopped
+    // emitting them.
+    constexpr std::size_t kDbafldeBit = 54 + 9;
+    constexpr std::size_t kCplinuBit = 54 + 12;
+
+    ac3::Eac3Decoder decoder;
+    int coupled_frames = 0;
+    int coupled_frames_with_delta = 0;
+
+    // Whether a correction earns its side info is a per-frame decision (see
+    // encode_frame's keep/drop comparison against the rate fit), and it goes
+    // the corrections' way most often where the budget is tight, so this
+    // sweeps the low rates coupling exists to serve rather than betting on
+    // one of them.
+    for (const std::uint32_t kbps : {96u, 128u, 192u}) {
+        CAPTURE(kbps);
+        ac3::eac3::AccessUnitEncoder encoder{
+            {.independent = {.bitrate_kbps = kbps, .acmod = ac3::Acmod::k2_0, .coupling = true}}};
+        REQUIRE(encoder.channel_count() == 2);
+
+        // Broadband and differently balanced per channel: a pure tone leaves
+        // nothing above the coupling frequency to share, and a correction
+        // only appears where the exponent-only curve and the real one
+        // genuinely diverge, which needs content across the spectrum. The
+        // noise term is a fixed LCG so the material is identical run to run.
+        std::uint32_t rng = 0x1234567u;
+        std::uint64_t n = 0;
+        for (int f = 0; f < 12; ++f) {
+            std::vector<std::vector<float>> pcm(
+                2, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                rng = rng * 1664525u + 1013904223u;
+                const double noise =
+                    static_cast<double>(static_cast<std::int32_t>(rng >> 8)) / 8388608.0 - 1.0;
+                const auto t = static_cast<double>(n + static_cast<std::uint64_t>(i)) / 48000.0;
+                for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+                    double value = 0.15 * noise;
+                    constexpr std::array<double, 5> kTones = {310.0, 1450.0, 5200.0, 9700.0,
+                                                              15100.0};
+                    for (std::size_t k = 0; k < kTones.size(); ++k) {
+                        const double weight = ch == 0 ? 1.0 / static_cast<double>(k + 1)
+                                                      : static_cast<double>(k + 1) / 5.0;
+                        value += 0.12 * weight *
+                                 std::sin(2.0 * std::numbers::pi * kTones[k] * t);
+                    }
+                    pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(value);
+                }
+            }
+            n += ac3::kSamplesPerFrame;
+            std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+            const auto unit = encoder.encode_access_unit(views);
+            REQUIRE(unit.has_value());
+
+            ac3::BitReader reader{unit->bytes};
+            reader.skip(kCplinuBit);
+            const bool cplinu = reader.read(1) != 0;
+            ac3::BitReader delta_reader{unit->bytes};
+            delta_reader.skip(kDbafldeBit);
+            const bool dbaflde = delta_reader.read(1) != 0;
+            if (cplinu) {
+                ++coupled_frames;
+                coupled_frames_with_delta += dbaflde ? 1 : 0;
+            }
+            // The whole point: a coupled frame carrying corrections still
+            // decodes. Before the decoder learned to read cpldeltbae, the
+            // two bits went out unconsumed and this returned an error
+            // rather than audio.
+            CHECK(decoder.decode_access_unit(unit->bytes).has_value());
+        }
+    }
+    CAPTURE(coupled_frames, coupled_frames_with_delta);
+    REQUIRE(coupled_frames > 0);
+    // Not "every coupled frame" - a frame that would spend more on segments
+    // than it gains back legitimately sends none. What must not happen is
+    // coupling suppressing them wholesale, which is what this asserts.
+    CHECK(coupled_frames_with_delta > 0);
+}
+
 TEST_CASE("E-AC-3 enhanced coupling round-trips are near-transparent",
           "[eac3][decoder][coupling][enhanced_coupling]") {
     // Same shapes as standard coupling's own round-trip test above, with
