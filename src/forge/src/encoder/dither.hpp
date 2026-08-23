@@ -62,8 +62,10 @@ inline constexpr double kDitherVariance = 0.16663;
 // substitute noise only where what it replaces was at least as loud. Lower
 // values dither more freely (0 is "wherever any zero-bap bin exists at all",
 // which is FFmpeg's own behaviour); higher values reserve it for the deepest
-// holes. 0 and 1 were measured against each other across 96-640 kbit/s on
-// stereo and 5.1; see the table in the pull request that introduced this.
+// holes. 0, 1 and 4 were measured against each other at 96-448 kbit/s on
+// stereo and 5.1 (4 is "never" on that material, and reproduces the numbers
+// from before this existed); see the table in the pull request that
+// introduced this.
 inline constexpr double kSignalToDitherFloor = 1.0;
 
 class DitherBallot {
