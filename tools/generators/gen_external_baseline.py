@@ -97,6 +97,18 @@ permutation at all where reorder_for_dee() needed _SMPTE_FROM_WAVE_51. The
 single-file path is gone rather than kept as a fallback: it is the one that
 loses a channel.
 
+Two of DEE's own production defaults had to come off at the same time, for
+the same reason `measure_only`/`drc_profile=none` were already off - see
+_DEE_ENCODER_OPTS for the measured cost of each. The surround one is worth
+knowing about generally: DEE phase-shifts Ls/Rs by 90 degrees by default,
+which preserves their magnitude spectrum exactly and decorrelates their
+waveform completely. A per-channel RMS check passes; SNR reads -2.9 dB. That
+is a failure mode that looks like a dropped channel from one angle and like
+a broken encoder from another, and is neither.
+
+Still unverified for DEE: both 64 kbit/s stereo legs, because DEE's stereo
+Dolby Digital Plus data rate starts at 96 - see UNVERIFIED_DEE_LEGS.
+
 Usage (repo root, after building ac3cli):  python tools/generators/gen_external_baseline.py
 Set AC3CLI to override the ac3cli binary, same as quality_race.py.
 """
@@ -137,14 +149,27 @@ DEE = Path(r"C:\Program Files\Dolby\Dolby Media Encoder\resources\dee-dir\dee_dd
 #    visqol-python, so every MOS delta in docs/landscape.md read n/a.
 BASELINE_VERSION = 2
 
-# No leg is unverified any more - see the module docstring. The key is kept,
-# empty, rather than deleted: it is the only place that says what to do when
-# an external tool cannot produce a trustworthy number for a leg, and the
-# next DEE or FFmpeg release is as likely to need it as the last one was.
-# Everything downstream (this script's own main(), quality_race.py's
-# render_spectrograms(), append_external_comparison_history.py's
-# load_baseline_scores(), docs/landscape.md's n/a cells) already handles it.
-UNVERIFIED_DEE_LEGS: dict[str, str] = {}
+# Legs DEE cannot produce a trustworthy number for. Both 5.1 legs used to be
+# here for a reason that turned out to be fixable (see the module docstring);
+# what is left is a hard limit of the tool rather than a workaround waiting to
+# be found.
+#
+# DEE's stereo Dolby Digital Plus data rate starts at 96 kbit/s
+# (`dee_ddp_encoder --morehelp data-rate`: "Stereo [96-1024]"), so it simply
+# declines 64 - "ERROR: Requested data rate '64' is not supported by the
+# selected codec". That is the whole rate band below coupling's stereo
+# crossover (12 + 14n = 40 kbit/s per channel, i.e. 80 total), so DEE cannot
+# be an external reference for ANY stereo leg where this project's coupling
+# runs. FFmpeg still can, and does, on both of these legs.
+#
+# Unlike the 5.1 case, no dee.ec3 is written for these: there is nothing to
+# write, so main() skips the invocation rather than letting it fail.
+UNVERIFIED_DEE_LEGS = {
+    "eac3-stereo-64": "DEE's stereo Dolby Digital Plus data rate starts at 96 kbit/s "
+                      "(dee_ddp_encoder --morehelp data-rate); 64 is refused outright.",
+    "eac3-speech-stereo-64": "DEE's stereo Dolby Digital Plus data rate starts at 96 kbit/s "
+                             "(dee_ddp_encoder --morehelp data-rate); 64 is refused outright.",
+}
 
 _SPEECH = AUDIO / "programme_speech_stereo.flac"
 _MUSIC = AUDIO / "programme_music_stereo.flac"
@@ -242,18 +267,46 @@ def split_for_dee(wav_path, scratch_dir, tag):
     return ":".join(paths)
 
 
-def invoke_dee(wav_list_arg, kbps, codec, layout, out):
-    """codec is "dd" (AC-3) or "ddp" (E-AC-3).
+# Every one of these turns OFF a DEE default that changes the signal for
+# production reasons rather than coding ones. ac3cli does none of them, so
+# leaving them on measures the difference between two mastering policies and
+# calls it a difference in encoder quality.
+#
+# measure_only (rather than DEE's default measure_and_correct, -24 LKFS)
+#   applies no loudness gain correction, which would otherwise show up as a
+#   level mismatch swamping SNR.
+# drc_profile=none
+#   sends no dynamic-range control profile.
+# surround_90deg_phase_shift=0
+#   DEE applies a 90-degree phase shift to Ls/Rs by default, for Dolby
+#   Surround Lt/Rt compatibility. It preserves the magnitude spectrum and
+#   destroys the waveform, which is exactly what a waveform metric cannot
+#   see past: with it on, both surrounds scored -2.9 dB SNR at a correlation
+#   of 0.02 against the source - uncorrelated, but level-matched, which is
+#   what made it look for a while like DEE was dropping the channel.
+# lfe_filter=0
+#   DEE low-passes the LFE by default. The 5.1 fixture's LFE is a 55/82.5 Hz
+#   tone pair, well inside any LFE passband, and it still cost 18 dB.
+#
+# Measured on ac3-51-448, total SNR and then per channel:
+#
+#   defaults                      15.76 | 47.4 47.9 46.3 18.9 -2.9 -2.9
+#   + surround_90deg_phase_shift=0 23.47 | 47.3 47.9 46.2 18.9 18.1 19.6
+#   + lfe_filter=0                 36.57 | 47.3 47.9 46.2 36.8 18.1 19.6
+#
+# For reference FFmpeg scores 39.00 and ac3cli 39.95 on the same leg, so the
+# last row is the first one that puts DEE in the same conversation. The
+# surrounds staying near 18-19 dB is not a residual problem: FFmpeg's own
+# are 20.2/20.2, because that fixture's surrounds are band-limited noise and
+# are simply the hardest thing in it to code.
+_DEE_ENCODER_OPTS = "drc_profile=none:surround_90deg_phase_shift=0:lfe_filter=0"
 
-    measure_only + drc_profile=none: DEE's default loudness mode
-    (measure_and_correct, -24 LKFS target) applies a gain correction that
-    would shift absolute output level and swamp SNR with a level mismatch
-    unrelated to actual coding quality. ac3cli applies no loudness
-    normalization of its own, so this keeps the comparison to coding
-    artifacts only, matching what "ours" actually does.
-    """
+
+def invoke_dee(wav_list_arg, kbps, codec, layout, out):
+    """codec is "dd" (AC-3) or "ddp" (E-AC-3). See _DEE_ENCODER_OPTS above
+    for why each default is turned off and what each one was worth."""
     run([str(DEE), "--input-format", "wav_list", "--input", wav_list_arg,
-         "--encoder", f"{codec}:drc_profile=none",
+         "--encoder", f"{codec}:{_DEE_ENCODER_OPTS}",
          "--loudness-management", "measure_only",
          "--data-rate", str(kbps),
          "--output-channel-layout", layout,
@@ -369,10 +422,10 @@ def main():
         dee_out = leg_dir / f"dee.{ext}"
         ours_out = SCRATCH / f"{name}_ours.{ext}"
 
-        dee_input = split_for_dee(wav, SCRATCH, name)
-
         invoke_ffmpeg(wav, kbps, leg["ffmpeg_codec"], ffmpeg_out)
-        invoke_dee(dee_input, kbps, leg["dee_codec"], leg["dee_layout"], dee_out)
+        if name not in UNVERIFIED_DEE_LEGS:
+            invoke_dee(split_for_dee(wav, SCRATCH, name), kbps, leg["dee_codec"],
+                       leg["dee_layout"], dee_out)
         invoke_ours(wav, kbps, is_eac3, ours_out)
 
         scores = {}

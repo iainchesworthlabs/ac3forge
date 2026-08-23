@@ -936,6 +936,13 @@ def render_spectrograms(out_dir):
         _, d_ours, _ = align(original, read_wav_f32(ours_wav), **FIXED_ALIGN)
         panels = [("original", original), ("ac3forge", d_ours)]
 
+        if name not in manifest["legs"]:
+            raise SystemExit(
+                f"leg '{name}' is in TREND_LEGS but not in the committed external baseline "
+                f"(baseline_version {manifest['baseline_version']}). Those two lists are kept in "
+                "sync by hand - see TREND_LEGS' own comment. Rerun "
+                "tools/generators/gen_external_baseline.py locally, with its LEGS updated to "
+                "match, and commit the manifest it writes.")
         leg_scores = manifest["legs"][name]["scores"]
         for tool_label in ("ffmpeg", "dee"):
             entry = leg_scores.get(tool_label, {})
