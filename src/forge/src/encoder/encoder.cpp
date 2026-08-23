@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
 #include <expected>
 #include <memory>
 #include <span>
@@ -159,26 +158,6 @@ int fgaincod_for(const EncoderConfig& config, int nfchans) {
         static_cast<int>(config.bitrate_kbps) / std::max(nfchans, 1);
     const int numerator = (kTopKbps - per_channel_kbps) * 7 + kSpanKbps / 2;
     return std::clamp(numerator / kSpanKbps, 0, 7);
-}
-
-// TEMPORARY-EQ7-MEASUREMENT: sdcycod/fdcycod/sgaincod are not configurable
-// and are not going to be; this hook exists only so EQ7's "re-check them
-// while the harness is up" can be run without three rebuilds, and is
-// removed before the branch is pushed.
-struct MeasurementCodes {
-    int sdcycod = 2;
-    int fdcycod = 1;
-    int sgaincod = 1;
-    MeasurementCodes() {
-        std::ifstream in("D:/ac3forge-material/codes.txt");
-        if (in) {
-            in >> sdcycod >> fdcycod >> sgaincod;
-        }
-    }
-};
-const MeasurementCodes& measurement_codes() {
-    static const MeasurementCodes codes;
-    return codes;
 }
 
 // Step 9's SNR-offset search result: the composite offset it found, and the
@@ -612,14 +591,23 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // caught once by a "win" that was really a property of one band-limited
     // fixture (see chbwcod below).
     //
-    // The other four are left alone deliberately. floorcod turns out to be
+    // The other three are left alone deliberately. floorcod turns out to be
     // inert - the floor never binds at any rate on any material tried, so all
-    // eight values encode identically. sdcycod/fdcycod/sgaincod move the
-    // result by tenths. fgaincod is the one real temptation: fgaincod 1 is
-    // worth another +2 dB at 448 and +7 dB at 640, but it REGRESSES at
-    // 192 kbit/s (-0.22 dB on synthesized stereo) and costs 0.09 MOS at
-    // 320 on the 5.1 fixture, so it is not a default - it would need to be
-    // rate-dependent, and that wants its own measurement pass.
+    // eight values encode identically. sdcycod and fdcycod move the result by
+    // tenths, and EQ7's re-check confirms that on real programme material
+    // with a perceptual score too: over their whole legal range at 192 kbit/s
+    // 5.1, sdcycod spans 3.219-3.234 MOS and fdcycod 3.202-3.226, with the
+    // §8.2.12 defaults inside 0.008 of the best either way.
+    //
+    // sgaincod is the one that did not come back flat: 2 measured +0.045 MOS
+    // and +0.22 dB over the default 1 on that leg, and 3 nearly as much. One
+    // material at one rate is not enough to move a default that touches every
+    // AC-3 stream - fgaincod below took five rates on two materials plus a
+    // 25-cell verification - so it is recorded here as the next thing to
+    // measure rather than changed.
+    //
+    // fgaincod itself is no longer fixed; see fgaincod_for above for the
+    // rate-dependent curve and the measurement behind it.
     //
     // Searching these per frame was considered and rejected: the only
     // in-loop quality criterion this encoder has is the composite SNR offset
@@ -628,11 +616,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // curve for the offset to sit on. A sound search would have to
     // reconstruct and measure real distortion per candidate, which is a far
     // larger change than the uniform win above justifies.
-    const BitAllocCodes codes{.sdcycod = measurement_codes().sdcycod,
-                              .fdcycod = measurement_codes().fdcycod,
-                              .sgaincod = measurement_codes().sgaincod,
-                              .dbpbcod = 3,
-                              .fgaincod = fgaincod_for(config_, nfchans)};
+    const BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_, nfchans)};
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
     // The coupling channel is one more stream on the end, so its coefficient

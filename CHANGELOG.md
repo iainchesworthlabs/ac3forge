@@ -28,6 +28,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   energy ratio improving alongside; AC-3 5.1 at 448 gains 0.4 dB. Nothing at or above
   128 kbit/s per channel changes, and a pinned `chbwcod` still overrides both halves.
 
+- **AC-3's `fgaincod` is rate-dependent** (`EQ7`). §8.2.12's fixed 4 becomes a line from 7 at
+  38 kbit/s per channel to 0 at 128, measured over the whole 0–7 range on real programme
+  material and decided on ViSQOL — waveform SNR prefers 7 at every rate on every material and
+  so distinguishes nothing. Worth +0.099 MOS at 192 kbit/s 5.1 and +0.158 at 640, and the same
+  shape as the SNR-only sweep `encoder.cpp` had already recorded in the other direction. The
+  new `EncoderConfig::fgaincod` (−1 = auto, 0–7 pins) overrides it. Verified over 25 (leg, rate)
+  cells: mean +0.098 MOS and +0.54 dB SNR, worst cell −0.016 MOS.
+
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
