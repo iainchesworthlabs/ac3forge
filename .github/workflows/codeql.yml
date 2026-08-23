@@ -79,8 +79,14 @@ jobs:
     permissions:
       contents: read
 
+  # `display`, not `language`, in the job name - and "C++" spelled exactly as it
+  # was before this became a matrix. The check name a branch-protection ruleset
+  # selects is this rendered string, and .github/branch-protection.md requires
+  # "Analyze (C++)" on both main and develop: renaming it to "Analyze (cpp)"
+  # would leave that required check permanently pending on every PR until an
+  # admin edited the ruleset. Adding legs is free; renaming one is not.
   analyze:
-    name: Analyze (${{ matrix.language }})
+    name: Analyze (${{ matrix.display }})
     needs: toolchain-versions
     runs-on: ubuntu-latest
     # Empty for every interpreted leg, so only the C++ one pays for the pinned
@@ -95,12 +101,15 @@ jobs:
       matrix:
         include:
           - language: cpp
+            display: C++
             build-mode: manual
             container: ubuntu:26.04
           - language: python
+            display: Python
             build-mode: none
             container: ""
           - language: javascript-typescript
+            display: JavaScript
             build-mode: none
             container: ""
     steps:

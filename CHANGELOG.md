@@ -12,7 +12,53 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **Lint and security analysis for the non-C++ code** (roadmap VX14). A new `Script Lint` CI job
+  runs `ruff` over every Python file in the tree, `shellcheck` over every shell script, and
+  `actionlint` over the workflows — the last of these with `shellcheck` wired in, so the shell
+  inside every workflow `run:` block is checked too. All three are hash-pinned in
+  `requirements/requirements-lint.txt`, and ruff's rule set is curated explicitly in a root
+  `ruff.toml` rather than left at a default that moves between releases. This matters more here
+  than lint hygiene usually does: about thirty of those Python files *are* this project's oracles
+  and CI gates, so a swallowed subprocess failure in one of them turns a check green without
+  checking anything. Its first run found exactly that class of thing — 14 `subprocess.run()` calls
+  with no explicit `check=`, four length-tolerant `zip()`s inside the gold-reference gate's own
+  comparator, a closure over an unbound loop variable in the E-AC-3 reference parser, two unquoted
+  shell globs, and a `continue-on-error` reading a matrix property no matrix entry defined.
+  CodeQL also becomes a language matrix, adding `python` and `javascript-typescript` beside `cpp`.
+- **A ThreadSanitizer CI leg** (roadmap VX16). `src/audio` is a lock-free SPSC ring, a silence
+  watchdog and a clock-drift servo shared between a real-time callback thread and the encoder
+  thread, and the only sanitizer leg was ASan+UBSan, which cannot see a data race. A new
+  `config-linux-llvm-tsan` preset and matrix entry run a `concurrency` ctest label — `tests/audio/`
+  plus a new `tests/cli/test_cli_live.cpp` covering the `devices`/`outputs`/`record`/`live`/
+  `monitor` commands, which nothing tested before. The label comes from the Catch2 tags themselves
+  (`ADD_TAGS_AS_LABELS`), so `ctest -L ring`, `-L encoder` and the rest now work as well. The
+  first run was clean, and `tsan.supp` is checked in near-empty with a note saying it should stay
+  that way.
+- **A performance comparison on every pull request** (roadmap VX17). The performance trend is only
+  recorded on pushes to `develop`/`main`, and `ac3perf`'s absolute real-time budget has enough
+  headroom that a change could double ms/frame and still pass it — so a PR that halved the
+  encoder's speed went green everywhere and surfaced only after merging. A `performance-compare`
+  job now builds `ac3bench`/`ac3kernelbench` at the merge base and at the PR head on one runner,
+  runs each three times, and posts a table of per-workload and per-kernel deltas to the job
+  summary, using the same soft/hard tiers the trend job applies on merge. Informational only: it
+  never fails a build, and the trend-branch append stays push-only.
+
 ### Changed
+
+- **The coverage gate now covers `apps/cli` and `python/`, not just `src/`** (roadmap VX15). All
+  nine library components had a line and a branch floor while `apps/` had none — despite `apps/cli`
+  being about 6,500 lines, the executable the codec matrix, the gold-reference gate and the
+  encoder-space fuzzer all drive, and the place both CLI bugs this project has shipped actually
+  lived. `apps/cli` is gated at line 40 / branch 34 against a measured 47.3 / 42.0, with a
+  per-command breakdown printed below the gate — reported, not gated — so a thin command module
+  shows as thin instead of averaging away. `wheels.yml` gains a `python-coverage` job running
+  `pytest --cov` against the built wheel. Reaching a number at all required fixing something
+  quietly wrong: `ac3cli` linked an instrumented library but never linked `ac3::coverage` itself,
+  and because `--coverage` is target-scoped at compile time its sources were compiling
+  uninstrumented and emitting no coverage data at all. `apps/gui` stays out of scope — its C++
+  needs a Qt kit on the coverage leg that no Linux CI leg installs.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
