@@ -40,7 +40,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 30> kOptionTokens{{
+constexpr std::array<OptionToken, 35> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -70,6 +70,11 @@ constexpr std::array<OptionToken, 30> kOptionTokens{{
     {"offset=", "<sourceIndex>:<seconds> leading silence for that source"},
     {"capture2=", "live: a second capture device, clock-conformed to the first"},
     {"container=", "record/live: raw, mkv, ts or spdif"},
+    {"layout=", "record/live: the encoded layout (default stereo)"},
+    {"codec=", "record/live: ac3 or eac3, instead of deriving it from layout="},
+    {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
+    {"objects=", "live mode=atmos: the object-slot budget, 1..15"},
+    {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1"},
     {"preset=", "qc: gate the measurement against a named delivery spec"},
 }};
 

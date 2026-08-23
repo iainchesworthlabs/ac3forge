@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <tuple>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -31,7 +32,10 @@
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/sinks/iec61937.hpp"
-#include "matroska/matroska.hpp"
+#include "ac3/audio/watchdog.hpp"
+#include "ac3/encoder/assignment.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "recording_sink.hpp"
 
 namespace ac3cli::commands {
 
@@ -190,6 +194,81 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     return 0;
 }
 
+// The slot budget for a live object session, allocated ONCE here so a slot
+// bound later cannot change the stream's object count mid-session - a decoder
+// reads the count from the first access unit's OAMD and never re-reads it.
+//
+// Three ways to arrive at it, in priority order: an explicit map= binds
+// capture channels to slots in map= order (object_slots_from_assignment, the
+// same function atmos-encode builds its objects with, so a given map= means
+// the same objects either way); objects= alone sets the budget and binds the
+// first N captured channels one-to-one; neither leaves one slot per captured
+// channel, which is what `live mode=atmos` has always done.
+//
+// Returns nullopt with the reason already printed.
+std::optional<std::vector<ObjectSlot>> resolve_object_slots(
+    const Options& meta, std::size_t master_channels, std::size_t slave_channels) {
+    const std::size_t combined = master_channels + slave_channels;
+    std::vector<ObjectSlot> slots;
+
+    if (meta.map_spec) {
+        // The two capture devices are the two sources, concatenated in the
+        // order `live` already concatenates their channels - so map=0.N
+        // addresses the master and map=1.N the slave, matching what 'devices'
+        // and capture2= already number.
+        std::vector<plan::SourceShape> shapes;
+        shapes.push_back({.channels = master_channels, .label = "capture"});
+        if (slave_channels > 0) {
+            shapes.push_back({.channels = slave_channels, .label = "capture2"});
+        }
+        plan::Assignment assignment;
+        if (!plan::parse_assignment(*meta.map_spec, shapes, assignment)) {
+            std::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
+            return std::nullopt;
+        }
+        slots = object_slots_from_assignment(assignment, shapes);
+        if (slots.empty()) {
+            std::println(stderr,
+                         "error: map= names no obj/objm destination, so this session would "
+                         "carry no objects at all - use 'live mode=channels' for a plain "
+                         "channel session");
+            return std::nullopt;
+        }
+    } else {
+        const std::size_t count =
+            meta.live_objects.value_or(std::min<std::size_t>(combined, 15));
+        slots.resize(std::min<std::size_t>(count, 15));
+        for (std::size_t i = 0; i < slots.size(); ++i) {
+            if (i < combined) {
+                slots[i].taps.emplace_back(i, 1.0);
+            }
+        }
+    }
+
+    // objects= is the budget, whatever map= filled: a smaller budget than the
+    // assignment needs is refused rather than silently truncated (the GUI
+    // refuses the same way - see EncoderController's own "Refused rather than
+    // truncated" note), a larger one allocates the extra slots unbound.
+    if (meta.live_objects) {
+        if (slots.size() > *meta.live_objects) {
+            std::println(stderr,
+                         "error: map= assigns {} objects but objects={} allows {} - raise the "
+                         "budget or assign fewer",
+                         slots.size(), *meta.live_objects, *meta.live_objects);
+            return std::nullopt;
+        }
+        slots.resize(*meta.live_objects);
+    }
+    if (slots.empty() || slots.size() > 15) {
+        std::println(stderr,
+                     "error: 1 to 15 object slots (the bed's LFE is the 16th, and TS 103 420 "
+                     "8.3.2.2 caps the total at 16); this session resolved {}",
+                     slots.size());
+        return std::nullopt;
+    }
+    return slots;
+}
+
 int run_live(std::string_view out_path, int capture_device, std::uint32_t seconds,
             std::uint32_t bitrate, int monitor_device, int passthrough_device,
             std::string_view mode, const Options& meta) {
@@ -257,6 +336,25 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             static_cast<double>(device.sample_rate) / static_cast<double>(device2->sample_rate);
     }
 
+    // Object mode's stream shape is fixed by TS 103 420 - a 5.1 E-AC-3 bed
+    // plus the object layer - so layout=/codec= only describe a channel-mode
+    // session. Asking for both is a contradiction worth refusing rather than
+    // silently ignoring one of them.
+    if (atmos && (!meta.take_layout.empty() || meta.take_codec)) {
+        std::println(stderr,
+                     "error: layout=/codec= describe a channel session; mode=atmos always "
+                     "encodes the TS 103 420 5.1 E-AC-3 bed plus its object layer");
+        return kExitUsage;
+    }
+    std::optional<TakePlan> take;
+    if (!atmos) {
+        take = resolve_take_plan(meta, bitrate, sr);
+        if (!take) {
+            return kExitUsage;
+        }
+    }
+    const bool eac3 = atmos || take->eac3;
+
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
@@ -278,6 +376,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     std::vector<float> slave_scratch;
     std::size_t slave_scratch_valid_frames = 0;
     std::vector<float> slave_out;
+    const auto status = status_stream();
     if (device2) {
         const auto started2 = capture2.start(device2->id, device2->kind);
         if (!started2) {
@@ -291,20 +390,50 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              capture2_channels);
         slave_out.resize(static_cast<std::size_t>(ac3::kSamplesPerFrame) * capture2_channels);
         slave_resampler->reset();
-        status_println(status_stream(), "capture2: \"{}\", {} ch @ {} Hz (nominal ratio {:.6f})", device2->name,
-                     device2->channels, device2->sample_rate, nominal_ratio);
+        status_println(status, "capture2: \"{}\", {} ch @ {} Hz (nominal ratio {:.6f})",
+                       device2->name, device2->channels, device2->sample_rate, nominal_ratio);
     }
 
-    // Object mode pans every captured channel into the 5.1 bed as its own
-    // object (mirrors encodeObjects/run_atmos_encode); channel mode carries
-    // the first two channels straight through as AC-3 stereo (mirrors
-    // run_record, which this supersedes for anything wanting monitor or
-    // passthrough alongside the file). capture2's channels, once resampled
-    // into lockstep, widen this the same way an extra source channel would -
-    // capture's own channels keep their existing indices, the slave's land
-    // at the new, higher ones.
-    const std::size_t total_channels = static_cast<std::size_t>(channels) + capture2_channels;
-    const std::size_t nobjects = atmos ? std::min<std::size_t>(total_channels, 15) : 2;
+    // Object mode: every slot is one object, bound to capture channels by
+    // map= or one-to-one by default, against a budget fixed here (roadmap
+    // IO9 - `live` used to pan exactly one object per capture channel with no
+    // way to say otherwise). Channel mode: the captured channels are routed
+    // onto take's coded channels by direction, the same plan::route model
+    // 'encode' and the GUI's own live session use.
+    std::vector<ObjectSlot> slots;
+    if (atmos) {
+        auto resolved = resolve_object_slots(meta, channels, capture2_channels);
+        if (!resolved) {
+            return kExitUsage;
+        }
+        slots = std::move(*resolved);
+    } else if (meta.map_spec) {
+        std::println(stderr,
+                     "error: map= binds capture channels to OBJECT slots, which only "
+                     "'live mode=atmos' has; a channel session places its channels by "
+                     "direction onto layout= instead");
+        return kExitUsage;
+    }
+    const std::size_t nobjects = slots.size();
+    const auto channel_plan = atmos ? plan::ChannelPlan{} : plan::resolve(take->plan);
+    std::optional<plan::Routing> routing;
+    if (!atmos) {
+        routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
+        if (!routing) {
+            std::println(stderr, "error: {} capture channels - {}", channels,
+                         plan::describe(plan::PlanError::kNoSourceLayout));
+            return kExitUsage;
+        }
+    }
+    // What the receiver leg and the container are told this stream is: the
+    // 5.1 bed for an object session, the routed plan's coded channels
+    // otherwise.
+    const std::size_t coded_channels =
+        atmos ? 6 : static_cast<std::size_t>(routing->coded_channels);
+    const auto bed_acmod = atmos ? ac3::Acmod::k3_2 : channel_plan.bed_acmod;
+    const bool bed_lfe = atmos ? true : channel_plan.bed_lfe;
+    const std::size_t bed_channels =
+        static_cast<std::size_t>(ac3::fullbw_channel_count(bed_acmod)) + (bed_lfe ? 1 : 0);
 
     auto resolve_render_device = [&](int index) -> std::optional<ac3::audio::RenderDeviceInfo> {
         if (index < 0) {
@@ -326,59 +455,106 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                          monitor_device);
         } else {
             const auto mstarted = monitor_sink.start(
-                target->id, rate_hz, static_cast<std::uint16_t>(atmos ? 6 : 2));
+                target->id, rate_hz, static_cast<std::uint16_t>(coded_channels));
             if (!mstarted) {
                 std::println(stderr, "warning: monitor unavailable: {}",
                              ac3::audio::describe(mstarted.error()));
             } else {
                 monitoring = true;
-                status_println(status_stream(), "monitoring on \"{}\"", target->name.empty() ? "default endpoint"
-                                                                          : target->name);
+                status_println(status, "monitoring on \"{}\"",
+                               target->name.empty() ? "default endpoint" : target->name);
             }
         }
     }
 
+    // The parallel downmix leg (roadmap IO9, mirroring the GUI's
+    // wants_downmix_leg): when the stream needs E-AC-3 but the chosen
+    // receiver only bitstreams AC-3, an independent AC-3 encode of the bed
+    // the main plan has ALREADY computed goes to the receiver, so a capped
+    // downmix reaches it instead of a refusal. The file still carries the
+    // full stream. downmix=off keeps the old plain refusal.
     ac3::audio::PassthroughSink passthrough_sink;
     bool passing_through = false;
+    bool downmix_leg = false;
     if (passthrough_device != -2) {
         const auto target = resolve_render_device(passthrough_device);
-        const auto format =
-            atmos ? ac3::audio::BitstreamFormat::kEac3 : ac3::audio::BitstreamFormat::kAc3;
         if (!target) {
             std::println(stderr,
                          "warning: passthrough device index {} out of range; passthrough off",
                          passthrough_device);
-        } else if (target->id.empty() ? false
-                                      : (atmos ? !target->supports_eac3_passthrough
-                                              : !target->supports_ac3_passthrough)) {
-            std::println(stderr, "warning: \"{}\" does not accept {} over IEC 61937; "
-                                 "passthrough off",
-                         target->name, atmos ? "E-AC-3" : "AC-3");
         } else {
-            const auto pstarted = passthrough_sink.start(target->id, rate_hz, format);
-            if (!pstarted) {
-                std::println(stderr, "warning: passthrough unavailable: {}",
-                             ac3::audio::describe(pstarted.error()));
+            // An empty id is the default endpoint, whose capabilities were
+            // never probed - it is taken at its word, exactly as before.
+            const bool known = !target->id.empty();
+            const bool takes_eac3 = !known || target->supports_eac3_passthrough;
+            const bool takes_ac3 = !known || target->supports_ac3_passthrough;
+            downmix_leg = eac3 && !takes_eac3 && takes_ac3 && meta.downmix_leg;
+            const bool leg_eac3 = eac3 && !downmix_leg;
+            if (!(leg_eac3 ? takes_eac3 : takes_ac3)) {
+                std::println(stderr,
+                             "warning: \"{}\" does not accept {} over IEC 61937; passthrough "
+                             "off{}",
+                             target->name, leg_eac3 ? "E-AC-3" : "AC-3",
+                             eac3 && takes_ac3 && !meta.downmix_leg
+                                 ? " (drop downmix=off to send it a capped 5.1 AC-3 leg)"
+                                 : "");
             } else {
-                passing_through = true;
-                status_println(status_stream(), "passthrough ({}) on \"{}\"", atmos ? "E-AC-3" : "AC-3",
-                             target->name.empty() ? "default endpoint" : target->name);
+                const auto format = leg_eac3 ? ac3::audio::BitstreamFormat::kEac3
+                                             : ac3::audio::BitstreamFormat::kAc3;
+                const auto pstarted = passthrough_sink.start(target->id, rate_hz, format);
+                if (!pstarted) {
+                    std::println(stderr, "warning: passthrough unavailable: {}",
+                                 ac3::audio::describe(pstarted.error()));
+                } else {
+                    passing_through = true;
+                    status_println(status, "passthrough ({}) on \"{}\"{}",
+                                   leg_eac3 ? "E-AC-3" : "AC-3",
+                                   target->name.empty() ? "default endpoint" : target->name,
+                                   downmix_leg ? " - parallel 5.1 downmix leg; the file still "
+                                                 "carries the full stream"
+                                               : "");
+                }
             }
         }
     }
+    downmix_leg = downmix_leg && passing_through;
 
     // Heap-allocated: each carries several KB of MDCT/delay history state,
     // and this function only constructs them once, at session start, not per
     // audio frame (PREfast's C6262) - same pattern as EncoderController's
     // runLiveSession, the GUI's equivalent of this function.
-    auto ac3_encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
-        .sample_rate = sr, .bitrate_kbps = bitrate, .fast_mdct = meta.fast_mdct});
+    std::unique_ptr<ac3::FrameEncoder> ac3_encoder;
+    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_encoder;
     std::unique_ptr<ac3::oba::AtmosEncoder> atmos_encoder;
     if (atmos) {
         atmos_encoder = std::make_unique<ac3::oba::AtmosEncoder>(
             ac3::oba::AtmosConfig{.sample_rate = sr, .bitrate_kbps = bitrate,
-                                  .num_bands_idx = 4, .fast_mdct = meta.fast_mdct},
+                                  .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
+                                  .fast_mdct = meta.fast_mdct},
             static_cast<int>(nobjects));
+    } else if (take->eac3) {
+        eac3_encoder =
+            std::make_unique<ac3::eac3::AccessUnitEncoder>(plan::eac3_config(take->plan));
+    } else {
+        ac3_encoder = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(take->plan));
+    }
+    // The receiver leg's own encoder, fed the bed the main plan already
+    // computed - which IS a self-sufficient fold-down of the whole programme
+    // (plan::route's own guarantee, and TS 103 420's for an object bed), so
+    // there is no separate 7.8 fold to compute here. Built only when the leg
+    // is actually running, unlike the GUI's (whose receiver can be hot-swapped
+    // mid-session; ac3cli's cannot).
+    std::unique_ptr<ac3::FrameEncoder> downmix_encoder;
+    if (downmix_leg) {
+        downmix_encoder = std::make_unique<ac3::FrameEncoder>(
+            ac3::EncoderConfig{.sample_rate = sr,
+                               .bitrate_kbps = ac3::clamp_to_legal_ac3_bitrate(bitrate),
+                               .dialnorm = meta.p.dialnorm,
+                               .acmod = bed_acmod,
+                               .lfe = bed_lfe,
+                               .fast_mdct = meta.fast_mdct,
+                               .cmixlev = meta.p.cmixlev,
+                               .surmixlev = meta.p.surmixlev});
     }
     auto ac3_monitor_decoder = std::make_unique<ac3::FrameDecoder>();
     // Heap-allocated (PREfast's C6262, alert #89): Eac3Decoder's per-block
@@ -389,41 +565,89 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     ac3::iec61937::Eac3BurstPacker eac3_packer;
 
     // Object mode meters the 5.1 bed (matching encodeObjects/run_atmos_encode
-    // - what a legacy decoder hears); channel mode meters plain stereo
-    // (matching run_record). Getting this wrong doesn't just mislabel a
-    // column - the wrong acmod also changes how many channels the meter
-    // reports.
-    ac3::analysis::LevelMeter meter = atmos
-                                          ? ac3::analysis::LevelMeter{ac3::Acmod::k3_2, true, rate_hz}
-                                          : ac3::analysis::LevelMeter{ac3::Acmod::k2_0, false, rate_hz};
+    // - what a legacy decoder hears); channel mode meters the routed coded
+    // channels. Getting this wrong doesn't just mislabel a column - the wrong
+    // acmod also changes how many channels the meter reports.
+    ac3::analysis::LevelMeter meter{bed_acmod, bed_lfe, rate_hz,
+                                    static_cast<int>(coded_channels)};
     const std::uint64_t target_frames =
         (static_cast<std::uint64_t>(seconds) * rate_hz + ac3::kSamplesPerFrame - 1) /
         ac3::kSamplesPerFrame;
 
+    RecordingSink sink;
+    {
+        const auto config =
+            atmos ? RecordingSink::Config{.container = meta.container,
+                                          .eac3 = true,
+                                          .sample_rate = rate_hz,
+                                          .channels = 6}
+                  : take_sink_config(meta, *take, rate_hz);
+        if (const auto why = sink.open(std::string{out_path}, config); !why.empty()) {
+            std::println(stderr, "error: {}: {}", out_path, why);
+            return kExitOutput;
+        }
+    }
+
     std::vector<float> interleaved(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
-    std::vector<std::vector<float>> block(nobjects, std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::span<const float>> views(nobjects);
-    // Separate from `views`: that vector holds nobjects per-object essence
-    // spans for the encoder, which in channel mode is 2 and in object mode
-    // can be as few as 1 - either can be narrower than the bed's fixed 6
-    // channels metered below, so reusing `views` for both risked (and in an
-    // earlier version of this loop, did) an out-of-bounds write past a
-    // 2-element vector.
-    std::vector<std::span<const float>> bed_views(6);
+    // Object mode fills one block per SLOT; channel mode one per captured
+    // channel, routed into `coded_block` below. Sized for whichever is
+    // running, never both.
+    std::vector<std::vector<float>> block(atmos ? nobjects : channels,
+                                          std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> coded_block(
+        atmos ? 0 : coded_channels, std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::span<const float>> views(atmos ? nobjects : channels);
+    std::vector<std::span<float>> coded_out(atmos ? 0 : coded_channels);
+    std::vector<std::span<const float>> coded_views(atmos ? 0 : coded_channels);
+    for (std::size_t ch = 0; ch < block.size(); ++ch) {
+        views[ch] = block[ch];
+    }
+    for (std::size_t ch = 0; ch < coded_block.size(); ++ch) {
+        coded_out[ch] = coded_block[ch];
+        coded_views[ch] = coded_block[ch];
+    }
+    // Separate from `views`/`coded_views`: the bed the receiver leg and the
+    // meter read is a fixed `bed_channels` wide, which either of those can be
+    // narrower than - reusing one for both risked (and in an earlier version
+    // of this loop, did) an out-of-bounds write.
+    std::vector<std::span<const float>> bed_views(bed_channels);
     std::vector<ac3::oba::ObjectPlacement> placement(nobjects);
-    std::vector<std::vector<std::byte>> frames;
-    frames.reserve(static_cast<std::size_t>(target_frames));
+
+    // Both capture devices are watched: a session that keeps running on a
+    // vanished device reads as healthy with nothing coming in (see
+    // ac3::audio::SilenceWatchdog, and run_record's own use of it). The slave
+    // gets its own watchdog because its drain is non-blocking - it can be
+    // legitimately empty on any given frame, just not for seconds on end.
+    ac3::audio::SilenceWatchdog watchdog{meta.watchdog};
+    ac3::audio::SilenceWatchdog slave_watchdog{meta.watchdog};
+    const auto session_start = std::chrono::steady_clock::now();
+    watchdog.reset(session_start);
+    slave_watchdog.reset(session_start);
+    const bool watching = meta.watchdog.count() > 0;
+    bool device_lost = false;
+    bool lost_is_slave = false;
+    bool encode_failed = false;
 
     std::uint64_t n0 = 0;
+    std::uint64_t frames_written = 0;
     for (std::uint64_t f = 0; f < target_frames; ++f) {
         std::size_t filled = 0;
         while (filled < interleaved.size()) {
             const auto got = capture.buffer()->read(
                 std::span{interleaved}.subspan(filled, interleaved.size() - filled));
             filled += got;
+            const auto read_at = std::chrono::steady_clock::now();
+            watchdog.on_read(got, read_at);
             if (got == 0) {
+                if (watching && watchdog.timed_out(read_at)) {
+                    device_lost = true;
+                    break;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
+        }
+        if (device_lost) {
+            break;
         }
         if (slave_resampler.has_value() && slave_drift.has_value()) {
             // Opportunistic, non-blocking drain: whatever capture2 has ready
@@ -445,7 +669,14 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 const auto got = capture2.buffer()->read(std::span{slave_scratch}.subspan(
                     slave_scratch_valid_frames * capture2_channels,
                     free_frames * capture2_channels));
+                const auto read_at = std::chrono::steady_clock::now();
+                slave_watchdog.on_read(got, read_at);
                 slave_scratch_valid_frames += got / capture2_channels;
+                if (watching && got == 0 && slave_watchdog.timed_out(read_at)) {
+                    device_lost = true;
+                    lost_is_slave = true;
+                    break;
+                }
             }
             slave_drift->update(slave_scratch_valid_frames);
             slave_resampler->set_ratio(slave_drift->ratio());
@@ -461,21 +692,38 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                      slave_scratch.begin());
             slave_scratch_valid_frames = remaining_frames;
         }
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-            const std::size_t base = static_cast<std::size_t>(i) * channels;
-            const std::size_t base2 = static_cast<std::size_t>(i) * capture2_channels;
-            for (std::size_t ch = 0; ch < nobjects; ++ch) {
-                if (ch < channels) {
-                    block[ch][static_cast<std::size_t>(i)] = interleaved[base + ch];
-                } else if (ch < total_channels) {
-                    block[ch][static_cast<std::size_t>(i)] = slave_out[base2 + (ch - channels)];
-                } else {
-                    block[ch][static_cast<std::size_t>(i)] = 0.0f;
+        // A tap addresses the COMBINED capture space: 0..channels-1 is the
+        // master (interleaved), channels..combined-1 is the slave
+        // (slave_out, index shifted back down by `channels`) - devices are
+        // sources concatenated after one another, the same space the GUI's
+        // own slot binding addresses.
+        const auto tap_sample = [&](std::size_t flat, int i) {
+            const auto sample = static_cast<std::size_t>(i);
+            if (flat < channels) {
+                return interleaved[sample * channels + flat];
+            }
+            const std::size_t local = flat - channels;
+            if (local < capture2_channels) {
+                return slave_out[sample * capture2_channels + local];
+            }
+            return 0.0F;
+        };
+        if (atmos) {
+            for (std::size_t slot = 0; slot < nobjects; ++slot) {
+                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                    float sum = 0.0F;
+                    for (const auto& [flat, gain] : slots[slot].taps) {
+                        sum += tap_sample(flat, i) * static_cast<float>(gain);
+                    }
+                    block[slot][static_cast<std::size_t>(i)] = sum;
                 }
             }
-        }
-        for (std::size_t ch = 0; ch < nobjects; ++ch) {
-            views[ch] = block[ch];
+        } else {
+            for (std::size_t ch = 0; ch < channels; ++ch) {
+                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                    block[ch][static_cast<std::size_t>(i)] = tap_sample(ch, i);
+                }
+            }
         }
         n0 += ac3::kSamplesPerFrame;
 
@@ -506,28 +754,47 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             if (!unit) {
                 std::println(stderr, "error: cannot encode {} objects at {} kbps",
                              nobjects, bitrate);
+                encode_failed = true;
                 break;
             }
-            for (std::size_t ch = 0; ch < 6; ++ch) {
+            for (std::size_t ch = 0; ch < bed_channels; ++ch) {
                 bed_views[ch] = std::span{atmos_encoder->bed()[ch]};
             }
             meter.process(bed_views);
             unit_bytes = unit->bytes;
         } else {
-            const auto frame = ac3_encoder->encode_frame(std::span{views}.first(2));
-            if (!frame) {
-                std::println(stderr, "error: bitrate must be a legal AC-3 rate");
-                break;
+            plan::render(*routing, views, coded_out, ac3::kSamplesPerFrame);
+            meter.process(coded_views);
+            // The independent substream's channels come first in coded order
+            // (plan::coded_channels' own contract), so the bed the receiver
+            // leg wants is the front of what was just routed.
+            for (std::size_t ch = 0; ch < bed_channels; ++ch) {
+                bed_views[ch] = coded_views[ch];
             }
-            meter.process(std::span{views}.first(2));
-            unit_bytes = *frame;
+            if (take->eac3) {
+                const auto unit = eac3_encoder->encode_access_unit(coded_views);
+                if (!unit) {
+                    std::println(stderr, "error: the encoder cannot express this configuration");
+                    encode_failed = true;
+                    break;
+                }
+                unit_bytes = unit->bytes;
+            } else {
+                auto frame = ac3_encoder->encode_frame(coded_views);
+                if (!frame) {
+                    std::println(stderr, "error: bitrate must be a legal AC-3 rate");
+                    encode_failed = true;
+                    break;
+                }
+                unit_bytes = std::move(*frame);
+            }
         }
 
         if (monitoring) {
             std::optional<std::vector<float>> to_play;
-            if (atmos) {
+            if (eac3) {
                 const auto decoded = eac3_monitor_decoder->decode_access_unit(unit_bytes);
-                // §3.7: decoded->has_value() is false exactly when this
+                // 3.7: decoded->has_value() is false exactly when this
                 // access unit is being held back pending transient
                 // pre-noise processing (decode_access_unit's own doc
                 // comment) - live monitoring just waits for the next one.
@@ -552,28 +819,45 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
 
         if (passing_through) {
-            if (atmos) {
-                const auto burst = eac3_packer.push(unit_bytes);
-                if (burst && *burst) {
-                    while (!passthrough_sink.submit(**burst)) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            std::optional<std::vector<std::byte>> burst;
+            if (downmix_leg) {
+                // The capped receiver leg: an independent AC-3 encode of the
+                // bed the main plan has already computed. The main encode
+                // above (unit_bytes) is untouched and still reaches the
+                // meters, the monitor and the file exactly as it always has.
+                const auto leg_frame = downmix_encoder->encode_frame(bed_views);
+                if (leg_frame) {
+                    if (const auto wrapped = ac3::iec61937::wrap_frame(*leg_frame)) {
+                        burst = *wrapped;
                     }
                 }
+            } else if (eac3) {
+                auto packed = eac3_packer.push(unit_bytes);
+                if (packed && *packed) {
+                    burst = std::move(**packed);
+                }
             } else {
-                const auto burst = ac3::iec61937::wrap_frame(unit_bytes);
-                if (burst) {
-                    while (!passthrough_sink.submit(*burst)) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(4));
-                    }
+                if (const auto wrapped = ac3::iec61937::wrap_frame(unit_bytes)) {
+                    burst = *wrapped;
+                }
+            }
+            if (burst) {
+                while (!passthrough_sink.submit(*burst)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(4));
                 }
             }
         }
 
-        frames.push_back(std::move(unit_bytes));
-        print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
+        if (const auto why = sink.push(unit_bytes); !why.empty()) {
+            std::println(stderr, "error: {}: {}", out_path, why);
+            std::ignore = sink.close();
+            return kExitOutput;
+        }
+        ++frames_written;
+        print_live_meter(meter, static_cast<double>(frames_written * ac3::kSamplesPerFrame) /
                                     rate_hz);
     }
-    status_println(status_stream(), "");
+    status_println(status);
 
     capture.stop();
     if (device2) {
@@ -592,33 +876,45 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         const auto pstats = passthrough_sink.stats();
         passthrough_sink.stop();
-        status_println(status_stream(), "passthrough: {} bursts submitted, {} rendered, {} underruns",
-                     pstats.bursts_submitted, pstats.bursts_rendered, pstats.underruns);
+        status_println(status, "passthrough: {} bursts submitted, {} rendered, {} underruns",
+                       pstats.bursts_submitted, pstats.bursts_rendered, pstats.underruns);
     }
     const auto stats = capture.stats();
-    // Object mode's unit_bytes are the 5.1-bed access unit (matching what a
-    // legacy decoder hears, same as the meter above); channel mode is always
-    // plain 2-channel AC-3 (encode_frame above only ever sees
-    // views.first(2)) - the same track shape 'mkv' would derive by scanning
-    // this file back, just already known here.
-    const matroska::AudioTrack track{
-        .codec_id = std::string{atmos ? matroska::kCodecEac3 : matroska::kCodecAc3},
-        .sample_rate = rate_hz,
-        .channels = atmos ? 6 : 2,
-        .samples_per_frame = ac3::kSamplesPerFrame};
-    if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
+    // Finalized whether or not the session ended early: every unit already
+    // pushed is on disk and playable, which is the whole reason a take
+    // streams rather than accumulating (roadmap IO9).
+    if (const auto why = sink.close(); !why.empty()) {
+        std::println(stderr, "error: {}: {}", out_path, why);
         return kExitOutput;
     }
-    status_println(status_stream(), "wrote {} {} ({} kbps) to {}{}", frames.size(),
-                 atmos ? "E-AC-3 access units" : "AC-3 frames", bitrate, out_path,
-                 meta.matroska_container ? " (Matroska)" : "");
-    status_println(status_stream(), "captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
-                 stats.frames_silence_filled, stats.frames_dropped);
-    if (slave_drift.has_value()) {
-        status_println(status_stream(), "capture2 drift: {:+.1f} ppm", slave_drift->drift_ppm());
+    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
+                   eac3 ? "E-AC-3 access units" : "AC-3 frames", bitrate,
+                   atmos ? std::string{"5.1 bed + objects"} : take->label, out_path,
+                   container_note(meta.container));
+    if (atmos) {
+        std::size_t bound = 0;
+        for (const auto& slot : slots) {
+            bound += slot.taps.empty() ? 0 : 1;
+        }
+        status_println(status,
+                       "  {} object slots, {} bound to captured channels, {} carried silent",
+                       nobjects, bound, nobjects - bound);
     }
-    print_channel_summary(meter, status_stream());
-    return 0;
+    status_println(status, "captured {} frames, {} silence-filled, {} dropped",
+                   stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
+    if (slave_drift.has_value()) {
+        status_println(status, "capture2 drift: {:+.1f} ppm", slave_drift->drift_ppm());
+    }
+    print_channel_summary(meter, status);
+    if (device_lost) {
+        std::println(stderr,
+                     "error: \"{}\" stopped delivering audio for {} ms; the session was stopped "
+                     "and what had already been written is kept (watchdog=0 disables this)",
+                     lost_is_slave && device2 != nullptr ? device2->name : device.name,
+                     meta.watchdog.count());
+        return kExitRuntime;
+    }
+    return encode_failed ? kExitUsage : kExitOk;
 }
 
 }  // namespace ac3cli::commands

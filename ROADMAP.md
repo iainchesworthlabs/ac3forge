@@ -226,15 +226,28 @@ machine-readable output and a single failure exit code. Users arrive with contai
   authoring requirements want exactly that as the `CHANNELS="6"` companion in the same
   `EXT-X-MEDIA` group (`hls.hpp` is single-rendition). Omit the container entirely rather than
   leave an empty one — the fallback rule in `docs/concepts/atmos-joc.md`.
-- [ ] **IO8 (M)** — CLI scripting ergonomics: a documented exit-code scheme (every failure is 1
+- [x] **IO8 (M)** — CLI scripting ergonomics: a documented exit-code scheme (every failure is 1
   today), `quiet`/progress, `help <command>` (the usage block is generated from the command
   table, so this is cheap), a man page and shell completions installed by `Packaging.cmake`.
-- [ ] **IO9 (M)** — CLI live/record parity with the GUI session. `record` is AC-3 only, `live
+  Done: `apps/cli/exit_codes.hpp` names eight codes and every `return` site is classified against
+  it; `apps/cli/usage.{hpp,cpp}` splits the usage block into topic sections a command row selects
+  from, so `help <command>` / `--help` print one row and its own grammars and an argument error
+  prints a pointer instead of the manual; `man` and `completions <shell>` render from the same
+  table and are generated and installed by the build (the Homebrew formula places the bash/fish
+  halves); `quiet`/`verbose` plus a stderr progress line on long encodes and decodes.
+- [x] **IO9 (M)** — CLI live/record parity with the GUI session. `record` is AC-3 only, `live
   mode=channels` encodes AC-3 stereo only, `container=` is `raw|mkv` while the GUI's
   `RecordingSink` also streams MPEG-TS and S/PDIF WAV; `live` still buffers every frame and
   writes once, has no device-drop watchdog, no object add/reassign and no parallel AC-3 downmix
   leg (`docs/gui/live-session.md` records the gap); `obj`/`objm` in `src=`/`map=` parse but do
-  nothing in `ac3cli`.
+  nothing in `ac3cli`. Done: `record`/`live` take `layout=`/`codec=` (any layout up to 7.1.4,
+  AC-3 or E-AC-3), `container=raw|mkv|ts|spdif` written incrementally through `RecordingSink`
+  itself (moved to `apps/common/` and compiled into both front ends), and `watchdog=<seconds>`
+  over `ac3::audio::SilenceWatchdog`; `live mode=atmos` allocates an `objects=<N>` slot budget
+  once and binds capture channels to it with `map=`; an AC-3-only passthrough endpoint gets the
+  parallel 5.1 AC-3 leg instead of a refusal (`downmix=off` to keep the refusal); and
+  `atmos-encode` assembles real objects behind `src=`/`map=`. Receiver hot-swap stays GUI-only —
+  a command line has nothing to trigger it with.
 - [ ] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` keys its weights on
   `Acmod`, so `qc` measures the independent substream's bed only and never a dependent's height
   or wide channels (the comment in `apps/cli/commands/analysis.cpp` says so). BS.1770-4's

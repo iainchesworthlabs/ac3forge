@@ -452,12 +452,81 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             continue;
         }
         if (key == "container") {
-            if (value == "mkv" || value == "matroska") {
-                out.matroska_container = true;
-            } else if (value == "raw") {
-                out.matroska_container = false;
+            // The same four RecordingSink streams the GUI's Container combo
+            // offers for a live take (roadmap IO9). mp4/fmp4 are deliberately
+            // absent: moov/stco need every frame's final offset, so neither
+            // can be written incrementally - the standalone 'mp4'/'fmp4'
+            // commands wrap an already-finished file instead. See
+            // apps/common/recording_sink.hpp's own header comment.
+            if (value == "raw") {
+                out.container = RecordingSink::Container::kElementary;
+            } else if (value == "mkv" || value == "matroska") {
+                out.container = RecordingSink::Container::kMatroska;
+            } else if (value == "ts" || value == "mpegts") {
+                out.container = RecordingSink::Container::kMpegts;
+            } else if (value == "spdif") {
+                out.container = RecordingSink::Container::kSpdif;
             } else {
-                std::println(stderr, "error: container must be raw or mkv (got '{}')", token);
+                std::println(stderr,
+                             "error: container must be raw, mkv, ts or spdif (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "layout") {
+            // record/live only. Validated where it is used rather than here:
+            // whether a layout is legal depends on the codec, which codec=
+            // (below, and possibly later on the command line) can still
+            // change - and resolve_layout already reports a bad token
+            // against the set the codec can actually carry.
+            if (value.empty()) {
+                std::println(stderr, "error: layout= needs a layout name or channel list");
+                return false;
+            }
+            out.take_layout = std::string{value};
+            continue;
+        }
+        if (key == "codec") {
+            if (value == "ac3") {
+                out.take_codec = plan::Codec::kAc3;
+            } else if (value == "eac3" || value == "ec3") {
+                out.take_codec = plan::Codec::kEac3;
+            } else {
+                std::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "watchdog") {
+            double seconds = 0.0;
+            if (!parse_double(value, seconds) || seconds < 0.0 || seconds > 3600.0) {
+                std::println(stderr,
+                             "error: watchdog= needs a timeout in seconds (0 disables, "
+                             "3600 max)");
+                return false;
+            }
+            out.watchdog =
+                std::chrono::milliseconds{static_cast<std::int64_t>(seconds * 1000.0)};
+            continue;
+        }
+        if (key == "objects") {
+            const auto n = parse_u32_or(value, 0);
+            if (n < 1 || n > 15) {
+                std::println(stderr,
+                             "error: objects= needs 1 to 15 slots (the bed's LFE is the 16th, "
+                             "and TS 103 420 §8.3.2.2 caps the total at 16)");
+                return false;
+            }
+            out.live_objects = static_cast<std::size_t>(n);
+            continue;
+        }
+        if (key == "downmix") {
+            if (value == "off") {
+                out.downmix_leg = false;
+            } else if (value == "on") {
+                out.downmix_leg = true;
+            } else {
+                std::println(stderr, "error: downmix must be on or off (got '{}')", token);
                 return false;
             }
             continue;
@@ -1173,6 +1242,113 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
     plan_out.custom_locations = custom;
     label = ac3::plan::format_channels(*custom);
     return true;
+}
+
+std::vector<ObjectSlot> object_slots_from_assignment(
+    const ac3::plan::Assignment& assignment,
+    std::span<const ac3::plan::SourceShape> shapes) {
+    // Where source `s`'s channel `c` lands in the flattened space.
+    const auto flat = [&](std::size_t source, std::size_t channel) {
+        std::size_t base = 0;
+        for (std::size_t i = 0; i < source && i < shapes.size(); ++i) {
+            base += shapes[i].channels;
+        }
+        return base + channel;
+    };
+    std::vector<ObjectSlot> slots;
+    for (const auto& [source, channel] :
+         assignment.rows_of(ac3::plan::DestinationKind::kObject)) {
+        const auto dest = assignment.at(source, channel);
+        slots.push_back(
+            {.taps = {{flat(source, channel), std::pow(10.0, dest.trim_db / 20.0)}}});
+    }
+    // rows_of() hands them back in (source, then channel) order, which is what
+    // makes "the maximal contiguous run within one source" a well-defined
+    // grouping - see DestinationKind::kObjectMono's own comment on why the
+    // grouping is by adjacency rather than a stored group id.
+    const auto mono_rows = assignment.rows_of(ac3::plan::DestinationKind::kObjectMono);
+    for (std::size_t i = 0; i < mono_rows.size();) {
+        std::size_t j = i + 1;
+        while (j < mono_rows.size() && mono_rows[j].first == mono_rows[i].first &&
+               mono_rows[j].second == mono_rows[j - 1].second + 1) {
+            ++j;
+        }
+        const auto n = static_cast<double>(j - i);
+        ObjectSlot slot;
+        for (std::size_t k = i; k < j; ++k) {
+            const auto dest = assignment.at(mono_rows[k].first, mono_rows[k].second);
+            slot.taps.emplace_back(flat(mono_rows[k].first, mono_rows[k].second),
+                                   std::pow(10.0, dest.trim_db / 20.0) / n);
+        }
+        slots.push_back(std::move(slot));
+        i = j;
+    }
+    return slots;
+}
+
+std::string_view container_note(RecordingSink::Container container) {
+    switch (container) {
+        case RecordingSink::Container::kElementary: return {};
+        case RecordingSink::Container::kMatroska: return " (Matroska)";
+        case RecordingSink::Container::kMpegts: return " (MPEG-TS)";
+        case RecordingSink::Container::kSpdif: return " (IEC 61937 WAV carrier)";
+    }
+    return {};
+}
+
+std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
+                                          ac3::SampleRate rate) {
+    TakePlan take;
+    take.plan.bitrate_kbps = bitrate;
+    take.plan.sample_rate = rate;
+    take.plan.meta = meta.p;
+    take.plan.tools.fast_mdct = meta.fast_mdct;
+    // Resolved against E-AC-3 first whatever codec= says, because E-AC-3
+    // carries every layout AC-3 does and more - so this pass either succeeds
+    // or the layout name itself is wrong, and the "AC-3 cannot carry this"
+    // diagnosis below can name the layout it is refusing instead of the
+    // parser failing first.
+    const std::string_view name = meta.take_layout.empty() ? "stereo" : meta.take_layout;
+    take.plan.codec = ac3::plan::Codec::kEac3;
+    if (!resolve_layout(name, ac3::plan::Codec::kEac3, take.plan, take.label)) {
+        return std::nullopt;
+    }
+    // Whether plain AC-3 could carry what was asked for: a named layout says
+    // so directly, a custom Table E2.5 selection says so by needing no
+    // dependent substream. Same two questions resolve_layout itself asks when
+    // it is given kAc3 - asked here without printing, because a "no" is the
+    // ordinary path into E-AC-3 rather than an error.
+    bool ac3_can_carry = false;
+    if (take.plan.custom_locations) {
+        const auto allocated = ac3::eac3::chanmap::allocate(*take.plan.custom_locations);
+        ac3_can_carry = allocated.has_value() && allocated->dependents.empty();
+    } else {
+        ac3_can_carry = ac3::plan::carries(ac3::plan::Codec::kAc3, take.plan.layout);
+    }
+    take.plan.codec = meta.take_codec.value_or(ac3_can_carry ? ac3::plan::Codec::kAc3
+                                                            : ac3::plan::Codec::kEac3);
+    if (take.plan.codec == ac3::plan::Codec::kAc3 && !ac3_can_carry) {
+        std::println(stderr, "error: {} cannot carry {} - {}",
+                     ac3::plan::codec_label(ac3::plan::Codec::kAc3), take.label,
+                     ac3::plan::describe(ac3::plan::PlanError::kLayoutNeedsEac3));
+        return std::nullopt;
+    }
+    if (const auto bad = ac3::plan::validate(take.plan)) {
+        std::println(stderr, "error: {}", ac3::plan::describe(*bad));
+        return std::nullopt;
+    }
+    take.eac3 = take.plan.codec == ac3::plan::Codec::kEac3;
+    take.coded_channels =
+        static_cast<int>(ac3::plan::coded_channels(ac3::plan::resolve(take.plan)).size());
+    return take;
+}
+
+RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take,
+                                       std::uint32_t sample_rate_hz) {
+    return RecordingSink::Config{.container = meta.container,
+                                 .eac3 = take.eac3,
+                                 .sample_rate = sample_rate_hz,
+                                 .channels = take.coded_channels};
 }
 
 std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,

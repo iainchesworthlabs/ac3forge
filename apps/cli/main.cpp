@@ -218,7 +218,9 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) {
          return run_atmos_adm(x.str(1), x.str(2), x.u32(3, 448), x.meta, x.str(4));
      }},
-    {"record", 2, "<out.ac3> [seconds] [bitrate_kbps] [device_index]", "", topic::kTake | topic::kLayout | topic::kMeta,
+    {"record", 2, "<out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index]",
+     "capture straight to a file; layout=/codec=/container= decide its shape",
+     topic::kTake | topic::kLayout | topic::kMeta,
      Needs::kCapture,
      [](const Args& x) {
          return run_record(x.str(1), x.u32(2, 5), x.u32(3, 192), x.i32(4, 0), x.meta);

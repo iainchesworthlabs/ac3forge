@@ -15,12 +15,14 @@
 #include <vector>
 
 #include "ac3/analysis/levels.hpp"
+#include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
+#include "recording_sink.hpp"
 
 // The CLI-wide support layer: option/metadata parsing, path/stdio conventions, frame and WAV I/O,
 // and level reporting shared by nearly every command in main.cpp's kCommands table. Split out of
@@ -112,13 +114,38 @@ struct Options {
     // positional already reads. Unset means the classic single-device
     // session, unchanged from before this option existed.
     std::optional<int> capture2 = std::nullopt;
-    // 'record'/'live' only: write straight to Matroska instead of the bare
-    // elementary stream they write by default - the same shape of choice the
-    // GUI's own Container combo offers (EncoderController::containerIndex ==
-    // kContainerMatroska), see write_frames_or_mux. Off by default, matching
-    // every bare-token/off-by-default field here: a plain invocation writes
-    // exactly the .ac3/.ec3 it always has.
-    bool matroska_container = false;
+    // 'record'/'live' only: which container the take is written into -
+    // raw|mkv|ts|spdif, the same four RecordingSink streams for the GUI's own
+    // Container combo (EncoderController::recording_sink_container). Defaults
+    // to the bare elementary stream, so a plain invocation writes exactly the
+    // .ac3/.ec3 it always has. Every one of the four is written incrementally
+    // as the session runs (roadmap IO9) - there is no accumulate-then-mux
+    // path left on either command.
+    RecordingSink::Container container = RecordingSink::Container::kElementary;
+    // 'record'/'live' only: the encoded layout, and whether the codec is
+    // derived from it or forced. Empty layout means stereo, which is what
+    // both commands did before they could be told otherwise; codec unset
+    // means "AC-3 unless the layout needs E-AC-3", plan::carries()'s own
+    // answer. Wide layouts on record/live are roadmap IO9 - the GUI has
+    // always done them.
+    std::string take_layout;
+    std::optional<ac3::plan::Codec> take_codec;
+    // 'record'/'live' only: how long the capture device may deliver nothing
+    // before the session stops as a failure rather than sitting there
+    // reading "running" (ac3::audio::SilenceWatchdog, the same class and the
+    // same 3 s default the GUI's live session uses). 0 disables it, for a
+    // device that legitimately goes quiet for longer than that.
+    std::chrono::milliseconds watchdog{3000};
+    // 'live' only: the object-slot budget for mode=atmos, allocated once at
+    // session start so a slot bound later cannot change the stream's object
+    // count mid-session. Unset means one slot per captured channel, which is
+    // what live has always done.
+    std::optional<std::size_t> live_objects;
+    // 'live' only: whether an AC-3-only passthrough endpoint gets the
+    // parallel 5.1 AC-3 downmix leg (the default, matching the GUI's
+    // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did
+    // before roadmap IO9).
+    bool downmix_leg = true;
     // Off by default, matching every bare token here - keep whatever frames
     // a failed encode already produced, written beside the intended output
     // as <name>.partial.<ext> instead of discarded outright. The same
@@ -508,6 +535,67 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds);
 // custom list can never shadow one of the seven presets.
 bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Plan& plan,
                     std::string& label);
+
+// What `record`/`live` resolved their layout=/codec=/bitrate into: one
+// plan::Plan, the label to print for it, and the two facts every caller
+// immediately needs from it (which codec, how many coded channels). Shared
+// because the two commands must agree exactly - a take is a take whether or
+// not it also monitors and passes through, and roadmap IO9's whole point is
+// that neither is stereo-AC-3-only any more.
+//
+// codec= forces the codec; without it, the codec is derived - AC-3 unless the
+// layout needs the dependent substreams only E-AC-3 has, the same
+// plan::carries() answer plan::derive_codec would give for a file encode.
+struct TakePlan {
+    ac3::plan::Plan plan;
+    std::string label;
+    bool eac3 = false;
+    int coded_channels = 0;
+};
+
+// nullopt with the reason already printed: a bad layout name, a layout the
+// forced codec cannot carry, or a bitrate that codec has no frame size for.
+std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
+                                          ac3::SampleRate rate);
+
+// The RecordingSink::Config a resolved take implies, so 'record' and 'live'
+// cannot describe the same take differently to the container.
+RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take,
+                                       std::uint32_t sample_rate_hz);
+
+// One dynamic object's source taps: (flattened source channel, linear gain).
+// The flattened space concatenates every source's channels in load order -
+// source 0's first, then source 1's - which is the same numbering
+// gather_frame() fills and the same one `live`'s two capture devices use.
+//
+// One tap is a plain `obj` row. Several are `objm`: a contiguous range of ONE
+// source's channels folded to a single mono object, each tap already scaled by
+// 1/n so several full-range channels summed together do not clip past what one
+// alone would (ac3::plan::DestinationKind::kObjectMono's own contract). A slot
+// with no taps is allocated but unbound, and carried silent - the state
+// `live objects=<N>` leaves a slot in when nothing is mapped onto it.
+struct ObjectSlot {
+    std::vector<std::pair<std::size_t, double>> taps;
+};
+
+// The object slots a map= assignment describes, over `shapes`' flattened
+// channel space: every `obj` row its own slot first, in (source, channel)
+// order, then each maximal contiguous run of `objm` rows within one source
+// folded to one. Empty when the assignment names no object destination at all
+// - which is a real answer (a purely location-mapped assignment), not an
+// error, so the caller decides what to do about it.
+//
+// Shared by `atmos-encode` and `live mode=atmos` so that the objects a given
+// map= produces are the same objects either way - roadmap IO9's actual point:
+// a GUI assignment reproduced headlessly has to reproduce.
+[[nodiscard]] std::vector<ObjectSlot> object_slots_from_assignment(
+    const ac3::plan::Assignment& assignment, std::span<const ac3::plan::SourceShape> shapes);
+
+// What a "wrote N frames to <path>" line says about the container it went
+// into - " (Matroska)", " (MPEG-TS)", " (IEC 61937 WAV carrier)", or nothing
+// at all for the bare elementary stream, which is what the path's own suffix
+// already says. One function so 'record' and 'live' word it identically.
+std::string_view container_note(RecordingSink::Container container);
 
 // A WAV's rate as an fscod (or, for E-AC-3, fscod2), or a diagnosis. Shared
 // because every encode path asks the same question. Classic AC-3 has only

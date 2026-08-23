@@ -115,7 +115,7 @@ text names the one that actually went quiet.
 
 **CLI parity.** `ac3cli live` takes a trailing `capture2=<index>` token naming the second device,
 built on the same shared resampler and drift estimator — see
-[CLI → Options & grammars](../cli/metadata-options.md#live-options-live-capture2) for its grammar.
+[CLI → Options & grammars](../cli/metadata-options.md#capture2) for its grammar.
 The GUI's own command bar emits it whenever the rail has two devices selected, so the line stays
 honest.
 
@@ -331,26 +331,44 @@ This is the GUI equivalent of `ac3cli live`: capture → encode → optional liv
 passthrough, running continuously and still writing the file `record` always has. See
 [CLI → Commands](../cli/commands.md#live-hardware) for the command-line form, including the
 `live mode` distinction between `channels` and `atmos` — the GUI's Atmos-mode live room is that
-same `atmos` mode, with the timeline replaced by real-time motion. **Two-device capture is at
-parity** — `capture2=<index>` (see [Two-device capture](#two-device-capture-clock-master-model))
-uses the same shared `DriftResampler`/`ClockDriftEstimator` pair on both sides. **Container choice
-is at parity too** — `ac3cli record`/`ac3cli live` both take a `container=mkv` trailing token (see
-[CLI → Options &
-grammars](../cli/metadata-options.md#recordlive-options-record-live-containermkv)) that writes
-straight to Matroska in the one command, the same choice this page's own [Take
-durability](#take-durability) section describes the GUI's Container combo making. The CLI reaches
-it with `matroska::mux()` rather than `matroska::Writer` — `record`/`live` already hold every frame
-in memory until the run ends (see the very next sentence), so there is nothing incremental to gain
-there the way there is for the GUI's own bounded-memory, mid-session-crash-safe take. The rest of
-the parity gap remains, worth being honest about: `ac3cli live` (`run_live` in `apps/cli/main.cpp`)
-still reserves and fills a `frames` vector across the whole run and writes it once at the end, has
-no device-drop watchdog, still pans exactly one object per capture channel with no add/reassign,
-and has no parallel downmix leg of its own (an AC-3-only receiver during an `atmos`/E-AC-3 CLI
-session still just gets the plain refusal) — none of this page's
-[take durability](#take-durability), [device-drop detection](#device-drop-detection), live
-object-slot budget, [receiver hot-swap](#receiver-hot-swap), or
-[parallel downmix leg](#parallel-downmix-receiver-leg) has reached the CLI's `live` command beyond
-the two-device clock model and container choice itself.
+same `atmos` mode, with the timeline replaced by real-time motion.
+
+**What is now at parity** (roadmap IO9). `ac3cli record` and `ac3cli live` reach the same
+capabilities this page describes, through the same code where the code is shareable:
+
+- **Wide layouts and E-AC-3.** `record` and `live mode=channels` take `layout=` and `codec=`
+  (see [CLI → Options & grammars](../cli/metadata-options.md#layout-and-codec)) and place the
+  captured channels onto them by direction through the same `plan::route` this page's own
+  [layout switcher](#the-layout-switcher) drives. Neither is stereo-AC-3-only any more.
+- **Container choice**, and **take durability** with it. Both commands take
+  `container=raw|mkv|ts|spdif` (see
+  [CLI → Options & grammars](../cli/metadata-options.md#container)) and write through
+  `RecordingSink` — literally the same class, moved to `apps/common/` and compiled into both
+  front ends — so a CLI take and a GUI take of the same container are the same bytes produced
+  the same way, with the same bounded memory and the same
+  [mid-session crash safety](#take-durability).
+- **[Device-drop detection](#device-drop-detection).** Both take `watchdog=<seconds>` (default 3,
+  `0` disables) and stop the session as a failure the first time `ac3::audio::SilenceWatchdog`
+  fires — the same class, the same default, the same rule. `capture2=` gets its own watchdog, so
+  a dropped slave is reported as the slave.
+- **The live object-slot budget.** `live mode=atmos` takes `objects=<N>` and binds capture
+  channels to slots with `map=` (`obj`/`objm`/`none`, the same grammar the Format tab's
+  assignment table uses — see [Multi-source & assignment](source-assignment.md)), against a
+  budget fixed at session start exactly as **Add object** allocates against one here. A GUI
+  assignment is reproducible headlessly.
+- **The [parallel downmix leg](#parallel-downmix-receiver-leg).** An AC-3-only receiver during an
+  E-AC-3 or object CLI session now hears a capped 5.1 AC-3 encode of the bed the main plan already
+  computed, instead of a plain refusal; the file still carries the full stream. `downmix=off`
+  restores the refusal.
+- **Two-device capture**, as before — `capture2=<index>` (see
+  [Two-device capture](#two-device-capture-clock-master-model)) uses the same shared
+  `DriftResampler`/`ClockDriftEstimator` pair on both sides.
+
+**What is still GUI-only**, and honestly so: [receiver hot-swap](#receiver-hot-swap) (changing the
+passthrough endpoint mid-session), the live latency readout, and every interactive affordance this
+page describes — the soundfield view, the chips, the banners. A command line has no mid-session
+input, so a hot-swap has nothing to be triggered by; `ac3cli live` resolves its receiver once, at
+session start, including whether the downmix leg runs.
 
 ## Next
 

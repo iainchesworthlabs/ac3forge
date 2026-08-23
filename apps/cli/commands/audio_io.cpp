@@ -21,9 +21,14 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/sinks/iec61937.hpp"
-#include "matroska/matroska.hpp"
+#include "ac3/audio/watchdog.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/plan.hpp"
+#include "recording_sink.hpp"
 
 namespace ac3cli::commands {
+
+namespace plan = ac3::plan;
 
 int run_devices() {
     const auto devices = ac3::audio::enumerate_devices();
@@ -76,6 +81,16 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
             return kExitUnavailable;
     }
 
+    // layout=/codec= (roadmap IO9). Before this, 'record' was stereo AC-3 and
+    // nothing else, while the GUI recorded any layout the format allows - and
+    // the two shared a capture path, an encoder and a container writer, so the
+    // gap was entirely in what the CLI would let you ask for.
+    const auto take = resolve_take_plan(meta, bitrate, sr);
+    if (!take) {
+        return kExitUsage;
+    }
+    const auto channel_plan = plan::resolve(take->plan);
+
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
@@ -83,78 +98,169 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         return kExitUnavailable;
     }
     const auto channels = capture.channels();
-    status_println(status_stream(), "recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
-                 capture.sample_rate(), channels, seconds);
+    const auto rate_hz = capture.sample_rate();
 
-    // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
-    // state, and this function only constructs it once (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
-        .sample_rate = sr, .bitrate_kbps = bitrate, .fast_mdct = meta.fast_mdct});
-    // Meters what the encoder is fed, not what the endpoint delivers: a
-    // needle that moves on a channel the stream never carries would be a lie.
-    ac3::analysis::LevelMeter meter{ac3::Acmod::k2_0, false, capture.sample_rate()};
+    // The captured channels are placed onto the take's coded channels by
+    // DIRECTION, not by index - a two-channel microphone recorded onto 5.1
+    // fills L/R and leaves the rest silent, exactly as a two-channel WAV
+    // encoded onto 5.1 does (plan::route's own model). A source wider than the
+    // target folds down per 7.8.
+    const auto routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
+    if (!routing) {
+        std::println(stderr, "error: {} capture channels - {}", channels,
+                     plan::describe(plan::PlanError::kNoSourceLayout));
+        return kExitUsage;
+    }
+
+    const auto status = status_stream();
+    status_println(status, "recording from \"{}\" ({} Hz, {} ch) to {} {} for {} s...",
+                   device.name, rate_hz, channels,
+                   plan::codec_label(take->plan.codec), take->label, seconds);
+
+    // Heap-allocated: both encoders carry several KB of MDCT scratch/history
+    // state, and this function only constructs them once (PREfast's C6262).
+    // Both are declared, only one is built: which, is settled by take->eac3
+    // before the loop rather than tested per frame.
+    std::unique_ptr<ac3::FrameEncoder> ac3_encoder;
+    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_encoder;
+    if (take->eac3) {
+        eac3_encoder =
+            std::make_unique<ac3::eac3::AccessUnitEncoder>(plan::eac3_config(take->plan));
+    } else {
+        ac3_encoder = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(take->plan));
+    }
+    // Meters what the encoder is fed, not what the endpoint delivers: a needle
+    // that moves on a channel the stream never carries would be a lie. The
+    // bed's own acmod/lfe, widened to the coded count where a dependent adds
+    // channels past it - the same meter shape the GUI's live session builds.
+    ac3::analysis::LevelMeter meter{channel_plan.bed_acmod, channel_plan.bed_lfe, rate_hz,
+                                    routing->coded_channels};
     const std::uint64_t target_frames =
-        (static_cast<std::uint64_t>(seconds) * capture.sample_rate() + ac3::kSamplesPerFrame - 1) /
+        (static_cast<std::uint64_t>(seconds) * rate_hz + ac3::kSamplesPerFrame - 1) /
         ac3::kSamplesPerFrame;
 
-    std::vector<float> interleaved(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
-    std::vector<std::vector<float>> planar(2,
-                                           std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
-    std::vector<std::span<const float>> views{planar[0], planar[1]};
-    std::vector<std::vector<std::byte>> frames;
-    frames.reserve(static_cast<std::size_t>(target_frames));
+    // Streamed to its container as it is produced (roadmap IO9), through the
+    // same RecordingSink the GUI's own takes go through - so a take of any
+    // length costs one frame of memory rather than the whole session, and a
+    // crash an hour in no longer loses the hour.
+    RecordingSink sink;
+    if (const auto why = sink.open(std::string{out_path}, take_sink_config(meta, *take, rate_hz));
+        !why.empty()) {
+        std::println(stderr, "error: {}: {}", out_path, why);
+        return kExitOutput;
+    }
 
-    while (frames.size() < target_frames) {
-        // Block until a whole AC-3 frame of interleaved samples is available.
+    const auto nchans = static_cast<std::size_t>(routing->coded_channels);
+    std::vector<float> interleaved(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
+    std::vector<std::vector<float>> source(channels,
+                                           std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::span<const float>> in(channels);
+    std::vector<std::span<float>> out(nchans);
+    std::vector<std::span<const float>> views(nchans);
+    for (std::size_t c = 0; c < channels; ++c) {
+        in[c] = source[c];
+    }
+    for (std::size_t c = 0; c < nchans; ++c) {
+        out[c] = block[c];
+        views[c] = block[c];
+    }
+
+    // A device that vanishes (unplugged, disabled, torn down under us) reads
+    // as an endless run of zero-byte reads, which the old `while (got == 0)
+    // sleep 2ms` loop could not tell from "briefly starved" - so a recording
+    // sat there looking healthy with nothing coming in. Same class, same 3 s
+    // default and the same "stop the session the first time it fires" rule as
+    // the GUI's live session; watchdog=0 turns it off.
+    ac3::audio::SilenceWatchdog watchdog{meta.watchdog};
+    watchdog.reset(std::chrono::steady_clock::now());
+    const bool watching = meta.watchdog.count() > 0;
+    bool device_lost = false;
+    std::uint64_t frames_written = 0;
+
+    while (frames_written < target_frames && !device_lost) {
+        // Block until a whole frame of interleaved samples is available.
         std::size_t filled = 0;
         while (filled < interleaved.size()) {
             const auto got = capture.buffer()->read(
                 std::span{interleaved}.subspan(filled, interleaved.size() - filled));
             filled += got;
+            const auto read_at = std::chrono::steady_clock::now();
+            watchdog.on_read(got, read_at);
             if (got == 0) {
+                if (watching && watchdog.timed_out(read_at)) {
+                    device_lost = true;
+                    break;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         }
-        // Deinterleave to stereo: take the first two channels, or duplicate a
-        // mono source across both.
+        if (device_lost) {
+            break;
+        }
         for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
             const std::size_t base = static_cast<std::size_t>(i) * channels;
-            planar[0][static_cast<std::size_t>(i)] = interleaved[base];
-            planar[1][static_cast<std::size_t>(i)] =
-                channels > 1 ? interleaved[base + 1] : interleaved[base];
+            for (std::size_t ch = 0; ch < channels; ++ch) {
+                source[ch][static_cast<std::size_t>(i)] = interleaved[base + ch];
+            }
         }
+        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
         meter.process(views);
-        auto frame = encoder->encode_frame(views);
-        if (!frame) {
-            std::println(stderr, "error: bitrate must be a legal AC-3 rate");
-            return kExitUsage;
+
+        std::vector<std::byte> unit_bytes;
+        if (take->eac3) {
+            const auto unit = eac3_encoder->encode_access_unit(views);
+            if (!unit) {
+                std::println(stderr, "error: the encoder cannot express this configuration");
+                std::ignore = sink.close();
+                return kExitUsage;
+            }
+            unit_bytes = unit->bytes;
+        } else {
+            auto frame = ac3_encoder->encode_frame(views);
+            if (!frame) {
+                std::println(stderr, "error: bitrate must be a legal AC-3 rate");
+                std::ignore = sink.close();
+                return kExitUsage;
+            }
+            unit_bytes = std::move(*frame);
         }
-        frames.push_back(std::move(*frame));
+        if (const auto why = sink.push(unit_bytes); !why.empty()) {
+            std::println(stderr, "error: {}: {}", out_path, why);
+            std::ignore = sink.close();
+            return kExitOutput;
+        }
+        ++frames_written;
         // One frame is 32 ms at 48 kHz, so the meter redraws about 30 times a
         // second without any throttling of its own.
-        print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
-                                    capture.sample_rate());
+        print_live_meter(meter, static_cast<double>(frames_written * ac3::kSamplesPerFrame) /
+                                    rate_hz);
     }
-    status_println(status_stream(), "");
+    status_println(status);
 
     capture.stop();
     const auto stats = capture.stats();
-    // record is always plain AC-3 stereo (see the deinterleave above, which
-    // only ever fills `planar`'s two channels) - the same track shape 'mkv'
-    // would derive by scanning this file back, just already known here.
-    const matroska::AudioTrack track{.codec_id = std::string{matroska::kCodecAc3},
-                                     .sample_rate = capture.sample_rate(),
-                                     .channels = 2,
-                                     .samples_per_frame = ac3::kSamplesPerFrame};
-    if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
+    // Finalized whether or not the device dropped: everything already pushed
+    // is on disk and playable, which is the whole reason a take streams.
+    if (const auto why = sink.close(); !why.empty()) {
+        std::println(stderr, "error: {}: {}", out_path, why);
         return kExitOutput;
     }
-    status_println(status_stream(), "wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
-                 meta.matroska_container ? " (Matroska)" : "");
-    status_println(status_stream(), "captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
-                 stats.frames_silence_filled, stats.frames_dropped);
-    print_channel_summary(meter, status_stream());
-    return 0;
+    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
+                   take->eac3 ? "access units" : "frames", bitrate, take->label, out_path,
+                   container_note(meta.container));
+    status_println(status, "captured {} frames, {} silence-filled, {} dropped",
+                   stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
+    print_channel_summary(meter, status);
+    if (device_lost) {
+        std::println(stderr,
+                     "error: \"{}\" stopped delivering audio for {} ms; the take was stopped and "
+                     "what had already been written is kept (watchdog=0 disables this)",
+                     device.name, meta.watchdog.count());
+        return kExitRuntime;
+    }
+    return kExitOk;
 }
 
 int run_outputs() {

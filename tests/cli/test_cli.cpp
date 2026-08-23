@@ -2070,3 +2070,380 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
                       "mode=fast",
                   log) != 0);
 }
+
+// --------------------------------------------------------------------------
+// Roadmap IO8: the documented exit-code scheme, per-command help, quiet/
+// verbose, and the generated man page and completions.
+// --------------------------------------------------------------------------
+
+TEST_CASE("every failure path returns its own documented exit code", "[cli][exit-codes]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "exit_codes.log";
+
+    // The numbers here are the contract, not an implementation detail: a
+    // script distinguishes a bad command line from a bad file from a failed
+    // gate by exactly these. apps/cli/exit_codes.hpp is where they are chosen
+    // and docs/cli/metadata-options.md#exit-codes is where they are published;
+    // this is what keeps all three agreeing.
+    SECTION("0 - success") {
+        CHECK(run_cli("silence \"" + (dir / "exit_ok.ac3").string() + "\" 1 192", log) == 0);
+    }
+
+    SECTION("1 - usage: too few arguments, an unknown command, an unknown option") {
+        CHECK(run_cli("encode", log) == 1);
+        CHECK(run_cli("definitely-not-a-command", log) == 1);
+        CHECK(run_cli("silence \"" + (dir / "exit_usage.ac3").string() + "\" 1 192 nosuch=1",
+                      log) == 1);
+    }
+
+    SECTION("1 - usage: a configuration the encoder cannot express") {
+        // A layout AC-3 has no coding mode for. Refused before anything is
+        // written, and refused as a USAGE error - retrying the same command
+        // line cannot help.
+        const auto wav_path = dir / "exit_usage_in.wav";
+        REQUIRE(write_wav(wav_path, make_tone_channels(2, 4000, 48000), 48000));
+        CHECK(run_cli("encode \"" + wav_path.string() + "\" \"" +
+                          (dir / "exit_usage2.ac3").string() + "\" 192 714",
+                      log) == 1);
+    }
+
+    SECTION("2 - input: unreadable, and present-but-not-a-stream") {
+        CHECK(run_cli("decode \"" + (dir / "exit_absent.ac3").string() + "\" \"" +
+                          (dir / "exit_absent.wav").string() + "\"",
+                      log) == 2);
+        const auto empty = dir / "exit_empty.ac3";
+        { std::ofstream out{empty, std::ios::binary}; }
+        CHECK(run_cli("decode \"" + empty.string() + "\" \"" + (dir / "exit_empty.wav").string() +
+                          "\"",
+                      log) == 2);
+    }
+
+    SECTION("3 - output: a destination that cannot be created") {
+        // A path whose parent directory does not exist - the one
+        // "cannot write" every platform agrees on without needing a
+        // permission model.
+        const auto wav_path = dir / "exit_out_in.wav";
+        REQUIRE(write_wav(wav_path, make_tone_channels(2, 4000, 48000), 48000));
+        const auto bad = dir / "no_such_directory" / "out.ac3";
+        CHECK(run_cli("encode \"" + wav_path.string() + "\" \"" + bad.string() + "\" 192 stereo",
+                      log) == 3);
+    }
+
+    SECTION("6 - a QC gate failed, distinct from 2 (qc could not read the file)") {
+        // A 440 Hz test tone was never mastered to any delivery target, so
+        // preset=all is a genuine FAIL - the whole point of the code being
+        // its own rather than folded into "something went wrong".
+        const auto stream = dir / "exit_qc.ac3";
+        REQUIRE(run_cli("sine \"" + stream.string() + "\" 2 192 440 70 stereo", log) == 0);
+        CHECK(run_cli("qc \"" + stream.string() + "\" preset=all", log) == 6);
+        CHECK(run_cli("qc \"" + stream.string() + "\"", log) == 0);
+        CHECK(run_cli("qc \"" + (dir / "exit_qc_absent.ac3").string() + "\"", log) == 2);
+    }
+}
+
+TEST_CASE("help prints one command's own row, not the whole manual", "[cli][help]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "help.log";
+
+    REQUIRE(run_cli("help", log) == 0);
+    const auto full = read_log(log);
+    REQUIRE(run_cli("help encode", log) == 0);
+    const auto one = read_log(log);
+
+    // The row itself, and the grammars encode actually uses.
+    CHECK(one.find("ac3cli encode") != std::string::npos);
+    CHECK(one.find("layout:") != std::string::npos);
+    CHECK(one.find("metadata options") != std::string::npos);
+    // Not the ones it does not: encode has no Annex E tool set and no VBR.
+    CHECK(one.find("Annex E coding tools") == std::string::npos);
+    CHECK(one.find("vbr (eac3-encode only)") == std::string::npos);
+    // And decisively shorter than the whole listing, which is the behaviour
+    // change worth asserting: an argument error used to print all of `full`.
+    CHECK(one.size() < full.size());
+
+    SECTION("eac3-encode's own help does carry the tool and vbr grammars") {
+        REQUIRE(run_cli("help eac3-encode", log) == 0);
+        const auto text = read_log(log);
+        CHECK(text.find("Annex E coding tools") != std::string::npos);
+        CHECK(text.find("vbr (eac3-encode only)") != std::string::npos);
+    }
+
+    SECTION("--help and -h are the same thing spelled the other way round") {
+        REQUIRE(run_cli("encode --help", log) == 0);
+        const auto dashes = read_log(log);
+        REQUIRE(run_cli("help encode", log) == 0);
+        CHECK(dashes == read_log(log));
+        REQUIRE(run_cli("encode -h", log) == 0);
+        CHECK(read_log(log) == dashes);
+    }
+
+    SECTION("--help wins over an otherwise-unsatisfied argument list") {
+        // `ac3cli encode` alone is a usage error; `ac3cli encode --help` is
+        // not, which is the whole point of lifting the flag out first.
+        CHECK(run_cli("encode --help", log) == 0);
+    }
+
+    SECTION("help exit-codes prints the scheme") {
+        REQUIRE(run_cli("help exit-codes", log) == 0);
+        const auto text = read_log(log);
+        CHECK(text.find("QC gate") != std::string::npos);
+        CHECK(text.find("unavailable here") != std::string::npos);
+    }
+
+    SECTION("an argument error names the command and points at its help") {
+        CHECK(run_cli("encode", log) != 0);
+        const auto text = read_log(log);
+        CHECK(text.find("ac3cli help encode") != std::string::npos);
+        // The whole manual is what it must NOT print any more.
+        CHECK(text.find("metadata options") == std::string::npos);
+        CHECK(text.size() < full.size());
+    }
+
+    SECTION("help for something that is not a command is a usage error") {
+        CHECK(run_cli("help not-a-command", log) == 1);
+    }
+}
+
+TEST_CASE("quiet silences status output without touching the payload", "[cli][quiet]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "quiet.log";
+    const auto out = dir / "quiet.ac3";
+
+    fs::remove(out);
+    REQUIRE(run_cli("sine \"" + out.string() + "\" 1 192 440 70 stereo quiet", log) == 0);
+    CHECK(read_log(log).empty());
+    CHECK(fs::exists(out));
+    CHECK(fs::file_size(out) > 0);
+
+    SECTION("without quiet the same run does report itself") {
+        REQUIRE(run_cli("sine \"" + (dir / "quiet_off.ac3").string() + "\" 1 192 440 70 stereo",
+                        log) == 0);
+        CHECK_FALSE(read_log(log).empty());
+    }
+
+    SECTION("a reporting command still reports: its answer is its output") {
+        REQUIRE(run_cli("levels \"" + out.string() + "\" quiet", log) == 0);
+        CHECK(read_log(log).find("per-channel levels") != std::string::npos);
+    }
+
+    SECTION("errors are never silenced") {
+        CHECK(run_cli("decode \"" + (dir / "quiet_absent.ac3").string() + "\" \"" +
+                          (dir / "quiet_absent.wav").string() + "\" quiet",
+                      log) == 2);
+        CHECK(read_log(log).find("error:") != std::string::npos);
+    }
+}
+
+TEST_CASE("verbose puts a progress line on stderr, never on stdout", "[cli][verbose]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "verbose_in.wav";
+    REQUIRE(write_wav(wav_path, make_tone_channels(2, 48000, 48000), 48000));
+
+    const auto out = dir / "verbose_out.ac3";
+    const auto log = dir / "verbose.log";
+    REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + out.string() +
+                        "\" 192 stereo verbose",
+                    log) == 0);
+    CHECK(read_log(log).find("encoding") != std::string::npos);
+
+    SECTION("a short run stays quiet about progress unless asked") {
+        // One second of audio is 31 frames, far under the threshold at which
+        // the line turns itself on - so the default run says nothing about
+        // progress at all.
+        const auto plain = dir / "verbose_plain.log";
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" +
+                            (dir / "verbose_plain.ac3").string() + "\" 192 stereo",
+                        plain) == 0);
+        CHECK(read_log(plain).find("encoding ") == std::string::npos);
+    }
+
+    SECTION("with a '-' output the progress line stays out of the stream") {
+        const auto piped = dir / "verbose_piped.ac3";
+        const auto err = dir / "verbose_piped.err";
+        REQUIRE(run_cli_stdout("encode \"" + wav_path.string() + "\" - 192 stereo verbose",
+                               piped, err) == 0);
+        CHECK(fs::file_size(piped) > 0);
+        CHECK(read_log(err).find("encoding") != std::string::npos);
+        // The payload must still be a decodable AC-3 stream - i.e. nothing
+        // human-readable leaked into it.
+        const auto back = dir / "verbose_piped.wav";
+        CHECK(run_cli("decode \"" + piped.string() + "\" \"" + back.string() + "\" quiet",
+                      dir / "verbose_piped_decode.log") == 0);
+    }
+}
+
+TEST_CASE("man and completions are generated from the command table", "[cli][man]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "man.log";
+
+    SECTION("the man page is a section-1 groff page naming every command") {
+        REQUIRE(run_cli("man", log) == 0);
+        const auto page = read_log(log);
+        CHECK(page.find(".TH AC3CLI 1") != std::string::npos);
+        CHECK(page.find(".SH COMMANDS") != std::string::npos);
+        CHECK(page.find(".SH EXIT STATUS") != std::string::npos);
+        // A command from each end of the table, so a truncated render fails.
+        CHECK(page.find("ac3cli silence") != std::string::npos);
+        CHECK(page.find("ac3cli monitor") != std::string::npos);
+        CHECK(page.find("ac3cli completions") != std::string::npos);
+    }
+
+    SECTION("each shell gets its own script, and an unknown shell is refused") {
+        struct Case {
+            const char* shell;
+            const char* marker;
+        };
+        for (const auto& c : {Case{"bash", "complete -F _ac3cli ac3cli"},
+                              Case{"zsh", "#compdef ac3cli"},
+                              Case{"fish", "complete -c ac3cli"},
+                              Case{"powershell", "Register-ArgumentCompleter"}}) {
+            INFO(c.shell);
+            REQUIRE(run_cli(std::string{"completions "} + c.shell, log) == 0);
+            const auto script = read_log(log);
+            CHECK(script.find(c.marker) != std::string::npos);
+            // Generated from the table, so a command must appear in it.
+            CHECK(script.find("eac3-encode") != std::string::npos);
+        }
+        CHECK(run_cli("completions tcsh", log) == 1);
+    }
+
+    SECTION("every bare option token the completions offer is really accepted") {
+        // The completion list is a second statement of what parse_options
+        // takes (see kOptionTokens' own comment) - this is what keeps it from
+        // drifting into offering something the parser refuses. Only the
+        // valueless tokens can be checked this cheaply; a key= token's value
+        // grammar differs per option.
+        REQUIRE(run_cli("completions fish", log) == 0);
+        const auto script = read_log(log);
+        for (const auto* token : {"couple", "heavy", "heavy2", "mixmeta", "keep-partial",
+                                  "sign-objects", "verify-objects", "fast-mdct", "fast-imdct",
+                                  "quiet", "verbose"}) {
+            INFO(token);
+            CHECK(script.find(std::string{"-a '"} + token + "'") != std::string::npos);
+            CHECK(run_cli(std::string{"silence \""} + (dir / "man_opt.ac3").string() + "\" 1 192 " +
+                              token,
+                          dir / "man_opt.log") == 0);
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// Roadmap IO9: record/live parity with the GUI session. The capture side
+// cannot run headlessly - there is no capture endpoint on a CI machine, and
+// on a platform with no capture backend at all `record`/`live` are refused
+// before their arguments are read - so what is checked here is the option
+// surface those commands added, which parse_options settles before dispatch
+// and therefore on every platform alike.
+// --------------------------------------------------------------------------
+
+TEST_CASE("record/live take options parse or are refused", "[cli][record][live]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "take_opts.log";
+    const auto probe = dir / "take_opts.ac3";
+    // `silence` ignores all of these, which is exactly what makes it a clean
+    // probe of the PARSER: a run that reaches the encoder proves the token was
+    // accepted, and a refusal proves it was not silently ignored.
+    const auto parses = [&](const std::string& token) {
+        return run_cli("silence \"" + probe.string() + "\" 1 192 " + token, log);
+    };
+
+    SECTION("container= takes all four streamable containers") {
+        for (const auto* value : {"raw", "mkv", "matroska", "ts", "mpegts", "spdif"}) {
+            INFO(value);
+            CHECK(parses(std::string{"container="} + value) == 0);
+        }
+        CHECK(parses("container=avi") == 1);
+        CHECK(read_log(log).find("raw, mkv, ts or spdif") != std::string::npos);
+        // mp4/fmp4 cannot be written incrementally, so they are refused here
+        // rather than silently accepted and then not honoured.
+        CHECK(parses("container=mp4") == 1);
+        CHECK(parses("container=fmp4") == 1);
+    }
+
+    SECTION("layout=/codec= parse, and a bad codec is refused") {
+        CHECK(parses("layout=51") == 0);
+        CHECK(parses("layout=L,C,R,LFE,Vhl,Vhr") == 0);
+        CHECK(parses("codec=ac3") == 0);
+        CHECK(parses("codec=eac3") == 0);
+        CHECK(parses("codec=ec3") == 0);
+        CHECK(parses("codec=truehd") == 1);
+        CHECK(parses("layout=") == 1);
+    }
+
+    SECTION("watchdog= takes a non-negative timeout in seconds") {
+        CHECK(parses("watchdog=0") == 0);
+        CHECK(parses("watchdog=1.5") == 0);
+        CHECK(parses("watchdog=-1") == 1);
+        CHECK(parses("watchdog=soon") == 1);
+    }
+
+    SECTION("objects= is a 1..15 slot budget") {
+        CHECK(parses("objects=1") == 0);
+        CHECK(parses("objects=15") == 0);
+        CHECK(parses("objects=0") == 1);
+        CHECK(parses("objects=16") == 1);
+    }
+
+    SECTION("downmix= is on or off") {
+        CHECK(parses("downmix=on") == 0);
+        CHECK(parses("downmix=off") == 0);
+        CHECK(parses("downmix=maybe") == 1);
+    }
+}
+
+TEST_CASE("atmos-encode assembles real objects behind src=/map=",
+          "[cli][atmos-encode][map]") {
+    const auto dir = scratch_dir();
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 24000;  // half a second
+    const auto a = dir / "map_obj_a.wav";
+    const auto b = dir / "map_obj_b.wav";
+    REQUIRE(write_wav(a, make_tone_channels(4, kFrames, kRate), kRate));
+    REQUIRE(write_wav(b, make_tone_channels(2, kFrames, kRate), kRate));
+
+    const auto out = dir / "map_obj.ec3";
+    const auto log = dir / "map_obj.log";
+    // Four objects out of six loaded channels: two on their own, two folded
+    // to one mono object, one silenced, plus one from the second source.
+    // obj rows come first (in source, then channel order), then the objm
+    // group - the order the two front ends have to agree on for a GUI
+    // assignment to be reproducible headlessly.
+    const auto rc = run_cli(
+        "atmos-encode \"" + a.string() + "\" \"" + out.string() + "\" 448 src=\"" + b.string() +
+            "\" map=0.0:obj,0.1:obj@-3,0.2-3:objm,1.0:obj,1.1:none",
+        log);
+    INFO(read_log(log));
+    REQUIRE(rc == 0);
+    REQUIRE(fs::exists(out));
+    CHECK(read_log(log).find("4 objects") != std::string::npos);
+
+    SECTION("the stream really carries them, read back by the decoder") {
+        const auto wav_out = dir / "map_obj_back.wav";
+        const auto dec_log = dir / "map_obj_decode.log";
+        REQUIRE(run_cli("decode \"" + out.string() + "\" \"" + wav_out.string() + "\"",
+                        dec_log) == 0);
+        // Four dynamic objects plus the bed's LFE.
+        CHECK(read_log(dec_log).find("4 dynamic objects") != std::string::npos);
+    }
+
+    SECTION("a map= naming no object destination is refused, not silently empty") {
+        CHECK(run_cli("atmos-encode \"" + a.string() + "\" \"" + (dir / "map_none.ec3").string() +
+                          "\" 448 map=0.0:L,0.1:R,0.2:none,0.3:none",
+                      log) == 1);
+    }
+
+    SECTION("src= without map= makes every loaded channel an object, in load order") {
+        const auto plain = dir / "map_obj_plain.ec3";
+        REQUIRE(run_cli("atmos-encode \"" + a.string() + "\" \"" + plain.string() + "\" 448 src=\"" +
+                            b.string() + "\"",
+                        log) == 0);
+        CHECK(read_log(log).find("6 objects") != std::string::npos);
+    }
+
+    SECTION("[objects] and map= are alternatives, not a pair") {
+        CHECK(run_cli("atmos-encode \"" + a.string() + "\" \"" + (dir / "map_both.ec3").string() +
+                          "\" 448 2 src=\"" + b.string() + "\" map=0.0:obj,0.1:none,0.2:none,"
+                          "0.3:none,1.0:none,1.1:none",
+                      log) == 1);
+    }
+}

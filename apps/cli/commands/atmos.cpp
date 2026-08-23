@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <fstream>
 #include <numbers>
 #include <optional>
@@ -13,13 +14,16 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "../exit_codes.hpp"
+#include "../multi_source.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/encoder/assignment.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/motion.hpp"
@@ -29,6 +33,8 @@
 #include "../adm/atmos_adm.hpp"
 
 namespace ac3cli::commands {
+
+namespace plan = ac3::plan;
 
 namespace {
 
@@ -334,9 +340,242 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     return 0;
 }
 
+// atmos-encode with src=/map= (roadmap IO9): several sources, and an explicit
+// statement of which of their channels become which objects, instead of the
+// single-file "every channel is an object, in file order" default.
+//
+// Deliberately a second function rather than a branch inside run_atmos_encode,
+// for the same reason run_encode_multi is (see multi_source.hpp's own header):
+// the two have genuinely different data shapes - one WavData with an optional
+// streaming reader versus several whole files gathered per frame - and the
+// small amount that does overlap costs far less duplicated than a shared
+// abstraction would risk. No streaming path here: load_sources opens whole
+// files, exactly as the multi-source encode path does.
+int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
+                           std::uint32_t bitrate, const Options& meta,
+                           std::string_view paths_path) {
+    auto sources = load_sources(in_path, meta.sources, meta.offsets);
+    if (!sources) {
+        return kExitInput;
+    }
+    const auto sr = wav_sample_rate(sources->sample_rate, "E-AC-3", true);
+    if (!sr) {
+        return kExitInput;
+    }
+    std::size_t total_channels = 0;
+    for (const auto& shape : sources->shapes) {
+        total_channels += shape.channels;
+    }
+
+    // map= is what makes a multi-source object encode mean anything: with
+    // several files there is no "file order" for channels to become objects
+    // in. One source without map= keeps the classic behaviour (below), so
+    // this is only reachable with src= present or map= given explicitly.
+    plan::Assignment assignment;
+    if (meta.map_spec) {
+        if (!plan::parse_assignment(*meta.map_spec, sources->shapes, assignment)) {
+            std::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
+            return kExitUsage;
+        }
+    } else {
+        // src= without map=: every loaded channel becomes its own object, in
+        // load order - the natural generalisation of what one file does, and
+        // the only reading that does not silently drop somebody's second file.
+        std::size_t index = 0;
+        for (std::size_t s = 0; s < sources->shapes.size(); ++s) {
+            for (std::size_t c = 0; c < sources->shapes[s].channels; ++c) {
+                assignment.set(s, c, {.kind = plan::DestinationKind::kObject});
+                ++index;
+            }
+        }
+        std::ignore = index;
+    }
+
+    const auto slots = object_slots_from_assignment(assignment, sources->shapes);
+    if (slots.empty()) {
+        std::println(stderr,
+                     "error: map= names no obj/objm destination, so this encode would carry no "
+                     "objects at all - 'eac3-encode' is the command for a purely "
+                     "channel-mapped programme");
+        return kExitUsage;
+    }
+    const std::size_t count = slots.size();
+    if (count > 15) {
+        std::println(stderr,
+                     "error: 1 to 15 objects (the bed's LFE is the 16th, and TS 103 420 "
+                     "8.3.2.2 caps the total at 16); this map= resolves {}",
+                     count);
+        return kExitUsage;
+    }
+
+    const auto status = status_stream(out_path);
+    int dialnorm = meta.p.dialnorm;
+    if (meta.p.measure_dialnorm) {
+        std::println(stderr,
+                     "error: dialnorm=auto is not supported alongside src=/map= on "
+                     "atmos-encode - object channels have no single fixed layout to measure "
+                     "loudness against; pass dialnorm=<1..31> explicitly");
+        return kExitUsage;
+    }
+
+    ac3::oba::AtmosEncoder encoder{
+        {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
+         .fast_mdct = meta.fast_mdct},
+        static_cast<int>(count)};
+
+    // Objects that reach the bed by the same route are exactly the ones JOC
+    // cannot pull apart again, so they are fanned out evenly around the room
+    // rather than stacked at one point. A multi-source map= has no source
+    // layout to take a direction from the way one file does, so this is the
+    // even fan every time.
+    std::vector<ac3::oba::ObjectPlacement> placement(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const double azimuth = 360.0 * static_cast<double>(i) / static_cast<double>(count);
+        const double radians = azimuth * std::numbers::pi / 180.0;
+        placement[i] = {.position = {.x = 0.5 - 0.5 * std::sin(radians),
+                                     .y = 0.5 - 0.5 * std::cos(radians),
+                                     .z = 0.0},
+                        .gain = 0.7 / std::sqrt(static_cast<double>(count)),
+                        .lfe_send = 0.0};
+    }
+
+    // Authored motion, keyed by OBJECT index (the order map= produced them
+    // in), not by channel: with several sources a channel index alone would
+    // not identify anything.
+    std::optional<std::vector<ac3::oba::ObjectPath>> paths;
+    if (!paths_path.empty()) {
+        const auto parsed = parse_path_file(paths_path);
+        if (!parsed) {
+            return kExitInput;
+        }
+        paths.emplace();
+        paths->reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (i < parsed->size() && !(*parsed)[i].empty()) {
+                auto created = ac3::oba::KeyframePath::create((*parsed)[i]);
+                if (!created) {
+                    std::println(stderr, "error: object {} has two keyframes at the same time_s",
+                                 i);
+                    return kExitInput;
+                }
+                paths->emplace_back(std::move(*created));
+                continue;
+            }
+            auto fallback = ac3::oba::KeyframePath::create({{.time_s = 0.0,
+                                                              .position = placement[i].position,
+                                                              .gain = placement[i].gain,
+                                                              .lfe_send = placement[i].lfe_send}});
+            paths->emplace_back(std::move(*fallback));
+        }
+    }
+
+    status_println(status, "  {} sources, {} channels -> {} objects (map= order)",
+                   sources->shapes.size(), total_channels, count);
+    if (verbose_mode()) {
+        for (std::size_t i = 0; i < count; ++i) {
+            std::string taps;
+            for (const auto& [flat, gain] : slots[i].taps) {
+                taps += taps.empty() ? "" : " + ";
+                taps += std::format("ch{}", flat);
+                if (gain != 1.0) {
+                    taps += std::format(" x{:.3f}", gain);
+                }
+            }
+            status_println(status, "    object {}: {}", i, taps.empty() ? "silent" : taps);
+        }
+    }
+
+    ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, sources->sample_rate};
+    const std::size_t total = sources->total_frames;
+    std::vector<std::vector<float>> gathered(total_channels,
+                                             std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(count);
+    std::vector<std::span<const float>> metered(6);
+    for (std::size_t i = 0; i < count; ++i) {
+        views[i] = block[i];
+    }
+    EncodedStreamSink out_sink;
+    if (!out_sink.open(out_path, meta.keep_partial, /*defer=*/meta.sign_objects)) {
+        return kExitOutput;
+    }
+    Progress progress;
+    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
+    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+        gather_frame(*sources, start, gathered);
+        for (std::size_t i = 0; i < count; ++i) {
+            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+                float sum = 0.0F;
+                for (const auto& [flat, gain] : slots[i].taps) {
+                    if (flat < gathered.size()) {
+                        sum += gathered[flat][static_cast<std::size_t>(n)] *
+                               static_cast<float>(gain);
+                    }
+                }
+                block[i][static_cast<std::size_t>(n)] = sum;
+            }
+        }
+        auto unit = paths ? encoder.encode_frame(
+                                views, ac3::oba::evaluate_placements(
+                                           *paths,
+                                           static_cast<double>(start + ac3::kSamplesPerFrame) /
+                                               static_cast<double>(sources->sample_rate)))
+                          : encoder.encode_frame(views, placement);
+        if (!unit) {
+            std::println(stderr,
+                         "error: cannot encode {} objects at {} kbps - the metadata and the "
+                         "mantissas share one frame, so try a higher bit rate",
+                         count, bitrate);
+            out_sink.abort();
+            return kExitUsage;
+        }
+        for (std::size_t ch = 0; ch < 6; ++ch) {
+            metered[ch] = std::span{encoder.bed()[ch]};
+        }
+        meter.process(metered);
+        if (!out_sink.push(std::move(unit->bytes))) {
+            out_sink.abort();
+            return kExitOutput;
+        }
+        progress.tick(start / ac3::kSamplesPerFrame + 1);
+    }
+    progress.finish();
+    const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
+    if (!signed_count) {
+        return kExitRuntime;
+    }
+    if (*signed_count > 0) {
+        status_println(status, "  signed {} frames' EMDF object container with the supplied key",
+                       *signed_count);
+    }
+    if (!out_sink.close()) {
+        return kExitOutput;
+    }
+    status_println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) to {}",
+                   out_sink.frames(), bitrate, sources->sample_rate, out_path);
+    status_println(status,
+                   "  {} objects + the bed's LFE = {} objects, JOC over a 5.1 downmix", count,
+                   ac3::oba::object_count(encoder.program()));
+    print_channel_summary(meter, status);
+    return kExitOk;
+}
+
 int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const Options& meta, std::string_view paths_path) {
+    // src=/map= route to the multi-source path above, which is what makes
+    // obj/objm real destinations on this command (roadmap IO9 - they parsed
+    // and did nothing here before). Without either, everything below is
+    // byte-identical to what this command always did.
+    if (!meta.sources.empty() || meta.map_spec) {
+        if (objects != 0) {
+            std::println(stderr,
+                         "error: [objects] counts the source channels to turn into objects, "
+                         "which map= states instead - give one or the other");
+            return kExitUsage;
+        }
+        return run_atmos_encode_multi(in_path, out_path, bitrate, meta, paths_path);
+    }
     // The same streaming-vs-whole-file split as run_encode - see its
     // comment. This command has no dual-mono merge, so only stdin and
     // dialnorm=auto (whole-programme BS.1770) force the whole-file read.

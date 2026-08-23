@@ -7,6 +7,7 @@ ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
 
 Usage:
   ac3cli --version    print version and git provenance, then exit
+  ac3cli help [<command>|exit-codes]   this list, or one command's own help
   ac3cli silence      <out.ac3> [seconds] [bitrate_kbps]
   ac3cli sine         <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli orbit        <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
@@ -14,7 +15,7 @@ Usage:
   ac3cli atmos-path   <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored keyframe file instead of the built-in orbit)
   ac3cli atmos-encode <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a keyframe file (same format as atmos-path), objects it doesn't mention keep their default placement)
   ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
-  ac3cli record       <out.ac3> [seconds] [bitrate_kbps] [device_index]
+  ac3cli record       <out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index] (capture straight to a file; layout=/codec=/container= decide its shape)
   ac3cli live         <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
   ac3cli encode       <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli eac3-silence <out.ec3> [seconds] [bitrate_kbps] [layout]
@@ -33,6 +34,9 @@ Usage:
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
   ac3cli play         <in.ac3|in.ec3> [device_index]          (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
   ac3cli monitor      <in.ac3|in.ec3> [device_index]          (decode and play on an ordinary (non-bitstreamed) output)
+  ac3cli help         [<command>|exit-codes]                  (one command's own arguments and grammars, not the whole manual)
+  ac3cli man                                                  (the generated groff man page, on stdout)
+  ac3cli completions  <bash|zsh|fish|powershell>              (the generated completion script for that shell, on stdout)
 ```
 
 ## By category
@@ -229,24 +233,79 @@ each OS.
 |---|---|
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
-| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead |
+| `record` | Captures from a device straight to a file, metering live. `layout=`/`codec=` choose the shape (any layout up to 7.1.4, AC-3 or E-AC-3), `container=` the wrapper (`raw`, `mkv`, `ts`, `spdif`), `watchdog=` how long a silent device is tolerated |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file — `bsid` decides AC-3 vs. E-AC-3 |
 | `monitor` | Decodes an existing file and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
-| `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` |
+| `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has. Everything `record` takes, plus a second clock-conformed capture device (`capture2=`), an object-slot budget and `map=` binding (`objects=`, `mode=atmos`), and a parallel 5.1 AC-3 leg for an AC-3-only receiver (`downmix=`) |
 
 `live`'s device arguments: `monitor_device`/`passthrough_device` take `-2` (default, leaves that
 leg off), `-1` (the default render endpoint), or an index from `outputs`. Either or both legs may
 run alongside the file `live` always writes.
 
-`live mode` (also shared with `atmos`): `channels` (default) carries stereo straight through;
-`atmos` pans every captured channel into a 5.1 bed as its own object, moving it every frame the
-same way `atmos`'s synthetic orbit does — the hook a real live position source drops into once
-one exists.
+`live mode` (also shared with `atmos`): `channels` (default) encodes the captured channels onto
+`layout=` — stereo by default, anything up to 7.1.4 — placing them by direction the way `encode`
+places a file's; `atmos` pans capture channels into a 5.1 bed as objects, moving each one every
+frame the same way `atmos`'s synthetic orbit does — the hook a real live position source drops
+into once one exists. `layout=`/`codec=` describe a channel session only; `mode=atmos` always
+encodes the TS 103 420 shape and refuses either.
+
+**Take shape and durability.** `record` and `live` both take `layout=`, `codec=`,
+`container=raw|mkv|ts|spdif` and `watchdog=<seconds>` (see
+[Options & grammars](metadata-options.md#recordlive-options-record-live-container-layout-codec-watchdog)).
+All four containers are written **incrementally, as the take runs**, through the same
+`RecordingSink` the GUI's own takes go through — so a take costs one frame of memory rather than
+the whole session, and a crash an hour in leaves an hour of playable file. A capture device that
+stops delivering audio ends the session as a failure (exit `5`) rather than leaving it looking
+healthy with nothing coming in; whatever was already written stays on disk.
+
+**Objects on a live session.** `live mode=atmos` allocates its object slots once, at session
+start — `objects=<N>` sets the budget, `map=` binds capture channels to slots with the same
+`obj`/`objm`/`none` grammar the Format tab's assignment table uses (see
+[Options & grammars](metadata-options.md#objects-and-map-modeatmos)). A slot with nothing bound to
+it is carried silent rather than changing the object count a decoder read from the first access
+unit.
+
+**An AC-3-only receiver.** When the session's stream needs E-AC-3 but the chosen
+`passthrough_device` only bitstreams plain AC-3, `live` sends it a parallel 5.1 AC-3 encode of the
+bed the main plan already computed, while the file and the monitor still carry the full stream.
+`downmix=off` restores the plain refusal.
 
 `live capture2=<index>`: the `capture_device` positional stays the session's clock master, paced
 exactly as it always has been; `capture2=` adds a second, independently-clocked device (see
-[Options & grammars](metadata-options.md#live-options-live-capture2) for the full grammar) whose
+[Options & grammars](metadata-options.md#capture2) for the full grammar) whose
 stream is resampled to track the master, with the measured drift printed at session end.
+
+### Self-description & scripting
+
+| Command | What it does |
+|---|---|
+| `help` | With no argument, the whole usage listing. With a command name, just that command's row and the option grammars it actually uses — not the ~130 lines of prose an argument error used to print. `help exit-codes` prints the exit-code table below. |
+| `man` | A section-1 groff man page on stdout, generated from the same command table. `cmake --build` writes it to `ac3cli.1` and `cmake --install` puts it under `share/man/man1`. |
+| `completions` | A completion script for `bash`, `zsh`, `fish` or `powershell` on stdout, generated from the same table plus the option list. Installed under the conventional per-shell directories; the Homebrew formula places the bash and fish halves through Homebrew's own helpers. |
+
+`ac3cli <command> --help` (or `-h`) is `ac3cli help <command>` spelled the other way round, and
+works even when the rest of the command line would not have satisfied that command.
+
+Every command also takes `quiet` (no status output at all — errors and, for a `-` output, the
+payload) and `verbose` (the stderr progress line whatever the run's length). See
+[Options & grammars](metadata-options.md#common-options-every-command-quiet-verbose).
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Usage — a bad or missing argument, an unknown command or option, or a configuration the encoder cannot express |
+| `2` | Input — unreadable, absent, or not a valid stream |
+| `3` | Output — the destination could not be created, written or finalized |
+| `4` | Unavailable here — this build or machine cannot run the command at all |
+| `5` | Runtime — the run started and then failed (a capture dropout, a measurement with nothing to measure) |
+| `6` | A QC gate failed |
+| `7` | Internal — an exception escaped a command |
+
+`ac3cli help exit-codes` prints the same table with a sentence on each; see
+[Options & grammars](metadata-options.md#exit-codes) for the full descriptions and a worked
+`qc` example.
 
 ## Next
 
