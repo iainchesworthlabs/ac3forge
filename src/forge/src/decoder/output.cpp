@@ -76,6 +76,92 @@ Positions surround_positions(Acmod acmod) {
     return {};
 }
 
+// Where each Table E2.5 location folds to, when a program has to be reduced
+// to one of §7.8's own acmod layouts before §7.8 can fold it at all.
+//
+// This IS an extension beyond §7.8, and worth being plain about: §7.8 defines
+// folds FROM the eight AC-3 acmods and says nothing about the wide layouts
+// Annex E's chanmap can express - a 7.1.4 program has no §7.8 fold, because
+// §7.8 predates anything that could code one. Reducing first is the least
+// invented thing available: every extra location has an obvious §7.8 seat (a
+// wide left is a left, a rear surround is a surround, a top front left is a
+// left), and once it is in that seat the actual downmix is the spec's own,
+// with the stream's own levels. The alternative - dropping the channels §7.8
+// cannot name - would silently discard the whole height layer.
+//
+// -3 dB on every secondary contribution, so two locations sharing one seat
+// sum to the power of one. A location already IN the reduced layout arrives
+// at unity, which makes the reduction an exact identity for every plain
+// acmod bed - the overwhelmingly common case, and the one that must not
+// change by so much as a bit.
+enum class Seat : std::uint8_t { kLeft, kCentre, kRight, kLeftSurround, kRightSurround, kLfe };
+
+struct SeatMix {
+    Seat first = Seat::kLeft;
+    double first_gain = 1.0;
+    // A second seat, for the locations with no side of their own: a mono
+    // surround or a top surround belongs equally to both surrounds.
+    bool has_second = false;
+    Seat second = Seat::kRight;
+    double second_gain = 0.0;
+};
+
+SeatMix seat_of(eac3::chanmap::Location location) {
+    using L = eac3::chanmap::Location;
+    constexpr double kHalfPower = meta::level::kMinus3dB;
+    switch (location) {
+        case L::kLeft: return {.first = Seat::kLeft};
+        case L::kCentre: return {.first = Seat::kCentre};
+        case L::kRight: return {.first = Seat::kRight};
+        case L::kLeftSurround: return {.first = Seat::kLeftSurround};
+        case L::kRightSurround: return {.first = Seat::kRightSurround};
+        case L::kLfe: return {.first = Seat::kLfe};
+        // Front pairs inside the mains, the wides and the front heights: all
+        // left or right, at the shared-seat level.
+        case L::kLc:
+        case L::kLw:
+        case L::kVhl: return {.first = Seat::kLeft, .first_gain = kHalfPower};
+        case L::kRc:
+        case L::kRw:
+        case L::kVhr: return {.first = Seat::kRight, .first_gain = kHalfPower};
+        case L::kVhc: return {.first = Seat::kCentre, .first_gain = kHalfPower};
+        // Rear, side and top surrounds keep their side.
+        case L::kLrs:
+        case L::kLsd:
+        case L::kLts: return {.first = Seat::kLeftSurround, .first_gain = kHalfPower};
+        case L::kRrs:
+        case L::kRsd:
+        case L::kRts: return {.first = Seat::kRightSurround, .first_gain = kHalfPower};
+        // A mono surround and a top (overhead centre) surround have no side,
+        // so they go to both - which for the 2/1 and 3/1 beds reproduces
+        // §7.8's own single-surround branch exactly, since slev then reaches
+        // each front through this -3 dB rather than through the branch's own.
+        case L::kCs:
+        case L::kTs:
+            return {.first = Seat::kLeftSurround,
+                    .first_gain = kHalfPower,
+                    .has_second = true,
+                    .second = Seat::kRightSurround,
+                    .second_gain = kHalfPower};
+        // §E2.3.1.8's second LFE joins the first.
+        case L::kLfe2: return {.first = Seat::kLfe, .first_gain = kHalfPower};
+    }
+    return {.first = Seat::kLeft, .first_gain = 0.0};
+}
+
+// Which acmod the occupied seats amount to, so §7.8's own coefficients and
+// normalisation apply to the layout that is actually there rather than to a
+// 3/2 with silent channels in it.
+Acmod reduced_acmod(bool centre, bool mains, bool surrounds) {
+    if (!mains) {
+        return Acmod::k1_0;  // a centre-only program; nothing else can reach here
+    }
+    if (centre) {
+        return surrounds ? Acmod::k3_2 : Acmod::k3_0;
+    }
+    return surrounds ? Acmod::k2_2 : Acmod::k2_0;
+}
+
 }  // namespace
 
 MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
@@ -408,5 +494,88 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
         std::copy(out_right_.begin(), out_right_.end(), channels[1].begin());
     }
 }
+
+void OutputStage::apply(std::span<const std::span<float>> channels,
+                        const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
+                        const MixLevels& levels, int dialnorm) {
+    if (channels.empty() || channels.front().empty()) {
+        return;
+    }
+    // Dual mono has no layout to reduce and no fold to apply (OutputStage
+    // refuses it outright); a caller asking only for dialnorm normalisation
+    // still gets it, which is what passing straight through does. `lfe` is
+    // only consulted on this path - past it, what matters is which seat the
+    // rendered layout actually filled, not what the bed's lfeon said.
+    if (config_.target == DownmixTarget::kAsCoded || acmod == Acmod::kDualMono ||
+        layout.count == 0) {
+        apply(channels, acmod, lfe, levels, dialnorm);
+        return;
+    }
+
+    // Seat every rendered location, then fold the seats. See seat_of above
+    // for why this step exists and what it does and does not claim.
+    const std::size_t length = channels.front().size();
+    fold_scratch_.resize(6);
+    for (auto& seat : fold_scratch_) {
+        seat.assign(length, 0.0F);
+    }
+    std::array<bool, 6> occupied{};
+    const auto pour = [&](Seat seat, double gain, std::span<const float> source) {
+        const auto index = static_cast<std::size_t>(seat);
+        occupied[index] = true;
+        auto& target = fold_scratch_[index];
+        const std::size_t n = std::min(length, source.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            target[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+        }
+    };
+    const auto count = std::min(static_cast<std::size_t>(layout.count), channels.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        const SeatMix seat = seat_of(layout[static_cast<int>(i)]);
+        pour(seat.first, seat.first_gain, channels[i]);
+        if (seat.has_second) {
+            pour(seat.second, seat.second_gain, channels[i]);
+        }
+    }
+
+    const bool has_centre = occupied[static_cast<std::size_t>(Seat::kCentre)];
+    const bool has_mains = occupied[static_cast<std::size_t>(Seat::kLeft)] ||
+                           occupied[static_cast<std::size_t>(Seat::kRight)];
+    const bool has_surrounds = occupied[static_cast<std::size_t>(Seat::kLeftSurround)] ||
+                               occupied[static_cast<std::size_t>(Seat::kRightSurround)];
+    const bool has_lfe = occupied[static_cast<std::size_t>(Seat::kLfe)];
+    const Acmod folded = reduced_acmod(has_centre, has_mains, has_surrounds);
+
+    // Table 5.8 coded order for `folded`, which is the order OutputStage
+    // reads. A centre-only program has its audio in the centre seat, and 1/0
+    // codes that one channel at index 0.
+    fold_views_.clear();
+    const auto lend = [&](Seat seat) {
+        fold_views_.emplace_back(fold_scratch_[static_cast<std::size_t>(seat)]);
+    };
+    if (folded == Acmod::k1_0) {
+        lend(Seat::kCentre);
+    } else {
+        lend(Seat::kLeft);
+        if (has_centre) {
+            lend(Seat::kCentre);
+        }
+        lend(Seat::kRight);
+        if (has_surrounds) {
+            lend(Seat::kLeftSurround);
+            lend(Seat::kRightSurround);
+        }
+    }
+    if (has_lfe) {
+        lend(Seat::kLfe);
+    }
+    apply(fold_views_, folded, has_lfe, levels, dialnorm);
+
+    const std::size_t produced = output_channel_count(config_, folded, has_lfe);
+    for (std::size_t i = 0; i < produced && i < channels.size(); ++i) {
+        std::copy(fold_views_[i].begin(), fold_views_[i].end(), channels[i].begin());
+    }
+}
+
 
 }  // namespace ac3

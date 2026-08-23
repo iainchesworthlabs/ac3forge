@@ -54,6 +54,7 @@ add_executable(ac3tests
     core/test_bitwriter.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
+    decoder/test_concealment.cpp
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
@@ -70,6 +71,7 @@ add_executable(ac3tests
     core/test_frame.cpp
     sinks/test_iec61937.cpp
     decoder/test_live_downmix.cpp
+    decoder/test_output_stage.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp

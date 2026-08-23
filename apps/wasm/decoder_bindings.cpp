@@ -27,6 +27,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/io/elementary.hpp"
 
 namespace {
@@ -81,6 +82,8 @@ class WasmDecoder {
     bool decode_impl(const emscripten::val& js_bytes) {
         error_.clear();
         channels_.clear();
+        stereo_.clear();
+        stereo_stage_.reset();
         labels_.clear();
         stream_kind_.clear();
         sample_rate_ = 0;
@@ -113,6 +116,9 @@ class WasmDecoder {
                 if (labels_.empty()) {
                     labels_ = ac3_channel_labels(decoded->acmod, decoded->lfe);
                 }
+                fold_stereo(decoded->channels, nullptr, decoded->acmod, decoded->lfe,
+                            ac3::mix_levels(decoded->cmixlev, decoded->surmixlev),
+                            decoded->dialnorm);
                 append(decoded->channels);
             }
         } else {
@@ -164,6 +170,17 @@ class WasmDecoder {
             return emscripten::val::null();
         }
         const auto& pcm = channels_[static_cast<std::size_t>(channel)];
+        return emscripten::val(emscripten::typed_memory_view(pcm.size(), pcm.data()));
+    }
+
+    // The §7.8 stereo fold this page plays - 0 is Lo, 1 is Ro. Same
+    // zero-copy view contract as channelPcm above. Null before a successful
+    // decode, and for a stream whose fold produced nothing (an empty file).
+    [[nodiscard]] emscripten::val stereoPcm(int channel) const {
+        if (channel < 0 || static_cast<std::size_t>(channel) >= stereo_.size()) {
+            return emscripten::val::null();
+        }
+        const auto& pcm = stereo_[static_cast<std::size_t>(channel)];
         return emscripten::val(emscripten::typed_memory_view(pcm.size(), pcm.data()));
     }
 
@@ -255,6 +272,9 @@ class WasmDecoder {
             // comment) - fall back to acmod-based labels, which cover it.
             labels_ = ac3_channel_labels(unit.acmod, false);
         }
+        fold_stereo(unit.channels, &unit.layout, unit.acmod, unit.layout.index_of(
+                        ac3::eac3::chanmap::Location::kLfe) >= 0,
+                    ac3::mix_levels(unit.mix), unit.dialnorm);
         append(unit.channels);
     }
 
@@ -266,6 +286,9 @@ class WasmDecoder {
                 labels_.emplace_back(ac3::eac3::chanmap::name(location));
             }
         }
+        const auto layout = ac3::eac3::chanmap::expand(sub.location_map());
+        fold_stereo(sub.channels, &layout, sub.acmod, sub.lfe, ac3::mix_levels(sub.mix),
+                    sub.dialnorm);
         append(sub.channels);
     }
 
@@ -331,6 +354,46 @@ class WasmDecoder {
         }
     }
 
+    // The §7.8 stereo fold, accumulated alongside the coded channels rather
+    // than instead of them: the visualization wants every coded channel, and
+    // playback wants two. ac3::OutputStage does the fold - the same code path
+    // 'ac3cli decode channels=2' and the ALSA monitor use - driven by the
+    // stream's OWN cmixlev/surmixlev (AC-3) or mixmdate levels (E-AC-3), with
+    // §7.8.1's normalisation keeping it from overloading. dialnorm is applied
+    // too, so a programme authored quiet plays at the reference level.
+    //
+    // The fold works on a copy of the frame, because the coded channels have
+    // to survive it for the per-channel display.
+    void fold_stereo(const std::vector<std::vector<float>>& frame_channels,
+                     const ac3::eac3::chanmap::Layout* layout, ac3::Acmod acmod, bool lfe,
+                     const ac3::MixLevels& levels, int dialnorm) {
+        if (frame_channels.empty() || frame_channels.front().empty()) {
+            return;
+        }
+        fold_frame_ = frame_channels;
+        fold_views_.clear();
+        fold_views_.reserve(fold_frame_.size());
+        for (auto& channel : fold_frame_) {
+            fold_views_.emplace_back(channel);
+        }
+        if (layout != nullptr && layout->count > 0) {
+            stereo_stage_.apply(fold_views_, *layout, acmod, lfe, levels, dialnorm);
+        } else {
+            stereo_stage_.apply(fold_views_, acmod, lfe, levels, dialnorm);
+        }
+        // Dual mono is never folded (1+1 is two programmes, not a
+        // soundfield), so it comes back at its coded width and its two
+        // programmes go out as they are - which is what the old hand-rolled
+        // fold did with them too, minus the invented coefficients.
+        const std::size_t produced =
+            acmod == ac3::Acmod::kDualMono ? std::min<std::size_t>(2, fold_frame_.size()) : 2;
+        stereo_.resize(2);
+        for (std::size_t ch = 0; ch < 2; ++ch) {
+            const auto& src = fold_frame_[std::min(ch, produced - 1)];
+            stereo_[ch].insert(stereo_[ch].end(), src.begin(), src.end());
+        }
+    }
+
     void append(const std::vector<std::vector<float>>& frame_channels) {
         if (channels_.size() < frame_channels.size()) {
             channels_.resize(frame_channels.size());
@@ -350,6 +413,15 @@ class WasmDecoder {
     std::vector<std::string> labels_;
     std::vector<std::vector<float>> channels_;
     std::vector<std::vector<float>> energy_;
+    // What the page actually plays: the §7.8 fold of the same decode, two
+    // channels, in playback order. See fold_stereo.
+    std::vector<std::vector<float>> stereo_;
+    ac3::OutputStage stereo_stage_{
+        {.target = ac3::DownmixTarget::kLoRo, .apply_dialnorm = true}};
+    // fold_stereo's own scratch, reused so a long file does not allocate a
+    // frame's worth of channels per frame.
+    std::vector<std::vector<float>> fold_frame_;
+    std::vector<std::span<float>> fold_views_;
 
     int object_count_ = 0;
     int object_start_frame_ = -1;
@@ -368,6 +440,7 @@ EMSCRIPTEN_BINDINGS(ac3forge_wasm_decode) {
         .function("channelCount", &WasmDecoder::channelCount)
         .function("channelLabels", &WasmDecoder::channelLabels)
         .function("channelPcm", &WasmDecoder::channelPcm)
+        .function("stereoPcm", &WasmDecoder::stereoPcm)
         .function("channelEnergy", &WasmDecoder::channelEnergy)
         .function("energyBlockSize", &WasmDecoder::energyBlockSize)
         .function("objectCount", &WasmDecoder::objectCount)

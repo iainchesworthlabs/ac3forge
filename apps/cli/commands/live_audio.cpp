@@ -24,8 +24,10 @@
 #include "ac3/audio/resampler.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
@@ -54,6 +56,9 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
 
     std::string device_id;
     std::string device_name = "default endpoint";
+    // 0 means the backend cannot say - see RenderDeviceInfo::channels, and
+    // the fold decision below, which treats unknown as "leave it alone".
+    std::uint16_t device_channels = 0;
     if (device_index >= 0) {
         const auto devices = ac3::audio::enumerate_render_devices();
         if (!devices) {
@@ -65,8 +70,46 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                          device_index);
             return 1;
         }
-        device_id = (*devices)[static_cast<std::size_t>(device_index)].id;
-        device_name = (*devices)[static_cast<std::size_t>(device_index)].name;
+        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
+        device_id = chosen.id;
+        device_name = chosen.name;
+        device_channels = chosen.channels;
+    } else {
+        // The default endpoint has no index to look up, so it is found by the
+        // is_default flag the enumeration already sets - the same endpoint an
+        // empty device_id opens below. A failed enumeration is not an error
+        // here: it only costs the fold decision its input.
+        if (const auto devices = ac3::audio::enumerate_render_devices()) {
+            for (const auto& candidate : *devices) {
+                if (candidate.is_default) {
+                    device_channels = candidate.channels;
+                    break;
+                }
+            }
+        }
+    }
+
+    // §7.8: what the decoders should fold to before anything is played. An
+    // explicit channels=/downmix= always wins; otherwise a device that renders
+    // fewer channels than the programme gets a real §7.8 fold instead of
+    // whatever the platform's shared-mode mixer would average it down to.
+    //
+    // MonitorSink opens in SHARED mode, so a 5.1 programme on a stereo
+    // endpoint is not refused - it is silently mixed by the OS, with no
+    // cmixlev/surmixlev and no §7.8.1 normalisation. That is exactly the case
+    // worth catching, and the only way to catch it is to notice the width
+    // beforehand: RenderDeviceInfo::channels is 0 on any backend that cannot
+    // say, and 0 leaves the audio alone.
+    ac3::OutputConfig output = meta.output;
+    if (output.target == ac3::DownmixTarget::kAsCoded && device_channels > 0) {
+        const auto scanned = ac3::io::scan(stream);
+        if (scanned && scanned->channels > static_cast<int>(device_channels)) {
+            output.target = device_channels == 1 ? ac3::DownmixTarget::kMono
+                                                 : ac3::DownmixTarget::kLoRo;
+            std::println("  {} channels on a {}-channel output: folding to {} (§7.8)",
+                         scanned->channels, device_channels,
+                         output.target == ac3::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
+        }
     }
 
     ac3::audio::MonitorSink sink;
@@ -87,7 +130,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         // several KB of per-block scratch members (alert #63's fix), which
         // pushed this one-shot stack declaration over the threshold - same
         // pattern as PR #50.
-        auto decoder = std::make_unique<ac3::Eac3Decoder>();
+        auto decoder = std::make_unique<ac3::Eac3Decoder>(
+            ac3::DecoderConfig{.drc_scale = meta.drc_scale,
+                               .fast_imdct = meta.fast_imdct,
+                               .heavy_compression = meta.p.heavy.has_value(),
+                               .output = output,
+                               .concealment = meta.concealment});
         std::vector<std::size_t> order;
         for (const auto& unit : *units) {
             const auto decoded = decoder->decode_access_unit(unit);
@@ -108,7 +156,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 // Dual mono has no Table E2.5 location to order by - `layout`
                 // is left empty for exactly that case - so Ch1/Ch2 monitor in
                 // coded order, same as everywhere else this comes up.
-                if (out.acmod == ac3::Acmod::kDualMono) {
+                // A fold has already put its own channels in their own order
+                // (L then R, or the one mono channel), so like dual mono it
+                // plays in coded order rather than through the rendered
+                // layout's permutation.
+                if (out.acmod == ac3::Acmod::kDualMono ||
+                    output.target != ac3::DownmixTarget::kAsCoded) {
                     order.resize(out.channels.size());
                     for (std::size_t i = 0; i < order.size(); ++i) {
                         order[i] = i;
@@ -155,7 +208,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             std::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return 1;
         }
-        ac3::FrameDecoder decoder;
+        ac3::FrameDecoder decoder{
+            ac3::DecoderConfig{.drc_scale = meta.drc_scale,
+                               .fast_imdct = meta.fast_imdct,
+                               .heavy_compression = meta.p.heavy.has_value(),
+                               .output = output,
+                               .concealment = meta.concealment}};
         std::vector<std::size_t> order;
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
@@ -164,7 +222,15 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 return 1;
             }
             if (order.empty()) {
-                order = ac3::io::wav_channel_order(decoded->acmod, decoded->lfe);
+                if (output.target != ac3::DownmixTarget::kAsCoded &&
+                    decoded->acmod != ac3::Acmod::kDualMono) {
+                    order.resize(decoded->channels.size());
+                    for (std::size_t i = 0; i < order.size(); ++i) {
+                        order[i] = i;
+                    }
+                } else {
+                    order = ac3::io::wav_channel_order(decoded->acmod, decoded->lfe);
+                }
                 const auto started = sink.start(device_id, sample_rate_hz(decoded->sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started) {

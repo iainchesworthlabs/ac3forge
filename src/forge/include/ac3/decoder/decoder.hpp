@@ -522,12 +522,10 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // The §7.8 fold, applied to an assembled program. Split out because
     // decode_access_unit_core and flush() both need it and neither is a
     // natural home for the Table E2.5 reduction it does first.
-    // render_output over an assembled access unit, in whichever storage it
-    // landed - the result's own vectors or the caller's spans.
+    // The §7.8 fold over an assembled access unit, in whichever storage it
+    // landed - the result's own vectors or the caller's spans. The fold
+    // itself is OutputStage's; this only decides what to hand it.
     void apply_output(DecodedAccessUnit& out, std::span<const std::span<float>> external);
-    void render_output(std::span<const std::span<float>> channels,
-                       const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
-                       const std::optional<meta::MixMetadata>& mix, int dialnorm);
     // Both public access-unit forms above: `external` empty means allocate
     // the program PCM into the returned DecodedAccessUnit, non-empty means
     // write through the spans - the same split decode_frame_core makes.
@@ -541,14 +539,8 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // separately would mean folding something nobody was ever meant to hear.
     // Inert unless DecoderConfig::output asks for something.
     OutputStage output_{};
-    // render_output's own working storage: the wide Table E2.5 layout reduced
-    // to the §7.8 acmod layout nearest it, and views onto whichever buffers
-    // the fold is reading. Members so a steady-state decode allocates
-    // nothing; empty unless a fold is actually configured.
-    std::vector<std::vector<float>> fold_scratch_;
-    std::vector<std::span<float>> fold_views_;
-    // apply_output's own views onto the assembled program - separate from
-    // fold_views_, which render_output uses as working storage of its own.
+    // apply_output's and flush()'s own views onto whichever channels are
+    // being folded. A member so a steady-state decode allocates nothing.
     std::vector<std::span<float>> au_views_;
 
     // Per-substream-identity state, indexed by strmtyp * 8 + substreamid: a

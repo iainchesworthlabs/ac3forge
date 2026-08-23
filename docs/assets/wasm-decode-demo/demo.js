@@ -89,7 +89,20 @@ async function decodeBytes(bytes, moduleInstance) {
         objectAudio.push(copyOut(decoder.objectAudioPcm(obj)));
     }
 
+    // The §7.8 stereo fold the library itself produced (ac3::OutputStage,
+    // the same code 'ac3cli decode channels=2' runs), not a fold invented
+    // here: the stream's own cmixlev/surmixlev or mixmdate levels drive it,
+    // §7.8.1's normalisation keeps it from overloading, and dialnorm is
+    // applied so a quietly authored programme still plays at the reference
+    // level. Null only for a stream that decoded to nothing.
+    const stereo = [];
+    for (let ch = 0; ch < 2; ch++) {
+        const view = decoder.stereoPcm(ch);
+        stereo.push(view ? copyOut(view) : new Float32Array(0));
+    }
+
     const result = {
+        stereo,
         streamKind: decoder.streamKind(),
         sampleRate: decoder.sampleRate(),
         channelCount,
@@ -121,32 +134,18 @@ function objectStateAt(result, obj, t) {
     return { x: positions[base], y: positions[base + 1], z: positions[base + 2], gainDb: positions[base + 3] };
 }
 
-// A simple demo downmix to stereo for actual playback - NOT a spec Lo/Ro or
-// Lt/Rt matrix, just enough to make a 5.1 bed audible on ordinary stereo
-// speakers/headphones, which is what almost every visitor to this page has.
-// The visualization panel still reflects the real per-channel decode above.
+// The §7.8 Lo/Ro fold the decoder produced, ready to play. The matrix, the
+// levels and the normalisation are all the library's (ac3::OutputStage) -
+// this page no longer has a downmix of its own, which is the point: what a
+// visitor hears here is what 'ac3cli decode channels=2' writes.
+//
+// No soft clip: §7.8.1 normalises the coefficients so that the sum feeding
+// any one output never exceeds 1, which means the fold cannot be louder than
+// the loudest coded sample. The tanh() this used to need was covering for a
+// matrix that had no such guarantee.
 function downmixToStereo(result) {
-    const n = result.channelCount > 0 ? result.pcm[0].length : 0;
-    const left = new Float32Array(n);
-    const right = new Float32Array(n);
-    const gain = { L: [1, 0], R: [0, 1], C: [0.707, 0.707], Ls: [0.6, 0], Rs: [0, 0.6], LFE: [0.5, 0.5] };
-    result.labels.forEach((label, ch) => {
-        const g = gain[label] || [0.35, 0.35]; // any channel this demo doesn't special-case
-        const pcm = result.pcm[ch];
-        const [gl, gr] = g;
-        if (gl === 0 && gr === 0) return;
-        for (let i = 0; i < n; i++) {
-            left[i] += pcm[i] * gl;
-            right[i] += pcm[i] * gr;
-        }
-    });
-    // Soft clip rather than hard clip - three or four simultaneously loud
-    // objects panned wide can exceed 1.0 after the downmix above.
-    for (let i = 0; i < n; i++) {
-        left[i] = Math.tanh(left[i]);
-        right[i] = Math.tanh(right[i]);
-    }
-    return { left, right };
+    const n = result.stereo[0].length;
+    return { left: result.stereo[0], right: result.stereo[1].length === n ? result.stereo[1] : result.stereo[0] };
 }
 
 // Builds the buffer actually played: either the bed downmix (default) or,

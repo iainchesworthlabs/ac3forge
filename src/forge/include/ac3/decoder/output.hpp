@@ -6,6 +6,7 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -169,6 +170,24 @@ class AC3FORGE_EXPORT OutputStage {
     void apply(std::span<const std::span<float>> channels, Acmod acmod, bool lfe,
                const MixLevels& levels, int dialnorm);
 
+    // The fold over a RENDERED E-AC-3 program: `channels` parallel to
+    // `layout` (Table E2.5 order), rather than in an acmod's Table 5.8 coded
+    // order. §7.8 defines folds FROM the eight AC-3 acmods and says nothing
+    // about the wide layouts Annex E's chanmap can express, so a layout with
+    // no acmod of its own is reduced to the nearest one first - every extra
+    // location seated where it obviously belongs (a wide left is a left, a
+    // rear surround is a surround, a top front left is a left), at -3 dB
+    // where it shares a seat. That reduction is an extension beyond §7.8 and
+    // the .cpp says so at the point it happens; it is an exact identity for
+    // every plain acmod bed, which is the case that must not change.
+    //
+    // Writes the fold into the first spans exactly as the overload above
+    // does. A layout with no locations at all (dual mono, which
+    // DecodedAccessUnit leaves empty) falls through to that overload.
+    void apply(std::span<const std::span<float>> channels,
+               const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
+               const MixLevels& levels, int dialnorm);
+
     // Samples of delay the stage adds, all of it the Lt/Rt phase shift's -
     // zero for every other target, and zero for Lt/Rt with the shift off.
     // A caller lining decoded output up against its source accounts for this
@@ -199,6 +218,12 @@ class AC3FORGE_EXPORT OutputStage {
     // The vector form's views onto its own argument, so lending them to the
     // span form costs no allocation after the first frame.
     std::vector<std::span<float>> views_;
+    // The rendered-layout form's own working storage: the wide Table E2.5
+    // layout reduced to the §7.8 acmod layout nearest it, and views onto the
+    // seats that reduction filled. Members so a steady-state decode allocates
+    // nothing; empty unless that overload is actually used.
+    std::vector<std::vector<float>> fold_scratch_;
+    std::vector<std::span<float>> fold_views_;
     // Reused across frames so a steady-state decode allocates nothing: the
     // fold's two output channels, and the surround sum feeding the shifter.
     std::vector<float> out_left_;
