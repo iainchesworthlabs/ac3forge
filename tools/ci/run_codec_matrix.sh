@@ -240,18 +240,36 @@ done
 #
 # "auto" belongs in this group rather than the one above because of the rate
 # this loop runs at: 192 kbit/s over 5.1 is 38 kbit/s per full-bandwidth
-# channel, below both of the ceilings in eac3_frame.cpp, so it turns coupling,
-# spectral extension and AHT all on and its stream is nothing like "none"'s.
-# It is also the tool set the landscape comparison reports, which makes it the
-# one most worth holding an independent decoder against. "auto+spx:5" covers
-# the other half of that decision - a caller pinning the band edge while
-# leaving the on/off choice to the rate policy.
+# channel, well below the extension ceiling, so it turns spectral extension
+# and AHT on and its stream is nothing like "none"'s. It is also the tool set
+# the landscape comparison reports, which makes it the one most worth holding
+# an independent decoder against. "auto+spx:5" covers the other half of that
+# decision - a caller pinning the band edge while leaving the on/off choice to
+# the policy.
 for tools in cpl spx aht all auto "auto+spx:5" "spx+aht" "cpl:4+spx:5" "aht:0" "all+atten:2" \
              "all+noatten" "all+nofastmdct"; do
     safe=$(echo "$tools" | tr ':+' '__')
     run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
     run_ffmpeg_check "eac3enc_${safe}.ec3"
+done
+
+# `auto` again, at rates and layouts where the CONTENT half of the decision is
+# what moves - the half a single 38 kbit/s-per-channel leg cannot show. The
+# extension ceiling is no longer one number: it runs with how much of the
+# frame's energy sits above the extension frequency, so 384 kbit/s over 5.1
+# (77 per channel) and 192 over stereo (96 per channel) both sit in the range
+# where the answer depends on the material rather than on the rate alone, and
+# both used to be flat refusals. They are also the two points where coupling's
+# minimum-region-width rule decides, since §E3.3.1 derives cplendf from
+# spxbegf wherever synthesis is on. FFmpeg reads all of it - `auto` never
+# reaches for enhanced coupling, precisely so that stays true.
+for spec in 384:51 192:stereo 256:stereo; do
+    kbps=${spec%%:*}
+    layout=${spec##*:}
+    run eac3-encode bootstrap_51.wav "eac3enc_auto_${kbps}_${layout}.ec3" "$kbps" auto "$layout"
+    run decode "eac3enc_auto_${kbps}_${layout}.ec3" "eac3enc_auto_${kbps}_${layout}.wav"
+    run_ffmpeg_check "eac3enc_auto_${kbps}_${layout}.ec3"
 done
 
 # Enhanced coupling (ecpl) and transient pre-noise processing (tpn): unlike
