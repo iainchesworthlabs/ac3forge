@@ -56,17 +56,23 @@ from append_performance_history import (  # the single definition of both tiers
 NOISE_FLOOR_FRACTION = 0.03
 
 
-def load_runs(directory: Path, filename_glob: str, value_key: str):
+def load_runs(directory: Path, filename_glob: str, entries_key: str, value_key: str):
     """Return ({workload name: [value per run]}, file count) for `directory`.
 
-    One JSON file per repetition, each holding the same workload names - the
-    shape bench_encoder.cpp's and kernel_bench.cpp's --json-out already write.
+    One JSON file per repetition, each holding the same workload names. The
+    two producers this reads do NOT share a schema:
+    bench_encoder.cpp's --json-out writes {"real_time_budget_ms_per_frame":
+    ..., "results": [...]}, kernel_bench.cpp's writes {"kernels": [...]} - so
+    the entries key has to come from the caller rather than be guessed at
+    (an earlier version guessed, and a synthetic test fixture that happened
+    to use a bare list masked the KeyError this caused on the real kernel
+    JSON in CI).
     """
     runs: dict[str, list[float]] = {}
     files = sorted(directory.glob(filename_glob))
     for path in files:
         payload = json.loads(path.read_text())
-        entries = payload["results"] if isinstance(payload, dict) else payload
+        entries = payload[entries_key]
         for entry in entries:
             runs.setdefault(entry["name"], []).append(float(entry[value_key]))
     return runs, len(files)
@@ -143,10 +149,10 @@ def main() -> int:
                              "stdout when that is unset (a local run).")
     args = parser.parse_args()
 
-    base_bench, base_n = load_runs(args.base_dir, "bench*.json", "ms_per_frame")
-    head_bench, head_n = load_runs(args.head_dir, "bench*.json", "ms_per_frame")
-    base_kern, _ = load_runs(args.base_dir, "kernels*.json", "ns_per_call")
-    head_kern, _ = load_runs(args.head_dir, "kernels*.json", "ns_per_call")
+    base_bench, base_n = load_runs(args.base_dir, "bench*.json", "results", "ms_per_frame")
+    head_bench, head_n = load_runs(args.head_dir, "bench*.json", "results", "ms_per_frame")
+    base_kern, _ = load_runs(args.base_dir, "kernels*.json", "kernels", "ns_per_call")
+    head_kern, _ = load_runs(args.head_dir, "kernels*.json", "kernels", "ns_per_call")
 
     if not base_bench or not head_bench:
         # Not a failure: a PR whose merge base predates ac3bench, or a runner
