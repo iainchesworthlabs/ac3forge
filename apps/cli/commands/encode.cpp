@@ -67,9 +67,11 @@ bool vbr_or_error(std::string_view text, std::optional<ac3::eac3::VbrConfig>& ou
 // nominal Table 5.18 bitrate the CLI accepts everywhere else runs past it -
 // every rate above 320 kbps at 16 kHz, above 448 at 22.05 kHz and above 512 at
 // 24 kHz. Both are ordinary things to type, nothing in the CLI's own grammar
-// marks the combination, and before this check the mismatch met an assert()
-// instead: a clean refusal in a release build, an abort in any build with
-// assertions live. Found by tools/ci/fuzz_eac3_encoder_space.py.
+// marks the combination, and before this check the zero met the assert() below
+// instead - which is compiled out under NDEBUG, so a release build fell
+// through to encode_access_unit's causeless message while any build with
+// assertions live aborted outright. atmos-encode, which never took this path,
+// refused cleanly throughout. Found by tools/ci/fuzz_eac3_encoder_space.py.
 bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint32_t bitrate,
                           ac3::SampleRate rate, bool vbr) {
     if (encoder.channel_count() != 0) {

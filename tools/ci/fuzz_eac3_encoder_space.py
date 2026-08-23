@@ -116,7 +116,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # envelope and the oracle model below are this file's own.
 import fuzz_encoder_space as ac3space  # noqa: E402  (sys.path set up just above)
 
-BLOCK = ac3space.BLOCK                          # §5.3.2: samples per audio block
 BLOCKS_PER_FRAME = ac3space.BLOCKS_PER_FRAME    # §5.3.1
 FRAME = ac3space.FRAME
 AUDIO_PROFILES = ac3space.AUDIO_PROFILES
@@ -373,7 +372,11 @@ def draw_tools(rng):
             return f"auto+spx:{rng.randint(0, 7)}"
         return "auto"
 
-    picked = [atom for atom in TOOL_ATOMS if rng.random() < 0.45]
+    # tpn is drawn less often than the other three: it is the one atom that
+    # costs the case FFmpeg's decode outright, so at an equal rate it would
+    # quietly halve how much of this space gets the stronger oracle.
+    picked = [atom for atom in TOOL_ATOMS
+              if rng.random() < (0.2 if atom == "tpn" else 0.45)]
     if not picked:
         picked = [rng.choice(TOOL_ATOMS)]
     tokens = []
@@ -384,7 +387,10 @@ def draw_tools(rng):
             tokens.append(f"cpl:{rng.randint(0, 15)}" if rng.random() < 0.5 else "cpl")
             # Enhanced coupling (§E3.5) rides on standard coupling: a
             # different way of coding the same band, not a different band.
-            if rng.random() < 0.35:
+            # Kept below the other sub-draws because ecpl, like tpn just
+            # below, costs the case FFmpeg's decode entirely - see the sample
+            # rate weights in draw_case for the same trade.
+            if rng.random() < 0.25:
                 tokens.append("ecpl")
         elif atom == "spx":
             # §E3.6's spxbegf, 0..7.
@@ -442,10 +448,21 @@ def draw_case(seed):
 
     sample_rate = rng.choices(
         SAMPLE_RATES,
-        # The half rates are weighted UP relative to an even split, not down:
-        # they are the part of the space nothing else in the repo encodes real
-        # audio at, and they are where frmsiz's ceiling bites.
-        weights=[3.0, 1.5, 1.5, 2.0, 2.0, 2.0], k=1)[0]
+        # These weights are the harness's one real budget decision, because
+        # sample rate alone decides whether a case gets FFmpeg's strict decode
+        # at all: `fscod2` audio is refused outright, so every half-rate case
+        # falls back to the framing oracle.
+        #
+        # The half rates are still weighted up against a per-entry even split
+        # - they are the part of the space nothing else in the repo encodes
+        # real audio at, and where frmsiz's ceiling bites - but not so far up
+        # that the strongest check available stops running. At 11:5 they take
+        # about 31% of the draw, which lands the run near an even split
+        # between the two oracle classes once ecpl, tpn and 7.1.4 have taken
+        # their own share. Measured before this was tuned, an even per-entry
+        # split put HALF the budget beyond FFmpeg's decode on sample rate
+        # alone, and a smoke run of six cases got no full-oracle case at all.
+        weights=[6.0, 2.5, 2.5, 1.5, 1.5, 1.5], k=1)[0]
 
     if command == "atmos-encode":
         layout = ""
@@ -934,8 +951,12 @@ def check_envelope(cli, jobs):
                 rates = [r for r in LEGAL_RATES if r >= info["min"]]
                 work = [(wav, rate, tools)
                         for rate in rates for wav in probes for tools in ENVELOPE_TOOLS]
+                # `layout` bound as a default rather than captured: this
+                # lambda is consumed before the loop advances, so capturing
+                # would be correct today and a late-binding bug the moment
+                # anything here stops being eager.
                 results = list(pool.map(
-                    lambda item: attempt(item[0], item[1][0], item[1][1], item[1][2], layout),
+                    lambda item, layout=layout: attempt(item[0], *item[1], layout),
                     enumerate(work)))
                 counts = {rate: sum(results[i * attempts:(i + 1) * attempts])
                           for i, rate in enumerate(rates)}
