@@ -43,13 +43,20 @@ it: at stereo/192 it is −0.8 dB vs FFmpeg and −1.3 dB vs DEE on SNR, with a 
 1.95 against FFmpeg's 0.83. Most items here are "do for E-AC-3 what AC-3 already does", then let
 both encoders decide from content rather than from the bit rate.
 
-- [ ] **EQ1 (L)** — E-AC-3 per-channel exponent strategies. The encoder hard-wires Table E2.10
-  code 0 (`kFrmExpStrategyCode = 0`, `src/forge/src/encoder/eac3_frame.cpp`): D15 in block 0,
-  reused for the other five, so — in the code's own words — a bin's exponent has to accommodate
-  its loudest block. That is the asymmetry PR #190 fixed for the AC-3 LFE, applied to every
-  E-AC-3 channel in every frame with dynamics. The AC-3 §8.2.8 reuse-span planner in
-  `encoder.cpp` is reusable; the decoder already reads per-block strategies (`expstre=1`). AHT
-  channels keep one set (`nchregs==1`). Add a quality-race leg on transient material.
+- [x] **EQ1 (L)** — E-AC-3 per-channel exponent strategies. Done: the encoder plans exponent
+  runs per stream per frame and writes them in either of Annex E's two forms — a Table E2.10
+  code per channel (`expstre` 0) or per-block strategies (`expstre` 1). Table E2.10 turned out to
+  enumerate all 32 run layouts with §8.2.8's own span rule attached, so the two forms differ only
+  in what strategies they can state; the planner (`src/forge/src/encoder/exp_strategy.hpp`) weighs
+  each exponent set's bits against the mantissa precision it buys back, bounded by what the
+  allocator actually gives each bin, and a proposal is only taken if the encoder's own allocator
+  agrees it costs the frame fewer bits. Two conformance bugs came out of it, both on paths no
+  stream had ever exercised: `deltbaie` 0 means RETAIN, not "no delta", so a run change needs an
+  explicit `'10'`; and the §E2.2.3 AHT flags exist only where a stream has one exponent region.
+  Measured on `quality_race.py`'s new transient leg (192 kbit/s stereo): LSD 1.54 → 0.95 dB at
+  equal SNR. The stationary legs are a wash (−0.22 to +0.35 dB SNR across every stereo and 5.1
+  variant), which is EQ13's ceiling showing: the only in-loop criterion is bits, so a plan that
+  trades bits for precision cannot be recognised as a win.
 - [ ] **EQ2 (M)** — Per-channel and per-block SNR offsets. Both encoders search one composite
   `csnroffst`+`fsnroffst` and write the same fine offset as `cplfsnroffst` and every
   `chfsnroffst` (`encoder.cpp`; `eac3_frame.cpp` `kSnroffststr = 0`), so a quiet centre channel

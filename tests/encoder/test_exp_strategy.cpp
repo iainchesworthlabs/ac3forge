@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <span>
@@ -81,28 +82,25 @@ TEST_CASE("a loud block on its own does not drag the frame's scale down",
     CHECK(block3_is_fresh);
 }
 
-TEST_CASE("a step too small to pay for its own exponent set is not sent",
+TEST_CASE("headroom on bins nobody codes is not worth an exponent set",
           "[eac3][exponents]") {
-    // One step of headroom on 253 bins across 5 blocks is 1265 bits of
-    // precision on paper - but only for bins the allocator actually codes, and
-    // here it codes four of them. Four bits against 592 is not a trade.
-    Exps exps{ac3::kBlocksPerFrame, kBins, 7};
+    // Block 3 is eight exponent steps louder than the rest, which is a large
+    // move by any measure - and the allocation reaches none of these bins, so
+    // every one of them reconstructs to zero whichever scale it is quantized
+    // against. There is nothing to recover, and a second set is never free.
+    Exps exps{ac3::kBlocksPerFrame, kBins, 14};
     exps.set_block(3, 6, kBins);
-    std::vector<std::uint8_t> precision(static_cast<std::size_t>(kBins), 0);
-    for (std::size_t bin = 0; bin < 4; ++bin) {
-        precision[bin] = 1;
-    }
-    const auto plan =
-        ac3::internal::plan_exponent_runs(input_for(exps, kBins, precision));
+    const std::vector<std::uint8_t> precision(static_cast<std::size_t>(kBins), 0);
+    const auto plan = ac3::internal::plan_exponent_runs(input_for(exps, kBins, precision));
     CHECK(plan.count == 1);
 }
 
-TEST_CASE("the same step DOES pay once every bin is coded", "[eac3][exponents]") {
+TEST_CASE("the same move DOES pay once the bins are coded", "[eac3][exponents]") {
     // Identical exponents to the test above; the only change is that the
-    // allocation now reaches every bin, so the same headroom is real precision
-    // rather than headroom on silence. This pair is the whole reason the
-    // planner takes a coded-bin mask at all.
-    Exps exps{ac3::kBlocksPerFrame, kBins, 7};
+    // allocation now reaches every bin, so the same eight steps are real
+    // precision rather than headroom on silence. This pair is the whole reason
+    // the planner is told what each bin was given.
+    Exps exps{ac3::kBlocksPerFrame, kBins, 14};
     exps.set_block(3, 6, kBins);
     const auto plan = ac3::internal::plan_exponent_runs(input_for(exps, kBins));
     CHECK(plan.count > 1);
@@ -151,23 +149,45 @@ TEST_CASE("the hoisted form only ever states Table E2.10's own strategies",
     }
 }
 
-TEST_CASE("the per-block form can state a strategy the table cannot",
+TEST_CASE("the per-block form is never a worse plan than the hoisted one",
           "[eac3][exponents]") {
-    // Table E2.10 gives a single-block run D45 - four bins to an exponent -
-    // which is §8.2.8's rule for a span that short. Freed from the table, the
-    // planner can spend the finer set on a block whose exponents vary bin to
-    // bin, and it should: D45's grouping minimum throws away most of that
-    // detail. This is what the seven extra bits of expstre == 1 buy.
-    Exps exps{ac3::kBlocksPerFrame, kBins, 20};
-    for (int bin = 0; bin < kBins; ++bin) {
-        exps.data[static_cast<std::size_t>(3) * static_cast<std::size_t>(kBins) +
-                  static_cast<std::size_t>(bin)] = static_cast<std::uint8_t>(bin % 2 == 0 ? 2 : 12);
+    // expstre == 1 can state anything expstre == 0 can and more, so its best
+    // plan can never score worse. Worth pinning: the frame pays seven bits a
+    // stream for the freedom, and the only reason to know whether that is
+    // money well spent is that this comparison is meaningful in the first
+    // place.
+    for (int loud = 0; loud < ac3::kBlocksPerFrame; ++loud) {
+        Exps exps{ac3::kBlocksPerFrame, kBins, 17};
+        exps.set_block(loud, 5, kBins);
+        auto input = input_for(exps, kBins);
+        const auto hoisted = ac3::internal::plan_exponent_runs(input);
+        input.free_strategy = true;
+        const auto free_form = ac3::internal::plan_exponent_runs(input);
+        CHECK(free_form.score <= hoisted.score);
     }
-    auto input = input_for(exps, kBins);
+}
+
+TEST_CASE("the per-block form states D15 where the table would force D45",
+          "[eac3][exponents]") {
+    // Table E2.10 gives a single-block run D45 - four bins to an exponent, and
+    // differentials four bins apart still limited to +-2 steps (§8.2.10). On a
+    // spectrum that falls a step a bin that limit bites hard: the transmitted
+    // set cannot keep up with the real one and every bin past the first few is
+    // quantized against a scale far too coarse. D15 follows the same fall
+    // exactly. Over a narrow band - a channel whose high end is coupled or
+    // extended away, so its own set is cheap - the finer set is worth its
+    // extra bits, and only the per-block form can state it.
+    constexpr int kNarrow = 37;  // fbw endmant with coupling from sub-band 0
+    Exps exps{ac3::kBlocksPerFrame, kNarrow, 24};
+    for (int bin = 0; bin < kNarrow; ++bin) {
+        exps.data[static_cast<std::size_t>(3) * static_cast<std::size_t>(kNarrow) +
+                  static_cast<std::size_t>(bin)] = static_cast<std::uint8_t>(bin);
+    }
+    auto input = input_for(exps, kNarrow);
     const auto hoisted = ac3::internal::plan_exponent_runs(input);
     input.free_strategy = true;
     const auto free_form = ac3::internal::plan_exponent_runs(input);
-    CHECK(free_form.score <= hoisted.score);
+    CHECK(free_form.score < hoisted.score);
     bool states_d15_on_a_short_run = false;
     for (int i = 0; i < free_form.count; ++i) {
         const int span = free_form.starts[i + 1] - free_form.starts[i];
@@ -233,5 +253,61 @@ TEST_CASE("every plan tiles the frame exactly once", "[eac3][exponents]") {
                 CHECK(plan.starts[i] > plan.starts[i - 1]);
             }
         }
+    }
+}
+
+TEST_CASE("the planner's exponent model is the real encode, exactly",
+          "[eac3][exponents]") {
+    // banded_run_exponents predicts what encode_exponents followed by
+    // decode_exponents would produce, without building either side's vectors -
+    // the planner calls it a few hundred times a frame. If the two ever drift
+    // apart the planner is scoring a set nobody transmits, so this pins them
+    // together on shapes chosen to exercise the parts that are easy to get
+    // wrong: a steep fall (slew limiting bites), a flat run (it does not), and
+    // an absolute exponent above the 4-bit field's ceiling.
+    std::vector<std::vector<std::uint8_t>> shapes;
+    {
+        std::vector<std::uint8_t> steep(static_cast<std::size_t>(kBins));
+        for (std::size_t bin = 0; bin < steep.size(); ++bin) {
+            steep[bin] = static_cast<std::uint8_t>(std::min<std::size_t>(bin / 4, 24));
+        }
+        shapes.push_back(steep);
+        std::vector<std::uint8_t> flat(static_cast<std::size_t>(kBins), 9);
+        shapes.push_back(flat);
+        std::vector<std::uint8_t> high(static_cast<std::size_t>(kBins), 24);
+        high[0] = 24;
+        shapes.push_back(high);
+        std::vector<std::uint8_t> ragged(static_cast<std::size_t>(kBins));
+        for (std::size_t bin = 0; bin < ragged.size(); ++bin) {
+            ragged[bin] = static_cast<std::uint8_t>((bin * 7 + bin / 3) % 25);
+        }
+        shapes.push_back(ragged);
+    }
+    for (const auto& shape : shapes) {
+        for (const auto strategy :
+             {ac3::ExpStrategy::kD15, ac3::ExpStrategy::kD25, ac3::ExpStrategy::kD45}) {
+            std::vector<std::uint8_t> modelled(shape.size());
+            ac3::internal::banded_run_exponents(shape, strategy, false, modelled);
+            const auto coded = ac3::encode_exponents(shape, strategy);
+            std::vector<std::uint8_t> decoded(shape.size());
+            ac3::decode_exponents(coded.absolute, coded.groups, strategy, decoded);
+            CHECK(modelled == decoded);
+        }
+    }
+    // The coupling channel's own shape: no bin-0 absolute, an even reference,
+    // and a bin count that divides by three times the group size.
+    constexpr int kCplBins = 240;
+    std::vector<std::uint8_t> cpl(static_cast<std::size_t>(kCplBins));
+    for (std::size_t bin = 0; bin < cpl.size(); ++bin) {
+        cpl[bin] = static_cast<std::uint8_t>(std::min<std::size_t>(3 + bin / 5, 24));
+    }
+    for (const auto strategy :
+         {ac3::ExpStrategy::kD15, ac3::ExpStrategy::kD25, ac3::ExpStrategy::kD45}) {
+        std::vector<std::uint8_t> modelled(cpl.size());
+        ac3::internal::banded_run_exponents(cpl, strategy, true, modelled);
+        const auto coded = ac3::encode_coupling_exponents(cpl, strategy);
+        std::vector<std::uint8_t> decoded(cpl.size());
+        ac3::decode_coupling_exponents(coded.cplabsexp, coded.groups, strategy, decoded);
+        CHECK(modelled == decoded);
     }
 }

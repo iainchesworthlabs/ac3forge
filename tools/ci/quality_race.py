@@ -625,14 +625,28 @@ CI_EAC3_THRESHOLDS = {
         "cpl+spx": (9.0, 9.5),
         "all": (9.0, 10.5),
     },
+    # Transient material, measured 2026-08-23 against a real build (FFmpeg
+    # 8.0.1): none/auto/cpl/aht 5.37 dB SNR and 0.94-0.95 dB LSD, the three
+    # spectral-extension rows -0.42 to -0.43 dB SNR and 1.81-1.85 dB LSD.
+    #
+    # The absolute numbers are not comparable to the stationary stereo row's
+    # and are not meant to be: a click train over near-silence at 192 kbit/s is
+    # a hard thing to code, and a waveform SNR near zero on parametric rows is
+    # what a synthesized high band scores by construction. What this row exists
+    # for is the exponent-run plan, so its bars sit closer to the measurement
+    # than the other rows' do - about 1.4 dB of SNR margin and 0.5 dB of LSD.
+    # That is deliberate: every regression this leg actually caught while it
+    # was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD, not the
+    # many dB a collapse elsewhere would, and a floor loose enough to ignore
+    # them would have made the leg pointless.
     "transient": {
-        "none": (0.0, 0.0),
-        "auto": (0.0, 0.0),
-        "cpl": (0.0, 0.0),
-        "spx": (0.0, 0.0),
-        "aht": (0.0, 0.0),
-        "cpl+spx": (0.0, 0.0),
-        "all": (0.0, 0.0),
+        "none": (4.0, 1.5),
+        "auto": (4.0, 1.5),
+        "cpl": (4.0, 1.5),
+        "spx": (-2.0, 2.6),
+        "aht": (4.0, 1.5),
+        "cpl+spx": (-2.0, 2.6),
+        "all": (-2.0, 2.6),
     },
 }
 

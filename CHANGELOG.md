@@ -12,6 +12,41 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **E-AC-3 per-channel exponent strategies (`EQ1`).** The encoder wrote Table E2.10 code 0 for
+  every channel of every frame — D15 in block 0, reused for the other five — so a bin's exponent
+  had to accommodate its loudest block, the asymmetry PR #190 fixed for the AC-3 LFE. It now
+  plans exponent runs per stream and writes them in either of Annex E's two forms: a Table E2.10
+  code per channel (`expstre` 0), or per-block strategies (`expstre` 1) where the plan needs a
+  strategy the table cannot state. The planner weighs each set's bits against the mantissa
+  precision it buys back — bounded, per bin, by what the allocator actually gives that bin — and
+  every proposal is checked against the encoder's own allocator before it is taken. On the new
+  transient quality-race leg (192 kbit/s stereo) spectral distance falls from 1.54 to 0.95 dB at
+  equal SNR; the stationary legs move between −0.22 and +0.35 dB SNR.
+- **A transient leg in the quality race.** `tools/ci/quality_race.py eac3-transient` prints the
+  same table the stationary legs do, on material whose level moves between the blocks of a frame
+  — onsets closer together than 32 ms, hard gates, decays that leave a frame's loudest block
+  20–30 dB above its quietest. The `ci` gate carries it as a seventh row set with its own floors.
+
+### Fixed
+
+- **`deltbaie` 0 means retain, not "no delta" (E-AC-3).** Outside block 0 a clear `deltbaie`
+  tells the decoder to keep the delta bit allocation the previous block left in place (§5.4.3.47).
+  With one exponent set for the whole frame the encoder's correction never changed mid-frame and
+  the distinction could not bite; once a channel can change exponent set mid-frame it can, and it
+  did — the decoder kept applying a stale correction, its allocation diverged from the encoder's,
+  and every field after that point was read at the wrong bit offset. The E-AC-3 emitter now sends
+  an explicit `'10'` at a decoder still holding a correction nobody wants, which is the rule the
+  AC-3 emitter already carried.
+- **§E2.2.3 AHT flags are gated on the exponent-region count (E-AC-3, both ends).** `cplahtinu`,
+  `chahtinu[ch]` and `lfeahtinu` exist only where that stream's exponents are transmitted exactly
+  once in the frame, and `cplahtinu` additionally only when coupling is in use for every block.
+  Both the encoder and the decoder read and wrote them unconditionally, which was right for every
+  stream this project had ever produced and wrong for anything else — including its own output
+  once it started planning exponent runs. FFmpeg rejected those frames; this project's own
+  decoder accepted them, having the same gap.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

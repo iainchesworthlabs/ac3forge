@@ -103,28 +103,56 @@ struct ExponentRunInput {
 };
 
 // The exponent set a run would transmit, as the decoder would reconstruct it:
-// the per-bin minimum over the run's blocks, then the strategy's own grouping
-// minimum on top. Slew limiting (§8.2.10) can lower it further; that is left
-// out, so the waste below is a floor rather than an estimate - it never
-// argues for a refresh that is not there.
+// exactly what encode_exponents followed by decode_exponents produces for the
+// per-bin minimum over the run's blocks, without building either side's
+// vectors. §8.2.10's whole preprocessing chain is here, not just the grouping
+// minimum, because the part it would be tempting to leave out is the part that
+// decides between the strategies: differentials are limited to +-2 and the
+// limiter only ever DECREASES exponents, so a spectrum that falls steeply
+// costs a D45 set - whose groups are four bins apart - four times the ground a
+// D15 set gives up over the same span. Modelling the grouping alone makes the
+// coarse strategies look nearly free, and they are not.
 inline void banded_run_exponents(std::span<const std::uint8_t> run_min, ExpStrategy strategy,
                                  bool coupling, std::span<std::uint8_t> out) {
-    const auto bins = run_min.size();
-    const auto group = static_cast<std::size_t>(exponent_group_size(strategy));
-    std::size_t first = 0;
-    if (!coupling) {
-        // §7.1.2: bin 0 is the transmitted absolute exponent, capped at 4 bits.
-        out[0] = static_cast<std::uint8_t>(std::min<int>(run_min[0], kMaxAbsoluteExponent));
-        first = 1;
-    }
-    for (std::size_t begin = first; begin < bins; begin += group) {
-        const auto end = std::min(begin + group, bins);
-        std::uint8_t value = kMaxExponent;
-        for (std::size_t bin = begin; bin < end; ++bin) {
-            value = std::min(value, run_min[bin]);
+    const auto bins = static_cast<int>(run_min.size());
+    const int group = exponent_group_size(strategy);
+    // pre[0] is the transmitted absolute exponent; pre[1 + i] covers the i-th
+    // group of `group` bins. A coupling channel's reference does not
+    // correspond to a coefficient and must stay even (§5.4.3.25), so its
+    // groups start at bin 0; a full-bandwidth or LFE channel's reference IS
+    // bin 0 and its groups start at bin 1 (§7.1.3).
+    std::array<int, 257> pre{};
+    const int first = coupling ? 0 : 1;
+    const int real_diffs = (bins - first + group - 1) / group;
+    for (int i = 0; i < real_diffs; ++i) {
+        const int begin = first + i * group;
+        int value = kMaxExponent;
+        for (int bin = begin; bin < begin + group && bin < bins; ++bin) {
+            value = std::min(value, static_cast<int>(run_min[static_cast<std::size_t>(bin)]));
         }
-        for (std::size_t bin = begin; bin < end; ++bin) {
-            out[bin] = value;
+        pre[static_cast<std::size_t>(i) + 1] = value;
+    }
+    pre[0] = coupling ? std::clamp(pre[1] & ~1, 0, kMaxExponent)
+                      : std::min<int>(run_min[0], kMaxAbsoluteExponent);
+    for (int i = 1; i <= real_diffs; ++i) {
+        pre[static_cast<std::size_t>(i)] =
+            std::min(pre[static_cast<std::size_t>(i)], pre[static_cast<std::size_t>(i) - 1] + 2);
+    }
+    for (int i = real_diffs; i-- > 0;) {
+        pre[static_cast<std::size_t>(i)] =
+            std::min(pre[static_cast<std::size_t>(i)], pre[static_cast<std::size_t>(i) + 1] + 2);
+        if (i == 0 && coupling) {
+            pre[0] &= ~1;  // the transmitted reference stays even
+        }
+    }
+    if (!coupling) {
+        out[0] = static_cast<std::uint8_t>(pre[0]);
+    }
+    for (int i = 0; i < real_diffs; ++i) {
+        const int begin = first + i * group;
+        for (int bin = begin; bin < begin + group && bin < bins; ++bin) {
+            out[static_cast<std::size_t>(bin)] =
+                static_cast<std::uint8_t>(pre[static_cast<std::size_t>(i) + 1]);
         }
     }
 }
@@ -199,10 +227,14 @@ inline void banded_run_exponents(std::span<const std::uint8_t> run_min, ExpStrat
             }
             const int span = b - a;
             for (const auto strategy : candidates) {
-                if (in.lfe && strategy != ExpStrategy::kD15) {
-                    continue;  // lfeexpstr states D15 or nothing
-                }
-                if (!in.free_strategy && strategy != strategy_for_span(span)) {
+                if (in.lfe) {
+                    // lfeexpstr states D15 or nothing, in either frame form -
+                    // the LFE has no Table E2.10 code of its own, so the
+                    // hoisted form does not constrain its run layout either.
+                    if (strategy != ExpStrategy::kD15) {
+                        continue;
+                    }
+                } else if (!in.free_strategy && strategy != strategy_for_span(span)) {
                     continue;  // Table E2.10 fixes it from the span
                 }
                 const int group = exponent_group_size(strategy);

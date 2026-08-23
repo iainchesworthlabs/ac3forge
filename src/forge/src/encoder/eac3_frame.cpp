@@ -2491,10 +2491,49 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         run.bap.assign(static_cast<std::size_t>(plan.endmant), 0);
     };
+    // Section 7.2.2.6: compare a run's shared exponent-derived masking curve
+    // against one built from the real coefficients. A run's exponents are the
+    // MIN across its blocks per bin - driven by whichever block has the
+    // LARGEST magnitude there - so the comparison needs that same per-bin max,
+    // not an average, or it would measure the (intentional) gap between
+    // "loudest block" and "typical block" instead of real quantization error
+    // and bias toward spurious cuts. See ExponentRun::delta for why AHT
+    // streams and the LFE never carry one.
+    //
+    // Delta is skipped entirely whenever coupling is in use this frame - not
+    // just for the coupling channel itself - deliberately narrowing this first
+    // cut's scope: the coupling channel is a synthesized average of the
+    // coupled channels rather than a real recorded signal, and even leaving
+    // ONLY the fbw channels' own narrow below-cplstrtmant region eligible, the
+    // extra side-info overhead was enough to break the tightest coupling
+    // scenarios (128 kbit/s 5.1, exactly the case coupling exists to rescue).
+    // Getting a coupling-aware version of this heuristic right needs more care
+    // than this phase has room for (roadmap EQ5).
+    const auto set_run_delta = [&](int s, ChannelPlan& plan, ExponentRun& run, int first_blk,
+                                   int last_blk) {
+        run.delta = {};
+        const bool is_lfe = config_.lfe && s == nfchans;
+        if (plan.aht || is_lfe || cpl.in_use) {
+            return;
+        }
+        auto& peak_mag = state_->delta_peak_mag;
+        peak_mag.assign(static_cast<std::size_t>(plan.endmant), 0.0);
+        for (int blk = first_blk; blk < last_blk; ++blk) {
+            const auto& c = coeffs_at(s, blk);
+            for (int bin = plan.start; bin < plan.endmant; ++bin) {
+                peak_mag[static_cast<std::size_t>(bin)] =
+                    std::max(peak_mag[static_cast<std::size_t>(bin)],
+                             std::abs(c[static_cast<std::size_t>(bin)]));
+            }
+        }
+        run.delta = choose_delta_segments(peak_mag, run.decoded, plan.start);
+    };
     // The plan every stream starts from: one D15 set for the whole frame,
     // Table E2.10 code 0 - what this encoder emitted before it planned runs at
-    // all, and still the right answer for a stationary frame.
-    const auto set_single_run = [&](ChannelPlan& plan, std::span<const std::uint8_t> raw,
+    // all, and still the right answer for a stationary frame. Complete, delta
+    // included, because it is also the fallback a rejected plan reverts to and
+    // the baseline that rejection is measured against.
+    const auto set_single_run = [&](int s, ChannelPlan& plan, std::span<const std::uint8_t> raw,
                                     bool is_cpl) {
         if (plan.runs.empty()) {
             plan.runs.resize(1);
@@ -2503,8 +2542,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         auto& run = plan.runs[0];
         run.start_block = 0;
         run.strategy = ExpStrategy::kD15;
-        run.delta = {};
         encode_run(plan, run, raw, is_cpl);
+        set_run_delta(s, plan, run, 0, kBlocksPerFrame);
         plan.run_of_block = {};
         plan.frmexpstr = 0;
     };
@@ -2615,7 +2654,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 }
             }
         }
-        set_single_run(plan, raw, is_cpl);
+        set_single_run(s, plan, raw, is_cpl);
     }
 
     // Coupling leak seeds, from the coupling channel's own first band: the
@@ -2670,9 +2709,18 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                                        run.cpl_coded.groups.size());
         }
         for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            const auto& run = p.run_at(blk);
             const std::array<std::span<const std::uint8_t>, 1> view{
-                std::span{p.run_at(blk).bap}.subspan(static_cast<std::size_t>(p.start))};
+                std::span{run.bap}.subspan(static_cast<std::size_t>(p.start))};
             bits += static_cast<std::uint32_t>(mantissa_bits_per_block(view));
+            // Section 5.4.3.50-57: this stream's own share of the delta
+            // element - deltnseg plus a 12-bit offset/length/value triple per
+            // segment, in every block the run covers. Runs that differ carry
+            // different corrections, so this is part of what a plan costs
+            // rather than a constant that cancels out of the comparison.
+            if (run.delta.deltnseg > 0) {
+                bits += 3 + 12 * static_cast<std::uint32_t>(run.delta.deltnseg);
+            }
         }
         return bits;
     };
@@ -2680,6 +2728,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         AC3_ZONE_SCOPED_N("step5_provisional_alloc");
         for (int s = 0; s < streams; ++s) {
             auto& plan = payload.chans[static_cast<std::size_t>(s)];
+            if (plan.aht) {
+                // An AHT stream is never planned, and its allocation is not
+                // measurable this way in any case: its bap holds hebap codes
+                // (0..19, Table E3.5) rather than Table 7.18 baps, and its
+                // whole frame of mantissas is emitted in block 0 rather than
+                // per block. aht_stream_bits in step 8 is what sizes it.
+                continue;
+            }
             single_cost[static_cast<std::size_t>(s)] = allocate_and_cost(plan, s);
             const auto& run = plan.runs[0];
             const auto mask = std::span{coded_mask}.subspan(
@@ -2764,7 +2820,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 6d. Build the chosen plan ------------------------------------------
     for (int s = 0; s < streams; ++s) {
         auto& plan = payload.chans[static_cast<std::size_t>(s)];
-        const bool is_lfe = config_.lfe && s == nfchans;
         const bool is_cpl = s == cpl_stream;
         if (!plan_runs || plan.aht) {
             continue;  // 6a's single set already stands
@@ -2791,41 +2846,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 }
             }
             encode_run(plan, run, raw, is_cpl);
-            // §7.2.2.6: compare this run's shared exponent-derived masking
-            // curve against one built from the real coefficients. `raw` above
-            // (and hence this run's exponents) is the MIN exponent across the
-            // run's blocks per bin - driven by whichever block has the LARGEST
-            // magnitude there - so the comparison needs that same per-bin max,
-            // not an average, or it would measure the (intentional) gap
-            // between "loudest block" and "typical block" instead of real
-            // quantization error and bias toward spurious cuts. See the
-            // ExponentRun::delta comment for why AHT streams and the LFE skip
-            // this.
-            //
-            // Delta is skipped entirely whenever coupling is in use this frame
-            // - not just for the coupling channel itself - deliberately
-            // narrowing this first cut's scope: the coupling channel is a
-            // synthesized average of the coupled channels rather than a real
-            // recorded signal, and even leaving ONLY the fbw channels' own
-            // narrow below-cplstrtmant region eligible, the extra side-info
-            // overhead was enough to break the tightest coupling scenarios
-            // (128 kbit/s 5.1, exactly the case coupling exists to rescue).
-            // Getting a coupling-aware version of this heuristic right needs
-            // more care than this phase has room for (roadmap EQ5).
-            run.delta = {};
-            if (!is_lfe && !cpl.in_use) {
-                auto& peak_mag = state_->delta_peak_mag;
-                peak_mag.assign(static_cast<std::size_t>(plan.endmant), 0.0);
-                for (int blk = first_blk; blk < last_blk; ++blk) {
-                    const auto& c = coeffs_at(s, blk);
-                    for (int bin = plan.start; bin < plan.endmant; ++bin) {
-                        peak_mag[static_cast<std::size_t>(bin)] =
-                            std::max(peak_mag[static_cast<std::size_t>(bin)],
-                                     std::abs(c[static_cast<std::size_t>(bin)]));
-                    }
-                }
-                run.delta = choose_delta_segments(peak_mag, run.decoded, plan.start);
-            }
+            set_run_delta(s, plan, run, first_blk, last_blk);
             for (int blk = first_blk; blk < last_blk; ++blk) {
                 plan.run_of_block[static_cast<std::size_t>(blk)] = static_cast<int>(r);
             }
@@ -2857,7 +2878,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         raw_again[bin] = std::min(raw_again[bin], current[bin]);
                     }
                 }
-                set_single_run(plan, raw_again, is_cpl);
+                set_single_run(s, plan, raw_again, is_cpl);
                 continue;
             }
         }
