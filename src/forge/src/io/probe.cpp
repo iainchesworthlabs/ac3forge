@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <ios>
 #include <istream>
 #include <memory>
 #include <optional>

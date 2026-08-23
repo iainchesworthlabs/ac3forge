@@ -9,7 +9,6 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <string_view>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
