@@ -58,6 +58,17 @@ namespace ac3::meta {
 // Annex 3 weights "each channel except the LFE channels", so an LFE-type
 // channel is not a term in the sum at all - which is also why true peak,
 // which does measure it, reads it from a separate path.
+//
+// NOTE for anyone cross-checking against another meter: ffmpeg's ebur128 does
+// NOT implement Annex 3. Probed one channel at a time with a 997 Hz tone, it
+// weights a 7.1 layout's BACK surrounds (M±135) at 1.41, the same as its side
+// surrounds - i.e. it generalises Annex 1's Table 3 by channel NAME rather
+// than by position, so anything called a surround gets +1.5 dB. Table 4 and
+// Table 5 both put M±135 at 1.00, and this function follows the standard, so
+// the two disagree by 1.5 dB on those two channels by design. On 5.1, where
+// the only surrounds are M±110, the two agree exactly - measured to within
+// 0.02 dB, which is what makes ffmpeg a usable oracle for the Annex 1 path
+// and not for this one.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<double> position_weight(
     eac3::chanmap::Location location);
 

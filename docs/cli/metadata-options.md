@@ -408,6 +408,13 @@ layout's rear pair is **not** surround-weighted (M±135 is past the 120° edge),
 either (Table 4's elevation row simply does not cover the upper layer). The wides *are*, sitting exactly on the
 inclusive 60° edge.
 
+That first one is where other meters differ. ffmpeg's `ebur128`, probed one channel at a time, weights a 7.1
+layout's back surrounds at 1.41 just like its side surrounds — it generalises Annex 1's Table 3 by channel
+*name*, so anything called a surround gets +1.5 dB. Annex 3's Table 4 and Table 5 both put M±135 at 1.00, and
+`layout=rendered` follows the standard, so expect a 1.5 dB disagreement on exactly those two channels. On 5.1
+the two agree to within 0.02 dB, which is why `ebur128` is a good cross-check for `layout=bed` and not for
+`layout=rendered`.
+
 For a plain 5.1 stream the two algorithms are the same function — `Ls`/`Rs` are M±110, inside Table 4's +1.5 dB
 sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes nothing there. The one Table 5.8
 layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
