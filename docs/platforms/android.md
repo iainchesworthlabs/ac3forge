@@ -59,6 +59,15 @@ The r26 pin also reaches into the library itself: r26's bundled libc++ does not 
 `<format>`, so shared library code avoids it outright — `src/forge/src/version.cpp` builds its
 version string by plain concatenation and cites this page for why.
 
+The same libc++ implements only `<charconv>`'s **integer** `from_chars`, not its floating-point
+overloads. Library code that has to turn text into a `double` therefore uses `strtod`
+(`src/forge/src/encoder/plan.cpp`, `encoder/assignment.cpp`) and, where it has to go the other
+way, a classic-locale `ostringstream` rather than `std::format`
+(`src/forge/src/oba/scene_text.hpp`, which also serves the object-scene file formats). The macOS
+wheel's own deployment target has the identical pair of gaps — `'from_chars' is unavailable:
+introduced in macOS 26.0`, `'to_chars' is unavailable: introduced in macOS 13.3` — so this leg
+and **Build wheels (macos-latest)** tend to fail together, and are the only two that catch it.
+
 `minSdk = 26` (Oreo) is a hard floor, not a target: `monitor.cpp` depends on AAudio outright, which
 does not exist below API 26, and there is no fallback path. Real Shield TV hardware (2017 model
 onward) ships well above this. Only `arm64-v8a` is built — every real Shield TV is arm64, and

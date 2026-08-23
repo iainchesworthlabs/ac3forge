@@ -81,6 +81,17 @@ structs, `constexpr` and `consteval` for anything computable at build time. The 
 and several spec-table self-checks are `consteval` — a table that is wrong fails the build
 rather than a test.
 
+**Two exceptions, inside `src/` only** (the apps and tests are free of both). `<format>` is
+absent from the NDK's bundled libc++, so library code builds its strings by concatenation
+instead — see [Android](docs/platforms/android.md) and `src/forge/src/version.cpp`. And
+`<charconv>`'s **floating-point** `from_chars`/`to_chars` — the latter of which is what
+`std::format` uses to print a `double` — are unavailable both there and at the macOS wheel's
+deployment target, so library code reaches decimals through `strtod` and a classic-locale
+`ostringstream` (`src/forge/src/oba/scene_text.hpp`, `encoder/plan.cpp`); the **integer**
+`from_chars` overloads are fine everywhere and are used directly. Neither gap shows up on a
+Windows, Linux or Homebrew-macOS build, so the CI legs that catch them are Android (Shield) and
+Build wheels (macos-latest).
+
 **Warnings are errors.** `ac3::warnings` is linked privately into every first-party target,
 including `examples/`. That includes `-Wsign-conversion` and its MSVC equivalents, which in
 this codebase means a lot of explicit `static_cast<std::size_t>` on indices. Add the cast; do
