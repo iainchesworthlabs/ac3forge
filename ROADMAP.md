@@ -411,12 +411,12 @@ At 2faf352 on linux-gcc: `plain_51` encodes at 0.49 ms/frame (65× real time), `
 0.31 ms; a 180-second 5.1 decode takes 0.79 s since the fast IMDCT became the default. There is
 no SIMD and no threading anywhere in the codec core.
 
-- [ ] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
+- [x] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
   ms/frame series and no real-time gate (`bench_encoder` runs `plain_51` and `atmos_4obj` on a
   440 Hz tone; `bench_memory` already has the workloads); `kernel_bench` benches the direct IMDCT
   and not the fast one that is now the default; the decoder has no Tracy zones. Switch the
   timing benches to `reference_51.wav` — the project's own real-audio rule applies to timing too.
-- [ ] **PF2 (S)** — Inline `to_fixed25` and fuse it with exponent extraction: an out-of-line
+- [x] **PF2 (S)** — Inline `to_fixed25` and fuse it with exponent extraction: an out-of-line
   exported `std::round` call made about 9,100 times per frame, ~33–38 µs and the largest named
   remainder of the last profile (~7% of the fast path). Byte-identical streams on the corpus are
   the gate.

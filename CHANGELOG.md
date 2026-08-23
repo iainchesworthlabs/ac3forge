@@ -12,7 +12,41 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **Every codec path now has a throughput number and a real-time gate** (roadmap `PF1`). The
+  performance suite covered two encoder configurations; it now covers nine workloads — AC-3,
+  E-AC-3 (with the Annex E tools on `auto`, at 5.1 and stereo) and Atmos/JOC encode, plus the
+  three decode paths that read what they produce. Until now the E-AC-3 encoder, the largest
+  source file in the codec, and every decoder had no ms/frame series on
+  [the performance trend page](docs/performance-trend.md) and no real-time assertion anywhere,
+  so a regression in any of them was invisible. `ac3kernelbench` also gains the inverse
+  transform's fast form — the decoder's default since 0.9.0, previously tracked only through
+  the direct form no decoder runs — and both short-block inverses. Both decoders gain Tracy
+  zones (frame, block, exponents, bit allocation, mantissas, decoupling, IMDCT/overlap and JOC
+  reconstruction), so a decode regression can be attributed without a bisect.
+
 ### Changed
+
+- **The timing benches are fed real programme material** (roadmap `PF1`). `ac3bench` and
+  `ac3perf` ran a 440 Hz sine on every channel; they now read `tests/golden/audio/reference_51.wav`
+  through a shared loader, the same rule `ac3kernelbench` has always followed. A single
+  stationary tone is not a cheaper version of programme material but a different workload: its
+  one-bin spectrum leaves the SNR-offset search, coupling, rematrixing and — because the
+  transient detector never fires — the entire block-switched transform out of the measurement,
+  so a regression confined to any of them could not move the number.
+
+- **`to_fixed25` is inlined and fused with exponent extraction** (roadmap `PF2`). It was an
+  out-of-line exported function wrapping a libm `std::round`, called once per coefficient bin
+  from both encoders — about 9,100 times per frame — and the largest named remainder of the
+  last profile at roughly 7% of a fast-path 5.1 encode. It moves into the header as a
+  `constexpr` function with bit-identical rounding (half away from zero, expressed without the
+  libm call), and both encoders' convert-then-re-walk pair becomes a single fused pass. Encoder
+  output is byte-identical: verified over a 24-stream corpus spanning both generations, several
+  rates and layouts, every Annex E tool set, both transform paths and Atmos/JOC.
+  `ac3::to_fixed25` and `ac3::exponent_from_fixed` are no longer exported from the shared
+  library — source callers are unaffected, a binary that linked them out of the DLL/`.so` must
+  recompile.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list

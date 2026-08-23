@@ -40,15 +40,9 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc_tables.hpp"
+#include "real_audio.hpp"
 
 namespace {
-
-// Set by CMake to the repo root, so the real-audio fixture resolves
-// regardless of the working directory this binary is launched from.
-#ifndef AC3FORGE_SOURCE_DIR
-#define AC3FORGE_SOURCE_DIR "."
-#endif
-constexpr const char* kDefaultWav = AC3FORGE_SOURCE_DIR "/tests/golden/audio/reference_51.wav";
 
 // The largest legal fbw mantissa count (chbwcod = 60: 37 + 3*(60+12) = 253 -
 // see exponents.cpp's own derivation). compute_bit_allocation/
@@ -133,9 +127,12 @@ std::array<std::uint8_t, 256> exps_from_coeffs(const std::array<double, 256>& co
 // Real fixture, loaded once: reference_51.wav's six channels, each long
 // enough to supply several consecutive real blocks (AHT's six-block window,
 // ecpl's prev/curr/next triple) without running off the end of the file.
+// The loading and its no-synthetic-fallback rule live in real_audio.hpp,
+// shared with ac3bench and ac3perf so the three benches cannot drift apart
+// again on what a bench input is.
 struct RealAudio {
     ac3::io::WavData wav;
-    static constexpr int kMinChannels = 6;
+    static constexpr std::size_t kMinChannels = 6;
     static constexpr int kMinBlocks = 8;  // covers every kernel's block reach
 
     [[nodiscard]] std::span<const float> channel(std::size_t index) const {
@@ -143,29 +140,11 @@ struct RealAudio {
     }
 };
 
-RealAudio load_real_audio(const std::string& path) {
-    auto result = ac3::io::read_wav(path);
-    if (!result) {
-        std::fprintf(stderr,
-                     "kernel_bench: failed to read real-audio fixture '%s' (%s) - kernel "
-                     "inputs must come from real audio, not synthetic silence, so there is no "
-                     "fallback here\n",
-                     path.c_str(), std::string(ac3::io::describe(result.error())).c_str());
-        std::exit(1);
-    }
-    if (static_cast<int>(result->channels.size()) < RealAudio::kMinChannels) {
-        std::fprintf(stderr, "kernel_bench: '%s' has %zu channels, need >= %d\n", path.c_str(),
-                     result->channels.size(), RealAudio::kMinChannels);
-        std::exit(1);
-    }
-    const auto min_samples =
-        static_cast<std::size_t>(RealAudio::kMinBlocks + 1) * ac3::kSamplesPerBlock;
-    if (result->frame_count() < min_samples) {
-        std::fprintf(stderr, "kernel_bench: '%s' has %zu samples/channel, need >= %zu\n",
-                     path.c_str(), result->frame_count(), min_samples);
-        std::exit(1);
-    }
-    return RealAudio{.wav = std::move(*result)};
+RealAudio load_fixture(const std::string& path) {
+    return RealAudio{
+        .wav = perf::load_real_audio(path, RealAudio::kMinChannels,
+                                     static_cast<std::size_t>(RealAudio::kMinBlocks + 1) *
+                                         ac3::kSamplesPerBlock)};
 }
 
 void write_json(const std::vector<KernelResult>& results, const std::string& path) {
@@ -184,7 +163,7 @@ void write_json(const std::vector<KernelResult>& results, const std::string& pat
 
 int main(int argc, char** argv) {
     std::string json_out;
-    std::string wav_path = kDefaultWav;
+    std::string wav_path = perf::kReference51Wav;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--json-out" && i + 1 < argc) {
@@ -194,7 +173,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    const RealAudio audio = load_real_audio(wav_path);
+    const RealAudio audio = load_fixture(wav_path);
 
     // Real per-block MDCT coefficients and their derived exponents, for a
     // handful of consecutive blocks on the first two real channels - enough
@@ -249,9 +228,36 @@ int main(int argc, char** argv) {
     }));
 
     // --- imdct512_windowed ----------------------------------------------------
+    // The inverse transform is where a decode frame's time actually goes,
+    // and until roadmap PF1 only the direct form was benched here - while
+    // the fast one became DecoderConfig::fast_imdct's default in 0.9.0, so
+    // this series tracked a transform no decoder runs any more. Both forms
+    // are timed for the same reason the forward pair above is: mode=reference
+    // still selects the direct evaluation, and the ratio between these two
+    // rows is what that choice costs.
     results.push_back(time_kernel("imdct512_windowed", [&] {
         std::array<double, 512> x{};
         ac3::imdct512_windowed(ch0_coeffs[4], x);
+        g_sink += x[256];
+    }));
+    results.push_back(time_kernel("imdct512_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct512_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
+
+    // --- imdct256_pair_windowed (the block-switched short inverse) -----------
+    // It takes the same 256-coefficient set a long block carries (§7.9.4.2),
+    // so it reads exactly the real input the two rows above do and the
+    // difference between them is the transform, not the data.
+    results.push_back(time_kernel("imdct256_pair", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x);
+        g_sink += x[256];
+    }));
+    results.push_back(time_kernel("imdct256_pair_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x, /*fast=*/true);
         g_sink += x[256];
     }));
 
