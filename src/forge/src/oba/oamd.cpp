@@ -276,6 +276,33 @@ std::string_view describe(BedLabel label) {
     return "?";
 }
 
+Position bed_label_position(BedLabel label) {
+    // x: 0 left wall, 1 right. y: 0 front wall, 1 back. z: -1 floor, +1 ceiling.
+    switch (label) {
+        case BedLabel::kL:    return {.x = 0.0, .y = 0.0, .z = 0.0};
+        case BedLabel::kR:    return {.x = 1.0, .y = 0.0, .z = 0.0};
+        // The two LFEs share the centre's coordinates deliberately: an LFE
+        // has no direction to point at (see atmos.hpp), so the front centre
+        // is a placeholder for a view, not a claim about where it sits.
+        case BedLabel::kC:
+        case BedLabel::kLfe:
+        case BedLabel::kLfe2: return {.x = 0.5, .y = 0.0, .z = 0.0};
+        case BedLabel::kLs:   return {.x = 0.0, .y = 0.5, .z = 0.0};
+        case BedLabel::kRs:   return {.x = 1.0, .y = 0.5, .z = 0.0};
+        case BedLabel::kLb:   return {.x = 0.0, .y = 1.0, .z = 0.0};
+        case BedLabel::kRb:   return {.x = 1.0, .y = 1.0, .z = 0.0};
+        case BedLabel::kLw:   return {.x = 0.0, .y = 0.25, .z = 0.0};
+        case BedLabel::kRw:   return {.x = 1.0, .y = 0.25, .z = 0.0};
+        case BedLabel::kTfl:  return {.x = 0.0, .y = 0.0, .z = 1.0};
+        case BedLabel::kTfr:  return {.x = 1.0, .y = 0.0, .z = 1.0};
+        case BedLabel::kTsl:  return {.x = 0.0, .y = 0.5, .z = 1.0};
+        case BedLabel::kTsr:  return {.x = 1.0, .y = 0.5, .z = 1.0};
+        case BedLabel::kTbl:  return {.x = 0.0, .y = 1.0, .z = 1.0};
+        case BedLabel::kTbr:  return {.x = 1.0, .y = 1.0, .z = 1.0};
+    }
+    return {};
+}
+
 std::vector<int> joc_object_indices(const Program& program) {
     std::vector<int> indices;
     const int total = object_count(program);
@@ -770,6 +797,43 @@ void read_trim_element(BitReader& r, int object_count, TrimElement& trim) {
 }
 
 }  // namespace
+
+std::vector<DisplayObject> describe_objects(const DecodedProgram& program, std::size_t block) {
+    std::vector<DisplayObject> out;
+    if (program.blocks.empty()) {
+        return out;
+    }
+    const auto& update = program.blocks[std::min(block, program.blocks.size() - 1)];
+    const auto labels = bed_labels(program.program.bed);
+    const int anchored = object_count(program.program) - program.program.dynamic_objects;
+    for (const int index : joc_object_indices(program.program)) {
+        if (index >= anchored) {
+            const auto dynamic = static_cast<std::size_t>(index - anchored);
+            if (dynamic >= update.objects.size()) {
+                out.push_back({});
+                continue;
+            }
+            const auto& object = update.objects[dynamic];
+            out.push_back({.position = object.position,
+                           .size = object.size,
+                           .gain_db = object.gain_db,
+                           .snap = object.snap,
+                           .active = object.active,
+                           .label = {}});
+            continue;
+        }
+        // A bed (or ISF) channel. Only a standard Table 12 assignment yields
+        // a label, so an ISF or non-standard channel comes back placed at the
+        // room centre with no name - which is honest: nothing named it.
+        if (static_cast<std::size_t>(index) < labels.size()) {
+            const auto label = labels[static_cast<std::size_t>(index)];
+            out.push_back({.position = bed_label_position(label), .label = describe(label)});
+        } else {
+            out.push_back({});
+        }
+    }
+    return out;
+}
 
 std::optional<DecodedProgram> parse_payload(std::span<const std::byte> payload) {
     BitReader r{payload};

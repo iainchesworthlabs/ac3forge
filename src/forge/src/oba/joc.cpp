@@ -216,7 +216,7 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
 
     // --- joc_data (§6.2.5) ---
     for (int object = 0; object < objects; ++object) {
-        const auto shape = params.shapes[static_cast<std::size_t>(object)];
+        const auto& shape = params.shapes[static_cast<std::size_t>(object)];
         if (!shape.present) {
             continue;
         }

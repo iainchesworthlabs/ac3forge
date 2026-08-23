@@ -293,6 +293,17 @@ enum class BedLabel : std::uint8_t {
 // Empty for a dynamic-object-only program and for a non-standard assignment.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<BedLabel> bed_labels(std::uint16_t assignment);
 
+// Where a bed channel's loudspeaker nominally sits in §4.2.1's room cuboid.
+//
+// This is NOT transmitted: a bed channel is speaker-anchored precisely so that
+// no position has to be, and a renderer places it from the label alone. What
+// this returns is the room-anchored position that label MEANS - front wall at
+// y = 0, ceiling at z = +1, sides at x = 0 and 1, with the surround pair
+// halfway back and the back pair at the rear wall, which is the layout the
+// labels are named for. It exists so a view that draws objects in a room has
+// somewhere to draw a bed channel, and nothing in encode or decode reads it.
+[[nodiscard]] AC3FORGE_EXPORT Position bed_label_position(BedLabel label);
+
 // One object_audio_metadata_payload (§5.5.2), padded to whole bytes because
 // emdf_payload_size counts bytes. `objects` describes the dynamic objects in
 // order; the bed's are implied by the channel assignment and are sent at unity
@@ -411,5 +422,28 @@ struct DecodedProgram {
 // oa_element_size says, or a read past the end of the payload.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<DecodedProgram> parse_payload(
     std::span<const std::byte> payload);
+
+// One JOC output as something that draws objects in a room needs it: where
+// it is, how big, how loud and what it is called.
+//
+// A dynamic object supplies all of that itself. A bed channel supplies none
+// of it - it is anchored to a speaker, so its position comes from its label
+// (bed_label_position) and its extent is a point by definition. `label` is
+// empty for a dynamic object, which has an index and no name.
+struct DisplayObject {
+    Position position{};
+    ObjectSize size{};
+    double gain_db = 0.0;
+    bool snap = false;
+    bool active = true;
+    std::string_view label{};
+};
+
+// The program's objects as a view sees them, one entry per JOC output and in
+// joc_object_indices() order - so parallel to DecodedSubstream::object_audio
+// for both a dynamic-object-only program and a bed one. `block` selects which
+// metadata update block to read; out-of-range clamps to the last.
+[[nodiscard]] AC3FORGE_EXPORT std::vector<DisplayObject> describe_objects(
+    const DecodedProgram& program, std::size_t block = 0);
 
 }  // namespace ac3::oba

@@ -182,6 +182,13 @@ For an Atmos stream, add `objects_dir` to also export each object's reconstructe
 ac3cli decode atmos.ec3 bed.wav objects/
 ```
 
+That works for a bed programme too, which is what channel-based-immersive third-party content
+is: a 7.1.4 bed carried in a 5.1 downmix exports its eleven non-LFE channels, and the status
+report names them (`bed [L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr] + 0 dynamic objects`) rather
+than just counting them. The report also names an OAMD trim element when one rides along, any
+`oa_element` skipped because its id is unrecognised, and how many metadata update blocks a frame
+carries when it carries more than one.
+
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 
 ```bash

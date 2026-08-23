@@ -48,6 +48,7 @@ add_executable(ac3tests
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     oba/test_atmos.cpp
+    oba/test_dee_joc_fixture.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
@@ -109,6 +110,11 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src
 # runs the binary from the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
+
+# The third-party Dolby fixture tests/oba/test_dee_joc_fixture.cpp reads, on the
+# same reasoning: a path, because ctest runs from the build tree.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
 
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs

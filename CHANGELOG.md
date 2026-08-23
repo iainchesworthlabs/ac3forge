@@ -12,6 +12,54 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **Third-party Atmos streams decode** (roadmap `DC6`). The object layer used to recognise only
+  the shapes this project's own encoder writes and refuse everything else, which is most of what
+  real content carries. OAMD now reads any number of metadata update blocks at any sample offset
+  and ramp duration, object size, zone constraints, elevation gating, channel lock, screen
+  reference, distance, explicit priority and gain reuse, positions coded differentially against
+  the previous block, inactive objects, several bed instances (standard or non-standard), bed
+  channel distribution, programmes carrying an intermediate spatial format, alternate object
+  data, the `trim_element` and the `extended_object_element` — and an `oa_element` whose id it
+  does not know is now skipped by its own size and reported on `DecodedProgram::skipped_elements`
+  rather than costing the whole payload. JOC reads all five of Table 47's downmix configurations,
+  any clip gain, and per-object band count, quantizer, sparse-or-whole-matrix mode, interpolation
+  slope and data-point count; `joc::reconstruct` implements the whole of §6.6.5, keeping
+  `joc_mix_mtx_prev` per QMF subband as the clause does. The EMDF reader parses the whole of
+  §H.2.1.3's payload configuration onto `DecodedPayload::config` instead of insisting on TS 103
+  420 Table 56's one shape, and handles the payload-id extension escape.
+- **JOC reconstruction for bed programmes.** Object audio was only reconstructed for a
+  dynamic-object-only programme — the one shape `AtmosEncoder` writes. It now covers bed
+  programmes too, which is what channel-based-immersive third-party content is, so a 7.1.4 bed
+  carried in a 5.1 downmix exports its eleven non-LFE channels. `DecodedSubstream::object_indices`
+  says which programme object each `object_audio` entry is, `oba::bed_labels()` turns a bed
+  channel into a speaker label, and `ac3cli decode`'s report and `objects_dir` export, the GUI
+  object inspector and the WASM demo all follow.
+- **A committed third-party fixture.** `tests/golden/object-fixture/dee_joc_514.ec3` is a DD+ JOC
+  stream produced by the Dolby Encoding Engine from a synthetic 5.1.4 tone bed
+  (`tools/generators/gen_object_fixture.py`, local-only — DEE is licensed and never runs in CI).
+  It is the only Atmos stream here this project's encoder did not make. Because each source
+  channel carries a different tone, identifying each reconstructed object by which tone dominates
+  it independently confirms both the reconstruction and the order a bed's channels occupy — the
+  order TS 103 420 §5.6.1.1.4 states backwards.
+- **Object extent, channel lock and zone constraints on the encode side** (roadmap `DC7`).
+  `ac3::oba::ObjectPlacement` and `Keyframe` carry §5.6.1's `size` (width/depth/height),
+  `snap`, `zone` and `enable_elevation`; `oba::build_payload` writes all four, and `KeyframePath`
+  interpolates size between keyframes while holding the three discrete flags. The ADM bridge maps
+  BS.2076-2 `width`/`height`/`depth` onto `ObjectSize` and `channelLock` onto `snap`; `diffuse`,
+  `zoneExclusion` and `objectDivergence` remain unmapped, and `docs/library/adm-bridge.md` now
+  gives each one its own reason rather than one blanket paragraph.
+
+### Fixed
+
+- **`audblk` skipped `cplfgaincod` and `cplfsnroffst`.** A/52 Annex E reads both ahead of the
+  per-channel lists when the block couples, and the decoder read only the per-channel ones, so a
+  stream that sets `frmfgaincode` or `snroffststr` 2 alongside coupling desynchronised three bits
+  later and failed on the next block's exponents. No stream this project produces was affected —
+  its encoder writes `frmfgaincode` 0 and `snroffststr` 0 — which is why only a real Dolby stream
+  exposed it.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven

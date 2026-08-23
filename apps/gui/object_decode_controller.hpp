@@ -24,18 +24,32 @@ class MonitorSink;
 // shaping) happens only in ObjectDecodeController::frames()/objects() itself.
 namespace objdec_detail {
 
-// One access unit's worth of dynamic-object positions, in
-// oba::DecodedProgram::objects order - the same order object_audio is
-// parallel to (see decoder.hpp's own comment on DecodedSubstream::
-// object_audio). Only access units that actually carried OAMD ever produce
-// one of these; a stream where the very first frame or two arrive before the
-// container is fully assembled simply contributes no entry for them.
+// One access unit's worth of object state, one entry per JOC output and in
+// oba::joc_object_indices() order - the same order object_audio is parallel
+// to (see decoder.hpp's own comment on DecodedSubstream::object_indices).
+// Only access units that actually carried OAMD ever produce one of these; a
+// stream where the very first frame or two arrive before the container is
+// fully assembled simply contributes no entry for them.
+//
+// A bed programme's channels appear here too, at the nominal room position
+// of the speaker their label names (oba::bed_label_position) and carrying
+// that label - which is what channel-based-immersive third-party content is,
+// and what a dialog that showed nothing for it used to miss entirely.
 struct RawFrame {
     double time_s = 0.0;
     std::vector<double> x;
     std::vector<double> y;
     std::vector<double> z;
     std::vector<double> gain_db;
+    // TS 103 420 §5.6.1.2 extent, per object. 0/0/0 is a point source, which
+    // every bed channel is by definition.
+    std::vector<double> width;
+    std::vector<double> depth;
+    std::vector<double> height;
+    // §5.6.1.5.1 b_object_snap (ADM channelLock).
+    std::vector<bool> snap;
+    // The speaker label for a bed channel, empty for a dynamic object.
+    std::vector<QString> labels;
 };
 
 struct RawResult {
@@ -91,7 +105,8 @@ class ObjectDecodeController : public QObject {
     // "E-AC-3 · 3 dynamic objects + LFE · 48000 Hz · 62 frame(s) · 1.98 s"
     Q_PROPERTY(QString summaryLine READ summaryLine NOTIFY resultChanged)
     // One entry per access unit that carried OAMD - {time, objects: [{x, y,
-    // z, gainDb}]}, in oba::DecodedProgram::objects order. Empty until a
+    // z, gainDb, width, depth, height, snap, label}]}, in
+    // oba::joc_object_indices() order. Empty until a
     // decode succeeds. Scrubbing/playback of the room view is driven from
     // QML by indexing into this list; there is no interpolation between
     // entries the way the authoring side's evaluateObjectPath() offers,

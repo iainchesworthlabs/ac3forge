@@ -152,19 +152,25 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   independent substream on encode — the multi-language / audio-description shape of broadcast
   DD+, with DC3/DC4 supplying `bsmod` and the mix metadata. The decoder already keys per-substream
   state by `strmtyp*8+substreamid`, which lowers its share.
-- [ ] **DC6 (L)** — Decode third-party Atmos streams. `oba::parse_payload` and
-  `joc::parse_payload` "recognise exactly the shapes this encoder ever produces" and refuse the
-  rest: one `md_update_info` block at offset 0, point-source objects with no size, zone, snap,
-  screen reference, ISF or alternate data, whole-matrix JOC with a single data point; two further
-  syntax corners are refused by design (`docs/library/decoding.md`). Real content exercises all
-  of it, so object export, the WASM demo and every IM bridge below degrade to "no objects" on
-  much retail material. Widen the parsers to return partial results, and add a Dolby-produced
-  DD+ JOC fixture (the Dolby Media Encoder is installed locally; retail streams cannot be
-  redistributed).
-- [ ] **DC7 (M)** — Object size, spread and zone constraints on the encode side, so ADM
-  `width`/`height`/`depth`/`diffuse`, `channelLock` and `zoneExclusion` stop being the silent
-  drops `docs/library/adm-bridge.md` lists (`ObjectPlacement` is a pure point source). Do the
-  parse half once with DC6.
+- [x] **DC6 (L)** — Decode third-party Atmos streams. OAMD now reads any number of
+  `md_update_info` blocks at any offset and ramp duration, object size/zone/elevation/snap/screen
+  reference/distance/explicit priority/gain reuse, differential positions, inactive objects,
+  several bed instances (standard or non-standard), ISF programmes, alternate object data, the
+  `trim_element` and the `extended_object_element`, and skips an unknown `oa_element` by its own
+  size rather than abandoning the payload. JOC reads all five Table 47 downmix configurations,
+  any clip gain, and per-object band count, quantizer, sparse mode, slope and data-point count;
+  `reconstruct()` implements the whole of §6.6.5. EMDF parses the whole of §H.2.1.3 rather than
+  Table 56's one shape. `tests/golden/object-fixture/dee_joc_514.ec3` is a committed
+  Dolby-Encoding-Engine DD+ JOC stream that exercises all of it; decoding it also found a real
+  `audblk` bug (`cplfgaincod`/`cplfsnroffst` were skipped when the block couples). JOC
+  reconstruction now covers bed programmes too, so channel-based-immersive content exports its
+  channels.
+- [x] **DC7 (M)** — Object size, spread and zone constraints on the encode side.
+  `ObjectPlacement`/`Keyframe` carry TS 103 420 §5.6.1's `size`, `snap`, `zone` and
+  `enable_elevation`, `build_payload` writes all four, and the ADM bridge maps
+  `width`/`height`/`depth` onto `ObjectSize` and `channelLock` onto `snap`. `diffuse`,
+  `zoneExclusion` and `objectDivergence` stay unmapped for reasons
+  `docs/library/adm-bridge.md` now states individually.
 - [ ] **DC8 (S)** — 24-bit and 32-bit integer PCM, `WAVE_FORMAT_EXTENSIBLE` wrapping them, and
   RF64 in the plain WAV reader. `read_wav` and `WavStreamReader` accept PCM16 and float32 only,
   so the normal professional delivery format needs an FFmpeg pre-conversion. The ADM reader has
@@ -633,7 +639,7 @@ on 2026-08-22.
 - **Enabling PipeWire `iec958Codecs` on the user's behalf** — session-manager policy; DR9
   documents the rule instead.
 - **HOA, Matrix and Binaural ADM pack types** — the clear `kUnsupportedType` refusal stays until
-  DC7 and a design exist.
+  a design exists (DC7 shipped object extent and channel lock, not these).
 - **APT/DNF repositories and Docker images** — not planned. `docs/releasing.md` names where the
   workflows could be copied from if one were ever wanted; the previous roadmap's "ruled out"
   overstated it.
