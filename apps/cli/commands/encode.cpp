@@ -18,11 +18,13 @@
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
+#include "ac3/verify/eac3_selfcheck.hpp"
 #include "../multi_source.hpp"
 
 namespace ac3cli::commands {
@@ -49,6 +51,71 @@ bool vbr_or_error(std::string_view text, std::optional<ac3::eac3::VbrConfig>& ou
     std::println(stderr, "error: unrecognised vbr setting '{}' ({})", text, plan::kVbrSyntax);
     return false;
 }
+
+// eac3-encode's access-unit source: the plain encoder, or - when the operator
+// passed `verify` - ac3::verify's mirror self-check wrapped around the same
+// encoder, which decodes every access unit it emits and diffs the decoder's
+// model against the encoder's own (ac3/verify/eac3_mirror.hpp).
+//
+// One type for both so the two encode loops below stay one loop each. The
+// mirror is non-movable (its configs hold pointers into its own trace
+// members), hence the unique_ptr rather than an optional.
+class Eac3Units {
+   public:
+    Eac3Units(const ac3::eac3::AccessUnitConfig& config, bool verify)
+        : plain_(verify ? nullptr : std::make_unique<ac3::eac3::AccessUnitEncoder>(config)),
+          checked_(verify ? std::make_unique<ac3::verify::Eac3MirrorEncoder>(config)
+                          : nullptr) {}
+
+    [[nodiscard]] int channel_count() const {
+        return plain_ ? plain_->channel_count() : checked_->channel_count();
+    }
+
+    // One access unit, or std::nullopt with the error already printed. A
+    // self-check disagreement refuses the run rather than warning about it:
+    // the two sides having parted company means the stream this command is
+    // writing is not the stream it thinks it is.
+    [[nodiscard]] std::optional<std::vector<std::byte>> next(
+        std::span<const std::span<const float>> channels) {
+        if (plain_) {
+            auto unit = plain_->encode_access_unit(channels);
+            if (!unit) {
+                std::println(stderr, "error: the encoder cannot express this configuration");
+                return std::nullopt;
+            }
+            return std::move(unit->bytes);
+        }
+        auto unit = checked_->encode_access_unit(channels);
+        if (!unit) {
+            std::println(stderr, "error: the encoder cannot express this configuration");
+            return std::nullopt;
+        }
+        if (!unit->ok()) {
+            std::println(stderr,
+                         "error: verify: the encoder and decoder disagree about access unit {}",
+                         checked_->frames_encoded() - 1);
+            const auto report = checked_->last_report();
+            if (!report.empty()) {
+                std::println(stderr, "{}", report);
+            }
+            if (unit->decode_error) {
+                std::println(stderr, "  the decoder also refused a substream outright ({})",
+                             ac3::describe(*unit->decode_error));
+            }
+            return std::nullopt;
+        }
+        return std::move(unit->unit.bytes);
+    }
+
+    [[nodiscard]] std::uint64_t checked_units() const {
+        return checked_ ? checked_->frames_encoded() : 0;
+    }
+    [[nodiscard]] bool verifying() const { return checked_ != nullptr; }
+
+   private:
+    std::unique_ptr<ac3::eac3::AccessUnitEncoder> plain_;
+    std::unique_ptr<ac3::verify::Eac3MirrorEncoder> checked_;
+};
 
 }  // namespace
 
@@ -194,7 +261,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         }
     }
 
-    ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
+    Eac3Units encoder{plan::eac3_config(p), meta.verify};
     assert(static_cast<int>(nchans) == encoder.channel_count());
     // Streamed out as encoded, exactly as run_eac3_encode below - the
     // multi-source shape only differs on the INPUT side (route_frame over
@@ -205,13 +272,12 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     }
     for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
         route_frame(start);
-        auto unit = encoder.encode_access_unit(views);
+        auto unit = encoder.next(views);
         if (!unit) {
-            std::println(stderr, "error: the encoder cannot express this configuration");
             out_sink.abort();
             return 1;
         }
-        if (!out_sink.push(std::move(unit->bytes))) {
+        if (!out_sink.push(std::move(*unit))) {
             out_sink.abort();
             return 1;
         }
@@ -243,6 +309,12 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                      "tools: {}) to {}",
                      out_sink.frames(), bitrate, sources->sample_rate, label, nchans,
                      plan::format_tools(p.tools), out_path);
+    }
+    if (encoder.verifying()) {
+        // Only ever printed on success: the check refuses the run at the
+        // first disagreement, so reaching here means every unit agreed.
+        std::println(status, "  verify: encoder and decoder agree on all {} access units",
+                     encoder.checked_units());
     }
     print_routing(p, *routing, label, status);
     return 0;
@@ -361,7 +433,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         return 1;
     }
 
-    ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
+    Eac3Units encoder{plan::eac3_config(p), meta.verify};
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     assert(static_cast<int>(nchans) == encoder.channel_count());
     // The classic path has exactly one source, always index 0 in offset='s
@@ -451,13 +523,12 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
             }
         }
         plan::render(*routing, in, out, ac3::kSamplesPerFrame);
-        auto unit = encoder.encode_access_unit(views);
+        auto unit = encoder.next(views);
         if (!unit) {
-            std::println(stderr, "error: the encoder cannot express this configuration");
             out_sink.abort();
             return 1;
         }
-        if (!out_sink.push(unit->bytes)) {
+        if (!out_sink.push(std::move(*unit))) {
             out_sink.abort();
             return 1;
         }
@@ -490,6 +561,12 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                      "tools: {}) to {}",
                      out_sink.frames(), bitrate, src_rate, label, nchans,
                      plan::format_tools(p.tools), out_path);
+    }
+    if (encoder.verifying()) {
+        // Only ever printed on success: the check refuses the run at the
+        // first disagreement, so reaching here means every unit agreed.
+        std::println(status, "  verify: encoder and decoder agree on all {} access units",
+                     encoder.checked_units());
     }
     print_routing(p, *routing, label, status);
     return 0;

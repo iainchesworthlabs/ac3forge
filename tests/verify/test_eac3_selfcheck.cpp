@@ -310,6 +310,17 @@ TEST_CASE("verify::compare reports transient pre-noise state before any block", 
     CHECK(found.front().decoder == 508);
 }
 
+TEST_CASE("every E-AC-3 mismatch field has a name", "[verify]") {
+    // A field added without a describe() case would fall through to "unknown
+    // field" and make a report unreadable at exactly the moment it matters.
+    for (int raw = 0; raw <= static_cast<int>(Eac3Field::kSpxBlend); ++raw) {
+        const auto field = static_cast<Eac3Field>(raw);
+        CAPTURE(raw);
+        CHECK(ac3::verify::describe(field) != "unknown field");
+        CHECK_FALSE(ac3::verify::describe(field).empty());
+    }
+}
+
 // --- end to end -------------------------------------------------------------
 
 TEST_CASE("E-AC-3 encoder and decoder agree on stereo programme material",

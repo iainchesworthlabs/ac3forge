@@ -84,6 +84,10 @@ class AC3FORGE_EXPORT Eac3MirrorEncoder {
     [[nodiscard]] std::expected<CheckedAccessUnit, FrameError> encode_access_unit(
         std::span<const std::span<const float>> channels);
 
+    [[nodiscard]] const eac3::AccessUnitConfig& config() const { return encoder_.config(); }
+    // Summed across substreams: the span count encode_access_unit expects.
+    [[nodiscard]] int channel_count() const { return encoder_.channel_count(); }
+
     // Access units encoded so far, which is the index the NEXT one will
     // report.
     [[nodiscard]] std::uint64_t frames_encoded() const { return frame_index_; }

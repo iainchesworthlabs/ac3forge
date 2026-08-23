@@ -89,6 +89,16 @@ struct Options {
     // an unsigned one unless the operator opts in here - see
     // docs/concepts/object-signing.md.
     bool verify_objects = false;
+    // 'eac3-encode' only: run ac3::verify's E-AC-3 encoder/decoder mirror
+    // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
+    // command emits, and refuse the run on the first disagreement. Off by
+    // default like every bare token here, and deliberately so: it decodes
+    // every access unit a second time on top of encoding it, which roughly
+    // doubles the work. What it buys is the one class of defect a round trip
+    // cannot see - a misreading of Annex E that the encoder and the decoder
+    // share - which for ecpl, tpn, fscod2 and 7.1.4 is otherwise unchecked
+    // by anything at all (docs/verification.md).
+    bool verify = false;
     // 'live' only: a second ("slave") capture device index, same numbering
     // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
     // positional already reads. Unset means the classic single-device

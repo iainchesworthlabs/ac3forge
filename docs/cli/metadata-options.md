@@ -50,6 +50,9 @@ metadata options (any order, after the positional arguments):
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  verify            eac3-encode: decode every access unit as it is encoded and diff the
+                    decoder's model against the encoder's own, refusing the run at the first
+                    disagreement - off by default, since it roughly doubles the work
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -421,6 +424,29 @@ Optional positional arguments, when omitted:
   `mode=reference fast-mdct=off` is redundant but harmless, and `mode=performance fast-imdct=off`
   runs a fast encode with a reference decode. `eac3-encode`'s `[tools]` positional still wins
   the forward-MDCT half if both are given, exactly as it does against `fast-mdct=off`.
+- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`ac3::verify`,
+  see [Validation](../verification.md#six-independent-checks)) over every access unit the command
+  emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
+  decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
+  correction, AHT gain mode and gains, and the coupling, enhanced-coupling and
+  spectral-extension coordinates — is diffed against the encoder's own. The first disagreement
+  refuses the run (exit 1) and names where the two sides parted company, down to the substream,
+  block, coded stream and bin:
+
+  ```
+  error: verify: the encoder and decoder disagree about access unit 0
+  frame 0 substream 0 block 2 channel 1: bap[10] encoder=8 decoder=9
+  ```
+
+  A clean run prints one extra line beside the usual summary and writes exactly the stream it
+  would have written anyway — the check reads state the encoder already has and never steers a
+  decision. Off by default because it decodes everything it encodes, which roughly doubles the
+  work. What it buys is the class of defect a round trip cannot see: the two sides differing in
+  a way the audio survives. That matters most for `ecpl`, `tpn`, `fscod2` and `714`, which have
+  no external decoder to check against at all — see
+  [Validation → where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+  `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
+  (`ac3::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →

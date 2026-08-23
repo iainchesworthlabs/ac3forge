@@ -29,6 +29,7 @@
 
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 #include "snr_search.hpp"
 
 namespace ac3::eac3 {

@@ -1,6 +1,7 @@
 #include "ac3/verify/eac3_selfcheck.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/silent_frame.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 #include <cstddef>
 #include <expected>

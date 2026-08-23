@@ -12,6 +12,39 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **The encoder/decoder mirror self-check now covers E-AC-3** (`ac3::verify`, roadmap `VX2`).
+  The AC-3 half has decoded every frame the encoder emitted and diffed the decoder's model
+  against the encoder's own since 0.7.0; Annex E was explicitly out of scope, because its
+  dependent-substream and transient-pre-noise machinery needed its own instrumentation design.
+  It has one now. `Eac3MirrorEncoder` compares, per substream of an access unit and per block:
+  the bit offset at each block boundary, the decoded exponents, `bap`, the delta correction in
+  force, the adaptive-hybrid-transform gain mode and its per-bin gains, and the coupling,
+  enhanced-coupling and spectral-extension coordinates — across an independent substream and
+  both of its dependents at 7.1.4. The `§3.7` hold-back turns out not to need special handling:
+  the trace is written while a frame is parsed rather than when its audio is released, so a
+  held-back frame is compared in the call that decoded it like any other.
+
+  This matters more for E-AC-3 than it did for AC-3 because Annex E has weaker oracles, not
+  stronger ones: `docs/verification.md` records that 7.1.4 has no external oracle at all, that
+  enhanced coupling and transient pre-noise processing have none "not even the partial one 7.1.4
+  gets", and that `fscod2` audio is refused by FFmpeg *and* by Dolby's own Reference Player. For
+  those, the in-repo round trip was the only check there was. What the mirror adds over it is the
+  case where the two sides differ but the audio survives — a gain one side recovered differently,
+  a coordinate quantized against a different band structure — which a round trip passes and a
+  third-party decoder would nevertheless render differently. What it still cannot see is a
+  misreading the two sides make identically, in code they share; `docs/verification.md` is
+  explicit about that residue rather than claiming the gap is closed.
+
+  Off by default and free when off, exactly as the AC-3 half is: `eac3::FrameConfig::trace` and
+  `DecoderConfig::eac3_trace` are null pointers, costing one branch per block and no allocation,
+  and attaching one never changes a single emitted bit. `ac3cli eac3-encode … verify` runs it
+  over a whole file and refuses the run at the first disagreement, naming the substream, block,
+  coded stream and bin; `tools/ci/run_codec_matrix.sh` runs it on the sanitizer leg over the
+  whole Annex E tool matrix, every layout including 7.1.4, all three `fscod2` rates and VBR. It
+  found no disagreement on any stream this encoder currently produces.
+
 ### Changed
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
