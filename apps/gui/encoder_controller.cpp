@@ -3700,6 +3700,11 @@ std::unique_ptr<EncoderController::LiveOutputWriters> EncoderController::openLiv
     }
     if (live_wav_safety_copy_) {
         auto safety = std::make_unique<ac3::io::WavStreamWriter>();
+        // A sibling of the destination either way: "take.ec3" gives
+        // "take.raw.wav", and a fragmented-MP4 FOLDER named "take" gives
+        // "take.raw.wav" beside it rather than inside it - the safety copy is
+        // the raw captured PCM, not part of the CMAF asset, so it does not
+        // belong in a folder a packager or CDN origin is pointed at.
         const QString safety_path = sibling_path(path, QStringLiteral(".raw.wav"));
         const auto opened = safety->open(safety_path.toStdString(), device.sample_rate,
                                          device.channels);
@@ -4621,8 +4626,11 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                 if (flush_at - last_disk_flush_at >= kDiskFlushInterval) {
                     last_disk_flush_at = flush_at;
                     // fMP4 has no long-lived stream to flush - each segment
-                    // and manifest is written and closed as it is produced.
-                    writers->stream.flush();
+                    // and manifest is a complete file, written and closed as
+                    // it is produced - so `stream` was never opened for it.
+                    if (!writers->fmp4) {
+                        writers->stream.flush();
+                    }
                     if (writers->wav_safety) {
                         writers->wav_safety->flush_header();
                     }
@@ -4709,8 +4717,10 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                                           static_cast<std::streamsize>(tail.size()));
                 }
             }
-            writers->stream.flush();
-            writers->stream.close();
+            if (!writers->fmp4) {
+                writers->stream.flush();
+                writers->stream.close();
+            }
             if (writers->wav_safety) {
                 writers->wav_safety->close();
             }

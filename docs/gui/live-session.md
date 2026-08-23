@@ -245,7 +245,8 @@ encode wraps it as afterward (see
 There is also an optional **raw-WAV safety copy**: the pre-flight "Raw-WAV safety copy" checkbox
 is only consulted once the take is also being written to disk. When on, it streams the raw
 captured PCM — device channel order, unencoded, before any routing or mixing — to a sibling
-`.raw.wav` file through a streaming WAV writer (`ac3::io::WavStreamWriter`) that appends
+`.raw.wav` file (beside a fragmented-MP4 folder, not inside it: the safety copy is source audio,
+not part of the CMAF asset a packager would be pointed at) through a streaming WAV writer (`ac3::io::WavStreamWriter`) that appends
 interleaved samples as they arrive and, like the take itself, periodically re-patches its RIFF
 header rather than only at close. Without that, a process kill mid-session leaves a WAV
 whose header still claims zero data bytes even though the file holds real audio — most readers
