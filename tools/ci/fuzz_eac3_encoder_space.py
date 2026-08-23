@@ -708,6 +708,15 @@ def syncframe_walk(path, expected_units):
     Written after ffprobe was caught disagreeing about a stream that turned
     out to be correct - see ORACLE_GAPS' "two dependent substreams" entry.
 
+    One assumption, stated because it will eventually stop holding: every
+    independent substream starts a new access unit. That is true of everything
+    `eac3-encode` and `atmos-encode` emit today - one programme per access
+    unit - but §E2.3.1.2 allows up to eight independent substreams carrying
+    several programmes, and a front end that emits them would make this walk
+    count one access unit per programme rather than per access unit. It fails
+    loudly if so ("the syncframes make X access units"), which is the right
+    way round for an assumption to break.
+
     Returns None when everything holds, or a string naming what did not."""
     data = path.read_bytes()
     offset = 0
