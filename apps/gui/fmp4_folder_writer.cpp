@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
-#include <fmt/chrono.h>
+#include <fmt/chrono.h>  // IWYU pragma: keep - fmt::formatter<time_point> for "{:%FT%TZ}" below
 #include <fmt/format.h>
 #include <fstream>
 #include <ios>
