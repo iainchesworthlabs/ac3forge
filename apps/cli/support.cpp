@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -675,7 +676,7 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
                      format_programme_ids(ids));
         return std::nullopt;
     }
-    return *wanted;
+    return wanted;
 }
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames) {

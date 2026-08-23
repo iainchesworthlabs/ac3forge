@@ -990,7 +990,9 @@ eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
 
 eac3::AccessUnitConfig eac3_config(const Plan& plan) {
     auto programme = eac3_programme(plan);
-    return {.independent = std::move(programme.independent),
+    // FrameConfig is trivially copyable; only the dependent vector is worth
+    // moving.
+    return {.independent = programme.independent,
             .dependents = std::move(programme.dependents),
             .additional = {}};
 }

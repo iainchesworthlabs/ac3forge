@@ -143,22 +143,31 @@ class ProgrammeSource {
     std::size_t consumed_ = 0;
 };
 
-// The second programme's plan, its source and its routing, or std::nullopt on
-// anything the operator got wrong (already reported). `rate` is the primary
-// programme's sample rate: every substream of an access unit codes the same
-// frame period, so a second programme sampled differently cannot ride along.
+// The second programme's plan, its source and its routing, assembled together
+// because the encode loop needs all three in step.
 struct SecondProgramme {
     plan::Plan p;
     std::string label;
+    // Kept here rather than re-read from Options::programme2 at every use: this
+    // struct only exists once that option HAS a value, so carrying the path
+    // means nothing downstream has to re-establish that.
+    std::string path;
     ProgrammeSource source;
     plan::Routing routing;
 };
 
-std::unique_ptr<SecondProgramme> open_second_programme(const Options& meta, ac3::SampleRate rate,
+// Opens and plans that second programme, or reports why not and returns
+// nullptr. `rate` is the PRIMARY programme's sample rate: every substream of an
+// access unit codes the same frame period, so a second programme sampled
+// differently cannot ride along.
+std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
+                                                       const Options& meta,
+                                                       ac3::SampleRate rate,
                                                        std::uint32_t primary_kbps,
                                                        const plan::Tools& tools) {
     auto out = std::make_unique<SecondProgramme>();
-    if (!out->source.open(*meta.programme2)) {
+    out->path = std::string{path};
+    if (!out->source.open(out->path)) {
         return nullptr;
     }
     const auto second_rate = wav_sample_rate(out->source.sample_rate(), "E-AC-3", true);
@@ -177,7 +186,8 @@ std::unique_ptr<SecondProgramme> open_second_programme(const Options& meta, ac3:
     // Half the primary's rate by default: an associated service is normally
     // much narrower than the main mix, and it is spent ON TOP of the
     // primary's, not carved out of it.
-    out->p.bitrate_kbps = meta.programme2_bitrate.value_or(std::max<std::uint32_t>(primary_kbps / 2, 32));
+    out->p.bitrate_kbps =
+        meta.programme2_bitrate.value_or(std::max<std::uint32_t>(primary_kbps / 2, 32));
     out->p.tools = tools;
     // Its own dialnorm, never the primary's - see Options::programme2_dialnorm.
     // The rest of `meta.p` belongs to the primary programme: a second
@@ -187,7 +197,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(const Options& meta, ac3:
     if (meta.programme2_layout.empty()) {
         const auto id = plan::layout_for_source(out->source.channels());
         if (!id) {
-            std::println(stderr, "error: programme2= has {} channels - {}",
+            std::println(stderr, "error: {} has {} channels - {}", out->path,
                          out->source.channels(),
                          plan::describe(plan::PlanError::kNoSourceLayout));
             return nullptr;
@@ -542,9 +552,12 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
 
     // §E2.3.1.2's second independent substream, when one was asked for: its
     // own source, layout, rate and dialnorm, riding in the same access units.
-    auto second = meta.programme2 ? open_second_programme(meta, *sr, bitrate, p.tools) : nullptr;
-    if (meta.programme2 && !second) {
-        return 1;
+    std::unique_ptr<SecondProgramme> second;
+    if (meta.programme2) {
+        second = open_second_programme(*meta.programme2, meta, *sr, bitrate, p.tools);
+        if (!second) {
+            return 1;
+        }
     }
     auto config = plan::eac3_config(p);
     if (second) {
@@ -669,7 +682,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         }
         plan::render(*routing, in, out, ac3::kSamplesPerFrame);
         if (second) {
-            if (!second->source.fill(start, second_source, *meta.programme2)) {
+            if (!second->source.fill(start, second_source, second->path)) {
                 out_sink.abort();
                 return 1;
             }
@@ -721,7 +734,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                      "  programme 1 (§E2.3.1.2 I1): {} kbps, {}, {} coded channels, "
                      "dialnorm {} from {}",
                      second->p.bitrate_kbps, second->label, second_nchans,
-                     second->p.meta.dialnorm, *meta.programme2);
+                     second->p.meta.dialnorm, second->path);
         print_routing(second->p, second->routing, second->label, status);
     }
     return 0;

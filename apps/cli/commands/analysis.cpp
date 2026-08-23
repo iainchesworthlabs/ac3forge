@@ -433,7 +433,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
         std::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
                      ac3cli::format_programme_ids(*ids));
     }
-    ac3::Eac3Decoder decoder{{.programme = *programme}};
+    ac3::Eac3Decoder decoder{{.programme = programme}};
     std::vector<ac3::analysis::ChannelSummary> totals;
     ac3::DecodedAccessUnit first{};
     for (const auto& unit : *units) {
