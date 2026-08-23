@@ -63,10 +63,11 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
     // bin lies at or past endmant are pure padding, handled after slew
     // limiting below.
     // group_size == 0 only for ExpStrategy::kReuse, and every caller of this
-    // function passes kD15/kD25/kD45 (strategy_for_span in encoder.cpp never
-    // produces kReuse; every other call site is a hardcoded kD15) - the
-    // assert above holds for the whole call graph, clang-analyzer just
-    // cannot see across translation units to confirm it.
+    // function passes kD15/kD25/kD45 (both encoders' run planners take their
+    // strategy from strategy_for_span, which never produces kReuse; every
+    // other call site is a hardcoded kD15) - the assert above holds for the
+    // whole call graph, clang-analyzer just cannot see across translation
+    // units to confirm it.
     // NOLINTNEXTLINE(clang-analyzer-core.DivideZero)
     const int real_diffs = (endmant - 1 + group_size - 1) / group_size;
     assert(real_diffs <= diff_count);
