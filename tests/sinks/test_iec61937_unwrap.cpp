@@ -476,6 +476,51 @@ TEST_CASE("PassthroughDetector: a multichannel capture still sees the stereo car
     CHECK(detector.detected() == BurstDataType::kAc3);
 }
 
+TEST_CASE("carrier_from_capture: PCM16 words survive the trip through float exactly",
+          "[iec61937][unwrap][capture]") {
+    // Every int16 value, not a sample of them: the conversion is only worth
+    // anything if it is exact for all 65536, and -32768/32767 are precisely
+    // where a naive x * 32767 or an unclamped cast goes wrong.
+    std::vector<std::byte> expected;
+    std::vector<float> floats;
+    for (std::int32_t v = -32768; v <= 32767; ++v) {
+        const auto word = static_cast<std::uint16_t>(static_cast<std::int16_t>(v));
+        expected.push_back(static_cast<std::byte>(word & 0xFF));
+        expected.push_back(static_cast<std::byte>(word >> 8));
+        floats.push_back(static_cast<float>(v) / 32768.0f);
+    }
+    // Fed as a mono capture so every value is its own sample rather than
+    // half of a stereo pair.
+    std::vector<std::byte> out;
+    ac3::iec61937::carrier_from_capture(floats, 1, out);
+    REQUIRE(out.size() == expected.size());
+    CHECK(std::equal(out.begin(), out.end(), expected.begin()));
+
+    // And the detector agrees with it, which is the invariant that matters:
+    // a session that detected one carrier and then recorded a different one
+    // would be worse than not detecting at all.
+    const auto frames = encode_ac3(1);
+    const auto carrier = ac3::iec61937::wrap_stream(views_of(frames), /*eac3=*/false);
+    REQUIRE(carrier.has_value());
+    const auto as_floats = as_capture_floats(*carrier);
+    std::vector<std::byte> rebuilt;
+    ac3::iec61937::carrier_from_capture(as_floats, 2, rebuilt);
+    CHECK(std::equal(rebuilt.begin(), rebuilt.end(), carrier->begin(), carrier->end()));
+}
+
+TEST_CASE("PassthroughDetector: a big push does not make it hold a big buffer",
+          "[iec61937][unwrap][capture]") {
+    // A caller handing over a whole second at a time must not turn the
+    // detector into a second-long buffer: the inspection budget is the bound,
+    // whatever the chunk size.
+    ac3::iec61937::PassthroughDetector detector;
+    const std::vector<float> loud(2 * 96000, 0.75f);
+    detector.push(loud, 2);
+    CHECK(detector.inspected_bytes() <= ac3::iec61937::PassthroughDetector::kInspectBytes + 4);
+    CHECK(detector.decided());
+    CHECK(detector.buffered().empty());
+}
+
 TEST_CASE("PassthroughDetector: silence is not a bitstream", "[iec61937][unwrap][capture]") {
     ac3::iec61937::PassthroughDetector detector;
     const std::vector<float> quiet(4096, 0.0f);

@@ -203,10 +203,15 @@ machine-readable output and a single failure exit code. Users arrive with contai
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
   `*.ac3/*.ec3`) accept containers, plus `demux` and container-to-container remux — the
   `dec3`-repair case the old `A1` cited. One PR per container, each an M.
-- [ ] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
+- [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
-  Also the missing round-trip test for the wrap side.
+  Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
+  `unwrap_stream`/`PassthroughDetector`, `ac3cli unspdif`, and detection in `record` (switches
+  to writing the elementary stream) and `live` (stops rather than encode a session of noise).
+  Round-trips byte-exactly against this project's own wrapper AND FFmpeg's `spdif` muxer, both
+  data types, both word orders. Fuzzed via `fuzz_iec61937_unwrap`. Not hardware-confirmed: no
+  capture device has been available, the same gap the passthrough output side has.
 - [ ] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
   fragmenter would need…", `mp4.hpp`); Matroska and MPEG-TS have incremental `Writer`s since
   0.9.0, so the GUI live session can target both but not the one container whose native shape

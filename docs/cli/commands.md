@@ -25,6 +25,7 @@ Usage:
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
   ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
   ac3cli spdif        <in.ac3> <out.wav>                      (IEC 61937 wrap as playable PCM16 WAV)
+  ac3cli unspdif      <in.wav|in.raw> <out.ac3|out.ec3>       (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif')
   ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
   ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
   ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
@@ -212,6 +213,7 @@ Add `preset=<name>` (or `preset=all`) to gate that same measurement against a na
 | Command | What it does |
 |---|---|
 | `spdif` | Wraps AC-3 or E-AC-3 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. For feeding a receiver through an ordinary audio path |
+| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones |
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
 | `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
@@ -229,7 +231,7 @@ each OS.
 |---|---|
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
-| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead |
+| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file — `bsid` decides AC-3 vs. E-AC-3 |
 | `monitor` | Decodes an existing file and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
 | `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` |
@@ -247,6 +249,32 @@ one exists.
 exactly as it always has been; `capture2=` adds a second, independently-clocked device (see
 [Options & grammars](metadata-options.md#live-options-live-capture2) for the full grammar) whose
 stream is resampled to track the master, with the measured drift printed at session end.
+
+### Passthrough capture
+
+A capture endpoint fed IEC 61937 hands the bursts over as ordinary PCM. Nothing in any capture
+API says "this is Dolby Digital", so a recorder that takes the samples at face value encodes
+noise. `record` and `live` both look for the burst framing — a `Pa`/`Pb` preamble every
+repetition period with a `0x0B77` syncframe behind it — over roughly the first quarter-second of
+each session, and act on what they find:
+
+- **`record`** switches to writing the elementary stream. Nothing is re-encoded, the `bitrate`
+  argument stops applying, and the output is bit-identical to what the source sent. The carrier
+  already gone past is kept, so the recording starts at the first burst rather than a
+  quarter-second into it. A device running at a rate AC-3 cannot encode at — 192 kHz is exactly
+  the E-AC-3 carrier's 4× — is no longer refused outright: that rate is now checked only once
+  the bitstream question has been answered no.
+- **`live`** stops with an error naming `record` and `unspdif`. A live session mixes, resamples
+  a second device into lockstep, meters, monitors and can pan objects, none of which mean
+  anything applied to burst data; switching modes mid-session would produce a file whose first
+  quarter-second is a different thing from the rest.
+
+For a capture already saved to disk, `unspdif` does the same job offline.
+
+None of this has been confirmed against a real HDMI or S/PDIF capture device — see
+[Windows](../platforms/windows.md#audio-backend-wasapi) for exactly what is and is not verified
+against hardware. What is verified is the framing itself, both ways, against FFmpeg's `spdif`
+muxer as an independent oracle.
 
 ## Next
 

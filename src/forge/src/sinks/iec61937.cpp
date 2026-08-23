@@ -373,8 +373,9 @@ std::expected<std::vector<std::byte>, UnwrapError> unwrap_stream(
     return out;
 }
 
-void PassthroughDetector::push(std::span<const float> interleaved, std::uint16_t channels) {
-    if (decided() || channels == 0) {
+void carrier_from_capture(std::span<const float> interleaved, std::uint16_t channels,
+                          std::vector<std::byte>& out) {
+    if (channels == 0) {
         return;
     }
     const auto stride = static_cast<std::size_t>(channels);
@@ -391,14 +392,27 @@ void PassthroughDetector::push(std::span<const float> interleaved, std::uint16_t
             const auto word = static_cast<std::int32_t>(std::lround(clamped * 32768.0f));
             const auto sample = static_cast<std::uint16_t>(
                 std::clamp(word, std::int32_t{-32768}, std::int32_t{32767}));
-            buffered_.push_back(static_cast<std::byte>(sample & 0xFF));
-            buffered_.push_back(static_cast<std::byte>(sample >> 8));
-            inspected_ += 2;
-        }
-        if (inspected_ >= kInspectBytes) {
-            break;
+            out.push_back(static_cast<std::byte>(sample & 0xFF));
+            out.push_back(static_cast<std::byte>(sample >> 8));
         }
     }
+}
+
+void PassthroughDetector::push(std::span<const float> interleaved, std::uint16_t channels) {
+    if (decided() || channels == 0) {
+        return;
+    }
+    // Take only what is left of the inspection budget, so a caller handing
+    // over a second of audio at a time cannot make this hold a second of
+    // audio: undecided or not, buffered_ never exceeds kInspectBytes by more
+    // than the frame that crossed it.
+    const auto stride = static_cast<std::size_t>(channels);
+    const auto per_frame = 2 * std::min<std::size_t>(stride, 2);
+    const auto budget = (kInspectBytes - inspected_ + per_frame - 1) / per_frame;
+    const auto take = std::min(budget, interleaved.size() / stride);
+    const auto before = buffered_.size();
+    carrier_from_capture(interleaved.first(take * stride), channels, buffered_);
+    inspected_ += buffered_.size() - before;
 
     // Same acceptance test the reader applies: a preamble AND a syncframe
     // behind it. A lone preamble pattern shows up in ordinary loud audio

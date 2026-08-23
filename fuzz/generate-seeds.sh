@@ -30,7 +30,7 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read"
+mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read" "$OUT/fuzz_iec61937_unwrap"
 
 run() { "$AC3CLI" "$@" >/dev/null; }
 
@@ -111,6 +111,21 @@ add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-encode.ec3"
 echo "==> WAV: an IEC 61937 burst-wrapped PCM16 WAV too - a different write path"
 run spdif "$WORK/ac3-silence.ac3" "$WORK/spdif.wav"
 add_seed "fuzz_wav_read" "$WORK/spdif.wav"
+
+echo "==> IEC 61937 carriers, for the burst de-framer (roadmap IO3)"
+# Both data types and both burst periods: AC-3's 6144 bytes and E-AC-3's
+# 24576. The WAV header stays on deliberately - unspdif walks the RIFF chunk
+# list itself, and a fuzzer that only ever saw bare carrier bytes would never
+# mutate the chunk sizes that walk trusts.
+run spdif "$WORK/ac3-sine-51.ac3" "$WORK/spdif-ac3-51.wav"
+add_seed "fuzz_iec61937_unwrap,fuzz_wav_read" "$WORK/spdif-ac3-51.wav"
+run spdif "$WORK/eac3-sine-51.ec3" "$WORK/spdif-eac3-51.wav"
+add_seed "fuzz_iec61937_unwrap,fuzz_wav_read" "$WORK/spdif-eac3-51.wav"
+run spdif "$WORK/atmos-objects.ec3" "$WORK/spdif-atmos.wav"
+add_seed "fuzz_iec61937_unwrap" "$WORK/spdif-atmos.wav"
+# A plain PCM WAV too: "this is not a carrier" is a verdict the de-framer has
+# to reach as reliably as it reaches the other one.
+add_seed "fuzz_iec61937_unwrap" "$WORK/roundtrip-51.wav"
 
 echo "==> done:"
 for d in "$OUT"/fuzz_*; do

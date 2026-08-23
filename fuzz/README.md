@@ -86,6 +86,7 @@ a sign anything is under-tested relative to its own cost.
 | `fuzz_ac3_decode`      | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
 | `fuzz_eac3_decode`     | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
 | `fuzz_wav_read`        | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
+| `fuzz_iec61937_unwrap` | `ac3::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `ac3cli unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable |
 
 `matroska::` was checked and has no read/demux path - `matroska::mux()` only
 ever produces bytes from frames already in hand, so there is nothing to fuzz

@@ -44,6 +44,110 @@ int run_devices() {
     return 0;
 }
 
+namespace {
+
+// Record what a bitstreaming source is actually sending, rather than
+// encoding it (roadmap IO3).
+//
+// An endpoint fed IEC 61937 hands its bursts over as ordinary PCM - the
+// capture API has no way to say "this is Dolby Digital" - so a recorder that
+// takes them at face value encodes noise. Once PassthroughDetector has said
+// otherwise, the useful output is the elementary stream inside, which is what
+// this writes: bit-identical to what the player sent, no re-encode at all.
+//
+// `detector` arrives holding the carrier already gone past, so the recording
+// starts at the first burst rather than a quarter-second into it.
+int record_passthrough(std::string_view out_path, std::uint32_t seconds,
+                       ac3::audio::Capture& capture,
+                       ac3::iec61937::PassthroughDetector& detector, bool keep_partial) {
+    const auto channels = capture.channels();
+    const bool eac3 = detector.detected() == ac3::iec61937::BurstDataType::kEac3;
+    std::println("");
+    std::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
+                 eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
+
+    EncodedStreamSink sink;
+    if (!sink.open(out_path, keep_partial)) {
+        return 1;
+    }
+    ac3::iec61937::BurstReader reader;
+    std::vector<std::byte> payload;
+    std::uint64_t elementary_bytes = 0;
+    const auto drain = [&](std::span<const std::byte> carrier) {
+        payload.clear();
+        const auto pushed = reader.push(carrier, payload);
+        if (!pushed) {
+            std::println(stderr, "error: {}", ac3::iec61937::describe(pushed.error()));
+            return false;
+        }
+        if (payload.empty()) {
+            return true;
+        }
+        elementary_bytes += payload.size();
+        return sink.push(payload);
+    };
+
+    if (!drain(detector.buffered())) {
+        sink.abort();
+        return 1;
+    }
+    detector.clear_buffer();
+
+    // The carrier's own clock, not the content's: an E-AC-3 burst period
+    // spans 6144 sample frames at the 4x rate, an AC-3 one 1536 at 1x, and
+    // both come to the same 32 ms of programme.
+    const auto rate = capture.sample_rate();
+    const std::uint64_t target_frames = static_cast<std::uint64_t>(seconds) * rate;
+    std::uint64_t captured = 0;
+    std::vector<float> interleaved(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
+    std::vector<std::byte> carrier;
+    while (captured < target_frames) {
+        std::size_t filled = 0;
+        while (filled < interleaved.size()) {
+            const auto got = capture.buffer()->read(
+                std::span{interleaved}.subspan(filled, interleaved.size() - filled));
+            filled += got;
+            if (got == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+        captured += static_cast<std::uint64_t>(ac3::kSamplesPerFrame);
+        carrier.clear();
+        ac3::iec61937::carrier_from_capture(interleaved, channels, carrier);
+        if (!drain(carrier)) {
+            sink.abort();
+            return 1;
+        }
+        std::print("\r  {} burst{} captured ({:.1f} s)  ", reader.bursts(),
+                   reader.bursts() == 1 ? "" : "s",
+                   static_cast<double>(captured) / static_cast<double>(rate));
+    }
+    std::println("");
+
+    capture.stop();
+    if (reader.bursts() == 0) {
+        sink.abort();
+        std::println(stderr, "error: the bursts stopped before a whole one was captured");
+        return 1;
+    }
+    if (!sink.close()) {
+        return 1;
+    }
+    const auto stats = capture.stats();
+    std::println("wrote {} {} bursts ({} bytes) to {}", reader.bursts(),
+                 eac3 ? "E-AC-3" : "AC-3", elementary_bytes, out_path);
+    std::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+                 stats.frames_silence_filled, stats.frames_dropped);
+    if (reader.skipped_bursts() > 0 || reader.false_syncs() > 0) {
+        std::println("{} burst(s) of another data type skipped, {} false sync(s) resynced past",
+                     reader.skipped_bursts(), reader.false_syncs());
+    }
+    std::println("no re-encode happened: this is what the source sent, byte for byte.");
+    return 0;
+}
+
+}  // namespace
+
 int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
                int device_index, const Options& meta) {
     const auto devices = ac3::audio::enumerate_devices();
@@ -63,16 +167,16 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     const auto& device = (*devices)[static_cast<std::size_t>(device_index)];
 
     ac3::SampleRate sr{};
+    bool encodable_rate = true;
     switch (device.sample_rate) {
         case 48000: sr = ac3::SampleRate::k48000; break;
         case 44100: sr = ac3::SampleRate::k44100; break;
         case 32000: sr = ac3::SampleRate::k32000; break;
-        default:
-            std::println(stderr,
-                         "error: device runs at {} Hz; AC-3 needs 32, 44.1 or 48 kHz "
-                         "(change the endpoint's shared-mode format in Windows sound settings)",
-                         device.sample_rate);
-            return 1;
+        // Not an error on its own any more: a bitstreaming endpoint routinely
+        // runs at a rate AC-3 cannot encode at - 192 kHz is exactly the
+        // E-AC-3 carrier's 4x - so the rate gate is now the PCM path's, and
+        // is applied below only once detection has ruled a bitstream out.
+        default: encodable_rate = false; break;
     }
 
     ac3::audio::Capture capture;
@@ -84,6 +188,37 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     const auto channels = capture.channels();
     std::println("recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
                  capture.sample_rate(), channels, seconds);
+
+    // A rate AC-3 cannot encode at leaves only one thing this can be. Listen
+    // until the detector decides, then either record the bursts or say what
+    // was wrong with the endpoint - which is both reasons at once, since
+    // neither alone explains why nothing can be done with it.
+    if (!encodable_rate) {
+        ac3::iec61937::PassthroughDetector detector;
+        std::vector<float> probe(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
+        while (!detector.decided()) {
+            std::size_t filled = 0;
+            while (filled < probe.size()) {
+                const auto got = capture.buffer()->read(
+                    std::span{probe}.subspan(filled, probe.size() - filled));
+                filled += got;
+                if (got == 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+            }
+            detector.push(probe, channels);
+        }
+        if (detector.detected()) {
+            return record_passthrough(out_path, seconds, capture, detector, meta.keep_partial);
+        }
+        capture.stop();
+        std::println(stderr,
+                     "error: device runs at {} Hz; AC-3 needs 32, 44.1 or 48 kHz "
+                     "(change the endpoint's shared-mode format in Windows sound settings), "
+                     "and it is not bitstreaming IEC 61937 either",
+                     device.sample_rate);
+        return 1;
+    }
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state, and this function only constructs it once (PREfast's C6262).
@@ -103,6 +238,12 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     std::vector<std::vector<std::byte>> frames;
     frames.reserve(static_cast<std::size_t>(target_frames));
 
+    // Runs alongside the encode for the first quarter-second or so, then
+    // costs nothing at all. Encoding continues meanwhile rather than the
+    // session pausing to listen first: an ordinary microphone - which is
+    // what this almost always is - must not lose its opening.
+    ac3::iec61937::PassthroughDetector detector;
+
     while (frames.size() < target_frames) {
         // Block until a whole AC-3 frame of interleaved samples is available.
         std::size_t filled = 0;
@@ -112,6 +253,17 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
             filled += got;
             if (got == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+        if (!detector.decided()) {
+            detector.push(interleaved, channels);
+            if (detector.detected()) {
+                // Everything encoded so far was burst data read as audio.
+                // Drop it and record what the source is actually sending.
+                frames.clear();
+                frames.shrink_to_fit();
+                return record_passthrough(out_path, seconds, capture, detector,
+                                          meta.keep_partial);
             }
         }
         // Deinterleave to stereo: take the first two channels, or duplicate a

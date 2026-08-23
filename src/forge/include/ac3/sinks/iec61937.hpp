@@ -215,6 +215,18 @@ class AC3FORGE_EXPORT BurstReader {
 // Capture-side recognition.
 // ---------------------------------------------------------------------------
 
+// Carrier bytes from the interleaved float frames a capture backend
+// delivers, appended to `out`: the PCM16 words that were divided by 32768 on
+// the way in, multiplied back. Only the first two channels are read - IEC
+// 61937 is a stereo carrier - and `channels` is the capture's own count.
+//
+// Exposed rather than kept inside PassthroughDetector because a recorder
+// needs the identical conversion once detection has said yes: if the two
+// disagreed by a rounding step, a session would detect a bitstream and then
+// record a different one.
+AC3FORGE_EXPORT void carrier_from_capture(std::span<const float> interleaved,
+                                          std::uint16_t channels, std::vector<std::byte>& out);
+
 // Is this capture actually a bitstream?
 //
 // An endpoint fed IEC 61937 hands its samples over as ordinary PCM, because
