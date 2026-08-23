@@ -14,6 +14,26 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **E-AC-3 transmits its bit allocation parameters** (`bamode` 1, roadmap `EQ3`) instead of
+  inheriting Table E1.4's `bamode == 0` defaults - which are not §8.2.12's basic-encoder set, and
+  in particular pinned `dbpbcod` at 2. The frame now states `{sdcycod 2, fdcycod 1, sgaincod 1,
+  dbpbcod 3, floorcod 7}`, at a cost of 17 bits a frame. `dbpbcod` 3 is the departure the AC-3
+  encoder measured its way to in 0.7.0, and it carries over: swept 0-3 across 96/128/192 kbit/s
+  stereo and 192/256/384/640 kbit/s 5.1, it wins every cell by +1.2 to +3.0 dB SNR against the
+  old value, with ViSQOL MOS up in every cell too. `floorcod` was swept as well and stays at 7 -
+  the lowest of the eight, so the floor never binds. Both reference encoders in
+  `tests/golden/external-baseline/` emit exactly this set.
+- **`dithflag` is decided from content** in both encoders (roadmap `EQ4`), per full-bandwidth
+  channel per block, where it was previously written as a fixed 0. §7.3.4's dither exists to fill
+  the bins the allocator gave no bits to; the encoders now compare the energy the decoder will
+  not receive against the energy the dither would put there instead, and set the flag only where
+  the first is at least as large as the second. Digital silence always reads clear. A
+  block-switched channel never dithers - two interleaved half transforms share one coefficient
+  set there - which is also exactly what Dolby's own encoder does in the reference stream. On
+  E-AC-3 dither is additionally held off for any frame using spectral extension, whose
+  copy-source reconstruction the encoder could not otherwise mirror. The flag is transmitted
+  either way, so none of this costs bits; it trades a little waveform SNR for perceptual quality,
+  which is what the tool is for.
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
@@ -22,6 +42,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   in a ledger so older references still resolve. The DAMF reader (`B2`) moves to "Deliberately
   not on the list" (no public specification); an IAB (SMPTE ST 2098-2) reader replaces it now
   that SMPTE's catalogue is free.
+
+### Fixed
+
+- **E-AC-3 `snroffststr` 0x2 read the wrong fields.** The per-channel fine-offset strategy's
+  parse consumed one value per coded channel and none for the coupling channel, so a conforming
+  stream using it would have desynced whenever coupling was on, and the shared channel would have
+  allocated against an offset nobody sent. §7.2.2.1.1's all-zero test now includes
+  `cplfsnroffst` too. Nothing emits this strategy - not this project's encoder, not FFmpeg's, not
+  Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
+  note at the code and roadmap `EQ2`.
+
+
+
 
 ## [0.9.0-beta.1] - 2026-08-22
 
