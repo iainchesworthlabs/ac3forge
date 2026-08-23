@@ -813,31 +813,29 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
             }
             vbr.max_kbps = kbps;
         } else if (token.starts_with("avg:")) {
-            // Only the leading token may turn ABR on - "q:0.5,avg:192" would
-            // otherwise reach here and quietly discard the quality.
+            // Only the LEADING token may turn ABR on: "q:0.5,avg:192" would
+            // otherwise reach here and quietly discard a quality the caller
+            // did type, and a second "avg:" would leave which of the two
+            // rates was meant unanswerable.
             if (!abr || vbr.abr) {
                 return false;
             }
             if (!parse_kbps(token.substr(4), kbps)) {
                 return false;
             }
-            // Keeps whatever window a preceding win: already set, and keeps
-            // AbrConfig's default when nothing did.
-            const auto window =
-                vbr.abr ? vbr.abr->window_frames : eac3::kAbrDefaultWindowFrames;
-            vbr.abr = eac3::AbrConfig{.target_kbps = kbps, .window_frames = window};
+            // window_frames keeps AbrConfig's own default; "win:" below is
+            // the only thing that moves it.
+            vbr.abr = eac3::AbrConfig{.target_kbps = kbps};
         } else if (token.starts_with("win:")) {
-            // Meaningless without an average to size, and the AbrConfig
-            // default target would then be a rate the caller never chose.
+            // Meaningless without an average to size. Since "avg:" can only
+            // lead, a "win:" reaching here with no AbrConfig built is a
+            // window around nothing rather than a reordering.
+            if (!vbr.abr) {
+                return false;
+            }
             // Same rule parse_kbps enforces for a rate: a zero-frame window
             // is not a window, it is a missing one.
-            if (!abr) {
-                return false;
-            }
             if (!parse_kbps(token.substr(4), kbps)) {
-                return false;
-            }
-            if (!vbr.abr) {
                 return false;
             }
             vbr.abr->window_frames = kbps;
@@ -847,11 +845,6 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
         text = split == std::string_view::npos ? std::string_view{} : text.substr(split + 1);
     }
     if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
-        return false;
-    }
-    // "avg:" led, so an AbrConfig must have been built - the loop's first
-    // pass is the only place that token can appear.
-    if (abr && !vbr.abr) {
         return false;
     }
     // Bounds that exclude the average make it unreachable by construction;

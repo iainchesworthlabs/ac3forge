@@ -2566,7 +2566,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         std::uint32_t words = 0;
         std::optional<std::uint32_t> fallback_budget;
     };
-    //
     // `cap_words` is the ceiling this frame may not pass: max_kbps's word
     // count under plain VBR, and under ABR whatever the sliding-window
     // reservoir has left (already the tighter of the two - see abr_cap_words
@@ -2714,9 +2713,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             lo = search(*fixed_budget); // NOLINT(bugprone-unchecked-optional-access)
             // Under ABR the operating point is deliberately NOT pulled onto
             // `lo` here: the ceiling that forced this is one frame's
-            // allowance, not a verdict on where the offset belongs, and
-            // wanted_words above already tells the controller by how much it
-            // overshot.
+            // allowance, not a verdict on where the offset belongs. `clipped`
+            // above is what the controller is told instead, and it suppresses
+            // only the upward correction - see AbrController::commit.
         }
         // Only ever a floor: finish_frame's own auxbits padding already
         // covers any gap between what the content actually needs and the
