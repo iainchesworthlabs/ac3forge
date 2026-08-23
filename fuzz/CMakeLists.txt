@@ -50,8 +50,7 @@ target_compile_options(forge_objects PUBLIC
     -g)
 target_link_options(forge_objects PUBLIC -fsanitize=address,undefined,fuzzer-no-link)
 
-# The container libraries need the identical treatment: matroska::matroska
-# (and, as their harnesses land, mp4::mp4 and mpegts::mpegts) parse
+# The container libraries need the identical treatment: they parse
 # self-declared lengths straight off untrusted input, which is exactly the
 # class of bug ASan catches and exactly what the harnesses below mutate. An
 # uninstrumented library would still crash on a genuine out-of-bounds read,
@@ -61,12 +60,15 @@ target_link_options(forge_objects PUBLIC -fsanitize=address,undefined,fuzzer-no-
 # Same PUBLIC-on-the-OBJECT-library reasoning as forge_objects above: the
 # usage requirements propagate through the static/shared wrappers to
 # whatever finally links matroska::matroska - here, each harness.
-target_compile_options(matroska_objects PUBLIC
-    -fsanitize=address,undefined,fuzzer-no-link
-    -fno-sanitize-recover=undefined
-    -fno-omit-frame-pointer
-    -g)
-target_link_options(matroska_objects PUBLIC -fsanitize=address,undefined,fuzzer-no-link)
+foreach(container_target IN ITEMS matroska_objects mp4_objects)
+    target_compile_options(${container_target} PUBLIC
+        -fsanitize=address,undefined,fuzzer-no-link
+        -fno-sanitize-recover=undefined
+        -fno-omit-frame-pointer
+        -g)
+    target_link_options(${container_target} PUBLIC
+        -fsanitize=address,undefined,fuzzer-no-link)
+endforeach()
 
 add_custom_target(ac3forge_fuzzers)
 
@@ -114,6 +116,12 @@ ac3forge_add_fuzzer(fuzz_scan)
 # from a disc rip, a broadcast capture or a download - every length in it
 # self-declared (src/matroska/src/reader.cpp).
 ac3forge_add_container_fuzzer(fuzz_matroska_demux matroska::matroska)
+
+# mp4::demux + mp4::Reader: the box walk, and the sample table it resolves
+# against the file - an INDEX of self-declared offsets and sizes, which is a
+# wider attack surface than Matroska's in-line framing
+# (src/mp4/src/reader.cpp).
+ac3forge_add_container_fuzzer(fuzz_mp4_demux mp4::mp4)
 
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
 # drives them (src/forge/src/decoder/decoder.cpp).

@@ -480,4 +480,27 @@ cmp -s atmos_4.ec3 demux_atmos.ec3 || {
 # container in, playable elementary stream out.
 run_ffmpeg_check demux_atmos.ec3
 
+# The same three through MP4 rather than Matroska. An MP4 is the harder case:
+# its sample table is an index resolved against the file, so a chunk-offset or
+# stsc misreading shows up as shifted bytes here and nowhere else.
+run demux enc_51.mp4 demux_mp4_51.ac3
+cmp -s enc_51.ac3 demux_mp4_51.ac3 || {
+    echo "demux enc_51.mp4 did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux atmos_4.mp4 demux_mp4_atmos.ec3
+cmp -s atmos_4.ec3 demux_mp4_atmos.ec3 || {
+    echo "demux atmos_4.mp4 did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+run_ffmpeg_check demux_mp4_atmos.ec3
+# A fragmented MP4 too: init segment plus every media segment concatenated,
+# which is what a player is handed and a completely different code path from
+# the plain sample table above (moof/traf/trun rather than stsc/stsz/stco).
+run demux fmp4_atmos_combined.mp4 demux_fmp4_atmos.ec3
+cmp -s atmos_4.ec3 demux_fmp4_atmos.ec3 || {
+    echo "demux of the fragmented MP4 did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

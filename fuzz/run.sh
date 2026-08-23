@@ -44,7 +44,7 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 # this list. See seed_source_for below for how they reuse seed corpora
 # without duplicating any files.
 readonly TARGETS=(fuzz_scan fuzz_ac3_decode fuzz_eac3_decode fuzz_wav_read
-                  fuzz_matroska_demux)
+                  fuzz_matroska_demux fuzz_mp4_demux)
 
 CXX_CANDIDATE="${CXX:-clang++}"
 if ! command -v "$CXX_CANDIDATE" >/dev/null 2>&1; then

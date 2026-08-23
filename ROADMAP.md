@@ -233,9 +233,10 @@ machine-readable output and a single failure exit code. Users arrive with contai
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
   `*.ac3/*.ec3`) accept containers, plus `demux` and container-to-container remux — the
-  `dec3`-repair case the old `A1` cited. One PR per container, each an M. **Matroska done**
-  (`matroska::demux`/`Reader`, plus `ac3cli demux` and a fuzz harness over the EBML walk); MP4
-  and MPEG-TS next, and the other commands widen to containers with the last of them.
+  `dec3`-repair case the old `A1` cited. One PR per container, each an M. **Matroska and MP4 done**
+  (`matroska::demux`/`Reader`, `mp4::demux`/`Reader` including the `dec3` parser and fragmented
+  `moof`/`trun`, plus `ac3cli demux` and a fuzz harness per container); MPEG-TS next, and the
+  other commands widen to containers with it.
 - [ ] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.

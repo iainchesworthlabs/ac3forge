@@ -36,6 +36,7 @@ endif()
 target_sources(mp4_objects
     PRIVATE
         src/mp4.cpp
+        src/reader.cpp
         src/fragment.cpp
         src/hls.cpp
         src/dash.cpp)
@@ -61,6 +62,14 @@ set_target_properties(mp4_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
+
+# MSVC's C4251 for the PRIVATE STL-typed member of an MP4_EXPORT class
+# (mp4::Reader's std::unique_ptr to its parse state) - the identical,
+# identically-reasoned suppression src/matroska/CMakeLists.txt applies for
+# matroska::Writer; see its comment for why PUBLIC and why here rather than
+# header pragmas. mp4:: needed none of this until Reader: every other export
+# here is a free function or a plain aggregate.
+target_compile_options(mp4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
 set_target_properties(mp4_shared PROPERTIES DEFINE_SYMBOL "MP4_BUILDING_SHARED")
