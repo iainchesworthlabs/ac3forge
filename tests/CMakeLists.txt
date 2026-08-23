@@ -86,6 +86,7 @@ add_executable(ac3tests
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
+    core/test_simd_kernels.cpp
     core/test_tables.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
@@ -100,6 +101,20 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# test_simd_kernels.cpp (roadmap PF5) needs the same two internal directories
+# the codec core itself is compiled against: the ONE architecture directory
+# CMake selected in src/forge/CMakeLists.txt, so the test exercises the
+# f64x2/i32x4 the library was actually built with rather than a different
+# one; and src/forge/src/core, so it can include fft_radix2.hpp and compare
+# the vector butterfly against the scalar reference kept beside it. Same
+# white-box arrangement as src/signing/src just above and the ALSA backend's
+# internal header below - these are transform plumbing between translation
+# units, not library surface, and putting them on a test target's private
+# include path is the only way to test them directly.
+target_include_directories(ac3tests PRIVATE
+    "${AC3FORGE_ARCH_INCLUDE_DIR}"
+    "${AC3FORGE_CORE_INCLUDE_DIR}")
 
 # test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
 # committed programme-material fixtures rather than a synthetic signal - the delta bit

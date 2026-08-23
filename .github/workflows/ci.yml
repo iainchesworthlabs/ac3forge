@@ -63,10 +63,17 @@
 # 30 dB gate). Runs on every leg except linux-llvm-asan-ubsan (diagnostic-
 # only, same reasoning as its `packageable` exclusion). Real numbers from the
 # CI run that landed this: 67.84/67.82 dB on Windows and Linux, 61.81/61.82
-# dB on macOS - a real, modest cross-compiler floating-point difference
-# (Homebrew LLVM's libm vs. glibc's/MSVC's), comfortably clear of the
-# threshold on every leg, and exactly why the gate is SNR-based rather than a
-# bit-exact bitstream comparison.
+# dB on macOS, comfortably clear of the threshold on every leg. That gap is
+# 6.02 dB, and the arm64 legs added later land on the same offset - which
+# ruled out the explanation this comment used to give (Homebrew LLVM's libm
+# vs. glibc's/MSVC's): a libm cannot explain three legs across two different C
+# libraries agreeing to the decimal. 6.02 dB is exactly one AC-3 exponent
+# step, and the cause is architectural - floating-point contraction into FMA,
+# which is a base ARMv8-A instruction and absent from baseline x86-64. The
+# project now pins -ffp-contract=off project-wide (roadmap PF5/VX11); see
+# docs/building.md's "Floating-point contraction". The gate stays SNR-based
+# rather than a bit-exact bitstream comparison until those legs are confirmed
+# to agree - VX11's remaining half.
 #
 # Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests, a real ctest
 # entry (label "gui") that Quick-Test-drives the actual EncoderController

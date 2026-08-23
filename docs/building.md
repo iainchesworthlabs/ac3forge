@@ -198,6 +198,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
+| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from `CMAKE_SYSTEM_PROCESSOR` and falls back to `generic` everywhere else, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_TRACY` | `OFF` | Tracy profiler instrumentation (`ac3::tracy` — see `cmake/Tracy.cmake`). Needs vcpkg's `profiling` manifest feature (`-DVCPKG_MANIFEST_FEATURES=profiling`), which supplies Tracy itself; off is a no-op. |
@@ -600,6 +601,108 @@ hardware, not QEMU) and, separately, on a real Raspberry Pi 4B — see
 are tracked there rather than duplicated here since that page is the canonical source for
 Pi-specific hardware findings (real ALSA/HDMI device names, resolved compiler versions on Raspberry
 Pi OS, and so on).
+
+## SIMD kernels and the architecture tree
+
+The codec's hot kernels are vectorised, and the vector types they are written against come from
+a directory CMake chooses — never from an `#ifdef`. `src/forge/src/internal/arch/` holds
+`generic/`, `x86_64/` and `aarch64/`, each carrying one identically-pathed
+`ac3/internal/arch/simd.hpp`; `src/forge/CMakeLists.txt` puts exactly one of them on
+`forge_objects`'s private include path, so every `#include "ac3/internal/arch/simd.hpp"` in the
+core resolves to it and no translation unit ever asks what it is being compiled for. This is the
+same mechanism `src/internal/profiling/tracy_{enabled,disabled}/` uses for the profiling seam and
+`src/audio/src/backend/<backend>/` uses for the operating system, and it is what
+`tools/checks/check_platform_macros.ps1` exists to keep true (no preprocessor conditional anywhere
+under `src/` or `apps/`).
+
+`AC3FORGE_SIMD` forces a directory; `auto` (the default) resolves `x86_64` on x86-64, `aarch64` on
+arm64, and `generic` on everything else — 32-bit x86, WebAssembly, anything unrecognised.
+`generic` is a complete scalar implementation, not a stub: it is the reference the other two are
+measured against, and `-DAC3FORGE_SIMD=generic` is what a reproducibility comparison should reach
+for first when two machines disagree. The resolved value is printed by the configure summary and
+by `ac3cli --version`, which reads it from the compiled header rather than from a
+CMake-substituted string, so a binary cannot claim a directory it was not built with.
+
+**What is vectorised.** The kernels live once, in shared code, written against the two 128-bit
+types the header defines (`f64x2`, two doubles; `i32x4`, four 32-bit integers) — the directories
+carry the types, not three copies of an FFT:
+
+| Kernel | Where | Note |
+|---|---|---|
+| radix-2 FFT butterflies | `src/forge/src/core/fft_radix2.hpp` | The hottest kernel in the codec — every fast MDCT and fast IMDCT is one call to it. Stages with `half >= 2` run two butterflies at a time; the `len = 2` stage stays scalar (its operands interleave rather than run contiguously, and ROADMAP PF4's radix-4 codelets remove the stage rather than vectorising it). |
+| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT. Their memory access is strided, so the gather and scatter ends stay scalar and only the arithmetic goes two-wide. |
+| analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. |
+| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Steps 2 and 4 of both inverses. |
+| `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. |
+| §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. |
+| `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. |
+
+**What is not, and why.** The direct-form (`mode=reference`) MDCT and IMDCT are dot products, and
+splitting a reduction into per-lane partial sums reassociates the additions — which changes the
+result. Those paths are the normative oracle every fast path is validated against, so their
+numbers are not something to trade for speed. `band_energy`'s per-band accumulation is a reduction
+for the same reason (its cost is the MDCT inside it, which does get faster). Steps 1 and 5 of both
+inverses are permutation-dominated. On x86-64 nothing wider than SSE2 is used: AVX and FMA3 are
+CPU features rather than architecture, a compile-time `-march=` for them would produce a binary
+that faults on older hardware, and the runtime `cpuid` dispatch that would make them safe is not
+built. 128 bits is the native width of NEON and of WASM's `simd128` in any case, and those are the
+platforms with the least headroom.
+
+**Why it is bit-exact.** Every operation in the seam is exactly one IEEE-754 add, subtract or
+multiply per lane, so a kernel written against `f64x2` performs precisely the operations, in
+precisely the order, that the scalar loop it replaced performed — it produces the same doubles,
+not nearby ones. That matters more here than in most numerical code: encoded output is a bit-exact
+function of those doubles, and a last-place difference in an MDCT coefficient sitting on a power
+of two moves an exponent, which is 6.02 dB.
+
+Two gates hold it. `tests/core/test_simd_kernels.cpp` compares each vector kernel against a scalar
+reference in the same binary and requires bit-for-bit equality, never a tolerance — on a `generic`
+build most of it is a tautology, on every other build it is the whole argument. Above it,
+`tools/ci/run_codec_matrix.sh` run against two builds differing only in `AC3FORGE_SIMD` must
+produce byte-identical output; that one covers restructuring the unit test cannot see:
+
+```bash
+cmake -S . -B build/simd-generic -DAC3FORGE_SIMD=generic
+```
+
+```bash
+./tools/ci/run_codec_matrix.sh build/config-linux-gcc/bin/ac3cli /tmp/mx-simd && ./tools/ci/run_codec_matrix.sh build/simd-generic/bin/ac3cli /tmp/mx-generic && diff <(cd /tmp/mx-simd && find . -type f | sort | xargs sha256sum) <(cd /tmp/mx-generic && find . -type f | sort | xargs sha256sum)
+```
+
+## Floating-point contraction
+
+The project pins `-ffp-contract=off` (`/fp:precise` on MSVC, `/clang:-ffp-contract=off` on
+clang-cl) for every target, in the top-level `CMakeLists.txt`.
+
+GCC and Clang both let the optimiser fuse `a * b + c` into a single fused-multiply-add by default,
+which keeps one extra rounding step's worth of precision. That is a good default for numerical
+code and the wrong one here, because it is **architecture-dependent**: FMA is a base ARMv8-A
+instruction, so every arm64 and Apple-silicon leg contracts, while x86-64 has no FMA below AVX2
+and this project passes no `-march=`, so no x86 leg does. The same source computes different
+numbers on different legs purely because of what the instruction set offers.
+
+The [gold-reference gate](#gold-reference-correctness-gate) has been recording exactly that:
+`linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` score about 61.8 dB where every x86 leg
+scores about 67.8 dB. That gap is 6.02 dB, which is not a vague "floating-point differences"
+number — it is precisely one AC-3 exponent step (§7.2.2.2's PSD units are 128 per exponent, and
+one exponent is 6.02 dB). Contraction was the standing hypothesis for it; the CI legs on this
+change are the measurement. Earlier text here and in `ci.yml` blamed Homebrew's libm for the macOS
+row, which the glibc/GCC arm64 rows always contradicted — a libm cannot explain three legs on two
+different C libraries landing on the same offset.
+
+Contraction also breaks the SIMD seam's correctness argument outright, which is why the two
+changes belong together: the seam maps every operation to one IEEE-754 add, subtract or multiply
+so a vectorised kernel is bit-identical to the scalar loop it replaced, and that only holds if the
+scalar loop is not silently getting a fused form the intrinsics cannot express. "Use intrinsics"
+is not by itself a defence — Clang will happily re-fuse a NEON `vmulq_f64` and `vsubq_f64` pair
+back into `vfmsq_f64` when contraction is on.
+
+Measured cost: none on x86-64, where the flag is a no-op because baseline x86-64 has no FMA
+instruction to emit — proven, not assumed, by the corpus comparison above coming out
+byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
+inner loops and buys agreement with every other leg for it. ROADMAP VX11 carries the rest of that
+item: deciding whether the remaining cross-leg divergence becomes a bitstream-hash gate or a
+documented, accepted difference.
 
 ## Gold-reference correctness gate
 

@@ -12,8 +12,50 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **SIMD kernels, selected by CMake rather than by `#ifdef`** (roadmap `PF5`). The codec's hot
+  kernels now run through 128-bit vector types supplied by one of
+  `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, each carrying an identically-pathed
+  `ac3/internal/arch/simd.hpp` that `src/forge/CMakeLists.txt` puts on the include path — the same
+  mechanism the profiling seam and the audio backend tree already use, and the reason no
+  translation unit in the codec has to ask what it is being compiled for. `AC3FORGE_SIMD` forces a
+  directory (`generic` is a complete scalar implementation and what a reproducibility comparison
+  should reach for); the resolved value appears in the configure summary and in
+  `ac3cli --version`. Vectorised: the radix-2 FFT butterflies that every fast MDCT and fast IMDCT
+  is built on, the DCT-IV pre/post twiddles, analysis windowing, both inverses' twiddle stages,
+  `dft512`'s normalisation, §7.2.2.2's exponent-to-PSD conversion, and a batched `to_fixed25`.
+  Only SSE2 and base ARMv8-A Advanced SIMD are used — both part of their architecture rather than
+  optional features — so there is no `-march=` flag and no runtime dispatch, and 128 bits is the
+  native width of the platforms this was done for anyway (Raspberry Pi, the Shield's Tegra X1,
+  WASM). **Encoded output is unchanged, bit for bit**: every seam operation is exactly one
+  IEEE-754 add, subtract or multiply per lane, `tests/core/test_simd_kernels.cpp` holds each
+  vector kernel to bit-for-bit equality with a scalar reference in the same binary, and the full
+  `run_codec_matrix.sh` corpus — 93 streams, 272 output files across every layout, Annex E tool
+  token and metadata option — hashes identically between this build, a `-DAC3FORGE_SIMD=generic`
+  build, and the previous release. Decoded audio is likewise bit-identical, which is a stronger
+  guarantee than the fast-IMDCT work's own 7.8e-14 / 215–285 dB standard. See
+  [docs/building.md](docs/building.md).
+
 ### Changed
 
+- **Floating-point contraction is pinned off** (`-ffp-contract=off`, `/fp:precise` on MSVC,
+  `/clang:-ffp-contract=off` on clang-cl), project-wide. GCC and Clang fuse `a * b + c` into a
+  single FMA by default, which is architecture-dependent — FMA is a base ARMv8-A instruction and
+  absent from baseline x86-64 — so the same source computed different numbers on different CI
+  legs. That is the standing explanation for the gold-reference gate's arm64 and macOS legs
+  scoring 6.02 dB below every x86 leg, a gap that is exactly one AC-3 exponent step rather than
+  the vague cross-libm difference the documentation used to claim (a libm cannot explain three
+  legs on two different C libraries landing on the same offset). Contraction would also break the
+  SIMD seam's bit-exactness argument, so the two changes belong together. No measurable cost on
+  x86-64, where the flag is a no-op — proven by the corpus comparison above being byte-identical
+  against a build without it. Roadmap `VX11` carries what remains: whether the legs now agree
+  closely enough for a cross-leg bitstream-hash gate.
+- **`ac3kernelbench` gained the fast inverse transforms.** `imdct512_windowed_fast`,
+  `imdct256_pair_windowed` and `imdct256_pair_windowed_fast` join the per-kernel trend series; the
+  bench previously timed only the direct inverse, which has not been the default since 0.9.0, so
+  the whole decode side of a transform change was invisible to
+  [docs/performance-trend.md](docs/performance-trend.md).
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`

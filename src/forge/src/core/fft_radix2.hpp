@@ -2,10 +2,13 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <numbers>
 #include <span>
 #include <utility>
+
+#include "ac3/internal/arch/simd.hpp"
 
 // The iterative radix-2 decimation-in-time FFT core shared by the §7.9.4
 // fast MDCT fold (mdct.cpp, P = 128) and dft512 (fft.cpp, P = 512, the
@@ -53,14 +56,12 @@ struct FftRadix2Tables {
     }
 };
 
-// In place over separate re/im arrays: on return (re, im) hold
-// A[k] = sum_m a[m] * exp(-2*pi*i*m*k/P) for k = 0..P-1 (unnormalized
-// forward transform). Split arrays rather than std::complex so the
-// butterfly's four independent multiply-add chains stay visible to the
-// auto-vectorizer.
+// The bit-reversal permutation both forms below open with. Pure data
+// movement, no arithmetic, so there is nothing here for a vector unit to do
+// and nothing that could differ between the two.
 template <std::size_t P>
-void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
-                        std::span<double, P> im) {
+void fft_radix2_bitreverse(const FftRadix2Tables<P>& t, std::span<double, P> re,
+                           std::span<double, P> im) {
     for (std::size_t i = 1; i < P; ++i) {
         const std::size_t j = t.bitrev[i];
         if (i < j) {
@@ -68,6 +69,22 @@ void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
             std::swap(im[i], im[j]);
         }
     }
+}
+
+// The scalar butterfly loop, kept as the REFERENCE the vector form below is
+// checked against rather than as a fallback: the generic arch directory
+// already provides a complete scalar implementation of the seam, so nothing
+// in the library ever calls this. tests/core/test_simd_kernels.cpp does, and
+// asserts the two agree bit-for-bit on every leg - which on an x86_64 or
+// aarch64 build is the whole claim the PF5 work rests on, and on a generic
+// build is a tautology that costs one cheap test.
+//
+// It is deliberately still the original loop, unchanged and unclever: the
+// value of a reference is that it is obviously right, not that it is fast.
+template <std::size_t P>
+void fft_radix2_forward_reference(const FftRadix2Tables<P>& t, std::span<double, P> re,
+                                  std::span<double, P> im) {
+    fft_radix2_bitreverse<P>(t, re, im);
     for (std::size_t len = 2; len <= P; len <<= 1) {
         const std::size_t half = len / 2;
         for (std::size_t i = 0; i < P; i += len) {
@@ -84,6 +101,80 @@ void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
                 im[i + j] = ui + vi;
                 re[i + j + half] = ur - vr;
                 im[i + j + half] = ui - vi;
+            }
+        }
+    }
+}
+
+// In place over separate re/im arrays: on return (re, im) hold
+// A[k] = sum_m a[m] * exp(-2*pi*i*m*k/P) for k = 0..P-1 (unnormalized
+// forward transform). Split arrays rather than std::complex so the
+// butterfly's four independent multiply-add chains stay contiguous in j,
+// which is what lets the loop below run two butterflies per iteration.
+//
+// The hottest kernel in the codec (ROADMAP PF5): every fast MDCT and every
+// fast IMDCT - the default on both the encode and the decode path since
+// 0.9.0 - is one call to this, 36 times a frame for a 5.1 encode and once
+// per channel per block on decode.
+//
+// VECTORISATION AND WHY IT IS BIT-EXACT. Within one stage, butterfly j
+// touches only re/im[i+j] and re/im[i+j+half], so consecutive j are disjoint
+// whenever half >= 2 and can be evaluated together. Each lane then performs
+// exactly the multiplies, subtracts and adds the reference above performs
+// for that j, in the same order, on the same values - the seam's operations
+// are one IEEE-754 operation each and -ffp-contract=off (top-level
+// CMakeLists.txt) stops the compiler fusing any of them. So the result is
+// not "accurate to 1e-15", it is the same doubles.
+//
+// The len = 2 stage (half == 1) stays scalar. Vectorising it would mean
+// pairing ADJACENT butterflies, whose operands interleave rather than run
+// contiguously, and that needs shuffle operations the seam deliberately does
+// not carry. It is 1/log2(P) of the butterflies - 1/7 at P = 128, 1/9 at
+// P = 512 - and the radix-4 codelets ROADMAP PF4 describes remove the stage
+// altogether rather than vectorising it.
+template <std::size_t P>
+void fft_radix2_forward(const FftRadix2Tables<P>& t, std::span<double, P> re,
+                        std::span<double, P> im) {
+    fft_radix2_bitreverse<P>(t, re, im);
+
+    double* const rp = re.data();
+    double* const ip = im.data();
+
+    for (std::size_t len = 2; len <= P; len <<= 1) {
+        const std::size_t half = len / 2;
+        if (half == 1) {
+            for (std::size_t i = 0; i < P; i += 2) {
+                const double wr = t.stage_re[0];
+                const double wi = t.stage_im[0];
+                const double xr = rp[i + 1];
+                const double xi = ip[i + 1];
+                const double vr = xr * wr - xi * wi;
+                const double vi = xr * wi + xi * wr;
+                const double ur = rp[i];
+                const double ui = ip[i];
+                rp[i] = ur + vr;
+                ip[i] = ui + vi;
+                rp[i + 1] = ur - vr;
+                ip[i + 1] = ui - vi;
+            }
+            continue;
+        }
+        // half is a power of two and at least 2 here, so the j loop divides
+        // exactly and needs no scalar tail.
+        for (std::size_t i = 0; i < P; i += len) {
+            for (std::size_t j = 0; j < half; j += 2) {
+                const arch::f64x2 wr = arch::f64x2::load(&t.stage_re[half - 1 + j]);
+                const arch::f64x2 wi = arch::f64x2::load(&t.stage_im[half - 1 + j]);
+                const arch::f64x2 xr = arch::f64x2::load(rp + i + j + half);
+                const arch::f64x2 xi = arch::f64x2::load(ip + i + j + half);
+                const arch::f64x2 vr = xr * wr - xi * wi;
+                const arch::f64x2 vi = xr * wi + xi * wr;
+                const arch::f64x2 ur = arch::f64x2::load(rp + i + j);
+                const arch::f64x2 ui = arch::f64x2::load(ip + i + j);
+                (ur + vr).store(rp + i + j);
+                (ui + vi).store(ip + i + j);
+                (ur - vr).store(rp + i + j + half);
+                (ui - vi).store(ip + i + j + half);
             }
         }
     }

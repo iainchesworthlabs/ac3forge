@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include "ac3/internal/arch/simd.hpp"
+
 namespace ac3 {
 
 // Plain concatenation, not std::format: <format> is unavailable on some
@@ -21,6 +23,13 @@ std::string version_details() {
     out += git_branch;
     out += "\n  target:  ";
     out += build_target;
+    // Which src/forge/src/internal/arch/ directory the codec's vector
+    // kernels were compiled from (ROADMAP PF5). Read from the selected
+    // header itself rather than from a CMake-substituted string, so the
+    // binary reports what it actually contains and cannot claim a
+    // directory it was not built with.
+    out += "\n  kernels: ";
+    out += internal::arch::kSimdName;
     if (git_dirty) {
         out += "\n  state:   dirty (uncommitted changes)";
     }

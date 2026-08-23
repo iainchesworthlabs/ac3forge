@@ -7,6 +7,7 @@
 #include <span>
 
 #include "ac3/core/window.hpp"
+#include "ac3/internal/arch/simd.hpp"
 
 #include "fft_radix2.hpp"
 
@@ -266,6 +267,19 @@ const FastMdctTables<NLen>& fast_mdct_tables() {
 // DCT4[2k] = Re(w[k]), DCT4[M-1-2k] = -Im(w[k]). NLen names the TRANSFORM
 // whose tables carry this DCT-IV's twiddles (M = NLen/2), so the long
 // transform runs it at M = 256 and both short transforms at M = 128.
+// The pre- and post-twiddle loops run two k at a time through the arch seam
+// (ROADMAP PF5). Both are complex multiplies whose ARITHMETIC is contiguous
+// in k even though their memory access is not: the pre-twiddle gathers u at
+// stride +2 and stride -2, the post-twiddle scatters out to the same two
+// strides. The seam carries no shuffle operation, so those ends stay scalar
+// (f64x2::set to gather, lane0/lane1 to scatter) and only the six multiplies
+// and two adds between them go two-wide - which is where the time is. Every
+// lane performs the identical operations on the identical values the scalar
+// form did, so the coefficients are bit-identical; see fft_radix2.hpp's
+// fft_radix2_forward for the full form of that argument.
+//
+// P is kM/2 - 128 for the long transform, 64 for the short pair - so it is
+// always even and neither loop needs a scalar tail.
 template <int NLen>
 void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
                  std::span<double> out, double scale) {
@@ -273,19 +287,28 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
     constexpr std::size_t P = FastMdctTables<NLen>::kP;
     std::array<double, P> z_re{};
     std::array<double, P> z_im{};
-    for (std::size_t m = 0; m < P; ++m) {
-        const double a = u[2 * m];
-        const double b = u[M - 1 - 2 * m];
-        z_re[m] = a * t.pre_re[m] - b * t.pre_im[m];
-        z_im[m] = a * t.pre_im[m] + b * t.pre_re[m];
+    for (std::size_t m = 0; m < P; m += 2) {
+        const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
+        const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
+        const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);
+        const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);
+        (a * pre_re - b * pre_im).store(&z_re[m]);
+        (a * pre_im + b * pre_re).store(&z_im[m]);
     }
     internal::fft_radix2_forward<P>(t.fft, z_re, z_im);
 
-    for (std::size_t k = 0; k < P; ++k) {
-        const double wr = z_re[k] * t.post_re[k] - z_im[k] * t.post_im[k];
-        const double wi = z_re[k] * t.post_im[k] + z_im[k] * t.post_re[k];
-        out[2 * k] = scale * wr;
-        out[M - 1 - 2 * k] = scale * (-wi);
+    const auto scale_v = internal::arch::f64x2::broadcast(scale);
+    for (std::size_t k = 0; k < P; k += 2) {
+        const auto zr = internal::arch::f64x2::load(&z_re[k]);
+        const auto zi = internal::arch::f64x2::load(&z_im[k]);
+        const auto post_re = internal::arch::f64x2::load(&t.post_re[k]);
+        const auto post_im = internal::arch::f64x2::load(&t.post_im[k]);
+        const auto even = scale_v * (zr * post_re - zi * post_im);
+        const auto odd = scale_v * (-(zr * post_im + zi * post_re));
+        out[2 * k] = even.lane0();
+        out[2 * k + 2] = even.lane1();
+        out[M - 1 - 2 * k] = odd.lane0();
+        out[M - 3 - 2 * k] = odd.lane1();
     }
 }
 
@@ -313,10 +336,18 @@ void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> 
 
 }  // namespace
 
+// Two samples per iteration through the arch seam (ROADMAP PF5). The
+// plainest kernel in the codec - 512 independent multiplies, unit stride on
+// all three arrays - and therefore the one where the vector form is most
+// obviously the same arithmetic as the scalar one it replaced. kN is 512, so
+// there is no tail.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
-    for (int n = 0; n < kN; ++n) {
-        windowed[static_cast<std::size_t>(n)] =
-            x[static_cast<std::size_t>(n)] * kAnalysisWindow[static_cast<std::size_t>(n)];
+    const double* const in = x.data();
+    double* const out = windowed.data();
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kN); n += 2) {
+        (internal::arch::f64x2::load(in + n) *
+         internal::arch::f64x2::load(&kAnalysisWindow[n]))
+            .store(out + n);
     }
 }
 
@@ -383,15 +414,21 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
 
     // Step 2: pre-transform complex multiply.
     // Z[k] = (X[N/2-2k-1] + j*X[2k]) * (xcos1[k] + j*xsin1[k])
+    // Two k per iteration through the arch seam (ROADMAP PF5), the same
+    // shape as dct4_scaled's pre-twiddle above: the coefficient gather runs
+    // at stride -2 and +2 and stays scalar, the complex multiply between
+    // them goes two-wide. kQuarter is 128, so no tail.
     std::array<double, kQuarter> z_re{};
     std::array<double, kQuarter> z_im{};
-    for (int k = 0; k < kQuarter; ++k) {
-        const double a = coeffs[static_cast<std::size_t>(kN / 2 - 2 * k - 1)];
-        const double b = coeffs[static_cast<std::size_t>(2 * k)];
-        const double c = tw.cos1[static_cast<std::size_t>(k)];
-        const double s = tw.sin1[static_cast<std::size_t>(k)];
-        z_re[static_cast<std::size_t>(k)] = a * c - b * s;
-        z_im[static_cast<std::size_t>(k)] = b * c + a * s;
+    constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
+    for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
+        const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
+                                                  coeffs[kHalfN - 2 * k - 3]);
+        const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
+        const auto c = internal::arch::f64x2::load(&tw.cos1[k]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);
+        (a * c - b * sn).store(&z_re[k]);
+        (b * c + a * sn).store(&z_im[k]);
     }
 
     // Step 3: N/4-point complex "IFFT". The pseudocode's sum
@@ -436,15 +473,17 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     }
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
+    // Unit stride on every one of the six arrays, so this one vectorises
+    // with nothing to gather or scatter (ROADMAP PF5).
     std::array<double, kQuarter> y_re{};
     std::array<double, kQuarter> y_im{};
-    for (int n = 0; n < kQuarter; ++n) {
-        const double c = tw.cos1[static_cast<std::size_t>(n)];
-        const double s = tw.sin1[static_cast<std::size_t>(n)];
-        y_re[static_cast<std::size_t>(n)] =
-            t_re[static_cast<std::size_t>(n)] * c - t_im[static_cast<std::size_t>(n)] * s;
-        y_im[static_cast<std::size_t>(n)] =
-            t_im[static_cast<std::size_t>(n)] * c + t_re[static_cast<std::size_t>(n)] * s;
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+        const auto c = internal::arch::f64x2::load(&tw.cos1[n]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);
+        const auto tr = internal::arch::f64x2::load(&t_re[n]);
+        const auto ti = internal::arch::f64x2::load(&t_im[n]);
+        (tr * c - ti * sn).store(&y_re[n]);
+        (ti * c + tr * sn).store(&y_im[n]);
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.
@@ -557,21 +596,22 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     }
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
+    // Both half-block sets, two n at a time, all unit stride (ROADMAP PF5).
     std::array<double, kEighth> y1_re{};
     std::array<double, kEighth> y1_im{};
     std::array<double, kEighth> y2_re{};
     std::array<double, kEighth> y2_im{};
-    for (int n = 0; n < kEighth; ++n) {
-        const double c = tw.cos2[static_cast<std::size_t>(n)];
-        const double s = tw.sin2[static_cast<std::size_t>(n)];
-        y1_re[static_cast<std::size_t>(n)] =
-            t1_re[static_cast<std::size_t>(n)] * c - t1_im[static_cast<std::size_t>(n)] * s;
-        y1_im[static_cast<std::size_t>(n)] =
-            t1_im[static_cast<std::size_t>(n)] * c + t1_re[static_cast<std::size_t>(n)] * s;
-        y2_re[static_cast<std::size_t>(n)] =
-            t2_re[static_cast<std::size_t>(n)] * c - t2_im[static_cast<std::size_t>(n)] * s;
-        y2_im[static_cast<std::size_t>(n)] =
-            t2_im[static_cast<std::size_t>(n)] * c + t2_re[static_cast<std::size_t>(n)] * s;
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 2) {
+        const auto c = internal::arch::f64x2::load(&tw.cos2[n]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);
+        const auto t1r = internal::arch::f64x2::load(&t1_re[n]);
+        const auto t1i = internal::arch::f64x2::load(&t1_im[n]);
+        const auto t2r = internal::arch::f64x2::load(&t2_re[n]);
+        const auto t2i = internal::arch::f64x2::load(&t2_im[n]);
+        (t1r * c - t1i * sn).store(&y1_re[n]);
+        (t1i * c + t1r * sn).store(&y1_im[n]);
+        (t2r * c - t2i * sn).store(&y2_re[n]);
+        (t2i * c + t2r * sn).store(&y2_im[n]);
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.

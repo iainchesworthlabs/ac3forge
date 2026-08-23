@@ -370,7 +370,11 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `docs/building.md` and `ci.yml` blame Homebrew's libm, which the glibc/GCC arm64 rows
   contradict: it is architectural (FMA contraction), not a libm. Test `-ffp-contract=off`, pin
   the policy in CMake, then either a cross-leg bitstream-hash gate or a documented, accepted
-  divergence. Fix the two docs either way.
+  divergence. Fix the two docs either way. Partially done by PF5: `-ffp-contract=off` is pinned
+  project-wide and `docs/building.md` now has a "Floating-point contraction" section that
+  replaces the libm explanation. What remains is the decision the measurement supports — whether
+  the arm64 and macOS legs now match x86, and therefore whether a cross-leg bitstream-hash gate
+  is worth having or the residue is an accepted divergence.
 - [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. `docs/building.md` records that
   nothing verifies MSVC, GCC and Clang round the pipeline identically and that they do not.
   Audit the encoder's decision points for floating-point dependence (or move them to integer),
@@ -408,8 +412,9 @@ fuzzer already exist. What remains is mostly what the tree names itself.
 ## PF. Performance and portability
 
 At 2faf352 on linux-gcc: `plain_51` encodes at 0.49 ms/frame (65× real time), `atmos_4obj` at
-0.31 ms; a 180-second 5.1 decode takes 0.79 s since the fast IMDCT became the default. There is
-no SIMD and no threading anywhere in the codec core.
+0.31 ms; a 180-second 5.1 decode takes 0.79 s since the fast IMDCT became the default. PF5 has
+since put 128-bit SIMD behind the transform kernels through a CMake-selected architecture
+directory; there is still no threading anywhere in the codec core.
 
 - [ ] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
   ms/frame series and no real-time gate (`bench_encoder` runs `plain_51` and `atmos_4obj` on a
@@ -429,11 +434,24 @@ no SIMD and no threading anywhere in the codec core.
   bit-reversal pass (`fft_radix2.hpp`) becomes fixed-size radix-4/split-radix codelets for
   P = 64/128/512 with trivial-twiddle elimination. Decode is transform-dominated now; encode gains
   about 10%.
-- [ ] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
+- [x] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
   (`src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, the same mechanism as
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has
   it: FFT butterflies, windowing, `to_fixed25`, `band_energy`, the psd/mask loops. Raspberry Pi,
   the Shield and WASM are where a 2–3× decode matters. After PF1–PF4 and VX11 (the FMA policy).
+  Done with the directory mechanism, not `std::simd`: libstdc++ has only the pre-standard
+  `<experimental/simd>` and libc++ and MSVC have neither, so it is unavailable on four of the six
+  toolchains in the matrix. The kernels live once, written against two 128-bit types
+  (`f64x2`/`i32x4`) the selected directory supplies; SSE2 and base ARMv8-A Advanced SIMD are used,
+  both architectural rather than optional, so no `-march=` and no runtime dispatch. Bit-exactness
+  is the gate rather than a tolerance, held by `tests/core/test_simd_kernels.cpp` and by the
+  codec matrix producing byte-identical output across builds. Done ahead of PF1–PF4 rather than
+  after: they are independent, and the sequencing note was about which kernels to pick, which the
+  existing Tracy and `ac3kernelbench` numbers already answered. VX11's `-ffp-contract` policy IS
+  part of this — it is pinned off project-wide, since contraction is what would break the
+  bit-exactness argument on aarch64. Not done, and left for PF4 and a later item: the `len = 2`
+  FFT stage, the direct-form transforms (reductions — reassociating them would change the
+  reference path's numbers), and AVX2/NEON-wider dispatch.
 - [ ] **PF6 (M)** — A latency budget: document end-to-end encoder latency (lookahead, transient
   detection, tpn hold-back), expose it (`ac3forge_encoder_latency_samples()`), and make EQ11's
   short syncframes the low-latency mode. The first question an engine or conferencing integrator

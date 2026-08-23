@@ -732,15 +732,25 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
-            fixed_base[slot] = fixed.size();
-            block_exps[slot].resize(static_cast<std::size_t>(end - begin));
-            for (int bin = begin; bin < end; ++bin) {
-                const std::int32_t f =
-                    to_fixed25(coeffs_at(s, block)[static_cast<std::size_t>(bin)]);
-                fixed.push_back(f);
-                block_exps[slot][static_cast<std::size_t>(bin - begin)] =
-                    static_cast<std::uint8_t>(exponent_from_fixed(f));
-            }
+            // Batched rather than bin-by-bin (ROADMAP PF5): to_fixed25_block
+            // rounds two coefficients at a time through the architecture
+            // seam, and extract_exponents is the same per-element
+            // exponent_from_fixed this loop used to call inline. Both
+            // produce identical values to the element-wise form - see
+            // exponents.cpp - so the bitstream is unchanged. resize() past
+            // the reservation above rather than push_back so the batch has a
+            // contiguous destination to write into.
+            const auto count = static_cast<std::size_t>(end - begin);
+            const std::size_t base = fixed.size();
+            fixed_base[slot] = base;
+            fixed.resize(base + count);
+            block_exps[slot].resize(count);
+            to_fixed25_block(
+                std::span<const double>{coeffs_at(s, block)}.subspan(
+                    static_cast<std::size_t>(begin), count),
+                std::span<std::int32_t>{fixed}.subspan(base, count));
+            extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
+                              block_exps[slot]);
         }
     }
     AC3_ZONE_END(zone_fixed);
