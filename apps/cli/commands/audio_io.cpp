@@ -59,15 +59,23 @@ namespace {
 // starts at the first burst rather than a quarter-second into it.
 int record_passthrough(std::string_view out_path, std::uint32_t seconds,
                        ac3::audio::Capture& capture,
-                       ac3::iec61937::PassthroughDetector& detector, bool keep_partial) {
+                       ac3::iec61937::PassthroughDetector& detector, const Options& meta) {
     const auto channels = capture.channels();
     const bool eac3 = detector.detected() == ac3::iec61937::BurstDataType::kEac3;
     std::println("");
     std::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
                  eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
+    if (meta.matroska_container) {
+        // Said rather than silently ignored: container=mkv needs the frame
+        // boundaries write_frames_or_mux muxes on, and this path never has
+        // frames - it has a byte stream nothing here re-parsed. 'mkv' turns
+        // the result into Matroska in one further step.
+        std::println("container=mkv does not apply to a passthrough capture: writing the bare");
+        std::println("elementary stream, which 'ac3cli mkv' will wrap if you want a container.");
+    }
 
     EncodedStreamSink sink;
-    if (!sink.open(out_path, keep_partial)) {
+    if (!sink.open(out_path, meta.keep_partial)) {
         return 1;
     }
     ac3::iec61937::BurstReader reader;
@@ -209,7 +217,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
             detector.push(probe, channels);
         }
         if (detector.detected()) {
-            return record_passthrough(out_path, seconds, capture, detector, meta.keep_partial);
+            return record_passthrough(out_path, seconds, capture, detector, meta);
         }
         capture.stop();
         std::println(stderr,
@@ -262,8 +270,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                 // Drop it and record what the source is actually sending.
                 frames.clear();
                 frames.shrink_to_fit();
-                return record_passthrough(out_path, seconds, capture, detector,
-                                          meta.keep_partial);
+                return record_passthrough(out_path, seconds, capture, detector, meta);
             }
         }
         // Deinterleave to stereo: take the first two channels, or duplicate a
