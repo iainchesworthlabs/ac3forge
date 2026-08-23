@@ -39,7 +39,10 @@ depend on them.
 | Transform | long (512-point) or short (2x256-point) blocks, KBD window, chosen per block per channel by a §8.2.2 transient detector | same |
 | Exponents | D15 / D25 / D45, strategy chosen per block from the reuse span (§8.2.8) | frame-level, Table E2.10 code 0: D15 in block 0, reused for the other five |
 | Coupling | yes (§7.4), begin and end frequencies auto or pinned | yes (§E3.3) |
+| Tool selection | coupling/rematrixing/delta always automatic, no toggle | `auto` picks coupling, spectral extension and AHT per frame from the per-channel rate **and** the frame's own spectrum — see [Encoding E-AC-3](library/encoding-eac3.md#how-auto-chooses) |
+| Bit allocation parameters | §8.2.12's basic-encoder set with one measured departure, `dbpbcod` 3 | the same set, transmitted rather than inherited (`bamode` 1, 17 bits a frame) — Table E1.4's own defaults differ from §8.2.12's |
 | Delta bit allocation | automatic (§7.2.2.6), like rematrixing below — no toggle | automatic, same as AC-3 |
+| Dither substitution | `dithflag` decided per channel per block from content (§7.3.4) | the same, except in a frame using spectral extension |
 | Rematrixing | yes, 2/0 (§7.5.3 minimum-power rule) | yes, 2/0 — the same rule, over Table 7.25's bands clamped to wherever coupling or spectral extension takes over |
 | Annex E tools | — | spectral extension (§E3.6), enhanced coupling (§E3.5), adaptive hybrid transform with GAQ (§E3.4), transient pre-noise processing (§3.7) |
 | Objects | panned to a 5.1 bed (no metadata survives) | OAMD + JOC in an EMDF container (TS 103 420) |
@@ -54,6 +57,21 @@ switches anywhere in the frame is excluded from coupling for that whole frame. O
 exclusion is per channel — `chincpl` is a per-channel field, so the rest of the frame still
 couples — while E-AC-3's coupling decision, and AHT on both, remain frame-wide all-or-nothing.
 The LFE never switches (§8.2.2 defines the detector over full-bandwidth channels only).
+
+**Dither's scope**: a bin the allocator gave no bits to is not transmitted, so the decoder
+invents it — a true zero when `dithflag` is clear, a random sample scaled to that bin's own
+exponent when it is set (§7.3.4). Both are wrong, in opposite directions: a run of true zeros is
+a hole in the spectrum, and dither over a bin that really was near-silent is noise added to
+nothing. The encoders decide per channel per block by comparing the two — the energy the decoder
+will *not* receive against the energy the dither would put there instead — and dither only where
+what is being replaced was at least as loud as the substitute. Digital silence is the limiting
+case and always reads clear. A block-switched channel never dithers either, on the same grounds
+Dolby's own encoder appears to use (`dithflag` is exactly `!blksw` in every block of the
+reference stream in `tests/golden/external-baseline/`): a switched block's coefficient set is two
+interleaved half transforms, so filling a zero-bit slot spreads noise across the transient the
+switch exists to resolve. On E-AC-3 dither also stays off for any frame using spectral
+extension — the encoder holds a reconstruction of the decoder's output there to scale the
+extension bands, and the decoder's dither sequence is not reproducible from the encoder's side.
 
 **Delta bit allocation's scope**: the encoder compares the coarse exponent-only masking curve
 §7.2.2.2-7.2.2.5 derive against one built from the real, pre-quantization coefficient magnitude,
@@ -146,7 +164,14 @@ Enhanced coupling and transient pre-noise processing have no external decode ora
 not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own
 Annex E parser has never read either tool's syntax — so `tools/ci/quality_race.py`'s CI gate scores
 both through this project's own decoder instead (see
-[Validation](verification.md#where-the-oracles-dont-reach)). Transient pre-noise processing's
+[Validation](verification.md#where-the-oracles-dont-reach)). That same gap is why neither is in
+the `auto` tool set, though only one of them earned its way out: enhanced coupling measures
+*better* than standard coupling on real programme material at every bitrate and layout tried and
+is kept out purely so `auto` produces streams FFmpeg can read, while transient pre-noise
+processing measured 6.5–24 dB worse than leaving the audio alone over exactly the samples it
+touches, at every bitrate, with no perceptual movement either way — a reference-correctness tool
+rather than a quality one. [Encoding E-AC-3](library/encoding-eac3.md#what-auto-will-not-choose)
+carries both measurements. Transient pre-noise processing's
 one-frame decoder buffering is an API characteristic, not a gap; [Decoding](library/decoding.md)
 covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
 stating a word count directly, so it has no equivalent and stays CBR.

@@ -20,7 +20,7 @@ if (!document) { /* ... */ }
 
 const auto bridged = ac3::admbridge::build(*document);
 if (!bridged) {
-    std::printf("build failed: %.*s\n",
+    fmt::printf("build failed: %.*s\n",
                 static_cast<int>(ac3::admbridge::describe(bridged.error()).size()),
                 ac3::admbridge::describe(bridged.error()).data());
     return 1;

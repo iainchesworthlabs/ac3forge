@@ -1137,6 +1137,35 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             if (frm->snroffststr == 0x1) {
                 fsnroffst.fill(static_cast<int>(r.read(4)));
             } else {
+                // Strategy 0x2: a fine offset per stream, in the order AC-3's
+                // own snroffste group uses - cplfsnroffst first and only
+                // where this block couples, then one per full-bandwidth
+                // channel, then lfefsnroffst. The coupling channel's slot is
+                // kCplStream, not part of the 0..nchans run; reading nchans
+                // values into that run instead, as this did, both consumes
+                // the wrong number of bits whenever coupling is on and leaves
+                // the shared channel allocating against an offset nobody
+                // sent.
+                //
+                // This is what tools/references/eac3_parse.py - the
+                // independent transcription this project checks itself
+                // against - has always read here, so the two now agree.
+                //
+                // Still unverified against a real stream, deliberately
+                // flagged as such: nothing in reach emits snroffststr != 0 at
+                // all. Neither FFmpeg 8.0.1's encoder nor Dolby's DEE 6.5.4
+                // ever does (checked over tests/golden/external-baseline/,
+                // every frame of both E-AC-3 legs), and when this project's
+                // own encoder was made to emit strategies 0x1 and 0x2 to the
+                // reading above, FFmpeg's decoder refused both - with and
+                // without an explicit block-0 snroffste - so the block-level
+                // element's shape is an open question no oracle can settle.
+                // What is certain either way is that reading nchans values
+                // and no coupling one, as this did, cannot be right.
+                if (frm->cplinu[static_cast<std::size_t>(blk)]) {
+                    fsnroffst[static_cast<std::size_t>(kCplStream)] =
+                        static_cast<int>(r.read(4));
+                }
                 for (int ch = 0; ch < nchans; ++ch) {
                     fsnroffst[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(4));
                 }
@@ -1298,6 +1327,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         bool snr_all_zero = csnroffst == 0;
         for (int ch = 0; ch < nchans && snr_all_zero; ++ch) {
             snr_all_zero = fsnroffst[static_cast<std::size_t>(ch)] == 0;
+        }
+        // cplfsnroffst counts too, and it is a separate slot rather than part
+        // of the run above. It could only ever be non-zero once strategy 0x2
+        // was actually read (nothing else fills that slot), which is why this
+        // arrives with it.
+        if (snr_all_zero && frm->cplinu[static_cast<std::size_t>(blk)]) {
+            snr_all_zero = fsnroffst[static_cast<std::size_t>(kCplStream)] == 0;
         }
         if (frm->cplinu[static_cast<std::size_t>(blk)]) {
             const auto s = static_cast<std::size_t>(kCplStream);

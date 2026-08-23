@@ -54,7 +54,7 @@ struct AhtKernel {
 // The constructor only fills a std::array via std::cos, which cannot throw
 // for a finite argument; there is no allocation and nothing user-supplied to
 // fail.
-// NOLINTNEXTLINE(cert-err58-cpp)
+// NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
 const AhtKernel kKernel{};
 
 // §E3.4.5's synthesis weights. The standard writes

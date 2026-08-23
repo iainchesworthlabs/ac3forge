@@ -10,12 +10,12 @@ beats asking a caller who can be wrong.
 // Spans in the result point into `stream`, so it has to outlive them.
 const auto scanned = ac3::io::scan(stream);
 if (!scanned) {
-    std::printf("scan failed: %.*s\n",
+    fmt::printf("scan failed: %.*s\n",
                 static_cast<int>(ac3::io::describe(scanned.error()).size()),
                 ac3::io::describe(scanned.error()).data());
     return 1;
 }
-std::printf("%s, %u Hz, %d channels, %zu access units\n",
+fmt::printf("%s, %u Hz, %d channels, %zu access units\n",
             scanned->kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
             ac3::sample_rate_hz(scanned->sample_rate), scanned->channels,
             scanned->access_units.size());
@@ -40,7 +40,7 @@ ac3::FrameDecoder decoder;
 for (const auto unit : scanned->access_units) {
     const auto decoded = decoder.decode_frame(unit);
     if (!decoded) {
-        std::printf("decode failed: %.*s\n",
+        fmt::printf("decode failed: %.*s\n",
                     static_cast<int>(ac3::describe(decoded.error()).size()),
                     ac3::describe(decoded.error()).data());
         return 1;
@@ -110,11 +110,10 @@ two channels come back in coded order (Ch1, Ch2) instead.
 
 Delta bit allocation (§7.2.2.6) is decoded like any other transmitted parameter: both decoders
 carry per-channel state across a syncframe's blocks and apply it to the masking curve before
-computing `bap`, on the coupling channel as well as the full-bandwidth ones. The encode side
-differs by generation: the AC-3 encoder does emit coupling-channel delta (`cpldeltbae`, whenever
-the coupling channel has segments to send), while the E-AC-3 encoder skips delta entirely for
-any frame where coupling is active. How corrections are chosen, and when they are dropped, is
-covered in [Encoding AC-3](encoding-ac3.md#delta-bit-allocation).
+computing `bap`, on the coupling channel as well as the full-bandwidth ones. Both encoders emit
+coupling-channel delta (`cpldeltbae`, whenever the coupling channel has segments to send) — E-AC-3
+no longer skips it under coupling either. How corrections are chosen, and when they are dropped,
+is covered in [Encoding AC-3](encoding-ac3.md#delta-bit-allocation).
 
 Dither substitution (§7.3.4) decodes on both as well: a bin allocated zero bits (`bap` 0)
 reconstructs as a true zero when its channel's `dithflag` is clear, and as a dither sample when
@@ -146,7 +145,7 @@ for (std::size_t i = 0; i < frames->size(); ++i) {
     const auto decoded = decoder.decode_frame((*frames)[i]);
     if (!decoded) {
         const auto message = ac3::describe(decoded.error());
-        std::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
+        fmt::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
                     static_cast<int>(message.size()), message.data());
         ++failed;
         continue;
