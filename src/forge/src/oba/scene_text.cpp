@@ -1,6 +1,7 @@
 #include "scene_text.hpp"
 
 #include <cerrno>
+#include <cmath>
 #include <cstdlib>
 #include <ios>
 #include <iomanip>
@@ -21,7 +22,16 @@ bool read_double(std::string_view token, double& out) {
     errno = 0;
     char* end = nullptr;
     const double value = std::strtod(buffer.c_str(), &end);
-    if (end != buffer.c_str() + buffer.size() || errno == ERANGE) {
+    if (end != buffer.c_str() + buffer.size()) {
+        return false;
+    }
+    // ERANGE covers both ends and they are not the same thing. Overflow hands
+    // back +/-HUGE_VAL and is a genuine refusal ("1e999" is not a number this
+    // can carry). Underflow hands back a subnormal or zero, which IS the
+    // correctly rounded value - refusing it would make write_double unable to
+    // find any spelling of a subnormal that read_double takes back, and the
+    // two have to agree for the round trip to hold at all.
+    if (errno == ERANGE && !std::isfinite(value)) {
         return false;
     }
     out = value;

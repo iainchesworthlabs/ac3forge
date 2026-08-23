@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <string>
@@ -589,6 +590,60 @@ TEST_CASE("a scene round-trips through JSON bit-exactly", "[oba][scene]") {
     // Writing what was read gives the same text: the format has one spelling
     // per scene, so a file under version control shows edits, not churn.
     CHECK(ac3::oba::to_json(*back) == text);
+}
+
+TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
+    // The decimal <-> double path is hand-rolled (neither std::format's
+    // floating-point formatter nor <charconv>'s double overloads are available
+    // on every target this library builds for - see src/oba/scene_text.hpp), so
+    // the values most likely to expose a shortest-round-trip bug get named here
+    // rather than left to the round-trip test's ordinary numbers.
+    const std::vector<double> awkward{
+        0.0,
+        -0.0,
+        0.1,
+        0.1 + 0.2,                                  // 0.30000000000000004
+        1.0 / 3.0,
+        std::numeric_limits<double>::min(),         // smallest normal
+        std::numeric_limits<double>::denorm_min(),  // smallest subnormal
+        std::numeric_limits<double>::max(),
+        -std::numeric_limits<double>::max(),
+        std::nextafter(0.5, 1.0),
+        1e-300,
+        1e300,
+    };
+
+    std::vector<ac3::oba::SceneObject> objects;
+    for (const double value : awkward) {
+        // Times have to stay distinct, so the awkward value rides on the
+        // coordinates and gain rather than on t.
+        objects.push_back({.name = "n",
+                           .automation = {{.time_s = static_cast<double>(objects.size()),
+                                           .position = {.x = value, .y = -value, .z = value},
+                                           .gain = value,
+                                           .lfe_send = value}}});
+    }
+    const auto scene = must_create(std::move(objects));
+    const auto back = ac3::oba::scene_from_json(ac3::oba::to_json(scene));
+    REQUIRE(back.has_value());
+    REQUIRE(back->object_count() == awkward.size());
+    for (std::size_t i = 0; i < awkward.size(); ++i) {
+        const auto& point = back->objects()[i].automation.front();
+        INFO("value " << awkward[i]);
+        CHECK(point.position.x == awkward[i]);
+        CHECK(point.position.y == -awkward[i]);
+        CHECK(point.gain == awkward[i]);
+        CHECK(point.lfe_send == awkward[i]);
+    }
+
+    // The keyframe columns carry the same numbers through the same writer.
+    const auto reparsed =
+        ac3::oba::scene_objects_from_keyframe_text(ac3::oba::to_keyframe_text(scene));
+    REQUIRE(reparsed.has_value());
+    REQUIRE(reparsed->size() == awkward.size());
+    for (std::size_t i = 0; i < awkward.size(); ++i) {
+        CHECK(reparsed->at(i).automation.front().gain == awkward[i]);
+    }
 }
 
 TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
