@@ -66,7 +66,7 @@
 # per-job wiring - run.sh owns the list, and a new entry there is picked up by
 # all three at once.
 #
-# All five run in the same ubuntu:26.04 + LLVM 21 container ci.yml's
+# All five run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
 # linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
 # set (-Werror included) as every other target - the fuzz build used to be the
 # one exception, on the assumption it carried a sign-conversion/double-promotion
@@ -83,6 +83,11 @@
 # fuzz-adm-nightly additionally sets up vcpkg. The other three jobs have no
 # such dependency: their harnesses only ever call into ac3::forge and
 # ac3::signing, both of which are in-tree and dependency-free.
+#
+# VCPKG_ROOT: fuzz/run.sh reads it directly to place the toolchain file (see
+# its configure_and_build), rather than going through a CMake preset the way
+# encoder-space-nightly does - setup-vcpkg exports it, so nothing extra is
+# needed here beyond that action.
 #
 # Deliberately its own workflow rather than folded into ci.yml's build-and-test
 # matrix or its ci-status gate: fuzz-regress is cheap enough to make required
@@ -143,14 +148,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      # Also installs libclang-rt-${LLVM_VERSION}-dev (ASan/UBSan/libFuzzer's
+      # static runtime archives) unconditionally - see that package's own
+      # comment in the script - so fuzzing needs no separate install step for
+      # it.
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Replay seeds + regression corpus (no mutation)
         run: bash fuzz/run.sh regress
@@ -178,14 +181,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Fuzz (bounded mutation budget)
         run: bash fuzz/run.sh run
@@ -221,14 +218,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       # The differential harnesses' own oracle (fuzz/differential_oracle.hpp
       # shells out to it at run time) - the same package
@@ -276,14 +267,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - name: Fuzz (deeper bounded mutation budget)
         run: bash fuzz/run.sh run
@@ -298,7 +283,7 @@ jobs:
 
   # fuzz_adm_parse on its own - see this file's header for why it is not
   # folded into fuzz-short/fuzz-nightly. Toolchain-wise it is those jobs plus
-  # vcpkg: the same ubuntu:26.04 + LLVM 21 + sanitizer runtime archives, with
+  # vcpkg: the same ubuntu:26.04 + LLVM 22 + sanitizer runtime archives, with
   # the vcpkg pin encoder-space-nightly already uses added so libadm's Boost
   # headers resolve. AC3FORGE_FUZZ_ADM makes fuzz/run.sh turn
   # AC3FORGE_BUILD_ADM and -DVCPKG_MANIFEST_FEATURES=adm on and append the
@@ -326,20 +311,16 @@ jobs:
           set -eu
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends             build-essential ca-certificates cmake curl git gnupg lsb-release             ninja-build pkg-config software-properties-common tar unzip wget zip
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      # 03-llvm-toolchain.sh installs the compiler only - none of ci.yml's
-      # other Clang legs link a sanitizer or libFuzzer, so none of them have
-      # ever needed the runtime archives. This is fuzzing's own dependency.
-      - name: Install sanitizer + libFuzzer runtime archives
-        run: apt-get install -y -qq --no-install-recommends libclang-rt-21-dev
 
       - uses: ./.github/actions/setup-vcpkg
         with:
@@ -399,7 +380,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         run: bash .github/toolchain/03-llvm-toolchain.sh
 
       - uses: ./.github/actions/setup-vcpkg
