@@ -984,7 +984,10 @@ TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
         }
 
         // The multi-source entry point builds its own AccessUnitEncoder and
-        // had its own copy of the same assert.
+        // had its own copy of the same assert. A `map=` with no `src=` is
+        // enough to route through it - run_eac3_encode hands off on either
+        // token - and avoids the "more than one source needs map=" refusal a
+        // bare second `src=` would meet first.
         {
             const auto out_path = dir / ("frmsiz_multi_" + tag + ".ec3");
             const auto log = dir / ("frmsiz_multi_" + tag + ".log");
@@ -992,7 +995,7 @@ TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
             const auto rc =
                 run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
                             "\" " + std::to_string(probe.first_that_does_not) +
-                            " none stereo off src=\"" + wav_path.string() + "\"",
+                            " none stereo off map=0.0:L,0.1:R",
                         log);
             const auto text = read_log(log);
             INFO(text);

@@ -1,13 +1,12 @@
 """Property/fuzz harness over the E-AC-3 ENCODER's own input space.
 
-The AC-3 half of this question is tools/ci/fuzz_encoder_space.py, and its own
-header says where it stops:
+The AC-3 half of this question is tools/ci/fuzz_encoder_space.py, whose own
+header named where it stopped and why - "E-AC-3's own space - the Annex E tool
+tokens, VBR, the wider layouts - is a real remaining gap, and deliberately not
+smuggled in half-covered here".
 
-    Scope: AC-3 (`ac3cli encode`) only. [...] E-AC-3's own space - the Annex E
-    tool tokens, VBR, the wider layouts - is a real remaining gap, and
-    deliberately not smuggled in half-covered here.
-
-This file is that gap (roadmap VX1). It asks the same question of
+This file is that gap (roadmap VX1); that note now points here instead. It
+asks the same question of
 `eac3-encode` and `atmos-encode` that the AC-3 harness asks of `encode`: does
 the encoder, driven across its own legal configuration space by adversarial
 but perfectly valid audio, ever emit a stream a decoder refuses - or refuse,
@@ -223,11 +222,11 @@ LAYOUTS = {
     "mono":   {"min": 32,  "robust": 32,  "sources": [1, 2, 6]},
     "stereo": {"min": 32,  "robust": 48,  "sources": [1, 2, 6]},
     "1+1":    {"min": 32,  "robust": 48,  "sources": [2]},
-    "51":     {"min": 64,  "robust": 128, "sources": [1, 2, 6, 8]},
-    "71":     {"min": 96,  "robust": 224, "sources": [6, 8]},
-    "512":    {"min": 64,  "robust": 160, "sources": [6, 8]},
-    "514":    {"min": 96,  "robust": 224, "sources": [6, 8, 10]},
-    "714":    {"min": 96,  "robust": 256, "sources": [6, 8, 12]},
+    "51":     {"min": 80,  "robust": 128, "sources": [1, 2, 6, 8]},
+    "71":     {"min": 112, "robust": 224, "sources": [6, 8]},
+    "512":    {"min": 80,  "robust": 160, "sources": [6, 8]},
+    "514":    {"min": 112, "robust": 224, "sources": [6, 8, 10]},
+    "714":    {"min": 112, "robust": 256, "sources": [6, 8, 12]},
 }
 
 # Layouts by how many dependent substreams they need - the property FFmpeg's
@@ -256,10 +255,20 @@ DMIXMOD = ["ltrt", "loro", "none"]
 # file found was an ABORT that a blanket "non-zero means skip" would have
 # swallowed whole - see classify().
 REFUSALS = {
-    # ac3::eac3's own budget check, reported by the CLI when an access unit
-    # cannot be built at the chosen rate at all. Reachable between a layout's
-    # `min` and `robust` rates because the side-information cost moves with
-    # the tools, the substream count and the audio - see LAYOUTS.
+    # ac3::eac3's own budget check, reported by the CLI whenever an access
+    # unit cannot be built at the chosen settings. Two distinct causes reach
+    # this one message, both measured against the CLI rather than assumed:
+    #
+    #   * CBR side information that will not fit. Reachable between a layout's
+    #     `min` and `robust` rates because that cost moves with the tools, the
+    #     substream count and the audio - see LAYOUTS.
+    #   * a VBR quality the content cannot be coded at. The CLI's own vbr help
+    #     warns that "bit cost rises steeply above roughly half the range, so
+    #     a high quality with no max bound will often refuse real programme
+    #     material outright"; measured, q:0.95 over a 5.1 bed with `all` does
+    #     exactly that - and reports it in these words, having no message of
+    #     its own. So VBR needs no separate entry here, and adding one that
+    #     never matches would be worse than none.
     "header room": "the encoder cannot express this configuration",
     # §E2.3.1.3's 11-bit frmsiz word count - see CEILING_WORDS. A legal Table
     # 5.18 rate above what frmsiz can signal at the chosen sample rate, which
@@ -281,9 +290,11 @@ REFUSALS = {
     # in its own words instead.
     "unmeasurable loudness": "cannot measure loudness for this file",
     # atmos-encode's object-count limit: TS 103 420 §8.3.2.2 caps a programme
-    # at 16 including the bed's LFE. Reachable because the object count is
-    # drawn against the SOURCE width, and a source narrower than the count
-    # asked for has objects that would carry nothing.
+    # at 16 including the bed's LFE, so 15 objects is the CLI's own ceiling.
+    # Reached by the 16-channel source width drawn below, whose default
+    # "one object per source channel" asks for exactly one too many - a legal
+    # WAV that has to be refused rather than silently truncated. Naming an
+    # explicit count of 15 or fewer for the same file still encodes.
     "object count": "objects (the bed's LFE is the 16th",
 }
 
@@ -294,7 +305,23 @@ REFUSALS = {
 # encoder-space counterpart of fuzz/regressions/ (which holds DECODER inputs)
 # - a case seed regenerates its whole input from one number, so the number is
 # the artifact.
-REGRESSION_SEEDS = {}
+# Unlike the AC-3 harness's list, these are PINNED rather than harvested: the
+# defects below were found by unseeded sweeps, which by construction do not
+# reuse a seed, so each entry is the smallest case seed that redraws the same
+# shape. That is the useful property either way - what a regression seed has
+# to do is reproduce, not be the literal number that failed first.
+REGRESSION_SEEDS = {
+    25: "16 kHz at 384 kbit/s (mono, cpl+tpn): a legal Table 5.18 rate at a "
+        "legal Annex E half rate that no syncframe can signal, because "
+        "frmsiz is 11 bits. Must classify as refused ('frmsiz ceiling') - it "
+        "was an abort before the fix, and an abort is not a refusal",
+    71: "the same ceiling at the other end of the half rates: 24 kHz at "
+        "576 kbit/s, where the cut sits three Table 5.18 steps higher",
+    59: "a 16-channel source handed to atmos-encode with no explicit object "
+        "count, so its default one-object-per-channel asks for one more than "
+        "TS 103 420 8.3.2.2 allows. A legal WAV, so the refusal is the "
+        "behaviour under test - must classify as refused ('object count')",
+}
 
 
 # --- configuration ----------------------------------------------------------
@@ -426,7 +453,12 @@ def draw_case(seed):
         # varies. TS 103 420 §8.3.2.2 caps a programme at 16 including the
         # bed's LFE, so the CLI's own limit is 15. 0 means "one per source
         # channel", which is the default a caller gets by omitting it.
-        source_channels = rng.choice([1, 2, 6, 8, 10, 12, 15])
+        # 16 is deliberately past the cap: TS 103 420 §8.3.2.2 allows 16
+        # including the bed's LFE, so a 16-channel source asking for its
+        # default one-object-per-channel asks for one too many. It is a legal
+        # WAV, so that refusal is behaviour under test - see REFUSALS'
+        # "object count".
+        source_channels = rng.choice([1, 2, 6, 8, 10, 12, 15, 16])
         objects = rng.choice([0, rng.randint(1, 15)])
         floor = 96
     else:
@@ -577,7 +609,7 @@ def oracle_for(case):
 
 @dataclass
 class Result:
-    case: object
+    case: Case
     status: str          # "ok" | "refused" | "misprobed" | "no-oracle" | "fail"
     detail: str = ""
     stage: str = ""
@@ -852,7 +884,7 @@ def _envelope_probes(tmp, channels, tag, offset):
     return probes
 
 
-def check_envelope(cli):
+def check_envelope(cli, jobs):
     """Re-measure LAYOUTS, and frmsiz's ceiling, against this binary.
 
     A hand-maintained table is exactly the kind of second copy this project's
@@ -873,44 +905,63 @@ def check_envelope(cli):
               motivated CEILING_WORDS: before the fix that refusal was an
               abort, and an abort passes any "did it refuse" test that only
               looks for a non-zero exit.
+
+    Run in parallel, unlike the AC-3 harness's equivalent, because this sweep
+    is an order of magnitude larger: eight layouts rather than four, and a
+    tool-set axis the AC-3 envelope has no equivalent of (six probes x five
+    tool sets per rate, not six probes). Each encode is an independent process
+    writing its own output file, so the only shared state is the read-only
+    probe WAVs. It stays a seconds-cheap gate that way, which is what lets
+    ci.yml run it on every pull request.
     """
     failures = []
     with tempfile.TemporaryDirectory(prefix="eac3space_env_") as tmp_str:
         tmp = Path(tmp_str)
-        out = tmp / "env.ec3"
         wide = _envelope_probes(tmp, 6, "wide", 200)
         # 1+1 is a strict identity on exactly two channels, never a fold-down,
         # so the 6-channel probes cannot drive it.
         narrow = _envelope_probes(tmp, 2, "narrow", 300)
         attempts = len(ENVELOPE_PROBES) * len(ENVELOPE_TOOLS)
 
-        for layout, info in LAYOUTS.items():
-            probes = narrow if layout == "1+1" else wide
-            counts = {}
-            for rate in LEGAL_RATES:
-                if rate < info["min"]:
-                    continue
-                counts[rate] = sum(
-                    1 for wav in probes for tools in ENVELOPE_TOOLS
-                    if _run([cli, "eac3-encode", str(wav), str(out), str(rate),
-                             tools, layout]).returncode == 0)
+        def attempt(index, wav, rate, tools, layout):
+            out = tmp / f"env_{index}.ec3"
+            return _run([cli, "eac3-encode", str(wav), str(out), str(rate),
+                         tools, layout]).returncode == 0
 
-            not_robust = [r for r, n in counts.items()
-                          if r >= info["robust"] and n < attempts]
-            unreachable = [r for r, n in counts.items() if r < info["robust"] and n == 0]
-            ok = not not_robust and not unreachable
-            summary = " ".join(f"{r}:{n}/{attempts}" for r, n in counts.items())
-            print(f"  {'PASS' if ok else 'FAIL'}  {layout} (min {info['min']}, "
-                  f"robust {info['robust']}): {summary}")
-            if not_robust:
-                failures.append(f"{layout}: refused at or above robust={info['robust']} "
-                                f"for rates {not_robust}")
-            if unreachable:
-                failures.append(f"{layout}: no probe encodes at all at rates {unreachable}, "
-                                f"which min={info['min']} still draws")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            for layout, info in LAYOUTS.items():
+                probes = narrow if layout == "1+1" else wide
+                rates = [r for r in LEGAL_RATES if r >= info["min"]]
+                work = [(wav, rate, tools)
+                        for rate in rates for wav in probes for tools in ENVELOPE_TOOLS]
+                results = list(pool.map(
+                    lambda item: attempt(item[0], item[1][0], item[1][1], item[1][2], layout),
+                    enumerate(work)))
+                counts = {rate: sum(results[i * attempts:(i + 1) * attempts])
+                          for i, rate in enumerate(rates)}
+
+                not_robust = [r for r, n in counts.items()
+                              if r >= info["robust"] and n < attempts]
+                unreachable = [r for r, n in counts.items()
+                               if r < info["robust"] and n == 0]
+                ok = not not_robust and not unreachable
+                summary = " ".join(f"{r}:{n}/{attempts}" for r, n in counts.items())
+                print(f"  {'PASS' if ok else 'FAIL'}  {layout} (min {info['min']}, "
+                      f"robust {info['robust']}): {summary}")
+                if not_robust:
+                    failures.append(f"{layout}: refused at or above robust={info['robust']} "
+                                    f"for rates {not_robust}")
+                if unreachable:
+                    failures.append(f"{layout}: no probe encodes at all at rates "
+                                    f"{unreachable}, which min={info['min']} still draws")
 
         print()
-        print("  frmsiz's 11-bit word ceiling (§E2.3.1.3), per Annex E half rate")
+        # Section signs stay in comments here, never in printed output: this
+        # would otherwise be the only line in tools/ that puts a non-ASCII
+        # character on stdout, and a Windows console codepage is a needless
+        # way for a gate to fail.
+        print("  frmsiz's 11-bit word ceiling (E2.3.1.3), per Annex E half rate")
+        ceiling_out = tmp / "env_ceiling.ec3"
         for rate in FSCOD2_RATES:
             wav = tmp / f"env_ceiling_{rate}.wav"
             data = ac3space.generate_pcm(random.Random(400), 2, BLOCKS_PER_FRAME * 4,
@@ -923,8 +974,10 @@ def check_envelope(cli):
                 failures.append(f"{rate} Hz: no rate pair straddles the ceiling to test")
                 continue
 
-            below = _run([cli, "eac3-encode", str(wav), str(out), str(fits), "none", "stereo"])
-            above = _run([cli, "eac3-encode", str(wav), str(out), str(over), "none", "stereo"])
+            below = _run([cli, "eac3-encode", str(wav), str(ceiling_out), str(fits),
+                          "none", "stereo"])
+            above = _run([cli, "eac3-encode", str(wav), str(ceiling_out), str(over),
+                          "none", "stereo"])
             clean = above.returncode == 1 and REFUSALS["frmsiz ceiling"] in above.stderr
             ok = below.returncode == 0 and clean
             print(f"  {'PASS' if ok else 'FAIL'}  {rate} Hz: {fits} kbit/s encodes "
@@ -1051,7 +1104,7 @@ def main():
     if args.check_envelope:
         print("acceptance envelope - the rate floors and the frmsiz ceiling this generator "
               "draws around")
-        sys.exit(check_envelope(cli))
+        sys.exit(check_envelope(cli, args.jobs))
 
     ffmpeg = None
     ffprobe = None

@@ -32,13 +32,17 @@ In rough order of strength:
    the checked-in seed and regression corpora on every push and PR, and the `Fuzz Differential`
    job adds a bounded mutation budget on pushes.
 
-   Out of the encoder: `tools/ci/fuzz_encoder_space.py` draws random legal encoder configurations
-   crossed with adversarial PCM — transients, silence↔loud transitions inside one frame, spectral
-   jumps between blocks, dense harmonics, clipping — and holds every stream it produces against
-   both decoders. This is the one check here that varies the *input material* rather than the
-   option list; it exists because an encoder defect that produced streams both decoders reject
-   needed a specific input shape to reach, and so escaped every other check on this page. Bounded
-   on every pull request, deeper nightly. See
+   Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
+   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
+   configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one
+   frame, spectral jumps between blocks, dense harmonics, clipping — and hold every stream they
+   produce against both decoders. This is the one check here that varies the *input material*
+   rather than the option list; it exists because an encoder defect that produced streams both
+   decoders reject needed a specific input shape to reach, and so escaped every other check on
+   this page. The E-AC-3 half additionally covers the Annex E tool tokens, the `fscod2` half
+   rates, VBR, the layouts that need dependent substreams and Atmos object counts, and classifies
+   each case by which oracle can actually read it (the table below). Bounded on every pull
+   request, deeper nightly. See
    [fuzz/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md).
 
 Contributor-facing detail on which oracle to reach for and how — including the exact FFmpeg
@@ -124,6 +128,20 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
+
+Every "no" in that column is a cell where a generated stream has to be checked some other way,
+which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
+(roadmap VX1) is built around: it classifies every case it draws by which of these rows it lands
+on, and holds the ones FFmpeg cannot decode against `ffprobe`'s syncframe walk instead — the
+access-unit count and the exact byte extent of each one, checked against the encoder's own
+reported count. Measured, that walk holds for `fscod2`, for `ecpl`/`tpn` and for 7.1.4 alike, on
+CBR and VBR streams both, so the *framing* stays externally checked wherever the samples cannot
+be. It does not close the gap — the paragraphs below still stand, and a misreading shared by this
+project's encoder and its decoder would survive a framing check as easily as it survives the
+round trip — but it is more than nothing, and it is where a bit-offset defect shows up first: a
+syncframe read at the wrong offset is a syncframe whose size field no longer describes it. The
+harness's `--check-oracles` re-measures this table's own claims against the installed FFmpeg, so
+a row that stops being true is reported rather than quietly assumed.
 
 **7.1.4 has no external oracle at all.** For that one layout, encoder and decoder are checked
 against each other and nothing else:

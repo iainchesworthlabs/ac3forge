@@ -196,9 +196,80 @@ failure, so a random run stays fully reproducible after the fact. Failing
 inputs are kept under `fuzz-encoder-artifacts/` (gitignored, and regenerable
 from the seed).
 
-Scope: AC-3 `encode` only. E-AC-3's own configuration space - the Annex E tool
-tokens, VBR, the wider layouts - is a real remaining gap, deliberately left
-open rather than half-covered.
+Scope: AC-3 `encode` only.
+
+### The E-AC-3 half
+
+E-AC-3's own configuration space is **`tools/ci/fuzz_eac3_encoder_space.py`**
+(roadmap VX1), which the file above used to name as its own remaining gap. It
+asks the same question of `eac3-encode` and `atmos-encode`, over the part of
+the space that is E-AC-3's alone: Annex E tool tokens with their band-edge
+pins (`cpl`, `ecpl`, `spx`, `aht`, `tpn`, `auto`), the `fscod2` half sample
+rates, CBR and VBR, every layout including the ones that need dependent
+substreams, and Atmos object counts. It imports the AC-3 harness's PCM
+generator rather than copying it, so `cliff` and the rest of the adversarial
+material are one implementation serving both.
+
+Two things about it are genuinely different, and both come from E-AC-3 rather
+than from a preference:
+
+**The oracle is not one oracle.** FFmpeg reads AC-3 whole; it does not read
+E-AC-3 whole, and what it cannot read is exactly what this covers. It refuses
+a second dependent substream (`substreamid != 0`, which 7.1.4 needs), has no
+model at all of enhanced coupling or transient pre-noise processing, and
+refuses `fscod2` audio outright - as does Dolby's own Reference Player. So
+every case is classified before it runs, and each class is checked as hard as
+something external still can:
+
+| class | what runs |
+|---|---|
+| `full` | FFmpeg strict decode, `run_codec_matrix.sh`'s exact invocation, plus the framing check below |
+| `header` | no FFmpeg decode, but `ffprobe` still walks the syncframes: the access-unit count and the exact byte extent of every one of them, checked against the encoder's own reported count |
+| `none` | nothing external at all - empty today, kept so a future cell that reaches it is reported rather than silently passed |
+
+The `header` class is the "no oracle" cell class, and it is deliberately not
+an empty gesture. Measured, `ffprobe` agrees on the access-unit count and
+tiles the file exactly for `fscod2`, for `ecpl`/`tpn` and for 7.1.4 alike, on
+CBR and VBR streams both - so framing stays externally checked even where the
+samples cannot be. That matters because framing is where a bit-offset defect
+shows up first: the deltbaie bug that motivated the AC-3 harness moved a bit
+offset, and a syncframe read at the wrong offset is a syncframe whose size
+field no longer describes it. What the class does *not* prove is stated in the
+script too - a misreading of the spec shared by this project's encoder and its
+decoder would survive it, the same limitation `docs/verification.md` records
+for the CI gate covering `ecpl`/`tpn` today. `--check-oracles` re-measures the
+whole table against the installed FFmpeg, so a cell wrongly listed as a gap
+cannot quietly stop being tested.
+
+**The acceptance envelope has a ceiling as well as a floor.** AC-3's
+`frmsizcod` indexes Table 5.18, so its frame size follows from the rate pair.
+E-AC-3 signals the size directly in `frmsiz`, which is 11 bits - a hard
+2048-word cap on any syncframe. At 48 kHz that binds nowhere near the top of
+the rate list; at the Annex E half rates it binds *inside* it, at 320 kbit/s
+for 16 kHz, 448 for 22.05 kHz and 512 for 24 kHz. `--check-envelope` measures
+the per-layout rate floors and that ceiling together.
+
+What it found on its first sweep: `eac3-encode` **aborted on an assertion**
+for any rate above that ceiling, at every layout. Both halves of such a pair
+are legal on their own and nothing in the CLI's grammar marks the combination,
+so it took two ordinary numbers to reach. Nothing else could have seen it -
+`run_codec_matrix.sh`'s only WAV source is 48 kHz, and `eac3-sine`/
+`eac3-silence` have no sample-rate argument at all. It now reports the actual
+limit, `--check-envelope` gates the refusal staying a clean exit 1, and
+`tests/cli/test_cli.cpp`'s `[frmsiz]` case pins the message.
+
+```bash
+AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
+python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope   # rate floors + the frmsiz ceiling
+python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles    # what this FFmpeg can actually read
+python3 tools/ci/fuzz_eac3_encoder_space.py --replay <case-seed>
+python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
+```
+
+Failing inputs are kept under `fuzz-eac3-encoder-artifacts/` (gitignored, and
+regenerable from the seed). Both harnesses run bounded in `ci.yml`'s
+ffmpeg-validate job on every pull request and deeper in this file's
+`encoder-space-nightly` job.
 
 ## Running locally
 

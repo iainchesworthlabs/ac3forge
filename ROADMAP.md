@@ -315,11 +315,18 @@ Nine required build legs, sanitizers, clang-tidy, PREfast, CodeQL, per-component
 floors, a gold-reference gate on every leg, six libFuzzer harnesses and an AC-3 input-space
 fuzzer already exist. What remains is mostly what the tree names itself.
 
-- [ ] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
+- [x] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
   (`fuzz_encoder_space.py`: "Scope: AC-3 only"). Random Annex E tool tokens, `fscod2` rates, VBR,
   the wide layouts with dependents and object counts, crossed with the existing adversarial PCM;
   FFmpeg strict decode where it has a reading and the in-repo decoder where it does not (a new
   "no oracle" cell class for ecpl/tpn/fscod2); regression seeds; per-PR and nightly.
+  `tools/ci/fuzz_eac3_encoder_space.py`. The "no oracle" class turned out to have more in it than
+  the name suggests: `ffprobe` still walks the syncframes of every cell FFmpeg cannot decode, so
+  those streams are held to the access-unit count and the exact byte extent of each one rather
+  than to nothing. `--check-oracles` re-measures the gap table against the installed FFmpeg;
+  `--check-envelope` measures the per-layout rate floors and §E2.3.1.3's 11-bit `frmsiz` word
+  ceiling, which at the half rates sits inside Table 5.18's own rate list. First finding, fixed:
+  `eac3-encode` aborted on an assertion above that ceiling at every layout.
 - [ ] **VX2 (L)** — E-AC-3 mirror self-check. `DecoderConfig::trace` is "AC-3 only
   (FrameDecoder); Eac3Decoder does not write one". For ecpl, tpn, fscod2 and 7.1.4 the in-repo
   round trip is the only check, and `docs/verification.md` admits a misreading shared by both
@@ -672,7 +679,7 @@ All merged to `develop` by v0.9.0-beta.1 unless noted; `CHANGELOG.md` has the de
 | G1 | Perceptual-quality leg | merged, column never populated in CI (VX6) |
 | G2 | Backfill thin test coverage | merged |
 | G3 | Differential decoder fuzzing against FFmpeg | merged |
-| G4 | Encoder input-space fuzzing | merged for AC-3 (VX1 is the E-AC-3 half) |
+| G4 | Encoder input-space fuzzing | merged, both codecs (AC-3 under G4, E-AC-3 under VX1) |
 
 ---
 
