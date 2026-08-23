@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <format>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -14,6 +13,7 @@
 
 #include "ac3/oba/oamd.hpp"
 #include "ac3/oba/scene.hpp"
+#include "scene_text.hpp"
 
 // The serialised form of an ObjectScene. RFC 8259 JSON, read and written here
 // rather than by a dependency - see scene.hpp's own note on why this format and
@@ -66,11 +66,10 @@ constexpr std::string_view name_of(Interpolation interp) {
 
 // --- Writing --------------------------------------------------------------
 
-// Shortest round-trip: std::format's default for a floating-point value is the
-// shortest decimal that reads back as the same double, which is what makes a
-// scene file survive a save/load cycle bit-exactly and keeps a diff to the
-// values that actually changed.
-std::string number(double value) { return std::format("{}", value); }
+// The shortest decimal that reads back as the same double - see
+// scene_text.hpp for why this is not std::format's own floating-point
+// formatter, which is out of reach on some targets this library builds for.
+std::string number(double value) { return write_double(value); }
 
 void write_string(std::string& out, std::string_view value) {
     out += '"';
@@ -98,7 +97,12 @@ void write_string(std::string& out, std::string_view value) {
                 // allows and what keeps a non-ASCII object name readable in
                 // the file.
                 if (static_cast<unsigned char>(c) < 0x20) {
-                    out += std::format("\\u{:04x}", static_cast<unsigned>(c));
+                    // Always U+00xx here: this branch is only reached below
+                    // 0x20, so the high byte is a constant "00".
+                    constexpr std::string_view kHex = "0123456789abcdef";
+                    out += "\\u00";
+                    out += kHex[(static_cast<unsigned>(c) >> 4) & 0xFU];
+                    out += kHex[static_cast<unsigned>(c) & 0xFU];
                 } else {
                     out += c;
                 }
@@ -112,12 +116,11 @@ void write_string(std::string& out, std::string_view value) {
 
 std::string to_json(const ObjectScene& scene) {
     std::string out;
-    out += std::format("{{\n  \"ac3forge_scene\": {},\n", kFormatVersion);
+    out += "{\n  \"ac3forge_scene\": " + std::to_string(kFormatVersion) + ",\n";
     const auto& orientation = scene.orientation();
-    out += std::format("  \"orientation\": {{ \"yaw_rad\": {}, \"pitch_rad\": {}, "
-                       "\"roll_rad\": {} }},\n",
-                       number(orientation.yaw_rad), number(orientation.pitch_rad),
-                       number(orientation.roll_rad));
+    out += "  \"orientation\": { \"yaw_rad\": " + number(orientation.yaw_rad) +
+           ", \"pitch_rad\": " + number(orientation.pitch_rad) + ", \"roll_rad\": " +
+           number(orientation.roll_rad) + " },\n";
     out += "  \"objects\": [\n";
     const auto objects = scene.objects();
     for (std::size_t i = 0; i < objects.size(); ++i) {
@@ -141,14 +144,15 @@ std::string to_json(const ObjectScene& scene) {
             const auto& point = object.automation[k];
             // One point per line: a scene under version control should show
             // the cue that moved, not a reflowed block.
-            out += std::format(
-                "        {{ \"t\": {}, \"x\": {}, \"y\": {}, \"z\": {}, \"gain\": {}, "
-                "\"lfe\": {}, \"interp\": \"{}\" }}{}\n",
-                number(point.time_s), number(point.position.x), number(point.position.y),
-                number(point.position.z), number(point.gain), number(point.lfe_send),
-                name_of(point.interp), k + 1 == object.automation.size() ? "" : ",");
+            out += "        { \"t\": " + number(point.time_s) + ", \"x\": " +
+                   number(point.position.x) + ", \"y\": " + number(point.position.y) +
+                   ", \"z\": " + number(point.position.z) + ", \"gain\": " +
+                   number(point.gain) + ", \"lfe\": " + number(point.lfe_send) +
+                   ", \"interp\": \"";
+            out += name_of(point.interp);
+            out += k + 1 == object.automation.size() ? "\" }\n" : "\" },\n";
         }
-        out += std::format("      ]\n    }}{}\n", i + 1 == objects.size() ? "" : ",");
+        out += i + 1 == objects.size() ? "      ]\n    }\n" : "      ]\n    },\n";
     }
     out += "  ]\n}\n";
     return out;
@@ -194,7 +198,7 @@ class Reader {
 
     bool expect(char c) {
         if (peek() != c) {
-            return fail(SceneErrorKind::kSyntax, std::format("expected '{}'", c));
+            return fail(SceneErrorKind::kSyntax, std::string{"expected '"} + c + "'");
         }
         ++pos_;
         return true;
@@ -275,12 +279,7 @@ class Reader {
             ++pos_;
         }
         const std::string_view token = text_.substr(begin, pos_ - begin);
-        const char* first = token.data();
-        if (!token.empty() && token.front() == '+') {
-            ++first;
-        }
-        const auto result = std::from_chars(first, token.data() + token.size(), out);
-        if (result.ec != std::errc{} || result.ptr != token.data() + token.size()) {
+        if (!read_double(token, out)) {
             pos_ = begin;
             return fail(SceneErrorKind::kSyntax, "expected a number");
         }
@@ -349,8 +348,7 @@ bool read_interpolation(Reader& reader, Interpolation& out) {
         out = Interpolation::kSmooth;
     } else {
         return reader.fail(SceneErrorKind::kBadValue,
-                           std::format("unknown interpolation '{}' (hold, linear or smooth)",
-                                       name));
+                           "unknown interpolation '" + name + "' (hold, linear or smooth)");
     }
     return true;
 }
@@ -372,7 +370,7 @@ bool read_bed(Reader& reader, std::uint16_t& out) {
         const auto label = std::ranges::find(kBedLabels, name, &BedLabel::name);
         if (label == kBedLabels.end()) {
             return reader.fail(SceneErrorKind::kBadValue,
-                               std::format("unknown bed channel label '{}'", name));
+                               "unknown bed channel label '" + name + "'");
         }
         out |= label->mask;
         if (reader.peek() == ',') {
@@ -421,7 +419,7 @@ bool read_point(Reader& reader, AutomationPoint& out) {
             ok = read_interpolation(reader, out.interp);
         } else {
             return reader.fail(SceneErrorKind::kBadField,
-                               std::format("unknown automation member '{}'", key));
+                               "unknown automation member '" + key + "'");
         }
         if (!ok) {
             return false;
@@ -489,7 +487,7 @@ bool read_object(Reader& reader, SceneObject& out) {
             }
         } else {
             return reader.fail(SceneErrorKind::kBadField,
-                               std::format("unknown object member '{}'", key));
+                               "unknown object member '" + key + "'");
         }
         if (!ok) {
             return false;
@@ -515,7 +513,8 @@ bool read_object(Reader& reader, SceneObject& out) {
 bool read_angle(Reader& reader, std::string_view key, double& out, bool& seen) {
     if (seen) {
         return reader.fail(SceneErrorKind::kBadField,
-                           std::format("orientation gives '{}' twice, or in both units", key));
+                           "orientation gives '" + std::string{key} +
+                               "' twice, or in both units");
     }
     seen = true;
     if (!reader.read_number(out)) {
@@ -552,7 +551,7 @@ bool read_orientation(Reader& reader, Orientation& out) {
             ok = read_angle(reader, key, out.roll_rad, roll);
         } else {
             return reader.fail(SceneErrorKind::kBadField,
-                               std::format("unknown orientation member '{}'", key));
+                               "unknown orientation member '" + key + "'");
         }
         if (!ok) {
             return false;
@@ -598,9 +597,9 @@ std::expected<SceneContents, SceneError> read_scene_json(std::string_view text) 
                 }
                 if (version != kFormatVersion) {
                     reader.fail(SceneErrorKind::kBadValue,
-                                std::format("this is an ac3forge scene version {}; this build "
-                                            "reads version {}",
-                                            version, kFormatVersion));
+                                "this is an ac3forge scene version " + write_double(version) +
+                                    "; this build reads version " +
+                                    std::to_string(kFormatVersion));
                     return std::unexpected(reader.error());
                 }
                 have_version = true;
@@ -634,7 +633,7 @@ std::expected<SceneContents, SceneError> read_scene_json(std::string_view text) 
                 }
             } else {
                 reader.fail(SceneErrorKind::kBadField,
-                            std::format("unknown scene member '{}'", key));
+                            "unknown scene member '" + key + "'");
                 return std::unexpected(reader.error());
             }
             if (reader.peek() == ',') {
