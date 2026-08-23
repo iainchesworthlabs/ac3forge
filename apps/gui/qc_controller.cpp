@@ -38,7 +38,11 @@ QString preset_display_name(ac3::meta::QcPresetId id) {
     switch (id) {
         case ac3::meta::QcPresetId::kEbuR128S2: return QStringLiteral("EBU R 128 s2");
         case ac3::meta::QcPresetId::kAtscA85: return QStringLiteral("ATSC A/85");
+        case ac3::meta::QcPresetId::kAtscA85Streaming:
+            return QStringLiteral("ATSC A/85 streaming");
         case ac3::meta::QcPresetId::kNetflix: return QStringLiteral("Netflix");
+        case ac3::meta::QcPresetId::kAppleMusicAtmos:
+            return QStringLiteral("Apple Music Atmos");
     }
     return QString();
 }
@@ -376,6 +380,14 @@ QVariantList QcController::programmes() const {
             preset_row[QStringLiteral("targetLkfs")] = preset.target_lkfs;
             preset_row[QStringLiteral("toleranceLu")] = preset.tolerance_lu;
             preset_row[QStringLiteral("maxTruePeakDbtp")] = preset.max_true_peak_dbtp;
+            // The document, version and date this row's numbers came out of,
+            // and whether its loudness figure is a band to sit inside or a
+            // ceiling not to exceed - a verdict against an unnamed edition,
+            // or a ceiling drawn as a band, is not a QC result anyone can act
+            // on. See ac3/meta/qc.hpp.
+            preset_row[QStringLiteral("source")] = to_qstring(preset.source);
+            preset_row[QStringLiteral("loudnessIsCeiling")] =
+                preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling;
             preset_row[QStringLiteral("loudnessDelta")] = verdict.loudness_delta_lu.value_or(0.0);
             preset_row[QStringLiteral("loudnessPass")] = verdict.loudness_pass;
             preset_row[QStringLiteral("truePeakMargin")] =

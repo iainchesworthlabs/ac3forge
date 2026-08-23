@@ -12,11 +12,64 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **Loudness of the rendered layout** (`IO10`). `ac3::meta::LoudnessMeter` has a second
+  constructor taking an `eac3::chanmap::Layout`, which measures through **ITU-R BS.1770-5
+  (11/2023) Annex 3**'s extended algorithm for advanced sound systems instead of Annex 1's basic
+  one. Annex 3's Table 4 weights a channel by where it sits — 1.41 (+1.5 dB) between 60° and 120°
+  azimuth below 30° elevation, 1.00 everywhere else, LFE-type channels excluded — rather than by
+  its slot in a Table 5.8 `acmod`, so `Lrs`/`Rrs`, `Vhl`/`Vhr`, `Lts`/`Rts`, `Cs` and `Lw`/`Rw`
+  all have a defined weight and 7.1, 5.1.2, 5.1.4 and 7.1.4 can be metered at all. A new
+  `ac3::meta::position_weight()` exposes the per-location weight on its own. Two results are
+  worth knowing because the channel names suggest otherwise: a 7.1 layout's rear pair is **not**
+  surround-weighted (M±135 is past the sector's edge), and neither is any height channel.
+- **`ac3cli qc layout=bed|rendered`** (`IO10`). `bed` — the default, and what `qc` has always
+  measured — meters the independent substream's own Table 5.8 bed. `rendered` meters the whole
+  assembled program from `Eac3Decoder::decode_access_unit`, every dependent substream's height,
+  wide and rear channels included. For a plain 5.1 stream the two agree by construction. `bed`
+  now prints a note when a stream carries dependent substreams whose channels it left out,
+  instead of reporting the bed as though it were the whole programme.
+- **Two new QC presets** (`IO11`): `atsc-a85-streaming`, from ATSC A/85:2026-07's new Annex L.5
+  (a −23…−27 LKFS band for streaming services, with a −2 dBTP ceiling), and `apple-music-atmos`,
+  from Apple's Immersive Audio Source Profile (integrated loudness **≤ −18 LKFS** and true peak
+  ≤ −1 dBTP, both per BS.1770-4). Every preset now also records the document version and date it
+  was read out of, and `ac3cli qc` prints that beside each verdict.
+- Roadmap item `IO12`, for BS.1770-5 Annex 4's object-based loudness algorithm — the half of
+  BS.1770-5 that `IO10` deliberately left out.
+
 ### Changed
+
+- **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
+  revision of A/85 since 2013. Its §6 restates the target loudness, tolerance and true-peak
+  ceiling unchanged (−24 LKFS, ±2 dB, −2 dBTP), so **no preset number moves**; only the citation
+  does. EBU R 128 s4, Netflix's Dolby Atmos Home Mix Deliverable Requirements v2.3 and Amazon
+  were each checked against their primary sources and deliberately *not* added as presets: the
+  first two are numerically identical to presets already in the table (s4 differs only by a
+  Loudness-to-Dialogue Ratio this meter cannot measure, and the Atmos spec only by asking for a
+  5.1 re-render, which is a `layout=` choice), and no primary Amazon document was reachable to
+  cite. `ac3/meta/qc.hpp` and `docs/cli/metadata-options.md` record the reasoning for each.
+- `QcPreset` distinguishes a loudness **band** from a loudness **ceiling**
+  (`QcLoudnessLimit`). Every preset before now stated a target with a symmetric tolerance; Apple's
+  states only a level not to exceed, and gating that as a ±band would fail quiet material the
+  specification actually accepts.
+
+### Fixed
+
+- **`dialnorm=auto` and `ac3cli loudness` mis-assigned channel weights on any layout wider than
+  stereo.** `measured_dialnorm()` pushed a WAV's channels into `LoudnessMeter` in *WAV* order
+  (FL, FR, FC, LFE, BL, BR) when the meter expects AC-3 *coded* order (L, C, R, Ls, Rs, LFE). For
+  5.1 that put the LFE where `Ls` belongs — so BS.1770's +1.5 dB surround weight landed on the
+  one channel the standard excludes outright, while a real surround landed in the excluded slot
+  and was dropped entirely. Found by cross-checking against ffmpeg's `ebur128`: with signal in
+  only the LFE channel, ac3forge reported −38.61 LKFS where the oracle correctly reported no
+  loudness at all. `ac3cli levels` already applied the right permutation, which is why it never
+  showed the fault. Measured `dialnorm` values for 3-channel-and-wider sources change as a
+  result, and are now correct.
 
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
-  (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
+  (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 100 items) with their real current state - `E3`
   is already confirmed on Linux/ALSA against a real AVR, PyPI and the Homebrew tap are live, the
   vcpkg port is policy-blocked until about 2027-02 - and the retired single-letter IDs are kept
   in a ledger so older references still resolve. The DAMF reader (`B2`) moves to "Deliberately

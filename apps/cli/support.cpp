@@ -162,6 +162,11 @@ void print_meta_usage() {
     std::println("                    {}", ac3::meta::kQcPresetNames);
     std::println("  preset=all        gate against every preset above");
     std::println("                    omitted: measure and report only, no gate");
+    std::println("  layout=bed        the default - meter the independent substream's own");
+    std::println("                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)");
+    std::println("  layout=rendered   meter the whole assembled program instead, every");
+    std::println("                    dependent substream's height/wide/rear channels");
+    std::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
 }
 
 bool parse_options(std::span<char*> tokens, Options& out) {
@@ -457,6 +462,17 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             continue;
         }
+        if (key == "layout") {
+            if (value == "rendered") {
+                out.qc_rendered_layout = true;
+            } else if (value == "bed") {
+                out.qc_rendered_layout = false;
+            } else {
+                std::println(stderr, "error: layout must be bed or rendered (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
         if (key == "preset") {
             if (value != "all") {
                 ac3::meta::QcPresetId id{};
@@ -505,10 +521,34 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
 std::optional<int> measured_dialnorm(const ac3::io::WavData& wav, ac3::SampleRate rate,
                                      ac3::Acmod acmod, bool lfe, FILE* out) {
     ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
+    // LoudnessMeter takes its spans in AC-3 CODED order (Table 5.8: L, C, R,
+    // Ls, Rs, LFE), which is not WAV order (FL, FR, FC, LFE, BL, BR) for any
+    // layout wider than stereo. Pushing the file's own order straight in put
+    // the LFE where Ls belongs - so BS.1770's +1.5 dB surround weight landed
+    // on the LFE, which the standard excludes outright, while a real surround
+    // landed in the excluded slot and was dropped. Measured against ffmpeg's
+    // ebur128 on a 5.1 file with signal in one channel at a time, that read
+    // the LFE-only case at -38.61 LKFS where the oracle correctly reported no
+    // loudness at all.
+    //
+    // ac3_layout_for's wav_index[k] is "the position in a WAV frame of AC-3
+    // channel k" - the same permutation run_levels already applies before it
+    // meters, which is why that command never had the fault.
+    const auto layout = ac3::io::ac3_layout_for(wav.channels.size());
     std::vector<std::span<const float>> views;
     views.reserve(wav.channels.size());
-    for (const auto& channel : wav.channels) {
-        views.emplace_back(channel);
+    if (layout && layout->wav_index.size() == wav.channels.size()) {
+        for (const auto wav_slot : layout->wav_index) {
+            views.emplace_back(wav.channels[wav_slot]);
+        }
+    } else {
+        // No legal acmod carries this width (7 channels and up), so there is
+        // no permutation to apply and no coded order to apply it to. The
+        // caller has already decided what acmod to measure as; feeding the
+        // file's own order is the only thing left, exactly as before.
+        for (const auto& channel : wav.channels) {
+            views.emplace_back(channel);
+        }
     }
     meter.push(views);
     return finish_measurement(meter, {}, "dialnorm", out);

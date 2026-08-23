@@ -13,7 +13,8 @@
 // Split out of main.cpp as part of the repo-structure review's H4 monolith split.
 namespace ac3cli::commands {
 
-int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg);
+int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
+           bool rendered_layout);
 int run_levels(std::string_view in_path);
 int run_loudness(std::string_view in_path);
 int run_spdif(std::string_view in_path, std::string_view out_path);
