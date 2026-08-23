@@ -913,7 +913,20 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     if (!sink.open(out_path, false)) {
         return 1;
     }
-    std::optional<ac3::io::ScannedStream> reference;
+    // The comparable fields only, copied out by value: a ScannedStream's
+    // access_units are spans into the buffer it was scanned from, and that
+    // buffer is freed at the end of each iteration below. Nothing here needs
+    // them, and keeping a whole ScannedStream would leave dangling spans
+    // sitting in scope waiting for someone to use them.
+    struct Shape {
+        ac3::io::StreamKind kind = ac3::io::StreamKind::kAc3;
+        ac3::SampleRate sample_rate = ac3::SampleRate::k48000;
+        ac3::Acmod acmod = ac3::Acmod::k2_0;
+        bool lfe = false;
+        int channels = 0;
+        std::size_t substreams_per_unit = 0;
+    };
+    std::optional<Shape> reference;
     std::string_view reference_path;
     std::size_t units = 0;
     std::uint64_t samples = 0;
@@ -925,7 +938,12 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
         }
         const auto& scan = loaded->scan;
         if (!reference) {
-            reference = scan;
+            reference = Shape{.kind = scan.kind,
+                              .sample_rate = scan.sample_rate,
+                              .acmod = scan.acmod,
+                              .lfe = scan.lfe,
+                              .channels = scan.channels,
+                              .substreams_per_unit = scan.substreams_per_unit};
             reference_path = path;
         } else {
             // A decoder walking a concatenated stream has no way to be told
