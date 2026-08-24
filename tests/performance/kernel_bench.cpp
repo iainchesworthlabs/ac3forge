@@ -20,6 +20,7 @@
 // against one pure tone's degenerate, single-bin spectrum does not cost what
 // it costs against broadband program material.
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -38,9 +39,11 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/joc_tables.hpp"
 
 namespace {
@@ -421,6 +424,79 @@ int main(int argc, char** argv) {
         ac3::oba::band_energy(frame0, mapping, energy, /*fast=*/true);
         g_sink += energy[0];
     }));
+
+    // --- the QMF-domain siblings (joc::Domain::kQmf) --------------------------
+    // Same frame, same band layout, read off §7.1's 64 complex subbands
+    // instead of 256 MDCT bins. The filterbank rows underneath it are the
+    // per-timeslot primitives both sides are built from - a frame is 24 of
+    // them per signal.
+    results.push_back(time_kernel("qmf_band_energy", [&] {
+        static ac3::dsp::QmfAnalysis analysis;
+        std::array<double, 9> energy{};
+        ac3::oba::qmf_band_energy(frame0, mapping, energy, analysis);
+        g_sink += energy[0];
+    }));
+    results.push_back(time_kernel("qmf_analysis_timeslot", [&] {
+        static ac3::dsp::QmfAnalysis analysis;
+        std::array<double, ac3::dsp::kQmfSubbands> real{};
+        std::array<double, ac3::dsp::kQmfSubbands> imag{};
+        analysis.push(std::span<const float, ac3::dsp::kQmfHop>{
+                          frame0.data(), static_cast<std::size_t>(ac3::dsp::kQmfHop)},
+                      real, imag);
+        g_sink += real[7];
+    }));
+    results.push_back(time_kernel("qmf_synthesis_timeslot", [&] {
+        static ac3::dsp::QmfSynthesis synthesis;
+        std::array<double, ac3::dsp::kQmfSubbands> real{};
+        std::array<double, ac3::dsp::kQmfSubbands> imag{};
+        real[7] = 0.5;
+        imag[9] = -0.25;
+        std::array<float, ac3::dsp::kQmfHop> out{};
+        synthesis.pull(real, imag, out);
+        g_sink += static_cast<double>(out[3]);
+    }));
+
+    // --- joc::reconstruct, both domains, one whole 4-object frame -------------
+    // The decode-side cost the WASM demo and the Android app actually pay:
+    // five downmix channels analysed and four objects synthesised, per frame.
+    {
+        std::vector<std::vector<float>> bed_storage(
+            static_cast<std::size_t>(ac3::joc::kNumChannels5X),
+            std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        for (std::size_t ch = 0; ch < bed_storage.size(); ++ch) {
+            const auto source =
+                audio.channel(ch).subspan(0, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+            std::copy(source.begin(), source.end(), bed_storage[ch].begin());
+        }
+        std::vector<std::span<const float>> bed;
+        bed.reserve(bed_storage.size());
+        for (const auto& channel : bed_storage) {
+            bed.emplace_back(channel);
+        }
+        ac3::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 5};
+        params.matrix.assign(params.coefficient_count(), 0.0);
+        for (int object = 0; object < params.objects; ++object) {
+            for (int channel = 0; channel < params.channels; ++channel) {
+                for (int band = 0; band < params.bands(); ++band) {
+                    params.at(object, channel, band) = 0.4 - 0.05 * ((object + channel) % 5);
+                }
+            }
+        }
+        results.push_back(time_kernel("joc_reconstruct_mdct_4obj", [&] {
+            static ac3::joc::ReconstructionState state;
+            const auto out =
+                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                                      /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
+            g_sink += static_cast<double>(out[0][128]);
+        }));
+        results.push_back(time_kernel("joc_reconstruct_qmf_4obj", [&] {
+            static ac3::joc::ReconstructionState state;
+            const auto out =
+                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                                      /*fast_imdct=*/true, ac3::joc::Domain::kQmf);
+            g_sink += static_cast<double>(out[0][128]);
+        }));
+    }
 
     // --- one full bits_at evaluation ------------------------------------------
     // The SNR-offset binary search's per-iteration cost unit (see
