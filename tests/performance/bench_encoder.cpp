@@ -25,6 +25,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 
 namespace {
 
@@ -74,9 +75,11 @@ Result bench_plain_51(bool fast_mdct = false) {
             .total_ms = elapsed_ms.count(), .ms_per_frame = elapsed_ms.count() / kFrames};
 }
 
-Result bench_atmos_4obj(bool fast_mdct = false) {
+Result bench_atmos_4obj(bool fast_mdct = false,
+                        ac3::joc::Domain domain = ac3::joc::Domain::kMdctBand) {
     constexpr int kObjects = 4;
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .fast_mdct = fast_mdct}, kObjects};
+    ac3::oba::AtmosEncoder encoder{
+        {.bitrate_kbps = 448, .fast_mdct = fast_mdct, .joc_domain = domain}, kObjects};
 
     std::uint64_t n = 0;
     std::vector<std::vector<float>> sources;
@@ -105,8 +108,14 @@ Result bench_atmos_4obj(bool fast_mdct = false) {
     }
     const auto elapsed_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start);
-    return {.name = fast_mdct ? "atmos_4obj_fast_mdct" : "atmos_4obj", .frames = kFrames,
-            .total_ms = elapsed_ms.count(), .ms_per_frame = elapsed_ms.count() / kFrames};
+    const char* name = "atmos_4obj";
+    if (domain == ac3::joc::Domain::kQmf) {
+        name = fast_mdct ? "atmos_4obj_qmf_fast_mdct" : "atmos_4obj_qmf";
+    } else if (fast_mdct) {
+        name = "atmos_4obj_fast_mdct";
+    }
+    return {.name = name, .frames = kFrames, .total_ms = elapsed_ms.count(),
+            .ms_per_frame = elapsed_ms.count() / kFrames};
 }
 
 void write_json(const std::vector<Result>& results, const std::string& path) {
@@ -133,8 +142,17 @@ int main(int argc, char** argv) {
         }
     }
 
-    const std::vector<Result> results{bench_plain_51(), bench_plain_51(/*fast_mdct=*/true),
-                                      bench_atmos_4obj(), bench_atmos_4obj(/*fast_mdct=*/true)};
+    const std::vector<Result> results{
+        bench_plain_51(), bench_plain_51(/*fast_mdct=*/true), bench_atmos_4obj(),
+        bench_atmos_4obj(/*fast_mdct=*/true),
+        // The same object encode with the reconstruction matrix estimated in
+        // §7.1's QMF instead of over MDCT bins (AtmosConfig::joc_domain) -
+        // which is the DEFAULT, while the two rows above stay pinned to
+        // kMdctBand. A row here names a configuration, not "whatever the
+        // default is" (the same relationship plain_51 has to
+        // plain_51_fast_mdct), so the trend series stay continuous across a
+        // default change instead of taking a step nobody can read later.
+        bench_atmos_4obj(/*fast_mdct=*/true, ac3::joc::Domain::kQmf)};
 
     for (const auto& r : results) {
         fmt::printf("%-12s %5d frames  %8.3f ms total  %6.3f ms/frame  (budget %.3f ms/frame)\n",
