@@ -15,8 +15,16 @@ bool parse_qc_preset(std::string_view name, QcPresetId& out) {
         out = QcPresetId::kAtscA85;
         return true;
     }
+    if (name == "atsc-a85-streaming") {
+        out = QcPresetId::kAtscA85Streaming;
+        return true;
+    }
     if (name == "netflix") {
         out = QcPresetId::kNetflix;
+        return true;
+    }
+    if (name == "apple-music-atmos") {
+        out = QcPresetId::kAppleMusicAtmos;
         return true;
     }
     return false;
@@ -26,8 +34,14 @@ QcVerdict evaluate_qc_gate(const QcPreset& preset, std::optional<double> integra
                            std::optional<double> true_peak_dbtp) {
     QcVerdict verdict;
     if (integrated_lkfs) {
+        // Reported for both limit kinds, and it means the same thing in both:
+        // how far the measurement sits from the preset's stated level, signed
+        // so positive is louder. Only the test applied to it differs.
         verdict.loudness_delta_lu = *integrated_lkfs - preset.target_lkfs;
-        verdict.loudness_pass = std::abs(*verdict.loudness_delta_lu) <= preset.tolerance_lu;
+        verdict.loudness_pass =
+            preset.loudness_limit == QcLoudnessLimit::kCeiling
+                ? *integrated_lkfs <= preset.target_lkfs
+                : std::abs(*verdict.loudness_delta_lu) <= preset.tolerance_lu;
     }
     if (true_peak_dbtp) {
         verdict.true_peak_margin_dbtp = preset.max_true_peak_dbtp - *true_peak_dbtp;

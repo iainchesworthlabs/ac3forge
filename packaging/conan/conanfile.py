@@ -22,7 +22,7 @@ import os
 
 from conan import ConanFile
 from conan.tools.build import check_min_cppstd
-from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
+from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
 from conan.tools.files import copy, get
 
 
@@ -64,6 +64,14 @@ class Ac3forgeConan(ConanFile):
         if self.options.shared:
             self.options.rm_safe("fPIC")
 
+    def requirements(self):
+        # {fmt} - used in place of std::format/std::print throughout (see
+        # cmake/Fmt.cmake and docs/platforms/android.md for why). Private:
+        # it's an implementation detail of forge/mp4's own .cpp files, never
+        # named in an installed public header, so a consumer of this package
+        # never needs to resolve fmt themselves.
+        self.requires("fmt/12.2.0", visible=False)
+
     def layout(self):
         cmake_layout(self)
 
@@ -93,6 +101,11 @@ class Ac3forgeConan(ConanFile):
         tc.variables["AC3FORGE_BUILD_MPEGTS"] = bool(self.options.mpegts)
         tc.variables["BUILD_SHARED_LIBS"] = bool(self.options.shared)
         tc.generate()
+        # Generates fmtConfig.cmake (from the requirements() dependency above)
+        # so cmake/Fmt.cmake's find_package(fmt CONFIG QUIET) resolves it
+        # through Conan's own graph instead of silently falling through to
+        # FetchContent mid-build - see that file's header comment.
+        CMakeDeps(self).generate()
 
     def build(self):
         cmake = CMake(self)

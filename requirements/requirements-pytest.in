@@ -1,0 +1,21 @@
+# pytest, its coverage plugin, and numpy for wheels.yml's python-coverage job
+# (roadmap VX15). Separate from requirements-coverage.txt on purpose: that lock
+# is gcovr for ci.yml's C++ coverage job, and the two jobs run on different
+# workflows with nothing in common but the word "coverage".
+#
+# numpy is here because the ac3forge wheel declares it as a runtime dependency
+# and that job installs the wheel with --no-index. Without the index there is
+# nowhere for pip to resolve numpy from, and WITH the index pip would be free
+# to prefer a released ac3forge from PyPI over the locally built wheel the job
+# exists to measure - a version comparison between a PEP 440 release and a
+# setuptools_scm dev version that should not be left to chance. Satisfying the
+# dependency from this lock first, then installing the wheel offline, makes
+# "the wheel under test is the one the build job just produced" a property of
+# the commands rather than of pip's resolution order.
+#
+# Regenerate the lock after any change here with:
+#   python -m piptools compile --generate-hashes --strip-extras \
+#     --output-file=requirements-pytest.txt requirements-pytest.in
+pytest
+pytest-cov
+numpy

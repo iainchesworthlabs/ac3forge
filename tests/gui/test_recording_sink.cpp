@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <fmt/format.h>
 #include <fstream>
 #include <span>
 #include <string>
@@ -13,7 +14,10 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/sinks/iec61937.hpp"
+#include "ac3/io/dec3.hpp"
+#include "ac3/io/elementary.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/mp4.hpp"
 #include "mpegts/mpegts.hpp"
 #include "recording_sink.hpp"
 
@@ -26,6 +30,11 @@
 // mux-equality contract, the IEC 61937 WAV carrier), and equal to the
 // incremental writer's own composed output for Matroska (whose streamed form
 // differs from mux() by design - the unknown-size Segment).
+//
+// The fragmented-MP4 cases below exercise Fmp4FolderWriter, which the sink
+// only delegates to: EncoderController's own live session writes its folder
+// through the same class, so what is asserted here holds for both of the
+// GUI's write-as-you-go paths.
 
 namespace fs = std::filesystem;
 
@@ -52,7 +61,17 @@ std::vector<std::byte> read_file_bytes(const fs::path& path) {
 
 // Real frames, not synthetic bytes: the IEC 61937 path parses each frame's
 // own header (sync word, fscod), so only genuine bitstream will do - and
-// what is genuine enough for the strictest container serves the rest too.
+// what is genuine enough for the strictest container serves the rest too -
+// the fragmented-MP4 path re-scans a whole access unit for its dec3 box.
+std::string read_file_text(const fs::path& path) {
+    const auto bytes = read_file_bytes(path);
+    std::string out(bytes.size(), '\0');
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        out[i] = static_cast<char>(bytes[i]);
+    }
+    return out;
+}
+
 std::vector<std::vector<std::byte>> silent_ac3_frames(std::size_t count) {
     std::vector<std::vector<std::byte>> frames;
     for (std::size_t i = 0; i < count; ++i) {
@@ -155,6 +174,103 @@ TEST_CASE("RecordingSink's Matroska take matches matroska::Writer's own composit
     const auto tail = writer->finalize();
     expected.insert(expected.end(), tail.begin(), tail.end());
     CHECK(file == expected);
+}
+
+TEST_CASE("RecordingSink's fragmented-MP4 take matches mp4::fragment's own segments", "[gui]") {
+    // The one container here that writes a FOLDER. Its media segments are
+    // mp4::fragment()'s byte for byte (mp4::FragmentWriter's own contract), so
+    // this checks each written segment*.m4s against the batch form over the
+    // same frames, and that the manifests the session leaves behind are the
+    // closed, VOD-shaped pair rather than the live ones it wrote while
+    // running. 100 frames at the default 48 per fragment is three segments -
+    // two full and a short one - so a fragment boundary and a partial flush
+    // are both in the take.
+    const auto frames = silent_ac3_frames(100);
+    const auto dir = scratch_dir() / "take_fmp4";
+    fs::remove_all(dir);
+    RecordingSink sink;
+    REQUIRE(sink.open(dir.string(), {.container = RecordingSink::Container::kFmp4,
+                                     .eac3 = false,
+                                     .sample_rate = 48000,
+                                     .channels = 2})
+                .empty());
+    for (const auto& frame : frames) {
+        REQUIRE(sink.push(frame).empty());
+    }
+    REQUIRE(sink.close().empty());
+    CHECK(sink.frames() == frames.size());
+
+    // The batch form, built the way the sink builds its own track - from a
+    // scan of the stream, since the dac3 payload is bitstream syntax.
+    std::vector<std::byte> stream;
+    for (const auto& frame : frames) {
+        stream.insert(stream.end(), frame.begin(), frame.end());
+    }
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    const mp4::AudioTrack track{.codec_id = std::string{mp4::kCodecAc3},
+                                .sample_rate = 48000,
+                                .channels = scanned->channels,
+                                .samples_per_frame = ac3::kSamplesPerFrame,
+                                .codec_config = ac3::io::build_codec_config_box(*scanned)};
+    const auto batch = mp4::fragment(track, as_views(frames));
+    REQUIRE(batch.has_value());
+    REQUIRE(batch->media_segments.size() == 3);
+
+    CHECK(fs::exists(dir / "init.mp4"));
+    for (const auto& segment : batch->media_segments) {
+        const auto path = dir / fmt::format("segment{}.m4s", segment.sequence_number);
+        REQUIRE(fs::exists(path));
+        CHECK(read_file_bytes(path) == segment.bytes);
+    }
+    CHECK_FALSE(fs::exists(dir / "segment4.m4s"));
+
+    const auto playlist = read_file_text(dir / "audio.m3u8");
+    CHECK(playlist.find("#EXT-X-MAP:URI=\"init.mp4\"") != std::string::npos);
+    CHECK(playlist.find("#EXT-X-ENDLIST") != std::string::npos);
+    CHECK(playlist.find("segment3.m4s") != std::string::npos);
+    CHECK(read_file_text(dir / "master.m3u8").find("CODECS=\"ac-3\"") != std::string::npos);
+    const auto mpd = read_file_text(dir / "manifest.mpd");
+    CHECK(mpd.find("type=\"static\"") != std::string::npos);
+    CHECK(mpd.find("</MPD>") != std::string::npos);
+}
+
+TEST_CASE("RecordingSink's fragmented-MP4 folder is live-shaped mid-take", "[gui]") {
+    // While the session is still running the manifests must be the LIVE ones:
+    // no #EXT-X-ENDLIST for a playlist that will grow again, and a dynamic
+    // MPD anchored to wall-clock time rather than one claiming a total
+    // duration the take has not reached. Checked between pushes, since that
+    // is the only moment the distinction exists.
+    const auto frames = silent_ac3_frames(60);
+    const auto dir = scratch_dir() / "take_fmp4_live";
+    fs::remove_all(dir);
+    RecordingSink sink;
+    REQUIRE(sink.open(dir.string(), {.container = RecordingSink::Container::kFmp4,
+                                     .eac3 = false,
+                                     .sample_rate = 48000,
+                                     .channels = 2})
+                .empty());
+    for (const auto& frame : frames) {
+        REQUIRE(sink.push(frame).empty());
+    }
+    // 60 frames at 48 per fragment: one segment has closed, 12 frames are
+    // still pending - exactly the mid-take state.
+    REQUIRE(fs::exists(dir / "segment1.m4s"));
+    CHECK_FALSE(fs::exists(dir / "segment2.m4s"));
+    const auto live_playlist = read_file_text(dir / "audio.m3u8");
+    CHECK(live_playlist.find("#EXT-X-MEDIA-SEQUENCE:1") != std::string::npos);
+    CHECK(live_playlist.find("#EXT-X-ENDLIST") == std::string::npos);
+    CHECK(live_playlist.find("#EXT-X-PLAYLIST-TYPE") == std::string::npos);
+    const auto live_mpd = read_file_text(dir / "manifest.mpd");
+    CHECK(live_mpd.find("type=\"dynamic\"") != std::string::npos);
+    CHECK(live_mpd.find("availabilityStartTime=\"") != std::string::npos);
+    CHECK(live_mpd.find("mediaPresentationDuration") == std::string::npos);
+
+    REQUIRE(sink.close().empty());
+    // The trailing partial fragment is flushed and both manifests close.
+    CHECK(fs::exists(dir / "segment2.m4s"));
+    CHECK(read_file_text(dir / "audio.m3u8").find("#EXT-X-ENDLIST") != std::string::npos);
+    CHECK(read_file_text(dir / "manifest.mpd").find("type=\"static\"") != std::string::npos);
 }
 
 TEST_CASE("RecordingSink with zero frames removes the file and says so", "[gui]") {

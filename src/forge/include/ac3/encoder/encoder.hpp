@@ -40,6 +40,12 @@ struct EncoderConfig {
     // meaningless otherwise — the two programmes are levelled independently.
     std::optional<int> dialnorm2 = std::nullopt;
     int chbwcod = -1;  // fbw bandwidth code 0..60; -1 = auto from bitrate
+    // §7.2.2.4 fast gain, Table 7.11. -1 asks for the encoder's own choice,
+    // which is rate-dependent (see encoder.cpp step 0's measurement table);
+    // 0..7 pins it. Pinned here rather than searched per frame for the reason
+    // that comment gives: two code sets produce two different masking curves,
+    // so the encoder's own composite SNR offset cannot compare them.
+    int fgaincod = -1;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     // Channel coupling (§7.4): above the coupling frequency the fbw channels
@@ -58,10 +64,22 @@ struct EncoderConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp).
     bool fast_mdct = true;
+
+    // §7.3.4 dithflag, decided per channel per block from content (see
+    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // config field here. false pins dithflag at 0 unconditionally, the
+    // deterministic behaviour from before this existed: real dither values
+    // are decoder-defined (the spec's own "any reasonably random sequence"),
+    // so two independent, spec-correct decoders given the same dithered
+    // stream diverge in the dithered bins by design - which is exactly what
+    // breaks a bit-for-bit comparison between this project's own decoder and
+    // an external one (tools/checks/verify_gold_reference.sh). That gate sets
+    // this false; nothing else needs to.
+    bool dither = true;
 
     // --- dynamic range and downmix metadata (§7.7, §7.8) -------------------
     // Dynamic range control. std::nullopt leaves dynrnge clear in every block,
@@ -177,6 +195,13 @@ class AC3FORGE_EXPORT FrameEncoder {
     // state only: it changes how fast the search converges, never which
     // offset it converges to. Negative until a frame has been encoded.
     int snr_search_hint_ = -1;
+    // The chbwcod this encoder last transmitted, so the content-adaptive
+    // band edge can be rate-limited on the way DOWN (see encode_frame's
+    // bandwidth step). Unlike snr_search_hint_ above this is not a
+    // performance hint: it is part of the decision, and dropping it would
+    // change the bitstream. Negative until a frame has been encoded, which
+    // is what lets the first frame take the content's answer outright.
+    int chbwcod_state_ = -1;
     // Both controllers smooth their gain over time, so they have to outlive a
     // frame - a per-frame instance would restart the attack every 32 ms.
     std::optional<meta::RangeController> range_;

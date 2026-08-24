@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 
 #include "manifest_detail.hpp"
 
@@ -12,6 +12,7 @@ namespace mp4 {
 namespace {
 
 using manifest_detail::estimate_bandwidth_bps;
+using manifest_detail::segment_infos;
 using manifest_detail::segment_seconds;
 
 // Substitutes the FIRST "{}" in `pattern` with `number` - HlsOptions'
@@ -22,7 +23,7 @@ using manifest_detail::segment_seconds;
     if (pos == std::string_view::npos) {
         return std::string{pattern};
     }
-    return std::format("{}{}{}", pattern.substr(0, pos), number, pattern.substr(pos + 2));
+    return fmt::format("{}{}{}", pattern.substr(0, pos), number, pattern.substr(pos + 2));
 }
 
 }  // namespace
@@ -35,7 +36,7 @@ std::string_view hls_codec_string(const AudioTrack& track) {
 }
 
 std::string build_hls_media_playlist(const AudioTrack& track,
-                                     std::span<const MediaSegment> segments,
+                                     std::span<const SegmentInfo> segments,
                                      const HlsOptions& options) {
     double max_seconds = 0.0;
     for (const auto& segment : segments) {
@@ -49,17 +50,17 @@ std::string build_hls_media_playlist(const AudioTrack& track,
 
     std::string out;
     out += "#EXTM3U\n";
-    out += std::format("#EXT-X-VERSION:{}\n", options.version);
-    out += std::format("#EXT-X-TARGETDURATION:{}\n", target_duration);
+    out += fmt::format("#EXT-X-VERSION:{}\n", options.version);
+    out += fmt::format("#EXT-X-TARGETDURATION:{}\n", target_duration);
     if (!segments.empty()) {
-        out += std::format("#EXT-X-MEDIA-SEQUENCE:{}\n", segments.front().sequence_number);
+        out += fmt::format("#EXT-X-MEDIA-SEQUENCE:{}\n", segments.front().sequence_number);
     }
     if (options.vod) {
         out += "#EXT-X-PLAYLIST-TYPE:VOD\n";
     }
-    out += std::format("#EXT-X-MAP:URI=\"{}\"\n", options.init_segment_uri);
+    out += fmt::format("#EXT-X-MAP:URI=\"{}\"\n", options.init_segment_uri);
     for (const auto& segment : segments) {
-        out += std::format("#EXTINF:{:.5f},\n", segment_seconds(segment, track.sample_rate));
+        out += fmt::format("#EXTINF:{:.5f},\n", segment_seconds(segment, track.sample_rate));
         out += apply_sequence_number(options.segment_uri_pattern, segment.sequence_number);
         out += "\n";
     }
@@ -70,17 +71,17 @@ std::string build_hls_media_playlist(const AudioTrack& track,
 }
 
 std::string build_hls_master_playlist(const AudioTrack& track,
-                                      std::span<const MediaSegment> segments,
+                                      std::span<const SegmentInfo> segments,
                                       std::string_view media_playlist_uri,
                                       const HlsOptions& options) {
     const auto bandwidth = estimate_bandwidth_bps(segments, track.sample_rate);
     const std::string channels = options.channels_attribute.empty()
-                                     ? std::format("{}", track.channels)
+                                     ? fmt::format("{}", track.channels)
                                      : options.channels_attribute;
 
     std::string out;
     out += "#EXTM3U\n";
-    out += std::format("#EXT-X-VERSION:{}\n", options.version);
+    out += fmt::format("#EXT-X-VERSION:{}\n", options.version);
     // RFC 8216 §4.3.5.1: every Media Segment is guaranteed to carry the
     // whole of any sample it starts (true of every AC-3/E-AC-3 access unit
     // this module ever writes - see mp4.hpp), so this asset qualifies.
@@ -89,14 +90,27 @@ std::string build_hls_master_playlist(const AudioTrack& track,
     // point at, so the #EXT-X-STREAM-INF URI below is the SAME media
     // playlist this #EXT-X-MEDIA line names - real audio-only HLS assets
     // (podcasts, music) use exactly this self-referencing pattern.
-    out += std::format(
+    out += fmt::format(
         "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"Audio\",DEFAULT=YES,AUTOSELECT=YES,"
         "CHANNELS=\"{}\",URI=\"{}\"\n",
         channels, media_playlist_uri);
-    out += std::format("#EXT-X-STREAM-INF:BANDWIDTH={},CODECS=\"{}\",AUDIO=\"audio\"\n", bandwidth,
+    out += fmt::format("#EXT-X-STREAM-INF:BANDWIDTH={},CODECS=\"{}\",AUDIO=\"audio\"\n", bandwidth,
                        hls_codec_string(track));
-    out += std::format("{}\n", media_playlist_uri);
+    out += fmt::format("{}\n", media_playlist_uri);
     return out;
+}
+
+std::string build_hls_media_playlist(const AudioTrack& track,
+                                     std::span<const MediaSegment> segments,
+                                     const HlsOptions& options) {
+    return build_hls_media_playlist(track, segment_infos(segments), options);
+}
+
+std::string build_hls_master_playlist(const AudioTrack& track,
+                                      std::span<const MediaSegment> segments,
+                                      std::string_view media_playlist_uri,
+                                      const HlsOptions& options) {
+    return build_hls_master_playlist(track, segment_infos(segments), media_playlist_uri, options);
 }
 
 }  // namespace mp4

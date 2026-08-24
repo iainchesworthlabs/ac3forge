@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -38,12 +39,12 @@ int main() {
                           .location = Location::kCentre,
                           .trim_db = -6.0});
 
-    std::printf("assignment: %s\n", ac3::plan::format_assignment(sources, assignment).c_str());
+    fmt::printf("assignment: %s\n", ac3::plan::format_assignment(sources, assignment).c_str());
 
     const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
     const auto routing = ac3::plan::route(target, sources, assignment);
     if (!routing) {
-        std::printf("route failed - two rows named the same location, or the target can't "
+        fmt::printf("route failed - two rows named the same location, or the target can't "
                     "express one\n");
         return 1;
     }
@@ -51,7 +52,7 @@ int main() {
     // Ls, Rs and LFE were never assigned a source channel, so they stay silent
     // - a warning banner would read this the same way a GUI does.
     const auto unassigned = assignment.unassigned(sources);
-    std::printf("%zu source channel(s) left unassigned\n", unassigned.size());
+    fmt::printf("%zu source channel(s) left unassigned\n", unassigned.size());
 
     constexpr int kSourceChannels = 3;  // music L, music R, voiceover
     constexpr int kFrames = 31;         // one second
@@ -92,11 +93,11 @@ int main() {
         }
         const auto encoded = encoder->encode_frame(encode_views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         stream.insert(stream.end(), encoded->begin(), encoded->end());
     }
-    std::printf("%zu bytes of 5.1 AC-3, music + trimmed centre voiceover\n", stream.size());
+    fmt::printf("%zu bytes of 5.1 AC-3, music + trimmed centre voiceover\n", stream.size());
     return 0;
 }

@@ -126,6 +126,8 @@ std::vector<std::byte> steady_state_frame(const ac3::EncoderConfig& config, int 
 // behind block 0's mantissas, whose length only the bit allocation knows -
 // which is why the coupling tests below all read block 0.
 struct BlockZero {
+    std::vector<bool> blksw;     // §5.4.3.1, one per fbw channel
+    std::vector<bool> dithflag;  // §5.4.3.2, one per fbw channel
     bool cplinu = false;
     int ncplsubnd = 0;
     int cplstrtmant = 0;                            // 0 when not coupling
@@ -151,8 +153,14 @@ BlockZero parse_block_zero(std::span<const std::byte> frame) {
     ac3::BitReader r{frame};
     r.skip(40);                // syncinfo: syncword, crc1, fscod, frmsizecod
     r.skip(27);                // bsi for 2/0 without LFE, through addbsie
-    r.skip(kNfchans * 2 + 1);  // blksw, dithflag, dynrnge
-    r.skip(1);                 // cplstre, always 1 in block 0
+    for (int ch = 0; ch < kNfchans; ++ch) {
+        out.blksw.push_back(r.read(1) != 0);
+    }
+    for (int ch = 0; ch < kNfchans; ++ch) {
+        out.dithflag.push_back(r.read(1) != 0);
+    }
+    r.skip(1);  // dynrnge
+    r.skip(1);  // cplstre, always 1 in block 0
     out.cplinu = r.read(1) != 0;
 
     int cplbegf = 0;
@@ -626,6 +634,87 @@ TEST_CASE("delta bit allocation reaches fbw channels while coupling is active",
         const auto decoded = decoder.decode_frame(frame);
         REQUIRE(decoded.has_value());
     }
+}
+
+TEST_CASE("dithflag follows the content, and never covers digital silence",
+          "[encoder][dither]") {
+    // §7.3.4's dither fills the bins the allocator gave no bits to. Over
+    // silence there is nothing to fill and the substitution would be the only
+    // thing audible, so the encoder has to be able to say no - which is the
+    // half a fixed 0 already got right, and the half a fixed 1 would get
+    // wrong. Over real content the reverse: leaving a run of zero-bap bins as
+    // literal zeros is the spectral hole the tool exists to cover.
+    //
+    // Frame 3, not frame 0: the first frame's analysis window is half MDCT
+    // history that does not exist yet, so its allocation is not the
+    // steady-state one this is about.
+    const ac3::EncoderConfig config{.bitrate_kbps = 192};
+
+    ac3::FrameEncoder silent{config};
+    std::vector<std::byte> silent_frame;
+    for (int f = 0; f < 3; ++f) {
+        const std::vector<float> zeros(static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F);
+        const std::vector<std::span<const float>> views{zeros, zeros};
+        auto encoded = silent.encode_frame(views);
+        REQUIRE(encoded.has_value());
+        silent_frame = std::move(*encoded);
+    }
+    const auto quiet = parse_block_zero(silent_frame);
+    REQUIRE(quiet.dithflag.size() == 2);
+    CHECK_FALSE(quiet.dithflag[0]);
+    CHECK_FALSE(quiet.dithflag[1]);
+
+    // And the other half: somewhere in real content it has to say yes. Which
+    // channel of which block holds a coverable hole is a property of the
+    // material and the rate, not something worth pinning - what matters is
+    // that the encoder is capable of the answer at all, over the two kinds of
+    // content these tests already generate and across the rate range.
+    bool dithered_somewhere = false;
+    for (const std::uint32_t kbps : {96u, 192u, 448u}) {
+        const ac3::EncoderConfig at{.bitrate_kbps = kbps};
+        for (const auto& block0 :
+             {parse_block_zero(steady_state_noise(at, 2, 200.0, 16000.0, 0.5, 0x51EED)),
+              parse_block_zero(steady_state_frame(at, 2, 1.0, 0.4))}) {
+            REQUIRE(block0.dithflag.size() == 2);
+            dithered_somewhere =
+                dithered_somewhere || block0.dithflag[0] || block0.dithflag[1];
+        }
+    }
+    CHECK(dithered_somewhere);
+}
+
+TEST_CASE("a block-switched channel never dithers", "[encoder][dither]") {
+    // A switched block is two 256-point half transforms interleaved into one
+    // coefficient set, so a zero-bap slot there is really two half-block bins
+    // and filling it spreads noise across the transient the switch just spent
+    // bits resolving. Dolby's own encoder writes dithflag as exactly !blksw
+    // (see src/forge/src/encoder/dither.hpp); this holds this encoder to the
+    // same rule wherever it switches at all.
+    //
+    // A hard onset in the middle of the frame is what trips the §8.2.2
+    // detector: silence, then full-scale wideband noise.
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    std::uint64_t n = 0;
+    bool saw_switch = false;
+    for (int f = 0; f < 4; ++f) {
+        auto pcm = wideband_frame(2, n, f == 2 ? 1.0 : 0.0);
+        n += ac3::kSamplesPerFrame;
+        const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        const auto block0 = parse_block_zero(*frame);
+        REQUIRE(block0.blksw.size() == block0.dithflag.size());
+        for (std::size_t ch = 0; ch < block0.blksw.size(); ++ch) {
+            CAPTURE(f, ch);
+            if (block0.blksw[ch]) {
+                saw_switch = true;
+                CHECK_FALSE(block0.dithflag[ch]);
+            }
+        }
+    }
+    // The rule above is vacuous if nothing ever switched - the point of the
+    // silence-then-onset material is that something does.
+    CHECK(saw_switch);
 }
 
 TEST_CASE("coupling below two channels is silently inactive", "[encoder][coupling]") {
