@@ -2,9 +2,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -398,6 +400,44 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
         // token), so its presence here is proof fast-mdct=off actually reached
         // Tools::fast_mdct rather than merely parsing without effect.
         CHECK(text.find("nofastmdct") != std::string::npos);
+    }
+
+    SECTION("dither=off reaches an AC-3 encode, and nodither reaches E-AC-3's tools=") {
+        // AC-3 has no tools= string, so dither=off (support.hpp's
+        // Options::dither) is its equivalent - the same relationship
+        // fast-mdct=off already has to eac3-encode's bare nofastmdct token.
+        const auto ac3_path = dir / "nodither.ac3";
+        const auto ac3_log = dir / "nodither_ac3.log";
+        fs::remove(ac3_path);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() +
+                                    "\" 192 stereo dither=off",
+                                ac3_log);
+        CHECK(rc == 0);
+        CHECK(fs::exists(ac3_path));
+
+        const auto eac3_path = dir / "nodither.ec3";
+        const auto eac3_log = dir / "nodither_eac3.log";
+        fs::remove(eac3_path);
+        const auto rc2 = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                     eac3_path.string() + "\" 192 nodither stereo",
+                                 eac3_log);
+        const auto text = read_log(eac3_log);
+        INFO(text);
+        CHECK(rc2 == 0);
+        CHECK(fs::exists(eac3_path));
+        CHECK(text.find("nodither") != std::string::npos);
+    }
+
+    SECTION("dither=on is refused, not ignored - only off is a value 'dither' takes") {
+        const auto out_path = dir / "dither_bad.ac3";
+        const auto log = dir / "dither_bad.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                                    "\" 192 stereo dither=on",
+                                log);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(read_log(log).find("dither") != std::string::npos);
     }
 
     SECTION("eac3-encode-multi (src=/map=) also honors fast-mdct=off directly") {
@@ -904,6 +944,116 @@ TEST_CASE("keep-partial", "[cli][keep-partial]") {
     }
 }
 
+// Found by tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1) on its first
+// sweep of the Annex E half sample rates.
+//
+// A nominal Table 5.18 bitrate and an Annex E `fscod2` half rate are each
+// legal on their own everywhere else in the CLI, and nothing in its grammar
+// marks the pair. But §E2.3.1.3's frmsiz is an 11-bit word count, so a
+// syncframe can never exceed ac3::eac3::kMaxFrameWords words: above
+// bitrate * kSamplesPerFrame / sample_rate / 16 words the combination is not
+// expressible at all. AccessUnitEncoder reports that by building NO
+// substreams rather than by failing construction, and run_eac3_encode used to
+// meet the resulting channel_count() == 0 with an assert() - a clean (if
+// causeless) refusal in a release build, an abort in any build with
+// assertions live. Every layout was affected, and every one of the three half
+// rates has legal Table 5.18 rates above its ceiling: 320 kbps at 16 kHz,
+// 448 at 22.05 kHz, 512 at 24 kHz are the highest that fit.
+//
+// atmos-encode never took that path and always refused cleanly, which is why
+// tools/ci/run_codec_matrix.sh - whose only WAV source is 48 kHz - could not
+// have seen this.
+TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
+          "[cli][eac3][frmsiz]") {
+    const auto dir = scratch_dir();
+
+    // The exact ceiling per Annex E half rate, and the first legal Table 5.18
+    // rate above it. Written out rather than computed so a change to either
+    // side of the arithmetic has to be stated here too.
+    struct Probe {
+        std::uint32_t sample_rate;
+        std::uint32_t highest_that_fits;
+        std::uint32_t first_that_does_not;
+    };
+    constexpr std::array<Probe, 3> kProbes{{{16000, 320, 384},
+                                            {22050, 448, 512},
+                                            {24000, 512, 576}}};
+
+    for (const auto& probe : kProbes) {
+        const auto tag = std::to_string(probe.sample_rate);
+        INFO("sample rate " << tag);
+        const auto wav_path = dir / ("frmsiz_in_" + tag + ".wav");
+        const auto channels =
+            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame),
+                               probe.sample_rate);
+        REQUIRE(
+            ac3::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate).has_value());
+
+        // The highest rate that fits still encodes - so the check above is a
+        // ceiling, not a blanket refusal of the half rates.
+        {
+            const auto out_path = dir / ("frmsiz_ok_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_ok_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.highest_that_fits) + " none stereo",
+                        log);
+            INFO(read_log(log));
+            CHECK(rc == 0);
+            CHECK(fs::file_size(out_path) > 0);
+        }
+
+        // The first rate that does not is refused, not aborted.
+        {
+            const auto out_path = dir / ("frmsiz_over_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_over_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.first_that_does_not) + " none stereo",
+                        log);
+            const auto text = read_log(log);
+            INFO(text);
+            CHECK(rc != 0);
+            // What actually separates a refusal from the abort this replaced
+            // is the MESSAGE, not the exit code: an assertion failure prints
+            // its own text and never reaches the diagnosis below. The code
+            // itself is deliberately not compared against an exact value -
+            // std::system() hands back the child's own code on Windows but a
+            // POSIX wait status elsewhere, where exit 1 arrives as 256, so
+            // `rc == 1` would be a Windows-only assertion wearing a portable
+            // face.
+            CHECK(text.find("Assertion") == std::string::npos);
+            CHECK(text.find("frmsiz") != std::string::npos);
+            CHECK(text.find("words per syncframe") != std::string::npos);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+
+        // The multi-source entry point builds its own AccessUnitEncoder and
+        // had its own copy of the same assert. A `map=` with no `src=` is
+        // enough to route through it - run_eac3_encode hands off on either
+        // token - and avoids the "more than one source needs map=" refusal a
+        // bare second `src=` would meet first.
+        {
+            const auto out_path = dir / ("frmsiz_multi_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_multi_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.first_that_does_not) +
+                            " none stereo off map=0.0:L,0.1:R",
+                        log);
+            const auto text = read_log(log);
+            INFO(text);
+            CHECK(rc != 0);
+            CHECK(text.find("Assertion") == std::string::npos);
+            CHECK(text.find("frmsiz") != std::string::npos);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+    }
+}
+
 TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
           "[cli][encode][heavy2]") {
     const auto dir = scratch_dir();
@@ -1057,7 +1207,7 @@ TEST_CASE("eac3-encode and atmos-encode accept '-' for input and output", "[cli]
 // in two places, neither caught by the round-trip test above because it
 // never turns dialnorm=auto or src=/map= on: finish_measurement() (behind
 // every dialnorm=auto/dialnorm2=auto path) printed its "measured N LKFS ->
-// dialnorm M" line with the no-stream std::println overload, which always
+// dialnorm M" line with the no-stream fmt::println overload, which always
 // targets stdout regardless of out_path; and run_eac3_encode_multi/
 // run_encode_multi's own final summary/routing report used that same
 // unconditional stdout instead of threading status_stream(out_path) through
@@ -2179,4 +2329,150 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
     CHECK(run_cli("sine \"" + (dir / "mode_bad.ac3").string() + "\" 2 192 440 70 stereo "
                       "mode=fast",
                   log) != 0);
+}
+
+// --- unspdif (roadmap IO3) ---------------------------------------------------
+
+TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif.log";
+    const auto file_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    // AC-3 and E-AC-3 both: their burst periods, their Pd units (bits vs
+    // bytes) and their carrier rates all differ, so one passing says nothing
+    // about the other.
+    const auto ac3 = dir / "unspdif_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ac3_wav = dir / "unspdif_src_ac3.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + ac3_wav.string() + "\"", log) == 0);
+    const auto ac3_back = dir / "unspdif_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + ac3_wav.string() + "\" \"" + ac3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ac3_back) == file_bytes(ac3));
+
+    const auto ec3 = dir / "unspdif_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ec3_wav = dir / "unspdif_src_ec3.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + ec3_wav.string() + "\"", log) == 0);
+    const auto ec3_back = dir / "unspdif_back.ec3";
+    REQUIRE(run_cli("unspdif \"" + ec3_wav.string() + "\" \"" + ec3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ec3_back) == file_bytes(ec3));
+
+    // What came back is a stream in its own right, not only a byte match:
+    // it decodes.
+    const auto decoded = dir / "unspdif_back.wav";
+    CHECK(run_cli("decode \"" + ec3_back.string() + "\" \"" + decoded.string() + "\"", log) == 0);
+}
+
+TEST_CASE("cli: unspdif reads a bare carrier as well as a WAV", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_raw.log";
+    const auto ac3 = dir / "unspdif_raw_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_raw.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // The same carrier with its RIFF header cut off - what a capture tool
+    // that dumps raw device bytes leaves behind. kWavHeaderBytes is 44 for
+    // every WAV this project writes (see write_wav_pcm16_raw).
+    std::ifstream in{wav, std::ios::binary};
+    REQUIRE(in.is_open());
+    const std::vector<char> whole{std::istreambuf_iterator<char>{in},
+                                  std::istreambuf_iterator<char>{}};
+    REQUIRE(whole.size() > 44);
+    const auto raw = dir / "unspdif_raw.carrier";
+    {
+        std::ofstream out{raw, std::ios::binary};
+        out.write(whole.data() + 44, static_cast<std::streamsize>(whole.size() - 44));
+    }
+    const auto back = dir / "unspdif_raw_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + raw.string() + "\" \"" + back.string() + "\"", log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{back, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+}
+
+TEST_CASE("cli: unspdif refuses ordinary PCM and leaves no output behind", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_pcm.log";
+    const auto ac3 = dir / "unspdif_pcm_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto pcm = dir / "unspdif_pcm.wav";
+    REQUIRE(run_cli("decode \"" + ac3.string() + "\" \"" + pcm.string() + "\"", log) == 0);
+
+    const auto out = dir / "unspdif_pcm_out.ac3";
+    fs::remove(out);
+    CHECK(run_cli("unspdif \"" + pcm.string() + "\" \"" + out.string() + "\"", log) != 0);
+    CHECK(read_log(log).find("no AC-3 or E-AC-3 bursts") != std::string::npos);
+    // A failed run leaves no half-written stream to be mistaken for output.
+    CHECK_FALSE(fs::exists(out));
+
+    // And a file that is not there at all is a clean error, not a crash.
+    CHECK(run_cli("unspdif \"" + (dir / "definitely_absent.wav").string() + "\" \"" +
+                      out.string() + "\"",
+                  log) != 0);
+}
+
+TEST_CASE("cli: unspdif writes a clean stream to stdout, status text to stderr", "[cli][unspdif]") {
+    // The convention encode/decode already follow (status_stream): with "-"
+    // as the output, the human-readable report must not land in the middle of
+    // the binary a pipeline is reading. Worth its own test because getting it
+    // wrong is invisible until something downstream chokes - the report is
+    // valid-looking text prepended to a valid stream.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdout.log";
+    const auto ac3 = dir / "unspdif_stdout_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdout.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    const auto piped = dir / "unspdif_stdout.ac3";
+    REQUIRE(run_cli_stdout("unspdif \"" + wav.string() + "\" -", piped, log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+    // And the report did go somewhere - to stderr, not nowhere.
+    CHECK(read_log(log).find("unwrapped") != std::string::npos);
+}
+
+TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
+    // The natural shape of this on a machine with a real S/PDIF input is a
+    // capture tool piped straight in, so "-" has to work on the input side
+    // too - and it takes a different code path from the file one, which
+    // seeks and walks the RIFF chunk list. Here the WAV header is simply
+    // scanned past, which is only safe because a header cannot contain a
+    // preamble with a syncframe behind it.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdin.log";
+    const auto ec3 = dir / "unspdif_stdin_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdin.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // Both ends piped at once, the way a shell would use it.
+    const auto piped = dir / "unspdif_stdin.ec3";
+    REQUIRE(run_cli_stdio("unspdif - -", wav, piped, log) == 0);
+
+    std::ifstream a{ec3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
 }

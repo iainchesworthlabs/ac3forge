@@ -21,10 +21,12 @@ Usage:
   ac3cli eac3-sine    <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli decode       <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
+  ac3cli probe        <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
   ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
   ac3cli spdif        <in.ac3> <out.wav>                      (IEC 61937 wrap as playable PCM16 WAV)
+  ac3cli unspdif      <in.wav|in.raw|-> <out.ac3|out.ec3|->   (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
   ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
   ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
@@ -157,6 +159,7 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 | Command | What it does |
 |---|---|
 | `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there |
+| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1` |
 | `levels` | Per-channel peak/RMS report — takes a WAV or an encoded stream |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
 | `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream, measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, or the whole rendered program with `layout=rendered` — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
@@ -181,6 +184,166 @@ For an Atmos stream, add `objects_dir` to also export each object's reconstructe
 ```bash
 ac3cli decode atmos.ec3 bed.wav objects/
 ```
+
+#### `probe` — what the stream says about itself
+
+Every other inspection here goes through the audio: `levels` and `qc` decode the whole
+programme to measure it, and `decode` reports an object count on its way past. `probe` asks
+the other question — what the bitstream *declares* — and answers it without reconstructing a
+single sample:
+
+```bash
+ac3cli probe programme.ec3
+```
+
+```text
+file            programme.ec3
+codec           E-AC-3 (bsid 16)
+sample rate     48000 Hz
+bsmod           0 (complete main)
+layout          3/2 + LFE (acmod 7, lfeon 1)
+renders         6 channel(s): L C R Ls Rs LFE
+blocks          6 per syncframe (numblkscod 3)
+substreams      1 per access unit
+                independent id 0, 3/2 + LFE, 63 syncframe(s), -
+access units    63 (63 syncframe(s)), 112896 bytes
+duration        2.016 s
+bit rate        448.0 kbit/s measured
+rate control    constant (1792 .. 1792 bytes per access unit)
+dialnorm        -31 dB
+compr           absent
+dynrng          absent
+EMDF            payload id(s) 11 (OAMD), 14 (JOC)
+object audio    5 object(s): bed LFE only, 4 dynamic, in 63 frame(s)
+complexity      5
+JOC             present
+authenticity    no tag
+CRC             63 of 63 syncframe(s) valid
+tools           378 block(s) parsed
+  delta ba      372 of 378 block(s)
+  skip field    63 of 378 block(s)
+  exponents     reuse 1890, D15 378, D25 0, D45 0
+```
+
+It reads a stream in two tiers, and the distinction is the point. The **header tier** —
+syncinfo plus the whole of bsi — answers for every syncframe whether or not its audio is
+readable, so a stream this decoder refuses is still described in full. The **parse tier** runs
+the real decoder with the inverse transform switched off, which is where the `dynrng` words,
+the EMDF payload ids, the object layer and the per-block tool usage come from. A syncframe the
+parse tier declines is counted and reported; the header tier's answers for it stand.
+
+That is not a hypothetical: the committed DEE-encoded E-AC-3 baseline is exactly such a stream.
+`ac3cli decode` on it fails with `decode failed (code 5)` and stops. `probe` reports its layout,
+rate, duration, substream map and CRC state, says that 76 of its 79 syncframes were refused and
+why, and tells you it uses AHT — which is the first thing a bug report about it would need.
+
+**Exit code** is 0 only when every syncframe passed its CRC *and* the parser accepted it, so
+`probe` works as a pipeline gate without anything having to read its output:
+
+```bash
+ac3cli probe delivery.ec3 || echo "stream is not clean"
+```
+
+Memory is flat in the length of the stream: input is pulled through a fixed window rather than
+loaded, and the per-frame dump is written as the walk produces it. Probing a two-hour file costs
+what probing a two-second one does. `-` in place of the path reads the stream from stdin, so
+`probe` sits in a pipe.
+
+##### Per-frame and per-block detail
+
+`detail=frames` adds one entry per access unit — byte offset, size, timestamp, and each
+syncframe's own header, CRC state and object layer. `detail=blocks` adds every block's coding
+tools and exponent strategies underneath: the C++ counterpart of `tools/references/eac3_parse.py`,
+and what a codec bug report actually needs.
+
+```bash
+ac3cli probe programme.ec3 detail=blocks
+```
+
+```text
+access unit 0 @ 0 (768 bytes, t=0.0000s)
+  independent id 0 @ 0: 768 bytes, 2/0 stereo, crc ok, dialnorm -31 dB
+    blk 0: cpl+dither+remat             exp [D45 D45 cpl:D45]
+    blk 1: cpl+dither                   exp [D15 D15 cpl:D15]
+    blk 2: cpl+dither                   exp [reuse reuse cpl:reuse]
+```
+
+##### JSON output (`json=1`)
+
+`json=1` emits the same walk as a JSON document instead. The schema is a **stable contract** —
+sibling tooling is built on it (an HLS/DASH manifest check comparing a `dec3` box against the
+real substream map is the natural next consumer), so the rules below are commitments, not
+description.
+
+```bash
+ac3cli probe programme.ec3 json=1
+```
+
+**Versioning.** The top-level `schema` member names the contract: `"ac3forge.probe/1"`. Within
+one version, members are only ever *added*; an existing member never changes its type, its units
+or its meaning, and never disappears. A member that does not apply to a given stream is present
+and `null` (or `false`/`[]`), never omitted — a consumer must not have to tell "no such key"
+apart from "no such thing". A change that would break any of that changes the version.
+
+**Ordering.** `access_units` is written *before* `stream`, because the summary is only complete
+once every unit has been walked and the per-frame dump has to stream. JSON member order carries
+no meaning, so this costs a consumer nothing — but do not build anything that depends on the
+opposite order.
+
+**Units.** `dialnorm_db`/`dialnorm2_db` are reported in **dB** (negative), not as the
+transmitted 1..31 code — the field means −1..−31 dB LKFS and that is what a delivery spec is
+written in. `compr`, `compr2`, `dynrng` and `dynrng2` are the raw 8-bit words, because their
+meaning is a non-linear gain curve (§7.7) and a *range* of gains is not a well-defined thing to
+report. `bitrate_kbps` is measured over the whole stream; `nominal_bitrate_kbps` is AC-3's
+declared Table 5.18 rate and is `null` for E-AC-3, which has no such field.
+
+Top level:
+
+| Member | Type | Meaning |
+|---|---|---|
+| `schema` | string | `"ac3forge.probe/1"` |
+| `generator` | string | The `ac3cli` version that wrote it |
+| `file` | string | The input path as given |
+| `access_units` | array | Present only with `detail=` — see below |
+| `stream` | object | The summary |
+
+`stream`:
+
+| Member | Type | Meaning |
+|---|---|---|
+| `codec` | `"ac3"` or `"eac3"` | Which generation, from `bsid` |
+| `bsid`, `bsmod` | int | §5.4.1.3 / §5.4.2.1 as transmitted; `bsmod_label` names it (Table 5.7) |
+| `sample_rate_hz` | int | 48000/44100/32000, or Annex E's 24000/22050/16000 |
+| `reduced_rate` | bool | The rate came from `fscod2` (§E2.3.1.3) |
+| `acmod`, `lfeon` | int, bool | As transmitted; `layout_label` names the pair |
+| `numblkscod`, `blocks_per_syncframe` | int | §E2.3.1.4; always 6 for AC-3 |
+| `coded_channels` | int | What the independent substream itself codes |
+| `rendered_channels` | int | What the program renders, every dependent's `chanmap` unioned in (§E3.8.2) |
+| `layout` | array of string | Table E2.5 locations, in order. Empty for 1+1 dual mono, which has no layout |
+| `substreams` | array | One entry per `(stream_type, substream_id)` identity, with its own `bsid`/`bsmod`/`acmod`/`lfeon`/`numblkscod`/`chanmap` and the `syncframes` that carried it |
+| `substreams_per_access_unit` | int | Substreams in the first access unit |
+| `access_units`, `syncframes`, `bytes` | int | Extent |
+| `duration_seconds` | float | From the coded block counts, not a container timestamp |
+| `bitrate_kbps` | float | Measured over the whole stream |
+| `nominal_bitrate_kbps` | int or null | AC-3's declared rate; `null` for E-AC-3 |
+| `variable_bitrate` | bool | Access units differ in size |
+| `access_unit_bytes` | `{min, max}` | The spread behind that flag |
+| `metadata` | object | `dialnorm_db`, `dialnorm2_db`, `compr`, `compr2`, `dynrng`, `dynrng2`, each `{present, min, max}` with `min`/`max` `null` when `present` is false |
+| `objects` | object | `complexity_index` (TS 103 420 §8.3.2.2, from `addbsi`), `oamd`, `joc`, `emdf_payload_ids`, and the program the first OAMD payload described: `total`, `dynamic`, `bed`, `bed_mask`, `lfe`, plus the `frames` that carried one |
+| `authenticity` | `{present, tagged_syncframes}` | Whether frames carry an authenticity tag. Answered **without a key** — where the tag lives is fixed by the container, and only whether it *matches* needs the key (that is `decode ... verify-objects`) |
+| `integrity` | object | `crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error` |
+| `tools` | object | `blocks` parsed, then how many of them used `coupling`, `enhanced_coupling`, `spectral_extension`, `block_switch`, `dither`, `rematrixing`, `delta_bit_alloc`, `skip_field`; `aht_syncframes` and `transient_prenoise_syncframes` are counted in frames, since Table E1.3 decides them per frame; `exponent_strategy` totals `reuse`/`D15`/`D25`/`D45` over every coded stream of every block |
+
+`access_units[]` (with `detail=`): `index`, `byte_offset`, `bytes`, `start_seconds`, and
+`syncframes[]` — each with its own `byte_offset`, `bytes`, `stream_type`, `substream_id`,
+`bsid`, `bsmod`, `acmod`, `lfeon`, `numblkscod`, `dialnorm_db`, `compr`, `chanmap`, `crc_valid`,
+`authenticity_tag`, `parse_error` and `objects`. With `detail=blocks` each syncframe also carries
+`frame_tools` (Table E1.3's frame-level gates, `aht_streams`, `snroffststr`,
+`per_block_exp_strategy`) and `blocks[]` — per block: `parsed`, `coupling`,
+`enhanced_coupling`, `spectral_extension`, `block_switch` and `dither` (per-channel bit masks),
+`rematrixing`, `delta_bit_alloc`, `skip_field`, `skip_bytes`, `exponent_strategy` (one entry per
+coded channel, LFE last) and `coupling_exponent_strategy`.
+
 
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 
@@ -226,6 +389,7 @@ For a plain 5.1 stream both settings give the same number, by construction — s
 | Command | What it does |
 |---|---|
 | `spdif` | Wraps AC-3 or E-AC-3 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. For feeding a receiver through an ordinary audio path |
+| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones |
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
 | `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
@@ -243,7 +407,7 @@ each OS.
 |---|---|
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
-| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead |
+| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file — `bsid` decides AC-3 vs. E-AC-3 |
 | `monitor` | Decodes an existing file and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
 | `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` |
@@ -261,6 +425,32 @@ one exists.
 exactly as it always has been; `capture2=` adds a second, independently-clocked device (see
 [Options & grammars](metadata-options.md#live-options-live-capture2) for the full grammar) whose
 stream is resampled to track the master, with the measured drift printed at session end.
+
+### Passthrough capture
+
+A capture endpoint fed IEC 61937 hands the bursts over as ordinary PCM. Nothing in any capture
+API says "this is Dolby Digital", so a recorder that takes the samples at face value encodes
+noise. `record` and `live` both look for the burst framing — a `Pa`/`Pb` preamble every
+repetition period with a `0x0B77` syncframe behind it — over roughly the first quarter-second of
+each session, and act on what they find:
+
+- **`record`** switches to writing the elementary stream. Nothing is re-encoded, the `bitrate`
+  argument stops applying, and the output is bit-identical to what the source sent. The carrier
+  already gone past is kept, so the recording starts at the first burst rather than a
+  quarter-second into it. A device running at a rate AC-3 cannot encode at — 192 kHz is exactly
+  the E-AC-3 carrier's 4× — is no longer refused outright: that rate is now checked only once
+  the bitstream question has been answered no.
+- **`live`** stops with an error naming `record` and `unspdif`. A live session mixes, resamples
+  a second device into lockstep, meters, monitors and can pan objects, none of which mean
+  anything applied to burst data; switching modes mid-session would produce a file whose first
+  quarter-second is a different thing from the rest.
+
+For a capture already saved to disk, `unspdif` does the same job offline.
+
+None of this has been confirmed against a real HDMI or S/PDIF capture device — see
+[Windows](../platforms/windows.md#audio-backend-wasapi) for exactly what is and is not verified
+against hardware. What is verified is the framing itself, both ways, against FFmpeg's `spdif`
+muxer as an independent oracle.
 
 ## Next
 
