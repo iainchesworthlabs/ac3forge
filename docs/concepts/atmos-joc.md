@@ -120,6 +120,20 @@ That skip behaviour is *how* backward compatibility works: an old decoder ignore
 envelope entirely and just plays the 5.1 bed underneath, no crash, no confusion, no awareness
 that objects were ever there.
 
+## Taking the object layer back out
+
+The same property makes the reverse operation trivial to define and exact to perform. Because
+the bed **is** the full mix and the object layer only ever rides in skip fields, a DD+ JOC
+stream can be turned back into a plain DD+ 5.1 stream by removing the container — no decode, no
+re-encode, and no quality cost. `ac3cli strip-objects in.ec3 out.ec3` does exactly that, and the
+result decodes to sample-identical PCM (see
+[Object-layer strip](../library/decoding.md#object-layer-strip)).
+
+That matters for delivery: Apple's HLS authoring requirements ask that an Atmos rendition be
+accompanied by an equivalent 5.1 bitstream in the same `#EXT-X-MEDIA` group, so a client that
+cannot render objects has something to select. `ac3cli fmp4 … fallback-51` writes both from one
+source stream.
+
 ## The fallback rule: objects, or nothing
 
 A stream **carries objects or omits the container entirely — never an empty one, and never a
@@ -139,8 +153,9 @@ things advertise the object layer and they have to agree:
   "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
   packager, a player and a manifest an object layer that isn't there.
 
-So the marker follows the container: emit both, or neither. The same rule is why an object-layer
-strip has to remove both, not just the payload.
+So the marker follows the container: emit both, or neither. The same rule is why the strip above
+has to remove both, not just the payload, and why a 5.1 fallback from an Atmos encode omits the
+container entirely instead of writing a hollow one.
 
 ## Two honest limitations
 

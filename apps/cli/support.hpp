@@ -107,6 +107,20 @@ struct Options {
     // an unsigned one unless the operator opts in here - see
     // docs/concepts/object-signing.md.
     bool verify_objects = false;
+    // 'fmp4' only: also write the object-stripped 5.1 companion rendition
+    // into the same #EXT-X-MEDIA group, which is what Apple's HLS Authoring
+    // Specification asks for alongside a CHANNELS="<N>/JOC" Atmos rendition.
+    // Off by default, matching every bare token here: a plain invocation
+    // writes exactly the single-rendition directory it always has, and a
+    // stream with no object layer has no companion to write anyway.
+    bool hls_fallback_51 = false;
+    // 'ts' only, both broadcast profiles: the identification values neither
+    // registry's descriptor can read off the bitstream because they describe
+    // how services in a multiplex RELATE, not what one elementary stream
+    // contains. Unset omits the field rather than inventing a number - see
+    // mpegts::ServiceInfo::mainid.
+    std::optional<int> mainid = std::nullopt;
+    std::optional<int> asvc = std::nullopt;
     // 'eac3-encode' only: run ac3::verify's E-AC-3 encoder/decoder mirror
     // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
     // command emits, and refuse the run on the first disagreement. Off by

@@ -610,6 +610,53 @@ run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+# Both broadcast profiles (roadmap IO6). ATSC and DVB identify the same
+# elementary stream with different stream_type values AND different
+# descriptors, so each combination of profile and codec is its own PMT layout
+# - four in total, all of which a demuxer has to accept. mainid=/asvc= carry
+# the two identification values no single elementary stream can supply, so
+# they get a pass too.
+run ts enc_51.ac3 enc_51_atsc.ts atsc
+run ts eac3enc_none.ec3 eac3enc_none_atsc.ts atsc
+run ts atmos_4.ec3 atmos_4_atsc.ts atsc mainid=0
+run ts enc_51.ac3 enc_51_dvb_assoc.ts dvb asvc=0x05
+run_ffmpeg_check enc_51_atsc.ts
+run_ffmpeg_check eac3enc_none_atsc.ts
+run_ffmpeg_check atmos_4_atsc.ts
+
+# --- Object-layer strip (roadmap IO7) --------------------------------------
+# The claim is that the bed audio does not change at all, so this checks it
+# the only way that settles it: decode both streams and compare the PCM byte
+# for byte. FFmpeg then decodes the stripped stream independently, and reports
+# it as plain E-AC-3 rather than "Dolby Digital Plus + Dolby Atmos" - the same
+# probe README.md's own Atmos claim rests on, read the other way round.
+run strip-objects atmos_4.ec3 atmos_4_bed51.ec3
+run decode atmos_4_bed51.ec3 atmos_4_bed51.wav
+run_ffmpeg_check atmos_4_bed51.ec3
+count=$((count + 1))
+echo "[$count] bed audio is bit-identical after strip-objects"
+cmp atmos_4.wav atmos_4_bed51.wav
+count=$((count + 1))
+echo "[$count] ffprobe no longer reports an object layer on the stripped stream"
+probe_profile="$(ffprobe -v error -show_entries stream=profile \
+    -of default=noprint_wrappers=1:nokey=1 -f eac3 atmos_4_bed51.ec3 2>/dev/null || true)"
+if printf '%s' "$probe_profile" | grep -qi atmos; then
+    echo "    FAIL: atmos_4_bed51.ec3 still probes as Dolby Atmos"
+    exit 1
+fi
+# The paired HLS rendition Apple's authoring requirements ask for: the Atmos
+# one where it always was, the stripped 5.1 companion under bed51/, both in
+# one #EXT-X-MEDIA group.
+run fmp4 atmos_4.ec3 fmp4_atmos_fallback 4 fallback-51
+count=$((count + 1))
+echo "[$count] fmp4 fallback-51 wrote both renditions into one group"
+grep -q 'CHANNELS="6"' fmp4_atmos_fallback/master.m3u8
+grep -q '/JOC"' fmp4_atmos_fallback/master.m3u8
+grep -q 'URI="bed51/audio.m3u8"' fmp4_atmos_fallback/master.m3u8
+cat fmp4_atmos_fallback/bed51/init.mp4 $(ls -v fmp4_atmos_fallback/bed51/segment*.m4s) \
+    > fmp4_bed51_combined.mp4
+run_ffmpeg_check fmp4_bed51_combined.mp4
+run_ffmpeg_check fmp4_atmos_fallback/bed51/audio.m3u8
 
 # demux is the inverse of the wrapping commands above, so it is checked as an
 # inverse rather than only for a clean exit: the elementary stream that went
