@@ -80,3 +80,11 @@ select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF", "PLC", "PLE", "PLW"
 # framework's documented recipe shape, and ClassVar annotations on them would
 # be this repo inventing a house style for someone else's file format.
 "packaging/conan/**/*.py" = ["RUF012"]
+
+# fuzz/metadata-seeds.py's CAR_ADM_XML/SPEAKER_ADM_XML are literal BS.2076-2
+# example documents embedded as byte-string fixtures, kept in step with
+# tests/adm/test_adm.cpp's own copies (see that file's comment on the ID
+# collision that requires it) - wrapping their long attribute lines would
+# mean the fixture and the C++ copy it is meant to match no longer read
+# identically, for a rule that was never evaluating Python source here at all.
+"fuzz/metadata-seeds.py" = ["E501"]

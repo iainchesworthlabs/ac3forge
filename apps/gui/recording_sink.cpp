@@ -23,6 +23,8 @@ const char* write_failed_for(RecordingSink::Container container) {
             return "Writing the MPEG-TS file failed.";
         case RecordingSink::Container::kSpdif:
             return "Writing the WAV carrier failed.";
+        case RecordingSink::Container::kFmp4:
+            return "Writing the fragmented MP4 folder failed.";
         case RecordingSink::Container::kElementary:
             break;
     }
@@ -45,6 +47,19 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
             return kCannotOpen;
         }
         packer_ = {};
+        open_ = true;
+        return {};
+    }
+
+    if (config.container == Container::kFmp4) {
+        // A folder, not a file - and nothing is written into it yet: the
+        // fragmenter's track needs a bitstream scan, so it waits for the
+        // first frame (see Fmp4FolderWriter). Creating the folder here still
+        // means an unwritable destination refuses the take before capture
+        // starts, which is what open()'s contract above promises.
+        if (auto problem = fmp4_.open(path); !problem.empty()) {
+            return problem;
+        }
         open_ = true;
         return {};
     }
@@ -109,6 +124,11 @@ std::string RecordingSink::push(std::span<const std::byte> frame) {
             }
             break;
         }
+        case Container::kFmp4:
+            if (const auto problem = fmp4_.push(frame); !problem.empty()) {
+                return problem;
+            }
+            break;
         case Container::kSpdif: {
             if (config_.eac3) {
                 auto burst = packer_.push(frame);
@@ -147,12 +167,23 @@ std::string RecordingSink::close() {
     open_ = false;
     if (frames_ == 0) {
         // The whole-buffer path never created a file for an empty take;
-        // matching that means removing the one open() already created.
+        // matching that means removing the one open() already created. kFmp4
+        // never wrote anything into its folder (start_fmp4 waits for a first
+        // frame that never came), so removing the folder is the same
+        // gesture - and remove(), not remove_all(), so a folder the user
+        // pointed at that already had something in it is left alone.
         wav_.close();
         file_.close();
         std::error_code ec;
-        std::filesystem::remove(std::filesystem::path{path_}, ec);
+        if (config_.container == Container::kFmp4) {
+            std::filesystem::remove(fmp4_.directory(), ec);
+        } else {
+            std::filesystem::remove(std::filesystem::path{path_}, ec);
+        }
         return kNothingEncoded;
+    }
+    if (config_.container == Container::kFmp4) {
+        return fmp4_.close();
     }
     if (config_.container == Container::kSpdif) {
         // An E-AC-3 tail that never completed a burst is dropped, exactly

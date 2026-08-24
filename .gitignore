@@ -57,3 +57,4 @@ fuzz/artifacts/
 # seed the harness prints beside it (`--replay <seed>`), so the WAV and
 # bitstream copies are a convenience for looking at, never the record.
 fuzz-encoder-artifacts/
+fuzz-eac3-encoder-artifacts/

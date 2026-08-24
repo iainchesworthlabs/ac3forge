@@ -6,7 +6,8 @@
 # encoder/decoder logic in isolation; this script covers the combinations a
 # real user's command line would hit - every layout, every Annex E tool
 # token, both Atmos container modes, and the metadata options - round-tripped
-# through encode -> decode -> levels/loudness/spdif/mkv/mp4.
+# through encode -> decode -> levels/loudness/spdif/mkv/mp4, and back out
+# again through demux.
 #
 # Every stream this script produces also gets FFmpeg's independent strict
 # decode (CONTRIBUTING.md's "Oracles" list, #2) alongside the in-repo
@@ -204,12 +205,14 @@ run_ffmpeg_check eac3_silence.ec3
 
 # "atten:N" and "noatten" alone tune spectral extension's notch but do not,
 # by themselves, turn spx on (see parse_tools in src/forge/src/encoder/plan.cpp)
-# - so they round-trip like "none". "nofastmdct" is the same shape one step
-# further: not a coding tool at all, just the direct-form forward MDCT
-# instead of the default fast path, so its stream differs from "none"'s only
-# at the coefficient-rounding level. Anything that actually sets
-# coupling/spx/aht does not round-trip like "none", per the note above.
-for tools in none "atten:2" noatten nofastmdct; do
+# - so they round-trip like "none". "nofastmdct" and "nodither" are the same
+# shape one step further: neither is a coding tool at all - nofastmdct only
+# changes the forward transform's rounding, nodither only pins §7.3.4's
+# dithflag at 0 instead of deciding it from content - so their streams differ
+# from "none"'s at the coefficient/dither level, not the syntax level.
+# Anything that actually sets coupling/spx/aht does not round-trip like
+# "none", per the note above.
+for tools in none "atten:2" noatten nofastmdct nodither; do
     safe=$(echo "$tools" | tr ':+' '__')
     run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
@@ -221,18 +224,36 @@ done
 #
 # "auto" belongs in this group rather than the one above because of the rate
 # this loop runs at: 192 kbit/s over 5.1 is 38 kbit/s per full-bandwidth
-# channel, below both of the ceilings in eac3_frame.cpp, so it turns coupling,
-# spectral extension and AHT all on and its stream is nothing like "none"'s.
-# It is also the tool set the landscape comparison reports, which makes it the
-# one most worth holding an independent decoder against. "auto+spx:5" covers
-# the other half of that decision - a caller pinning the band edge while
-# leaving the on/off choice to the rate policy.
+# channel, well below the extension ceiling, so it turns spectral extension
+# and AHT on and its stream is nothing like "none"'s. It is also the tool set
+# the landscape comparison reports, which makes it the one most worth holding
+# an independent decoder against. "auto+spx:5" covers the other half of that
+# decision - a caller pinning the band edge while leaving the on/off choice to
+# the policy.
 for tools in cpl spx aht all auto "auto+spx:5" "spx+aht" "cpl:4+spx:5" "aht:0" "all+atten:2" \
              "all+noatten" "all+nofastmdct"; do
     safe=$(echo "$tools" | tr ':+' '__')
     run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
     run_ffmpeg_check "eac3enc_${safe}.ec3"
+done
+
+# `auto` again, at rates and layouts where the CONTENT half of the decision is
+# what moves - the half a single 38 kbit/s-per-channel leg cannot show. The
+# extension ceiling is no longer one number: it runs with how much of the
+# frame's energy sits above the extension frequency, so 384 kbit/s over 5.1
+# (77 per channel) and 192 over stereo (96 per channel) both sit in the range
+# where the answer depends on the material rather than on the rate alone, and
+# both used to be flat refusals. They are also the two points where coupling's
+# minimum-region-width rule decides, since §E3.3.1 derives cplendf from
+# spxbegf wherever synthesis is on. FFmpeg reads all of it - `auto` never
+# reaches for enhanced coupling, precisely so that stays true.
+for spec in 384:51 192:stereo 256:stereo; do
+    kbps=${spec%%:*}
+    layout=${spec##*:}
+    run eac3-encode bootstrap_51.wav "eac3enc_auto_${kbps}_${layout}.ec3" "$kbps" auto "$layout"
+    run decode "eac3enc_auto_${kbps}_${layout}.ec3" "eac3enc_auto_${kbps}_${layout}.wav"
+    run_ffmpeg_check "eac3enc_auto_${kbps}_${layout}.ec3"
 done
 
 # Enhanced coupling (ecpl) and transient pre-noise processing (tpn): unlike
@@ -382,6 +403,19 @@ else
 fi
 
 # --- Reporting / container passes over a representative subset -------------
+# probe (roadmap IO1): the table form, the JSON contract, and both detail
+# levels - over an AC-3 stream, a plain E-AC-3 one and an Atmos one so its
+# object-layer/EMDF fields see a real OAMD+JOC container at least once. Its
+# own exit code is non-zero on a CRC or parse failure (see the command's own
+# doc comment), which every stream reaching this point in the script does not
+# have, so a plain `run` (which trusts a clean 0) is the right check here -
+# the same trust every other call in this section already places in a clean
+# decode/measure.
+run probe bootstrap_51.ac3
+run probe bootstrap_51.ac3 json=1
+run probe eac3enc_none.ec3
+run probe eac3enc_none.ec3 json=1 detail=frames
+run probe atmos_4.ec3 json=1 detail=blocks
 run levels bootstrap_51.wav
 run levels enc_stereo.ac3
 run levels eac3enc_none.ec3
@@ -401,6 +435,41 @@ count=$((count + 1))
 echo "[$count] qc bootstrap_51.ac3 preset=all (verdict not asserted - see comment above)"
 "$CLI" qc bootstrap_51.ac3 preset=all >/dev/null || true
 run spdif ac3_stereo.ac3 spdif_out.wav
+# unspdif closes the loop the wrap side never had, and does it against an
+# oracle rather than only against ourselves. Three legs:
+#
+#   1. our own bursts back to our own stream, byte for byte
+#   2. FFmpeg's spdif MUXER's bursts back to the same stream, byte for byte -
+#      the independent half. If our Pd, our word order or our burst period
+#      disagreed with FFmpeg's, this is where it would show, and no amount of
+#      being self-consistent would hide it.
+#   3. the same for E-AC-3, whose burst period (24576, the 4x carrier) and Pd
+#      unit (bytes, not bits) are both different from AC-3's - one passing
+#      says nothing about the other.
+#
+# `cmp -s` and not a decode check: a lossy round trip could pass a decode
+# while dropping or reordering a frame, and the whole claim here is that
+# nothing is re-encoded at all.
+run unspdif spdif_out.wav unspdif_ours.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ours.ac3 == ac3_stereo.ac3 (our own wrap round-trips byte-exactly)"
+cmp -s unspdif_ours.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (AC-3): FFmpeg's own burst muxer as the unwrap oracle"
+ffmpeg -hide_banner -loglevel error -y -f ac3 -i ac3_stereo.ac3 -c copy -f spdif ffmpeg_spdif.ac3.raw
+run unspdif ffmpeg_spdif.ac3.raw unspdif_ffmpeg.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ac3 == ac3_stereo.ac3 (FFmpeg's bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (E-AC-3): 4x carrier, 24576-byte period, Pd in bytes"
+ffmpeg -hide_banner -loglevel error -y -f eac3 -i eac3enc_none.ec3 -c copy -f spdif ffmpeg_spdif.ec3.raw
+run unspdif ffmpeg_spdif.ec3.raw unspdif_ffmpeg.ec3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ec3 == eac3enc_none.ec3 (FFmpeg's E-AC-3 bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ec3 eac3enc_none.ec3
 run mkv enc_51.ac3 enc_51.mkv
 run mkv eac3enc_none.ec3 eac3enc_none.mkv
 run mkv atmos_4.ec3 atmos_4.mkv
@@ -433,5 +502,33 @@ run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+
+# demux is the inverse of the wrapping commands above, so it is checked as an
+# inverse rather than only for a clean exit: the elementary stream that went
+# into the container has to be the one that comes back out, byte for byte. A
+# reader that dropped a frame or trimmed a trailing byte would still produce
+# something FFmpeg mostly decodes, which is why cmp is the assertion here and
+# a decode is not.
+run demux enc_51.mkv demux_51.ac3
+cmp -s enc_51.ac3 demux_51.ac3 || {
+    echo "demux enc_51.mkv did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux eac3enc_none.mkv demux_eac3.ec3
+cmp -s eac3enc_none.ec3 demux_eac3.ec3 || {
+    echo "demux eac3enc_none.mkv did not reproduce eac3enc_none.ec3 byte for byte" >&2
+    exit 1
+}
+# The Atmos stream matters on its own: its access units carry dependent
+# substreams, so a reader that mistook a substream for an access-unit
+# boundary would only show up here.
+run demux atmos_4.mkv demux_atmos.ec3
+cmp -s atmos_4.ec3 demux_atmos.ec3 || {
+    echo "demux atmos_4.mkv did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+# And the recovered stream still decodes, which is the end-to-end statement:
+# container in, playable elementary stream out.
+run_ffmpeg_check demux_atmos.ec3
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

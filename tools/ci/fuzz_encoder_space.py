@@ -61,7 +61,11 @@ Scope: AC-3 (`ac3cli encode`) only. The bug that motivated this is AC-3-only
 clears at block 0, so its state cannot go stale between blocks), and AC-3's
 configuration space is the one whose acceptance envelope this file pins
 below. E-AC-3's own space - the Annex E tool tokens, VBR, the wider layouts -
-is a real remaining gap, and deliberately not smuggled in half-covered here.
+is tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1), a separate file for the
+same reason this one names the scope at all: its acceptance envelope has a
+ceiling as well as a floor (frmsiz is a word count, not a table index) and its
+ORACLE is a different shape, since FFmpeg does not read E-AC-3 whole. The two
+share this file's PCM generator, which that one imports, and nothing else.
 
 Usage (repo root, after building):
   python tools/ci/fuzz_encoder_space.py --cli build/dev/bin/ac3cli.exe --cases 200

@@ -71,12 +71,13 @@ fi
 # Component floors, one row per component: <path> <line%> <branch%>. A path,
 # not a bare name, since roadmap VX15 added apps/ alongside src/.
 #
-# Calibrated 2026-08-20 (src/*) and 2026-08-23 (apps/cli) against WSL2 runs on
+# Calibrated 2026-08-20 (src/*) and 2026-08-24 (apps/cli, re-measured after
+# merging roadmap IO2's container-reader/probe work) against WSL2 runs on
 # the CI toolchain pins (gcov 15.2.0, gcovr 8.6), measured per component as:
 #
-#   forge 92.5/84.4 audio 33.3/22.2   signing 87.4/62.6   matroska 93.5/92.1
-#   mp4 95.1/90.3   mpegts 94.1/90.7  capi 87.8/79.2      ac3adm 87.7/82.6
-#   admbridge 91.8/85.6               apps/cli 47.3/42.0
+#   forge 93.2/86.0 audio 34.2/22.8   signing 89.2/68.9  matroska 92.9/87.7
+#   mp4 94.9/92.5   mpegts 94.1/90.7  capi 87.8/79.2      ac3adm 87.9/82.4
+#   admbridge 91.8/85.6               apps/cli 54.0/46.5
 #
 # Each floor sits ~4-8 points under its measurement: a couple of points for
 # the known WSL-reads-higher-than-hosted effect (see ci.yml's coverage job

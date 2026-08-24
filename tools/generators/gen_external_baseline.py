@@ -42,10 +42,10 @@ encoders' output by how well *our* decoder happens to parse their bitstream
 choices would also conflate their encoder's quality with our decoder's
 coverage - using FFmpeg for both avoids that confound entirely, not just
 the crash. (The Dolby Reference Player was also tried here, as a genuine
-reference-implementation oracle - but its gst pipeline decoded DEE's own
-E-AC-3 stereo output to near-total garbage despite exiting cleanly with the
-right channel count, while FFmpeg decoded the identical file to a sane,
-expected score. Left for its own investigation, not blocking here.)
+reference-implementation oracle, and appeared to decode DEE's own E-AC-3
+stereo output to near-total garbage while FFmpeg decoded the identical file
+to a sane score. That has since been run down and it is not a decode defect
+at all - see "Resolved" below.)
 
 Writes tests/golden/external-baseline/<leg>/{ffmpeg,dee}.<ac3|ec3> (the raw
 bitstreams, committed) and one tests/golden/external-baseline/manifest.json
@@ -68,6 +68,49 @@ this) scores DEE fine (33.32 dB SNR, sane and comparable to FFmpeg's own
 32.81 dB at the same bitrate). The dee.ac3/dee.ec3 bitstreams are still
 written and committed for the 5.1 legs, so re-scoring is free once this is
 understood or a newer DEE build is available.
+
+Known issue: FFmpeg cannot decode the FIRST frame of DEE's stereo E-AC-3
+stream from cold, which is why eac3-stereo-192's DEE entry carries a
+"decoder_note" (see DECODER_NOTES below). FFmpeg 8.0.1 reads 93 of that
+stream's 94 frames cleanly - a median 44 dB per frame - and fails only frame
+0, reporting "exponent 25 is out-of-range" once and concealing it by
+repeating block 0 across blocks 1-4. It is the frame's own shape that FFmpeg
+cannot read cold, not its position: frames 0, 75 and 89 share a payload
+shape, all three fail when made the first frame, and frame 0 decodes with no
+error at all when any other frame is prepended ahead of it. Frames 75 and 89
+therefore decode correctly in place, at 51.0 and 42.9 dB, because by then
+there is decoder state to fall back on.
+
+This does not move the number recorded here, and that is not a lucky
+accident worth hiding: score_fixed aligns on FIXED_ALIGN, whose skip is
+0.2 s, so the first 9600 samples - the only ones FFmpeg gets wrong - are
+outside the scored window for every leg alike. Scored across the whole file
+instead, FFmpeg's decode of this fixture is 14.30 dB rather than 33.32 dB,
+and the entire difference is that one frame. The reason the 33.32 dB is
+nonetheless the right number for DEE's ENCODER is independent corroboration,
+not the window: ac3forge's own decoder reads frame 0 correctly (42.30 dB on
+it) and scores the same fixture 33.3236 dB through the same window - 0.005 dB
+from FFmpeg's 33.3186 dB. Two independent decoders agreeing that closely is
+what says this measures DEE's encoder rather than either decoder's
+concealment. (That cross-check needs the Annex E decoder fixes that arrive
+with the third-party interop gate, PR #320 - before them this project's own
+decoder could not read DEE's Annex E syntax at all, which is why no earlier
+baseline run could have made this comparison.)
+
+Resolved: the Dolby Reference Player's apparent "near-total garbage" on this
+same stereo stream, noted above and left open until now, is a level shift
+and not a decode defect. DEE writes a MEASURED dialnorm of 12 (dialogue at
+-12 dBFS) because invoke_dee asks for loudness-management measure_only; the
+reference player then does what a player is supposed to do and normalises
+dialogue to -31 dBFS, attenuating the output by exactly 31 - 12 = 19 dB.
+Neither FFmpeg's decoder nor ac3cli's applies dialnorm, and the scoring here
+compares against an un-normalised source WAV, so the player's output scored
+1.02 dB. Undo that 19 dB and the same decode scores 32.19 dB, with an
+LSD of 1.878 sitting between FFmpeg's 1.899 and ac3cli's 1.857 - a good
+decode all along. FFmpeg's own encoder writes dialnorm 31, a 0 dB shift,
+which is the only reason its stream looked fine through the same pipeline.
+The player is therefore usable as an oracle, provided dialnorm is either
+compensated for or encoded as 31.
 
 Usage (repo root, after building ac3cli):  python tools/generators/gen_external_baseline.py
 Set AC3CLI to override the ac3cli binary, same as quality_race.py.
@@ -123,6 +166,30 @@ UNVERIFIED_DEE_LEGS = {
                    "discrete 6-channel 5.1 input (confirmed via tone probe, "
                    "channel-index-locked) - see tools/generators/gen_external_baseline.py's "
                    "module docstring.",
+}
+
+# Attached to a leg's score entry as "decoder_note", keyed (leg, tool). The
+# same hand-maintained, regenerate-stable mechanism as UNVERIFIED_DEE_LEGS
+# above, for the other case: a leg whose number is sound but whose
+# provenance needs a caveat recorded beside it rather than left to whoever
+# next reads the manifest and tries to reproduce it. Unlike "status":
+# "unverified" this does not suppress the number - every consumer keeps
+# reading snr_db exactly as before (append_external_comparison_history.py
+# gates on "snr_db" in entry, render_spectrograms on "status"), so this is
+# additive to them.
+DECODER_NOTES = {
+    ("eac3-stereo-192", "dee"): (
+        "FFmpeg 8.0.1 reads 93 of this stream's 94 frames cleanly but fails "
+        "frame 0 from cold (\"exponent 25 is out-of-range\"), concealing it by "
+        "repeating block 0 across blocks 1-4. The score here is unaffected "
+        "because score_fixed's FIXED_ALIGN skips the first 0.2 s, which is "
+        "where that frame sits; scored across the whole file FFmpeg's decode "
+        "is 14.30 dB instead. What says 33.32 dB measures DEE's encoder and "
+        "not FFmpeg's concealment is that ac3forge's own decoder reads frame 0 "
+        "correctly and scores this same fixture 33.3236 dB through the same "
+        "window, 0.005 dB away - see tools/generators/gen_external_baseline.py's "
+        "module docstring."
+    ),
 }
 
 LEGS = [
@@ -251,16 +318,19 @@ def score_tool(original, coded, wav_scratch, is_eac3, decoder):
     established "neutral referee" role elsewhere in this project).
 
     The Dolby Reference Player (dolby_decode) was tried here too, since it
-    is a genuine reference-implementation oracle when it works - but its
-    gst pipeline produced near-total garbage (~1 dB SNR) decoding DEE's own
-    E-AC-3 stereo output despite exiting cleanly with the right channel
-    count, while FFmpeg decoded the identical file to a sane, expected
-    ~33 dB. crosscheck mode's own use of this same pipeline is presumably
-    fine against this project's own encoder output, so this looks like
-    another instance of "never exercised against a real third-party
-    encoder's legal-but-different choices before" rather than a channel-
-    count-shaped problem this script can cheaply detect and route around -
-    worth its own investigation another time, not blocking here.
+    is a genuine reference-implementation oracle when it works, and appeared
+    to produce near-total garbage (1.02 dB SNR) decoding DEE's own E-AC-3
+    stereo output while FFmpeg decoded the identical file to ~33 dB. It is
+    not a "decoder", though: it is a PLAYER, and it applies dialnorm. DEE
+    writes a measured dialnorm of 12 on that stream, so the player correctly
+    attenuates by 31 - 12 = 19 dB, and scoring its output against an
+    un-normalised source WAV charges the whole 19 dB to the decode. Undo it
+    and the same decode scores 32.19 dB. FFmpeg is not "better" here, only
+    dialnorm-blind, and FFmpeg's own encoder writes dialnorm 31 (a 0 dB
+    shift) which is why its stream looked fine either way. Kept on FFmpeg
+    regardless, for the neutral-referee reason above rather than because the
+    player cannot do it - but a caller that wants the player as an oracle has
+    to compensate dialnorm or encode it as 31. See the module docstring.
 
     Requests a MOS-LQO score too (perceptual_score() in quality_race.py) -
     unlike lsd_db/hf_db it isn't gated on is_eac3, since ViSQOL scores
@@ -342,6 +412,9 @@ def main():
             wav_scratch = SCRATCH / f"{name}_{tool_label}.wav"
             entry = score_tool(original, coded, wav_scratch, is_eac3, decoder)
             entry["measured_kbps"] = measured_kbps(coded, seconds)
+            note = DECODER_NOTES.get((name, tool_label))
+            if note is not None:
+                entry["decoder_note"] = note
             scores[tool_label] = entry
             lsd_str = "-" if entry["lsd_db"] is None else f"{entry['lsd_db']:.2f}"
             hf_str = "-" if entry["hf_db"] is None else f"{entry['hf_db']:+.1f}"

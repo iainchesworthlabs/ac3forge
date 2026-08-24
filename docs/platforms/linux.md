@@ -6,7 +6,7 @@ troubleshooting, see [Building from source](../building.md).
 
 ## Toolchains
 
-Built and tested with **GCC 16** and **Clang 21.1** on **Ubuntu 26.04 (WSL2)** — the versions
+Built and tested with **GCC 16** and **Clang 22.1** on **Ubuntu 26.04 (WSL2)** — the versions
 CI pins. Note that 26.04's own archive currently carries `gcc-16` as a pre-release/experimental
 trunk snapshot in its `universe` component (`02-gcc-toolchain.sh` enables `universe` to reach
 it) rather than the finished 16.1 release, which lands in a later Ubuntu series first — this is
@@ -14,7 +14,7 @@ Ubuntu's packaging timing, not a project choice, and the pin tracks whatever `ap
 `gcc-16` without further action needed here once 26.04 backports the stable release. The pin
 itself is a CI reproducibility choice, not a hard floor of the code:
 `cmake/toolchains/linux.{gcc,llvm}.toolchain.cmake` already `find_program` a fallback list
-(`gcc-16, gcc, gcc-15, gcc-14, gcc-13` / `clang-21, clang, clang-20, clang-19`), so an older distro
+(`gcc-16, gcc, gcc-15, gcc-14, gcc-13` / `clang-22, clang, clang-21, clang-20`), so an older distro
 compiler is picked up automatically — the [Raspberry Pi
 validation](raspberry-pi.md#verified-configuration) built and passed the full suite with
 GCC 14.2 and Clang 19.1.7.
@@ -29,7 +29,17 @@ On Linux, live capture (`ac3cli devices`/`record`), monitor playback (`ac3cli mo
 61937 bitstream passthrough (`ac3cli outputs`/`play`) are implemented over **ALSA** when its
 headers are present, and over **PipeWire**'s native `pw_stream` API (not its ALSA-compatibility
 shim) when they are not but PipeWire's are. Everything else is file I/O and needs no audio stack
-at all — `ac3cli spdif` in particular reaches an AV receiver by writing a WAV, on any machine.
+at all — `ac3cli spdif` in particular reaches an AV receiver by writing a WAV, on any machine,
+and `ac3cli unspdif` reads one back the same way.
+
+Capture in the other direction — an S/PDIF or HDMI **input** carrying somebody else's bitstream
+— is ordinary PCM as far as ALSA and PipeWire are concerned, exactly as passthrough output is
+(see [Why ALSA still comes first](#why-alsa-still-comes-first) for why that is the shape of the
+problem on Linux). Nothing in either API says "this is Dolby Digital", so `ac3cli record`
+recognises the IEC 61937 burst framing itself and writes the elementary stream rather than
+encoding the bursts as audio; `ac3cli live` detects the same thing and stops. Neither is
+hardware-confirmed — see [What has and has not been verified](#what-has-and-has-not-been-verified)
+below — but the burst framing they rely on is verified both ways against FFmpeg's `spdif` muxer.
 
 Both dependencies are optional, detected packages:
 
@@ -77,7 +87,7 @@ ALSA still comes first](../building.md#why-alsa-still-comes-first).
 
 !!! warning "No Linux audio has been tried against real hardware"
     Both backends were verified **headless only**, on WSL2 Ubuntu 26.04 with GCC 15.2 and Clang
-    21.1: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
+    22.1: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
     PipeWire (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
     -DAC3FORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
     default. The full test suite passes in every configuration tried. ALSA's device-independent

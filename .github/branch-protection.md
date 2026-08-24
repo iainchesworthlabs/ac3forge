@@ -62,6 +62,42 @@ Dependabot opens its PRs (`.github/dependabot.yml` targets `develop`, not
 where most vulnerable dependencies or CI regressions would actually be
 introduced, well before a release PR ever reaches `main`.
 
+## Merge queue (`develop` only)
+
+With many topic branches open against `develop` at once, "require branches
+to be up to date before merging" turns into a rebase treadmill: every merge
+invalidates every other open PR's up-to-date status, forcing a fresh rebase
+and a full CI re-run before the next one can land. A repository ruleset
+(`merge-queue-develop`, `target: branch`, `conditions.ref_name.include:
+refs/heads/develop`, one `merge_queue` rule) fixes this the way GitHub
+intends: PRs enter the queue once their own checks and review pass, GitHub
+merges each entry against the current queue tip server-side and re-runs the
+required checks against that up-to-date state automatically, then merges
+when green - no manual rebase-and-rerun. `main` doesn't get one: it only
+receives rare, single release-promotion merges from `develop`, none of the
+concurrent-PR churn this solves.
+
+Configured `merge_queue` rule parameters: `merge_method: MERGE` (matches
+this repo's real-merge-commit convention, not squash), `grouping_strategy:
+ALLGREEN`, `max_entries_to_build: 2` (deliberately low - self-hosted
+capacity is 3 Linux/2 Windows runners shared org-wide, see
+`docs/ci-self-hosted-runners.md`, and GitHub-hosted concurrency is capped at
+20 jobs account-wide on this org's Free plan; building more queue entries at
+once than that can bear just adds to the same backlog it's meant to
+relieve), `max_entries_to_merge: 5`, `min_entries_to_merge: 1`,
+`min_entries_to_merge_wait_minutes: 5`. Re-tune `max_entries_to_build` up if
+the self-hosted fleet grows or the account moves off the Free tier.
+
+**Every workflow that produces one of `develop`'s required status checks
+must also trigger on the `merge_group` event**, not just `push`/
+`pull_request` - GitHub only runs workflows that opt into `merge_group` on
+the queue's temporary `gh-readonly-queue/develop/...` ref, so a workflow
+missing that trigger never reports its check there and every queue entry
+sits until `check_response_timeout_minutes` expires. `ci.yml`, `codeql.yml`,
+and `dependency-review.yml` all carry it (see each workflow's own
+`merge_group` comment) - add it to anything else that later becomes a
+required check on `develop`.
+
 Since `main` only receives merges from `develop`, `release/*`, `hotfix/*` and
 `support/*` branches under this project's gitflow model (see
 `CONTRIBUTING.md` and the `branch-name` job in `ci.yml`), you may also want a
