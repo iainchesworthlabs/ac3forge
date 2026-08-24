@@ -47,6 +47,59 @@ which real players already handle. No more than one cluster's worth of frames is
 a caller streaming the returned bytes to disk keeps memory bounded for a session of any length.
 This is what the GUI's live session records through.
 
+### Demuxing: `matroska::demux`, `matroska::Reader`
+
+`matroska/reader.hpp`, same library. The read side of the two above, and codec-blind in exactly
+the same way: it walks EBML, finds a track, and hands each frame back as opaque bytes. The one
+place it names a codec is auto-selection, which takes the first audio `TrackEntry` whose
+`CodecID` is `A_EAC3` or `A_AC3`; `ReadOptions::track_number` names any other track explicitly
+and accepts whatever `CodecID` it carries.
+
+Two shapes, mirroring the write side. `demux` is the batch one, and it is zero-copy — the frames
+it returns are spans into the buffer you passed it, the way `ac3::io::scan` already hands back
+access units:
+
+```cpp
+const auto out = matroska::demux(file_bytes);
+if (!out) {
+    std::println(stderr, "{}", matroska::describe(out.error()));
+    return 1;
+}
+// out->frames are views into file_bytes, which must outlive them.
+const auto scanned = ac3::io::scan(/* the elementary stream you write them to */);
+```
+
+`Reader` is the incremental one — `matroska::Writer`'s mirror image, for a file too big to hold.
+Frames arrive through a callback rather than a return value, so nothing accumulates: peak memory
+is one chunk plus one frame, never the file.
+
+```cpp
+matroska::Reader reader{};
+const auto on_frame = [&](std::span<const std::byte> frame) { sink.push(frame); };
+for (auto chunk = read_next_chunk(); !chunk.empty(); chunk = read_next_chunk()) {
+    if (!reader.push(chunk, on_frame)) { /* ... */ }
+}
+if (!reader.finish(on_frame)) { /* ... */ }
+```
+
+The span handed to the callback is valid for that call only — it points into the reader's own
+buffer, which the next `push` reuses. Copy it there if you need to keep it. This is what
+`ac3cli demux` runs on, which is why a multi-gigabyte rip never lands in memory.
+
+What it reads beyond what this project writes, because a file from a disc rip or another muxer
+has it: all three lacing forms (Xiph, EBML, fixed-size), `BlockGroup`-wrapped `Block`s as well
+as `SimpleBlock`, several tracks, 32-bit as well as 64-bit `SamplingFrequency`, and clusters
+left at EBML's unknown size rather than only the Segment. A file truncated mid-cluster returns
+every whole frame before the cut rather than an error — that is how a live recording ends.
+
+**Untrusted input.** Every length in an EBML file is self-declared, and a container arrives from
+a rip, a capture or a download rather than from this project's own writer. `ReadOptions` bounds
+the element size the reader will hold (16 MiB by default; anything larger that it does not need
+is skipped without ever being buffered), the frames one laced block may carry, the number of
+`TrackEntry` elements, and how deep masters may nest — the walker is iterative, so nothing an
+input declares can exhaust the call stack. `fuzz/fuzz_matroska_demux.cpp` drives both entry
+points with arbitrary bytes under ASan/UBSan.
+
 ## Muxing: `mp4::mux`
 
 `mp4/mp4.hpp`, library `mp4::mp4`. Same shape as `matroska::matroska`: it links nothing from
@@ -95,6 +148,50 @@ is documented to silently drop or mis-signal the Atmos extension
 ([jellyfin-ffmpeg#584](https://github.com/jellyfin/jellyfin-ffmpeg/issues/584)) — building it
 from `ac3::io::scan`'s own read of the bitstream, rather than by copying another tool's output,
 is what this module avoids that bug by construction rather than by patching it after the fact.
+
+### Demuxing: `mp4::demux`, `mp4::Reader`
+
+`mp4/reader.hpp`, same library. The read side of both writers above, and the same shape the
+Matroska reader has: `demux` is batch and zero-copy (samples are spans into your buffer),
+`Reader` is incremental (samples arrive through a callback, peak memory is one chunk plus one
+sample).
+
+It reads both layouts, from either writer and from a real muxer: a plain `moov`/`mdat` file,
+walking `stsc`/`stsz`(or `stz2`)/`stco`(or `co64`) to turn the sample table into byte ranges, and
+a fragmented one, taking `mvex`/`trex`'s defaults plus every `moof`/`traf`/`tfhd`/`trun` that
+follows. A 64-bit `largesize` box header and an `mdat` declared to run to end-of-file both read
+normally, though neither writer here emits them.
+
+**`moov` before `mdat`.** `demux` can reach any offset, so it reads a file whose sample table sits
+either side of the media data. `Reader` cannot — locating a sample means seeking backwards, and a
+stream has nowhere to go back to — so a `moov`-last file reports `kMoovAfterMdat` rather than
+silently returning nothing. That is the layout a muxer leaves behind when it never rewrote the
+file for "faststart"; `mux()` and `fragment()` both write `moov` first, as does any web-optimised
+file.
+
+**The `dec3`/`dac3` box comes back parsed.** `ReadTrack::codec_config` is a `CodecConfig`, the read
+twin of [`ac3::io::build_codec_config_box`](#muxing-mp4mux): `fscod`, `bsid`, `bsmod`, `acmod`,
+`lfeon`, `bit_rate_code` or `data_rate_kbps`, `num_ind_sub`/`num_dep_sub`/`chan_loc`, and —
+crucially — TS 103 420's `flag_ec3_extension_type_a`/`complexity_index_type_a` as an
+`optional<int>`. That last field is the Atmos/JOC marker an FFmpeg remux is known to drop, and
+reading it back is what makes the repair case possible: demux a file, keep the complexity index,
+re-mux it with the signalling intact. The values are reported as raw syntax numbers rather than
+`ac3::` enums, because this module has no dependency on the codec library and no business
+deciding what `fscod` 0 means. `payload` keeps the bytes verbatim, so a caller remuxing into
+another container can hand them straight back.
+
+A `dec3` box that stops before the Atmos extension leaves `oba_complexity_index` empty rather
+than reporting a confident zero — the extension is a trailing addition, and a box written before
+TS 103 420 simply has nothing to say about it.
+
+**Untrusted input.** An MP4's sample table is an *index*, which is a wider attack surface than
+Matroska's in-line framing: `stsc` names chunks, `stco` names absolute file offsets and `stsz`
+names sizes, all self-declared and all resolved against each other before a byte of audio is
+touched. `ReadOptions` bounds the box size the reader will hold, the sample and chunk counts
+(`max_samples` defaults to about 35 hours of access units), and the nesting depth; the walk is
+iterative. A chunk offset pointing past the end of the file drops that sample rather than
+failing the file — a truncated download is ordinary, and the samples that *are* present are all
+real. `fuzz/fuzz_mp4_demux.cpp` drives both entry points with arbitrary bytes.
 
 ## Muxing: `mpegts::mux`
 
@@ -152,7 +249,9 @@ later: `mp4::fragment` lays out the same track and frames as `mux`, but as a fra
 `mvex`/`trex` instead of a populated sample table, since a fragmented track's own `stbl`
 describes zero samples) plus one or more media segments (`styp`+`moof`+`mdat`, one per fragment).
 Same batch shape as `mux`: every frame is known up front, so real durations/timestamps are
-filled in throughout rather than the zero/unknown placeholders a true live fragmenter would need.
+filled in throughout, including the track's total duration in `mvhd`/`tkhd`/`mdhd`.
+[`mp4::FragmentWriter`](#incremental-fragmenting-mp4fragmentwriter) below is the incremental form
+for a live session, and that total duration is the one thing the two disagree about.
 
 ```cpp
 const auto fragmented =
@@ -172,6 +271,7 @@ const auto media_playlist =
 const auto master_playlist = mp4::build_hls_master_playlist(
     track, fragmented->media_segments, "audio.m3u8", mp4::HlsOptions{});
 const auto dash_snippet = mp4::build_dash_adaptation_set(track, fragmented->media_segments);
+const auto mpd = mp4::build_dash_mpd(track, fragmented->media_segments, dash_snippet);
 ```
 
 Full program: [`examples/mux_fmp4.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_fmp4.cpp).
@@ -202,10 +302,107 @@ possibly shorter final one, and a flat nominal duration is exactly what let a re
 (FFmpeg's own `dash` demuxer, while writing this module) compute one too many segments from
 `mediaPresentationDuration` and request a segment number past the end.
 
+### Atmos/JOC signalling: `ceao`, and the DASH descriptors
+
+`mp4/dash.hpp` used to say there was no established DASH convention to point at for JOC, unlike
+HLS's `CHANNELS="<N>/JOC"`. There is: DASH-IF IOP Part 8 v5.0.0 §5.3.2 names, for E-AC-3
+carrying JOC, the two SupplementalProperty descriptors
+[ETSI TS 103 420](https://www.etsi.org/deliver/etsi_ts/103400_103499/103420/01.02.01_60/ts_103420v010201p.pdf)
+clause D.2 defines — `tag:dolby.com,2018:dash:EC3_ExtensionType:2018`, whose value "shall be the
+three character string JOC" (§D.2.2.1), and
+`tag:dolby.com,2018:dash:EC3_ExtensionComplexityIndex:2018`, whose value "shall be decimal
+representation of the eight-bit element `complexity_index_type_a` in the EC3SpecificBox"
+(§D.2.2.2). §5.3.3 adds that such a track "shall be constrained according to the CMAF specific
+requirements as provided in ETSI TS 103 420 Annex E", where §E.5 requires the `ceao` compatibility
+brand. `DashOptions::joc_complexity_index` writes the first pair;
+`FragmentOptions::object_audio_brand` adds `ceao` to the `ftyp` and every `styp` alongside the
+`iso6`/`cmfc` a fragmented CMAF track already declares (added, not substituted — §E.2 requires
+ISO/IEC 23000-19 conformance on top of the profile).
+
+The same §5.3.2 offers two AudioChannelConfiguration schemes for E-AC-3. With
+`DashOptions::dolby_channel_configuration` empty, the Representation carries
+`urn:mpeg:mpegB:cicp:ChannelConfiguration` with the track's channel count — what TS 103 420
+§D.2.3's own example MPD writes. Set it to the four hex digits TS 102 366 clause I.1.2.1 defines
+(the 16-bit channel-assignment word, left channel in the most significant bit, so 5.1 is `F801`)
+and it carries the Dolby scheme instead. `ac3::io::dash_channel_configuration` is the one place
+that word is derived, beside `build_codec_config_box` and for the same reason: which locations a
+stream carries is `acmod`/`lfeon`/`chanmap` syntax, and a manifest writer has no business
+re-deriving AC-3 semantics. `ac3cli fmp4`, the GUI and the live paths all supply it.
+
+`FragmentOptions::object_audio_brand` and `DashOptions::joc_complexity_index` are caller-supplied
+for the same reason `HlsOptions::channels_attribute` is — `mp4::` never reads TS 103 420's object
+layer, and the caller that scanned `oba_complexity_index` off the bitstream to build the `dec3`
+box already has it.
+
+### Incremental fragmenting: `mp4::FragmentWriter`
+
+Same header as `fragment`. The live counterpart, and `matroska::Writer`/`mpegts::Writer`'s
+sibling: `create(track, options)` validates exactly what `fragment` validates and leaves
+`init_segment()` ready to write once; each `push(frame)` buffers into the current fragment and
+returns the media segment that just *closed* (so one comes back every
+`frames_per_fragment`-th call, `std::nullopt` otherwise); `finalize()` flushes the trailing
+partial fragment. `tfdt` comes from a running decode time held on the writer, which is the only
+per-fragment state `fragment`'s own loop carries. Nothing beyond one fragment's frames and the
+playlist window is ever held.
+
+**The contract is byte-equality with the batch form**, the same one `mpegts::Writer` holds itself
+to: for the same track, options and frames, the media segments this hands back are byte for byte
+the ones `fragment` would have built. The initialization segment differs in exactly one respect —
+`mvhd`/`tkhd`/`mdhd` carry duration 0, since a live session does not know its total (ISO/IEC
+14496-12 §8.8.2 provides `mehd` for the fragmented movie that *does*). That is the same
+concession `matroska::Writer` makes with EBML's unknown-size Segment and its omitted Duration.
+Both halves are asserted in `tests/containers/test_fmp4.cpp`, the init segment by patching the
+three duration fields back and then requiring full byte equality.
+
+```cpp
+auto writer = mp4::FragmentWriter::create(
+    track, mp4::FragmentOptions{.playlist_window_segments = 20});
+write("init.mp4", writer->init_segment());
+for (const auto& frame : frames) {
+    const auto closed = writer->push(frame);          // std::optional<MediaSegment>
+    if (*closed) {
+        write(std::format("segment{}.m4s", (*closed)->sequence_number), (*closed)->bytes);
+        // Rebuild the manifests from the rolling window each time a segment closes.
+        write("audio.m3u8", mp4::build_hls_media_playlist(track, writer->window(),
+                                                          mp4::HlsOptions{.vod = false}));
+        write("manifest.mpd",
+              mp4::build_dash_mpd(track, writer->window(),
+                                  mp4::build_dash_adaptation_set(track, writer->window()),
+                                  mp4::MpdOptions{.is_static = false,
+                                                  .availability_start_time = now_iso8601()}));
+    }
+}
+```
+
+`window()` hands back `SegmentInfo` — a `MediaSegment`'s bookkeeping without its bytes, so a
+rolling window of hundreds of segments costs nothing to keep.
+`FragmentOptions::playlist_window_segments` bounds it (0, the default, keeps every segment). All
+three manifest builders take `SegmentInfo` spans, with `MediaSegment` overloads for batch
+callers.
+
+Live manifests differ from VOD ones only in what they omit and where they start.
+`HlsOptions::vod = false` drops `#EXT-X-PLAYLIST-TYPE:VOD` and `#EXT-X-ENDLIST`, leaving
+`#EXT-X-MEDIA-SEQUENCE` — always the first *listed* segment's number — to tell a player that
+segments have rolled off the front (RFC 8216 §6.2.2). On the DASH side `MpdOptions::is_static =
+false` writes `type="dynamic"` with `availabilityStartTime`, `minimumUpdatePeriod` and
+`timeShiftBufferDepth` and no `mediaPresentationDuration` — the attribute set TS 103 420 §D.2.3's
+own example MPD carries — and the SegmentTemplate's `@startNumber` and the SegmentTimeline's
+first `<S t="…">` both come from the window rather than being assumed to be the start of the
+track. `mp4::` has no clock (no file I/O, no time), so the caller supplies the timestamp strings;
+that is also what keeps the manifests deterministic under test.
+
+This is what `ac3cli record`/`ac3cli live` with `container=fmp4` and the GUI's live session with
+**fragmented MP4/CMAF** selected write through: the directory is a servable live origin while the
+session runs, and a closed VOD one afterwards.
+
+### External validation
+
 `mp4::fragment`'s ISOBMFF output and the HLS media playlist round-trip cleanly through FFmpeg's
 own strict decode (`ffmpeg -v error -xerror -err_detect crccheck+bitstream+buffer+explode`) —
 both the fragmented file (init segment concatenated with every media segment) and `audio.m3u8`
-read back the exact original frame count and duration.
+read back the exact original frame count and duration. The same holds for what `FragmentWriter`
+streams, and for the DASH MPD: see [Validation](../verification.md#where-the-oracles-dont-reach)
+for exactly what was and was not checked externally.
 
 ## Muxer errors
 
@@ -215,8 +412,18 @@ with its own `describe()`:
 | Enum | Values |
 |---|---|
 | `matroska::MuxError` | `kNoFrames`; `kInvalidTrack` (zero/negative channels or sample rate, or an empty codec id); `kFrameTooLarge` (a single frame beyond what one SimpleBlock can carry). |
-| `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`). |
+| `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`). `mp4::FragmentWriter::create` returns the same two refusals as `fragment`, but never `kNoFrames`: a live writer stopped before its first frame simply has nothing to flush. |
 | `mpegts::MuxError` | `kNoFrames` and `kInvalidTrack` as above; `kInvalidOptions` (PID collisions); `kFrameTooLarge` — one access unit too large for a PES packet's 16-bit length field. |
+
+## Demuxer errors
+
+`matroska::demux`/`Reader` return `std::expected` against `matroska::DemuxError`, which has its
+own `describe()` overload beside `MuxError`'s:
+
+| Enum | Values |
+|---|---|
+| `mp4::DemuxError` | `kNotIsobmff`; `kTruncated`; `kMalformed` (a box, sample table or fragment layout that cannot be parsed); `kNoAudioTrack`; `kLimitExceeded`; `kMoovAfterMdat` (`Reader` only — the sample table follows the data it indexes; use `demux`). |
+| `matroska::DemuxError` | `kNotMatroska` (no EBML header where one has to be); `kTruncated` (the input ends before any track was described — a cut *after* one is not an error, see above); `kMalformed` (a vint, element or block layout that cannot be parsed, including a lace whose declared sizes overrun its block); `kNoAudioTrack` (Tracks held nothing selectable, or the requested `track_number` is absent); `kLimitExceeded` (an element size or nesting depth beyond `ReadOptions`). |
 
 ## Bitstream sinks (`ac3::audio`)
 
@@ -229,7 +436,7 @@ passthrough are available on this build's platform, and why not when they aren't
 the CLI's `UNAVAILABLE HERE` messaging for `devices`, `record`, `monitor`, `live`, `outputs`
 and `play`.
 
-### `ac3::iec61937` — S/PDIF burst packing
+### `ac3::iec61937` — S/PDIF burst packing and de-framing
 
 `ac3/sinks/iec61937.hpp`. Packs AC-3 or E-AC-3 elementary-stream frames into IEC 61937 burst
 framing — the wrapper a compressed bitstream needs over PCM-shaped hardware/interfaces (S/PDIF,
@@ -240,6 +447,30 @@ bytes not bits — is independently verified against both FFmpeg's `spdif_header
 Microsoft's own IEC 61937 documentation (both fetched live and cross-checked against each
 other, not recalled), plus round-trip and real-audio unit tests. This header only produces the
 framed bytes; getting them onto real hardware is `PassthroughSink`, below.
+
+**De-framing** (the other direction) is `BurstReader`, `unwrap_stream` and
+`PassthroughDetector`. `BurstReader` is a streaming `Pa`/`Pb`/`Pc`/`Pd` parser: data types 0x01
+and 0x15, both 16-bit word orders, the stuffing between bursts, `Pd`'s two different units, and
+E-AC-3's 4× carrier with its multi-syncframe bursts. Feed it carrier bytes in whatever chunks
+the source produces and take elementary-stream bytes out; it holds one burst plus the caller's
+chunk and nothing more, so a two-hour capture costs what a two-second one does. `unwrap_stream`
+is the batch form, mirroring `wrap_stream`.
+
+The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
+device — so nothing taken from `Pd` is believed past its data type's repetition period, and a
+preamble not backed by a `0x0B77` syncframe is treated as a false match to resync past rather
+than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that honest.
+
+This is also what closes the loop on the wrap side: bursts written by this project *and* by
+FFmpeg's `spdif` muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
+little-endian and big-endian carriers alike. Backs `ac3cli unspdif`.
+
+`PassthroughDetector` answers the capture-side question — is this endpoint delivering PCM, or
+somebody's bursts? — from the same interleaved float frames `ac3::audio::Capture` delivers,
+using `carrier_from_capture` to recover the PCM16 words exactly (every backend converts int16
+to float by dividing by 32768, so nothing is lost). `ac3cli record` uses it to write the
+elementary stream instead of encoding noise; `ac3cli live` uses it to stop rather than encode a
+whole session of it.
 
 ### `ac3::audio::PassthroughSink` — exclusive-mode passthrough
 

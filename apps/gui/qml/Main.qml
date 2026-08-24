@@ -597,24 +597,34 @@ ApplicationWindow {
     // subcommands). Everything the positionals cannot say rides as trailing
     // tokens: extra sources (src=), the assignment (map=), the metadata, and
     // AC-3's bare `couple`. A live source renders the `live` subcommand, and
-    // its own container=mkv token (mirroring EncoderController.containerIndex
+    // its own container= token (mirroring EncoderController.containerIndex
     // the same way capture2= below already mirrors the rail's second device)
-    // writes straight to Matroska in that ONE command — a live session has no
-    // already-encoded file for a second 'mkv' step to wrap. A file encode's
-    // Matroska container is still honestly TWO commands, because pasting one
-    // would write a raw elementary stream into a file named .mkv — S/PDIF,
-    // MP4, fMP4/CMAF and MPEG-TS are the same shape there, one more ac3cli
-    // subcommand (spdif/mp4/fmp4/ts) over the same stream. Only Matroska
-    // gets a live container= token, though: mp4::mux/mp4::fragment/
-    // mpegts::mux are batch APIs with no incremental writer (see
-    // EncoderController::openLiveOutputWriters's own comment), so a live
-    // session with MP4/fMP4/MPEG-TS selected falls through to a plain
-    // elementary stream below, exactly like S/PDIF already does today.
+    // writes straight to that container in the ONE command — a live session
+    // has no already-encoded file for a second 'mkv'/'fmp4' step to wrap. A
+    // file encode's Matroska container is still honestly TWO commands,
+    // because pasting one would write a raw elementary stream into a file
+    // named .mkv — S/PDIF, MP4, fMP4/CMAF and MPEG-TS are the same shape
+    // there, one more ac3cli subcommand (spdif/mp4/fmp4/ts) over the same
+    // stream. Only Matroska and fMP4/CMAF get a live container= token: they
+    // are the two with an INCREMENTAL writer behind them (matroska::Writer
+    // and mp4::FragmentWriter — see
+    // EncoderController::openLiveOutputWriters's own comment), and the two
+    // ac3cli's own `live` accepts. A live session with MP4 selected falls
+    // through to a plain elementary stream below, exactly like S/PDIF and
+    // MPEG-TS do — the GUI records those two in their own containers, but
+    // `ac3cli live` has no token for them, so the command bar cannot claim
+    // one it would refuse.
     readonly property string cliLine: {
         const eac3Stream = EncoderController.atmosEnabled || EncoderController.codecIndex === 1;
         if (window.inputMode === "live") {
             const liveMkv = EncoderController.containerIndex === 1;
-            const liveOut = liveMkv ? "out.mkv" : "out." + (eac3Stream ? "ec3" : "ac3");
+            // fMP4/CMAF names a FOLDER, not a file — the same
+            // EncoderController.outputIsFolder() distinction the save dialog
+            // makes, carried into the copyable command.
+            const liveFmp4 = EncoderController.containerIndex === 4;
+            const liveOut = liveMkv ? "out.mkv"
+                          : liveFmp4 ? "out_dir"
+                          : "out." + (eac3Stream ? "ec3" : "ac3");
             const liveCmd = ["ac3cli", "live", liveOut,
                              String(Math.max(window.liveMasterCaptureIndex, 0)), "10",
                              String(EncoderController.bitrateKbps),
@@ -630,6 +640,8 @@ ApplicationWindow {
             }
             if (liveMkv) {
                 liveCmd.push("container=mkv");
+            } else if (liveFmp4) {
+                liveCmd.push("container=fmp4");
             }
             return liveCmd.join(" ");
         }
@@ -802,20 +814,34 @@ ApplicationWindow {
     }
 
     // The Objects tab's "Export paths…" - writes every dynamic object's
-    // authored motion (or static position) to a keyframes file in
-    // ac3cli's atmos-path/atmos-encode grammar, so the exact line the
-    // command bar shows (see window.cliLine) is honestly reproducible.
+    // authored motion (or static position) to a file ac3cli's
+    // atmos-path/atmos-encode reads, so the exact line the command bar shows
+    // (see window.cliLine) is honestly reproducible.
+    //
+    // Two forms, chosen by the name the user saves under: ".json" writes the
+    // ac3::oba::ObjectScene form (named objects, per-segment interpolation, an
+    // orientation) and anything else the keyframe columns this dialog has
+    // always written. ac3cli tells them apart by their first character, not by
+    // suffix, so either file works wherever the other does.
     FileDialog {
         id: exportPathsDialog
         title: qsTr("Export object paths")
         fileMode: FileDialog.SaveFile
-        nameFilters: [qsTr("Text file (*.txt)"), qsTr("All files (*)")]
-        defaultSuffix: "txt"
+        nameFilters: [qsTr("Keyframe columns (*.txt)"), qsTr("Object scene (*.json)"),
+                      qsTr("All files (*)")]
+        // Follows the chosen filter rather than sitting at "txt": defaultSuffix
+        // is what a name typed WITHOUT an extension gets, so a fixed "txt"
+        // would hand someone who picked "Object scene" a .txt file and, by the
+        // suffix rule below, the column format they did not ask for.
+        defaultSuffix: selectedNameFilter.index === 1 ? "json" : "txt"
         currentFolder: window.outputFolderUrl()
         selectedFile: window.outputFolderUrl() + "/" + window.exportedPathsName()
         onAccepted: {
             window.exportedPathsPath = selectedFile;
-            EncoderController.exportObjectPaths(selectedFile);
+            if (selectedFile.toString().toLowerCase().endsWith(".json"))
+                EncoderController.exportObjectScene(selectedFile);
+            else
+                EncoderController.exportObjectPaths(selectedFile);
         }
     }
 

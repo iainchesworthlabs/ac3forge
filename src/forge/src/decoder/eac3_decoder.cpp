@@ -1915,8 +1915,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     : kZero;
             auto& zr = ecpl_spectrum_real_;
             auto& zi = ecpl_spectrum_imag_;
-            eac3::ecpl_channel_spectrum(
-                prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)], next, zr, zi);
+            eac3::ecpl_channel_spectrum(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)],
+                                        next, zr, zi, config_.fast_imdct);
 
             const int bins = tail.cplendmant - tail.cplstrtmant;
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -2112,7 +2112,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 if (!joc_slot) {
                     joc_slot = std::make_unique<joc::ReconstructionState>();
                 }
-                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot);
+                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
+                                                    /*fast_mdct=*/false, config_.fast_imdct);
             }
         }
     }

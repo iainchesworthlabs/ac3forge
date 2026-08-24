@@ -261,9 +261,15 @@ struct FrameConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp). It also selects the form of the three
+    // inverse transforms an ENHANCED-COUPLING encode runs per block inside
+    // eac3::ecpl_channel_spectrum, reconstructing the spectrum the decoder
+    // will hold: encoding is the only reason an encoder runs an inverse at
+    // all, so this one field is the encoder's fast-transform switch in both
+    // directions, and ac3cli's mode=reference (which clears it) keeps a
+    // reference-mode encode direct end to end.
     bool fast_mdct = true;
 
     // §7.3.4 dithflag, decided per channel per block from content (see

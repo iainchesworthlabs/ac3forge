@@ -13,8 +13,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import drc_ref  # noqa: E402  (independent section 7.7 word formats)
-from bitalloc_ref import aht_bin_bits, bit_alloc  # noqa: E402  (the spec's tables)
+import drc_ref  # independent section 7.7 word formats
+from bitalloc_ref import bit_alloc  # the spec's tables
 
 BLOCKS = 6
 LFE_ENDMANT = 7
@@ -90,7 +90,7 @@ def compr_db(word):
 
 def parse_frame(data, verbose=True):
     r = Reader(data)
-    log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+    log = print if verbose else (lambda *a: None)
 
     sync = r.bits(16)
     assert sync == 0x0B77, f'bad syncword {sync:#06x}'
@@ -376,7 +376,7 @@ def parse_frame(data, verbose=True):
     exps = [None] * nfchans
     lfeexps = None
     cplexps = None
-    codes = dict(sdcycod=2, fdcycod=1, sgaincod=1, dbpbcod=2, floorcod=7)
+    codes = {'sdcycod': 2, 'fdcycod': 1, 'sgaincod': 1, 'dbpbcod': 2, 'floorcod': 7}
     fgaincod = [4] * (nfchans + 1)
     csnroffst = 0
     fsnroffst = [0] * (nfchans + 1)
@@ -430,7 +430,7 @@ def parse_frame(data, verbose=True):
             spxinu = r.bits(1)
             if spxinu:
                 chinspx = [1] if acmod == 1 else [r.bits(1) for _ in range(nfchans)]
-                spxstrtf = r.bits(2)
+                r.bits(2)                # spxstrtf
                 spxbegf = r.bits(3)
                 spxendf = r.bits(3)
                 spx_begin = spxbegf + 2 if spxbegf < 6 else spxbegf * 2 - 3
@@ -557,8 +557,9 @@ def parse_frame(data, verbose=True):
 
         if bamode:
             if r.bits(1):            # baie
-                codes = dict(sdcycod=r.bits(2), fdcycod=r.bits(2), sgaincod=r.bits(2),
-                             dbpbcod=r.bits(2), floorcod=r.bits(3))
+                codes = {'sdcycod': r.bits(2), 'fdcycod': r.bits(2),
+                         'sgaincod': r.bits(2), 'dbpbcod': r.bits(2),
+                         'floorcod': r.bits(3)}
         if snroffststr == 0:
             csnroffst = frmcsnroffst
             fsnroffst = [frmfsnroffst] * (nfchans + 1)
@@ -646,7 +647,7 @@ def parse_frame(data, verbose=True):
         # group's FIRST member - so a region's own cost is how much the
         # running grouped total moves while it is being walked. That is exact
         # even when a group straddles two channels.
-        def grouped_bits():
+        def grouped_bits(counts=counts):
             return (5 * ((counts[1] + 2) // 3) + 7 * ((counts[2] + 2) // 3)
                     + 7 * ((counts[4] + 1) // 2))
 
