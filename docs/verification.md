@@ -155,6 +155,11 @@ build with libasound present; `ctest` runs whatever the configuration registered
 ctest --preset test-windows-msvc-debug
 ```
 
+The three documented library examples (`wav_roundtrip`, `read_adm`, `encode_adm`) are each their
+own `ctest` case and write scratch files under a name unique to that run, not a fixed name in the
+OS temp directory — two checkouts running `ctest` at once would otherwise read and delete each
+other's fixture.
+
 ## Third-party bitstreams
 
 **There are no free AC-3 or E-AC-3 conformance bitstreams.** ATSC A/52 and ETSI TS 102 366 are
