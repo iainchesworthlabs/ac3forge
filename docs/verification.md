@@ -102,9 +102,24 @@ sounds better, and no *subjective* listening test has been run. `quality_race.py
 [Tool comparison trend](tool-comparison-trend.md)/[Landscape](landscape.md)) also carry an
 objective perceptual-quality prediction alongside SNR, [ViSQOL](https://github.com/google/visqol)'s
 MOS-LQO — narrower than a real listening panel, but closer to "how it would sound" than a
-waveform-distance number, and something SNR alone cannot claim. It's an optional column
-(`visqol-python` not installed shows `-`, never a failure), so it isn't in the snapshot table
-above; see `perceptual_score()` in `tools/ci/quality_race.py`.
+waveform-distance number, and something SNR alone cannot claim. See `perceptual_score()` in
+`tools/ci/quality_race.py`.
+
+That column used to be empty everywhere it was published: CI deliberately did not install
+`visqol-python`, so every row on the `quality-history` branch carried `mos_lqo: null` and every
+MOS cell rendered `n/a`. It is installed now, hash-pinned like every other Python dependency, so
+the trend pages carry real MOS numbers. It stays optional for a *local* run — not installed
+still shows `-`, never a failure — which is why the one-off snapshot above has no MOS column.
+
+Both the table above and everything the trend pages plot come from the **fixture corpus** in
+`tests/golden/audio/`, which is versioned and hash-checked as a unit
+(`tools/checks/check_corpus.py`). Two of those fixtures are synthesized from `sin()`,
+pseudo-random noise and FIR smoothing, and two are 30 s CC0 recordings of real speech and music.
+Both kinds are kept, and the distinction matters when reading any number on this page: the
+synthetic pair carries a flat noise plateau across its whole top octave that no real material
+has, and tuning the encoder's bandwidth against it once produced a measured 2.1 dB "win" that was
+an artefact of the fixture. See [tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
+for the measured spectra, the licences, and which fixture is evidence about what.
 
 That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same gold-reference SNR
 by commit, on every push to `develop` and `main`, so a regression shows up as a trend line
@@ -161,6 +176,11 @@ build with libasound present; `ctest` runs whatever the configuration registered
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
+
+The three documented library examples (`wav_roundtrip`, `read_adm`, `encode_adm`) are each their
+own `ctest` case and write scratch files under a name unique to that run, not a fixed name in the
+OS temp directory — two checkouts running `ctest` at once would otherwise read and delete each
+other's fixture.
 
 ## Third-party bitstreams
 

@@ -10,9 +10,11 @@ The comparison is necessarily one number per (leg, tool): neither FFmpeg's
 nor DEE's own E-AC-3/AC-3 encoder exposes which internal coding tools it
 used, so there's no apples-to-apples way to isolate "just coupling" or "just
 spectral extension" against them the way this project can against its own
-history. What's shown is `landscape` — this project's `all`-tools E-AC-3
-encode (or AC-3's unconditionally-automatic encode) — since that's the
-number a real user of either tool actually gets, not an internal detail.
+history. What's shown is `landscape` — this project's `auto`-tools E-AC-3
+encode (the set the encoder picks from the per-channel rate, which is the
+like-for-like answer to FFmpeg's and DEE's own automatic choices), or AC-3's
+unconditionally-automatic encode — since that's the number a real user of
+either tool actually gets, not an internal detail.
 
 <div id="landscape-app">
   <p class="landscape-status">Loading landscape data…</p>
@@ -227,20 +229,42 @@ number a real user of either tool actually gets, not an internal detail.
 A visual supplement to the table above — one image per leg, each stacking
 the original source against ac3forge's own decode and, where the baseline
 has a trustworthy score for it (see **n/a** below), FFmpeg's and DEE's own
-decodes of the same material at the same bitrate.
+decodes of the same material at the same bitrate. All four panels are present
+on every leg from baseline version 2 onward; before that the two 5.1 legs had
+no DEE panel, because DEE had no trustworthy score for them.
 
 <div class="landscape-spectrograms">
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-51-448.png" alt="ac3-51-448 spectrogram: original vs ac3forge vs FFmpeg" loading="lazy">
-    <figcaption>ac3-51-448 (AC-3, 5.1 @ 448 kbit/s) — no DEE row: DEE's own decode of discrete 5.1 input drops a channel on the current baseline build, see the table's own <strong>n/a</strong> note.</figcaption>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-51-448.png" alt="ac3-51-448 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>ac3-51-448 (AC-3, 5.1 @ 448 kbit/s) — synthetic fixture.</figcaption>
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-192.png" alt="eac3-stereo-192 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
-    <figcaption>eac3-stereo-192 (E-AC-3, stereo @ 192 kbit/s)</figcaption>
+    <figcaption>eac3-stereo-192 (E-AC-3, stereo @ 192 kbit/s) — synthetic fixture; 96 kbit/s per channel, above both Annex E crossovers, so <code>auto</code> selects no tools here.</figcaption>
   </figure>
   <figure>
-    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ac3forge vs FFmpeg" loading="lazy">
-    <figcaption>eac3-51-256 (E-AC-3, 5.1 @ 256 kbit/s) — no DEE row, same reason as ac3-51-448.</figcaption>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>eac3-51-256 (E-AC-3, 5.1 @ 256 kbit/s) — synthetic fixture.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-96.png" alt="eac3-stereo-96 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>eac3-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — synthetic fixture; 48 kbit/s per channel, where spectral extension runs and coupling does not.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-64.png" alt="eac3-stereo-64 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>eac3-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — synthetic fixture; 32 kbit/s per channel, where both coupling and spectral extension run.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-music-stereo-192.png" alt="ac3-music-stereo-192 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>ac3-music-stereo-192 (AC-3, stereo @ 192 kbit/s) — 30 s of real orchestral music. Compare the top octave against the synthetic legs above: this one rolls off, they do not.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-music-stereo-96.png" alt="eac3-music-stereo-96 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>eac3-music-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — real music at the spectral-extension crossover.</figcaption>
+  </figure>
+  <figure>
+    <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-speech-stereo-64.png" alt="eac3-speech-stereo-64 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
+    <figcaption>eac3-speech-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — 30 s of real connected speech, at the rate where both Annex E tools run.</figcaption>
   </figure>
 </div>
 
@@ -266,10 +290,44 @@ invoking FFmpeg's or DEE's own encoder, same boundary as the numbers.
 ## Reading it
 
 Each row is one (tagged release, leg) result — a release cuts one commit on
-`main`, and that commit contributes up to three rows (the AC-3 5.1, E-AC-3
-stereo, and E-AC-3 5.1 legs). Alternating row shading marks where one
-release's rows end and the next begins, so a release's leg rows read as one
-band rather than blending into the wall of numbers below.
+`main`, and that commit contributes one row per leg. Alternating row shading
+marks where one release's rows end and the next begins, so a release's leg
+rows read as one band rather than blending into the wall of numbers below.
+
+There are eight legs as of baseline version 2. The first three go back to the
+first baseline and are unchanged, so their series are continuous:
+
+| Leg | Codec | Layout | Rate | Material |
+| --- | --- | --- | --- | --- |
+| `ac3-51-448` | AC-3 | 5.1 | 448 kbit/s | synthetic |
+| `eac3-stereo-192` | E-AC-3 | stereo | 192 kbit/s | synthetic |
+| `eac3-51-256` | E-AC-3 | 5.1 | 256 kbit/s | synthetic |
+| `eac3-stereo-96` | E-AC-3 | stereo | 96 kbit/s | synthetic |
+| `eac3-stereo-64` | E-AC-3 | stereo | 64 kbit/s | synthetic |
+| `ac3-music-stereo-192` | AC-3 | stereo | 192 kbit/s | music |
+| `eac3-music-stereo-96` | E-AC-3 | stereo | 96 kbit/s | music |
+| `eac3-speech-stereo-64` | E-AC-3 | stereo | 64 kbit/s | speech |
+
+The five added at version 2 close two different gaps.
+
+**Rates where the Annex E tools actually run.** ac3forge's `auto` enables
+coupling below 12 + 14n kbit/s per channel and spectral extension below 56.
+The only stereo leg sat at 192 kbit/s — 96 per channel, above both — so
+`auto` chose no tools at all there, and this page had never once compared
+this project's Annex E work against FFmpeg's or DEE's at a rate where it
+exists. 96 kbit/s stereo is 48 per channel (spectral extension only) and 64
+is 32 per channel (both tools).
+
+**Material that is not band-limited.** The synthetic fixtures are 2.5–3 s of
+`sin()`, pseudo-random noise and FIR smoothing, which leaves a flat noise
+plateau across the whole top octave — a shape no real programme material has,
+and one that has already produced a measured, fake 2.1 dB "win" when the
+encoder's bandwidth default was tuned against it. The three programme legs
+use 30 s CC0 recordings of real speech and music instead. The synthetic legs
+stay: their series are the history this page exists to show, and breaking
+that continuity to swap the material would throw it away. See
+[tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
+for the sources, licences and measured spectra.
 
 Three metrics are shown side by side, each with its own **vs FFmpeg** /
 **vs DEE** delta against that tool's number for the same leg at the baseline
@@ -287,17 +345,26 @@ comparison says something true about the encoder rather than about the
 metric. (The per-tool detail behind that trade is in
 [Tool comparison trend](tool-comparison-trend.md).)
 
-**n/a** on a `vs DEE` cell means that leg's DEE score is still marked
-unverified in the baseline manifest (see that file's own header for why),
-not that the comparison came out even. **-** in an ac3forge cell means the
-metric was not scored for that row at all: LSD is a measure of what the
-Annex E tools trade away, so it is scored on the E-AC-3 legs only and the
-AC-3 row leaves it blank, while MOS — a general quality prediction — is
-scored on all three legs but is absent from any run whose environment lacked
-`visqol-python`. A delta is shown only where both sides
-have a real number, so a baseline generated before
-`gen_external_baseline.py` grew its MOS column leaves those cells **n/a**
-even where ac3forge's own MOS is present.
+**n/a** on a `vs DEE` or `vs FFmpeg` cell means that side of the comparison
+has no real number for that leg and metric — not that the comparison came out
+even. **-** in an ac3forge cell means the metric was not scored for that row
+at all: LSD is a measure of what the Annex E tools trade away, so it is scored
+on the E-AC-3 legs only and the AC-3 rows leave it blank.
+
+Two long-standing sources of **n/a** are gone as of baseline version 2:
+
+- Both 5.1 legs used to have no DEE number, because the installed DEE build
+  drops the surround-left channel when 5.1 arrives as one discrete
+  6-channel file. Feeding it one mono WAV per channel instead
+  (`--input-format wav_list`) does not, so the `vs DEE` cells on `ac3-51-448`
+  and `eac3-51-256` carry real numbers now.
+- Every MOS cell was empty, in every row ever published, because CI did not
+  install `visqol-python` — so both sides of the delta were missing. It is
+  installed now, and baseline version 2 was generated with it, so both sides
+  exist.
+
+Releases from before those two changes keep their `n/a` cells; nothing is
+back-filled, because the numbers were never measured.
 
 The baseline itself — FFmpeg's and DEE's actual encoded output — is
 regenerated locally, occasionally, and reviewed by hand as a normal PR (see
@@ -311,14 +378,19 @@ ac3forge's own encoder.
 Opinion Score - Listening Quality Objective) in audio mode, a perceptual-
 quality prediction from 1 (bad) to a ceiling around 4.75 — see [Tool
 comparison trend](tool-comparison-trend.md#reading-it) for why ViSQOL over
-PEAQ. It shows `-` on a release whose CI run didn't have `visqol-python`
-installed — same graceful-degradation contract every other use of it in this
-project follows, not a real zero — and its `vs` cells need the baseline side
-too, so they stay **n/a** until a baseline version generated by a
-`gen_external_baseline.py` run that had ViSQOL available lands. Of the three
-metrics it is the only one that tries to answer "which sounds better", which
-is why it is worth having beside the two that answer narrower questions
-exactly.
+PEAQ. Of the three metrics it is the only one that tries to answer "which
+sounds better", which is why it is worth having beside the two that answer
+narrower questions exactly.
+
+Unlike SNR and LSD, which span the whole fixture, MOS is scored on a fixed
+4 s window taken from the middle of it (`MOS_WINDOW_S` in
+`tools/ci/quality_race.py`). ViSQOL's patch matching is super-linear —
+3.9 s of compute for 3 s of audio, 127.8 s for 30 s — so scoring the
+programme legs whole would cost more than the rest of the CI job put
+together. The window is the same deterministic span every run, so the
+release-to-release deltas this page is read for are unaffected; only the
+absolute value carries a small constant offset (~0.02 MOS against a much
+longer window, measured).
 
 ## Where the data lives
 
