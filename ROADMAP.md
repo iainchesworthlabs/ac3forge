@@ -97,16 +97,30 @@ both encoders decide from content rather than from the bit rate.
   disabling coupling for the whole frame, the §8.2.4.1 case `docs/library/encoding-ac3.md`
   documents as unhandled; (b) coherence-driven `cplbndstrc`; (c) `ecplangleintrp`, encode and
   decode (the decoder refuses it today).
-- [ ] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. AC-3 narrows
-  `chbwcod` by `per_channel_kbps * 2/3`, E-AC-3 never narrows at all (fixed 60, even at 96
-  kbit/s where spectral extension starts at 8 kHz); `fgaincod` 1 measured +2 dB at 448 and +7 dB
-  at 640 kbit/s but regresses at 192, and the comment in `encoder.cpp` asks for its own
-  measurement pass. The same comment records the band-limited-fixture trap: measure on VX7's
-  material, not the checked-in noise.
-- [ ] **EQ8 (M)** — Close the E-AC-3 stereo/192 gap. The only landscape leg behind both external
-  encoders on every metric: ours loses 2.66 dB above 10 kHz where FFmpeg loses 0.91, and `auto`
-  picks AHT-only because it is SNR-optimal, while `spx`/`all` fix the envelope at a 3 dB SNR
-  cost. Decide the policy with a perceptual score (VX6), not SNR alone.
+- [x] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Both encoders now
+  take the per-channel-rate curve as a ceiling and put the frame's own spectrum under it, band by
+  band against Table 7.15's hearing threshold, up to 128 kbit/s per channel; `fgaincod` follows a
+  measured line from 7 at 38 kbit/s per channel to 0 at 128, replacing §8.2.12's fixed 4. Both
+  decided on ViSQOL, because waveform SNR prefers the narrowest band and the highest `fgaincod`
+  at every rate on every material and so distinguishes nothing. The band-limited-fixture trap
+  turned out to understate itself: real programme material carries *less* energy above 14.7 kHz
+  than `reference_51.wav` does, so an SNR-led bandwidth rule narrows harder on real audio than on
+  the fixture. Measured locally on sourced CC0/public-domain material — VX7 still wants it
+  packaged.
+- [ ] **EQ8 (M)** — Close the E-AC-3 stereo/192 gap. Partly addressed: the coded bandwidth is
+  no longer fixed at 60 there (EQ7), which is worth 1.2–2.7 dB SNR and up to +0.034 MOS on real
+  programme material at that rate and improves the high-band ratio with it. What did not move is
+  the *landscape* number, because `reference_stereo.wav` is FIR-smoothed noise flat to Nyquist:
+  there is nothing inaudible up there to drop, so the leg gains 0.04 dB and the gap to FFmpeg
+  (0.79 dB SNR, LSD 1.97 against 0.83) stands. Two findings for whoever takes the rest. The
+  remaining gap on that material is bit-allocation efficiency, which is EQ2/EQ3's, not a tool
+  choice: no tool set closes it, and `auto`'s AHT is already the SNR-best of them. And AHT
+  itself is SNR-positive but ViSQOL-negative at every rate and both channel counts measured
+  (+0.6 to +1.9 dB SNR against −0.024 to −0.066 MOS over eight rate points), with the worst
+  high-band ratio of any set — which looks like EQ1's whole-frame exponent set (`nchregs == 1`)
+  rather than a rate policy, and wants EQ1 and a listening test (VX9) before `auto` stops
+  choosing it. Needs VX7's material and VX6's column in CI for any of this to be visible to the
+  trend gate.
 - [x] **EQ9 (L)** — Closed-loop tool decisions. `auto` chose cpl/spx/aht from the rate alone;
   two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
   region's fit against the decoder's own rank-one reconstruction, and the energy share above the
@@ -251,10 +265,12 @@ machine-readable output and a single failure exit code. Users arrive with contai
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
   `*.ac3/*.ec3`) accept containers, plus `demux` and container-to-container remux — the
-  `dec3`-repair case the old `A1` cited. One PR per container, each an M. **Matroska and MP4 done**
-  (`matroska::demux`/`Reader`, `mp4::demux`/`Reader` including the `dec3` parser and fragmented
-  `moof`/`trun`, plus `ac3cli demux` and a fuzz harness per container); MPEG-TS next, and the
-  other commands widen to containers with it.
+  `dec3`-repair case the old `A1` cited. One PR per container, each an M. **All three readers
+  done** (`matroska::demux`/`Reader`, `mp4::demux`/`Reader` including the `dec3` parser and
+  fragmented `moof`/`trun`, `mpegts::demux`/`Reader` reading DVB/ATSC/registration-descriptor
+  signalling and all three packet grids, plus `ac3cli demux` and a fuzz harness per container).
+  Still open: widening `decode`/`qc`/`levels`/`play`/`monitor` and the GUI's QC/Inspect pickers
+  to accept containers directly, and container-to-container remux.
 - [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
@@ -415,12 +431,23 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   `ac3adm::parse_bw64`), plus a CRC-re-stamping custom mutator for the decode harnesses so
   mutated skip-field bytes reach the object parsers instead of dying at the CRC check, which
   `fuzz/README.md` says most of them do.
-- [ ] **VX4 (M)** — Third-party decode interop gates. The six Dolby- and FFmpeg-encoded streams
-  in `tests/golden/external-baseline` are the closest thing to conformance vectors the tree can
-  hold and are decoded only by FFmpeg, for spectrograms. First (S): decode them with the in-repo
-  decoder against FFmpeg's float32 decode in `verify_gold_reference.sh` and seed the fuzzers from
-  them. Then: a scheduled job over pinned FFmpeg FATE AC-3/E-AC-3 samples (spx streams, 1536
-  kbit/s, commentary tracks). Document that no free ATSC or ETSI conformance bitstreams exist.
+- [x] **VX4 (M)** — Third-party decode interop gates. Both steps done. `verify_gold_reference.sh`
+  decodes all six committed `tests/golden/external-baseline` bitstreams on every gold-reference
+  leg, five against FFmpeg's own decode and the sixth against its source WAV (FFmpeg fails frame
+  0 of DEE's stereo E-AC-3 stream and conceals it, so it is no oracle there), and the six seed
+  the decoder fuzzers. The nightly `Interop`
+  workflow runs `tools/checks/verify_fate_interop.py` over eight SHA-256-pinned FATE samples,
+  fetched rather than committed. Running the first step found **five** real Annex E decoder
+  defects — the AHT-in-use flags, `cplfgaincod`/`cplfsnroffst`, the three band-structure default
+  tables, the `first*` per-frame states, and the coupling-state reset — none of which any stream
+  this project can encode could reach. `the_great_wall_7.1.eac3` turned out to be a real Annex E
+  arrangement rather than a gap: an AC-3 core standing in as independent substream 0 per
+  §E2.3.1.2, with an E-AC-3 dependent extending it to 7.1 per §E3.8.2 — `ac3::io::scan` and
+  `ac3cli decode` both recognise it now, verified to 41.69 dB against FFmpeg's own decode. Two
+  things are recorded rather than fixed: `wav_channel_order` writes acmods 2/1 and 3/1 in
+  bitstream order where FFmpeg uses WAV's FL/FR/FC/BC, and that same sample's OAMD payload does
+  not decode (`oba::parse_payload`'s pre-existing scope is this project's own encoder shape, not
+  Dolby's).
 - [ ] **VX5 (M)** — Dolby Reference Player, wider and in CI. The crosscheck loop runs
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
@@ -449,10 +476,11 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
 - [ ] **VX9 (M)** — A listening test. README and `docs/verification.md` have carried "no
   listening test has been run" through nine releases. One documented MUSHRA or ABX session over
   the landscape legs on VX7's material, with the protocol and results on `docs/landscape.md`.
-- [ ] **VX10 (S)** — Reference-mode end-to-end gate. Since 0.9.0 every CI gate that touches a
-  real stream runs the fast transforms; run `verify_gold_reference.sh` once with
-  `mode=reference` and add a `fast-imdct=off` decode row to the codec matrix, so the normative
-  direct forms — the oracle every fast path is validated against — stay exercised against FFmpeg.
+- [x] **VX10 (S)** — Reference-mode end-to-end gate. `verify_gold_reference.sh` takes
+  `TRANSFORM_MODE=reference`, which puts `mode=reference` on every encode and decode it runs and
+  suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
+  second time that way. The codec matrix gained `fast-imdct=off` decode rows for both codecs
+  beside its existing `fast-mdct=off` encode row.
 - [ ] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
   `macos-llvm` all score exactly 6.0 dB below every x86 leg on every channel of the gold gate.
   `docs/building.md` and `ci.yml` blame Homebrew's libm, which the glibc/GCC arm64 rows
@@ -504,12 +532,23 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
 - [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
   instrumented test for the Android bridge's device-free paths.
-- [ ] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
+- [x] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
   posture, per-access-unit allocation caps and decode resource limits — what a media server
   wants to read before linking a decoder against internet input.
-- [ ] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
+  `docs/threat-model.md`, cross-referenced from `SECURITY.md`, README and
+  `docs/library/decoding.md`. Every enforced limit is tabulated with the field width it comes
+  from; the three that are not enforced (no cap on stream length, no decode time bound, ADM
+  parsers unfuzzed) are recorded as gaps with the mitigation on the caller. Writing it found and
+  fixed one real defect: `parse_wav` read its `fmt `/`data` chunk fields at fixed offsets past a
+  tag located by searching the whole buffer, with no bound on either — a heap over-read on a file
+  whose last four bytes read `"fmt "`.
+- [x] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
   tool and layout with expected decode hashes, so other decoders can test against this project.
-  The complement of VX4.
+  The complement of VX4. `tools/generators/gen_conformance_vectors.py` emits 60 vectors (21
+  AC-3, 35 E-AC-3, 4 Atmos) with the source PCM, per-vector hashes, decoded per-channel levels
+  and a derived FFmpeg-readability column; `docs/conformance-vectors.md` is the usage page and
+  the release workflow attaches the bundle beside the SBOM and attestations. Hashes are
+  per-toolchain until VX11/VX12; the source material stays synthetic until VX7.
 - [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
   `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
   (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a

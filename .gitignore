@@ -58,3 +58,10 @@ fuzz/artifacts/
 # bitstream copies are a convenience for looking at, never the record.
 fuzz-encoder-artifacts/
 fuzz-eac3-encoder-artifacts/
+
+# The conformance vector bundle (tools/generators/gen_conformance_vectors.py,
+# docs/conformance-vectors.md). Several MB of encoder output, regenerated from
+# the script per release and published as a release asset - the script is the
+# record, never a checked-in copy of what it produced. The default --out path
+# in the docs and in _build.yml's own step.
+dist/

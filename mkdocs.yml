@@ -80,6 +80,8 @@ nav:
       - Atmos & JOC: concepts/atmos-joc.md
       - Object signing: concepts/object-signing.md
   - Validation: verification.md
+  - Threat model: threat-model.md
+  - Conformance vectors: conformance-vectors.md
   - Library:
       - Conventions: library/index.md
       - Example programs: library/examples.md
