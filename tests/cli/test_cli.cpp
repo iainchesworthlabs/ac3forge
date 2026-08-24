@@ -20,6 +20,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/oba/scene.hpp"
 
 // apps/cli/main.cpp compiles directly into the ac3cli executable, everything
 // in an anonymous namespace - there is no library surface parse_options,
@@ -697,6 +698,109 @@ TEST_CASE("atmos-encode with a keyframes file authors motion", "[cli][atmos-enco
     // was observed to crash outright.
     const bool differs = static_bytes != motion_bytes;
     CHECK(differs);
+}
+
+// atmos-path's file argument used to be the keyframe grammar and only that.
+// It now reads an ac3::oba::ObjectScene in JSON as well, told apart by the
+// first character - so the two spellings of one scene have to encode to the
+// same stream, byte for byte, or "migrate your file" would silently be a
+// change to the mix.
+TEST_CASE("atmos-path reads a keyframe file and its JSON form identically",
+          "[cli][atmos-path][scene]") {
+    const auto dir = scratch_dir();
+    const auto keyframes_path = dir / "scene_equivalence.txt";
+    // Every object the file will have is mentioned in it, so neither run
+    // needs atmos-path's own fallback for an index the file skipped - this
+    // test is about the two READERS agreeing, not about that policy.
+    {
+        std::ofstream keyframes{keyframes_path};
+        REQUIRE(keyframes.is_open());
+        keyframes << "# two objects crossing over\n";
+        keyframes << "0 0.0  0.10 0.20  0.00  0.50 0.00\n";
+        keyframes << "0 0.25 0.90 0.80  0.40  0.90 0.10   # arrives back right, high\n";
+        keyframes << "\n";
+        keyframes << "   0 0.40 0.50 0.50 -0.25  0.20 0.00\n";
+        keyframes << "1 0.05 0.30 0.70  0.10  0.75 0.05\n";
+        keyframes << "1 0.35 0.70 0.30 -0.10  0.25 0.00\n";
+    }
+
+    // The same scene through the library, saved as JSON.
+    const auto scene_path = dir / "scene_equivalence.json";
+    {
+        std::ifstream in{keyframes_path, std::ios::binary};
+        const std::string text{std::istreambuf_iterator<char>{in},
+                               std::istreambuf_iterator<char>{}};
+        const auto scene = ac3::oba::scene_from_text(text);
+        REQUIRE(scene.has_value());
+        REQUIRE(scene->object_count() == 2);
+        std::ofstream json{scene_path, std::ios::binary};
+        REQUIRE(json.is_open());
+        json << ac3::oba::to_json(*scene);
+    }
+
+    const auto from_keyframes = dir / "scene_from_keyframes.ec3";
+    const auto from_json = dir / "scene_from_json.ec3";
+    const auto keyframes_rc =
+        run_cli("atmos-path \"" + from_keyframes.string() + "\" \"" + keyframes_path.string() +
+                    "\" 1 448 2",
+                dir / "scene_from_keyframes.log");
+    const auto json_rc = run_cli("atmos-path \"" + from_json.string() + "\" \"" +
+                                     scene_path.string() + "\" 1 448 2",
+                                 dir / "scene_from_json.log");
+    INFO(read_log(dir / "scene_from_keyframes.log"));
+    CHECK(keyframes_rc == 0);
+    INFO(read_log(dir / "scene_from_json.log"));
+    CHECK(json_rc == 0);
+    REQUIRE(fs::exists(from_keyframes));
+    REQUIRE(fs::exists(from_json));
+    REQUIRE(fs::file_size(from_keyframes) > 0);
+
+    std::ifstream a_in{from_keyframes, std::ios::binary};
+    std::ifstream b_in{from_json, std::ios::binary};
+    const std::vector<char> a{std::istreambuf_iterator<char>{a_in},
+                              std::istreambuf_iterator<char>{}};
+    const std::vector<char> b{std::istreambuf_iterator<char>{b_in},
+                              std::istreambuf_iterator<char>{}};
+    // Compared as a bool for the same reason the atmos-encode test above
+    // does it: CHECK'ing multi-KB vectors asks Catch2 to stringify both.
+    const bool identical = a == b;
+    CHECK(identical);
+}
+
+TEST_CASE("atmos-path reports a bad scene file without writing one", "[cli][atmos-path][scene]") {
+    const auto dir = scratch_dir();
+
+    SECTION("a malformed keyframe line names the file and its line") {
+        const auto path = dir / "scene_bad_line.txt";
+        {
+            std::ofstream out{path};
+            out << "# fine\n0 0 0 0 0 1 0\n0 1 2 3\n";
+        }
+        const auto ec3 = dir / "scene_bad_line.ec3";
+        const auto rc = run_cli("atmos-path \"" + ec3.string() + "\" \"" + path.string() + "\" 1",
+                                dir / "scene_bad_line.log");
+        CHECK(rc != 0);
+        const auto log = read_log(dir / "scene_bad_line.log");
+        INFO(log);
+        CHECK(log.find(":3: expected 'object time_s x y z gain lfe_send'") != std::string::npos);
+        CHECK_FALSE(fs::exists(ec3));
+    }
+
+    SECTION("a JSON scene this build cannot read says so") {
+        const auto path = dir / "scene_bad.json";
+        {
+            std::ofstream out{path};
+            out << R"({"ac3forge_scene": 1, "objects": [{"automation": [{"t": 0, "gian": 1}]}]})";
+        }
+        const auto ec3 = dir / "scene_bad_json.ec3";
+        const auto rc = run_cli("atmos-path \"" + ec3.string() + "\" \"" + path.string() + "\" 1",
+                                dir / "scene_bad_json.log");
+        CHECK(rc != 0);
+        const auto log = read_log(dir / "scene_bad_json.log");
+        INFO(log);
+        CHECK(log.find("unknown automation member 'gian'") != std::string::npos);
+        CHECK_FALSE(fs::exists(ec3));
+    }
 }
 
 // sign-objects/signing-key= used to be wired into 'atmos' only - 'atmos-path'
@@ -2337,7 +2441,8 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
 // container reader that dropped a frame, mis-split a block or trimmed a
 // trailing byte would still produce something a decoder mostly plays, which
 // is exactly why this is checked as bytes and not as audio.
-TEST_CASE("demux recovers the exact elementary stream 'mkv' wrapped", "[cli][demux]") {
+TEST_CASE("demux recovers the exact elementary stream a container wrapped",
+          "[cli][demux]") {
     const auto dir = scratch_dir();
     const auto log = dir / "demux.log";
 
@@ -2350,25 +2455,49 @@ TEST_CASE("demux recovers the exact elementary stream 'mkv' wrapped", "[cli][dem
                                  std::istreambuf_iterator<char>{}};
     };
 
-    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary) {
-        const auto container = dir / (elementary.stem().string() + ".mkv");
-        const auto recovered = dir / (elementary.stem().string() + ".back");
+    // Both containers, from the same elementary stream: whichever one wrapped
+    // it, demux has to hand back the identical bytes. `wrap` names the
+    // wrapping command, which is also the extension the container gets.
+    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary,
+                                      const std::string& wrap) {
+        const auto container = dir / (elementary.stem().string() + "." + wrap);
+        const auto recovered = dir / (elementary.stem().string() + "." + wrap + ".back");
         REQUIRE(run_cli(make, log) == 0);
-        REQUIRE(run_cli("mkv \"" + elementary.string() + "\" \"" + container.string() + "\"",
+        REQUIRE(run_cli(wrap + " \"" + elementary.string() + "\" \"" + container.string() + "\"",
                         log) == 0);
         REQUIRE(run_cli("demux \"" + container.string() + "\" \"" + recovered.string() + "\"",
                         log) == 0);
         CHECK(read_bytes(recovered) == read_bytes(elementary));
     };
 
-    SECTION("E-AC-3") {
+    SECTION("E-AC-3 through Matroska") {
         const auto es = dir / "demux_eac3.ec3";
-        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es);
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mkv");
     }
 
-    SECTION("AC-3") {
+    SECTION("AC-3 through Matroska") {
         const auto es = dir / "demux_ac3.ac3";
-        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es);
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mkv");
+    }
+
+    SECTION("E-AC-3 through MP4") {
+        const auto es = dir / "demux_eac3_mp4.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mp4");
+    }
+
+    SECTION("AC-3 through MP4") {
+        const auto es = dir / "demux_ac3_mp4.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mp4");
+    }
+
+    SECTION("E-AC-3 through MPEG-TS") {
+        const auto es = dir / "demux_eac3_ts.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "ts");
+    }
+
+    SECTION("AC-3 through MPEG-TS") {
+        const auto es = dir / "demux_ac3_ts.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "ts");
     }
 }
 
@@ -2386,7 +2515,7 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
 
     SECTION("a bare elementary stream is not a container") {
         // The single most likely mistake, and the one where naming the file
-        // .mkv would have made a name-based guess say yes.
+        // .mkv or .mp4 would have made a name-based guess say yes.
         const auto es = dir / "demux_bare.ac3";
         REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
         CHECK(run_cli("demux \"" + es.string() + "\" \"" + (dir / "demux_bare.out").string() +

@@ -24,12 +24,33 @@
 // apart before committing to a layout: AC-3 spends its first 40 bits on
 // syncword, crc1, fscod and frmsizecod, and E-AC-3 on syncword, strmtyp,
 // substreamid, frmsiz, fscod, numblkscod, acmod and lfeon.
+//
+// A stream can also be BOTH at once, which is what kAc3CoreEac3Extension
+// below is for - see its own comment.
 
 namespace ac3::io {
 
 enum class StreamKind : std::uint8_t {
     kAc3,   // bsid <= 10
     kEac3,  // bsid 16 (Annex E)
+    // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
+    // then the AC-3 bit stream shall be processed as an independent substream
+    // assigned substream ID 0." A legacy-core delivery takes that literally -
+    // each access unit is an AC-3 syncframe (bsid <= 10) carrying the 5.1 bed,
+    // immediately followed by one or more E-AC-3 dependent substreams (bsid
+    // 16, strmtyp 1) whose chanmap channels replace and extend it per §E3.8.2.
+    // There is no Annex E INDEPENDENT substream anywhere in such a stream: the
+    // AC-3 frame is the independent substream.
+    //
+    // Deliberately its own kind rather than folded into either of the two
+    // above. It is not kAc3 - the dependents are Annex E syntax an AC-3
+    // reader cannot parse, and an AC3SpecificBox cannot describe them. It is
+    // not kEac3 either - the access unit does not begin with an Annex E
+    // syncframe, so anything that walks substreams by strmtyp would misread
+    // the core's crc1 as a stream type. Callers that only handle the two
+    // plain kinds should refuse this one explicitly rather than let it fall
+    // through a two-way test.
+    kAc3CoreEac3Extension,
 };
 
 enum class ScanError : std::uint8_t {
@@ -38,6 +59,13 @@ enum class ScanError : std::uint8_t {
     kUnsupportedBsid,
     kReservedValue,
     kTruncated,
+    // Every syncframe parsed, but the way they are arranged is a shape this
+    // scanner does not model - an Annex E independent substream following an
+    // AC-3 core (§E3.8.4's mixture of programmes), or a dependent with no
+    // independent substream ahead of it to extend. Distinct from
+    // kUnsupportedBsid, which is about one frame this reader cannot read at
+    // all rather than about how readable frames sit together.
+    kUnsupportedStructure,
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(ScanError error);
@@ -121,10 +149,14 @@ struct ScannedStream {
     // substream's chanmap and so is not the bed's channel count.
     int channels = 0;
     // One entry per access unit: an AC-3 syncframe, or an E-AC-3 independent
-    // substream together with the dependents that follow it. Spans point into
-    // the caller's buffer.
+    // substream together with the dependents that follow it - or, for
+    // kAc3CoreEac3Extension, the AC-3 core together with its dependents, which
+    // is the same rule with the core standing in for the independent
+    // substream. Spans point into the caller's buffer.
     std::vector<std::span<const std::byte>> access_units{};
-    // Substreams in the first access unit; always 1 for AC-3.
+    // Substreams in the first access unit; always 1 for AC-3. The AC-3 core of
+    // a kAc3CoreEac3Extension stream counts as one of them, on §E2.3.1.2's own
+    // terms - a two-frame core-plus-dependent unit reports 2, not 1.
     std::size_t substreams_per_unit = 0;
 
     // The raw syntax values below exist for build_codec_config_box() (see
@@ -133,15 +165,23 @@ struct ScannedStream {
     // above, and a container muxer has no business re-deriving them itself.
     // Every one of them is captured from the same first-access-unit walk
     // that fills in acmod/lfe/sample_rate above.
+    //
+    // For kAc3CoreEac3Extension all three describe the AC-3 CORE, since that
+    // is the independent substream. Neither codec-config box has a defined
+    // way to say "AC-3 core plus Annex E dependents", so
+    // build_codec_config_box() refuses that kind outright rather than emit an
+    // AC3SpecificBox that cannot mention the dependents or an EC3SpecificBox
+    // whose bsid field would claim a core frame is Annex E syntax.
 
     // A/52 §5.4.1.3 / Annex E §E2.3.1.6.
     int bsid = 0;
     // §5.4.2.1 / Annex E's infomdate payload (0 when infomdate was clear,
     // matching "not indicated" - see Table 5.5's own bsmod semantics).
     int bsmod = 0;
-    // AC-3 only: Table 5.18's index into kBitratesKbps (0-18), exactly what
-    // AC3SpecificBox's bit_rate_code reports. Meaningless for E-AC-3, which
-    // has no equivalent fixed-table field (see build_codec_config_box()).
+    // AC-3 only (kAc3CoreEac3Extension's core included): Table 5.18's index
+    // into kBitratesKbps (0-18), exactly what AC3SpecificBox's bit_rate_code
+    // reports. Meaningless for E-AC-3, which has no equivalent fixed-table
+    // field (see build_codec_config_box()).
     int bit_rate_code = 0;
 
     // TS 103 420 §8.3.1/§8.3.2.2: flag_ec3_extension_type_a and, when it is
@@ -150,8 +190,10 @@ struct ScannedStream {
     // oba_complexity_index for the write side). This is the only Atmos/JOC
     // marker readable without decoding the EMDF container itself, and what
     // a dec3 box's own Atmos extension echoes verbatim. std::nullopt for a
-    // stream that never sets the flag - AC-3 included, since addbsi's
-    // object-audio use is E-AC-3 only.
+    // stream that never sets the flag - plain AC-3 always, since addbsi's
+    // object-audio use is E-AC-3 only. A kAc3CoreEac3Extension stream can
+    // still carry one: the core cannot, but its dependents can, and that is
+    // where a legacy-core Atmos delivery actually puts it.
     std::optional<int> oba_complexity_index = std::nullopt;
 
     // The stream's rendered channel LOCATIONS as one ATSC A/52-2018 Table

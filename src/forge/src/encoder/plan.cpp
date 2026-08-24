@@ -958,7 +958,8 @@ EncoderConfig ac3_config(const Plan& plan) {
                           ? plan.meta.heavy2
                           : std::optional<meta::HeavyConfig>(std::nullopt),
             .cmixlev = plan.meta.cmixlev,
-            .surmixlev = plan.meta.surmixlev};
+            .surmixlev = plan.meta.surmixlev,
+            .search = plan.tools.search};
 }
 
 namespace {
