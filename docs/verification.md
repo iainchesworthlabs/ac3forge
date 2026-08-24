@@ -3,7 +3,7 @@
 Quality is measured, not asserted, and coverage has known edges. This page is both: how output
 is checked, and exactly where checking runs out.
 
-## Five independent checks
+## Six independent checks
 
 In rough order of strength:
 
@@ -57,6 +57,28 @@ In rough order of strength:
    each case by which oracle can actually read it (the table below). Bounded on every pull
    request, deeper nightly. See
    [fuzz/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md).
+
+6. **The encoder/decoder mirror self-check** (`ac3::verify`, opt-in). Not an oracle: it compares
+   this project against itself. What it compares is the *model* rather than the audio. An encoder
+   carries a picture of the decoder it is writing for — the exponents that decoder will
+   reconstruct, the bit allocation it will derive, the delta correction it is holding, the AHT
+   gains and coupling/spectral-extension coordinates it will apply — and every mantissa field's
+   width comes out of that picture. `MirrorEncoder` (AC-3) and `Eac3MirrorEncoder` (E-AC-3)
+   decode every frame the encoder just emitted and diff the two pictures per block, per coded
+   stream, per substream, starting from the bit offset at each block boundary.
+
+   What that adds over a round trip is the case where the two sides differ but the audio
+   survives it — an AHT gain one side recovered differently, a coordinate quantized against a
+   different band structure, a delta correction one side is still holding — which a decode-and-
+   compare passes and an SNR gate does not notice, and which a third-party decoder would
+   nevertheless render differently. It also localises an outright desync: the AC-3 half fired
+   four frames before the `deltbaie` bug produced its own §7.10.2 symptom, in the right file
+   rather than two blocks downstream in the wrong one. What it cannot see is a misreading the two
+   sides make *identically* — anything decided in code they share (`compute_bit_allocation`,
+   `group_bands`, `decode_coordinate`) is shared by construction, and only checks 2–4 above reach
+   that. Off by default at the cost of one branch per block; `ac3cli eac3-encode … verify` turns
+   it on for a whole encode, and `tools/ci/run_codec_matrix.sh` runs it across the tool matrix on
+   the sanitizer leg.
 
 Contributor-facing detail on which oracle to reach for and how — including the exact FFmpeg
 flags and the CI jobs that run them — is in [Oracles](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles).
@@ -132,6 +154,13 @@ runs `tools/checks/verify_gold_reference.sh` twice — once as it stands, once w
 same real streams as the fast paths, and `tools/ci/run_codec_matrix.sh` carries `fast-mdct=off`
 and `fast-imdct=off` rows through the sanitizers. Without that, a change to a fast path could
 take its own reference with it and nothing outside the transform unit tests would notice.
+
+One nearby switch is deliberately **not** part of this pair: `joc-domain=qmf|mdct`, which selects
+where JOC's reconstruction matrix is estimated and applied. The two transforms above are the same
+answer computed two ways; the two JOC domains are different answers about 5 dB apart, so folding
+them into a speed preference would make `mode=performance` quietly pick the worse one. The default
+is already the domain TS 103 420 §6.6.6 states, so `mode=reference` has nothing to add either. See
+[Atmos & JOC](concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
 
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
@@ -305,7 +334,8 @@ against the installed FFmpeg, so a row that stops being true is reported rather 
 assumed.
 
 **7.1.4 has no external oracle at all.** For that one layout, encoder and decoder are checked
-against each other and nothing else:
+against each other and nothing else — the round trip below, plus the mirror self-check, which
+diffs both dependent substreams' own models block by block rather than only the assembled audio:
 
 ```
 $ ac3cli eac3-sine out.ec3 1 384 1000 50 714
@@ -326,8 +356,23 @@ it has no model of the bits at all, which makes `-xerror` unusable as a check he
 merely unavailable. `tools/ci/quality_race.py`'s CI gate (`decode_scores_ours`) scores both through
 this project's own decoder instead, the same self-consistency posture 7.1.4 falls back to, with
 one weaker guarantee than 7.1.4 has: a defect both the encoder and decoder agree on — a
-misreading of the spec shared by both sides rather than a one-sided bug — would not be caught by
+misreading of the spec shared by both sides rather than a one-sided bug — is not caught by
 either the CI gate or the round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+
+The E-AC-3 mirror self-check (#6 above) narrows that, and is worth being exact about what it
+narrows. It compares the encoder's and the decoder's *models* of each block — bit offsets,
+exponents, `bap`, delta, AHT gain mode and gains, and the coupling, enhanced-coupling and
+spectral-extension coordinates — for every substream of an access unit. The emit side and the
+parse side are separate implementations of the same Annex E text, so a misreading in one of them
+is caught there even when the audio round-trips cleanly and the SNR gate is happy: an
+`ecplchaos` index fitted against a different band structure than the one transmitted, an AHT
+gain the decoder recovers differently from the one the encoder chose, a `spxblnd` that
+persisted on one side and not the other. What it still cannot see is a misreading the two sides
+make *identically*, which for anything decided in code they share (`compute_bit_allocation`,
+`group_bands`, `coupling::decode_coordinate`) is by construction. That residue is real, and only
+an external oracle or an independent transcription of the same spec text closes it — neither of
+which exists for `ecpl` or `tpn`. `tools/ci/run_codec_matrix.sh` runs the check over both tools
+on the sanitizer leg.
 
 **`fscod2` audio content has no external decode oracle at all — not even Dolby's own.**
 `ffprobe` walks every syncframe of a reduced-rate stream correctly (frame count, exact byte size,
@@ -339,8 +384,11 @@ reports `No valid frames found before end of stream` on a stream `ffprobe` reads
 without complaint, using the same pipeline (`tools/ci/quality_race.py`'s `dolby_decode`) that decodes
 a normal-rate stream from this encoder without issue. `fscod2` appears to be a coding tool whose
 own reference implementation does not support it. So the coded audio is verified only by this
-project's own encoder/decoder round trip and the independent Python parser
-(`tools/references/eac3_parse.py`).
+project's own encoder/decoder round trip, the mirror self-check over that round trip (all three
+rates, with and without the Annex E tools, in `tools/ci/run_codec_matrix.sh` and
+`tests/verify/test_eac3_selfcheck.cpp`), and the independent Python parser
+(`tools/references/eac3_parse.py`) — the last of which is the only one of the three written from
+the spec separately from the codec.
 
 **Object decode has no external oracle at all, and for once that is not FFmpeg's gap alone.**
 FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1

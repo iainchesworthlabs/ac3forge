@@ -147,6 +147,8 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
+| `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `ac3::verify` to diff against the encoder's own model. See below. |
+| `eac3_trace` | `nullptr` | The E-AC-3 counterpart (`Eac3Decoder`), one whole access unit rather than one frame. See below. |
 
 The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3), enhanced coupling
 (§E3.5), spectral extension (§E3.6), the adaptive hybrid transform with GAQ (§E3.4), and transient
@@ -207,6 +209,43 @@ the overlap-add state, so a long stream's substituted noise does not repeat ever
 `fscod2` (the Annex E half sample rates — 24, 22.05, 16 kHz) is decoded like any other rate: the
 reduced rate reuses the same bit-allocation tables as its double-rate parent (§E2.3.1.4), so
 nothing else about decoding changes.
+
+## The mirror self-check
+
+`ac3/verify/mirror.hpp` and `ac3/verify/eac3_mirror.hpp`. Both decoders can record what they
+derived from the wire, so it can be diffed against the encoder's own model of the same frame —
+per block, per coded stream, and for E-AC-3 per substream. It exists because a desync is
+invisible at the field that causes it: every mantissa's *width* comes out of that model, so the
+moment the two sides disagree each goes on reading confidently at its own idea of where it is,
+and the failure surfaces some blocks later as whatever §7.10.2 guard the misaligned bits happen
+to trip first.
+
+```cpp
+// The driver most callers want: a drop-in for eac3::AccessUnitEncoder that also
+// decodes every access unit it emits and diffs the two models.
+ac3::verify::Eac3MirrorEncoder encoder{config};
+const auto checked = encoder.encode_access_unit(channels);
+if (checked && !checked->ok()) {
+    std::puts(encoder.last_report().c_str());
+    // "frame 12 substream 1 block 3 channel 1: bap[87] encoder=5 decoder=4"
+}
+```
+
+`ac3::verify::MirrorEncoder` is the AC-3 sibling, over `FrameEncoder`. What each compares is in
+its own header; the E-AC-3 side adds what Annex E adds — per-substream and per-block bit offsets
+across an independent substream and its dependents, AHT gain mode and per-bin gains, and the
+coupling, enhanced-coupling and spectral-extension coordinates. `ac3cli eac3-encode … verify`
+is the same check over a whole file.
+
+Both trace pointers are null by default and cost one branch per block when they are: attaching
+one never changes what the encoder emits, which is what makes a checked build the same encoder
+as the shipped one. The decoder fills its side **incrementally**, so a frame it ends up refusing
+still leaves behind everything it read before the refusal — the case the comparison is most
+useful in, since the mismatch typically names an earlier block than the refusal does.
+
+Transient pre-noise processing's hold-back (above) is invisible to the check: the trace is
+written while a frame is *parsed*, not when its audio is released, so a held-back frame is
+compared in the call that decoded it like any other.
 
 ## Recovering from a damaged frame
 

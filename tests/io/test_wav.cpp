@@ -32,8 +32,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
+// shares; the leaf name below is this file's own.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_wav_reader_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "wav_reader";
     fs::create_directories(dir);
     return dir;
 }

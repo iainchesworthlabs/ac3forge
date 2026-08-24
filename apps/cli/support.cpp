@@ -37,6 +37,7 @@
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -145,6 +146,13 @@ void print_meta_usage() {
                  "fast-imdct=off still adjusts one half on its own");
     fmt::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
                  "(mode=reference's decode half); bare fast-imdct names the default");
+    fmt::println("  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction "
+                 "matrix over 256 MDCT bins instead of the default §7.1 64-band complex QMF - "
+                 "cheaper, and what this project did before it had a filterbank, but ~5 dB worse "
+                 "per object and not the domain a licensed decoder reconstructs in. Not "
+                 "part of mode= either way: unlike the two transform switches, these are "
+                 "different answers rather than the same one at different speed, and the "
+                 "default is already the domain the clause states");
     fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
                  "channel per block from content - applies wherever this command encodes, "
                  "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "
@@ -160,6 +168,12 @@ void print_meta_usage() {
                  "unchecked");
     fmt::println("  signing-key=<path>      the key file sign-objects/verify-objects use "
                  "(or AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)");
+    fmt::println("  verify            eac3-encode: decode every access unit as it is encoded "
+                 "and diff the decoder's model against the encoder's own - per-substream, "
+                 "per-block bit offsets, exponents, bit allocation, delta, AHT gains and the "
+                 "coupling/spectral-extension coordinates. Refuses the run on the first "
+                 "disagreement and names the block it starts at. Off by default: it decodes "
+                 "everything it encodes, so it roughly doubles the work");
     fmt::println("");
     fmt::println("source options (encode/eac3-encode; any order, after the positional "
                  "arguments):");
@@ -244,6 +258,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             out.verify_objects = true;
             continue;
         }
+        if (token == "verify") {
+            out.verify = true;
+            continue;
+        }
         if (key == "fast-mdct") {
             // The bare word (handled above) is the historical opt-in; with
             // the fast path now the default, the value form exists for the
@@ -270,6 +288,21 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             fmt::println(stderr,
                          "error: the fast IMDCT is the default; 'fast-imdct=off' forces the "
                          "direct §7.9.4 step-3 evaluation (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "joc-domain") {
+            if (value == "qmf") {
+                out.joc_domain = ac3::joc::Domain::kQmf;
+                continue;
+            }
+            if (value == "mdct") {
+                out.joc_domain = ac3::joc::Domain::kMdctBand;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: joc-domain is 'qmf' (the default, §7.1's complex filterbank) "
+                         "or 'mdct' (the 256-bin approximation) (got '{}')",
                          token);
             return false;
         }
