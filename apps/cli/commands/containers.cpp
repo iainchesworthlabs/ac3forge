@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <ranges>
 #include <cstdint>
 #include <filesystem>
 #include <fmt/base.h>
@@ -25,6 +26,7 @@
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
+#include "mp4/reader.hpp"
 #include "mpegts/mpegts.hpp"
 #include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
@@ -327,7 +329,7 @@ namespace {
 // as it is to have no extension at all, and the failure a wrong guess
 // produces ("no EBML header") reads like a corrupt file rather than like the
 // wrong parser - so the name is never consulted.
-enum class ContainerKind : std::uint8_t { kUnknown, kMatroska };
+enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4 };
 
 // EBML's own magic: the four bytes of the EBML header id every Matroska and
 // WebM file opens with - the same kEbmlHeader constant
@@ -335,10 +337,31 @@ enum class ContainerKind : std::uint8_t { kUnknown, kMatroska };
 constexpr std::array<std::byte, 4> kEbmlMagic{std::byte{0x1A}, std::byte{0x45}, std::byte{0xDF},
                                               std::byte{0xA3}};
 
+// ISOBMFF has no magic at offset 0 - it opens with a box, whose first four
+// bytes are a LENGTH. The type is what identifies it, four bytes in, and
+// 'ftyp' is what a well-formed file leads with (ISO/IEC 14496-12 4.3 says it
+// "should be placed as early as possible"). 'styp' is a bare CMAF media
+// segment, and a plain 'moov'/'mdat'/'moof' opener occurs in files written
+// by tools that skipped ftyp - all of them are what a reader is handed in
+// practice.
+constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "moov", "moof",
+                                                               "mdat"};
+
+[[nodiscard]] bool has_isobmff_box_at_start(std::span<const std::byte> head) {
+    if (head.size() < 8) {
+        return false;
+    }
+    const std::string_view type{reinterpret_cast<const char*>(head.data()) + 4, 4};
+    return std::ranges::find(kIsobmffLeadingTypes, type) != kIsobmffLeadingTypes.end();
+}
+
 ContainerKind sniff_container(std::span<const std::byte> head) {
     if (head.size() >= kEbmlMagic.size() &&
         std::equal(kEbmlMagic.begin(), kEbmlMagic.end(), head.begin())) {
         return ContainerKind::kMatroska;
+    }
+    if (has_isobmff_box_at_start(head)) {
+        return ContainerKind::kMp4;
     }
     return ContainerKind::kUnknown;
 }
@@ -374,46 +397,71 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     };
 
     const auto first = read_chunk();
-    if (sniff_container(first) != ContainerKind::kMatroska) {
-        fmt::println(stderr,
-                     "error: {} is not a container this build reads (expected Matroska/WebM)",
-                     in_path);
+    const auto kind = sniff_container(first);
+    if (kind == ContainerKind::kUnknown) {
+        fmt::println(
+            stderr,
+            "error: {} is not a container this build reads (expected Matroska/WebM or MP4)",
+            in_path);
         return 1;
     }
 
-    matroska::Reader reader{};
     EncodedStreamSink sink;
     if (!sink.open(out_path, /*keep_partial=*/false)) {
         return 1;
     }
-    // A write failure is latched rather than thrown out of the callback: the
-    // reader cannot be told to stop mid-chunk, and unwinding through it would
-    // leave its parse state undefined.
+    // A write failure is latched rather than thrown out of the callback: a
+    // reader cannot be told to stop mid-chunk, and unwinding through one
+    // would leave its parse state undefined.
     bool write_failed = false;
     const auto on_frame = [&sink, &write_failed](std::span<const std::byte> frame) {
         if (!write_failed && !sink.push(frame)) {
             write_failed = true;
         }
     };
-
     const auto fail = [&sink](std::string_view message) {
         fmt::println(stderr, "error: {}", message);
         sink.abort();
         return 1;
     };
 
-    for (auto bytes = first; !bytes.empty(); bytes = read_chunk()) {
-        const auto pushed = reader.push(bytes, on_frame);
-        if (!pushed) {
-            return fail(matroska::describe(pushed.error()));
+    // The two readers have the same shape but no common base class - the
+    // modules are deliberately independent of each other, not just of
+    // ac3::forge - so the drive loop is written once against whichever one
+    // the sniff picked, as a template over the pair.
+    std::string codec_id;
+    std::uint32_t sample_rate = 0;
+    int channels = 0;
+    int status = 0;
+    const auto drive = [&]<typename Reader, typename Describe>(Reader reader, Describe describe) {
+        for (auto bytes = first; !bytes.empty(); bytes = read_chunk()) {
+            const auto pushed = reader.push(bytes, on_frame);
+            if (!pushed) {
+                status = fail(describe(pushed.error()));
+                return;
+            }
+            if (write_failed) {
+                status = fail("write failed");
+                return;
+            }
         }
-        if (write_failed) {
-            return fail("write failed");
+        const auto finished = reader.finish();
+        if (!finished) {
+            status = fail(describe(finished.error()));
+            return;
         }
+        codec_id = reader.track().codec_id;
+        sample_rate = reader.track().sample_rate;
+        channels = reader.track().channels;
+    };
+
+    if (kind == ContainerKind::kMatroska) {
+        drive(matroska::Reader{}, [](matroska::DemuxError e) { return matroska::describe(e); });
+    } else {
+        drive(mp4::Reader{}, [](mp4::DemuxError e) { return mp4::describe(e); });
     }
-    const auto finished = reader.finish();
-    if (!finished) {
-        return fail(matroska::describe(finished.error()));
+    if (status != 0) {
+        return status;
     }
     if (write_failed) {
         return fail("write failed");
@@ -427,10 +475,9 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
 
     // The container declares the codec; this command never looks inside an
     // access unit, which is exactly why it can hand one back untouched.
-    const auto& track = reader.track();
     fmt::println(status_stream(out_path),
                  "wrote {} access units ({}, {} Hz, {} channels, {} bytes) to {}", sink.frames(),
-                 track.codec_id, track.sample_rate, track.channels, sink.total_bytes(), out_path);
+                 codec_id, sample_rate, channels, sink.total_bytes(), out_path);
     return 0;
 }
 

@@ -29,6 +29,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   carries, which is what every other command takes as input. The container is identified by its
   own magic bytes rather than by the file name, and the whole path streams, so a multi-gigabyte
   rip never lands in memory. Matroska/WebM in this release.
+- **MP4 container reader** (roadmap `IO2`, second of three). `mp4::demux` and `mp4::Reader`
+  (`mp4/reader.hpp`) read both layouts the writers produce and both a real muxer does: a plain
+  `moov`/`mdat` file, walking `stsc`/`stsz`/`stco` (and the `stz2`/`co64` variants this project
+  never writes) into sample byte ranges, and a fragmented one, taking `mvex`/`trex`'s defaults
+  plus every `moof`/`traf`/`tfhd`/`trun`. 64-bit `largesize` headers and an `mdat` declared to
+  run to end-of-file read normally. `demux` reads a `moov`-last file; `Reader` reports
+  `kMoovAfterMdat` for it rather than guessing, since locating a sample means seeking backwards.
+- **`dec3`/`dac3` parsing** — `ReadTrack::codec_config` is the read twin of
+  `ac3::io::build_codec_config_box`, TS 103 420's `flag_ec3_extension_type_a`/
+  `complexity_index_type_a` included. That is the Atmos/JOC marker an FFmpeg remux is known to
+  drop, so reading it back is what makes the repair case possible. A box that stops before the
+  extension leaves the field empty rather than reporting a confident zero.
+- **`ac3cli demux` reads MP4** as well as Matroska, still by magic bytes rather than file name,
+  and `fuzz_mp4_demux` joins the harness set.
 - **`fuzz_matroska_demux`** — a libFuzzer harness over the EBML walk, driving both `demux` and
   the chunk-boundary state machine in `Reader::push` with arbitrary bytes. Container parsing is
   untrusted-input territory (every length in an EBML file is self-declared), so

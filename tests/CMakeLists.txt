@@ -82,6 +82,7 @@ add_executable(ac3tests
     meta/test_meta_qc.cpp
     meta/test_mixing.cpp
     containers/test_mp4.cpp
+    containers/test_mp4_reader.cpp
     containers/test_mpegts.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
