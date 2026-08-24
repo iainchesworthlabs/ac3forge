@@ -82,22 +82,26 @@ permissions:
   contents: read
 
 jobs:
-  # Decides, per OS, whether the Windows/Linux legs below should build on a
-  # self-hosted runner or fall back to GitHub-hosted - "available" meaning a
-  # matching self-hosted runner is actually online and idle right now, not
-  # just "one exists somewhere". See docs/ci-self-hosted-runners.md for the
-  # full design; the short version:
+  # Decides, per OS and per leg, whether each of the plain Windows/Linux legs
+  # below should build on a self-hosted runner or fall back to GitHub-hosted -
+  # fanning legs across BOTH pools in the same run rather than an all-or-
+  # nothing choice for the whole OS. See docs/ci-self-hosted-runners.md for
+  # the full design; the short version:
   #   - a fork PR never gets a self-hosted label, full stop - untrusted code
   #     must never land on a persistent runner, no live check needed.
   #   - vars.RUNNER_LINUX_MODE / RUNNER_WINDOWS_MODE (`auto` default,
   #     `self-hosted`, or `github-hosted`) let a forced mode skip the live
   #     check entirely - an explicit override is trusted outright.
-  #   - `auto` checks this repo's own registered runners (works today, empty
+  #   - `auto` counts this repo's own registered runners (works today, empty
   #     until a runner is actually registered against ac3forge) and, if the
   #     optional ORG_RUNNERS_TOKEN secret is set, the iainchesworthlabs org's
   #     runners too (what actually matters once the org migration in
   #     iainchesworthlabs/ci-runners lands - see that repo for the fleet
-  #     itself, which this workflow only consumes, never provisions).
+  #     itself, which this workflow only consumes, never provisions), then
+  #     hands self-hosted to as many legs as there are currently idle
+  #     self-hosted runners and GitHub-hosted to the overflow - so a run
+  #     lands on self-hosted where it can and GitHub-hosted where it can't,
+  #     never queuing one leg behind another's use of the same shared pool.
   # Any API failure degrades to GitHub-hosted rather than failing the job -
   # this check being unavailable is never a reason to block CI.
   check-runners:
@@ -107,8 +111,10 @@ jobs:
       contents: read
       actions: read
     outputs:
-      linux_runner: ${{ steps.decide.outputs.linux_runner }}
-      windows_runner: ${{ steps.decide.outputs.windows_runner }}
+      linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
+      linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
+      windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
+      windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
       - name: Decide runner labels per OS
         id: decide
@@ -127,50 +133,80 @@ jobs:
           HOSTED_WINDOWS='["windows-latest"]'
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
+          # One check-runners call covers every plain Linux/Windows leg in
+          # the build matrix below - two of each today (Linux GCC/LLVM,
+          # Windows MSVC/LLVM). Bump these, and add a matching numbered
+          # output above and matrix.runner reference below, if a leg is
+          # added or removed.
+          LINUX_LEGS=2
+          WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
           # here, before either mode override or the live check even run.
           if [ "$IS_FORK_PR" = "true" ]; then
-            echo "linux_runner=$HOSTED_LINUX" >> "$GITHUB_OUTPUT"
-            echo "windows_runner=$HOSTED_WINDOWS" >> "$GITHUB_OUTPUT"
-            echo "Fork PR - both legs stay on GitHub-hosted runners."
+            for i in $(seq 1 "$LINUX_LEGS"); do echo "linux_runner_$i=$HOSTED_LINUX" >> "$GITHUB_OUTPUT"; done
+            for i in $(seq 1 "$WINDOWS_LEGS"); do echo "windows_runner_$i=$HOSTED_WINDOWS" >> "$GITHUB_OUTPUT"; done
+            echo "Fork PR - every leg stays on GitHub-hosted runners."
             exit 0
           fi
 
-          # At least one online, idle runner carrying both "self-hosted" and
-          # $2 (the OS label) in $1's runner list. Never fails the job: a
-          # missing/errored API response (e.g. no runner registered against
-          # this repo yet, or ORG_TOKEN unset) just means "not found".
-          runner_available() {
+          # Online, idle self-hosted runners carrying both "self-hosted" and
+          # $2 (the OS label), summed across repo-level and (if ORG_TOKEN is
+          # set) org-level runner lists - the two are always disjoint under
+          # this org's model (a runner is registered at one scope or the
+          # other, never both), so summing them can't double-count. The
+          # count, not just whether it's non-zero, is what lets legs fan out
+          # across self-hosted before overflowing onto GitHub-hosted. Never
+          # fails the job: a missing/errored API response (e.g. no runner
+          # registered against this repo yet, or ORG_TOKEN unset) just counts
+          # as zero.
+          runner_idle_count() {
             local scope="$1" os_label="$2" json count
-            json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || return 1
-            count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and .busy==false and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$os_label\"))] | length" 2>/dev/null)" || return 1
-            [ "${count:-0}" -gt 0 ]
+            json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || { echo 0; return; }
+            count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and .busy==false and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$os_label\"))] | length" 2>/dev/null)" || { echo 0; return; }
+            echo "${count:-0}"
           }
 
-          decide_for_os() {
-            local mode="$1" os_label="$2" hosted="$3" self_hosted="$4"
+          # Emits $5 lines, one runner-label set per leg: self-hosted for as
+          # many legs as there are currently idle self-hosted runners
+          # (capped at $5), GitHub-hosted for the rest. E.g. one idle
+          # self-hosted Linux runner and two Linux legs sends leg 1 to
+          # self-hosted and fans leg 2 out to GitHub-hosted immediately,
+          # rather than queuing it behind whatever's already busy on the
+          # self-hosted pool.
+          decide_labels_for_os() {
+            local mode="$1" os_label="$2" hosted="$3" self_hosted="$4" leg_count="$5"
+            local idle=0
             case "$mode" in
-              self-hosted)   printf '%s' "$self_hosted"; return ;;
-              github-hosted) printf '%s' "$hosted"; return ;;
+              self-hosted)   idle="$leg_count" ;;
+              github-hosted) idle=0 ;;
+              *)
+                idle="$(runner_idle_count "repos/$REPO" "$os_label")"
+                if [ -n "${ORG_TOKEN:-}" ]; then
+                  idle=$((idle + $(GH_TOKEN="$ORG_TOKEN" runner_idle_count "orgs/$ORG" "$os_label")))
+                fi
+                ;;
             esac
-            # auto: repo-level first (works today with zero extra setup),
-            # then org-level if a token for it was provisioned.
-            if runner_available "repos/$REPO" "$os_label"; then
-              printf '%s' "$self_hosted"; return
-            fi
-            if [ -n "${ORG_TOKEN:-}" ] && GH_TOKEN="$ORG_TOKEN" runner_available "orgs/$ORG" "$os_label"; then
-              printf '%s' "$self_hosted"; return
-            fi
-            printf '%s' "$hosted"
+            local i
+            for i in $(seq 1 "$leg_count"); do
+              if [ "$i" -le "$idle" ]; then printf '%s\n' "$self_hosted"; else printf '%s\n' "$hosted"; fi
+            done
           }
 
-          linux_runner="$(decide_for_os "$LINUX_MODE" "Linux" "$HOSTED_LINUX" "$SELF_LINUX")"
-          windows_runner="$(decide_for_os "$WINDOWS_MODE" "Windows" "$HOSTED_WINDOWS" "$SELF_WINDOWS")"
-          echo "linux_runner=$linux_runner" >> "$GITHUB_OUTPUT"
-          echo "windows_runner=$windows_runner" >> "$GITHUB_OUTPUT"
-          echo "Linux: mode=$LINUX_MODE -> $linux_runner"
-          echo "Windows: mode=$WINDOWS_MODE -> $windows_runner"
+          # Assigns and logs one OS's legs: $7 is the output-name prefix
+          # (e.g. "linux_runner" -> linux_runner_1, linux_runner_2, ...).
+          assign_and_log() {
+            local os_name="$1" mode="$2" os_label="$3" hosted="$4" self_hosted="$5" leg_count="$6" out_prefix="$7"
+            local i=1 label
+            while IFS= read -r label; do
+              echo "${out_prefix}_${i}=$label" >> "$GITHUB_OUTPUT"
+              echo "$os_name leg $i (mode=$mode) -> $label"
+              i=$((i + 1))
+            done < <(decide_labels_for_os "$mode" "$os_label" "$hosted" "$self_hosted" "$leg_count")
+          }
+
+          assign_and_log "Linux" "$LINUX_MODE" "Linux" "$HOSTED_LINUX" "$SELF_LINUX" "$LINUX_LEGS" "linux_runner"
+          assign_and_log "Windows" "$WINDOWS_MODE" "Windows" "$HOSTED_WINDOWS" "$SELF_WINDOWS" "$WINDOWS_LEGS" "windows_runner"
 
   # Single source of truth for the tool-version pins the "Report and assert
   # toolchain versions" step below (and the setup-vcpkg/install-qt-action
@@ -201,10 +237,10 @@ jobs:
     timeout-minutes: 90
 
     # Ubuntu 26.04 for the Linux legs, where the distro archive carries
-    # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 21
+    # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 22
     # outright. This is a pin, not a convenience: on ubuntu-latest (24.04 at
     # the time of writing) the LLVM script has to fall back to apt.llvm.org,
-    # whose noble repo is missing clang-tidy-21, lld-21 and libc++-21-dev, so
+    # whose noble repo is missing clang-tidy-22, lld-22 and libc++-22-dev, so
     # the install fails before a single file is compiled.
     # Pinning the container also stops a runner-image bump silently changing
     # the compiler under the matrix. Empty for the Windows/macOS legs, which
@@ -217,8 +253,15 @@ jobs:
       matrix:
         include:
           - name: "Windows MSVC"
-            runner: ${{ needs.check-runners.outputs.windows_runner }}
+            runner: ${{ needs.check-runners.outputs.windows_runner_1 }}
             preset: windows-msvc
+            # Declared once, here, so `matrix.experimental` in continue-on-error
+            # above resolves against a property the matrix actually defines -
+            # without it every leg silently reads null and actionlint reports the
+            # reference as undefined. Every other leg is non-experimental by
+            # omission (the `|| false` fallback); a leg that IS experimental sets
+            # this to true and continue-on-error keeps it out of CI Status.
+            experimental: false
             # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
             # channel. Pinned by channel, not exact version: the runner image
             # ships whatever 18.x is current, and the assert step below fails
@@ -229,7 +272,7 @@ jobs:
             gold_reference: true
 
           - name: "Windows LLVM (clang-cl)"
-            runner: ${{ needs.check-runners.outputs.windows_runner }}
+            runner: ${{ needs.check-runners.outputs.windows_runner_2 }}
             preset: windows-llvm
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
             llvm: true
@@ -245,7 +288,7 @@ jobs:
           # neither switch (Qt present/absent, ALSA present/absent) differs
           # between compilers, so paying for either twice would buy nothing.
           - name: "Linux GCC"
-            runner: ${{ needs.check-runners.outputs.linux_runner }}
+            runner: ${{ needs.check-runners.outputs.linux_runner_1 }}
             container: ubuntu:26.04
             preset: linux-gcc
             gcc: true
@@ -256,7 +299,7 @@ jobs:
             gold_reference: true
 
           - name: "Linux LLVM (clang)"
-            runner: ${{ needs.check-runners.outputs.linux_runner }}
+            runner: ${{ needs.check-runners.outputs.linux_runner_2 }}
             container: ubuntu:26.04
             preset: linux-llvm
             llvm: true
@@ -308,6 +351,35 @@ jobs:
             preset: linux-llvm-asan-ubsan
             llvm: true
             sanitizer: true
+
+          # ThreadSanitizer (roadmap VX16). A DIFFERENT question from the
+          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
+          # whether one thread's memory and arithmetic are sound, TSan asks
+          # whether two threads agree on who owns what - and no other gate in
+          # this repository can see a data race at all. src/audio is a
+          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
+          # shared between a real-time callback thread and the encoder
+          # thread, which is exactly the shape where a missing
+          # acquire/release is both easy to write and invisible until it
+          # corrupts audio on someone else's machine.
+          #
+          # Its test preset runs `-L concurrency` rather than the whole
+          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
+          # shadow memory makes every test several times slower, and the
+          # other ~600 cases are single-threaded codec maths where it has
+          # nothing to report. That keeps this leg to about the cost of a
+          # build rather than a second full matrix entry - the ctest run
+          # itself was 7 seconds over 36 tests when this landed.
+          #
+          # No `sanitizer: true`: that flag means the codec-matrix step, and
+          # driving every layout/tool combination through ac3cli is an
+          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
+          # same reasoning as the ASan+UBSan leg's own comment above.
+          - name: "Linux LLVM TSan"
+            runner: '["ubuntu-latest"]'
+            container: ubuntu:26.04
+            preset: linux-llvm-tsan
+            llvm: true
 
           # No Mac is available to the project locally, so CI remains the only
           # place this is exercised - proven green (build+test+gold-reference
@@ -400,8 +472,9 @@ jobs:
       # ---------------------------------------------------------------------
       # Toolchains
       # ---------------------------------------------------------------------
-      # gcc-15 and LLVM 21, from the scripts aqualink-automate uses to build its
-      # runner images, copied verbatim. On the pinned 26.04 container both take
+      # gcc-16 and LLVM 22, from the scripts the org-shared runner fleet repo,
+      # iainchesworthlabs/ci-runners, uses to build its own images, copied
+      # verbatim. On the pinned 26.04 container both take
       # the distribution-archive path and neither fallback runs. Each script
       # asserts its own resulting version and exits non-zero on drift.
       # `sudo` is absent in the container (already root) and required on the
@@ -413,19 +486,20 @@ jobs:
           if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/02-gcc-toolchain.sh
           else bash .github/toolchain/02-gcc-toolchain.sh; fi
 
-      - name: Install LLVM 21
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
         if: matrix.llvm && runner.os == 'Linux'
         run: |
           set -eu
           if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/03-llvm-toolchain.sh
           else bash .github/toolchain/03-llvm-toolchain.sh; fi
 
-      # The Windows runner image ships an LLVM, but not necessarily 21. Install
-      # the official build straight from the llvm-project release, pinned to the
-      # same 21.1.8 the Ubuntu 26.04 archive carries, so both LLVM legs are on
-      # one version. Chocolatey is deliberately avoided: its llvm package tracks
-      # whatever is newest and would drift off the pin.
-      - name: Install LLVM 21 (Windows)
+      # The Windows runner image ships an LLVM, but not necessarily the pinned
+      # one. Install the official build straight from the llvm-project release,
+      # pinned via llvm_windows_version to the same point release the Ubuntu
+      # 26.04 archive carries (see toolchain-versions.json's own comment), so
+      # both LLVM legs are on one version. Chocolatey is deliberately avoided:
+      # its llvm package tracks whatever is newest and would drift off the pin.
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }} (Windows)
         if: matrix.llvm && runner.os == 'Windows'
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
         # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
@@ -433,9 +507,11 @@ jobs:
         # windows-latest ships pwsh too, which is why this only surfaced once a
         # job actually landed on a self-hosted Windows runner.
         shell: powershell
+        env:
+          LLVM_WINDOWS_VERSION: ${{ needs.toolchain-versions.outputs.llvm_windows_version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '21.1.8'
+          $version = $env:LLVM_WINDOWS_VERSION
           $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
           $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
           Invoke-WebRequest -Uri $url -OutFile $exe

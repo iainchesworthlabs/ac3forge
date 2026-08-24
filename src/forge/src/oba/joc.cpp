@@ -365,7 +365,8 @@ namespace {
 
 std::vector<std::vector<float>> reconstruct(std::span<const std::span<const float>> bed,
                                             const FrameParameters& params,
-                                            ReconstructionState& state, bool fast_mdct) {
+                                            ReconstructionState& state, bool fast_mdct,
+                                            bool fast_imdct) {
     assert(bed.size() == static_cast<std::size_t>(params.channels));
     assert(params.channels >= 1 && params.channels <= kMaxChannels);
     assert(params.matrix.size() == params.coefficient_count());
@@ -477,7 +478,7 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
 
             // --- synthesize, same overlap-add eac3_decoder.cpp's own
             // channel reconstruction uses ---
-            imdct512_windowed(object_mdct, x);
+            imdct512_windowed(object_mdct, x, fast_imdct);
             for (int n = 0; n < kSamplesPerBlock; ++n) {
                 pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
                     2.0 * (x[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));

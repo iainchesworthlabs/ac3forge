@@ -19,12 +19,11 @@
 // numerical tolerance, on both synthetic and real-audio-shaped input, before
 // anything is allowed to default it on.
 //
-// Only the long transform (alpha = 0) has an accelerated path today.
-// mdct256_forward_first/second (the block-switched short transforms) do
-// not - see mdct.hpp's own comment on why an earlier attempt to reuse the
-// same fold for alpha = -1 turned out to be a math error, not just
-// unimplemented - so their own test below checks that `fast=true` and
-// `fast=false` are IDENTICAL, not just close, since they run the same code.
+// All three forward transforms have an accelerated path now, each with its
+// own independently-derived fold (mdct256_forward_first/second landed theirs
+// after an earlier attempt to reuse the LONG transform's fold for alpha = -1
+// turned out to be a math error - see mdct.hpp), so each is checked against
+// its own direct-form table here rather than against another transform's.
 
 namespace {
 

@@ -275,8 +275,16 @@ struct ReconstructionState {
 // BUILT (it buys a better legacy stereo fold-down), and §6.6.6 says nothing
 // about undoing it before matrixing. There is no Hilbert filterbank here to
 // undo it with either.
+//
+// `fast_mdct` selects the §7.9.4 fold for the per-block forward analysis of
+// the bed channels; `fast_imdct` selects the same core for step 3 of each
+// object's own §7.9.4.1 synthesis inverse - one per object per block, so 96
+// of them in a 16-object frame, which is where nearly all of this function's
+// time goes. Both default to the spec's own direct evaluations, the forms
+// every fast-path test validates against; Eac3Decoder passes
+// DecoderConfig::fast_imdct for the second.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, bool fast_mdct = false);
+    ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false);
 
 }  // namespace ac3::joc

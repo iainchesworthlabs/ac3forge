@@ -6,7 +6,7 @@ reference, options list and troubleshooting, see [Building from source](../build
 
 ## Toolchains
 
-Built and tested with **MSVC 14.51** and **clang-cl 21.1** on **Windows 11**, via Visual Studio
+Built and tested with **MSVC 14.51** and **clang-cl 22.1** on **Windows 11**, via Visual Studio
 2026 (MSVC) or clang-cl.
 
 Every Windows preset chainloads a toolchain file that locates `cl.exe`/`clang-cl.exe` and
@@ -22,6 +22,8 @@ for the mechanics.
 On Windows, the three features that touch sound hardware are all implemented over **WASAPI**:
 
 - **`ac3::audio`** — live input/loopback capture through a lock-free SPSC ring.
+- **`ac3::iec61937::PassthroughDetector`** — recognising, from that same capture, that the
+  endpoint is handing over IEC 61937 bursts rather than PCM.
 - **`ac3::audio::PassthroughSink`** — exclusive-mode/direct bitstream output, for both AC-3 and
   E-AC-3 burst framing (IEC 61937).
 - **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
@@ -56,6 +58,32 @@ is deliberately explicit about the difference.
     the bursts as a PCM16 WAV through a passthrough output, not through `PassthroughSink`
     itself); the same trick now exists for E-AC-3 (`ac3cli spdif`/`monitor`/`live`, branching on
     bsid) but has not itself been tried against a receiver either.
+
+### Passthrough capture
+
+The reverse direction — a WASAPI endpoint *delivering* IEC 61937 rather than PCM, which is what
+an HDMI or S/PDIF capture card gives, and what a render-endpoint loopback gives when the app
+playing into it is bitstreaming — is the same framing read backwards, and the same facts govern
+it. The bursts arrive as ordinary PCM16 samples: `IAudioClient` has no way to say "this is
+Dolby Digital", and `Capture` converts them to float by dividing by 32768, which loses nothing.
+
+`ac3::iec61937::PassthroughDetector` recognises the framing from those floats — a `Pa`/`Pb`
+preamble at a repetition period with a `0x0B77` syncframe behind it — and `ac3cli record`
+switches to writing the elementary stream instead of encoding the bursts as audio; `ac3cli
+live` stops with an error instead. `ac3cli unspdif` does the same job on a capture already
+saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exact for all
+65536 of them.
+
+!!! warning "Passthrough capture has never been confirmed against a real capture device"
+    No HDMI or S/PDIF capture card, and no loopback of a genuinely bitstreaming player, has been
+    available during development — the same gap the passthrough *output* side has, from the same
+    missing hardware. What is verified: the burst de-framing itself round-trips byte-exactly
+    against both this project's own wrapper and FFmpeg's `spdif` muxer, for AC-3 and E-AC-3 and
+    for both 16-bit word orders; the float→PCM16 recovery is exact for every int16 value; and
+    the detector reaches "not a bitstream" on real audio and silence alike. What is not: that a
+    real device's samples reach `Capture` unmodified in the first place. A shared-mode endpoint
+    that resamples or mixes would destroy the bursts before anything here saw them, which shows
+    up as no detection rather than as wrong output.
 
 ## Qt (GUI only)
 

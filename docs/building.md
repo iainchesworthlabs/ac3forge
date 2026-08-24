@@ -7,10 +7,10 @@ Every command here has been run on the configuration described under
 
 | | Version | Notes |
 |---|---|---|
-| A compiler | MSVC (VS 2026), clang-cl 21, GCC 16, or Clang 21 | C++23. `std::expected`, `std::print` and deducing-`this` are all used. One [preset](#presets) per compiler; all seven platform/compiler legs are required, green CI (GCC 16 covers two of them — `linux-gcc` and `linux-gcc-arm64`; Clang 21 covers three — `linux-llvm`, `linux-llvm-arm64` and `macos-llvm`, each as a separate leg, though `macos-llvm` deliberately tracks Homebrew's unpinned `llvm` formula, currently also 21, rather than an exact pin) — see [Verified configuration](#verified-configuration). |
+| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23. `std::expected` and deducing-`this` are both used. Formatted output goes through {fmt} (`fmt::format`/`fmt::print`), not `std::format`/`std::print` — see [Options](#options) and `docs/platforms/android.md`. One [preset](#presets) per compiler; all seven platform/compiler legs are required, green CI (GCC 16 covers two of them — `linux-gcc` and `linux-gcc-arm64`; Clang 22 covers three — `linux-llvm`, `linux-llvm-arm64` and `macos-llvm`, each as a separate leg, though `macos-llvm` deliberately tracks Homebrew's unpinned `llvm` formula, currently also 22, rather than an exact pin) — see [Verified configuration](#verified-configuration). |
 | CMake | ≥ 3.28 | `cmake_minimum_required(VERSION 3.28...4.3)`. |
 | Ninja | any recent | The presets hard-code the Ninja generator. |
-| vcpkg | any recent | Supplies Catch2 (needed only when tests are on); with `-DVCPKG_MANIFEST_FEATURES=adm`, the Boost header libraries `AC3FORGE_BUILD_ADM=ON` needs; and with `-DVCPKG_MANIFEST_FEATURES=profiling`, the Tracy profiler `AC3FORGE_ENABLE_TRACY=ON` needs — see [Options](#options). None of the three is required for a default build. |
+| vcpkg | any recent | Supplies fmt (a base dependency, needed by every build — see `cmake/Fmt.cmake`) and Catch2 (needed only when tests are on); with `-DVCPKG_MANIFEST_FEATURES=adm`, the Boost header libraries `AC3FORGE_BUILD_ADM=ON` needs; and with `-DVCPKG_MANIFEST_FEATURES=profiling`, the Tracy profiler `AC3FORGE_ENABLE_TRACY=ON` needs — see [Options](#options). vcpkg itself is never strictly required, though: fmt and Catch2 both fall back to a `FetchContent` build from source when no local copy is found (`AC3FORGE_FETCH_FMT`/`AC3FORGE_FETCH_CATCH2`, both default `ON`), and Boost/Tracy are opt-in features nobody gets by default. |
 | Qt | 6.5+ prebuilt | GUI only. **Never from vcpkg** — see [Qt](#qt). |
 | ALSA (`libasound2-dev`) | any recent | Linux only, optional. Live capture/monitor/passthrough — see [Linux audio](#linux-audio). |
 | PipeWire (`libpipewire-0.3-dev`) | any recent | Linux only, optional, used only when ALSA is not — see [Linux audio](#linux-audio). |
@@ -91,9 +91,9 @@ each with a matching `build-<platform>[-debug]` and `test-<platform>[-debug]` pr
 | Windows | MSVC | `config-windows-msvc[-debug]` | `build-windows-msvc[-debug]` | `test-windows-msvc[-debug]` |
 | Windows | clang-cl | `config-windows-llvm[-debug]` | `build-windows-llvm[-debug]` | `test-windows-llvm[-debug]` |
 | Linux | GCC 16 | `config-linux-gcc[-debug]` | `build-linux-gcc[-debug]` | `test-linux-gcc[-debug]` |
-| Linux | Clang 21 | `config-linux-llvm[-debug]` | `build-linux-llvm[-debug]` | `test-linux-llvm[-debug]` |
+| Linux | Clang 22 | `config-linux-llvm[-debug]` | `build-linux-llvm[-debug]` | `test-linux-llvm[-debug]` |
 | Linux (arm64) | GCC 16 | `config-linux-gcc-arm64[-debug]` | `build-linux-gcc-arm64[-debug]` | `test-linux-gcc-arm64[-debug]` |
-| Linux (arm64) | Clang 21 | `config-linux-llvm-arm64[-debug]` | `build-linux-llvm-arm64[-debug]` | `test-linux-llvm-arm64[-debug]` |
+| Linux (arm64) | Clang 22 | `config-linux-llvm-arm64[-debug]` | `build-linux-llvm-arm64[-debug]` | `test-linux-llvm-arm64[-debug]` |
 | macOS | Homebrew LLVM | `config-macos-llvm[-debug]` | `build-macos-llvm[-debug]` | `test-macos-llvm[-debug]` |
 
 The two `-arm64` rows are the same `linux.gcc.toolchain.cmake`/`linux.llvm.toolchain.cmake` files as
@@ -107,9 +107,35 @@ because it isn't a platform/compiler pair but an instrumented variant of `linux-
 which inherits `linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
 `AC3FORGE_SANITIZERS=address,undefined` (see `cmake/Sanitizers.cmake`; MSVC is rejected outright,
 so this only exists for GCC/Clang). See [Verified configuration](#verified-configuration) for what CI says
-about all seventeen. There are also eight `ci-<platform>` `workflowPresets` (Release except for the
-asan-ubsan one, which is Debug-only) that chain configure→build→test in one
-`cmake --workflow --preset ci-windows-msvc` call; that is exactly what CI itself runs.
+about all eighteen. There are also nine `ci-<platform>` `workflowPresets` (Release except for the
+two sanitizer ones and the coverage one, which are Debug-only) that chain
+configure→build→test in one `cmake --workflow --preset ci-windows-msvc` call; that is exactly
+what CI itself runs.
+
+There is an eighteenth trio, the ThreadSanitizer sibling of the pair above:
+`config-linux-llvm-tsan` / `build-linux-llvm-tsan` / `test-linux-llvm-tsan`, inheriting
+`linux-llvm` plus a `sanitize-tsan` fragment setting `AC3FORGE_SANITIZERS=thread`. It is a
+separate preset rather than more entries in the ASan/UBSan list because the two runtimes are
+mutually exclusive — Clang refuses `-fsanitize=address,thread` outright — and because they
+answer different questions: ASan/UBSan ask whether one thread's memory and arithmetic are sound,
+TSan asks whether two threads agree on who owns what. Nothing else in this repository can see a
+data race, and `src/audio` is a lock-free SPSC ring, a silence watchdog and a clock-drift servo
+shared between a real-time callback thread and the encoder thread.
+
+Its test preset runs only the `concurrency` ctest label — `tests/audio/` plus
+`tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
+times slower and the rest of the suite is single-threaded codec maths. The label comes from the
+Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)` in `tests/CMakeLists.txt`),
+so `ctest -L ring`, `-L encoder` and the rest work the same way. `tsan.supp` at the repository
+root holds the suppressions, and is meant to stay near-empty; `ac3membench` is not built under
+this preset, because its global `operator new`/`delete` replacements collide with TSan's own
+runtime at link time.
+
+```bash
+cmake --preset config-linux-llvm-tsan
+cmake --build --preset build-linux-llvm-tsan -- -k 0
+ctest --preset test-linux-llvm-tsan
+```
 
 There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-coverage` /
 `test-linux-gcc-coverage`, the same shape as the asan-ubsan one: an instrumented variant of
@@ -117,22 +143,37 @@ There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-covera
 `AC3FORGE_ENABLE_COVERAGE=ON` (see `cmake/Coverage.cmake`, GCC/Clang's `--coverage` gcov
 instrumentation; other compilers just warn and skip it), `AC3FORGE_BUILD_ADM=ON` with vcpkg's
 `adm` feature (so the opt-in ADM pair — `ac3adm` and its bridge — is measured alongside the
-always-on seven), plus `AC3FORGE_BUILD_CLI=OFF` and `AC3FORGE_BUILD_EXAMPLES=OFF` — purely a
-build-time saving: `ac3cli` and the `examples/` executables would link fine against the
-instrumented libraries (the gcov runtime propagates to consumers automatically, see
-`cmake/Coverage.cmake`), but the report is filtered to the library components, so building them
-instrumented buys nothing. After `ctest`,
-`tools/checks/coverage_report.sh` (the same script `.github/workflows/ci.yml`'s `coverage` job runs)
-makes one `gcovr` extraction pass over every `src/` library component and then gates line *and*
-branch coverage per component — see the script's own floor table for the current thresholds and
-the measured baseline each was calibrated against:
+always-on seven) and `AC3FORGE_BUILD_CLI=ON`, since `apps/cli` is gated too. Only
+`AC3FORGE_BUILD_EXAMPLES` stays off, as a build-time saving: `examples/` is documentation that
+happens to compile, over an API surface `tests/` already covers, and each one is its own `ctest`
+process.
+
+Note that `ac3cli` has to link `ac3::coverage` itself (`apps/cli/CMakeLists.txt`) and not merely
+link an instrumented library. The gcov *runtime* propagates to consumers automatically, but
+`--coverage` is target-scoped at compile time — so without that link every `.cpp` under
+`apps/cli` compiles uninstrumented and emits no `.gcno` at all, which reads as *no data* rather
+than as low coverage. The same applies to any other executable added to the report later.
+
+After `ctest`, `tools/checks/coverage_report.sh` (the same script `.github/workflows/ci.yml`'s
+`coverage` job runs) makes one `gcovr` extraction pass and then gates line *and* branch coverage
+per component — the nine `src/` library components plus `apps/cli` — and prints a per-command
+breakdown of `apps/cli` below the gate, reported but not gated, so a thin command module shows as
+thin instead of averaging away inside the aggregate. See the script's own floor table for the
+current thresholds and the measured baseline each was calibrated against:
 
 ```bash
 cmake --preset config-linux-gcc-coverage
 cmake --build --preset build-linux-gcc-coverage -- -k 0
 ctest --preset test-linux-gcc-coverage -LE Performance
-./tools/checks/coverage_report.sh -g gcov-15
+./tools/checks/coverage_report.sh -g gcov-16
 ```
+
+`apps/gui` is deliberately absent from that report: instrumenting its C++ needs a Qt kit on the
+coverage leg, and no Linux CI leg installs one today. Its interactive surfaces are covered by
+`apps/gui/tests`' own Qt Quick suite, and its one Qt-free class (`RecordingSink`) is already in
+`ac3tests`. `python/` has its own floor instead, in `.github/workflows/wheels.yml`'s
+`python-coverage` job — `pytest --cov` against the built wheel; see that job's own comment for
+what a Python percentage does and does not measure when nearly all of the binding surface is C++.
 
 There is a seventeenth trio, `config-linux-llvm-shared` / `build-linux-llvm-shared` /
 `test-linux-llvm-shared`, same shape again: an instrumented variant of `linux-llvm`, Debug-only.
@@ -189,6 +230,7 @@ platform/compiler fragment matches your machine.
 |---|---|---|
 | `AC3FORGE_BUILD_CLI` | `ON` | Build `ac3cli`. |
 | `AC3FORGE_BUILD_GUI` | `ON` on the two Windows presets, `OFF` on Linux and macOS | Build `ac3gui`. Requires Qt. Off by default outside Windows because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
+| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
 | `AC3FORGE_BUILD_TESTS` | `ON` | Build the Catch2 suite. Requires Catch2. |
 | `AC3FORGE_FETCH_CATCH2` | `ON` | When no local Catch2 3 is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v3.15.3 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `tests/CMakeLists.txt`. Irrelevant when `AC3FORGE_BUILD_TESTS` is off. |
 | `AC3FORGE_BUILD_EXAMPLES` | `ON` | Build `examples/`, and register them as tests. |
@@ -216,7 +258,7 @@ without the preset and pass the generator and build type by hand.
 ## Building on Linux
 
 `config-linux-gcc` and `config-linux-llvm` (each with a `-debug` variant, same as the Windows
-presets) are GCC 16 and Clang 21 respectively. They do **not** share the `debug`/`release` bare
+presets) are GCC 16 and Clang 22 respectively. They do **not** share the `debug`/`release` bare
 names used elsewhere in this document — there is no `cmake --preset debug` on any platform; see
 [Presets](#presets) above.
 
@@ -229,8 +271,8 @@ ctest --preset test-linux-gcc-debug
 
 Substitute `linux-llvm` for `linux-gcc` to build with Clang instead. `VCPKG_ROOT` works the same
 way as on Windows: it must point at a vcpkg checkout for the toolchain file the preset
-references, even though (as on Windows) it supplies nothing but Catch2. This project's own
-convention keeps that checkout under `/opt/vcpkg`, but any path works — there is nothing
+references, even though (as on Windows) it supplies nothing but fmt and Catch2. This project's
+own convention keeps that checkout under `/opt/vcpkg`, but any path works — there is nothing
 Linux-specific about vcpkg here.
 
 ### GUI on Linux
@@ -358,7 +400,7 @@ alone already has today.
 
 #### What has and has not been verified
 
-**ALSA.** Verified on WSL2 Ubuntu 26.04 with gcc 15.2 and clang 21.1, in every configuration:
+**ALSA.** Verified on WSL2 Ubuntu 26.04 with gcc 15.2 and clang 22.1, in every configuration:
 with libasound present and absent, and under ASan+UBSan with leak detection. The full suite
 passes in all of them. The device-independent halves of the backend — device-name construction,
 channel-status derivation, the negotiation, the render and capture threads, start/stop, and the
@@ -373,7 +415,7 @@ has been asked to lock onto the result. Whether a given output accepts a bitstre
 per-device anyway — `ac3cli outputs` probes each one and says.
 
 **PipeWire.** Verified on the same WSL2 Ubuntu 26.04 host with libpipewire-0.3 1.6.2, gcc 15.2
-and clang 21.1, with `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON` forcing the
+and clang 22.1, with `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON` forcing the
 selection (WSL2's image has both sets of headers installed, and ALSA wins by default — see
 above). The full suite passes on both compilers. There is no PipeWire session running in that
 environment at all (no `pipewire`/`wireplumber` daemon, confirmed by `pw_context_connect()`
@@ -514,7 +556,7 @@ The Linux instructions were run on:
 | | |
 |---|---|
 | OS | Ubuntu 26.04 (WSL2) |
-| Compilers | GCC 15.2.0 and Clang 21.1.x, both tried |
+| Compilers | GCC 15.2.0 and Clang 22.1.x, both tried |
 | CMake | ≥ 3.28, Ninja generator |
 | Qt | 6.10.2, apt-packaged (`qt6-base-dev`, `qt6-declarative-dev`) |
 | ALSA | `libasound2-dev`, both present and as the no-ALSA fallback — see [Linux audio](#linux-audio) |
@@ -533,9 +575,13 @@ also runs clean headless (`QT_QPA_PLATFORM=offscreen`), encoding real audio and 
 real QML channel meters. See [Linux audio](#linux-audio) for what the ALSA verification did,
 and did not (real hardware), prove.
 
-linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, macos-llvm,
+linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan,
+linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/audio/` and the
+headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
+script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
+all three pinned in `requirements/requirements-lint.txt`),
 static-analysis (clang-tidy), coverage (`tools/checks/coverage_report.sh` over every `src/` library
-component, via `config-linux-gcc-coverage`),
+component *and* `apps/cli`, via `config-linux-gcc-coverage`),
 adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push, as does
 build-android (the Shield app's debug APK) — the four Linux build legs install the same
 Qt6/ALSA packages and build/smoke-test the GUI too. ffmpeg-validate is a
@@ -548,11 +594,18 @@ combination produces a *structurally correct* stream at all, plus a numeric fide
 the Annex E tool combinations the one fixed gold-reference sample does not itself exercise. No
 leg remains experimental.
 
-The coverage job gates line and branch coverage per library component, not as one blended
+The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
-floor was calibrated against, and why two components (`src/audio`'s device paths, `src/capi`'s
-E-AC-3 surface) are honestly floored low all live in `tools/checks/coverage_report.sh`, with the
-calibration history in the coverage job's own comment in `ci.yml`.
+floor was calibrated against, and why three components (`src/audio`'s device paths, `src/capi`'s
+E-AC-3 surface, `apps/cli`'s device-dependent command modules) are honestly floored low all live
+in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
+comment in `ci.yml`.
+
+On `pull_request` only, a `performance-compare` job builds `ac3bench`/`ac3kernelbench` at the
+merge base and at the PR head on one runner and posts a table of per-workload deltas to the job
+summary, using the same soft/hard tiers `tools/ci/append_performance_history.py` applies on
+merge. It is informational and never fails a build — the blocking performance checks remain
+`ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
 
 No macOS host exists for this project, so `config-macos-llvm`/`config-macos-llvm-debug` are only
 ever exercised by CI (`macos-latest`, Apple Silicon) — never locally. That CI leg is green:

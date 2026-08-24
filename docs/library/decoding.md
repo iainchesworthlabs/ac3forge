@@ -10,12 +10,12 @@ beats asking a caller who can be wrong.
 // Spans in the result point into `stream`, so it has to outlive them.
 const auto scanned = ac3::io::scan(stream);
 if (!scanned) {
-    std::printf("scan failed: %.*s\n",
+    fmt::printf("scan failed: %.*s\n",
                 static_cast<int>(ac3::io::describe(scanned.error()).size()),
                 ac3::io::describe(scanned.error()).data());
     return 1;
 }
-std::printf("%s, %u Hz, %d channels, %zu access units\n",
+fmt::printf("%s, %u Hz, %d channels, %zu access units\n",
             scanned->kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
             ac3::sample_rate_hz(scanned->sample_rate), scanned->channels,
             scanned->access_units.size());
@@ -40,7 +40,7 @@ ac3::FrameDecoder decoder;
 for (const auto unit : scanned->access_units) {
     const auto decoded = decoder.decode_frame(unit);
     if (!decoded) {
-        std::printf("decode failed: %.*s\n",
+        fmt::printf("decode failed: %.*s\n",
                     static_cast<int>(ac3::describe(decoded.error()).size()),
                     ac3::describe(decoded.error()).data());
         return 1;
@@ -197,7 +197,7 @@ for (std::size_t i = 0; i < frames->size(); ++i) {
     const auto decoded = decoder.decode_frame((*frames)[i]);
     if (!decoded) {
         const auto message = ac3::describe(decoded.error());
-        std::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
+        fmt::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
                     static_cast<int>(message.size()), message.data());
         ++failed;
         continue;

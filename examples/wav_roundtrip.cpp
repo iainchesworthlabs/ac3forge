@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -32,7 +33,7 @@ constexpr int kFrames = 62;  // two seconds
 constexpr std::array<double, 6> kTones{1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
 
 bool fail(const char* what, std::string_view detail) {
-    std::printf("%s: %.*s\n", what, static_cast<int>(detail.size()), detail.data());
+    fmt::printf("%s: %.*s\n", what, static_cast<int>(detail.size()), detail.data());
     return false;
 }
 
@@ -58,7 +59,7 @@ int main() {
     if (const auto wrote = ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order); !wrote) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
-    std::printf("wrote %s\n", source_path.c_str());
+    fmt::printf("wrote %s\n", source_path.c_str());
 
     // Read it back - read_wav hands the samples back in WAV order, so
     // ac3_layout_for's wav_index permutes them onto AC-3 channel k.
@@ -68,7 +69,7 @@ int main() {
     }
     const auto layout = ac3::io::ac3_layout_for(read->channels.size());
     if (!layout || layout->acmod != kAcmod || layout->lfe != kLfe) {
-        std::printf("unexpected WAV channel count: %zu\n", read->channels.size());
+        fmt::printf("unexpected WAV channel count: %zu\n", read->channels.size());
         return 1;
     }
     std::vector<std::vector<float>> from_wav(layout->wav_index.size());
@@ -91,7 +92,7 @@ int main() {
         }
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         const auto decoded = decoder.decode_frame(*encoded);
@@ -110,7 +111,7 @@ int main() {
         !wrote) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
-    std::printf("wrote %s (%zu frames)\n", result_path.c_str(), decoded_ac3_order.front().size());
+    fmt::printf("wrote %s (%zu frames)\n", result_path.c_str(), decoded_ac3_order.front().size());
 
     std::filesystem::remove(source_path);
     std::filesystem::remove(result_path);

@@ -10,10 +10,8 @@ deliberately: the MDCT/IMDCT pair carries a real, and real-but-unstated-here, bl
 this test cares about "the codec faithfully reproduced the tone", not the exact delay in samples.
 """
 
-import numpy as np
-import pytest
-
 import ac3forge as ac3
+import numpy as np
 
 
 def _tone(freq_hz, n, sample_rate=48000, amplitude=0.2, phase=0.0):

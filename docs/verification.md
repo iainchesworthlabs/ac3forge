@@ -56,13 +56,27 @@ In rough order of strength:
    the checked-in seed and regression corpora on every push and PR, and the `Fuzz Differential`
    job adds a bounded mutation budget on pushes.
 
-   Out of the encoder: `tools/ci/fuzz_encoder_space.py` draws random legal encoder configurations
-   crossed with adversarial PCM — transients, silence↔loud transitions inside one frame, spectral
-   jumps between blocks, dense harmonics, clipping — and holds every stream it produces against
-   both decoders. This is the one check here that varies the *input material* rather than the
-   option list; it exists because an encoder defect that produced streams both decoders reject
-   needed a specific input shape to reach, and so escaped every other check on this page. Bounded
-   on every pull request, deeper nightly. See
+   The object and metadata layer is driven directly rather than through the decoder: separate
+   harnesses over `emdf::parse_container`, `oba::parse_payload`, `joc::parse_payload`,
+   `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
+   seeded from the real payloads inside this project's own Atmos streams. That matters because
+   the indirect route was mostly closed: both decoders check their CRC words before reading the
+   frame behind them, so a mutation landing in a skip field died at the checksum. The two decode
+   harnesses now carry a custom mutator that re-stamps crc1 and crc2 after mutating — crc1
+   through the GF(2) polynomial inverse it has to be solved with — while leaving one mutation in
+   four unrepaired so the rejection path itself stays reachable.
+
+   Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
+   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
+   configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one
+   frame, spectral jumps between blocks, dense harmonics, clipping — and hold every stream they
+   produce against both decoders. This is the one check here that varies the *input material*
+   rather than the option list; it exists because an encoder defect that produced streams both
+   decoders reject needed a specific input shape to reach, and so escaped every other check on
+   this page. The E-AC-3 half additionally covers the Annex E tool tokens, the `fscod2` half
+   rates, VBR, the layouts that need dependent substreams and Atmos object counts, and classifies
+   each case by which oracle can actually read it (the table below). Bounded on every pull
+   request, deeper nightly. See
    [fuzz/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md).
 
 Contributor-facing detail on which oracle to reach for and how — including the exact FFmpeg
@@ -99,12 +113,19 @@ rather than only in that run's CI log.
 
 Both transform hot spots — the forward MDCT (§8.2.3.2) and the inverse transform's step-3
 complex sum (§7.9.4) — exist in two evaluations: the spec's own direct form, and a fast path
-through a shared radix-2 FFT core. The direct forms are the *reference*: they are what the
-standard states, and every fast path is validated against its direct counterpart by the test
-suite (max peak-normalized relative error ~3e-12 forward, 7.8e-14 inverse; end-to-end agreement
-331 dB direct-vs-fast for encode, 214.9/284.7 dB SNR for AC-3/E-AC-3 decode over 180 seconds of
-real material). The fast paths are the default, because that evidence was reviewed and accepted
-before each default flipped.
+through a shared FFT kernel. The direct forms are the *reference*: they are what the standard
+states, and every fast path is validated against its direct counterpart by the test suite (max
+peak-normalized relative error 1.3e-13 forward, 7.8e-14 inverse, 1.7e-15 for `dft512`
+against its own O(N²) summation; end-to-end agreement 331 dB direct-vs-fast for encode, and
+232.1 dB (AC-3) / 208.2 dB (E-AC-3, every Annex E tool) / 217.9 dB (E-AC-3, enhanced coupling)
+for a decode over 180 seconds of real material). The fast paths are the default, because that
+evidence was reviewed and accepted before each default flipped.
+
+The kernel itself is radix-4 with a trailing radix-2 stage where log2(P) is odd, specialised at
+compile time for the three sizes the codec uses (P = 64, 128, 512), with the first stage's
+unit twiddles eliminated and the digit-reversal permutation folded into each caller's own
+input-producing loop rather than run as a pass — 1.6–1.75× the throughput of the generic
+radix-2 core it replaced, at the same tolerances.
 
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
@@ -113,9 +134,14 @@ against an external decoder, or isolating a suspected transform defect — and `
 `fast-imdct=off` adjust one half at a time; see
 [Options & grammars](cli/metadata-options.md#command-specific-notes) for the full token
 semantics. At the library level the same pair is `EncoderConfig::fast_mdct` /
-`eac3::FrameConfig::fast_mdct` and `DecoderConfig::fast_imdct`. Encoded output never depends on
-the decode-side switch: the encoder's own internal inverse-transform uses are pinned to the
-direct form regardless of any mode.
+`eac3::FrameConfig::fast_mdct` and `DecoderConfig::fast_imdct`.
+
+Encoded output never depends on the decode-side switch. An enhanced-coupling encode does run an
+inverse transform of its own — `ecpl_channel_spectrum` reconstructs the spectrum the decoder
+will hold — and that one follows `eac3::FrameConfig::fast_mdct`, which makes that field the
+encoder's fast-transform switch in both directions and keeps `mode=reference` direct end to
+end. It is byte-identical either way on the encode corpus at the tolerances above, so it is a
+speed choice, not an output one; `DecoderConfig::fast_imdct` reaches no encoder at all.
 
 ## Test suite
 
@@ -148,6 +174,25 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
+
+Every "no" in that column is a cell where a generated stream has to be checked some other way,
+which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
+(roadmap VX1) is built around: it classifies every case it draws by which of these rows it lands
+on, and checks the *framing* of the ones FFmpeg cannot decode — which needs no decode at all. Two
+things do it: a walk over the four fields that fix E-AC-3's framing (syncword, `strmtyp`,
+`substreamid`, `frmsiz`, all at fixed bit offsets), which shares nothing with the encoder and
+works at every layout; and `ffprobe`'s own syncframe walk, where FFmpeg can be trusted to do one.
+It is not asked about a two-dependent layout, because it demonstrably cannot: on one 7.1.4 stream
+it reported 19 access units where 18 were written, splitting one at an offset that is not a
+syncframe boundary — it had lost sync inside the very substream this table's "no" row is about.
+
+None of this closes the gap — the paragraphs below still stand, and a misreading shared by this
+project's encoder and its decoder would survive a framing check as easily as it survives the
+round trip — but it is more than nothing, and it is where a bit-offset defect shows up first: a
+syncframe written at the wrong offset is a syncframe whose `frmsiz` no longer lands the next
+syncword where it promised. The harness's `--check-oracles` re-measures this table's own claims
+against the installed FFmpeg, so a row that stops being true is reported rather than quietly
+assumed.
 
 **7.1.4 has no external oracle at all.** For that one layout, encoder and decoder are checked
 against each other and nothing else:
@@ -186,6 +231,33 @@ a normal-rate stream from this encoder without issue. `fscod2` appears to be a c
 own reference implementation does not support it. So the coded audio is verified only by this
 project's own encoder/decoder round trip and the independent Python parser
 (`tools/references/eac3_parse.py`).
+
+**Containers and manifests are checked externally where a reader exists, and only there.**
+`mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
+(`ffmpeg -v error -xerror -err_detect crccheck+bitstream+buffer+explode`) over the init segment
+concatenated with every media segment, and both the HLS media playlist and the DASH MPD read back
+through FFmpeg's own `hls` and `dash` demuxers at the exact original access-unit count —
+confirmed on a session written segment-by-segment by the streaming writer, not only on the batch
+form. The `ceao` compatibility brand is present in the `ftyp` and every `styp` of an
+object-audio track and does not disturb that decode.
+
+What has **not** been checked against anything external is the *meaning* of the DASH signalling.
+`EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` and the Dolby
+`audio_channel_configuration:2011` `@value` are transcribed from ETSI TS 103 420 clause D.2 and
+TS 102 366 clause I.1.2.1 (via DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3) and asserted against those
+clause texts in `tests/containers/test_fmp4.cpp`, including the element order ISO/IEC 23009-1's
+`RepresentationBaseType` sequence requires — but FFmpeg's DASH demuxer ignores supplemental
+descriptors entirely, so it confirms only that the manifest still parses and plays, not that a
+JOC-aware player would read the right complexity index from it. No MPD schema validator and no
+real DASH player has been run against these manifests. The same gap applies to the HLS
+`CHANNELS="<N>/JOC"` attribute, which predates this work.
+
+The incremental writers are held to a stronger in-repo standard instead: `mp4::FragmentWriter`'s
+media segments are asserted byte-identical to `mp4::fragment`'s over the same frames, and its
+initialization segment byte-identical once the three duration fields a live session cannot know
+are patched back — the same equality contract `mpegts::Writer` has against `mpegts::mux`. That
+makes the batch form's own external validation carry over to the streamed one by construction
+rather than by re-measuring it.
 
 **`compr` in E-AC-3 has no external oracle.** FFmpeg's Annex E header parser reads `compre` and
 then skips the word, so `-heavy_compr` changes nothing on an E-AC-3 stream however good the

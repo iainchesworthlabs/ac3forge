@@ -76,10 +76,25 @@ by `ci.yml` and `release.yml`; every other workflow file responds to a real GitH
 ## Code conventions
 
 **C++23, and use it.** `std::expected` for recoverable failure, `std::span` for borrowed
-sequences, `std::print`/`std::format` for output, designated initializers for configuration
-structs, `constexpr` and `consteval` for anything computable at build time. The window tables
-and several spec-table self-checks are `consteval` — a table that is wrong fails the build
-rather than a test.
+sequences, `fmt::print`/`fmt::format` for output — not the `std::print`/`std::format`
+equivalents, since NDK r26's bundled libc++ has no `<format>` at all (see
+`docs/platforms/android.md`) and {fmt} sidesteps the gap outright rather than routing around it
+file by file — designated initializers for configuration structs, `constexpr` and `consteval` for
+anything computable at build time. (A handful of older call sites already used C-style
+`%`-specifier output before this convention existed; those keep their existing format strings but
+go through `fmt::printf`/`<fmt/printf.h>`, not `std::printf`, for the same NDK reason.) The
+window tables and several spec-table self-checks are
+`consteval` — a table that is wrong fails the build rather than a test.
+
+**One exception, for reading rather than writing.** {fmt} only formats *out*; it has no
+`from_chars`-equivalent for parsing text *into* a `double`, and `<charconv>`'s own **floating-point**
+`from_chars` is unavailable both on the NDK's bundled libc++ and at the macOS wheel's deployment
+target (`'from_chars' is unavailable: introduced in macOS 26.0`) — the **integer** overloads are
+fine everywhere and are used directly. Code that has to parse a decimal from user- or
+file-supplied text therefore goes through `strtod` instead (`src/forge/src/encoder/plan.cpp`,
+`encoder/assignment.cpp`, `src/forge/src/oba/scene_text.hpp`). Neither gap shows up on a Windows,
+Linux or Homebrew-macOS build, so the CI legs that catch it are Android (Shield) and Build wheels
+(macos-latest).
 
 **Warnings are errors.** `ac3::warnings` is linked privately into every first-party target,
 including `examples/`. That includes `-Wsign-conversion` and its MSVC equivalents, which in

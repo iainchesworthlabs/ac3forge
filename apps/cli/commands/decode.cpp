@@ -7,9 +7,9 @@
 #include <cstdio>
 #include <expected>
 #include <filesystem>
-#include <format>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -48,7 +48,7 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
         const char* joc = have_object_audio ? ", JOC audio reconstructed"
                                             : " (JOC audio not reconstructed)";
         if (program.dynamic_only) {
-            std::println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
+            fmt::println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
                          metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
                          ac3::oba::object_count(program), joc);
         } else {
@@ -64,13 +64,13 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
                 labels += ac3::oba::describe(label);
             }
             if (labels.empty()) {
-                labels = std::format("{} channels", ac3::oba::bed_channel_count(program));
+                labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
             }
-            std::println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
+            fmt::println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
                          labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
         }
         if (metadata->trim) {
-            std::println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
+            fmt::println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
                          metadata->trim->warp_mode, metadata->trim->global_trim_mode);
         }
         if (!metadata->skipped_elements.empty()) {
@@ -81,10 +81,10 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
                 }
                 ids += std::to_string(id);
             }
-            std::println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
+            fmt::println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
         }
         if (metadata->blocks.size() > 1) {
-            std::println(status, "  {} metadata update blocks per frame",
+            fmt::println(status, "  {} metadata update blocks per frame",
                          metadata->blocks.size());
         }
     }
@@ -92,12 +92,12 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
         return 0;
     }
     if (objects_written == 0) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "warning: objects_dir given but there is no reconstructed object audio to "
                      "export");
         return 0;
     }
-    std::println(status, "  wrote {} object WAV(s) to {}", objects_written, objects_dir);
+    fmt::println(status, "  wrote {} object WAV(s) to {}", objects_written, objects_dir);
     return 0;
 }
 
@@ -109,15 +109,15 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
 void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
                        double compr_min_db, double compr_max_db, std::size_t compr_frames,
                        const ac3cli::Options& meta) {
-    std::println(status, "  dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
-                 meta.drc_scale != 0.0 ? std::format(", applied at scale {}", meta.drc_scale)
+    fmt::println(status, "  dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
+                 meta.drc_scale != 0.0 ? fmt::format(", applied at scale {}", meta.drc_scale)
                                        : ", not applied");
     if (compr_frames > 0) {
-        std::println(status, "  compr  {:+.2f} .. {:+.2f} dB over {} access units{}",
+        fmt::println(status, "  compr  {:+.2f} .. {:+.2f} dB over {} access units{}",
                      compr_min_db, compr_max_db, compr_frames,
                      meta.p.heavy ? ", applied" : ", not applied");
     } else {
-        std::println(status, "  compr  absent");
+        fmt::println(status, "  compr  absent");
     }
 }
 
@@ -128,7 +128,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // together into one set of speaker feeds.
     const auto units = ac3::split_access_units(stream);
     if (!units) {
-        std::println(stderr, "error: stream framing failed (code {})",
+        fmt::println(stderr, "error: stream framing failed (code {})",
                      static_cast<int>(units.error()));
         return 1;
     }
@@ -154,7 +154,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 static_cast<std::size_t>(unit.layout.count)));
         }
         if (!sink.open(out_path, sample_rate_hz(unit.sample_rate), slots, order)) {
-            std::println(stderr, "error: cannot open {} for writing", out_path);
+            fmt::println(stderr, "error: cannot open {} for writing", out_path);
             return false;
         }
         return true;
@@ -190,15 +190,15 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             const std::filesystem::path dir{std::string{objects_dir}};
             std::filesystem::create_directories(dir, ec);
             if (ec) {
-                std::println(stderr, "error: cannot create directory {} ({})", objects_dir,
+                fmt::println(stderr, "error: cannot create directory {} ({})", objects_dir,
                              ec.message());
                 return false;
             }
             object_sinks.resize(object_audio.size());
             for (std::size_t i = 0; i < object_sinks.size(); ++i) {
-                const auto object_path = dir / std::format("object_{:02}.wav", i);
+                const auto object_path = dir / fmt::format("object_{:02}.wav", i);
                 if (!object_sinks[i].open(object_path.string(), sample_rate, 1, {})) {
-                    std::println(stderr, "error: cannot open {} for writing",
+                    fmt::println(stderr, "error: cannot open {} for writing",
                                  object_path.string());
                     return false;
                 }
@@ -209,7 +209,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
         for (std::size_t i = 0; i < object_sinks.size(); ++i) {
             if (!object_sinks[i].append(0, object_audio[i])) {
-                std::println(stderr, "error: cannot write object audio under {}", objects_dir);
+                fmt::println(stderr, "error: cannot write object audio under {}", objects_dir);
                 return false;
             }
         }
@@ -253,7 +253,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
-            std::println(stderr, "error: decode failed (code {})",
+            fmt::println(stderr, "error: decode failed (code {})",
                          static_cast<int>(decoded.error()));
             abort_all();
             return 1;
@@ -274,7 +274,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         track_metadata(out.dynrng, out.numblkscod, out.compr);
         for (std::size_t ch = 0; ch < out.channels.size(); ++ch) {
             if (!sink.append(ch, out.channels[ch])) {
-                std::println(stderr, "error: cannot write to {}", out_path);
+                fmt::println(stderr, "error: cannot write to {}", out_path);
                 abort_all();
                 return 1;
             }
@@ -326,7 +326,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 }
                 for (std::size_t ch = 0; ch < substream.channels.size(); ++ch) {
                     if (!sink.append(ch, substream.channels[ch])) {
-                        std::println(stderr, "error: cannot write to {}", out_path);
+                        fmt::println(stderr, "error: cannot write to {}", out_path);
                         abort_all();
                         return 1;
                     }
@@ -376,7 +376,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                     }
                     if (!sink.append(static_cast<std::size_t>(slot),
                                      substream.channels[static_cast<std::size_t>(i)])) {
-                        std::println(stderr, "error: cannot write to {}", out_path);
+                        fmt::println(stderr, "error: cannot write to {}", out_path);
                         abort_all();
                         return 1;
                     }
@@ -395,7 +395,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
     }
     if (!sink.is_open()) {
-        std::println(stderr, "error: no access units");
+        fmt::println(stderr, "error: no access units");
         return 1;
     }
     // Dual mono has no Table E2.5 location to order by - decode_access_unit
@@ -407,21 +407,21 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     const auto status = status_stream(out_path);
     const auto written = sink.close();
     if (!written) {
-        std::println(stderr, "error: {}", ac3::io::describe(written.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return 1;
     }
     std::size_t objects_written = 0;
     for (auto& object_sink : object_sinks) {
         if (const auto closed = object_sink.close(); !closed) {
-            std::println(stderr, "error: {}", ac3::io::describe(closed.error()));
+            fmt::println(stderr, "error: {}", ac3::io::describe(closed.error()));
             return 1;
         }
         ++objects_written;
     }
     if (first.acmod == ac3::Acmod::kDualMono) {
-        std::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
+        fmt::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
                      units->size(), first.substream_count, out_path);
-        std::println(status,
+        fmt::println(status,
                      "  {} channels, {} Hz: Ch1 Ch2 (1+1 dual mono - two programmes, not a "
                      "soundfield)",
                      sink_slots, sample_rate_hz(first.sample_rate));
@@ -440,9 +440,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         speakers += ac3::eac3::chanmap::name(first.layout[static_cast<int>(index)]);
         speakers += ' ';
     }
-    std::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
+    fmt::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
                  units->size(), first.substream_count, out_path);
-    std::println(status, "  {} channels, {} Hz: {}", map.size(), sample_rate_hz(first.sample_rate),
+    fmt::println(status, "  {} channels, {} Hz: {}", map.size(), sample_rate_hz(first.sample_rate),
                  speakers);
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
@@ -456,7 +456,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
                std::string_view objects_dir) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
+        fmt::println(stderr, "error: cannot read {}", in_path);
         return 1;
     }
     if (!apply_object_verification(stream, meta)) {
@@ -467,20 +467,20 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // E-AC-3 (Eac3BurstPacker alongside AC-3's wrap_frame).
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
-        std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
     if (*bsid > 8) {
         return run_decode_eac3(stream, out_path, meta, objects_dir);
     }
     if (!objects_dir.empty()) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "warning: objects_dir given but {} is plain AC-3 - it has no object layer",
                      in_path);
     }
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
-        std::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
         return 1;
     }
     ac3::FrameDecoder decoder{
@@ -501,7 +501,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded) {
-            std::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
+            fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
             sink.abort();
             return 1;
         }
@@ -526,7 +526,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             if (!sink.open(out_path, sample_rate_hz(decoded->sample_rate),
                            decoded->channels.size(),
                            ac3::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
-                std::println(stderr, "error: cannot open {} for writing", out_path);
+                fmt::println(stderr, "error: cannot open {} for writing", out_path);
                 return 1;
             }
             meter.emplace(decoded->acmod, decoded->lfe, sample_rate_hz(decoded->sample_rate));
@@ -536,7 +536,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         views.reserve(decoded->channels.size());
         for (std::size_t ch = 0; ch < decoded->channels.size(); ++ch) {
             if (!sink.append(ch, decoded->channels[ch])) {
-                std::println(stderr, "error: cannot write to {}", out_path);
+                fmt::println(stderr, "error: cannot write to {}", out_path);
                 sink.abort();
                 return 1;
             }
@@ -549,36 +549,36 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         meter->process(views);
     }
     if (!have_first) {
-        std::println(stderr, "error: no frames");
+        fmt::println(stderr, "error: no frames");
         return 1;
     }
     const auto written = sink.close();
     if (!written) {
-        std::println(stderr, "error: {}", ac3::io::describe(written.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return 1;
     }
     // status_stream(out_path): stderr instead of stdout when out_path is "-"
     // - the WAV bytes just written above already own stdout in that case,
     // and this report must not land in the middle of them.
     const auto status = status_stream(out_path);
-    std::println(status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
+    fmt::println(status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
                  ac3::analysis::layout_name(first.acmod, first.lfe),
                  sample_rate_hz(first.sample_rate));
-    std::println(status, "metadata: dialnorm {} (dialogue at -{} dBFS)", first.dialnorm,
+    fmt::println(status, "metadata: dialnorm {} (dialogue at -{} dBFS)", first.dialnorm,
                  first.dialnorm);
     if (first.dialnorm2) {
-        std::println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
+        fmt::println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
                      *first.dialnorm2, *first.dialnorm2, first.compr2 ? ", compr2 present" : "");
     }
-    std::println(status, "          dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
-                 meta.drc_scale != 0.0 ? std::format(", applied at scale {}", meta.drc_scale)
+    fmt::println(status, "          dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
+                 meta.drc_scale != 0.0 ? fmt::format(", applied at scale {}", meta.drc_scale)
                                        : ", not applied");
     if (compr_frames > 0) {
-        std::println(status, "          compr  {:+.2f} .. {:+.2f} dB over {} frames{}",
+        fmt::println(status, "          compr  {:+.2f} .. {:+.2f} dB over {} frames{}",
                      compr_min_db, compr_max_db, compr_frames,
                      meta.p.heavy ? ", applied" : ", not applied");
     } else {
-        std::println(status, "          compr  absent");
+        fmt::println(status, "          compr  absent");
     }
     // The have_first check above already returned if the frame loop never
     // ran, and it is that same loop's first iteration that emplaces meter.
