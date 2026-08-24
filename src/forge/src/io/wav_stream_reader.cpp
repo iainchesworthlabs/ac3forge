@@ -69,13 +69,22 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
         return std::unexpected(WavError::kCannotOpen);
     }
 
+    // Every early return past this point must release im.file: leaving it
+    // open would keep the OS handle held (a Windows sharing violation on any
+    // caller that reacts to the rejection by deleting/rewriting the file)
+    // even though is_open() reports false.
+    auto fail = [this](WavError err) -> std::expected<void, WavError> {
+        close();
+        return std::unexpected(err);
+    };
+
     // File size first: the data chunk's declared size is clamped to what the
     // file actually holds, exactly as read_wav does, so a truncated capture
     // still yields its real frames rather than a kTruncated refusal.
     im.file.seekg(0, std::ios::end);
     const auto end_pos = im.file.tellg();
     if (end_pos < 0) {
-        return std::unexpected(WavError::kCannotOpen);
+        return fail(WavError::kCannotOpen);
     }
     const auto file_size = static_cast<std::uint64_t>(end_pos);
     im.file.seekg(0);
@@ -83,20 +92,20 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
     im.raw.resize(static_cast<std::size_t>(std::min<std::uint64_t>(kHeaderWindow, file_size)));
     im.file.read(im.raw.data(), static_cast<std::streamsize>(im.raw.size()));
     if (im.file.gcount() != static_cast<std::streamsize>(im.raw.size())) {
-        return std::unexpected(WavError::kCannotOpen);
+        return fail(WavError::kCannotOpen);
     }
 
     // The same parse as wav.cpp's parse_wav, field for field, over the
     // header window instead of the whole file.
     const std::string_view view{im.raw.data(), im.raw.size()};
     if (im.raw.size() < 44 || view.substr(0, 4) != "RIFF" || view.substr(8, 4) != "WAVE") {
-        return std::unexpected(WavError::kNotRiffWave);
+        return fail(WavError::kNotRiffWave);
     }
     const auto fmt_at = view.find("fmt ");
     const auto data_at = view.find("data");
     if (fmt_at == std::string_view::npos || data_at == std::string_view::npos ||
         fmt_at + 24 > im.raw.size() || data_at + 8 > im.raw.size()) {
-        return std::unexpected(WavError::kNotRiffWave);
+        return fail(WavError::kNotRiffWave);
     }
 
     const std::span<const char> bytes{im.raw};
@@ -112,7 +121,7 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
     im.is_float = format == 3 && im.bits == 32;
     const bool is_pcm16 = format == 1 && im.bits == 16;
     if (im.channels == 0 || (!im.is_float && !is_pcm16)) {
-        return std::unexpected(WavError::kUnsupportedFormat);
+        return fail(WavError::kUnsupportedFormat);
     }
 
     const auto declared = read_u32(bytes, data_at + 4);
@@ -121,13 +130,13 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
     const std::uint64_t payload = std::min<std::uint64_t>(declared, available);
     const std::size_t stride = static_cast<std::size_t>(im.channels) * im.bits / 8;
     if (stride == 0) {
-        return std::unexpected(WavError::kUnsupportedFormat);
+        return fail(WavError::kUnsupportedFormat);
     }
     im.frames_total = payload / stride;
     im.frames_read = 0;
     im.file.seekg(static_cast<std::streamoff>(payload_at));
     if (!im.file) {
-        return std::unexpected(WavError::kCannotOpen);
+        return fail(WavError::kCannotOpen);
     }
     im.open = true;
     return {};
