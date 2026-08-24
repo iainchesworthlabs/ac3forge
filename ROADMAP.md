@@ -392,9 +392,13 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
   already wired up (S, local). Then make the player's path configurable and run it as a
-  self-skipping job on the self-hosted Windows runner. First explain why it decodes DEE's own
-  stereo output to garbage (`gen_external_baseline.py`): every conclusion drawn through that
-  pipeline inherits the answer.
+  self-skipping job on the self-hosted Windows runner. The "decodes DEE's own stereo output to
+  garbage" blocker on this item is answered and was never a decode defect: the player applies
+  dialnorm, DEE writes a measured dialnorm of 12 on that stream, and the resulting 19 dB
+  attenuation was being charged to the decode by scoring it against an un-normalised source WAV.
+  Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
+  for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
+  through it - see `gen_external_baseline.py`'s module docstring.
 - [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
   not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
   trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the

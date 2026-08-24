@@ -110,6 +110,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The external baseline's DEE stereo score is explained rather than re-measured.** The
+  33.32 dB recorded for `eac3-stereo-192`'s DEE leg reproduces exactly against the same FFmpeg
+  8.0.1 build, and is now corroborated to 0.005 dB by this project's own decoder, so the number
+  and its `"decoded_with": "ffmpeg"` label both stand. What was missing is that FFmpeg fails that
+  stream's first frame from cold and `score_fixed`'s 0.2 s skip puts that frame outside the
+  scored window - across the whole file FFmpeg's decode is 14.30 dB. A `decoder_note` on that
+  entry now records it, emitted by `gen_external_baseline.py` so a regenerated baseline keeps it.
+  Separately, the Dolby Reference Player's long-standing "decodes DEE's own stereo output to
+  garbage" note is resolved: the player applies dialnorm, DEE writes a measured dialnorm of 12,
+  and the 19 dB attenuation that follows was being charged to the decode. Compensated, the same
+  decode scores 32.19 dB, which makes the player usable as an oracle again (`VX5`).
 - `ac3::signing`'s frame walk now reports "no container" for a syncframe outside the subset it
   supports, where it previously asserted. That was sound while signing and verifying were its
   only callers — each already knew what it was handing over — but `has_authenticity_tag` is asked
