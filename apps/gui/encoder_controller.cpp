@@ -566,17 +566,19 @@ struct EncoderController::LiveOutputWriters {
     QString path;  // the real destination the user chose
     bool matroska = false;
     // Engaged for fragmented MP4/CMAF instead of `stream`. Unlike Matroska's
-    // writer below this needs nothing from the coded channel count - its
+    // writer below this needs nothing from the rendered channel count - its
     // track comes from a scan of the first access unit - so it is fully set
     // up by openLiveOutputWriters and starts writing on the first push.
     std::optional<Fmp4FolderWriter> fmp4;
-    // Only engaged when matroska is set - constructed once the coded channel
-    // count is known (routing/atmos bed resolved), just after this struct is
-    // opened, back on the GUI thread in runLiveSession before the worker
-    // ever starts (see there). header() is written to `stream` at that same
-    // point; every push() return value is written to `stream` as the frame
-    // loop runs, and finalize()'s tail bytes at the end - see the "failure
-    // story" comment further down for exactly where.
+    // Only engaged when matroska is set - constructed once the track's
+    // rendered channel count is known (the plan/atmos bed resolved), just
+    // after this struct is opened, back on the GUI thread in runLiveSession
+    // before the worker ever starts (see there, and its own comment on why
+    // the track states rendered rather than coded channels). header() is
+    // written to `stream` at that same point; every push() return value is
+    // written to `stream` as the frame loop runs, and finalize()'s tail
+    // bytes at the end - see the "failure story" comment further down for
+    // exactly where.
     std::optional<matroska::Writer> writer;
     std::unique_ptr<ac3::io::WavStreamWriter> wav_safety;  // null when not requested
 };
@@ -3963,9 +3965,9 @@ std::unique_ptr<EncoderController::LiveOutputWriters> EncoderController::openLiv
     // still fall through to the same plain elementary-stream write, rather
     // than gaining a new failure mode.
     //
-    // Matroska's own track/writer construction needs the CODED channel count
-    // (routing/atmos bed), which is not resolved yet at this point - see
-    // runLiveSession, which constructs `writers->writer` and writes its
+    // Matroska's own track/writer construction needs the RENDERED channel
+    // count (the plan/atmos bed), which is not resolved yet at this point -
+    // see runLiveSession, which constructs `writers->writer` and writes its
     // header the moment that count is known, still on the GUI thread before
     // the worker starts. fMP4's does not: its track comes from a scan of the
     // first access unit, so it is fully set up here. Either way only the
@@ -4160,10 +4162,31 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
     bool monitor_ok = false;
     if (monitor) {
         auto msink = std::make_unique<ac3::audio::MonitorSink>();
-        const auto mstarted = msink->start(
-            std::string{}, device.sample_rate,
-            static_cast<std::uint16_t>(atmos_enabled_ ? 6 : plan::coded_channels(
-                                                              effectiveChannelPlan()).size()));
+        // RENDERED, not coded - the count has to be what runLiveSession's
+        // frame loop actually SUBMITS here, which is the monitor decoder's
+        // own output interleaved by plan::wav_order over the DECODED layout:
+        // one sample per speaker the stream renders, not one per channel it
+        // spent coding them. The two part company wherever a dependent
+        // substream REPLACES a bed channel of the same location instead of
+        // adding a new one, and an endpoint opened for the wrong one of them
+        // maps every speaker wrong and paces the queue wrong on top.
+        //
+        // No plan this GUI can currently build is such a plan: the Format
+        // tab's presets set custom locations, so plan::resolve() partitions
+        // them through chanmap::allocate(), which gives each dependent
+        // strictly what the bed did not carry and so never duplicates a
+        // location. (Only the legacy named-layout table duplicates - e.g.
+        // LayoutId::k71's k71Rear re-sends the bed's Ls/Rs, ten coded for
+        // eight rendered - and the GUI names that table for nothing but
+        // object mode's 5.1 bed and 1+1.) So this is which side of the
+        // distinction the call site belongs on, not a live discrepancy being
+        // corrected; the monitor leg stays right if a duplicating plan ever
+        // does reach it. Object mode (the 5.1 bed) and dual mono are already
+        // folded into renderedChannelCount()'s own answer, so this asks it
+        // rather than re-deriving those cases here.
+        const auto mstarted =
+            msink->start(std::string{}, device.sample_rate,
+                         static_cast<std::uint16_t>(renderedChannelCount()));
         if (mstarted) {
             monitor_ok = true;
             live_monitor_sink_ = std::move(msink);
@@ -4357,10 +4380,19 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     setMetering(true);
     clearClipLatches();
 
-    // Matroska needs the CODED channel count to declare a valid AudioTrack -
-    // atmos's bed is always 6 (5.1), channel mode is routing's own coded
-    // channel count, the identical formula the worker lambda below uses for
-    // its own coded_count. Both are known now, so the writer (and its header
+    // Matroska needs a channel count to declare a valid AudioTrack, and what
+    // a container track states is what the stream RENDERS - the speakers a
+    // player ends up driving - not how many channels were spent coding them.
+    // That is what ac3::io::scan reports for a finished stream (see
+    // ScannedStream::channels' own comment), and so what ac3cli's `mkv`/`ts`
+    // declare when they wrap one after the fact: a live take written here
+    // and the same bytes wrapped by the command line afterwards must not
+    // describe the same audio differently. This is deliberately NOT the
+    // worker lambda's own coded_count below, which sizes the ENCODER's input
+    // and really does want the coded channels - the same split
+    // startLiveSession's monitor sink lands on (see its own comment there,
+    // including why no plan the GUI can currently build makes the two
+    // numbers differ). Both are known now, so the writer (and its header
     // bytes) are built here, still on the GUI thread, before the worker ever
     // starts - a track EBML/Matroska genuinely cannot describe (in practice
     // unreachable: plan::validate() and the device checks in
@@ -4369,11 +4401,11 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     // mid-take failure minutes in" promise openLiveOutputWriters' own file
     // open already gives the destination path.
     if (writers && writers->matroska) {
-        const int coded_for_track = atmos ? 6 : routing->coded_channels;
+        const int channels_for_track = renderedChannelCount();
         auto created = matroska::Writer::create(
             {.codec_id = std::string{eac3 ? matroska::kCodecEac3 : matroska::kCodecAc3},
              .sample_rate = device.sample_rate,
-             .channels = coded_for_track,
+             .channels = channels_for_track,
              .samples_per_frame = ac3::kSamplesPerFrame});
         if (!created) {
             live_capture_.reset();
