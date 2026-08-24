@@ -22,11 +22,13 @@
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/decoder/transient_prenoise.hpp"
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/meta/drc.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "gain.hpp"
@@ -513,7 +515,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         return decoded;
     }
     if (auto concealed = conceal(decoded.error(), slot)) {
-        return std::optional<DecodedSubstream>(std::move(*concealed));
+        return std::move(concealed);
     }
     return decoded;
 }

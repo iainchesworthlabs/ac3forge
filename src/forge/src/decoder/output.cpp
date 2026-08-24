@@ -4,10 +4,13 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"  // eac3::chanmap::Location/Layout
 #include "ac3/core/tables.hpp"
 #include "ac3/meta/drc.hpp"  // to_db
 #include "ac3/meta/mixing.hpp"
