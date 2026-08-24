@@ -3,10 +3,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
 
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/export.hpp"
 #include "ac3/oba/joc_tables.hpp"
 
@@ -209,16 +211,39 @@ struct FrameParameters {
 
 // --- Audio reconstruction -----------------------------------------------
 
-// §6.6.6's normative reconstruction runs in the complex QMF domain this
-// codebase has no filterbank for; nothing here needs one specifically,
-// because §6.6.6 is not normative about WHICH linear per-band transform
-// computes it, only about the operation once you're in one. This applies it
-// in the same 512-sample MDCT domain atmos.cpp's band_energy already uses to
-// derive the matrix in the first place (see that function's own comment on
-// why that substitution is legitimate for an encoder - here it is legitimate
-// for the matching decoder for the identical reason: consistency with how
-// the matrix was estimated matters far more than which linear transform a
-// parametric, already-lossy tool happens to run in.
+// Which domain reconstruct() applies the matrix in.
+enum class Domain : std::uint8_t {
+    // The 512-sample MDCT, four bins to a §7.1 subband. Cheaper, and the
+    // domain this project's own encoder estimated its matrices in before
+    // the filterbank existed.
+    kMdctBand,
+    // §7.1's 64-band complex QMF - what §6.6.6 describes and what a
+    // licensed decoder runs.
+    kQmf,
+};
+
+// How far the reconstruction lags the downmix it was given, in samples.
+[[nodiscard]] constexpr int reconstruction_delay(Domain domain) {
+    return domain == Domain::kQmf ? dsp::kQmfDelay : 256;
+}
+
+// §6.6.6's reconstruction runs in the 64-band complex QMF of §7.1, and
+// ac3::dsp::QmfAnalysis/QmfSynthesis is that filterbank. Domain::kQmf runs
+// it there, which is what every licensed decoder does and therefore the
+// only domain in which a matrix this encoder estimates means the same thing
+// on the other side.
+//
+// Domain::kMdctBand is the path that predates the filterbank: the same
+// per-band linear combination applied in the 512-sample MDCT domain. It
+// stays because it is cheaper and because a stream whose matrix was
+// estimated in that domain reconstructs best there - but it is an
+// approximation twice over. The MDCT is critically sampled and real, so its
+// subbands only behave like subbands while neighbouring blocks agree on
+// what was done to them; a per-band matrix that changes every frame breaks
+// that time-domain alias cancellation and leaves the residue in the output.
+// And its 256 bins map to §7.1's 64 subbands only four-to-one, so the
+// matrix's time resolution is the 256-sample block rather than the QMF's
+// 64-sample timeslot.
 //
 // Carried frame to frame for one program's worth of reconstruction, the same
 // way Eac3Decoder's own overlap-add delay_ is: `bed_history` gives block 0 of
@@ -233,6 +258,11 @@ struct FrameParameters {
 // band, which is what lets an object change its band count from one frame to
 // the next and still ramp; `previous_matrix` follows it, sized
 // objects * channels * kQmfSubbands.
+//
+// One state object serves either domain, and only the members that domain
+// uses are ever touched; `qmf` in particular stays null until a kQmf call
+// allocates it, so a decoder that never leaves the MDCT path carries none
+// of the filterbank's own state.
 struct ReconstructionState {
     std::array<std::array<double, 256>, kMaxChannels> bed_history{};
     std::vector<double> previous_matrix{};
@@ -252,6 +282,30 @@ struct ReconstructionState {
     std::array<double, 512> windowed_scratch{};
     std::array<double, 256> object_mdct_scratch{};
     std::array<double, 512> synth_scratch{};
+
+    // --- Domain::kQmf only -------------------------------------------------
+
+    // The filterbank pair - one analysis per downmix channel, one synthesis
+    // per object - plus the one timeslot of subband values in flight.
+    // Behind a pointer, and built on first use, so the MDCT path does not
+    // pay for it.
+    struct QmfState {
+        std::array<dsp::QmfAnalysis, kNumChannels5X> bed{};
+        std::vector<dsp::QmfSynthesis> objects{};
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_real{};
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_imag{};
+        std::array<double, dsp::kQmfSubbands> object_real{};
+        std::array<double, dsp::kQmfSubbands> object_imag{};
+    };
+    std::unique_ptr<QmfState> qmf{};
+
+    // The matrix from TWO frames back. The MDCT path never needs it: every
+    // block it emits belongs to the frame being decoded, so previous_matrix
+    // is always the right thing to ramp from. The QMF pair's kQmfDelay means
+    // the first kQmfDelaySlots timeslots a call emits belong to the PREVIOUS
+    // frame's audio and must ramp across the previous frame's own pair -
+    // without this they would get a matrix one whole frame too new.
+    std::vector<double> older_matrix{};
 };
 
 // Reconstructs each JOC object's time-domain audio for one frame from the
@@ -276,15 +330,24 @@ struct ReconstructionState {
 // about undoing it before matrixing. There is no Hilbert filterbank here to
 // undo it with either.
 //
-// `fast_mdct` selects the §7.9.4 fold for the per-block forward analysis of
-// the bed channels; `fast_imdct` selects the same core for step 3 of each
+// The returned audio LAGS `bed` by reconstruction_delay(domain) samples -
+// 256 for kMdctBand, 576 for kQmf. Both are the algorithmic delay of the
+// transform pair that domain runs, and neither can be shortened; a caller
+// comparing the result against a known source has to shift by it, or it
+// measures the delay instead of the reconstruction.
+//
+// `fast_mdct` and `fast_imdct` apply to Domain::kMdctBand only, and do
+// nothing under kQmf, whose transform has only the one form. `fast_mdct`
+// selects the §7.9.4 fold for the per-block forward analysis of the five
+// bed channels; `fast_imdct` selects the same core for step 3 of each
 // object's own §7.9.4.1 synthesis inverse - one per object per block, so 96
-// of them in a 16-object frame, which is where nearly all of this function's
+// of them in a 16-object frame, which is where nearly all of kMdctBand's
 // time goes. Both default to the spec's own direct evaluations, the forms
 // every fast-path test validates against; Eac3Decoder passes
 // DecoderConfig::fast_imdct for the second.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false);
+    ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
+    Domain domain = Domain::kQmf);
 
 }  // namespace ac3::joc

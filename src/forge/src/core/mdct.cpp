@@ -7,6 +7,7 @@
 #include <span>
 
 #include "ac3/core/window.hpp"
+#include "ac3/internal/arch/simd.hpp"
 
 #include "fft_kernel.hpp"
 
@@ -266,6 +267,25 @@ const FastMdctTables<NLen>& fast_mdct_tables() {
 // DCT4[2k] = Re(w[k]), DCT4[M-1-2k] = -Im(w[k]). NLen names the TRANSFORM
 // whose tables carry this DCT-IV's twiddles (M = NLen/2), so the long
 // transform runs it at M = 256 and both short transforms at M = 128.
+// The pre- and post-twiddle loops run two m/k at a time through the arch
+// seam (ROADMAP PF5). Both are complex multiplies whose ARITHMETIC is
+// contiguous even though their memory access is not: the pre-twiddle
+// gathers u at stride +2 and stride -2 and scatters its result to
+// `bitrev[m]` (the kernel wants its input already digit-reversed - see
+// fft_kernel.hpp - so the quarter-split that was already gathering
+// u[2m]/u[M-1-2m] scatters on the way out instead of the kernel spending a
+// pass permuting in place); the post-twiddle reads the kernel's natural-
+// order output at stride +1 and scatters out to stride +2/-2. The seam
+// carries no shuffle or scatter-store operation, so every gather and every
+// scatter stays scalar (f64x2::set to gather, lane0/lane1 to scatter) and
+// only the arithmetic between them goes two-wide - which is where the time
+// is. Every lane performs the identical operations on the identical values
+// the scalar form did, so the coefficients are bit-identical; see
+// fft_kernel.hpp's own header comment for the algorithm this feeds and
+// tests/core/test_simd_kernels.cpp for the bit-exactness check.
+//
+// P is kM/2 - 128 for the long transform, 64 for the short pair - so it is
+// always even and neither loop needs a scalar tail.
 template <int NLen>
 void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
                  std::span<double> out, double scale) {
@@ -273,24 +293,34 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
     constexpr std::size_t P = FastMdctTables<NLen>::kP;
     std::array<double, P> z_re{};
     std::array<double, P> z_im{};
-    for (std::size_t m = 0; m < P; ++m) {
-        const double a = u[2 * m];
-        const double b = u[M - 1 - 2 * m];
-        // The kernel wants its input digit-reversed, so the quarter-split
-        // that was already gathering u[2m]/u[M-1-2m] scatters on the way
-        // out instead of the kernel spending a pass permuting in place
-        // (fft_kernel.hpp).
-        const std::size_t d = t.fft.bitrev[m];
-        z_re[d] = a * t.pre_re[m] - b * t.pre_im[m];
-        z_im[d] = a * t.pre_im[m] + b * t.pre_re[m];
+    for (std::size_t m = 0; m < P; m += 2) {
+        const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
+        const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
+        const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);
+        const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);
+        const auto zr = a * pre_re - b * pre_im;
+        const auto zi = a * pre_im + b * pre_re;
+        const std::size_t d0 = t.fft.bitrev[m];
+        const std::size_t d1 = t.fft.bitrev[m + 1];
+        z_re[d0] = zr.lane0();
+        z_im[d0] = zi.lane0();
+        z_re[d1] = zr.lane1();
+        z_im[d1] = zi.lane1();
     }
     internal::fft_forward_bitrev<P>(t.fft, z_re, z_im);
 
-    for (std::size_t k = 0; k < P; ++k) {
-        const double wr = z_re[k] * t.post_re[k] - z_im[k] * t.post_im[k];
-        const double wi = z_re[k] * t.post_im[k] + z_im[k] * t.post_re[k];
-        out[2 * k] = scale * wr;
-        out[M - 1 - 2 * k] = scale * (-wi);
+    const auto scale_v = internal::arch::f64x2::broadcast(scale);
+    for (std::size_t k = 0; k < P; k += 2) {
+        const auto zr = internal::arch::f64x2::load(&z_re[k]);
+        const auto zi = internal::arch::f64x2::load(&z_im[k]);
+        const auto post_re = internal::arch::f64x2::load(&t.post_re[k]);
+        const auto post_im = internal::arch::f64x2::load(&t.post_im[k]);
+        const auto even = scale_v * (zr * post_re - zi * post_im);
+        const auto odd = scale_v * (-(zr * post_im + zi * post_re));
+        out[2 * k] = even.lane0();
+        out[2 * k + 2] = even.lane1();
+        out[M - 1 - 2 * k] = odd.lane0();
+        out[M - 3 - 2 * k] = odd.lane1();
     }
 }
 
@@ -318,10 +348,18 @@ void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> 
 
 }  // namespace
 
+// Two samples per iteration through the arch seam (ROADMAP PF5). The
+// plainest kernel in the codec - 512 independent multiplies, unit stride on
+// all three arrays - and therefore the one where the vector form is most
+// obviously the same arithmetic as the scalar one it replaced. kN is 512, so
+// there is no tail.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
-    for (int n = 0; n < kN; ++n) {
-        windowed[static_cast<std::size_t>(n)] =
-            x[static_cast<std::size_t>(n)] * kAnalysisWindow[static_cast<std::size_t>(n)];
+    const double* const in = x.data();
+    double* const out = windowed.data();
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kN); n += 2) {
+        (internal::arch::f64x2::load(in + n) *
+         internal::arch::f64x2::load(&kAnalysisWindow[n]))
+            .store(out + n);
     }
 }
 
@@ -408,20 +446,36 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     std::array<double, kQuarter> t_re{};
     std::array<double, kQuarter> t_im{};
     if (fast) {
+        // Two k at a time through the arch seam (ROADMAP PF5), the same
+        // gather-compute-scatter shape as dct4_scaled's pre-twiddle: the
+        // coefficient gather runs at stride -2/+2 and the scatter target is
+        // bitrev[k], so both ends stay scalar and only the six multiplies
+        // and two adds between them go two-wide. kQuarter is 128, so no
+        // tail. See dct4_scaled's own comment for the bit-exactness
+        // argument this shares.
         const auto& fft = fast_mdct_tables<512>().fft;
-        for (int k = 0; k < kQuarter; ++k) {
-            const double a = coeffs[static_cast<std::size_t>(kN / 2 - 2 * k - 1)];
-            const double b = coeffs[static_cast<std::size_t>(2 * k)];
-            const double c = tw.cos1[static_cast<std::size_t>(k)];
-            const double s = tw.sin1[static_cast<std::size_t>(k)];
-            const std::size_t d = fft.bitrev[static_cast<std::size_t>(k)];
-            z_re[d] = a * c - b * s;
-            z_im[d] = -(b * c + a * s);
+        constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
+        for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
+            const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
+                                                      coeffs[kHalfN - 2 * k - 3]);
+            const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
+            const auto c = internal::arch::f64x2::load(&tw.cos1[k]);
+            const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);
+            const auto zr = a * c - b * sn;
+            const auto zi = -(b * c + a * sn);
+            const std::size_t d0 = fft.bitrev[k];
+            const std::size_t d1 = fft.bitrev[k + 1];
+            z_re[d0] = zr.lane0();
+            z_im[d0] = zi.lane0();
+            z_re[d1] = zr.lane1();
+            z_im[d1] = zi.lane1();
         }
         internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter)>(fft, z_re, z_im);
-        for (int n = 0; n < kQuarter; ++n) {
-            t_re[static_cast<std::size_t>(n)] = z_re[static_cast<std::size_t>(n)];
-            t_im[static_cast<std::size_t>(n)] = -z_im[static_cast<std::size_t>(n)];
+        // Unit stride throughout, so this negation goes two-wide with
+        // nothing to gather or scatter.
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+            internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);
+            (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
         }
     } else {
         for (int k = 0; k < kQuarter; ++k) {
@@ -452,15 +506,17 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     }
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
+    // Unit stride on every one of the six arrays, so this one vectorises
+    // with nothing to gather or scatter (ROADMAP PF5).
     std::array<double, kQuarter> y_re{};
     std::array<double, kQuarter> y_im{};
-    for (int n = 0; n < kQuarter; ++n) {
-        const double c = tw.cos1[static_cast<std::size_t>(n)];
-        const double s = tw.sin1[static_cast<std::size_t>(n)];
-        y_re[static_cast<std::size_t>(n)] =
-            t_re[static_cast<std::size_t>(n)] * c - t_im[static_cast<std::size_t>(n)] * s;
-        y_im[static_cast<std::size_t>(n)] =
-            t_im[static_cast<std::size_t>(n)] * c + t_re[static_cast<std::size_t>(n)] * s;
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+        const auto c = internal::arch::f64x2::load(&tw.cos1[n]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);
+        const auto tr = internal::arch::f64x2::load(&t_re[n]);
+        const auto ti = internal::arch::f64x2::load(&t_im[n]);
+        (tr * c - ti * sn).store(&y_re[n]);
+        (ti * c + tr * sn).store(&y_im[n]);
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.
@@ -583,21 +639,22 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     }
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
+    // Both half-block sets, two n at a time, all unit stride (ROADMAP PF5).
     std::array<double, kEighth> y1_re{};
     std::array<double, kEighth> y1_im{};
     std::array<double, kEighth> y2_re{};
     std::array<double, kEighth> y2_im{};
-    for (int n = 0; n < kEighth; ++n) {
-        const double c = tw.cos2[static_cast<std::size_t>(n)];
-        const double s = tw.sin2[static_cast<std::size_t>(n)];
-        y1_re[static_cast<std::size_t>(n)] =
-            t1_re[static_cast<std::size_t>(n)] * c - t1_im[static_cast<std::size_t>(n)] * s;
-        y1_im[static_cast<std::size_t>(n)] =
-            t1_im[static_cast<std::size_t>(n)] * c + t1_re[static_cast<std::size_t>(n)] * s;
-        y2_re[static_cast<std::size_t>(n)] =
-            t2_re[static_cast<std::size_t>(n)] * c - t2_im[static_cast<std::size_t>(n)] * s;
-        y2_im[static_cast<std::size_t>(n)] =
-            t2_im[static_cast<std::size_t>(n)] * c + t2_re[static_cast<std::size_t>(n)] * s;
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 2) {
+        const auto c = internal::arch::f64x2::load(&tw.cos2[n]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);
+        const auto t1r = internal::arch::f64x2::load(&t1_re[n]);
+        const auto t1i = internal::arch::f64x2::load(&t1_im[n]);
+        const auto t2r = internal::arch::f64x2::load(&t2_re[n]);
+        const auto t2i = internal::arch::f64x2::load(&t2_im[n]);
+        (t1r * c - t1i * sn).store(&y1_re[n]);
+        (t1i * c + t1r * sn).store(&y1_im[n]);
+        (t2r * c - t2i * sn).store(&y2_re[n]);
+        (t2i * c + t2r * sn).store(&y2_im[n]);
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.

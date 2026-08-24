@@ -54,6 +54,56 @@ graph LR
 Both paths produce the same one E-AC-3 bitstream. What a given decoder gets out of it depends
 entirely on whether it knows to look for the side information.
 
+## Which domain the matrix lives in
+
+The JOC coefficients are per-band gains, so before anything can apply them, both ends have to
+agree on what a "band" is. TS 103 420 answers that in §7.1: the reconstruction runs in a
+**64-subband complex QMF** — an oversampled complex filterbank, not the MDCT the codec uses for
+its own audio. §6.6.6 is then just a matrix multiply per subband, per timeslot.
+
+That distinction is not decoration. The MDCT is *critically sampled and real*: its subbands only
+behave like subbands as long as neighbouring blocks agree on what was done to them, because the
+overlap is what cancels the time-domain aliasing each block carries. A JOC matrix is per-band and
+changes every frame, so applying it over MDCT bins breaks that cancellation and leaves the residue
+in the output. A complex filterbank at 2× oversampling has no such dependency — a per-band gain is
+just a gain. It also resolves the matrix ramp four times as finely: 24 timeslots per frame against
+the MDCT path's six blocks.
+
+Until this was implemented, this project had no filterbank, and estimated and applied the matrix
+over 256 MDCT bins, four to a subband. That is self-consistent between this encoder and this
+decoder, and wrong against everything else — a licensed decoder has no such setting and reads
+every matrix as a QMF one. Measured head to head, mean per-object SNR over four placements:
+
+| estimated in ↓ / reconstructed in → | MDCT-band | QMF |
+|---|---|---|
+| **MDCT-band** | 22.8 dB | 23.5 dB |
+| **QMF** | 27.7 dB | **28.6 dB** |
+
+Read down the QMF column — the only one a licensed decoder has. The same objects, encoded the old
+way, reconstruct at 23.5 dB; encoded in the QMF domain, 28.6 dB. Most of that 5.1 dB is the
+*estimate* rather than the reconstruction: an MDCT coefficient's magnitude depends on where the
+tone happens to sit relative to the block boundary, so per-band power read off it is noisy in a
+way a complex subband's magnitude is not. On moving objects, where the finer ramp also counts,
+the same swap is worth 20.2 dB → 26.5 dB.
+
+Both are the default now, encoder and decoder. The MDCT path stays available as
+`AtmosConfig::joc_domain` / `DecoderConfig::joc_domain` (`joc-domain=mdct` on the CLI) for
+reproducing older output; it is not part of `mode=performance`, because unlike the two transform
+switches that flag drives, the two domains are different answers rather than the same answer at
+different speed.
+
+One thing changes for callers: reconstructed object audio lags the bed by 576 samples in the QMF
+domain rather than 256, which is the filterbank pair's own algorithmic delay (a 640-tap window
+less one 64-sample hop) and cannot be shortened. `joc::reconstruction_delay(domain)` is the single
+place either number is written down.
+
+The filterbank itself is `ac3::dsp::QmfAnalysis` / `QmfSynthesis`. Its prototype filter is
+designed in this tree rather than transcribed: §7.1 fixes the *shape* — 64 subbands, complex,
+odd-stacked — and does not publish coefficients. The design is constrained to exact perfect
+reconstruction (analysis then synthesis returns the input bit-for-bit at the float boundary), with
+the remaining freedom spent on selectivity; `tools/generators/gen_qmf_prototype.py` carries the
+derivation.
+
 ## OAMD
 
 **OAMD** (Object Audio MetaData) is where the position, size and motion data for each object
@@ -88,6 +138,28 @@ standard requires older decoders to simply skip over, since they don't know what
 That skip behaviour is *how* backward compatibility works: an old decoder ignores the EMDF
 envelope entirely and just plays the 5.1 bed underneath, no crash, no confusion, no awareness
 that objects were ever there.
+
+## The fallback rule: objects, or nothing
+
+A stream **carries objects or omits the container entirely — never an empty one, and never a
+container-less stream that still claims objects.** Both halves matter, because two different
+things advertise the object layer and they have to agree:
+
+- The **EMDF container** itself. A decoder that *validates* the container's protection field
+  treats its sync word as a commitment to object decoding: if the field doesn't check out it
+  refuses the whole stream rather than falling back to the bed. So an empty or unusable
+  container is worse than no container — with nothing to find, that decoder plays ordinary 5.1.
+  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for.
+- The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
+  §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
+  the only thing a *reader* — as opposed to a decoder — has to go on: it is what
+  `ac3::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
+  becomes an HLS `CHANNELS="<N>/JOC"` attribute, and what makes FFmpeg report the stream as
+  "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
+  packager, a player and a manifest an object layer that isn't there.
+
+So the marker follows the container: emit both, or neither. The same rule is why an object-layer
+strip has to remove both, not just the payload.
 
 ## Two honest limitations
 

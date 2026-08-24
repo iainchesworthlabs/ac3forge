@@ -50,6 +50,101 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   BS.2076-2 `width`/`height`/`depth` onto `ObjectSize` and `channelLock` onto `snap`; `diffuse`,
   `zoneExclusion` and `objectDivergence` remain unmapped, and `docs/library/adm-bridge.md` now
   gives each one its own reason rather than one blanket paragraph.
+- **SIMD kernels, selected by CMake rather than by `#ifdef`** (roadmap `PF5`). The codec's hot
+  kernels now run through 128-bit vector types supplied by one of
+  `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, each carrying an identically-pathed
+  `ac3/internal/arch/simd.hpp` that `src/forge/CMakeLists.txt` puts on the include path — the same
+  mechanism the profiling seam and the audio backend tree already use, and the reason no
+  translation unit in the codec has to ask what it is being compiled for. `AC3FORGE_SIMD` forces a
+  directory (`generic` is a complete scalar implementation and what a reproducibility comparison
+  should reach for); the resolved value appears in the configure summary and in
+  `ac3cli --version`. Vectorised: the DCT-IV pre/post twiddles every fast MDCT and fast IMDCT is
+  built on, analysis windowing, both inverses' twiddle stages, `dft512`'s normalisation,
+  §7.2.2.2's exponent-to-PSD conversion, and a batched `to_fixed25`. The FFT/DCT-IV core itself
+  (`fft_kernel.hpp`) is `PF4`'s own radix-4 restructuring, an algorithmic change rather than a
+  wider-lane one, and is not part of this seam; the pre/post-twiddle loops around it were
+  adapted to gather from and scatter to that kernel's digit-reversed layout rather than to
+  sequential slots, which is why the scatter/gather ends of those loops stay scalar and only the
+  arithmetic between them is vectorised.
+  Only SSE2 and base ARMv8-A Advanced SIMD are used — both part of their architecture rather than
+  optional features — so there is no `-march=` flag and no runtime dispatch, and 128 bits is the
+  native width of the platforms this was done for anyway (Raspberry Pi, the Shield's Tegra X1,
+  WASM). **Encoded output is unchanged, bit for bit**: every seam operation is exactly one
+  IEEE-754 add, subtract or multiply per lane, `tests/core/test_simd_kernels.cpp` holds each
+  primitive to bit-for-bit equality with a scalar reference in the same binary (the kernels built
+  from them are composition, not new arithmetic, so they inherit rather than need their own
+  bit-exact test), and the full `run_codec_matrix.sh` corpus — 93 streams, 272 output files across
+  every layout, Annex E tool token and metadata option — hashes identically between this build, a
+  `-DAC3FORGE_SIMD=generic` build, and the previous release. Decoded audio is likewise
+  bit-identical, which is a stronger guarantee than the fast-IMDCT work's own 7.8e-14 / 215–285 dB
+  standard. See [docs/building.md](docs/building.md).
+- **The encoder/decoder mirror self-check now covers E-AC-3** (`ac3::verify`, roadmap `VX2`).
+  The AC-3 half has decoded every frame the encoder emitted and diffed the decoder's model
+  against the encoder's own since 0.7.0; Annex E was explicitly out of scope, because its
+  dependent-substream and transient-pre-noise machinery needed its own instrumentation design.
+  It has one now. `Eac3MirrorEncoder` compares, per substream of an access unit and per block:
+  the bit offset at each block boundary, the decoded exponents, `bap`, the delta correction in
+  force, the adaptive-hybrid-transform gain mode and its per-bin gains, and the coupling,
+  enhanced-coupling and spectral-extension coordinates — across an independent substream and
+  both of its dependents at 7.1.4. The `§3.7` hold-back turns out not to need special handling:
+  the trace is written while a frame is parsed rather than when its audio is released, so a
+  held-back frame is compared in the call that decoded it like any other.
+
+  This matters more for E-AC-3 than it did for AC-3 because Annex E has weaker oracles, not
+  stronger ones: `docs/verification.md` records that 7.1.4 has no external oracle at all, that
+  enhanced coupling and transient pre-noise processing have none "not even the partial one 7.1.4
+  gets", and that `fscod2` audio is refused by FFmpeg *and* by Dolby's own Reference Player. For
+  those, the in-repo round trip was the only check there was. What the mirror adds over it is the
+  case where the two sides differ but the audio survives — a gain one side recovered differently,
+  a coordinate quantized against a different band structure — which a round trip passes and a
+  third-party decoder would nevertheless render differently. What it still cannot see is a
+  misreading the two sides make identically, in code they share; `docs/verification.md` is
+  explicit about that residue rather than claiming the gap is closed.
+
+  Off by default and free when off, exactly as the AC-3 half is: `eac3::FrameConfig::trace` and
+  `DecoderConfig::eac3_trace` are null pointers, costing one branch per block and no allocation,
+  and attaching one never changes a single emitted bit. `ac3cli eac3-encode … verify` runs it
+  over a whole file and refuses the run at the first disagreement, naming the substream, block,
+  coded stream and bin; `tools/ci/run_codec_matrix.sh` runs it on the sanitizer leg over the
+  whole Annex E tool matrix, every layout including 7.1.4, all three `fscod2` rates and VBR. It
+  found no disagreement on any stream this encoder currently produces.
+- **QMF-domain JOC** (roadmap DC10). TS 103 420 puts the object reconstruction in a 64-subband
+  complex QMF; this tree had no filterbank, and estimated and applied the matrix over 256 MDCT
+  bins instead. `ac3::dsp::QmfAnalysis` / `QmfSynthesis` (`ac3/dsp/qmf.hpp`) is that filterbank
+  — 640-tap prototype designed in-tree for exact perfect reconstruction, a 128-point FFT on the
+  same radix-2 core the fast MDCT already uses. `joc::Domain` selects where the matrix is
+  estimated (`AtmosConfig::joc_domain`) and applied (`DecoderConfig::joc_domain`), and the CLI
+  spells it `joc-domain=qmf|mdct` on the `atmos*` commands and `decode`.
+- **An object-reconstruction quality series** (`VX8`). Object reconstruction — the object layer
+  that every other codec layer here has a per-commit trend for — was measured exactly once
+  anywhere in the tree: a single `snr_db > 10.0` assertion in `tests/oba/test_atmos.cpp` against
+  18–35 dB measured, so a 15 dB JOC regression passed CI and appeared on no page.
+  `tools/ci/quality_race.py` grows an `objects` mode that encodes a committed five-object Atmos
+  scene (`tests/golden/audio/reference_objects.wav` plus the placements beside it, both
+  generated by `tools/generators/gen_object_scene_wav.py`) with `atmos-encode`, decodes it back
+  to per-object WAVs, and scores each object against the channel it came from at the 512-sample
+  transform delay the unit test derives. `ffmpeg-validate` computes it every run and a new
+  `persist-object-quality-trend` job appends it to the `quality-history` branch, rendered on
+  [Object quality trend](docs/object-quality-trend.md). LSD needed an object-specific form:
+  objects are individually narrow-band, so the codec legs' 24-band measure reads 10–38 dB for a
+  *healthy* reconstruction; it is now restricted to the bands an object occupies, with what
+  landed outside them reported as a separate leakage figure — the object-specific failure mode.
+  There is no external oracle for object decode at all (FFmpeg implements no JOC reconstruction,
+  and Dolby's own decoder gates it on a key this project does not ship), so the series is
+  self-consistency throughout and the page says so.
+- **Listening-test apparatus** (`VX9`, partial). `tools/listening/gen_listening_stimuli.py`
+  builds a blind stimulus set over the three landscape legs — hidden reference, BS.1534-3's 3.5
+  and 7 kHz anchors, and one arm per encoder — with every stimulus decoded by FFmpeg so the
+  decoder is a constant rather than a variable, and `score_listening_test.py` reads the answers
+  back as MUSHRA means with 95% confidence intervals (after BS.1534-3 post-screening) or ABX
+  proportions with Wilson intervals and an exact binomial p. The protocol is on
+  [Landscape](docs/landscape.md#listening-test). **No session has been run**, so the results
+  table there is empty and README's and Validation's "no listening test has been run" sentences
+  are unchanged. Building the apparatus found two preconditions the committed material does not
+  meet, now detected and recorded per session: `reference_51.wav` carries 0.059% of its energy
+  above 3.5 kHz, so both BS.1534 anchors are inaudible on both 5.1 legs and cannot scale a
+  MUSHRA session there, and the items are 1.9 s against BS.1534-3's ~10 s. Roadmap `VX7` (real
+  programme material) is what fixes both.
 - **`ac3::quality`: decoded-domain distortion measurement and a psychoacoustic model** (`EQ13`).
   `encoder.cpp` has recorded, since the dbpbcod/exponent-strategy work, that a per-frame search
   over the transmitted bit allocation parameters was tried twice and rejected both times: the
@@ -216,6 +311,56 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   was read out of, and `ac3cli qc` prints that beside each verdict.
 - Roadmap item `IO12`, for BS.1770-5 Annex 4's object-based loudness algorithm — the half of
   BS.1770-5 that `IO10` deliberately left out.
+
+### Fixed
+
+- **`ac3cli atmos ... bed51` no longer advertises an object layer it deliberately did not
+  encode.** `AtmosConfig::emit_object_metadata` decided whether the EMDF container (OAMD + JOC)
+  was written, but `AtmosEncoder` set TS 103 420 §8.3.1's `addbsi` object marker
+  (`flag_ec3_extension_type_a` plus §8.3.2.2's `complexity_index_type_a`) unconditionally. That
+  marker is the only thing any reader has to go on, so a `bed51` stream — whose whole purpose is
+  to omit the container and play as a plain 5.1 bed on a decoder that would otherwise refuse an
+  object container it cannot validate — still claimed objects downstream: `ac3::io::scan`
+  reported an `oba_complexity_index`, `ac3::io::build_codec_config_box` wrote the `dec3` box's
+  Dolby Atmos extension, `ac3cli fmp4` wrote `CHANNELS="<N>/JOC"` into its HLS playlists, and
+  FFmpeg reported the profile as "Dolby Digital Plus + Dolby Atmos". The marker now follows the
+  container, which is the same objects-or-nothing rule that already ruled out emitting an empty
+  container. This changes `bed51` output bytes: the `addbsi` element shrinks to a single zero
+  `addbsie` bit and the freed bits go back to the mantissas (the frame size is unchanged — this
+  is CBR). `objects` mode is unaffected. The FFmpeg-oracle matrix now asserts the profile for
+  both modes rather than only that each decodes.
+
+### Changed
+
+- **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
+  revision of A/85 since 2013. Its §6 restates the target loudness, tolerance and true-peak
+  ceiling unchanged (−24 LKFS, ±2 dB, −2 dBTP), so **no preset number moves**; only the citation
+  does. EBU R 128 s4, Netflix's Dolby Atmos Home Mix Deliverable Requirements v2.3 and Amazon
+  were each checked against their primary sources and deliberately *not* added as presets: the
+  first two are numerically identical to presets already in the table (s4 differs only by a
+  Loudness-to-Dialogue Ratio this meter cannot measure, and the Atmos spec only by asking for a
+  5.1 re-render, which is a `layout=` choice), and no primary Amazon document was reachable to
+  cite. `ac3/meta/qc.hpp` and `docs/cli/metadata-options.md` record the reasoning for each.
+- `QcPreset` distinguishes a loudness **band** from a loudness **ceiling**
+  (`QcLoudnessLimit`). Every preset before now stated a target with a symmetric tolerance; Apple's
+  states only a level not to exceed, and gating that as a ±band would fail quiet material the
+  specification actually accepts.
+
+### Fixed
+
+- **`dialnorm=auto` and `ac3cli loudness` mis-assigned channel weights on any layout wider than
+  stereo.** `measured_dialnorm()` pushed a WAV's channels into `LoudnessMeter` in *WAV* order
+  (FL, FR, FC, LFE, BL, BR) when the meter expects AC-3 *coded* order (L, C, R, Ls, Rs, LFE). For
+  5.1 that put the LFE where `Ls` belongs — so BS.1770's +1.5 dB surround weight landed on the
+  one channel the standard excludes outright, while a real surround landed in the excluded slot
+  and was dropped entirely. Found by cross-checking against ffmpeg's `ebur128`: with signal in
+  only the LFE channel, ac3forge reported −38.61 LKFS where the oracle correctly reported no
+  loudness at all. `ac3cli levels` already applied the right permutation, which is why it never
+  showed the fault. Measured `dialnorm` values for 3-channel-and-wider sources change as a
+  result, and are now correct.
+
+### Added
+
 - **`ac3kernelbench` covers the fast transform paths and `dft512`.** The kernel series benched
   the direct IMDCT and not the fast one that has been the decode default since 0.9.0, and never
   benched `dft512` or the block-switched inverse at all. Four rows added
@@ -513,7 +658,49 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
   note at the code and roadmap `EQ2`.
 
+- **`eac3-sine` had the identical gap**, one command over from the fix above — the same
+  unreachable `frmsiz` ceiling, met with the same `assert()` (`nchans == tone_hz.size()`) rather
+  than a diagnosis, since it builds an `AccessUnitEncoder` from a plan the same way `eac3-encode`
+  does. `ac3::plan::validate()` now carries a check of its own for this: the E-AC-3 counterpart
+  of the Table 5.18 check it already made for AC-3 (`PlanError::kBitrateNotFramable`), checked
+  against the per-substream configs `eac3_config()` really builds rather than the plan's own
+  `bitrate_kbps` — a layout with dependent substreams gives each of them half the rate, so a
+  config can be unframable there even when the plan's own number fits. `eac3-sine` asks it
+  before building an encoder, the way `run_encode`'s AC-3 path always has. VBR is exempt, as it
+  is inside the frame encoder: there the content decides the word count and `bitrate_kbps` only
+  steers the tool frequency defaults.
+
 ### Changed
+
+- **Floating-point contraction is pinned off** (`-ffp-contract=off`, `/fp:precise` on MSVC,
+  `/clang:-ffp-contract=off` on clang-cl), project-wide — for the SIMD seam's bit-exactness
+  argument, which needs the compiler not to silently re-fuse a vector operation into an FMA the
+  seam's intrinsics cannot express. No measurable cost on x86-64, where the flag is a no-op —
+  proven by the corpus comparison above being byte-identical against a build without it.
+  **Tested and ruled out as the explanation for roadmap `VX11`'s gold-reference gap**: the leading
+  hypothesis for why `linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` score 6.02 dB (exactly
+  one AC-3 exponent step) below every x86 leg was FMA contraction, since it is architecture-
+  dependent in exactly that pattern. With the flag pinned on every leg, the gap is unchanged —
+  those three legs still measure ~61.8 dB against x86's ~67.8 dB. `docs/building.md`'s
+  "Floating-point contraction" section carries the measurement and the surviving hypothesis (all
+  three low-scoring legs are aarch64, which points at libm's own architecture-specific
+  `sin`/`cos` in the transform twiddle tables); `VX11` stays open.
+- **`ac3kernelbench` gained the fast inverse transforms.** `imdct512_windowed_fast`,
+  `imdct256_pair_windowed` and `imdct256_pair_windowed_fast` join the per-kernel trend series; the
+  bench previously timed only the direct inverse, which has not been the default since 0.9.0, so
+  the whole decode side of a transform change was invisible to
+  [docs/performance-trend.md](docs/performance-trend.md).
+- **JOC now runs in the QMF domain by default**, encoder and decoder. Mean per-object SNR over
+  four placements goes from 22.8 dB to 28.6 dB; against a decoder reconstructing in the QMF
+  domain — which is what every licensed decoder does, and which the old encoder had no way to
+  target — from 23.5 dB to 28.6 dB. On moving objects, 20.2 dB to 26.5 dB. Encoding costs
+  0.62 → 0.74 ms/frame of a 32 ms budget; decoding gets cheaper, 0.88 → 0.70 ms/frame. Memory is
+  a one-off setup cost (encoder +20 KB, decoder +44 KB on the first JOC frame) with per-frame
+  churn unchanged. `joc-domain=mdct` restores the previous behaviour on both sides.
+- **Reconstructed object audio now lags the bed by 576 samples rather than 256.** That is the
+  QMF pair's own algorithmic delay and cannot be shortened. Code comparing `object_audio`
+  against a known source must shift by `joc::reconstruction_delay(domain)` rather than a
+  hard-coded 256 — including anything reading `decode`'s `objects_dir=` output.
 
 - **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
   revision of A/85 since 2013. Its §6 restates the target loudness, tolerance and true-peak
