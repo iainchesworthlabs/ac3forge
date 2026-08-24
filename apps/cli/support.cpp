@@ -189,6 +189,14 @@ void print_meta_usage() {
     fmt::println("                    {}", ac3::meta::kQcPresetNames);
     fmt::println("  preset=all        gate against every preset above");
     fmt::println("                    omitted: measure and report only, no gate");
+    fmt::println("");
+    fmt::println("probe options (probe; any order, after the positional arguments):");
+    fmt::println("  json=1            emit the JSON document instead of the human table");
+    fmt::println("                    (schema ac3forge.probe/1 - docs/cli/commands.md)");
+    fmt::println("  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,");
+    fmt::println("                    substream headers and each frame's object layer");
+    fmt::println("  detail=blocks     the same, plus every block's coding tools and");
+    fmt::println("                    exponent strategies - what a codec bug report needs");
 }
 
 bool parse_options(std::span<char*> tokens, Options& out) {
@@ -508,6 +516,28 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 }
             }
             out.qc_preset = std::string{value};
+            continue;
+        }
+        if (key == "json") {
+            // 1/0 rather than a bare 'json' word: probe is the first command
+            // whose OUTPUT FORM is a choice, and a value token says which
+            // form was asked for even when a script builds the command line
+            // programmatically ("json=$want"). '0' is accepted for exactly
+            // that reason - a caller should not have to omit the token to
+            // turn it off.
+            if (value != "1" && value != "0") {
+                fmt::println(stderr, "error: json must be 1 or 0 (got '{}')", token);
+                return false;
+            }
+            out.json = value == "1";
+            continue;
+        }
+        if (key == "detail") {
+            if (value != "frames" && value != "blocks") {
+                fmt::println(stderr, "error: detail must be frames or blocks (got '{}')", token);
+                return false;
+            }
+            out.detail = std::string{value};
             continue;
         }
         if (key == "signing-key") {
