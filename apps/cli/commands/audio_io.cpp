@@ -66,13 +66,17 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     fmt::println("");
     fmt::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
                  eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
-    if (meta.matroska_container) {
-        // Said rather than silently ignored: container=mkv needs the frame
-        // boundaries write_frames_or_mux muxes on, and this path never has
-        // frames - it has a byte stream nothing here re-parsed. 'mkv' turns
-        // the result into Matroska in one further step.
-        fmt::println("container=mkv does not apply to a passthrough capture: writing the bare");
-        fmt::println("elementary stream, which 'ac3cli mkv' will wrap if you want a container.");
+    if (meta.container != RecordContainer::kRaw) {
+        // Said rather than silently ignored: both container=mkv and
+        // container=fmp4 need the frame boundaries write_frames_or_mux/
+        // Fmp4SessionWriter work from, and this path never has them - it has
+        // a byte stream nothing here re-parsed. 'mkv'/'fmp4' turn the result
+        // into a container in one further step.
+        const char* name = meta.container == RecordContainer::kMatroska ? "mkv" : "fmp4";
+        fmt::println("container={} does not apply to a passthrough capture: writing the bare",
+                     name);
+        fmt::println("elementary stream, which 'ac3cli {}' will wrap if you want a container.",
+                     name);
     }
 
     EncodedStreamSink sink;
