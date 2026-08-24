@@ -51,6 +51,22 @@ namespace ac3::signing {
 [[nodiscard]] AC3SIGNING_EXPORT bool sign_atmos_frame(std::span<std::byte> frame,
                                                        const SigningKey& key);
 
+// Whether this syncframe carries a non-zero authenticity tag - that is,
+// whether anyone has signed it - answered WITHOUT a key.
+//
+// Where the tag lives is fixed by the EMDF container's own protection-length
+// codes (§H.2.2.4); only whether it is the RIGHT tag needs the key. So the
+// two questions separate cleanly, and an inspection tool (`ac3cli probe`) can
+// report that a stream is signed, and by how many frames, while holding
+// nothing secret. False for a frame with no container, for one whose
+// container declares no primary protection field, and for one whose field is
+// all zeros - which is what this project's own writer leaves behind until
+// sign_atmos_frame replaces it.
+//
+// Note what this does NOT claim: a true here says a tag is present, never
+// that it is valid. Only verify_atmos_frame below, with the key, says that.
+[[nodiscard]] AC3SIGNING_EXPORT bool has_authenticity_tag(std::span<const std::byte> frame);
+
 // A frame with no EMDF object container is neither "verified" nor "failed" -
 // there is nothing in it to check - so that case is its own outcome
 // (kNoContainer) rather than being folded into kMismatch, which would
