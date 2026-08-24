@@ -120,6 +120,28 @@ That skip behaviour is *how* backward compatibility works: an old decoder ignore
 envelope entirely and just plays the 5.1 bed underneath, no crash, no confusion, no awareness
 that objects were ever there.
 
+## The fallback rule: objects, or nothing
+
+A stream **carries objects or omits the container entirely — never an empty one, and never a
+container-less stream that still claims objects.** Both halves matter, because two different
+things advertise the object layer and they have to agree:
+
+- The **EMDF container** itself. A decoder that *validates* the container's protection field
+  treats its sync word as a commitment to object decoding: if the field doesn't check out it
+  refuses the whole stream rather than falling back to the bed. So an empty or unusable
+  container is worse than no container — with nothing to find, that decoder plays ordinary 5.1.
+  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for.
+- The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
+  §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
+  the only thing a *reader* — as opposed to a decoder — has to go on: it is what
+  `ac3::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
+  becomes an HLS `CHANNELS="<N>/JOC"` attribute, and what makes FFmpeg report the stream as
+  "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
+  packager, a player and a manifest an object layer that isn't there.
+
+So the marker follows the container: emit both, or neither. The same rule is why an object-layer
+strip has to remove both, not just the payload.
+
 ## Two honest limitations
 
 Object coding, and this project's implementation of it, have real limits worth stating

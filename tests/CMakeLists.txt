@@ -100,6 +100,7 @@ add_executable(ac3tests
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
+    core/test_simd_kernels.cpp
     core/test_tables.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
@@ -135,6 +136,13 @@ set_source_files_properties(io/test_metadata_edit.cpp
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
+# CMake selected in src/forge/CMakeLists.txt, so the test exercises the
+# f64x2/i32x4 the library was actually built with rather than a different
+# one - same white-box arrangement as src/signing/src just above and the ALSA
+# backend's internal header below.
+target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
 # half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
