@@ -305,22 +305,25 @@ if(TARGET ac3cli)
         "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 endif()
 
-# RecordingSink (gui/test_recording_sink.cpp) is the GUI's one deliberately
-# Qt-free class - std:: and the container libraries only, exactly so its
-# streamed-equals-one-shot contract can be held here, in the plain Catch2
-# suite, without a QML engine in the room (apps/gui's Qt Quick tests cover
-# the interactive surfaces; this covers the bytes). Its source compiles
-# straight into this target the same way cli/test_cli.cpp's subject rides
-# its own binary: there is no GUI library surface to link against. Gated on
-# the ac3gui target like the CLI block above - the file lives in apps/gui,
-# which has only been add_subdirectory()'d when AC3FORGE_BUILD_GUI is ON.
-if(TARGET ac3gui)
-    target_sources(ac3tests PRIVATE
-        gui/test_recording_sink.cpp
-        "${CMAKE_SOURCE_DIR}/apps/gui/fmp4_folder_writer.cpp"
-        "${CMAKE_SOURCE_DIR}/apps/gui/recording_sink.cpp")
-    target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/gui")
-endif()
+# RecordingSink (gui/test_recording_sink.cpp) is deliberately Qt-free - std::
+# and the container libraries only, exactly so its streamed-equals-one-shot
+# contract can be held here, in the plain Catch2 suite, without a QML engine
+# in the room (apps/gui's Qt Quick tests cover the interactive surfaces; this
+# covers the bytes). Its sources compile straight into this target the same
+# way cli/test_cli.cpp's subject rides its own binary: there is no library
+# surface to link against. The fragmented-MP4 cases exercise Fmp4FolderWriter,
+# RecordingSink's own kFmp4 backend, so its source comes along too.
+#
+# Ungated since roadmap IO9 moved both to apps/common: both front ends write
+# their takes through them now, so the bytes they produce are worth checking
+# in a CLI-only build too - and apps/common, unlike apps/gui, is present
+# whatever AC3FORGE_BUILD_GUI says. The test file itself stays under
+# tests/gui/ so its history and its "[gui]" tag are unbroken.
+target_sources(ac3tests PRIVATE
+    gui/test_recording_sink.cpp
+    "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp")
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
 # option() for why it is not on by default like matroska/mp4/mpegts) - test_adm.cpp is only

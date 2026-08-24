@@ -187,6 +187,14 @@ endif()
 # DEB/RPM get their own *_COMPONENT_INSTALL switch, set inside their own
 # find_program() blocks above, now that the split is real work rather than
 # a placeholder.
+# The `runtime` component is ac3cli/ac3gui plus, since roadmap IO8, the
+# generated ac3cli.1 man page and the bash/zsh/fish/PowerShell completion
+# scripts - all install()'d with COMPONENT runtime from
+# apps/cli/CMakeLists.txt, so every generator below picks them up with the
+# binary rather than needing a component of their own. They are absent from a
+# CROSS build's packages by construction: they are produced by running the
+# freshly built ac3cli, which a cross build cannot do (see that file's own
+# CMAKE_CROSSCOMPILING branch for why that is the chosen trade).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
 

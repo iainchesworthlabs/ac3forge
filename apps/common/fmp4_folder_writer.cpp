@@ -36,8 +36,9 @@ bool write_text(const std::filesystem::path& path, std::string_view text) {
 
 }  // namespace
 
-std::string Fmp4FolderWriter::open(const std::string& directory) {
+std::string Fmp4FolderWriter::open(const std::string& directory, std::uint32_t window_segments) {
     dir_ = std::filesystem::path{directory};
+    window_segments_ = window_segments;
     std::error_code ec;
     std::filesystem::create_directories(dir_, ec);
     if (ec) {
@@ -79,7 +80,8 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
 
     auto writer = mp4::FragmentWriter::create(
         track_,
-        mp4::FragmentOptions{.object_audio_brand = scanned->oba_complexity_index.has_value()});
+        mp4::FragmentOptions{.object_audio_brand = scanned->oba_complexity_index.has_value(),
+                             .playlist_window_segments = window_segments_});
     if (!writer) {
         return std::string{mp4::describe(writer.error())};
     }
@@ -104,14 +106,17 @@ std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
     }
     const auto adaptation_set = mp4::build_dash_adaptation_set(track_, window, dash_);
     // Dynamic while the take runs, static once it stops - the MPD's half of
-    // the before/after the HLS playlist's #EXT-X-ENDLIST makes. No rolling
-    // window is configured here (every segment stays on disk and stays
-    // listed), so the time-shift buffer is the whole take so far.
+    // the before/after the HLS playlist's #EXT-X-ENDLIST makes.
+    // timeShiftBufferDepth matches the rolling window when there is one;
+    // with window_segments_ == 0 every segment stays listed, so the depth is
+    // the whole take so far.
     const double window_seconds =
-        window.empty() ? 0.0
-                       : static_cast<double>(window.back().base_media_decode_time +
-                                             window.back().duration_samples) /
-                             static_cast<double>(track_.sample_rate);
+        window.empty()
+            ? 0.0
+            : static_cast<double>(window.back().base_media_decode_time +
+                                  window.back().duration_samples -
+                                  window.front().base_media_decode_time) /
+                  static_cast<double>(track_.sample_rate);
     const mp4::MpdOptions mpd_options{.is_static = finished,
                                       .availability_start_time = availability_start_,
                                       .time_shift_buffer_depth_seconds = window_seconds};

@@ -18,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../exit_codes.hpp"
 #include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
@@ -626,7 +627,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     const auto units = ac3::split_access_units(stream, *programme);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
-        return 1;
+        return kExitInput;
     }
     if (ids->size() > 1) {
         fmt::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
@@ -640,7 +641,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
         if (!decoded) {
             fmt::println(stderr, "error: {}: decode failed (code {})", in_path,
                          static_cast<int>(decoded.error()));
-            return 1;
+            return kExitInput;
         }
         if (!decoded->has_value()) {
             // §3.7: held back pending transient pre-noise processing
@@ -687,7 +688,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
                      stats.clipped_samples > 0 ? std::to_string(stats.clipped_samples) : "-");
     }
-    return 0;
+    return kExitOk;
 }
 
 // Wrap a raw AC-3 stream into IEC 61937 bursts inside a PCM16 stereo WAV:
@@ -797,12 +798,12 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return 1;
+        return kExitInput;
     }
     std::optional<QcResult> result;
     if (*bsid > 8) {
@@ -828,7 +829,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         result = measure_qc_ac3(stream, rendered_layout);
     }
     if (!result) {
-        return 1;
+        return kExitInput;
     }
     fmt::println("qc: {} ({}, {}, {} Hz, {} {}, {:.2f} s)", in_path, result->codec_label,
                  result->layout_label, result->sample_rate_hz, result->unit_count,
@@ -851,7 +852,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
             all_pass = false;
         }
     }
-    return all_pass ? 0 : 1;
+    return all_pass ? kExitOk : kExitQcGate;
 }
 
 // What is actually in a file, channel by channel — the answer both front ends
@@ -860,7 +861,7 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
     const auto bytes = read_all(in_path);
     if (bytes.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     // A syncframe opens with 0x0B77 (§5.4.1.1); anything else is treated as a
     // WAV, whose reader reports its own diagnosis if it is neither.
@@ -877,16 +878,14 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
         const auto frames = ac3::split_frames(bytes);
         if (!frames || frames->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
-            return 1;
-        }
+            return kExitInput;        }
         ac3::FrameDecoder decoder;
         std::optional<ac3::analysis::LevelMeter> meter;
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
                 fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
-                return 1;
-            }
+                return kExitInput;            }
             if (!meter) {
                 meter.emplace(decoded->acmod, decoded->lfe,
                               sample_rate_hz(decoded->sample_rate));
@@ -916,19 +915,19 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
         // The `!frames || frames->empty()` check above guarantees the loop
         // ran at least once, and its first iteration always emplaces meter.
         print_channel_summary(*meter); // NOLINT(bugprone-unchecked-optional-access)
-        return 0;
+        return kExitOk;
     }
 
     const auto wav = ac3::io::read_wav(std::string{in_path});
     if (!wav) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
-        return 1;
+        return kExitInput;
     }
     const auto layout = ac3::io::ac3_layout_for(wav->channels.size());
     if (!layout) {
         fmt::println(stderr, "error: levels handles 1 to 6 channels ({} given)",
                      wav->channels.size());
-        return 1;
+        return kExitInput;
     }
     const double seconds = wav->sample_rate > 0
                                ? static_cast<double>(wav->frame_count()) / wav->sample_rate
@@ -943,7 +942,7 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
     }
     meter.process(views);
     print_channel_summary(meter);
-    return 0;
+    return kExitOk;
 }
 
 // Measure a WAV and report what dialnorm it implies. §5.4.2.8 wants dialogue
@@ -954,7 +953,7 @@ int run_loudness(std::string_view in_path) {
     const auto wav = ac3::io::read_wav(std::string{in_path});
     if (!wav) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
-        return 1;
+        return kExitInput;
     }
     ac3::SampleRate sr{};
     switch (wav->sample_rate) {
@@ -963,8 +962,8 @@ int run_loudness(std::string_view in_path) {
         case 32000: sr = ac3::SampleRate::k32000; break;
         default:
             fmt::println(stderr, "error: sample rate {} is not legal for AC-3", wav->sample_rate);
-            return 1;
-    }
+            return kExitInput;
+        }
     // The BS.1770 channel weighting depends on which coded positions are
     // surrounds, so the layout has to be inferred from the channel count
     // (Table 5.8) rather than assumed.
@@ -972,31 +971,31 @@ int run_loudness(std::string_view in_path) {
     if (!layout) {
         fmt::println(stderr, "error: {} channels is not an AC-3 layout",
                      wav->channels.size());
-        return 1;
+        return kExitInput;
     }
     const auto dialnorm = measured_dialnorm(*wav, sr, layout->acmod, layout->lfe);
     if (!dialnorm) {
         fmt::println("no audio above the -70 LKFS absolute gate: loudness undefined");
-        return 1;
+        return kExitRuntime;
     }
     // Reporting the answer was missing where this came from, so the command
     // measured the programme and then said nothing about it.
     fmt::println("{}: {} Hz, {}", in_path, wav->sample_rate,
                  ac3::analysis::layout_name(layout->acmod, layout->lfe));
     fmt::println("  dialogue level -{} LKFS -> dialnorm {}", *dialnorm, *dialnorm);
-    return 0;
+    return kExitOk;
 }
 
 int run_spdif(std::string_view in_path, std::string_view out_path) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return 1;
+        return kExitInput;
     }
     const bool eac3 = *bsid > 8;
 
@@ -1030,23 +1029,25 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
             fmt::println(stderr, "error: {} is not a valid {} stream", in_path,
                          eac3 ? "E-AC-3" : "AC-3");
         }
-        return 1;
+        return kExitInput;
     }
     const auto carrier_rate = eac3 ? content_rate * 4 : content_rate;
     // A valid stream whose units never completed a burst (an E-AC-3 input
     // shorter than one burst set) still produced a header-only WAV before,
     // so the never-opened sink opens for exactly that here.
     if (!sink.is_open() && !sink.open(out_path, carrier_rate, 2)) {
-        return 1;
+        return kExitOutput;
     }
     if (!sink.close()) {
-        return 1;
+        return kExitOutput;
     }
-    fmt::println("wrapped {} into IEC 61937 bursts -> {} ({} Hz carrier)",
-                 eac3 ? "E-AC-3 access units" : "AC-3 frames", out_path, carrier_rate);
-    fmt::println("play bit-exactly (100% volume, exclusive/passthrough output) to light up");
-    fmt::println("a receiver's Dolby Digital{} indicator.", eac3 ? " Plus" : "");
-    return 0;
+    const auto status = status_stream();
+    status_println(status, "wrapped {} into IEC 61937 bursts -> {} ({} Hz carrier)",
+                   eac3 ? "E-AC-3 access units" : "AC-3 frames", out_path, carrier_rate);
+    status_println(status,
+                   "play bit-exactly (100% volume, exclusive/passthrough output) to light up");
+    status_println(status, "a receiver's Dolby Digital{} indicator.", eac3 ? " Plus" : "");
+    return kExitOk;
 }
 
 namespace {
@@ -1142,7 +1143,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         file.open(std::string{in_path}, std::ios::binary);
         if (!file) {
             fmt::println(stderr, "error: cannot read {}", in_path);
-            return 1;
+            return kExitInput;
         }
     }
     std::istream& in = stdio ? std::cin : file;
@@ -1153,7 +1154,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         const auto end = in.tellg();
         if (end < 0) {
             fmt::println(stderr, "error: cannot read {}", in_path);
-            return 1;
+            return kExitInput;
         }
         file_bytes = static_cast<std::uint64_t>(end);
         in.seekg(0, std::ios::beg);
@@ -1176,7 +1177,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
 
     EncodedStreamSink sink;
     if (!sink.open(out_path, keep_partial)) {
-        return 1;
+        return kExitOutput;
     }
     ac3::iec61937::BurstReader reader;
     std::vector<std::byte> carrier(kCarrierChunkBytes);
@@ -1198,13 +1199,13 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
             sink.abort();
             fmt::println(stderr, "error: {}: {}", in_path,
                          ac3::iec61937::describe(pushed.error()));
-            return 1;
+            return kExitInput;
         }
         if (!payload.empty()) {
             elementary_bytes += payload.size();
             if (!sink.push(payload)) {
                 sink.abort();
-                return 1;
+                return kExitOutput;
             }
         }
     }
@@ -1218,10 +1219,10 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
                      reader.skipped_bursts() > 0
                          ? " (its bursts are another data type)"
                          : " - is it ordinary PCM rather than an IEC 61937 carrier?");
-        return 1;
+        return kExitInput;
     }
     if (!sink.close()) {
-        return 1;
+        return kExitOutput;
     }
 
     // Compared as an optional rather than dereferenced: bursts() > 0 does
@@ -1234,29 +1235,35 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
     // this report must never land in the middle of the bytes a pipeline is
     // reading.
     auto* status = status_stream(out_path);
-    fmt::println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
-                 eac3 ? "E-AC-3" : "AC-3", reader.bursts() == 1 ? "" : "s", out_path,
-                 elementary_bytes);
+    status_println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
+                   eac3 ? "E-AC-3" : "AC-3", reader.bursts() == 1 ? "" : "s", out_path,
+                   elementary_bytes);
     if (chunk) {
         // The carrier rate, not the content rate: an E-AC-3 carrier runs at
         // 4x, so 192000 here means a 48 kHz programme.
-        fmt::println(status, "carrier: {} Hz, {} ch, {} words", chunk->sample_rate,
-                     chunk->channels,
-                     reader.word_order() == ac3::iec61937::WordOrder::kBigEndian
-                         ? "big-endian"
-                         : "little-endian");
+        status_println(status, "carrier: {} Hz, {} ch, {} words", chunk->sample_rate,
+                       chunk->channels,
+                       reader.word_order() == ac3::iec61937::WordOrder::kBigEndian
+                           ? "big-endian"
+                           : "little-endian");
     }
     if (reader.skipped_bursts() > 0) {
-        fmt::println(status, "skipped {} burst(s) of another data type", reader.skipped_bursts());
+        status_println(status, "skipped {} burst(s) of another data type",
+                       reader.skipped_bursts());
     }
     if (reader.false_syncs() > 0) {
-        fmt::println(status, "resynced past {} preamble pattern(s) with no syncframe behind them",
-                     reader.false_syncs());
+        status_println(status,
+                       "resynced past {} preamble pattern(s) with no syncframe behind them",
+                       reader.false_syncs());
     }
     if (!finished) {
-        fmt::println(status, "warning: {}", ac3::iec61937::describe(finished.error()));
+        // A warning even under quiet: the take still finished and wrote
+        // something, but the reader's own contract (a whole final burst) was
+        // not met, which the exit code alone does not distinguish from a
+        // clean stop.
+        fmt::println(stderr, "warning: {}", ac3::iec61937::describe(finished.error()));
     }
-    return 0;
+    return kExitOk;
 }
 
 }  // namespace ac3cli::commands

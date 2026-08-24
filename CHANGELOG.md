@@ -14,6 +14,48 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **A documented CLI exit-code scheme, per-command help, a man page and shell completions**
+  (roadmap IO8). `ac3cli` is positioned as a pipeline tool, but every failure path returned `1`,
+  so a script could not tell a usage error from a missing input file, a full disk, an absent
+  capture device or a failed QC gate. There are now eight codes — `0` success, `1` usage,
+  `2` input, `3` output, `4` unavailable here, `5` runtime, `6` a failed QC gate, `7` internal —
+  chosen in one place (`apps/cli/exit_codes.hpp`), published in
+  [docs/cli/metadata-options.md](docs/cli/metadata-options.md#exit-codes), and printed by
+  `ac3cli help exit-codes`. `qc`'s own contract is unchanged; what is new is the non-zero half
+  being named.
+- **`ac3cli help <command>`, `--help` and `-h`** print one command's row and only the option
+  grammars that command actually uses. The ~130-line usage block is split into topic sections and
+  each command row declares which it needs, so an argument error prints the offending row and a
+  pointer rather than the whole manual — and the help still cannot drift from what dispatch
+  accepts, because both are generated from the same command table.
+- **`ac3cli man` and `ac3cli completions <bash|zsh|fish|powershell>`**, rendered from that same
+  table. The build generates them and `cmake --install` places the man page under
+  `share/man/man1` and each completion script in its shell's conventional directory; the Homebrew
+  formula places the bash and fish halves through Homebrew's own helpers. Skipped (with a status
+  message) on a cross build, which cannot run the binary it just built.
+- **`quiet` and `verbose` tokens**, on every command. `quiet` silences the status output while
+  leaving errors, a reporting command's report and a `-` payload alone; `verbose` turns on a
+  stderr progress line whatever the run's length. Without either, a run past about 16 seconds of
+  audio prints that one line and nothing else new.
+- **`record` and `live` reach parity with the GUI's live session** (roadmap IO9). Both take
+  `layout=` and `codec=` — any layout up to 7.1.4, AC-3 or E-AC-3, with the captured channels
+  placed by direction the way `encode` places a file's — where `record` was stereo AC-3 only and
+  `live mode=channels` AC-3 stereo only. Both take `container=raw|mkv|ts|spdif` and write it
+  **incrementally as the take runs**, through the same `RecordingSink` the GUI uses (moved to
+  `apps/common/` and compiled into both front ends), so a take costs one frame of memory rather
+  than the whole session and a crash an hour in leaves an hour of playable file. Both take
+  `watchdog=<seconds>` (default 3, `0` disables) and end the session as a failure when a capture
+  device stops delivering audio instead of sitting there looking healthy.
+- **Live object slots and a parallel downmix leg.** `live mode=atmos` allocates an `objects=<N>`
+  slot budget once at session start and binds capture channels to slots with `map=`, using the
+  same `obj`/`objm`/`none` grammar the GUI's assignment table uses — so a GUI assignment is
+  reproducible headlessly. When the stream needs E-AC-3 but the chosen passthrough endpoint only
+  bitstreams AC-3, `live` now sends it a parallel 5.1 AC-3 encode of the bed the main plan already
+  computed instead of refusing; the file and monitor still carry the full stream, and
+  `downmix=off` restores the old refusal.
+- **`obj`/`objm` are real destinations on `atmos-encode`**, which now honours `src=`/`map=`: each
+  `obj` channel becomes its own object, a contiguous `objm` range folds to one mono object, and
+  objects appear in `map=` order. They parsed and did nothing before.
 - **E-AC-3 delta bit allocation under coupling** (`EQ5`). `§7.2.2.6` corrections are no longer
   skipped for every stream in a coupled frame: the coupling channel carries its own
   `cpldeltbae` like any full-bandwidth channel, on the same per-run, per-block terms `D3`

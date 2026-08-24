@@ -2,12 +2,19 @@
 
 Encoding commands in [Commands](commands.md) take these after their positional arguments, in any
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
-takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=`/`fmp4-window=`
-and (`live` only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
-`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`,
+takes none at all; `record` and `live mode=channels` build a real encoder plan, so they honor the
+whole metadata group below (`drc=`, `heavy`, `dialnorm=<n>`, `cmixlev=`/`surmixlev=` — which is
+also what their §7.8 fold-down uses — `mixmeta`, `lfemix=`, `dmixmod=`) alongside `fast-mdct=off`,
+`container=`/`fmp4-window=`, `layout=`, `codec=`, `watchdog=` and, `live` only, `capture2=`,
+`objects=`, `map=` and `downmix=`. `dialnorm=auto` is the one they refuse: it measures a whole
+programme before encoding it, and a live capture has not got one yet. `live mode=atmos` encodes
+the fixed TS 103 420 shape, so it takes `dialnorm=<n>` and `fast-mdct=off` from the group and
+nothing else. `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`,
 `joc-domain=`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
-— of the three Atmos commands, only `atmos-encode` measures:
+— of the three Atmos commands, only `atmos-encode` measures, and not when `src=`/`map=` are in play
+(an assembled object set has no single fixed layout to measure a whole-programme loudness
+against). Every command honors `quiet`, `verbose` and `--help`:
 
 ```text
 metadata options (any order, after the positional arguments):
@@ -336,10 +343,11 @@ none of the three is inherited from Ch1's — a stream that wants both programme
 both explicitly. `decode` writes Ch1/Ch2 back out in that same order, and `levels` names them
 `Ch1`/`Ch2` rather than a speaker position that would not apply.
 
-## Source options (`encode`/`eac3-encode`): `src=`, `map=` and `offset=`
+## Source options (`encode`/`eac3-encode`/`atmos-encode`): `src=`, `map=` and `offset=`
 
 ```text
-source options (encode/eac3-encode; any order, after the positional arguments):
+source options (encode/eac3-encode/atmos-encode/live; any order, after the positional
+arguments):
   src=<path>        an additional input source; repeat for more than one
   map=<spec>        <source>.<channel>[-<channel2>]:<dest>[@<trim>][,...] - dest is a channel
                      name, obj, objm, p1, p2 or none; a channel range is only legal with obj,
@@ -355,7 +363,10 @@ source options (encode/eac3-encode; any order, after the positional arguments):
 
 `src=` loads another WAV alongside `in.wav` (source index 0), in the order given — `src=a.wav
 src=b.wav` makes `a.wav` source 1 and `b.wav` source 2. Every source must share `in.wav`'s sample
-rate.
+rate. On `live mode=atmos` the "sources" are the capture devices instead: source `0` is
+`capture_device`, source `1` is `capture2=` when present, and `map=` binds their channels to
+object slots rather than to file channels (see
+[`objects=` and `map=`](#objects-and-map-modeatmos)).
 
 With exactly one source (no `src=` at all), `map=` is not needed: the existing automatic
 single-source panning applies, byte-identical to a plain `ac3cli encode`/`eac3-encode` invocation
@@ -372,19 +383,32 @@ which one it means. `objm` folds the whole range into ONE mono object (equal-wei
 than one object per channel the way a plain `obj` range does. Two entries naming the same location,
 or more than one entry per dual-mono programme, is refused.
 
-The `obj`/`objm` destinations parse but currently do nothing in `ac3cli`: the routing behind
-`encode`/`eac3-encode` skips every non-location row (also true of a stray `p1`/`p2` row on a
-target that isn't dual mono), the CLI has no object assembly behind `map=`, and `atmos-encode`
-ignores `src=`/`map=` entirely — audio mapped onto an object destination is still discarded, but
-no longer silently: `encode`/`eac3-encode` print a warning naming the source/channel and
-destination for each row that resolves to nothing. Object destinations need the object-capable
-front end, the GUI (see [GUI → Multi-source & assignment](../gui/source-assignment.md)).
+The `obj`/`objm` destinations are real on the two object-capable commands (roadmap IO9):
+`atmos-encode` and `live mode=atmos` both assemble them. Each `obj` row becomes its own dynamic
+object; a contiguous `objm` range folds to a single mono object (equal-weight sum, scaled by
+`1/n`); the objects appear in `map=` order — every `obj` row first, in source-then-channel order,
+then each `objm` group. `atmos-encode` honours `src=`/`map=` the same way `encode`/`eac3-encode`
+do, so a GUI assignment is reproducible headlessly, which is the point of the two front ends
+sharing one grammar (see
+[GUI → Multi-source & assignment](../gui/source-assignment.md)).
+
+```bash
+ac3cli atmos-encode stems.wav out.ec3 448 src=vo.wav \
+    map=0.0:obj,0.1:obj@-3,0.2-3:objm,1.0:obj,1.1:none
+```
+
+On `encode`/`eac3-encode` they remain what they always were: those two commands have no object
+layer to put an object in, so the routing skips every non-location row (also true of a stray
+`p1`/`p2` row on a target that isn't dual mono) and audio mapped onto an object destination is
+discarded — not silently, though: both print a warning naming the source/channel and destination
+for each row that resolves to nothing.
 
 Any `<dest>` may carry an optional trailing `@<trim>` — a signed decibel gain in `[-24, 24]`,
 snapped to a tenth of a dB (`L@-3.5`, `obj@2`) — applied as linear gain wherever that channel's
 content reaches the stream: folded into the routing matrix for a bed position or a dual-mono
-programme, or, for `obj`/`objm`, into the object's plane at assembly — which only the GUI
-performs, per the note above. Omitted (no `@`) means no trim, the same as an explicit `@0`.
+programme, or, for `obj`/`objm`, into that object's own plane as it is assembled (by
+`atmos-encode`, `live mode=atmos` or the GUI — see the note above). Omitted (no `@`) means no
+trim, the same as an explicit `@0`.
 
 ```bash
 ac3cli eac3-encode roundtrip-stereo.wav out.ec3 384 none 51 \
@@ -432,34 +456,51 @@ The GUI's own multi-source Format-tab table (**Add source…** plus a per-channe
 is a direct front end over this same grammar — see
 [GUI → Multi-source & assignment](../gui/source-assignment.md).
 
-## Record/live options (`record`, `live`): `container=`
+## Record/live options (`record`, `live`): `container=`, `layout=`, `codec=`, `watchdog=`
 
 ```text
 record/live options (record, live; any order, after the positional arguments):
-  container=mkv     write straight to Matroska instead of the bare elementary
-                     stream this writes by default - same shape of choice as
-                     the GUI's own Container setting (container=matroska is
-                     an accepted alias)
-  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live
-                     HLS playlists and a dynamic DASH MPD, updated as the
-                     session runs - the output path names the folder
-                     (container=cmaf is an accepted alias)
-  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the
-                     playlist/MPD (a rolling live window); 0, the default, keeps
-                     every segment
-  container=raw     the default, spelled out
+  container=raw     the bare elementary stream (the default)
+  container=mkv     Matroska, written incrementally as the take runs
+                    (container=matroska is an accepted alias)
+  container=ts      an MPEG-2 Transport Stream, same DVB profile as 'ts'
+  container=spdif   an IEC 61937 WAV carrier, same bursts as 'spdif'
+  container=fmp4    a DIRECTORY of fragmented MP4/CMAF segments plus live
+                    HLS playlists and a dynamic DASH MPD, updated as the
+                    session runs - the output path names the folder
+                    (container=cmaf is an accepted alias)
+  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in
+                    the playlist/MPD (a rolling live window); 0, the
+                    default, keeps every segment
+  layout=<name>     the encoded layout (default stereo); anything wider
+                    than AC-3 carries promotes the stream to E-AC-3
+  codec=ac3|eac3    force the codec instead of deriving it from layout=
+  watchdog=<sec>    stop the session if capture delivers nothing for this
+                    long (default 3, 0 disables)
 ```
 
-`container=mkv` (alias `container=matroska`) writes the take straight to Matroska (`.mkv`)
-instead of a bare `.ac3`/`.ec3` elementary stream, in the one `record`/`live` command — unlike
-`mkv`, which wraps an
-*already-encoded* file after the fact (see [Command-specific notes](#command-specific-notes)
-below), there is no second command needed here. `container=raw` is the default spelled out
-explicitly; any other value is refused rather than silently ignored, the same rule every option on
-this page follows. This is the same choice the GUI's own Container combo offers on the Format tab
-(see [GUI → Format & channels](../gui/format-and-channels.md)) — see [GUI → Live capture &
-session](../gui/live-session.md#take-durability) for how a live session's own take durability
-differs slightly between the two front ends.
+### `container=`
+
+All five values write the take **incrementally, as it is captured** — the same `RecordingSink`
+the GUI's own takes go through (`apps/common/recording_sink.hpp`), shared verbatim between the two
+front ends rather than reimplemented. Two consequences worth stating: a take of any length costs
+one frame of memory rather than the whole session, and a crash an hour in leaves an hour of
+playable file rather than nothing.
+
+| Value | What it writes | Byte-identical to |
+|---|---|---|
+| `raw` (default) | The bare `.ac3`/`.ec3` elementary stream | the frames, concatenated |
+| `mkv` (alias `matroska`) | Matroska, via `matroska::Writer`'s unknown-size Segment | `mkv` over the same frames, modulo the streaming Segment header |
+| `ts` (alias `mpegts`) | MPEG-2 Transport Stream, DVB profile | `ts` over the same frames |
+| `spdif` | IEC 61937 bursts inside a PCM16 WAV carrier | `spdif` over the same frames |
+| `fmp4` (alias `cmaf`) | A directory of fragmented MP4/CMAF segments plus HLS/DASH manifests, via `Fmp4FolderWriter` (`apps/common/fmp4_folder_writer.hpp`) | see below |
+
+Plain `mp4` is deliberately absent: `moov`/`stco` need every frame's final offset and the
+`dac3`/`dec3` box needs a bitstream scan, so it cannot be written before the take ends — the
+standalone [`mp4` command](commands.md#containers) wraps an already-finished file instead.
+Fragmented MP4 has no such constraint, which is exactly why `container=fmp4` can stream
+incrementally like the other four. Any other value is refused rather than silently ignored, the
+same rule every option on this page follows.
 
 `container=fmp4` (alias `container=cmaf`) is the same choice for fragmented MP4/CMAF, with one
 shape difference the format forces: the output path names a **folder**, not a file, because the
@@ -481,16 +522,62 @@ lists every segment — right for a session whose folder will be served whole af
 
 ```bash
 ac3cli record out.mkv 30 192 0 container=mkv
+ac3cli record out.ts  30 448 0 container=ts layout=51
+ac3cli live out.wav 0 30 448 -2 -2 atmos container=spdif
 ac3cli live out.mkv 0 30 448 -2 -2 atmos container=mkv
 ac3cli live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
 ```
 
-## Live options (`live`): `capture2=`
+### `layout=` and `codec=`
+
+`layout=` takes the same grammar as every other layout argument on this page — a named layout or a
+comma-separated Table E2.5 location list (see [The `layout` grammar](#the-layout-grammar)) — and
+defaults to `stereo`, which is what `record` and `live mode=channels` encoded before they could be
+told otherwise. The captured channels are placed onto it **by direction**, not by index: a
+two-channel microphone recorded onto `51` fills L/R and leaves the rest silent, and a source wider
+than the target folds down per §7.8 using `cmixlev=`/`surmixlev=` — exactly what `encode` does with
+a file.
+
+The codec follows from the layout: anything wider than AC-3 can carry needs the dependent
+substreams only E-AC-3 has, so it promotes the stream automatically. `codec=eac3` forces E-AC-3 for
+a narrow layout too (for a receiver you want to exercise as Dolby Digital Plus); `codec=ac3`
+alongside a layout AC-3 cannot carry is refused with the layout named.
+
+`layout=`/`codec=` describe a **channel** session. `live mode=atmos` always encodes the TS 103 420
+shape — a 5.1 E-AC-3 bed plus its object layer — so passing either alongside it is refused rather
+than silently ignored.
+
+```bash
+ac3cli record out.ec3 30 448 0 layout=51
+ac3cli record out.ec3 30 384 0 layout=stereo codec=eac3
+ac3cli live out.ec3 0 30 448 -1 -1 channels layout=714
+```
+
+### `watchdog=`
+
+A capture device that vanishes — unplugged, disabled, or torn down under the session — delivers
+nothing but zero-byte reads for as long as you let it, which a plain "wait for more samples" loop
+cannot tell from a device that is briefly starved. Without a watchdog the session just sits there
+looking healthy with no audio coming in. `watchdog=<seconds>` is how long that may go on before the
+session stops as a failure (default 3, matching the GUI's own
+[device-drop detection](../gui/live-session.md#device-drop-detection)); `watchdog=0` turns it off
+for a device that legitimately goes quiet for longer.
+
+When it fires, everything already captured stays on disk — that is what streaming the take buys —
+and the command exits `5` (runtime), naming the device that stopped. `live capture2=` gets its own
+watchdog on the same timeout, so a dropped slave is reported as the slave.
+
+## Live options (`live`): `capture2=`, `objects=`, `downmix=`
 
 ```text
 live options (live; any order, after the positional arguments):
   capture2=<index>  a second capture device, clock-conformed to the first (see 'devices')
+  objects=<N>       the object-slot budget for mode=atmos (1..15)
+  downmix=off       refuse an AC-3-only passthrough endpoint instead of running
+                    the parallel 5.1 AC-3 leg
 ```
+
+### `capture2=`
 
 `capture2=<index>` names a second capture device — same 0-based numbering `devices` prints and the
 `capture_device` positional already uses — that joins the session alongside the master. The master
@@ -501,8 +588,8 @@ count and every other positional argument mean what they meant before this optio
 master's pacing, correcting both the nominal rate conversion and whatever free-running clock drift
 the two devices accumulate against each other. The slave's channels are appended after the
 master's own, at new, higher channel indices, in the same interleaved per-frame block that feeds
-the encoder — so a two-device `atmos` session simply gets more objects to place. The measured
-drift is printed once, in signed parts-per-million, when the session ends.
+the encoder — so a two-device `atmos` session simply has more capture channels to bind object slots
+to. The measured drift is printed once, in signed parts-per-million, when the session ends.
 
 ```bash
 ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
@@ -510,6 +597,113 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
+
+### `objects=` and `map=` (`mode=atmos`)
+
+The object-slot budget is allocated **once, at session start**, and never changes: a decoder reads
+the object count from the first access unit's OAMD and does not re-read it, so a slot bound
+half-way through a session cannot be allowed to change how many objects the stream declares. That
+is the same rule the GUI's live object room follows — its **Add object** chips allocate against a
+fixed budget, and reassigning a chip rebinds a slot rather than creating one.
+
+Without either option, `live mode=atmos` allocates one slot per captured channel (capped at 15,
+since the bed's LFE is the 16th object and TS 103 420 §8.3.2.2 caps the total at 16) and binds them
+one-to-one — exactly what it always did. `objects=<N>` sets the budget explicitly; slots past the
+captured channel count are allocated but unbound, and carried silent.
+
+`map=` binds capture channels to slots by name, using the same grammar `encode`/`eac3-encode` take
+for files (see [Source options](#source-options-encodeeac3-encodeatmos-encode-src-map-and-offset)) with the
+capture devices as sources: source `0` is `capture_device`, source `1` is `capture2=` when present.
+`obj` makes a channel its own object; `objm` over a contiguous range folds it to one mono object;
+`none` leaves a channel out. Objects appear in `map=` order — every `obj` row first, then each
+`objm` group. A `@<trim>` on either is applied to that channel's contribution.
+
+```bash
+# Four objects: capture channels 0 and 1 on their own, 2-3 folded to one, and
+# capture2's first channel as the fourth. Two more slots are allocated and left
+# silent, so the stream declares six objects throughout.
+ac3cli live out.ec3 0 60 448 -2 -2 atmos capture2=1 objects=6 \
+    map=0.0:obj,0.1:obj@-3,0.2-0.3:objm,0.4:none,0.5:none,1.0:obj,1.1:none
+```
+
+`map=` is refused on `mode=channels`: a channel session places its channels by direction onto
+`layout=`, and there are no object slots to bind. A budget smaller than what `map=` assigns is
+refused rather than silently truncated.
+
+### `downmix=`
+
+When the session's stream needs E-AC-3 — an object session, or a channel layout wider than AC-3 can
+carry — but the chosen `passthrough_device` only bitstreams plain AC-3, `live` runs a **parallel
+5.1 AC-3 leg**: an independent AC-3 encode of the bed the main plan has already computed, sent to
+that receiver, while the file and the monitor still carry the full stream. The bed is already a
+self-sufficient fold-down of the whole programme, so there is no second §7.8 fold to compute; the
+receiver simply hears a capped downmix instead of a refusal. This is the CLI half of the GUI's
+[parallel downmix leg](../gui/live-session.md#parallel-downmix-receiver-leg).
+
+`downmix=off` refuses instead — the plain "does not accept E-AC-3 over IEC 61937" warning and a
+file-only session, which is what `live` did before. A receiver that accepts neither format is a
+genuine refusal either way.
+
+```bash
+ac3cli live out.ec3 0 30 448 -2 1 channels layout=714      # capped 5.1 AC-3 to receiver 1
+ac3cli live out.ec3 0 30 448 -2 1 channels layout=714 downmix=off
+```
+
+## Common options (every command): `quiet`, `verbose`
+
+```text
+common options (every command; any order, after the positional arguments):
+  quiet             no status output at all - errors on stderr and, for a '-'
+                    output, the payload on stdout. Nothing else is printed.
+  verbose           print the stderr progress line whatever the run's length,
+                    and name every source/routing decision as it is made.
+  --help, -h        this command's own help
+```
+
+`quiet` silences the *status* output — the meters, the routing summary, the `dialnorm=auto`
+measurement line, the "wrote N frames" summary — while leaving errors on stderr and, for a `-`
+output, the payload on stdout untouched. It does **not** silence a reporting command's report:
+`levels`, `loudness`, `qc`, `devices` and `outputs` print their answer regardless, because that
+answer is the command's output rather than commentary on it.
+
+`verbose` turns the stderr progress line on whatever the run's length. Without either token, a run
+long enough to be worth watching (500 frames or access units — about 16 seconds of audio) prints
+that one line on stderr and nothing else new. It is always stderr, never stdout: a `-` output owns
+stdout, and a progress line in the middle of a piped elementary stream would corrupt whatever is
+reading it.
+
+```bash
+ac3cli encode in.wav out.ac3 448 51 quiet && echo "encoded"
+ac3cli decode long.ec3 - verbose > out.wav
+```
+
+## Exit codes
+
+Every command returns one of eight codes, so a script can tell *why* something failed rather than
+only *that* it did. `ac3cli help exit-codes` prints the same table.
+
+| Code | Meaning |
+|---|---|
+| `0` | Success. |
+| `1` | Usage — a bad or missing argument, an unknown command or option, or a configuration the encoder cannot express (an illegal bitrate for a layout, more objects than a stream can carry). Retrying the same command line cannot help. |
+| `2` | Input — unreadable, absent, or not a valid AC-3/E-AC-3/WAV/ADM file, or a stream that stopped decoding part-way. |
+| `3` | Output — the destination could not be created, written or finalized. |
+| `4` | Unavailable here — this build or this machine cannot run the command at all (no audio backend, no capture/render endpoint, an endpoint that refuses the format, a library this build was not configured with). The same command line may well succeed elsewhere. |
+| `5` | Runtime — the run started and then failed for none of the above reasons: a capture device that stopped delivering audio (the `record`/`live` watchdog), a loudness measurement with nothing above the gate, a signing pass that could not complete. |
+| `6` | A QC gate failed. Distinct from `2` so a CI step can tell "the stream is out of spec" (a result) from "`qc` could not read the file" (a fault). |
+| `7` | Internal — an exception escaped a command. Never expected. |
+
+`qc`'s long-standing contract is unchanged: exit `0` only when the file decodes cleanly **and**
+every requested gate passes. What is new is the non-zero half being named.
+
+```bash
+ac3cli qc out.ec3 preset=ebu-r128-s2
+case $? in
+  0) echo "in spec" ;;
+  6) echo "out of spec" ;;
+  *) echo "qc could not run" ;;
+esac
+```
 
 ## Programme options (`eac3-encode`): `programme2=`
 
