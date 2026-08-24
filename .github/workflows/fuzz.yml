@@ -70,11 +70,11 @@
 # infrastructure - see fuzz/README.md.
 #
 # fuzz-regress, fuzz-short and fuzz-nightly cover every harness in
-# fuzz/run.sh's default list, which as of roadmap VX3 is eight: the four
-# original entry points plus fuzz_emdf_parse, fuzz_oamd_parse, fuzz_joc_parse
-# and fuzz_signing_verify over the object and metadata layer. They need no
-# per-job wiring - run.sh owns the list, and a new entry there is picked up by
-# all three at once.
+# fuzz/run.sh's default list, which as of roadmap VX3 is nine: the four
+# original entry points, fuzz_iec61937_unwrap (roadmap IO3), and
+# fuzz_emdf_parse, fuzz_oamd_parse, fuzz_joc_parse, fuzz_signing_verify over
+# the object and metadata layer. They need no per-job wiring - run.sh owns
+# the list, and a new entry there is picked up by all three at once.
 #
 # All five run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
 # linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
