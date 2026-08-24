@@ -24,6 +24,7 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
 
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/quality/distortion.hpp"
@@ -306,6 +307,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (dual_mono &&
         (!config_.dialnorm2 || *config_.dialnorm2 < 1 || *config_.dialnorm2 > 31)) {
         return std::unexpected(FrameError::kInvalidDialnorm);
+    }
+    if (!meta::valid_bsi_info(config_.info)) {
+        return std::unexpected(FrameError::kInvalidBsi);
+    }
+    if (config_.alternate_bsi) {
+        if (!meta::valid_alternate_bsi(*config_.alternate_bsi)) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
+        // §D1: the alternate syntax lives IN the two timecod fields. Asking
+        // for both is asking for 56 bits where the frame has 28, and quietly
+        // dropping one of them would leave the caller believing a time code
+        // went out that never did.
+        if (config_.info.timecod1 || config_.info.timecod2) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
     }
     const int nfchans = fullbw_channel_count(config_.acmod);
     const int nchans = channel_count();
@@ -1489,14 +1505,30 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 8. Measure the side information -----------------------------------
     const auto measure_side_bits = [&] {
         std::uint32_t bits = 16 + 16 + 2 + 6;  // syncinfo
+        // bsid, bsmod, acmod, lfeon, dialnorm, compre, langcode, audprodie,
+        // copyrightb, origbs, the two 1-bit flags at the end (timecod1e and
+        // timecod2e, or Annex D's xbsi1e and xbsi2e - the same two bits either
+        // way, which is exactly the property §D3.2 relies on) and addbsie.
         std::uint32_t bsi = 25;
         if (has_three_front(config_.acmod)) bsi += 2;  // cmixlev
         if (has_surround(config_.acmod)) bsi += 2;     // surmixlev
         if (config_.acmod == Acmod::k2_0) bsi += 2;    // dsurmod
         if (config_.heavy) bsi += 8;                   // compr (§5.4.2.10)
+        if (config_.info.langcod) bsi += 8;            // langcod (§5.4.2.12)
+        if (config_.info.audprod) bsi += 5 + 2;        // mixlevel, roomtyp
         if (dual_mono) {
             bsi += 5 + 1 + 1 + 1;  // dialnorm2, compr2e, langcod2e, audprodi2e
             if (config_.heavy2) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
+            if (config_.info.langcod2) bsi += 8;
+            if (config_.info.audprod2) bsi += 5 + 2;
+        }
+        if (config_.alternate_bsi) {
+            if (config_.alternate_bsi->mix) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
+            // dsurexmod, dheadphonmod, adconvtyp, xbsi2, encinfo.
+            if (config_.alternate_bsi->extended) bsi += 2 + 2 + 1 + 8 + 1;
+        } else {
+            if (config_.info.timecod1) bsi += 14;
+            if (config_.info.timecod2) bsi += 14;
         }
         bits += bsi;
         BitWriter counter;
@@ -2047,8 +2079,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     w.put(static_cast<std::uint32_t>(config_.sample_rate), 2);
     w.put(static_cast<std::uint32_t>(*index) * 2 + (pad ? 1u : 0u), 6);
 
-    w.put(8, 5);  // bsid
-    w.put(0, 3);  // bsmod
+    // §D2.1: bsid 6 IS the announcement that the alternate syntax is in use.
+    // Everything up to origbs is identical either way (Table D2.1 restates
+    // §5.4.2 verbatim to that point); only the last 28 bits differ.
+    w.put(config_.alternate_bsi ? 6 : 8, 5);  // bsid
+    w.put(static_cast<std::uint32_t>(config_.info.bsmod), 3);
     w.put(static_cast<std::uint32_t>(config_.acmod), 3);
     if (has_three_front(config_.acmod)) {
         w.put(static_cast<std::uint32_t>(config_.cmixlev), 2);
@@ -2057,7 +2092,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         w.put(static_cast<std::uint32_t>(config_.surmixlev), 2);
     }
     if (config_.acmod == Acmod::k2_0) {
-        w.put(0, 2);  // dsurmod
+        w.put(static_cast<std::uint32_t>(config_.info.dsurmod), 2);
     }
     w.put(config_.lfe ? 1 : 0, 1);
     w.put(static_cast<std::uint32_t>(config_.dialnorm), 5);
@@ -2065,8 +2100,26 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (config_.heavy) {
         w.put(compr, 8);
     }
-    w.put(0, 1);  // langcode
-    w.put(0, 1);  // audprodie
+    // §5.4.2.12: langcod carries no information any more - the language table
+    // it once indexed was dropped - so the only thing to choose is whether the
+    // reserved 0xFF byte is present at all.
+    const auto emit_langcod = [&w](bool present) {
+        w.put(present ? 1 : 0, 1);  // langcode
+        if (present) {
+            w.put(0xFF, 8);  // langcod
+        }
+    };
+    const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
+        w.put(production ? 1 : 0, 1);  // audprodie
+        if (production) {
+            w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
+            w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
+            // No adconvtyp here: §5.4.2's audprodie stops at roomtyp. Only
+            // E-AC-3's infomdat and Annex D's xbsi2 carry that field.
+        }
+    };
+    emit_langcod(config_.info.langcod);
+    emit_audprod(config_.info.audprod);
     if (dual_mono) {
         w.put(static_cast<std::uint32_t>(*config_.dialnorm2), 5);
         // compr2e is Ch2's OWN flag (§5.4.2.11 mirrors §5.4.2.10 for the
@@ -2077,13 +2130,49 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (config_.heavy2) {
             w.put(compr2, 8);
         }
-        w.put(0, 1);  // langcod2e
-        w.put(0, 1);  // audprodi2e
+        emit_langcod(config_.info.langcod2);
+        emit_audprod(config_.info.audprod2);
     }
-    w.put(0, 1);  // copyrightb
-    w.put(1, 1);  // origbs
-    w.put(0, 1);  // timecod1e
-    w.put(0, 1);  // timecod2e
+    w.put(config_.info.copyrightb ? 1 : 0, 1);  // copyrightb
+    w.put(config_.info.origbs ? 1 : 0, 1);      // origbs
+    if (config_.alternate_bsi) {
+        const auto& alternate = *config_.alternate_bsi;
+        w.put(alternate.mix ? 1 : 0, 1);  // xbsi1e
+        if (alternate.mix) {
+            // Table D2.1's field order, which is NOT Table E1.2's: Annex D
+            // pairs the two Lt/Rt levels and then the two Lo/Ro ones, where
+            // mixmdate pairs centre with centre and surround with surround.
+            // Same five quantities, different order on the wire.
+            w.put(static_cast<std::uint32_t>(alternate.mix->dmixmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.mix->ltrtcmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->ltrtsurmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->lorocmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->lorosurmixlev), 3);
+        }
+        w.put(alternate.extended ? 1 : 0, 1);  // xbsi2e
+        if (alternate.extended) {
+            w.put(static_cast<std::uint32_t>(alternate.extended->dsurexmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.extended->dheadphonmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.extended->adconvtyp), 1);
+            w.put(0, 8);  // xbsi2: §D2.3.1.11 reserves it and requires zero
+            w.put(alternate.extended->encinfo ? 1 : 0, 1);
+        }
+    } else {
+        w.put(config_.info.timecod1 ? 1 : 0, 1);  // timecod1e
+        if (config_.info.timecod1) {
+            const auto& t = *config_.info.timecod1;
+            w.put(static_cast<std::uint32_t>(t.hours), 5);
+            w.put(static_cast<std::uint32_t>(t.minutes), 6);
+            w.put(static_cast<std::uint32_t>(t.eight_seconds), 3);
+        }
+        w.put(config_.info.timecod2 ? 1 : 0, 1);  // timecod2e
+        if (config_.info.timecod2) {
+            const auto& t = *config_.info.timecod2;
+            w.put(static_cast<std::uint32_t>(t.seconds), 3);
+            w.put(static_cast<std::uint32_t>(t.frames), 5);
+            w.put(static_cast<std::uint32_t>(t.sixty_fourths), 6);
+        }
+    }
     w.put(0, 1);  // addbsie
 
     // The self-check's encoder-side view (ac3/verify/mirror.hpp). Recorded

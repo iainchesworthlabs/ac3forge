@@ -28,7 +28,9 @@
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -98,7 +100,89 @@ struct Bsi {
     // Ch2's own dialnorm/compr, present only when acmod is kDualMono (1+1).
     std::optional<int> dialnorm2;
     std::optional<std::uint8_t> compr2;
+    // Table E1.2's two optional metadata elements, exactly as read.
+    std::optional<meta::MixMetadata> mixing;
+    std::optional<meta::BsiInfo> info;
 };
+
+// Table E1.2's mixdef element (§E2.3.1.18-52). mixdef 0x3's mixdeflen sizes
+// the WHOLE element - sub-fields and byte-alignment fill included - so the
+// contents are walked for their values and the reader is then placed from the
+// length rather than from where the walk happened to stop. That way a stream
+// using a sub-field this build does not model still lands the reader in the
+// right place, which is the property the old skip-it-whole code had and is
+// worth keeping now that the contents are read.
+meta::MixingParameters read_mixing_parameters(BitReader& r) {
+    const auto read_premix = [&r] {
+        meta::PremixCompression premix;
+        premix.premixcmpsel = static_cast<meta::PremixCompressionSource>(r.read(1));
+        premix.drcsrc = static_cast<meta::DrcSource>(r.read(1));
+        premix.premixcmpscl = static_cast<int>(r.read(3));
+        return premix;
+    };
+    meta::MixingParameters mixing;
+    mixing.mixdef = static_cast<meta::MixDefinition>(r.read(2));
+    switch (mixing.mixdef) {
+        case meta::MixDefinition::kNone:
+            break;
+        case meta::MixDefinition::kPremix:
+            mixing.premix = read_premix();
+            break;
+        case meta::MixDefinition::kReserved:
+            mixing.reserved = static_cast<std::uint16_t>(r.read(12));
+            break;
+        case meta::MixDefinition::kExtended: {
+            const auto mixdeflen = r.read(5);
+            const auto start = r.bit_position();
+            if (r.read(1) != 0) {  // mixdata2e
+                meta::ExternalScales external;
+                external.premix = read_premix();
+                const auto read_scale = [&r]() -> std::optional<int> {
+                    if (r.read(1) == 0) {
+                        return std::nullopt;
+                    }
+                    return static_cast<int>(r.read(4));
+                };
+                external.left = read_scale();
+                external.centre = read_scale();
+                external.right = read_scale();
+                external.left_surround = read_scale();
+                external.right_surround = read_scale();
+                external.lfe = read_scale();
+                external.dmixscl = read_scale();
+                if (r.read(1) != 0) {  // addche
+                    external.auxiliary = std::array<std::optional<int>, 2>{read_scale(),
+                                                                          read_scale()};
+                }
+                mixing.external = external;
+            }
+            if (r.read(1) != 0) {  // mixdata3e
+                meta::SpeechEnhancement speech;
+                speech.spchdat = static_cast<int>(r.read(5));
+                if (r.read(1) != 0) {  // addspchdate
+                    meta::SpeechEnhancement::Additional additional;
+                    additional.spchdat1 = static_cast<int>(r.read(5));
+                    additional.spchan1att = static_cast<int>(r.read(2));
+                    if (r.read(1) != 0) {  // addspchdat1e
+                        meta::SpeechEnhancement::Additional::More more;
+                        more.spchdat2 = static_cast<int>(r.read(5));
+                        more.spchan2att = static_cast<int>(r.read(3));
+                        additional.more = more;
+                    }
+                    speech.additional = additional;
+                }
+                mixing.speech = speech;
+            }
+            // §E2.3.1.22: mixdeflen 0-31 means 2-33 bytes. Skip whatever the
+            // walk above left, mixdatafill included.
+            const auto total = (mixdeflen + 2) * 8;
+            const auto used = static_cast<std::uint32_t>(r.bit_position() - start);
+            r.skip(total > used ? total - used : 0);
+            break;
+        }
+    }
+    return mixing;
+}
 
 // Table E1.2's mixing-metadata payload. None of it changes how the audio is
 // coded, but every field still has to be walked exactly: one bit out of place
@@ -106,71 +190,123 @@ struct Bsi {
 // The two strmtyp gates here are the point - an independent substream carries
 // the program-scaling and mixing-configuration block that a dependent, which
 // is only ever part of someone else's program, does not.
-void skip_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
+meta::MixMetadata read_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
+    meta::MixMetadata mix;
     if (acmod > 0x2) {
-        r.skip(2);  // dmixmod
+        const auto mode = r.read(2);  // dmixmod
+        if (mode < 3) {               // Table D2.2's '11' reads as "not indicated"
+            mix.dmixmod = static_cast<meta::DownmixMode>(mode);
+        }
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
-        r.skip(3 + 3);  // ltrtcmixlev, lorocmixlev
+        mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
+        mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
     }
     if ((acmod & 0x4) != 0) {
-        r.skip(3 + 3);  // ltrtsurmixlev, lorosurmixlev
+        mix.ltrtsurmixlev = static_cast<meta::MixLevel>(r.read(3));
+        mix.lorosurmixlev = static_cast<meta::MixLevel>(r.read(3));
     }
-    if (bsi.lfe && r.read(1) != 0) {
-        r.skip(5);  // lfemixlevcod
+    if (bsi.lfe && r.read(1) != 0) {  // lfemixlevcode
+        mix.lfemixlevcod = static_cast<int>(r.read(5));
     }
     if (bsi.strmtyp != StreamType::kDependent) {
-        if (r.read(1) != 0) r.skip(6);  // pgmscl
-        if (acmod == 0x0 && r.read(1) != 0) r.skip(6);  // pgmscl2
-        if (r.read(1) != 0) r.skip(6);  // extpgmscl
-        switch (r.read(2)) {            // mixdef
-            case 0x1: r.skip(1 + 1 + 3); break;  // premixcmpsel, drcsrc, premixcmpscl
-            case 0x2: r.skip(12); break;         // mixdata
-            case 0x3: {
-                // mixdeflen sizes the WHOLE remaining element, sub-fields and
-                // byte-alignment padding included, so it can be skipped whole
-                // without walking mixdata2e/mixdata3e.
-                const auto mixdeflen = r.read(5);
-                r.skip((mixdeflen + 2) * 8);
-                break;
+        const auto read_scale = [&r]() -> std::optional<int> {
+            if (r.read(1) == 0) {
+                return std::nullopt;
             }
-            default: break;
+            return static_cast<int>(r.read(6));
+        };
+        mix.pgmscl = read_scale();
+        if (acmod == 0x0) {
+            mix.pgmscl2 = read_scale();
         }
+        mix.extpgmscl = read_scale();
+        mix.mixing = read_mixing_parameters(r);
         if (acmod < 0x2) {
-            if (r.read(1) != 0) r.skip(8 + 6);  // panmean, paninfo
-            if (acmod == 0x0 && r.read(1) != 0) r.skip(8 + 6);
+            const auto read_pan = [&r]() -> std::optional<meta::PanInfo> {
+                if (r.read(1) == 0) {  // paninfoe
+                    return std::nullopt;
+                }
+                meta::PanInfo pan;
+                pan.panmean = static_cast<int>(r.read(8));
+                pan.paninfo = static_cast<int>(r.read(6));
+                return pan;
+            };
+            mix.pan = read_pan();
+            if (acmod == 0x0) {
+                mix.pan2 = read_pan();
+            }
         }
         if (r.read(1) != 0) {  // frmmixcfginfoe
+            std::array<std::optional<int>, kBlocksPerFrame> words{};
+            // §E2.3.1.60: with one block per syncframe the per-block flag is
+            // INFERRED as set, so the word is unconditional and there is no
+            // flag on the wire to read.
             if (bsi.numblkscod == 0x0) {
-                r.skip(5);  // blkmixcfginfo[0]
+                words[0] = static_cast<int>(r.read(5));
             } else {
                 for (int blk = 0; blk < nblks; ++blk) {
-                    if (r.read(1) != 0) r.skip(5);  // blkmixcfginfo[blk]
+                    if (r.read(1) != 0) {  // blkmixcfginfoe
+                        words[static_cast<std::size_t>(blk)] = static_cast<int>(r.read(5));
+                    }
                 }
             }
+            mix.blkmixcfginfo = words;
         }
     }
+    return mix;
 }
 
 // Table E1.2's informational-metadata payload: bsmod and the production notes.
-void skip_informational_metadata(BitReader& r, Bsi& bsi) {
+// Writes bsi.bsmod directly (the raw code, for a caller - an inspection
+// tool's JSON output - that wants it off DecodedSubstream without unwrapping
+// BitstreamMode) as well as returning the full decode.
+meta::BsiInfo read_informational_metadata(BitReader& r, Bsi& bsi) {
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
-    bsi.bsmod = static_cast<int>(r.read(3));  // §5.4.2.1, reported on DecodedSubstream
-    r.skip(1 + 1);                            // copyrightb, origbs
+    meta::BsiInfo info;
+    const auto bsmod = r.read(3);
+    bsi.bsmod = static_cast<int>(bsmod);
+    info.bsmod = static_cast<meta::BitstreamMode>(bsmod);
+    info.copyrightb = r.read(1) != 0;
+    info.origbs = r.read(1) != 0;
     if (acmod == 0x2) {
-        r.skip(2 + 2);  // dsurmod, dheadphonmod
+        const auto surround = r.read(2);  // dsurmod
+        if (surround < 3) {
+            info.dsurmod = static_cast<meta::SurroundMode>(surround);
+        }
+        const auto headphone = r.read(2);  // dheadphonmod
+        if (headphone < 3) {               // Table D2.8's '11' reads as "not indicated"
+            info.dheadphonmod = static_cast<meta::HeadphoneMode>(headphone);
+        }
     }
     if (acmod >= 0x6) {
-        r.skip(2);  // dsurexmod
+        info.dsurexmod = static_cast<meta::SurroundExMode>(r.read(2));
     }
-    if (r.read(1) != 0) r.skip(5 + 2 + 1);  // mixlevel, roomtyp, adconvtyp
-    if (acmod == 0x0 && r.read(1) != 0) r.skip(5 + 2 + 1);
+    const auto read_audprod = [&r]() -> std::optional<meta::AudioProduction> {
+        if (r.read(1) == 0) {  // audprodie
+            return std::nullopt;
+        }
+        meta::AudioProduction production;
+        production.mixlevel = static_cast<int>(r.read(5));
+        const auto room = r.read(2);
+        if (room < 3) {  // Table 5.12's '11' reads as "not indicated"
+            production.roomtyp = static_cast<meta::RoomType>(room);
+        }
+        // Annex E's audprodie carries a third field AC-3's does not.
+        production.adconvtyp = static_cast<meta::AdConverterType>(r.read(1));
+        return production;
+    };
+    info.audprod = read_audprod();
+    if (acmod == 0x0) {
+        info.audprod2 = read_audprod();
+    }
     // §E2.3.2.6: sourcefscod is present only when fscod != 0x3 - a fscod2
     // frame never carries it at all.
     if (!is_reduced_rate(bsi.sample_rate)) {
-        r.skip(1);
+        info.sourcefscod = r.read(1) != 0;
     }
+    return info;
 }
 
 std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes) {
@@ -246,10 +382,10 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
     }
     const int nblks = eac3::blocks_per_syncframe(bsi.numblkscod);
     if (r.read(1) != 0) {  // mixmdate
-        skip_mixing_metadata(r, bsi, nblks);
+        bsi.mixing = read_mixing_metadata(r, bsi, nblks);
     }
     if (r.read(1) != 0) {  // infomdate
-        skip_informational_metadata(r, bsi);
+        bsi.info = read_informational_metadata(r, bsi);
     }
     if (bsi.strmtyp == StreamType::kIndependent && bsi.numblkscod != 0x3) {
         r.skip(1);  // convsync
@@ -690,6 +826,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     out.compr2 = bsi->compr2;
     out.dynrng2.fill(meta::kDynrngUnity);
     out.numblkscod = bsi->numblkscod;
+    out.mixing = bsi->mixing;
+    out.info = bsi->info;
     out.chanmap = bsi->chanmap;
     out.last_dependent = bsi->strmtyp == StreamType::kDependent && bsi->compre;
     out.blksw.assign(static_cast<std::size_t>(nfchans), {});
@@ -2559,6 +2697,8 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
+    out.mixing = lead.mixing;
+    out.info = lead.info;
     // TS 103 420 §8.3.1's "whichever substream carries the EMDF container":
     // this project's own AtmosEncoder always makes that the bed, but a
     // dependent is equally legal and a legacy-core delivery has no choice -

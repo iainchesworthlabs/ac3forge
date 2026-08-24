@@ -53,6 +53,7 @@ add_executable(ac3tests
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
     core/test_bitwriter.cpp
+    meta/test_bsi.cpp
     encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp

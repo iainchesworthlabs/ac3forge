@@ -16,6 +16,8 @@
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -180,11 +182,32 @@ struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 0;
     // §5.4.1.3/§5.4.2.1, reported rather than merely checked: an inspection
-    // tool wants both off the wire, and nothing else here carries them.
+    // tool wants both off the wire, and nothing else here carries them. bsid
+    // is 8 for the syntax in the body of A/52, 6 for Annex D's alternate one
+    // - anything else is refused, so those are the only two values this ever
+    // reports. bsmod is the same 3-bit code info.bsmod below decodes into
+    // BitstreamMode; both are populated from the one read, this one for a
+    // caller (an inspection tool's JSON output) that wants the raw code.
     int bsid = 8;
     int bsmod = 0;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
+    // §5.4.2.4/5, Table 5.9/5.10. Transmitted only when the layout has the
+    // channels they describe; the values reported here for a layout that
+    // carries neither are the §7.8 fallbacks a decoder would use anyway
+    // (-4.5 dB centre, -6 dB surround), so a caller can apply them
+    // unconditionally.
+    meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
+    meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+    // §5.4.2's informational fields, whatever this frame carried. Fields the
+    // layout gives no home to keep their defaults - a 3/2 frame sends no
+    // dsurmod, so `info.dsurmod` stays "not indicated" rather than reporting
+    // a bit that was never on the wire.
+    meta::BsiInfo info{};
+    // Annex D's xbsi1/xbsi2, present exactly when bsid is 6. A bsid-8 frame
+    // carries the time code in the same 28 bits instead, and reports it as
+    // info.timecod1/timecod2 above.
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.9: std::nullopt when compre was clear, so "no word" and "a word
     // that happens to say unity" stay distinguishable.
@@ -278,6 +301,15 @@ struct DecodedSubstream {
     std::optional<std::uint8_t> compr2 = std::nullopt;
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     int numblkscod = 3;
+    // Table E1.2's mixmdate group, std::nullopt when mixmdate was clear.
+    // A DEPENDENT substream's copy stops after the levels - Table E1.2 gates
+    // everything past lfemixlevcod on strmtyp == 0x0 - so those fields keep
+    // their defaults there rather than reporting bits that were never sent.
+    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
+    // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
+    // and are never set here.
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // §E2.3.1.8: only a dependent substream may carry one.
     std::optional<std::uint16_t> chanmap;
     // §E3.8.5: in a dependent substream compre does not announce a compression
@@ -343,6 +375,13 @@ struct DecodedAccessUnit {
     // rather than the fixed array's unwritten tail - see
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
+    // The independent substream's own mixmdate and infomdat groups, same
+    // reasoning as compr and dynrng above: every substream carries its own,
+    // but only the bed's describes the programme. A dependent's mixmdate is
+    // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
+    // gate of its own worth surfacing at this level.
+    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // object_metadata/object_audio from whichever substream of the access
     // unit carries them, first one wins - see DecodedSubstream's own comments
     // on both. TS 103 420 §8.3.1 leaves the choice of substream to the

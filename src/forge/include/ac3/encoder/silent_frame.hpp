@@ -58,6 +58,12 @@ enum class FrameError : std::uint8_t {
     // Aux user data longer than auxdatal's 14 bits can measure (§5.4.4.2), or
     // an object count outside what TS 103 420 §8.3.2.2 allows in addbsi.
     kInvalidObjectAudio,
+    // A bit stream information field would not fit the bits §5.4.2 / Table
+    // E1.2 gives it (a mixing level above 31, a time code past 23:59:59, a
+    // programme scale factor above 63), or a config asked for two things the
+    // syntax cannot carry at once - Annex D's xbsi groups AND a time code,
+    // which occupy the same 28 bits (§D1).
+    kInvalidBsi,
 };
 
 namespace detail {

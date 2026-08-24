@@ -35,6 +35,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/scene.hpp"
@@ -979,6 +980,62 @@ QString EncoderController::metaTokens() const {
                                        : QStringLiteral("none");
         tokens.append(QStringLiteral("dmixmod=%1").arg(name));
     }
+    // The service and production group. Each token is emitted only where the
+    // value differs from a default-constructed Metadata, so a plain encode's
+    // line stays a plain line - and each of them implies its own container
+    // token on the CLI side (infomdat on E-AC-3, annexd on AC-3) exactly as
+    // the setters above do here, so none of those has to be spelled out.
+    if (meta_.info.bsmod != defaults.info.bsmod) {
+        static constexpr std::array<const char*, 8> kBsmod = {
+            "cm", "me", "vi", "hi", "dialogue", "commentary", "emergency", "voiceover"};
+        tokens.append(QStringLiteral("bsmod=%1")
+                          .arg(QLatin1String(kBsmod[static_cast<std::size_t>(meta_.info.bsmod)])));
+    }
+    if (surroundModeAvailable() && meta_.info.dsurmod != defaults.info.dsurmod) {
+        static constexpr std::array<const char*, 3> kMode = {"none", "off", "on"};
+        tokens.append(
+            QStringLiteral("dsurmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dsurmod)])));
+    }
+    if (surroundModeAvailable() && meta_.info.dheadphonmod != defaults.info.dheadphonmod) {
+        static constexpr std::array<const char*, 3> kMode = {"none", "off", "on"};
+        tokens.append(
+            QStringLiteral("dheadphonmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dheadphonmod)])));
+    }
+    if (surroundExAvailable() && meta_.info.dsurexmod != defaults.info.dsurexmod) {
+        static constexpr std::array<const char*, 4> kMode = {"none", "off", "ex", "pliiz"};
+        tokens.append(
+            QStringLiteral("dsurexmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dsurexmod)])));
+    }
+    if (meta_.info.audprod) {
+        tokens.append(QStringLiteral("mixlevel=%1").arg(mixLevelDbSpl()));
+        if (meta_.info.audprod->roomtyp != ac3::meta::RoomType::kNotIndicated) {
+            static constexpr std::array<const char*, 3> kRoom = {"none", "large", "small"};
+            tokens.append(
+                QStringLiteral("roomtyp=%1")
+                    .arg(QLatin1String(
+                        kRoom[static_cast<std::size_t>(meta_.info.audprod->roomtyp)])));
+        }
+    }
+    if (meta_.adconvtyp != defaults.adconvtyp) {
+        tokens.append(QStringLiteral("adconvtyp=hdcd"));
+    }
+    if (meta_.info.copyrightb) {
+        tokens.append(QStringLiteral("copyright"));
+    }
+    if (!meta_.info.origbs) {
+        tokens.append(QStringLiteral("origbs=off"));
+    }
+    // Only worth spelling when nothing above already implies it: the three
+    // xbsi2 tokens and dmixmod= each turn Annex D on by themselves.
+    if (codec_ == plan::Codec::kAc3 && meta_.annexd && !tokens.contains(QStringLiteral("adconvtyp=hdcd")) &&
+        meta_.info.dsurexmod == defaults.info.dsurexmod &&
+        meta_.info.dheadphonmod == defaults.info.dheadphonmod &&
+        meta_.dmixmod == defaults.dmixmod) {
+        tokens.append(QStringLiteral("annexd"));
+    }
     return tokens.join(QLatin1Char(' '));
 }
 
@@ -1040,6 +1097,45 @@ QStringList EncoderController::surmixNames() const {
 
 QStringList EncoderController::dmixNames() const {
     return {QStringLiteral("not indicated"), QStringLiteral("Lt/Rt"), QStringLiteral("Lo/Ro")};
+}
+
+// Table 5.7's eight services. Code 7 means two different things - an
+// associated voice-over at 1/0, a main karaoke service at anything wider -
+// and there is no bit distinguishing them, so the label says both rather
+// than picking one the layout might contradict a moment later.
+QStringList EncoderController::bsmodNames() const {
+    return {QStringLiteral("complete main"),
+            QStringLiteral("music and effects"),
+            QStringLiteral("visually impaired"),
+            QStringLiteral("hearing impaired"),
+            QStringLiteral("dialogue"),
+            QStringLiteral("commentary"),
+            QStringLiteral("emergency"),
+            QStringLiteral("voice over / karaoke")};
+}
+
+QStringList EncoderController::dsurmodNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Dolby Surround"),
+            QStringLiteral("Dolby Surround")};
+}
+
+QStringList EncoderController::dheadphonNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Dolby Headphone"),
+            QStringLiteral("Dolby Headphone")};
+}
+
+QStringList EncoderController::dsurexNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Surround EX"),
+            QStringLiteral("Surround EX / Pro Logic IIx"), QStringLiteral("Pro Logic IIz")};
+}
+
+QStringList EncoderController::roomTypeNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("large, X curve"),
+            QStringLiteral("small, flat")};
+}
+
+QStringList EncoderController::adConvNames() const {
+    return {QStringLiteral("standard"), QStringLiteral("HDCD")};
 }
 
 // ---------------------------------------------------------------------------
@@ -1496,6 +1592,140 @@ void EncoderController::setDmixIndex(int index) {
         return;
     }
     meta_.dmixmod = value;
+    emit planChanged();
+}
+
+// --- service and production metadata ---------------------------------------
+//
+// Every setter below marks the infomdat group wanted as well as setting its
+// own field: on E-AC-3 that element has to be opened before any of these can
+// be written at all, and a user who picks "commentary" has said what they
+// mean without needing to also find a checkbox for the container it rides in.
+// AC-3 ignores the flag - its bsi carries these fields unconditionally.
+
+void EncoderController::setBsmodIndex(int index) {
+    const auto value = static_cast<ac3::meta::BitstreamMode>(std::clamp(index, 0, 7));
+    if (value == meta_.info.bsmod) {
+        return;
+    }
+    meta_.info.bsmod = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setDsurmodIndex(int index) {
+    const auto value = static_cast<ac3::meta::SurroundMode>(std::clamp(index, 0, 2));
+    if (value == meta_.info.dsurmod) {
+        return;
+    }
+    meta_.info.dsurmod = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setDheadphonIndex(int index) {
+    const auto value = static_cast<ac3::meta::HeadphoneMode>(std::clamp(index, 0, 2));
+    if (value == meta_.info.dheadphonmod) {
+        return;
+    }
+    meta_.info.dheadphonmod = value;
+    meta_.infomdat = true;
+    // AC-3 has nowhere but Annex D's xbsi2 to put this one.
+    meta_.annexd = true;
+    emit planChanged();
+}
+
+void EncoderController::setDsurexIndex(int index) {
+    const auto value = static_cast<ac3::meta::SurroundExMode>(std::clamp(index, 0, 3));
+    if (value == meta_.info.dsurexmod) {
+        return;
+    }
+    meta_.info.dsurexmod = value;
+    meta_.infomdat = true;
+    meta_.annexd = true;
+    emit planChanged();
+}
+
+void EncoderController::setMixLevelDbSpl(int db_spl) {
+    // -1 is the "not stated" end of the control. §5.4.2.13 makes audprodie a
+    // flag of its own, so no production information is a real state rather
+    // than a level of zero - which the 5-bit field could not express anyway,
+    // its floor being 80 dB SPL.
+    if (db_spl < ac3::meta::kMixLevelBaseDbSpl) {
+        if (!meta_.info.audprod) {
+            return;
+        }
+        meta_.info.audprod.reset();
+        emit planChanged();
+        return;
+    }
+    const int clamped = std::clamp(db_spl, ac3::meta::kMixLevelBaseDbSpl,
+                                   ac3::meta::kMixLevelBaseDbSpl + 31);
+    if (clamped == mixLevelDbSpl()) {
+        return;
+    }
+    if (!meta_.info.audprod) {
+        meta_.info.audprod.emplace();
+    }
+    meta_.info.audprod->mixlevel = clamped - ac3::meta::kMixLevelBaseDbSpl;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setRoomTypeIndex(int index) {
+    const auto value = static_cast<ac3::meta::RoomType>(std::clamp(index, 0, 2));
+    if (meta_.info.audprod && value == meta_.info.audprod->roomtyp) {
+        return;
+    }
+    // Table 5.12's room type only exists inside audprodie, so naming one
+    // opens the group - at its own floor level, which is what an encoder
+    // that knows the room but not the level would send.
+    if (!meta_.info.audprod) {
+        meta_.info.audprod.emplace();
+    }
+    meta_.info.audprod->roomtyp = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setAdConvIndex(int index) {
+    const auto value = static_cast<ac3::meta::AdConverterType>(std::clamp(index, 0, 1));
+    if (value == meta_.adconvtyp) {
+        return;
+    }
+    // Stated once; eac3_config() places it inside audprodie and ac3_config()
+    // in xbsi2, so neither front end has to know where it lands. Turning
+    // both containers on is still this setter's job, since without one the
+    // choice has nowhere to be written at all.
+    meta_.adconvtyp = value;
+    meta_.annexd = true;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setCopyrightBit(bool on) {
+    if (on == meta_.info.copyrightb) {
+        return;
+    }
+    meta_.info.copyrightb = on;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setOriginalBitstream(bool on) {
+    if (on == meta_.info.origbs) {
+        return;
+    }
+    meta_.info.origbs = on;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setAnnexD(bool on) {
+    if (on == meta_.annexd) {
+        return;
+    }
+    meta_.annexd = on;
     emit planChanged();
 }
 
