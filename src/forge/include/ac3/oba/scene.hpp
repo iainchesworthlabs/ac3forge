@@ -285,14 +285,15 @@ struct SceneContents {
 
 // --- Serialisation --------------------------------------------------------
 
-// JSON, not YAML. The codec library takes no third-party dependencies
-// (vcpkg.json says so of the whole target), so whatever format this is has to
-// be read and written by code in this repository. RFC 8259 is a grammar small
-// enough to implement completely and to be sure of; YAML 1.2's is not, and a
-// hand-rolled "YAML subset" would accept and reject files no other YAML tool
-// agrees with, which is worse than not offering YAML at all. Both other front
-// ends already have a JSON reader to hand (Qt's, Python's) if they ever want to
-// read a scene without linking this library.
+// JSON, not YAML. {fmt} (linked into this library already, for text formatting
+// generally - see CONTRIBUTING.md) formats a number; it is not a document
+// parser for either format, so whichever this is still has to be read and
+// written by code in this repository. RFC 8259 is a grammar small enough to
+// implement completely and to be sure of; YAML 1.2's is not, and a hand-rolled
+// "YAML subset" would accept and reject files no other YAML tool agrees with,
+// which is worse than not offering YAML at all. Both other front ends already
+// have a JSON reader to hand (Qt's, Python's) if they ever want to read a
+// scene without linking this library.
 //
 // The written form is stable and diffable: members in a fixed order, one
 // automation point per line, numbers short-round-tripped (the shortest decimal

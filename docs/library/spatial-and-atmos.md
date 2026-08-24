@@ -213,13 +213,13 @@ neighbours never end up in different rooms.
 
 ### The serialised form
 
-`to_json()` / `scene_from_json()`. **JSON, not YAML**: the codec target takes no third-party
-dependencies (`vcpkg.json` says so of the whole library), so the format has to be read and
-written by code in this repository, and RFC 8259 is a grammar small enough to implement
-completely and be sure of where YAML 1.2's is not — a hand-rolled "YAML subset" would accept
-and reject files no other YAML tool agrees with, which is worse than not offering YAML. Both
-other front ends already have a JSON reader to hand (Qt's, Python's) if they ever want to read
-a scene without linking this library.
+`to_json()` / `scene_from_json()`. **JSON, not YAML**: {fmt} (linked into this library for text
+formatting generally) formats a number, it is not a parser for either document format, so
+whichever this is still has to be read and written by code in this repository, and RFC 8259 is a
+grammar small enough to implement completely and be sure of where YAML 1.2's is not — a
+hand-rolled "YAML subset" would accept and reject files no other YAML tool agrees with, which is
+worse than not offering YAML. Both other front ends already have a JSON reader to hand (Qt's,
+Python's) if they ever want to read a scene without linking this library.
 
 ```json
 {

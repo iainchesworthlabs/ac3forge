@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp multi_source.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp)
+add_executable(ac3cli main.cpp support.cpp json.cpp multi_source.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp)
 
 # ac3cli's platform-specific code: putting stdin/stdout into binary mode for
 # the "-" stdin/stdout file-argument convention (see platform/stdio_binary.hpp
@@ -51,7 +51,8 @@ target_link_libraries(ac3cli
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
-        ac3::warnings)
+        ac3::warnings
+        ac3::fmt)
 
 # ac3::forge, matroska::matroska, mp4::mp4 and mpegts::mpegts are link-only here, but
 # installed and packaged in their own right elsewhere - see

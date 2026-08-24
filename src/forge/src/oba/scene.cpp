@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <expected>
-#include <initializer_list>
+#include <fmt/format.h>
 #include <optional>
 #include <span>
 #include <string>
@@ -22,13 +22,6 @@
 namespace ac3::oba {
 
 namespace {
-
-// No std::format anywhere in this file or scene_json.cpp, deliberately, and no
-// floating-point <charconv> either: neither is available on every target this
-// library builds for (NDK r26's libc++ ships no <format> at all, and the macOS
-// wheel's deployment target puts the double from_chars/to_chars out of reach).
-// Diagnostics are plain concatenation, the same call version.cpp makes for the
-// same reason, and decimal <-> double goes through scene_text.hpp.
 
 // Exactly KeyframePath's own arithmetic (src/oba/motion.cpp), not a
 // rearrangement of it: a scene built from a legacy keyframe file has to
@@ -77,11 +70,10 @@ SceneError bad_value(std::string message) {
 // name when it has one, since an unnamed object (everything a legacy keyframe
 // file produces) has nothing else to go on.
 std::string label_of(std::size_t index, const SceneObject& object) {
-    std::string out = "object " + std::to_string(index);
-    if (!object.name.empty()) {
-        out += " (" + object.name + ")";
+    if (object.name.empty()) {
+        return fmt::format("object {}", index);
     }
-    return out;
+    return fmt::format("object {} ({})", index, object.name);
 }
 
 }  // namespace
@@ -150,19 +142,19 @@ std::expected<ObjectScene, SceneError> ObjectScene::create(std::vector<SceneObje
     for (std::size_t i = 0; i < objects.size(); ++i) {
         auto& object = objects[i];
         if (object.automation.empty()) {
-            return std::unexpected(SceneError{
-                .kind = SceneErrorKind::kEmptyObject,
-                .line = 0,
-                .message = label_of(i, object) + " has no automation points"});
+            return std::unexpected(
+                SceneError{.kind = SceneErrorKind::kEmptyObject,
+                          .line = 0,
+                          .message = fmt::format("{} has no automation points", label_of(i, object))});
         }
         for (const auto& point : object.automation) {
             if (!finite(point)) {
-                return std::unexpected(
-                    bad_value(label_of(i, object) + " has a non-finite automation value"));
+                return std::unexpected(bad_value(
+                    fmt::format("{} has a non-finite automation value", label_of(i, object))));
             }
             if (!known(point.interp)) {
                 return std::unexpected(
-                    bad_value(label_of(i, object) + " has an unknown interpolation"));
+                    bad_value(fmt::format("{} has an unknown interpolation", label_of(i, object))));
             }
         }
         std::ranges::sort(object.automation, {}, &AutomationPoint::time_s);
@@ -175,8 +167,8 @@ std::expected<ObjectScene, SceneError> ObjectScene::create(std::vector<SceneObje
             return std::unexpected(SceneError{
                 .kind = SceneErrorKind::kDuplicateTime,
                 .line = 0,
-                .message = label_of(i, object) + " has two automation points at t=" +
-                           write_double(duplicate->time_s)});
+                .message = fmt::format("{} has two automation points at t={}", label_of(i, object),
+                                       duplicate->time_s)});
         }
     }
     return ObjectScene{std::move(objects), orientation};
@@ -344,12 +336,11 @@ std::expected<std::vector<SceneObject>, SceneError> scene_objects_from_keyframe_
         // from being a memory question.
         constexpr std::size_t kMaxObjectIndex = 1023;
         if (object > kMaxObjectIndex) {
-            return std::unexpected(
-                SceneError{.kind = SceneErrorKind::kBadValue,
-                           .line = lineno,
-                           .message = "object index " + std::to_string(object) +
-                                      " is out of range (0 to " +
-                                      std::to_string(kMaxObjectIndex) + ")"});
+            return std::unexpected(SceneError{
+                .kind = SceneErrorKind::kBadValue,
+                .line = lineno,
+                .message = fmt::format("object index {} is out of range (0 to {})", object,
+                                       kMaxObjectIndex)});
         }
         AutomationPoint point;
         // The seven columns in order, the leading object index already taken.
@@ -373,13 +364,8 @@ std::string to_keyframe_text(std::span<const SceneObject> objects) {
     std::string out;
     for (std::size_t i = 0; i < objects.size(); ++i) {
         for (const auto& point : objects[i].automation) {
-            out += std::to_string(i);
-            for (const double column : {point.time_s, point.position.x, point.position.y,
-                                        point.position.z, point.gain, point.lfe_send}) {
-                out += ' ';
-                out += write_double(column);
-            }
-            out += '\n';
+            out += fmt::format("{} {} {} {} {} {} {}\n", i, point.time_s, point.position.x,
+                               point.position.y, point.position.z, point.gain, point.lfe_send);
         }
     }
     return out;

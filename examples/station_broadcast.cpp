@@ -57,6 +57,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fmt/printf.h>
 #include <fstream>
 #include <initializer_list>
 #include <memory>
@@ -1624,7 +1625,7 @@ bool write_bytes(const std::string& path, std::span<const std::byte> bytes) {
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
     if (!out) {
-        std::printf("error: cannot write %s\n", path.c_str());
+        fmt::printf("error: cannot write %s\n", path.c_str());
         return false;
     }
     return true;
@@ -1636,13 +1637,13 @@ bool write_bytes(const std::string& path, std::span<const std::byte> bytes) {
 std::vector<double> load_music(const std::string& path) {
     const auto wav = ac3::io::read_wav(path);
     if (!wav) {
-        std::printf("error: %s: %s\n", path.c_str(),
+        fmt::printf("error: %s: %s\n", path.c_str(),
                     std::string{ac3::io::describe(wav.error())}.c_str());
         return {};
     }
     const std::size_t frames = wav->frame_count();
     if (frames == 0) {
-        std::printf("error: %s: empty file\n", path.c_str());
+        fmt::printf("error: %s: empty file\n", path.c_str());
         return {};
     }
     std::vector<double> mono(frames, 0.0);
@@ -1770,7 +1771,7 @@ int main(int argc, char** argv) {
             static_cast<double>(n0 + ac3::kSamplesPerFrame) / kRate;
         while (next_cue < kCues.size() && kCues[next_cue].t <= t_start) {
             const double t = kCues[next_cue].t;
-            std::printf("[%d:%04.1f] %s\n", static_cast<int>(t / 60.0),
+            fmt::printf("[%d:%04.1f] %s\n", static_cast<int>(t / 60.0),
                         std::fmod(t, 60.0), kCues[next_cue].label);
             ++next_cue;
         }
@@ -1869,7 +1870,7 @@ int main(int argc, char** argv) {
 
         const auto unit = objects_encoder->encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed at %.1f s: %d\n", t_start,
+            fmt::printf("atmos encode failed at %.1f s: %d\n", t_start,
                         std::to_underlying(unit.error()));
             return 1;
         }
@@ -1878,7 +1879,7 @@ int main(int argc, char** argv) {
         if (!smoke_test) {
             const auto bed_unit = bed51_encoder->encode_frame(views, placement);
             if (!bed_unit) {
-                std::printf("bed51 encode failed at %.1f s: %d\n", t_start,
+                fmt::printf("bed51 encode failed at %.1f s: %d\n", t_start,
                             std::to_underlying(bed_unit.error()));
                 return 1;
             }
@@ -1893,7 +1894,7 @@ int main(int argc, char** argv) {
     }
 
     const auto encoded_frames = total_frames - first_encoded_frame;
-    std::printf("%llu access units, %zu bytes of DD+ with %d objects over a 5.1 bed\n",
+    fmt::printf("%llu access units, %zu bytes of DD+ with %d objects over a 5.1 bed\n",
                 static_cast<unsigned long long>(encoded_frames),
                 objects_stream.size(), objects_encoder->dynamic_object_count());
     if (smoke_test) {
@@ -1908,7 +1909,7 @@ int main(int argc, char** argv) {
     // The bed a legacy decoder hears, as a WAV in FL FR FC LFE BL BR order.
     const auto order = ac3::io::wav_channel_order(ac3::Acmod::k3_2, true);
     if (!ac3::io::write_wav_f32(prefix + "_bed.wav", bed_out, 48000, order)) {
-        std::printf("error: cannot write %s_bed.wav\n", prefix.c_str());
+        fmt::printf("error: cannot write %s_bed.wav\n", prefix.c_str());
         return 1;
     }
 
@@ -1934,11 +1935,11 @@ int main(int argc, char** argv) {
         }
     }
     if (!ac3::io::write_wav_f32(prefix + "_stereo.wav", stereo, 48000)) {
-        std::printf("error: cannot write %s_stereo.wav\n", prefix.c_str());
+        fmt::printf("error: cannot write %s_stereo.wav\n", prefix.c_str());
         return 1;
     }
 
-    std::printf("wrote %s.ec3 (objects), %s_bed51.ec3 (no container), "
+    fmt::printf("wrote %s.ec3 (objects), %s_bed51.ec3 (no container), "
                 "%s_bed.wav, %s_stereo.wav\n",
                 prefix.c_str(), prefix.c_str(), prefix.c_str(), prefix.c_str());
     return 0;

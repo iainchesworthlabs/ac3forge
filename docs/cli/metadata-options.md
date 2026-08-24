@@ -50,6 +50,14 @@ metadata options (any order, after the positional arguments):
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per channel per block from
+                    content - the same reach as fast-mdct=off (encode/sine and the
+                    atmos/record/live session builders); eac3-encode's [tools] positional can
+                    also reach this field via a bare nodither token. Real dither values are
+                    decoder-defined (the spec's own "any reasonably random sequence"), so this
+                    is for a run that needs bit-for-bit agreement between two decoders of the
+                    same stream more than it needs dither's own perceptual benefit -
+                    tools/checks/verify_gold_reference.sh is the one caller that does
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -75,7 +83,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | all
+        nofastmdct | nodither | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -84,9 +92,10 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         atten:N pins the SPX notch depth, noatten removes it;
         ecpl only takes effect alongside cpl (e.g. cpl+ecpl);
         nofastmdct forces the direct-form forward MDCT instead of the
-        default §7.9.4 fast path — the fast MDCT is not a coding tool
-        (nothing in the bitstream's syntax changes), so 'none' and 'all'
-        both leave it alone, and the older opt-in spelling 'fastmdct'
+        default §7.9.4 fast path, nodither pins dithflag at 0 instead of
+        deciding it from content — neither is a coding tool (nothing in
+        the bitstream's syntax changes either way), so 'none' and 'all'
+        both leave them alone, and the older opt-in spelling 'fastmdct'
         still parses as a no-op
 ```
 
@@ -331,6 +340,40 @@ read directly from its own primary source rather than recalled from memory:
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the
 full report format and the exit-code convention this drives.
+
+## Probe options (`probe`): `json=`, `detail=`
+
+```text
+probe options (probe; any order, after the positional arguments):
+  json=1            emit the JSON document instead of the human table
+                    (schema ac3forge.probe/1 - docs/cli/commands.md)
+  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
+                    substream headers and each frame's object layer
+  detail=blocks     the same, plus every block's coding tools and
+                    exponent strategies - what a codec bug report needs
+```
+
+`json=1` is a value token rather than a bare word (unlike `couple` or `heavy`) because `probe` is
+the first command here whose *output form* is a choice: `json=0` is accepted and means the table,
+so a script building its command line programmatically (`json=$want`) never has to omit the token
+to turn it off. The document it emits is a versioned contract — see
+[Commands → `probe`](commands.md#json-output-json1) for the schema, the compatibility rules and
+the units each field is in.
+
+`detail=` is independent of `json=`: all four combinations work, and the two detail levels add to
+the stream summary rather than replacing it — the same summary comes out either way.
+
+| `detail=` | What it adds |
+|---|---|
+| *(omitted)* | Nothing. The stream summary alone, which is what a pipeline or a CI gate wants |
+| `frames` | One entry per access unit: byte offset, size, start time, and each syncframe's own header, CRC state, authenticity tag and object layer |
+| `blocks` | The same, plus per syncframe: Table E1.3's frame-level tool gates, and per block which coding tools were in force and what exponent strategy each coded stream carried |
+
+A dump of a long file is a lot of output, which is why neither is on by default — but it costs no
+extra memory, because each access unit is written as the walk reaches it rather than collected
+first. See [Commands → `probe`](commands.md#per-frame-and-per-block-detail) for what the block dump
+looks like and why it exists.
+
 
 ## Defaults
 

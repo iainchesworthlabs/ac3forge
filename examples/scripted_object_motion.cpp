@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <numbers>
 #include <span>
 #include <utility>
@@ -51,7 +52,7 @@ int main() {
                         {.time_s = 1.6, .position = {.x = 1.0, .y = 0.5, .z = 0.0}, .gain = 0.0}}},
     });
     if (!built) {
-        std::printf("ObjectScene::create failed: %s\n", built.error().message.c_str());
+        fmt::printf("ObjectScene::create failed: %s\n", built.error().message.c_str());
         return 1;
     }
     const auto& scene = *built;
@@ -83,20 +84,20 @@ int main() {
 
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    std::printf("%zu bytes of DD+ with %d scripted objects over a 5.1 bed\n", stream.size(),
+    fmt::printf("%zu bytes of DD+ with %d scripted objects over a 5.1 bed\n", stream.size(),
                 encoder.dynamic_object_count());
 
     // The same scene as text. Save this next to the stream and `ac3cli
     // atmos-path out.ec3 scene.json` reproduces the motion from the file -
     // and so does the keyframe grammar, which that command still reads.
     const auto text = ac3::oba::to_json(scene);
-    std::printf("scene serialises to %zu bytes of JSON, %.1f s long\n", text.size(),
+    fmt::printf("scene serialises to %zu bytes of JSON, %.1f s long\n", text.size(),
                 scene.duration_s());
     return 0;
 }

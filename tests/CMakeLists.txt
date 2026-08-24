@@ -61,6 +61,7 @@ add_executable(ac3tests
     encoder/test_eac3.cpp
     decoder/test_eac3_decoder.cpp
     io/test_elementary.cpp
+    io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
@@ -180,8 +181,17 @@ endif()
 # already exists here whenever it is going to.
 # ---------------------------------------------------------------------------
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli.cpp cli/test_cli_probe.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
+    # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
+    # well as this encoder's own output - they exercise syntax ac3forge never
+    # emits (AHT, spectral extension, and frames this decoder declines
+    # outright), which is the only way to check that `probe` describes a FORMAT
+    # rather than this project's dialect of it. Passed as a path for the same
+    # reason AC3FORGE_GOLDEN_AUDIO_DIR is: ctest runs the binary from the build
+    # tree, nowhere near the fixtures.
+    target_compile_definitions(ac3tests PRIVATE
+        "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 endif()
 
 # RecordingSink (gui/test_recording_sink.cpp) is the GUI's one deliberately
@@ -248,6 +258,7 @@ target_link_libraries(ac3tests
         mpegts::mpegts
         ac3::warnings
         ac3::coverage
+        ac3::fmt
         Catch2::Catch2WithMain)
 
 include(Catch)

@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fmt/printf.h>
 #include <fstream>
 #include <new>
 #include <numbers>
@@ -468,12 +469,12 @@ int main(int argc, char** argv) {
     results.push_back(bench_atmos_4obj_encode(atmos_stream));
     results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
 
-    std::printf(
+    fmt::printf(
         "%-18s %7s | %9s %12s | %9s %12s | %11s %13s | %12s %11s\n", "workload", "frames",
         "setup#", "setup B", "first#", "first B", "steady #/fr", "steady B/fr", "live growth",
         "peak delta");
     for (const auto& r : results) {
-        std::printf(
+        fmt::printf(
             "%-18s %7d | %9llu %12llu | %9llu %12llu | %11.1f %13.0f | %12lld %11lld\n",
             r.name.c_str(), r.frames, static_cast<unsigned long long>(r.setup_allocs),
             static_cast<unsigned long long>(r.setup_bytes),
@@ -485,14 +486,14 @@ int main(int argc, char** argv) {
 
     const membench::ProcessMemory pm = membench::process_memory();
     if (pm.valid) {
-        std::printf("\npeak rss: %.1f MiB   current: %.1f MiB\n",
+        fmt::printf("\npeak rss: %.1f MiB   current: %.1f MiB\n",
                     static_cast<double>(pm.peak_rss_bytes) / (1024.0 * 1024.0),
                     static_cast<double>(pm.current_rss_bytes) / (1024.0 * 1024.0));
     }
 
     if (!json_out.empty()) {
         write_json(results, json_out, pm);
-        std::printf("wrote %s\n", json_out.c_str());
+        fmt::printf("wrote %s\n", json_out.c_str());
     }
 
     return 0;
