@@ -82,7 +82,7 @@ bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint
     if (!vbr) {
         const auto words = ac3::eac3::frame_words(rate, bitrate);
         if (words > ac3::eac3::kMaxFrameWords) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
                          "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
                          "bitrate or raise the sample rate",
@@ -90,7 +90,7 @@ bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint
             return false;
         }
     }
-    std::println(stderr, "error: the encoder cannot express this configuration");
+    fmt::println(stderr, "error: the encoder cannot express this configuration");
     return false;
 }
 
