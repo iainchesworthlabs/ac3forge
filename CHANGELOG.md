@@ -35,6 +35,37 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   one, which now names the file and the instant.
 - **The GUI's "Export paths…" writes either form**, chosen by the name saved under: a `.json`
   name writes the scene, anything else the keyframe columns it has always written.
+- **Streaming fMP4/CMAF fragmenter** (ROADMAP `IO4`). `mp4::FragmentWriter` is the incremental
+  counterpart to `mp4::fragment`, the sibling `matroska::Writer` and `mpegts::Writer` already
+  had: an initialization segment up front, then one CMAF media segment handed back each time a
+  fragment closes, with `tfdt` from a running decode time. Its contract is the one
+  `mpegts::Writer` already holds itself to - for the same track, options and frames the media
+  segments are byte-identical to the batch form's - and the initialization segment differs in
+  exactly one respect, `mvhd`/`tkhd`/`mdhd` duration 0 for a session that cannot know its own
+  total, the same concession `matroska::Writer` makes with EBML's unknown-size Segment. A
+  `SegmentInfo` window (`FragmentOptions::playlist_window_segments`) keeps a rolling live HLS
+  playlist and DASH `SegmentTimeline` without keeping the audio, and `mp4::build_dash_mpd` -
+  moved into the library from the CLI - grows a dynamic form with `availabilityStartTime`,
+  `minimumUpdatePeriod` and `timeShiftBufferDepth`.
+- **fMP4/CMAF as a live container** in both front ends. `ac3cli record`/`ac3cli live` take
+  `container=fmp4`, which makes the output path a directory written as the session runs -
+  `init.mp4`, a `segment*.m4s` per closed fragment, and playlists and MPD rewritten alongside,
+  live-shaped while running and closed to VOD/static at the end - plus `fmp4-window=<n>` for a
+  rolling origin. The GUI records the same way with **fragmented MP4/CMAF** selected, in both a
+  live session and a recording, where before a live session fell back to writing the plain
+  elementary stream and a recording accumulated the whole take before writing it. fMP4 joins
+  Matroska as the second container a live session can write natively; S/PDIF, MP4 and MPEG-TS
+  still fall back there.
+- **DASH signalling for Dolby Atmos/JOC, and the `ceao` brand** (ROADMAP `IO5`).
+  `mp4/dash.hpp` said there was no established convention to point at; DASH-IF IOP Part 8
+  v5.0.0 §5.3.2 names the two supplemental descriptors ETSI TS 103 420 clause D.2 defines
+  (`tag:dolby.com,2018:dash:EC3_ExtensionType:2018` with the value `JOC`, and
+  `…EC3_ExtensionComplexityIndex:2018` with `complexity_index_type_a`), and §5.3.3 the `ceao`
+  compatibility brand that spec's Annex E requires on an object-audio CMAF track.
+  `ac3cli fmp4`, the GUI and both live paths now write all three. Every Representation also
+  states its channel configuration, on either the ISO/IEC 23091-3 CICP scheme or - via the new
+  `ac3::io::dash_channel_configuration`, from the channel-location word `ac3::io::scan` already
+  computed and used to discard - the Dolby scheme ETSI TS 102 366 clause I.1.2.1 defines.
 - **IEC 61937 de-framing, and passthrough capture** (roadmap `IO3`). The burst wrapper was
   byte-exact against FFmpeg's `spdif` muxer, but nothing in the project ever read a burst back:
   there was no round-trip test for it, and no way to recover a stream from a capture of a

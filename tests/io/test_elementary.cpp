@@ -3,13 +3,16 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/silent_frame.hpp"
+#include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/oba/atmos.hpp"
 
@@ -92,14 +95,29 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
                                          .acmod = ac3::Acmod::k2_2,
                                          .chanmap = cm::kTopQuad});
 
+    // The DASH AudioChannelConfiguration @value each of these renders as on
+    // the Dolby scheme (TS 102 366 clause I.1.2.1): four hex digits of the
+    // same Table E2.5 word, left channel in the MOST significant bit. 5.1 is
+    // the value the spec itself works through - "for a stream with L, C, R,
+    // Ls, Rs, LFE, the value shall be 'F801'" - and the rest follow from the
+    // bit positions: +Lrs/Rrs (bit 6, 0x0200) for 7.1, +Vhl/Vhr (bit 11,
+    // 0x0010) and Lts/Rts (bit 13, 0x0004) for the ceiling quad.
     struct Case {
         AccessUnitConfig config;
         int channels;
         std::size_t substreams;
+        std::uint16_t map;
+        std::string_view dash_value;
     };
-    for (const auto& [config, channels, substreams] :
-         {Case{bed, 6, 1}, Case{seven_one, 8, 2}, Case{five_one_four, 10, 2},
-          Case{seven_one_four, 12, 3}}) {
+    using namespace ac3::eac3::chanmap;
+    constexpr std::uint16_t k51 =
+        kLeftBit | kCentreBit | kRightBit | kLeftSurroundBit | kRightSurroundBit | kLfeBit;
+    for (const auto& [config, channels, substreams, map, dash_value] :
+         {Case{bed, 6, 1, k51, "F801"},
+          Case{seven_one, 8, 2, static_cast<std::uint16_t>(k51 | cm::k71Rear), "FA01"},
+          Case{five_one_four, 10, 2, static_cast<std::uint16_t>(k51 | cm::kTopQuad), "F815"},
+          Case{seven_one_four, 12, 3,
+               static_cast<std::uint16_t>(k51 | cm::k71Rear | cm::kTopQuad), "FA15"}}) {
         const auto unit = ac3::eac3::build_silent_access_unit(config);
         REQUIRE(unit.has_value());
         std::vector<std::byte> stream;
@@ -112,6 +130,12 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
         CHECK(scanned->kind == ac3::io::StreamKind::kEac3);
         CHECK(scanned->channels == channels);
         CHECK(scanned->substreams_per_unit == substreams);
+        // The location word `channels` is the count OF - kept rather than
+        // discarded, since which locations is a different question from how
+        // many (ScannedStream::channel_map).
+        CHECK(scanned->channel_map == map);
+        CHECK(ac3::eac3::chanmap::channel_count(scanned->channel_map) == channels);
+        CHECK(ac3::io::dash_channel_configuration(*scanned) == dash_value);
         // Substreams group into access units, not one frame each.
         CHECK(scanned->access_units.size() == 3);
         CHECK(scanned->access_units.front().size() == unit->bytes.size());
