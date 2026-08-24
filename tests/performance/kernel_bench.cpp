@@ -259,6 +259,31 @@ int main(int argc, char** argv) {
         ac3::imdct512_windowed(ch0_coeffs[4], x);
         g_sink += x[256];
     }));
+    // The same inverse down its radix-2 step 3 - what DecoderConfig::fast_imdct
+    // (default on since 0.9.0) actually runs, and so the row that matters for
+    // decode throughput; the direct row above is the reference form. Added
+    // with the PF5 vector kernels, which speed up this path and not the
+    // direct one: without it the whole decode side of that work is invisible
+    // to the trend tables. (ROADMAP PF1 wants more than this - E-AC-3 encode
+    // series, decoder Tracy zones, real-audio timing inputs - and is
+    // unaffected.)
+    results.push_back(time_kernel("imdct512_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct512_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
+
+    // --- imdct256_pair_windowed (block-switched inverse) ----------------------
+    results.push_back(time_kernel("imdct256_pair_windowed", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x);
+        g_sink += x[256];
+    }));
+    results.push_back(time_kernel("imdct256_pair_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
 
     // --- imdct512_windowed, fast path (§7.9.4.1 step 3 through the shared
     // FFT core) - what DecoderConfig::fast_imdct, default on, actually runs
