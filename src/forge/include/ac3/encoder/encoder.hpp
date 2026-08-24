@@ -42,6 +42,12 @@ struct EncoderConfig {
     // meaningless otherwise — the two programmes are levelled independently.
     std::optional<int> dialnorm2 = std::nullopt;
     int chbwcod = -1;  // fbw bandwidth code 0..60; -1 = auto from bitrate
+    // §7.2.2.4 fast gain, Table 7.11. -1 asks for the encoder's own choice,
+    // which is rate-dependent (see encoder.cpp step 0's measurement table);
+    // 0..7 pins it. Pinned here rather than searched per frame for the reason
+    // that comment gives: two code sets produce two different masking curves,
+    // so the encoder's own composite SNR offset cannot compare them.
+    int fgaincod = -1;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     // Channel coupling (§7.4): above the coupling frequency the fbw channels
@@ -60,9 +66,9 @@ struct EncoderConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp).
     bool fast_mdct = true;
 
     // §7.3.4 dithflag, decided per channel per block from content (see
@@ -243,6 +249,13 @@ class AC3FORGE_EXPORT FrameEncoder {
     // that finding. Meaningless, and never read, while EncoderConfig::search
     // is kNone.
     BitAllocCodes previous_codes_{.dbpbcod = 3};
+    // The chbwcod this encoder last transmitted, so the content-adaptive
+    // band edge can be rate-limited on the way DOWN (see encode_frame's
+    // bandwidth step). Unlike snr_search_hint_ above this is not a
+    // performance hint: it is part of the decision, and dropping it would
+    // change the bitstream. Negative until a frame has been encoded, which
+    // is what lets the first frame take the content's answer outright.
+    int chbwcod_state_ = -1;
     // Both controllers smooth their gain over time, so they have to outlive a
     // frame - a per-frame instance would restart the attack every 32 ms.
     std::optional<meta::RangeController> range_;

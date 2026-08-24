@@ -39,12 +39,13 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `sample_rate` | `k48000` | Also `k44100`, `k32000`. |
 | `bitrate_kbps` | 192 | Must be one of the 19 Table 5.18 rates; `ac3::is_valid_bitrate` checks. |
 | `dialnorm` | 31 | 1–31 (§5.4.2.8). 31 means "no attenuation", which is a claim about your content. |
-| `chbwcod` | -1 | Coded bandwidth, 0–60. -1 derives it from the bit rate. |
+| `chbwcod` | -1 | Coded bandwidth, 0–60. -1 derives it from the bit rate and the content — see below. |
 | `acmod` | `k2_0` | Table 5.8, including `kDualMono` (1+1) — see below. |
 | `dialnorm2` | none | `std::optional<int>`. Ch2's own dialnorm (§5.4.2.16); required when `acmod` is `kDualMono`, meaningless otherwise. |
 | `lfe` | `false` | Adds one channel, coded last. |
 | `coupling` | `false` | §7.4. Needs ≥ 2 full-bandwidth channels. |
 | `cplbegf`, `cplendf` | -1, -1 | Sub-band indices; -1 lets the encoder choose from the per-channel rate. |
+| `fgaincod` | -1 | §7.2.2.4 fast gain, Table 7.11. -1 takes the encoder's rate-dependent choice; 0–7 pins it. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation (~25× on the long-transform kernel, identical streams to within ~3e-12 coefficient error). `false` forces the direct reference form, kept as the validation oracle — the CLI spells that `fast-mdct=off`. |
 | `drc` | none | `std::optional<meta::Profile>`. Absent leaves `dynrnge` clear in every block. |
 | `heavy` | none | `std::optional<meta::HeavyConfig>`. Independent of `drc`. |
@@ -56,6 +57,39 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 Coupling is what makes 5.1 viable below 448 kbit/s: above the coupling frequency the
 full-bandwidth channels stop carrying their own coefficients and share one coupling channel
 plus per-band coordinates.
+
+### Coded bandwidth
+
+`chbwcod` decides where the coded spectrum stops. At -1 — the default, and the same default
+`ac3::eac3::FrameConfig` now takes — the encoder answers from two things.
+
+The **bit rate sets a ceiling**, on the curve AC-3 has used since 0.7.0: roughly two thirds of
+the per-channel kbit/s, clamped to 24–60. Below about 90 kbit/s per channel the bits the top of
+the band costs are bits the rest of the spectrum needed, and no amount of content up there
+changes that. Measured on real programme material, AC-3 5.1 at 192 kbit/s scores MOS 3.145 at
+`chbwcod` 24 (13.6 kHz) falling to 2.411 at 59 (23.4 kHz).
+
+The **content decides under it**, per frame, from that frame's own transform: the highest band
+whose §7.2.2.3 banded PSD stands above Table 7.15's absolute hearing threshold. That is
+deliberately not an energy test. Every natural signal carries a vanishing fraction of its energy
+at the top of the band — a solo piano recording measures 3.5e-8 above 14.7 kHz, half a decade
+*less* than the synthetic `reference_51.wav` fixture's 7e-5 — so a rule that narrows while the
+discarded energy is small narrows until it is plainly audible, and reports a waveform-SNR win
+the whole way down. The hearing threshold asks the different question: would the allocator have
+put a bit there at all.
+
+Narrowing is capped at two codes per frame, so a quiet passage cannot pump the band edge;
+widening is immediate, so a transient's high band is not a frame late.
+
+Above **128 kbit/s per channel** the content half is skipped and the ceiling stands alone.
+Narrowing buys bits, and bits are only worth buying while the rest of the spectrum is short of
+them; past that rate the SNR-offset search already has more room than it can spend, so dropping
+a band returns nothing and can only lose what was in it. Measured over the corpus, the mean
+change from the old rate-only rule is +1.80 dB SNR / +0.013 MOS at 96 kbit/s per channel and
++0.12 dB / −0.010 MOS at 224, turning at 128 — earliest on material whose high band is
+noise-like and so has no harmonic structure to mask its absence.
+
+Setting `chbwcod` to 0–60 pins it and skips both halves.
 
 ### Block switching
 
@@ -88,12 +122,16 @@ Off by default (`EncoderConfig::search`). With it on, the encoder stops taking �
 allocation parameters as given and chooses them per frame, from the error a decoder will actually
 reconstruct — measured by [`ac3::quality`](quality.md) without decoding anything.
 
-The candidates are `dbpbcod` {2, 3} × `fgaincod` {1, 2, 4}, six in all, of which the no-search
-defaults are one. The other four parameters are left fixed on measured evidence: `floorcod` is
-inert (the floor never binds at any rate on any material tried, so all eight values encode
-identically) and `sdcycod`/`fdcycod`/`sgaincod` move the result by tenths. `fgaincod` is the one
-the fixed rules could never settle — 1 is worth about +2 dB at 448 and +7 dB at 640 kbit/s and
-*regresses* at 192 — so instead of a rate rule it is asked of each frame directly.
+The candidates are `dbpbcod` {2, 3} × `fgaincod` {1, 2, 4}, six in all. The no-search default -
+`dbpbcod` 3 at whatever `fgaincod_for` (above) computes for the frame's rate - is scored
+explicitly alongside them, so turning the search on can never silently discard that curve's own
+measured win just because none of the six fixed candidates happen to match it. The other four
+`BitAllocCodes` fields are left fixed on measured evidence: `floorcod` is inert (the floor never
+binds at any rate on any material tried, so all eight values encode identically) and
+`sdcycod`/`fdcycod`/`sgaincod` move the result by tenths. `fgaincod`'s own rate curve is a smooth
+average; 1 measured worth +2 dB at 448 and +7 dB at 640 kbit/s and *regressing* at 192 is a
+sharper local optimum than a smooth curve can express, which is what the fixed candidates are
+for.
 
 Two criteria, because they are different questions rather than two points on one scale:
 
@@ -119,7 +157,9 @@ measured error rather than on which pass reached the higher composite SNR offset
 Validated on CC0/CC-BY programme material (Bach piano, Blender's *Sintel* film mix) rather than
 the checked-in band-limited fixtures, decoded through FFmpeg and scored against the original by
 SNR, log-spectral distance and ViSQOL MOS-LQO (`tools/ci/quality_race.py`'s own scoring, reused
-rather than re-invented):
+rather than re-invented). Measured against the no-search baseline as it stood before `fgaincod_for`
+existed (a fixed `fgaincod` 4) - `fgaincod_for`'s own rate-adaptive curve landed in the same PR
+cycle as this table, and re-measuring against it is a follow-up, not done here:
 
 | Material | Rate | Criterion | ΔSNR | ΔLSD | ΔMOS |
 |---|---|---|---|---|---|

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <expected>
 #include <filesystem>
 #include <fmt/base.h>
+#include <fmt/chrono.h>  // IWYU pragma: keep - fmt::formatter<time_point> for "{:%FT%TZ}" below
 #include <fmt/format.h>
 #include <fstream>
 #include <iostream>
@@ -28,6 +30,8 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/dec3.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
@@ -36,6 +40,9 @@
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/dash.hpp"
+#include "mp4/hls.hpp"
+#include "mp4/mp4.hpp"
 #include "platform/stdio_binary.hpp"
 
 namespace ac3cli {
@@ -158,6 +165,12 @@ void print_meta_usage() {
     fmt::println("  container=mkv     write straight to Matroska instead of the bare elementary");
     fmt::println("                    stream this writes by default - same shape of choice as");
     fmt::println("                    the GUI's own Container setting");
+    fmt::println("  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live");
+    fmt::println("                    HLS playlists and a dynamic DASH MPD, updated as the");
+    fmt::println("                    session runs - the output path names the folder");
+    fmt::println("  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the");
+    fmt::println("                    playlist/MPD (a rolling live window); 0, the default, keeps");
+    fmt::println("                    every segment");
     fmt::println("  container=raw     the default, spelled out");
     fmt::println("");
     fmt::println("live options (live; any order, after the positional arguments):");
@@ -169,6 +182,19 @@ void print_meta_usage() {
     fmt::println("                    {}", ac3::meta::kQcPresetNames);
     fmt::println("  preset=all        gate against every preset above");
     fmt::println("                    omitted: measure and report only, no gate");
+    fmt::println("  layout=bed        the default - meter the independent substream's own");
+    fmt::println("                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)");
+    fmt::println("  layout=rendered   meter the whole assembled program instead, every");
+    fmt::println("                    dependent substream's height/wide/rear channels");
+    fmt::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
+    fmt::println("");
+    fmt::println("probe options (probe; any order, after the positional arguments):");
+    fmt::println("  json=1            emit the JSON document instead of the human table");
+    fmt::println("                    (schema ac3forge.probe/1 - docs/cli/commands.md)");
+    fmt::println("  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,");
+    fmt::println("                    substream headers and each frame's object layer");
+    fmt::println("  detail=blocks     the same, plus every block's coding tools and");
+    fmt::println("                    exponent strategies - what a codec bug report needs");
 }
 
 bool parse_options(std::span<char*> tokens, Options& out) {
@@ -493,13 +519,39 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (key == "container") {
             if (value == "mkv" || value == "matroska") {
-                out.matroska_container = true;
+                out.container = RecordContainer::kMatroska;
+            } else if (value == "fmp4" || value == "cmaf") {
+                out.container = RecordContainer::kFmp4;
             } else if (value == "raw") {
-                out.matroska_container = false;
+                out.container = RecordContainer::kRaw;
             } else {
-                fmt::println(stderr, "error: container must be raw or mkv (got '{}')", token);
+                fmt::println(stderr, "error: container must be raw, mkv or fmp4 (got '{}')",
+                             token);
                 return false;
             }
+            continue;
+        }
+        if (key == "layout") {
+            if (value == "rendered") {
+                out.qc_rendered_layout = true;
+            } else if (value == "bed") {
+                out.qc_rendered_layout = false;
+            } else {
+                fmt::println(stderr, "error: layout must be bed or rendered (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "fmp4-window") {
+            std::uint32_t segments = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), segments);
+            if (ec != std::errc{} || ptr != value.data() + value.size()) {
+                fmt::println(stderr, "error: fmp4-window= needs a segment count (0 keeps every "
+                                     "segment)");
+                return false;
+            }
+            out.fmp4_window_segments = segments;
             continue;
         }
         if (key == "preset") {
@@ -512,6 +564,28 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 }
             }
             out.qc_preset = std::string{value};
+            continue;
+        }
+        if (key == "json") {
+            // 1/0 rather than a bare 'json' word: probe is the first command
+            // whose OUTPUT FORM is a choice, and a value token says which
+            // form was asked for even when a script builds the command line
+            // programmatically ("json=$want"). '0' is accepted for exactly
+            // that reason - a caller should not have to omit the token to
+            // turn it off.
+            if (value != "1" && value != "0") {
+                fmt::println(stderr, "error: json must be 1 or 0 (got '{}')", token);
+                return false;
+            }
+            out.json = value == "1";
+            continue;
+        }
+        if (key == "detail") {
+            if (value != "frames" && value != "blocks") {
+                fmt::println(stderr, "error: detail must be frames or blocks (got '{}')", token);
+                return false;
+            }
+            out.detail = std::string{value};
             continue;
         }
         if (key == "signing-key") {
@@ -550,10 +624,34 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
 std::optional<int> measured_dialnorm(const ac3::io::WavData& wav, ac3::SampleRate rate,
                                      ac3::Acmod acmod, bool lfe, FILE* out) {
     ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
+    // LoudnessMeter takes its spans in AC-3 CODED order (Table 5.8: L, C, R,
+    // Ls, Rs, LFE), which is not WAV order (FL, FR, FC, LFE, BL, BR) for any
+    // layout wider than stereo. Pushing the file's own order straight in put
+    // the LFE where Ls belongs - so BS.1770's +1.5 dB surround weight landed
+    // on the LFE, which the standard excludes outright, while a real surround
+    // landed in the excluded slot and was dropped. Measured against ffmpeg's
+    // ebur128 on a 5.1 file with signal in one channel at a time, that read
+    // the LFE-only case at -38.61 LKFS where the oracle correctly reported no
+    // loudness at all.
+    //
+    // ac3_layout_for's wav_index[k] is "the position in a WAV frame of AC-3
+    // channel k" - the same permutation run_levels already applies before it
+    // meters, which is why that command never had the fault.
+    const auto layout = ac3::io::ac3_layout_for(wav.channels.size());
     std::vector<std::span<const float>> views;
     views.reserve(wav.channels.size());
-    for (const auto& channel : wav.channels) {
-        views.emplace_back(channel);
+    if (layout && layout->wav_index.size() == wav.channels.size()) {
+        for (const auto wav_slot : layout->wav_index) {
+            views.emplace_back(wav.channels[wav_slot]);
+        }
+    } else {
+        // No legal acmod carries this width (7 channels and up), so there is
+        // no permutation to apply and no coded order to apply it to. The
+        // caller has already decided what acmod to measure as; feeding the
+        // file's own order is the only thing left, exactly as before.
+        for (const auto& channel : wav.channels) {
+            views.emplace_back(channel);
+        }
     }
     meter.push(views);
     return finish_measurement(meter, {}, "dialnorm", out);
@@ -676,6 +774,179 @@ bool write_frames_or_mux(std::string_view path, bool matroska, const matroska::A
         return false;
     }
     return true;
+}
+
+namespace {
+
+// The two file writers Fmp4SessionWriter needs, kept local: 'ac3cli fmp4' has
+// its own pair in commands/containers.cpp for its own batch directory, and
+// neither is worth a shared header for four lines apiece.
+bool write_session_bytes(const std::filesystem::path& path, std::span<const std::byte> bytes) {
+    std::ofstream out{path, std::ios::binary};
+    if (!out) {
+        return false;
+    }
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    return static_cast<bool>(out);
+}
+
+bool write_session_text(const std::filesystem::path& path, std::string_view text) {
+    return write_session_bytes(
+        path, std::as_bytes(std::span{reinterpret_cast<const char*>(text.data()), text.size()}));
+}
+
+}  // namespace
+
+std::string Fmp4SessionWriter::open(std::string_view directory,
+                                    std::uint32_t frames_per_fragment,
+                                    std::uint32_t window_segments) {
+    dir_ = std::filesystem::path{std::string{directory}};
+    frames_per_fragment_ = frames_per_fragment;
+    window_segments_ = window_segments;
+    std::error_code ec;
+    std::filesystem::create_directories(dir_, ec);
+    if (ec) {
+        return fmt::format("cannot create directory {} ({})", directory, ec.message());
+    }
+    open_ = true;
+    return {};
+}
+
+std::string Fmp4SessionWriter::start(std::span<const std::byte> first_frame) {
+    // One access unit is enough for everything the track needs: kind, sample
+    // rate, rendered channel count, the dac3/dec3 payload, the Table E2.5
+    // channel map and the TS 103 420 object marker all come out of the first
+    // unit's own headers - which is why this is deferred to the first push()
+    // rather than done in open(). Exactly the re-scan 'ac3cli fmp4' and the
+    // GUI's writeOutput already do before wrapping frames they just encoded.
+    const auto scanned = ac3::io::scan(first_frame);
+    if (!scanned) {
+        return fmt::format("cannot describe the encoded stream ({})",
+                           ac3::io::describe(scanned.error()));
+    }
+    const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
+    track_ = mp4::AudioTrack{.codec_id = std::string{eac3 ? mp4::kCodecEac3 : mp4::kCodecAc3},
+                             .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
+                             .channels = scanned->channels,
+                             .samples_per_frame = ac3::kSamplesPerFrame,
+                             .codec_config = ac3::io::build_codec_config_box(*scanned)};
+    // Dolby Digital Plus with Atmos objects: CHANNELS="<N>/JOC" for HLS (see
+    // mp4/hls.hpp) and TS 103 420 §D.2's two SupplementalProperty descriptors
+    // plus the 'ceao' brand for DASH/CMAF (see mp4/dash.hpp and
+    // mp4::FragmentOptions::object_audio_brand).
+    hls_ = mp4::HlsOptions{.channels_attribute =
+                               scanned->oba_complexity_index
+                                   ? fmt::format("{}/JOC", *scanned->oba_complexity_index)
+                                   : std::string{}};
+    dash_ = mp4::DashOptions{
+        .joc_complexity_index = scanned->oba_complexity_index,
+        .dolby_channel_configuration = ac3::io::dash_channel_configuration(*scanned)};
+
+    auto writer = mp4::FragmentWriter::create(
+        track_, mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment_,
+                                     .object_audio_brand = scanned->oba_complexity_index.has_value(),
+                                     .playlist_window_segments = window_segments_});
+    if (!writer) {
+        return std::string{mp4::describe(writer.error())};
+    }
+    writer_ = std::move(*writer);
+    if (!write_session_bytes(dir_ / "init.mp4", writer_->init_segment())) {
+        return fmt::format("cannot write init.mp4 to {}", dir_.string());
+    }
+    // The live MPD's anchor: the wall-clock instant segment 1's playback
+    // begins at. Read once, here, rather than per manifest rewrite - it must
+    // not move as the session runs. mp4:: itself has no clock (no file I/O,
+    // no time - see MpdOptions::availability_start_time), so the front end
+    // stamps it.
+    availability_start_ = fmt::format(
+        "{:%FT%TZ}", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+    return {};
+}
+
+std::string Fmp4SessionWriter::write_manifests(const mp4::FragmentWriter& writer,
+                                              bool finished) {
+    const auto window = writer.window();
+    auto hls = hls_;
+    hls.vod = finished;
+    const auto media = mp4::build_hls_media_playlist(track_, window, hls);
+    const auto master = mp4::build_hls_master_playlist(track_, window, "audio.m3u8", hls);
+    if (!write_session_text(dir_ / "audio.m3u8", media) ||
+        !write_session_text(dir_ / "master.m3u8", master)) {
+        return fmt::format("cannot write the HLS playlists to {}", dir_.string());
+    }
+    const auto adaptation_set = mp4::build_dash_adaptation_set(track_, window, dash_);
+    // While the session runs the MPD is dynamic (segments still appearing);
+    // once it stops it becomes static, with the real total duration - the
+    // same before/after pair the HLS playlist's #EXT-X-ENDLIST makes.
+    // timeShiftBufferDepth matches the rolling window when there is one; with
+    // fmp4-window=0 every segment stays on disk, so the whole presentation so
+    // far is reachable and the depth is its own length.
+    const double window_seconds =
+        window.empty()
+            ? 0.0
+            : static_cast<double>(window.back().base_media_decode_time +
+                                  window.back().duration_samples -
+                                  window.front().base_media_decode_time) /
+                  static_cast<double>(track_.sample_rate);
+    const mp4::MpdOptions mpd_options{.is_static = finished,
+                                      .availability_start_time = availability_start_,
+                                      .time_shift_buffer_depth_seconds = window_seconds};
+    if (!write_session_text(dir_ / "manifest.mpd",
+                            mp4::build_dash_mpd(track_, window, adaptation_set, mpd_options))) {
+        return fmt::format("cannot write manifest.mpd to {}", dir_.string());
+    }
+    return {};
+}
+
+std::string Fmp4SessionWriter::push(std::span<const std::byte> frame) {
+    if (!open_) {
+        return "the fMP4 session was never opened";
+    }
+    if (!writer_) {
+        if (auto problem = start(frame); !problem.empty()) {
+            return problem;
+        }
+    }
+    // start() above engages writer_ on every path that returns empty, but
+    // clang-tidy's bugprone-unchecked-optional-access does not trace an
+    // optional's engagement across a member-function call - the same false
+    // positive gui/encoder_controller.cpp already works around by binding
+    // the optional's value once.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    auto& writer = *writer_;
+    auto segment = writer.push(frame);
+    if (!segment) {
+        return std::string{mp4::describe(segment.error())};
+    }
+    if (!*segment) {
+        return {};
+    }
+    const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);
+    if (!write_session_bytes(dir_ / name, (*segment)->bytes)) {
+        return fmt::format("cannot write {} to {}", name, dir_.string());
+    }
+    ++segments_;
+    return write_manifests(writer, false);
+}
+
+std::string Fmp4SessionWriter::close() {
+    if (!open_ || !writer_) {
+        return {};
+    }
+    auto& writer = *writer_;
+    auto segment = writer.finalize();
+    if (!segment) {
+        return std::string{mp4::describe(segment.error())};
+    }
+    if (*segment) {
+        const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);
+        if (!write_session_bytes(dir_ / name, (*segment)->bytes)) {
+            return fmt::format("cannot write {} to {}", name, dir_.string());
+        }
+        ++segments_;
+    }
+    return write_manifests(writer, true);
 }
 
 std::string partial_output_path(std::string_view path) {

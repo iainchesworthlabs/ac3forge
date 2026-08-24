@@ -31,7 +31,8 @@ endif()
 
 target_sources(mpegts_objects
     PRIVATE
-        src/mpegts.cpp)
+        src/mpegts.cpp
+        src/reader.cpp)
 
 target_include_directories(mpegts_objects
     PUBLIC
