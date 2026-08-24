@@ -497,7 +497,7 @@ runs the old numbers on purpose.
 Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
 roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
 soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
-[Building → Minimum-footprint decoder profile](../building.md#minimum-footprint-decoder-profile)
+[Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
 for what the profile changes and why.
 
 `apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
@@ -563,7 +563,7 @@ a silent fast-path substitution — see the building doc for why.
 | AC-3 allocations per frame, steady state | 45 |
 | E-AC-3 allocations per frame, steady state | 85 |
 
-The steady-state allocation counts are the gap [Building](../building.md#gaps) records: PF7 asks
+The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
 for zero, and this is 45/85 — from the per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
 memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
