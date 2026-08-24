@@ -456,6 +456,10 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
     ac3::joc::ReconstructionState state;
     std::vector<std::span<const float>> views(4);
 
+    // The shipped default on both sides. The domain pair is compared
+    // head-to-head in "QMF-domain JOC reconstructs objects at least as well
+    // as the MDCT-band path" below; this one just has to run what ships.
+    constexpr auto kDomain = ac3::joc::Domain::kQmf;
     constexpr int kFrames = 6;
     std::array<std::vector<float>, 4> source;   // the whole run, per object
     std::array<std::vector<float>, 4> recovered;  // ditto, aligned index for index
@@ -496,23 +500,26 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
             bed_joc_order[static_cast<std::size_t>(jc)] =
                 sub.channels[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto reconstructed = ac3::joc::reconstruct(bed_joc_order, *params, state);
+        const auto reconstructed = ac3::joc::reconstruct(
+            bed_joc_order, *params, state, /*fast_mdct=*/false, /*fast_imdct=*/false, kDomain);
         REQUIRE(reconstructed.size() == 4);
         for (std::size_t i = 0; i < 4; ++i) {
             recovered[i].insert(recovered[i].end(), reconstructed[i].begin(), reconstructed[i].end());
         }
     }
 
-    // Two stacked MDCT round trips carry two stacked 256-sample algorithmic
-    // delays: one from the real encode+decode of the bed itself (see
-    // tests/decoder/test_eac3_decoder.cpp's own snr_db helper), one more from
-    // reconstruct()'s own independent forward+inverse pass over that decoded
-    // bed (see "reconstruct is a 256-sample-delayed identity..." above).
-    // Comparing sample n of the recovered audio against sample (n - 512) of
-    // the true source is what actually measures reconstruction QUALITY
-    // rather than mostly measuring this codebase's own well-understood,
-    // expected transform-pair latency.
-    constexpr std::size_t kDelay = 512;
+    // Two stacked transform round trips carry two stacked algorithmic
+    // delays: 256 samples from the real encode+decode of the bed itself
+    // (see tests/decoder/test_eac3_decoder.cpp's own snr_db helper), plus
+    // reconstruct()'s own independent pass over that decoded bed - which
+    // depends on the domain it ran in, so it is asked rather than assumed
+    // (see "reconstruct is a delayed identity..." above). Comparing sample
+    // n of the recovered audio against sample (n - kDelay) of the true
+    // source is what actually measures reconstruction QUALITY rather than
+    // mostly measuring this codebase's own well-understood, expected
+    // transform-pair latency.
+    const std::size_t kDelay =
+        static_cast<std::size_t>(256 + ac3::joc::reconstruction_delay(kDomain));
     constexpr std::size_t kSkip = static_cast<std::size_t>(kFrame);  // one frame's warm-up/cool-down
     for (int object = 0; object < 4; ++object) {
         CAPTURE(object);
@@ -537,6 +544,156 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
         // rather than pinning to the measured values.
         CHECK(snr_db > 10.0);
     }
+}
+
+TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band path",
+          "[atmos][joc][decoder][qmf]") {
+    // Roadmap DC10's actual question, measured rather than argued: the same
+    // objects, the same placements, the same real encoded bytes, differing
+    // only in which domain the matrix is estimated and applied in. Both legs
+    // run encoder and decoder in the SAME domain, because that is the only
+    // pairing either one is correct for - a QMF-estimated matrix applied over
+    // MDCT bins is neither path, and a real decoder never runs it.
+    //
+    // The two do not have the same latency and the comparison has to allow
+    // for it: 256 samples of encode+decode either way, plus the JOC
+    // transform pair's own joc::reconstruction_delay(domain) on top - 256
+    // for the MDCT pair, 576 for the filterbank.
+    const auto measure = [](ac3::joc::Domain encode_domain, ac3::joc::Domain decode_domain) {
+        constexpr int kObjects = 4;
+        ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = encode_domain},
+                                       kObjects};
+        const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
+            {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
+            {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},
+            {.position = {.x = 0.0, .y = 1.0, .z = 1.0}},
+            {.position = {.x = 1.0, .y = 1.0, .z = 1.0}},
+        }};
+        const std::array<double, kObjects> hz{311.0, 997.0, 2200.0, 5000.0};
+        const std::array<double, kObjects> amplitude{0.30, 0.25, 0.20, 0.22};
+
+        constexpr std::array<int, ac3::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+        ac3::Eac3Decoder decoder;
+        ac3::joc::ReconstructionState state;
+        std::vector<std::span<const float>> views(kObjects);
+
+        constexpr int kFrames = 10;
+        std::array<std::vector<float>, kObjects> source;
+        std::array<std::vector<float>, kObjects> recovered;
+
+        for (int frame = 0; frame < kFrames; ++frame) {
+            const auto start = static_cast<std::uint64_t>(frame) * kFrame;
+            std::vector<std::vector<float>> essences;
+            for (std::size_t i = 0; i < kObjects; ++i) {
+                essences.push_back(tone(hz[i], amplitude[i], 0.7 * static_cast<double>(i), start));
+                source[i].insert(source[i].end(), essences[i].begin(), essences[i].end());
+            }
+            for (std::size_t i = 0; i < views.size(); ++i) {
+                views[i] = essences[i];
+            }
+            const auto encoded = encoder.encode_frame(views, placement);
+            REQUIRE(encoded.has_value());
+            const auto frame_bytes = encoded->substream(0);
+            const auto decoded = decoder.decode_substream(frame_bytes);
+            REQUIRE(decoded.has_value());
+            REQUIRE(decoded->has_value());
+            const auto& sub = **decoded;
+
+            const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+            REQUIRE(joc_bytes.has_value());
+            const auto params = ac3::joc::parse_payload(*joc_bytes);
+            REQUIRE(params.has_value());
+
+            std::array<std::span<const float>, ac3::joc::kNumChannels5X> bed_joc_order{};
+            for (int jc = 0; jc < ac3::joc::kNumChannels5X; ++jc) {
+                bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
+                    kAc3FromJoc[static_cast<std::size_t>(jc)])];
+            }
+            const auto out = ac3::joc::reconstruct(bed_joc_order, *params, state,
+                                                   /*fast_mdct=*/false, /*fast_imdct=*/false,
+                                                   decode_domain);
+            REQUIRE(out.size() == kObjects);
+            for (std::size_t i = 0; i < kObjects; ++i) {
+                recovered[i].insert(recovered[i].end(), out[i].begin(), out[i].end());
+            }
+        }
+
+        const auto delay =
+            static_cast<std::size_t>(256 + ac3::joc::reconstruction_delay(decode_domain));
+        const std::size_t skip = static_cast<std::size_t>(2 * kFrame);
+        std::array<double, kObjects> snr{};
+        for (std::size_t object = 0; object < kObjects; ++object) {
+            double signal = 0.0;
+            double error = 0.0;
+            for (std::size_t n = skip; n + skip < recovered[object].size(); ++n) {
+                const double want = static_cast<double>(source[object][n - delay]);
+                const double got = static_cast<double>(recovered[object][n]);
+                signal += want * want;
+                error += (got - want) * (got - want);
+            }
+            snr[object] = 10.0 * std::log10(signal / std::max(error, 1e-30));
+        }
+        return snr;
+    };
+
+    const auto mean = [](const auto& snr) {
+        double total = 0.0;
+        for (const double value : snr) {
+            total += value;
+        }
+        return total / static_cast<double>(snr.size());
+    };
+
+    const auto mdct = measure(ac3::joc::Domain::kMdctBand, ac3::joc::Domain::kMdctBand);
+    const auto qmf = measure(ac3::joc::Domain::kQmf, ac3::joc::Domain::kQmf);
+
+    for (std::size_t object = 0; object < mdct.size(); ++object) {
+        CAPTURE(object, mdct[object], qmf[object]);
+        // Neither domain may fall below what the MDCT-band path was already
+        // holding when it was the only one (18-35 dB measured, 10 dB floor).
+        CHECK(mdct[object] > 10.0);
+        CHECK(qmf[object] > 10.0);
+    }
+    const double mdct_mean = mean(mdct);
+    const double qmf_mean = mean(qmf);
+    CAPTURE(mdct_mean, qmf_mean);
+    // The claim DC10 rests on. The QMF path is not merely the domain a
+    // licensed decoder uses - on this codebase's own decoder it also
+    // reconstructs better, because a per-band matrix that changes every
+    // frame breaks the MDCT's time-domain alias cancellation and the
+    // filterbank has none to break. The margin is not asserted tightly; the
+    // direction is.
+    CHECK(qmf_mean > mdct_mean);
+
+    // And the other half of DC10's premise: that the domain is not a free
+    // choice either side can make on its own. Estimating in one and
+    // reconstructing in the other is worse than either matched pair, which
+    // is exactly the position this encoder was in against a licensed
+    // decoder - matrices fitted to a reconstruction that decoder never
+    // performs. Both crossings are measured, because they are not
+    // symmetric: only one of them is a real-world configuration.
+    //
+    // Measured, mean per-object SNR over four placements, 10 frames:
+    //
+    //     estimated in \ reconstructed in    MDCT-band      QMF
+    //     MDCT-band                            22.8 dB     23.5 dB
+    //     QMF                                  27.7 dB     28.6 dB
+    //
+    // Read down the QMF column: a licensed decoder, which has no MDCT-band
+    // option, gets 23.5 dB out of a matrix this encoder estimated the old
+    // way and 28.6 dB out of one estimated the new way. Most of that 5.1 dB
+    // is the ESTIMATE rather than the reconstruction - the same swap is
+    // worth 4.9 dB even decoded in the MDCT domain - because an MDCT
+    // coefficient's magnitude depends on where the tone sits relative to
+    // the block boundary, so per-band power read off it is noisy in a way
+    // a complex subband's magnitude is not.
+    const double cross_mdct_qmf =
+        mean(measure(ac3::joc::Domain::kMdctBand, ac3::joc::Domain::kQmf));
+    const double cross_qmf_mdct =
+        mean(measure(ac3::joc::Domain::kQmf, ac3::joc::Domain::kMdctBand));
+    CAPTURE(cross_mdct_qmf, cross_qmf_mdct);
+    CHECK(cross_mdct_qmf < qmf_mean);
+    CHECK(cross_qmf_mdct < qmf_mean);
 }
 
 TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmos][decoder]") {

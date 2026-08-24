@@ -39,8 +39,14 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Scratch space for this file's own tests. AC3FORGE_TEST_SCRATCH_DIR (see
+// tests/CMakeLists.txt for why it is a build-tree path and not
+// fs::temp_directory_path()) is the whole suite's root; the leaf below is this
+// file's own. Duplicated in every test file that needs scratch space rather
+// than shared, per this project's per-file test-helper convention - only the
+// leaf name differs between the copies.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_cli_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli";
     fs::create_directories(dir);
     return dir;
 }
@@ -324,6 +330,59 @@ TEST_CASE("offset= rejects malformed tokens", "[cli][offset]") {
                                 log);
         CHECK(rc == 0);
         CHECK(fs::exists(out_path));
+    }
+}
+
+TEST_CASE("eac3-encode verify runs the mirror self-check", "[cli][verify]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "verify_in.wav";
+    // Six blocks a frame, several frames: the recorded lesson is that frame 0
+    // alone gives a false pass, and the tools this exercises (coupling,
+    // spectral extension, AHT) say nothing at all on silence.
+    const auto channels = make_tone_channels(6, 48000 / 4, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    SECTION("a clean encode reports the check and still writes the stream") {
+        const auto out_path = dir / "verify_ok.ec3";
+        const auto log = dir / "verify_ok.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 192 all 51 verify",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 0);
+        CHECK(fs::exists(out_path));
+        CHECK(text.find("verify: encoder and decoder agree") != std::string::npos);
+    }
+
+    SECTION("the same encode without the option says nothing about it") {
+        // Named without the word "verify": the paths themselves are echoed
+        // into the log, and a filename carrying the word would satisfy the
+        // absence check below on its own.
+        const auto out_path = dir / "plain_encode.ec3";
+        const auto log = dir / "plain_encode.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 192 all 51",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 0);
+        CHECK(text.find("verify") == std::string::npos);
+    }
+
+    SECTION("it reaches the tools with no external oracle, and 7.1.4") {
+        const auto out_path = dir / "verify_ecpl.ec3";
+        const auto log = dir / "verify_ecpl.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 448 cpl+ecpl+tpn 714 verify",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 0);
+        CHECK(text.find("verify: encoder and decoder agree") != std::string::npos);
     }
 }
 

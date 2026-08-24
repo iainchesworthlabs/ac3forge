@@ -79,6 +79,7 @@ Full program: [`examples/atmos_objects.cpp`](https://github.com/iainchesworthlab
 | `num_bands_idx` | 4 | Index into `joc::kNumBands` (Table 50). More bands cost codewords without giving the matrix anything new to say. |
 | `fine_quant` | `false` | §6.3.3.7's half-step quantizer, roughly one more bit per coefficient. Worth it when objects are nearly degenerate. |
 | `fast_mdct` | `true` | The §7.9.4 fast forward MDCT for the whole object encode: the bed's substream (via `eac3::FrameConfig::fast_mdct`) **and** the per-object `band_energy` transforms feeding the reconstruction-matrix solve. `false` forces the direct §8.2.3.2 reference form everywhere, for validation — the CLI spells that `fast-mdct=off` on the `atmos*` commands. |
+| `joc_domain` | `joc::Domain::kQmf` | Where the reconstruction matrix is estimated. `kQmf` is §7.1's 64-band complex filterbank — what §6.6.6 describes and what a licensed decoder reconstructs in. `kMdctBand` is the 256-bin MDCT approximation this project used before it had a filterbank: cheaper, about 5 dB worse per object, and only correct against a decoder told the same thing. CLI: `joc-domain=mdct`. |
 
 At most 16 objects (`joc::kMaxObjects`, per TS 103 420 §8.3.2.2). `encoder.bed()` returns the
 5.1 bed the last frame encoded — what a legacy decoder hears, and the thing most worth
@@ -86,10 +87,31 @@ checking — and `encoder.parameters()` the pre-quantization reconstruction matr
 
 The matrix is the minimum mean-square estimate `M = P Dᵀ (D P Dᵀ + εI)⁻¹`. Because the encoder
 built the downmix it knows `D` exactly rather than estimating it, which makes the solve
-near-exact for well-separated objects. Two limits are structural, not bugs: objects sharing a
-direction cannot be separated by any linear combination of the bed, and Dolby's decoder will
-not treat these as objects at all. Both are covered in
-[Atmos & JOC](../concepts/atmos-joc.md#two-honest-limitations).
+near-exact for well-separated objects. `P` — each object's per-band power — is read off §7.1's
+complex QMF, which is the domain the decoder will apply the result in; see
+[which domain the matrix lives in](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
+Two limits are structural, not bugs: objects sharing a direction cannot be separated by any
+linear combination of the bed, and Dolby's decoder will not treat these as objects at all. Both
+are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-honest-limitations).
+
+## Getting the objects back: `joc::reconstruct`
+
+`Eac3Decoder` reconstructs object audio into `DecodedSubstream::object_audio` whenever a frame
+carries JOC, using `DecoderConfig::joc_domain` — `kQmf` by default, the same pair the encoder
+estimated in. The result **lags the bed**, and by how much depends on the domain:
+
+```cpp
+// 256 samples of encode+decode, plus the JOC transform pair's own delay.
+const int delay = 256 + ac3::joc::reconstruction_delay(config.joc_domain);
+```
+
+`joc::reconstruction_delay()` returns 576 for `kQmf` (the filterbank's 640-tap window less one
+64-sample hop) and 256 for `kMdctBand`. Ask it rather than hard-coding either: code that compares
+reconstructed objects against a known source and gets the shift wrong measures the latency
+instead of the reconstruction, and still looks plausible.
+
+The filterbank is usable on its own as `ac3::dsp::QmfAnalysis` / `QmfSynthesis` (`ac3/dsp/qmf.hpp`)
+— 64 complex subbands, one timeslot per 64 samples, perfect reconstruction.
 
 ## Scripted motion: `ac3::oba::motion`
 
@@ -290,6 +312,15 @@ never both.
 ```cpp
 ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
 ```
+
+Turning it off drops TS 103 420 §8.3.1's `addbsi` object marker along with the container, so the
+stream doesn't *advertise* an object layer either. That marker (`flag_ec3_extension_type_a` plus
+§8.3.2.2's `complexity_index_type_a`) is the only thing a reader has to go on: it is what
+`ac3::io::scan` reports as `ScannedStream::oba_complexity_index`, what
+`ac3::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
+`ac3cli fmp4` writes as an HLS `CHANNELS="<N>/JOC"` attribute, and what FFmpeg keys its
+"Dolby Digital Plus + Dolby Atmos" profile off. Left in, all four would claim objects that were
+never encoded — the same empty-promise this mode exists to avoid.
 
 Full program: [`examples/atmos_fallback.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_fallback.cpp)
 — encodes the same objects both ways and confirms both decode as an ordinary 5.1 bed.

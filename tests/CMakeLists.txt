@@ -60,6 +60,7 @@ add_executable(ac3tests
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
+    dsp/test_dsp_qmf.cpp
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
     decoder/test_eac3_decoder.cpp
@@ -95,9 +96,11 @@ add_executable(ac3tests
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
     oba/test_scene.cpp
+    verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
+    core/test_simd_kernels.cpp
     core/test_tables.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
@@ -118,6 +121,13 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src
 # translation units rather than library surface - same pattern, same reason.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
 
+# test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
+# CMake selected in src/forge/CMakeLists.txt, so the test exercises the
+# f64x2/i32x4 the library was actually built with rather than a different
+# one - same white-box arrangement as src/signing/src just above and the ALSA
+# backend's internal header below.
+target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
+
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
 # half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
 # builds under Clang with -fsanitize=fuzzer, but the header's
@@ -129,14 +139,39 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/e
 # target's path only.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
-# test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
-# committed programme-material fixtures rather than a synthetic signal - the delta bit
-# allocation state it compares only ends part-way through a frame on material that really
-# does change character mid-frame, which is what made those files the reproduction for the
-# bug this check exists to catch. Passed as a path rather than resolved from argv[0]: ctest
-# runs the binary from the build tree, which is nowhere near the fixtures.
+# test_selfcheck.cpp and test_eac3_selfcheck.cpp run the encoder/decoder mirror check
+# (ac3::verify) over the committed programme-material fixtures rather than a synthetic
+# signal - the delta bit allocation state it compares only ends part-way through a frame on
+# material that really does change character mid-frame, which is what made those files the
+# reproduction for the bug this check exists to catch, and the Annex E tools it also
+# compares (AHT gains, coupling and spectral-extension coordinates) say nothing at all on
+# silence. Passed as a path rather than resolved from argv[0]: ctest runs the binary from
+# the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
+
+# Where every test that writes a file writes it. Each such file's own scratch_dir()
+# helper appends its own leaf name under here, so the artefacts stay separated by
+# subject the way their old per-subject temp directories were.
+#
+# The point of routing them through a define at all is the ROOT of that path.
+# These used to sit under fs::temp_directory_path(), which depends on nothing but
+# the machine - so two ac3tests binaries built from different checkouts of this
+# repo (different worktrees, different build directories, different branches)
+# shared one directory and, because the filenames underneath are fixed, could
+# overwrite each other's intermediate files mid-test. What that produces is not an
+# obvious collision but a test failure in whichever run lost the race, in a branch
+# that has nothing to do with the change under test. CI never sees it - a runner
+# has its checkout to itself - so the whole cost lands on local development, where
+# building several worktrees of this repo at once is normal.
+#
+# Keying it to CMAKE_CURRENT_BINARY_DIR gives each build tree its own, which is
+# also the more useful place for it: the artefacts a failing test left behind end
+# up next to the binary that wrote them rather than pooled in the machine's temp
+# directory with every other build's, and `rm -rf` on a build tree takes them with
+# it. Supplied the same way AC3CLI_EXE and AC3FORGE_GOLDEN_AUDIO_DIR above are.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
 
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
