@@ -665,11 +665,13 @@ AC3FORGEC_EXPORT int ac3forge_atmos_encoder_dynamic_object_count(
     const ac3forge_atmos_encoder_t* encoder);
 
 /* The OBJECT path's latency budget — what this encoder is for. Its
- * transform_samples is 2 * AC3FORGE_SAMPLES_PER_BLOCK, not one: JOC codes a
- * matrix that pulls objects back out of the decoded bed, and doing that means
- * a second full MDCT/IMDCT round trip in the decoder. With
- * config.emit_object_metadata clear there is no container, no JOC and no
- * second transform, and this collapses to the bed's own budget below. */
+ * transform_samples is AC3FORGE_SAMPLES_PER_BLOCK plus the §7.1 QMF
+ * filterbank's own delay (576 samples, ac3::dsp::kQmfDelay): JOC codes a
+ * matrix that pulls objects back out of the decoded bed in a 64-band complex
+ * QMF domain rather than the MDCT's, and analysis plus synthesis costs that
+ * much on top of the bed's own overlap. With config.emit_object_metadata
+ * clear there is no container, no JOC and no filterbank, and this collapses
+ * to the bed's own budget below. */
 AC3FORGEC_EXPORT void ac3forge_atmos_encoder_latency(const ac3forge_atmos_encoder_t* encoder,
                                                     ac3forge_latency_t* out_latency);
 AC3FORGEC_EXPORT int ac3forge_atmos_encoder_latency_samples(

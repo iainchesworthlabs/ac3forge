@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/export.hpp"
 #include "ac3/latency.hpp"
@@ -74,6 +75,22 @@ struct AtmosConfig {
     // the whole object encode rides one transform path. false forces the
     // direct §8.2.3.2 reference form everywhere, for validation.
     bool fast_mdct = true;
+    // Which domain the reconstruction matrix is ESTIMATED in - and so, in
+    // practice, which domain it is correct in. §6.6.6 puts the decoder's
+    // reconstruction in §7.1's 64-band complex QMF, and every licensed
+    // decoder runs it there, so joc::Domain::kQmf is the only setting whose
+    // matrices mean on the other side what they meant here.
+    // joc::Domain::kMdctBand is what this encoder did before the filterbank
+    // existed: the same solve over 256 MDCT bins, four to a subband. It is
+    // cheaper, and it is what the in-repo decoder reconstructs best from
+    // when it is also told kMdctBand, but the agreement is between this
+    // encoder and this decoder only - a licensed decoder has no such
+    // setting, and reads every matrix as a QMF one.
+    //
+    // Default kQmf since the evidence was measured: +5.1 dB mean per-object
+    // SNR through a QMF reconstruction, for +0.26 ms/frame of encode
+    // (0.55 -> 0.80 ms of a 32 ms budget, four objects).
+    joc::Domain joc_domain = joc::Domain::kQmf;
 };
 
 // One object's placement for one frame. Positions are room-anchored per
@@ -108,23 +125,28 @@ class AC3FORGE_EXPORT AtmosEncoder {
 
     // Roadmap PF6. The OBJECT path's budget - what this encoder is for.
     //
-    // Its transform term is TWICE kTransformDelaySamples, and that is not a
-    // typo. JOC does not code objects; it codes a matrix that pulls them back
-    // out of the decoded bed (joc::reconstruct), and doing that means a second
-    // full MDCT/IMDCT round trip over PCM the decoder has already
-    // reconstructed - block b's analysis window there spans bed samples
-    // [256b - 256, 256b + 256) exactly as the first one spanned input
-    // samples. Two TDAC overlaps in series, so an object sample lags its input
-    // by 512 rather than 256. Nothing in this encoder can shorten that: the
-    // second transform is the decoder's, and it is what the tool is.
+    // Its transform term is the bed's own MDCT overlap PLUS the §7.1 QMF
+    // filterbank's own delay (dsp::kQmfDelay, 576 samples) - not, as an
+    // earlier version of this comment claimed, a second MDCT/IMDCT round
+    // trip. JOC does not code objects; it codes a matrix that pulls them
+    // back out of the decoded bed (joc::reconstruct), and TS 103 420 §7.1
+    // puts that reconstruction in a 64-band complex QMF domain rather than
+    // the MDCT's - critically-sampled real transforms rely on time-domain
+    // alias cancellation between neighbouring blocks, an assumption a
+    // per-frame matrix breaks (see ac3/dsp/qmf.hpp's own header). Analysis
+    // plus synthesis costs kQmfDelay = kQmfTaps - kQmfHop samples on top of
+    // whatever the bed already lagged by: an object sample lags its input by
+    // kTransformDelaySamples + dsp::kQmfDelay = 832, not 512. Nothing in
+    // this encoder can shorten that: the filterbank is the decoder's, and it
+    // is what the tool is.
     //
     // With emit_object_metadata off there is no container, no JOC and no
-    // second transform - the stream is plain 5.1 - so the budget collapses to
+    // filterbank - the stream is plain 5.1 - so the budget collapses to
     // bed_latency()'s.
     [[nodiscard]] LatencyBudget latency() const {
         LatencyBudget budget = bed_latency();
         if (config_.emit_object_metadata) {
-            budget.transform_samples += kTransformDelaySamples;
+            budget.transform_samples += dsp::kQmfDelay;
         }
         return budget;
     }
@@ -162,6 +184,9 @@ class AC3FORGE_EXPORT AtmosEncoder {
     bool primed_ = false;
 
     std::vector<std::vector<float>> bed_;
+    // One analysis filterbank per object, for joc::Domain::kQmf's band
+    // energies. Left empty - and so free - under kMdctBand.
+    std::vector<dsp::QmfAnalysis> object_qmf_;
     std::uint64_t frames_ = 0;
 };
 
@@ -179,5 +204,28 @@ class AC3FORGE_EXPORT AtmosEncoder {
 AC3FORGE_EXPORT void band_energy(std::span<const float> signal,
                                  std::span<const std::uint8_t, 64> mapping,
                                  std::span<double> out, bool fast = false);
+
+// The same measurement in §7.1's 64-band complex QMF - one subband per
+// Table 54 entry instead of four MDCT bins standing in for one, and 24
+// timeslots of it per frame instead of six blocks. `analysis` is this
+// signal's own filterbank and must be the SAME object frame after frame:
+// a filterbank restarted every frame would see 640 samples of ramp-in each
+// time and under-read the energy at both ends.
+//
+// Absolute scale differs from band_energy's and does not matter: the solve
+// that consumes these regularizes relative to their own trace, so a common
+// factor across all objects cancels out of the matrix entirely.
+//
+// One approximation is left in, and it is in the timing rather than the
+// domain. The filterbank emits the timeslot whose window ENDS on the
+// samples just pushed, so a frame's worth of pushes yields the timeslots
+// running from kQmfDelaySlots before the frame to kQmfDelaySlots before its
+// end - while a decoder applies this frame's matrix to the timeslots that
+// reconstruct this frame. Closing that 576-sample gap would need a frame of
+// encoder lookahead; what it costs instead is that the energy average is
+// taken over a window shifted 576 samples early.
+AC3FORGE_EXPORT void qmf_band_energy(std::span<const float> signal,
+                                     std::span<const std::uint8_t, 64> mapping,
+                                     std::span<double> out, dsp::QmfAnalysis& analysis);
 
 }  // namespace ac3::oba

@@ -3,7 +3,7 @@
 Quality is measured, not asserted, and coverage has known edges. This page is both: how output
 is checked, and exactly where checking runs out.
 
-## Five independent checks
+## Six independent checks
 
 In rough order of strength:
 
@@ -58,6 +58,28 @@ In rough order of strength:
    request, deeper nightly. See
    [fuzz/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md).
 
+6. **The encoder/decoder mirror self-check** (`ac3::verify`, opt-in). Not an oracle: it compares
+   this project against itself. What it compares is the *model* rather than the audio. An encoder
+   carries a picture of the decoder it is writing for — the exponents that decoder will
+   reconstruct, the bit allocation it will derive, the delta correction it is holding, the AHT
+   gains and coupling/spectral-extension coordinates it will apply — and every mantissa field's
+   width comes out of that picture. `MirrorEncoder` (AC-3) and `Eac3MirrorEncoder` (E-AC-3)
+   decode every frame the encoder just emitted and diff the two pictures per block, per coded
+   stream, per substream, starting from the bit offset at each block boundary.
+
+   What that adds over a round trip is the case where the two sides differ but the audio
+   survives it — an AHT gain one side recovered differently, a coordinate quantized against a
+   different band structure, a delta correction one side is still holding — which a decode-and-
+   compare passes and an SNR gate does not notice, and which a third-party decoder would
+   nevertheless render differently. It also localises an outright desync: the AC-3 half fired
+   four frames before the `deltbaie` bug produced its own §7.10.2 symptom, in the right file
+   rather than two blocks downstream in the wrong one. What it cannot see is a misreading the two
+   sides make *identically* — anything decided in code they share (`compute_bit_allocation`,
+   `group_bands`, `decode_coordinate`) is shared by construction, and only checks 2–4 above reach
+   that. Off by default at the cost of one branch per block; `ac3cli eac3-encode … verify` turns
+   it on for a whole encode, and `tools/ci/run_codec_matrix.sh` runs it across the tool matrix on
+   the sanitizer leg.
+
 Contributor-facing detail on which oracle to reach for and how — including the exact FFmpeg
 flags and the CI jobs that run them — is in [Oracles](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles).
 
@@ -80,13 +102,33 @@ sounds better, and no *subjective* listening test has been run. `quality_race.py
 [Tool comparison trend](tool-comparison-trend.md)/[Landscape](landscape.md)) also carry an
 objective perceptual-quality prediction alongside SNR, [ViSQOL](https://github.com/google/visqol)'s
 MOS-LQO — narrower than a real listening panel, but closer to "how it would sound" than a
-waveform-distance number, and something SNR alone cannot claim. It's an optional column
-(`visqol-python` not installed shows `-`, never a failure), so it isn't in the snapshot table
-above; see `perceptual_score()` in `tools/ci/quality_race.py`.
+waveform-distance number, and something SNR alone cannot claim. See `perceptual_score()` in
+`tools/ci/quality_race.py`.
+
+That column used to be empty everywhere it was published: CI deliberately did not install
+`visqol-python`, so every row on the `quality-history` branch carried `mos_lqo: null` and every
+MOS cell rendered `n/a`. It is installed now, hash-pinned like every other Python dependency, so
+the trend pages carry real MOS numbers. It stays optional for a *local* run — not installed
+still shows `-`, never a failure — which is why the one-off snapshot above has no MOS column.
+
+Both the table above and everything the trend pages plot come from the **fixture corpus** in
+`tests/golden/audio/`, which is versioned and hash-checked as a unit
+(`tools/checks/check_corpus.py`). Two of those fixtures are synthesized from `sin()`,
+pseudo-random noise and FIR smoothing, and two are 30 s CC0 recordings of real speech and music.
+Both kinds are kept, and the distinction matters when reading any number on this page: the
+synthetic pair carries a flat noise plateau across its whole top octave that no real material
+has, and tuning the encoder's bandwidth against it once produced a measured 2.1 dB "win" that was
+an artefact of the fixture. See [tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
+for the measured spectra, the licences, and which fixture is evidence about what.
 
 That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same gold-reference SNR
 by commit, on every push to `develop` and `main`, so a regression shows up as a trend line
 rather than only in that run's CI log.
+
+The object layer has its own series, [Object quality trend](object-quality-trend.md): a fixed
+five-object Atmos scene encoded and decoded by each build, one delay-compensated SNR/LSD/leakage
+row per object per rate. It is a self-consistency series throughout — see "Where the oracles
+don't reach" below for why no other kind is available.
 
 ## Performance and reference modes
 
@@ -112,6 +154,13 @@ runs `tools/checks/verify_gold_reference.sh` twice — once as it stands, once w
 same real streams as the fast paths, and `tools/ci/run_codec_matrix.sh` carries `fast-mdct=off`
 and `fast-imdct=off` rows through the sanitizers. Without that, a change to a fast path could
 take its own reference with it and nothing outside the transform unit tests would notice.
+
+One nearby switch is deliberately **not** part of this pair: `joc-domain=qmf|mdct`, which selects
+where JOC's reconstruction matrix is estimated and applied. The two transforms above are the same
+answer computed two ways; the two JOC domains are different answers about 5 dB apart, so folding
+them into a speed preference would make `mode=performance` quietly pick the worse one. The default
+is already the domain TS 103 420 §6.6.6 states, so `mode=reference` has nothing to add either. See
+[Atmos & JOC](concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
 
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
@@ -139,6 +188,11 @@ build with libasound present; `ctest` runs whatever the configuration registered
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
+
+The three documented library examples (`wav_roundtrip`, `read_adm`, `encode_adm`) are each their
+own `ctest` case and write scratch files under a name unique to that run, not a fixed name in the
+OS temp directory — two checkouts running `ctest` at once would otherwise read and delete each
+other's fixture.
 
 ## Third-party bitstreams
 
@@ -258,6 +312,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
+| E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
@@ -279,7 +334,8 @@ against the installed FFmpeg, so a row that stops being true is reported rather 
 assumed.
 
 **7.1.4 has no external oracle at all.** For that one layout, encoder and decoder are checked
-against each other and nothing else:
+against each other and nothing else — the round trip below, plus the mirror self-check, which
+diffs both dependent substreams' own models block by block rather than only the assembled audio:
 
 ```
 $ ac3cli eac3-sine out.ec3 1 384 1000 50 714
@@ -300,8 +356,23 @@ it has no model of the bits at all, which makes `-xerror` unusable as a check he
 merely unavailable. `tools/ci/quality_race.py`'s CI gate (`decode_scores_ours`) scores both through
 this project's own decoder instead, the same self-consistency posture 7.1.4 falls back to, with
 one weaker guarantee than 7.1.4 has: a defect both the encoder and decoder agree on — a
-misreading of the spec shared by both sides rather than a one-sided bug — would not be caught by
+misreading of the spec shared by both sides rather than a one-sided bug — is not caught by
 either the CI gate or the round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+
+The E-AC-3 mirror self-check (#6 above) narrows that, and is worth being exact about what it
+narrows. It compares the encoder's and the decoder's *models* of each block — bit offsets,
+exponents, `bap`, delta, AHT gain mode and gains, and the coupling, enhanced-coupling and
+spectral-extension coordinates — for every substream of an access unit. The emit side and the
+parse side are separate implementations of the same Annex E text, so a misreading in one of them
+is caught there even when the audio round-trips cleanly and the SNR gate is happy: an
+`ecplchaos` index fitted against a different band structure than the one transmitted, an AHT
+gain the decoder recovers differently from the one the encoder chose, a `spxblnd` that
+persisted on one side and not the other. What it still cannot see is a misreading the two sides
+make *identically*, which for anything decided in code they share (`compute_bit_allocation`,
+`group_bands`, `coupling::decode_coordinate`) is by construction. That residue is real, and only
+an external oracle or an independent transcription of the same spec text closes it — neither of
+which exists for `ecpl` or `tpn`. `tools/ci/run_codec_matrix.sh` runs the check over both tools
+on the sanitizer leg.
 
 **`fscod2` audio content has no external decode oracle at all — not even Dolby's own.**
 `ffprobe` walks every syncframe of a reduced-rate stream correctly (frame count, exact byte size,
@@ -313,8 +384,23 @@ reports `No valid frames found before end of stream` on a stream `ffprobe` reads
 without complaint, using the same pipeline (`tools/ci/quality_race.py`'s `dolby_decode`) that decodes
 a normal-rate stream from this encoder without issue. `fscod2` appears to be a coding tool whose
 own reference implementation does not support it. So the coded audio is verified only by this
-project's own encoder/decoder round trip and the independent Python parser
-(`tools/references/eac3_parse.py`).
+project's own encoder/decoder round trip, the mirror self-check over that round trip (all three
+rates, with and without the Annex E tools, in `tools/ci/run_codec_matrix.sh` and
+`tests/verify/test_eac3_selfcheck.cpp`), and the independent Python parser
+(`tools/references/eac3_parse.py`) — the last of which is the only one of the three written from
+the spec separately from the codec.
+
+**Object decode has no external oracle at all, and for once that is not FFmpeg's gap alone.**
+FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
+bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
+own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+plays them as the bed too. Nothing outside this repository can currently produce an independent
+object decode of an ac3forge stream, which makes this the one layer where even the partial
+oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
+resolution: [Object quality trend](object-quality-trend.md) scores each of a fixed scene's five
+objects, per commit, at two rates. The same caveat as `ecpl`/`tpn` applies with full force — a
+defect the encoder and decoder share is invisible to it.
 
 **Containers and manifests are checked externally where a reader exists, and only there.**
 `mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
@@ -348,6 +434,36 @@ then skips the word, so `-heavy_compr` changes nothing on an E-AC-3 stream howev
 metadata is. It is covered bit-by-bit instead
 ([tests/meta/test_drc.cpp](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/meta/test_drc.cpp),
 [tools/references/eac3_parse.py](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/references/eac3_parse.py)).
+
+## Going the other way: published conformance vectors
+
+Everything above consumes someone else's streams as an oracle. Every release also publishes a
+set this project produces — 60 streams covering each coding tool, layout and sample rate the
+encoder can emit, each with the source PCM it was encoded from, the expected decode hashes and
+per-channel levels, and a manifest saying what each vector exercises. It ships as
+`ac3forge-conformance-vectors-<version>.tar.gz`, signed and attested like every other release
+asset.
+
+The `ffmpeg` field on each vector is derived from the table above rather than typed in, so the
+published set cannot drift out of step with what this page says the oracles reach: `full` where
+FFmpeg decodes the audio, `header_only` for the `fscod2` rates, `none` for 7.1.4 and for enhanced
+coupling / transient pre-noise processing.
+
+Two limits are worth stating on this page rather than only in the bundle: the source material is
+synthetic (roadmap VX7 is what changes that), and the hashes are per-toolchain — encoded output
+is not yet bit-identical across compilers or architectures (roadmap VX11/VX12), so a bundle
+regenerated elsewhere differs from the published one for the same correct streams. Regenerating
+with the toolchain the manifest names reproduces every hash exactly, and the generator asserts
+that with `--check-determinism` rather than assuming it.
+
+See [Conformance vectors](conformance-vectors.md).
+
+## What untrusted input is checked against
+
+Correctness and robustness are different questions, and this page answers only the first. What
+happens when the bytes are hostile rather than merely wrong — the trust boundary, the
+memory-safety posture, the per-access-unit resource limits, and the gaps — is
+[Threat model](threat-model.md).
 
 ## What's confirmed against real hardware, and what isn't
 

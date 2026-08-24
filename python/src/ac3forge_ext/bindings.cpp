@@ -754,8 +754,9 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly("program", &ac3::oba::AtmosEncoder::program)
         .def_property_readonly(
             "latency", &ac3::oba::AtmosEncoder::latency,
-            "The OBJECT path's budget. Its transform term is twice TRANSFORM_DELAY_SAMPLES: "
-            "JOC reconstruction re-transforms the bed the decoder has already reconstructed.")
+            "The OBJECT path's budget. Its transform term is TRANSFORM_DELAY_SAMPLES plus the "
+            "§7.1 QMF filterbank's own delay (576 samples): JOC reconstruction pulls objects "
+            "back out of the decoded bed in a 64-band complex QMF domain, not the MDCT's.")
         .def_property_readonly("latency_samples", &ac3::oba::AtmosEncoder::latency_samples)
         .def_property_readonly(
             "bed_latency", &ac3::oba::AtmosEncoder::bed_latency,

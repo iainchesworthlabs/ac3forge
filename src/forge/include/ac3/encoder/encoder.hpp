@@ -9,8 +9,10 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/bitalloc.hpp"  // BitAllocCodes, for previous_codes_ below
 #include "ac3/core/mantissas.hpp"  // MantissaToken, for the token scratch below
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
@@ -100,6 +102,39 @@ struct EncoderConfig {
     // heavy-compression peak detector consults them whatever acmod is.
     meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
     meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+
+    // --- decision search (ac3/quality) -------------------------------------
+    // §7.2.2's bit allocation parameters are chosen once, from the bit rate,
+    // and written into every frame of the encode. The comment at their
+    // declaration in encoder.cpp records why they were never searched: the
+    // only in-loop criterion this encoder had was the composite SNR offset,
+    // and that number is not comparable between two code sets because each
+    // produces a different masking curve for the offset to sit on.
+    //
+    // ac3::quality supplies the criterion that was missing - the error the
+    // decoder will actually reconstruct - so with this set the encoder tries
+    // a small set of candidate BitAllocCodes per frame, and decides the
+    // delta-bit-allocation race on measured error rather than on the
+    // composite offset each pass happened to reach.
+    //
+    // kNone by default, and not just because the search costs real time.
+    // Validated on real CC0/CC-BY programme material against FFmpeg's decode
+    // (SNR, log-spectral distance, ViSQOL MOS-LQO -
+    // docs/library/encoding-ac3.md's own table has the numbers): kDistortion
+    // is a real, repeatable win from 448 kbit/s up, but at 192 kbit/s its own
+    // criterion still improves while LSD and MOS both worsen - redistributing
+    // bits away from dbpbcod's quiet-band floor buys back less SNR than it
+    // costs in per-band spectral shape at that budget. kPerceptual
+    // loses outright at every rate tested, despite its psychoacoustic model
+    // being independently validated (tests/quality/test_perceptual.cpp): its
+    // objective correctly discounts already-masked headroom, which leaves it
+    // much thinner decision margins than raw distortion, and on real stereo
+    // material with rematrixing active those margins are landing on the
+    // wrong side of external metrics. This project does not turn a decision
+    // knob on without the numbers to justify it, and right now only
+    // kDistortion at the higher rates has them. `ac3cli encode search=...`
+    // sets it.
+    quality::Criterion search = quality::Criterion::kNone;
 
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // When set, encode_frame() records its own model of the decoder - the bit
@@ -212,6 +247,25 @@ class AC3FORGE_EXPORT FrameEncoder {
     // state only: it changes how fast the search converges, never which
     // offset it converges to. Negative until a frame has been encoded.
     int snr_search_hint_ = -1;
+    // The previous frame's winning BitAllocCodes (EncoderConfig::search),
+    // unlike the hint above NOT performance-only: it is step 9a's incumbent
+    // for THIS frame's comparison, so which candidate wins can depend on it.
+    // Without this, every frame compared its six candidates against the same
+    // fixed default, with nothing that favoured staying where the PREVIOUS
+    // frame landed - and on material where two candidates measure within the
+    // switch margin of each other, that reproduces exactly the failure the
+    // margin exists to prevent: real material was measured switching on 156
+    // of 750 frames, 80 of them a single frame reverting the next. Carrying
+    // the winner forward as the incumbent gives "stay" a standing zero-cost
+    // option every frame (down to 123 of 750 with this in place), which is
+    // what turns the margin into real hysteresis instead of a per-frame coin
+    // flip that happens to be biased. This did not turn out to be the whole
+    // story behind the low-bitrate quality tradeoff documented at
+    // EncoderConfig::search - see that comment - but it is real, measured
+    // instability the margin was already supposed to prevent, independent of
+    // that finding. Meaningless, and never read, while EncoderConfig::search
+    // is kNone.
+    BitAllocCodes previous_codes_{.dbpbcod = 3};
     // The chbwcod this encoder last transmitted, so the content-adaptive
     // band edge can be rate-limited on the way DOWN (see encode_frame's
     // bandwidth step). Unlike snr_search_hint_ above this is not a

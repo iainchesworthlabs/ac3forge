@@ -11,6 +11,7 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/latency.hpp"
@@ -310,11 +311,14 @@ TEST_CASE("An access unit's budget is the worst its substreams impose", "[latenc
     REQUIRE(encoder.latency().holdback_samples == ac3::kSamplesPerFrame);
 }
 
-TEST_CASE("JOC object reconstruction costs a second transform overlap", "[latency]") {
-    // The claim: an object waveform lags its input by 512 samples, not 256,
-    // because joc::reconstruct runs a whole second MDCT/IMDCT round trip over
-    // the bed the decoder has already reconstructed. Measured end to end
-    // through the real object path.
+TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[latency]") {
+    // The claim: an object waveform lags its input by 832 samples, not 256 -
+    // the bed's own transform_samples (256) plus the §7.1 QMF filterbank's
+    // analysis+synthesis delay (dsp::kQmfDelay, 576), because joc::reconstruct
+    // pulls objects out of the decoded bed in a 64-band complex QMF domain
+    // rather than the MDCT's (see ac3/dsp/qmf.hpp and AtmosEncoder::latency's
+    // own comment for why an MDCT-domain matrix would leave TDAC aliasing
+    // uncancelled). Measured end to end through the real object path.
     constexpr int kObjects = 1;
     const int samples = kFrames * ac3::kSamplesPerFrame;
     const auto in = burst(samples, kImpulseAt, 900.0, 48000);
@@ -363,11 +367,12 @@ TEST_CASE("JOC object reconstruction costs a second transform overlap", "[latenc
 
     REQUIRE(best_lag(in, bed_out, 3 * ac3::kSamplesPerFrame) == ac3::kTransformDelaySamples);
     REQUIRE(best_lag(in, object_out, 3 * ac3::kSamplesPerFrame) ==
-            2 * ac3::kTransformDelaySamples);
+            ac3::kTransformDelaySamples + ac3::dsp::kQmfDelay);
 
     REQUIRE(encoder.bed_latency().transform_samples == ac3::kTransformDelaySamples);
-    REQUIRE(encoder.latency().transform_samples == 2 * ac3::kTransformDelaySamples);
-    REQUIRE(encoder.latency_samples() == ac3::kSamplesPerFrame + 512);
+    REQUIRE(encoder.latency().transform_samples ==
+            ac3::kTransformDelaySamples + ac3::dsp::kQmfDelay);
+    REQUIRE(encoder.latency_samples() == ac3::kSamplesPerFrame + 832);
 }
 
 TEST_CASE("An Atmos stream with no container is a plain bed and costs no second transform",

@@ -49,6 +49,7 @@ target_sources(forge_minimal
         src/decoder/eac3_decoder.cpp        # Annex E, every tool
         src/decoder/transient_prenoise.cpp  # §3.7 post-IMDCT correction
         # --- what the decoders call into ---------------------------------
+        src/dsp/qmf.cpp            # the polyphase QMF bank JOC's reconstruction runs through
         src/emdf/emdf.cpp          # the TS 102 366 Annex H container the objects ride in
         src/encoder/coupling.cpp   # despite the path: §7.4.3's coordinate DEQUANTIZER, which
                                    # both decoders call on every coupled block
@@ -58,6 +59,9 @@ target_sources(forge_minimal
         src/meta/drc.cpp           # §7.7 dynrng/compr application
         src/oba/joc.cpp            # §6 object reconstruction from the bed
         src/oba/oamd.cpp           # §H.1 object metadata
+        src/verify/eac3_mirror.cpp # DecoderConfig::syntax's E-AC-3 trace types - unconditionally
+                                   # referenced at the top of Eac3Decoder::decode_substream, whether
+                                   # or not a caller ever sets one
         src/verify/mirror.cpp)     # DecoderConfig::trace's own types
 
 target_include_directories(forge_minimal

@@ -64,6 +64,8 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
+| `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `ac3::verify` to diff against the encoder's own model. See below. |
+| `eac3_trace` | `nullptr` | The E-AC-3 counterpart (`Eac3Decoder`), one whole access unit rather than one frame. See below. |
 
 The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3), enhanced coupling
 (§E3.5), spectral extension (§E3.6), the adaptive hybrid transform with GAQ (§E3.4), and transient
@@ -124,6 +126,43 @@ the overlap-add state, so a long stream's substituted noise does not repeat ever
 `fscod2` (the Annex E half sample rates — 24, 22.05, 16 kHz) is decoded like any other rate: the
 reduced rate reuses the same bit-allocation tables as its double-rate parent (§E2.3.1.4), so
 nothing else about decoding changes.
+
+## The mirror self-check
+
+`ac3/verify/mirror.hpp` and `ac3/verify/eac3_mirror.hpp`. Both decoders can record what they
+derived from the wire, so it can be diffed against the encoder's own model of the same frame —
+per block, per coded stream, and for E-AC-3 per substream. It exists because a desync is
+invisible at the field that causes it: every mantissa's *width* comes out of that model, so the
+moment the two sides disagree each goes on reading confidently at its own idea of where it is,
+and the failure surfaces some blocks later as whatever §7.10.2 guard the misaligned bits happen
+to trip first.
+
+```cpp
+// The driver most callers want: a drop-in for eac3::AccessUnitEncoder that also
+// decodes every access unit it emits and diffs the two models.
+ac3::verify::Eac3MirrorEncoder encoder{config};
+const auto checked = encoder.encode_access_unit(channels);
+if (checked && !checked->ok()) {
+    std::puts(encoder.last_report().c_str());
+    // "frame 12 substream 1 block 3 channel 1: bap[87] encoder=5 decoder=4"
+}
+```
+
+`ac3::verify::MirrorEncoder` is the AC-3 sibling, over `FrameEncoder`. What each compares is in
+its own header; the E-AC-3 side adds what Annex E adds — per-substream and per-block bit offsets
+across an independent substream and its dependents, AHT gain mode and per-bin gains, and the
+coupling, enhanced-coupling and spectral-extension coordinates. `ac3cli eac3-encode … verify`
+is the same check over a whole file.
+
+Both trace pointers are null by default and cost one branch per block when they are: attaching
+one never changes what the encoder emits, which is what makes a checked build the same encoder
+as the shipped one. The decoder fills its side **incrementally**, so a frame it ends up refusing
+still leaves behind everything it read before the refusal — the case the comparison is most
+useful in, since the mismatch typically names an earlier block than the refusal does.
+
+Transient pre-noise processing's hold-back (above) is invisible to the check: the trace is
+written while a frame is *parsed*, not when its audio is released, so a held-back frame is
+compared in the call that decoded it like any other.
 
 ## Recovering from a damaged frame
 
@@ -195,14 +234,40 @@ substream's frame sets `transproce`. To size buffers *before* a stream starts, a
 ### Atmos objects lag the bed
 
 One number an object-aware receiver needs and would not guess: a JOC-reconstructed object
-waveform lags its original input by **512** samples, not 256. JOC does not code objects — it
-codes a matrix that pulls them back out of the *decoded bed*, and `joc::reconstruct` doing that
-means a second full MDCT/IMDCT round trip over PCM the decoder has already reconstructed. Two
-TDAC overlaps in series. The bed in the same `DecodedAccessUnit` still lags by 256, so **objects
-and bed are not aligned with each other** — anything mixing the two has to delay the bed by one
-block. `oba::AtmosEncoder::latency()` reports the object path's budget and `bed_latency()` the
-bed's; the 512 is measured end to end in
+waveform lags its original input by **832** samples, not 256. JOC does not code objects — it
+codes a matrix that pulls them back out of the *decoded bed*, and TS 103 420 §7.1 puts that
+reconstruction in a 64-band complex QMF filterbank rather than the MDCT domain — a critically
+sampled real transform relies on time-domain alias cancellation between neighbouring blocks, an
+assumption a per-frame matrix breaks (see `ac3/dsp/qmf.hpp`). Analysis plus synthesis costs the
+filterbank's own `dsp::kQmfDelay` (576 samples) on top of the bed's 256, for 832 total. The bed
+in the same `DecodedAccessUnit` still lags by 256, so **objects and bed are not aligned with each
+other** — anything mixing the two has to delay the bed by 576 samples. `oba::AtmosEncoder::latency()`
+reports the object path's budget and `bed_latency()` the bed's; the 832 is measured end to end in
 [`tests/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/decoder/test_latency.cpp).
+
+## Decoding bytes you do not control
+
+If the stream comes from the network or from a user, read
+[Threat model](../threat-model.md) before wiring this up. In short:
+
+- `scan`, `split_frames` and `split_access_units` take the **whole** stream as one span and
+  return one span per access unit, so peak memory is O(input) and the library imposes no upper
+  bound. Bound the input yourself, or drive `decode_frame`/`decode_substream` one unit at a time.
+- Every per-access-unit allocation is bounded by a bitstream field of fixed width — a single
+  frame cannot be made to consume an unbounded amount of memory or time — and a hostile `frmsiz`
+  is refused (`kTruncated` if it overruns the input, `kInvalidStream` if it is shorter than the
+  header it was read from) rather than becoming a short span something reads past.
+- A refused frame produces no audio, but it is not a rollback: the decoder's overlap-add, dither
+  and JOC state have advanced as far as the parse got, and an `_into` form's spans are left
+  unspecified. Construct a fresh decoder if you need a clean state after an error.
+- The `_into` forms check their span sizes with `assert`, so a release build does not check them
+  at all.
+
+## Testing a decoder of your own
+
+The [conformance vector set](../conformance-vectors.md) published with each release is the
+inverse of this page: streams this project produces, with the PCM they were encoded from and a
+manifest of what each exercises, for checking an independent implementation.
 
 ---
 

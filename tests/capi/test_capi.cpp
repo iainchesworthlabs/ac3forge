@@ -1314,14 +1314,18 @@ TEST_CASE("the C Atmos latency surface separates the object path from the bed",
     ac3forge_latency_t bed{};
     ac3forge_atmos_encoder_latency(encoder, &objects);
     ac3forge_atmos_encoder_bed_latency(encoder, &bed);
-    // The second MDCT/IMDCT round trip JOC reconstruction runs over the
-    // already-decoded bed - measured end to end in test_latency.cpp.
-    CHECK(objects.transform_samples == 2 * AC3FORGE_SAMPLES_PER_BLOCK);
+    // The §7.1 QMF filterbank's own analysis+synthesis delay
+    // (ac3::dsp::kQmfDelay = 576, not exposed at the C boundary) on top of the
+    // already-decoded bed's own overlap - measured end to end in
+    // test_latency.cpp. 576 is spelled out here rather than named: the C API
+    // has no QMF-specific constant of its own to reference.
+    constexpr int kQmfDelay = 576;
+    CHECK(objects.transform_samples == AC3FORGE_SAMPLES_PER_BLOCK + kQmfDelay);
     CHECK(bed.transform_samples == AC3FORGE_SAMPLES_PER_BLOCK);
     CHECK(ac3forge_atmos_encoder_latency_samples(encoder) ==
           ac3forge_latency_total_samples(&objects));
     CHECK(ac3forge_latency_total_samples(&objects) ==
-          ac3forge_latency_total_samples(&bed) + AC3FORGE_SAMPLES_PER_BLOCK);
+          ac3forge_latency_total_samples(&bed) + kQmfDelay);
 
     ac3forge_atmos_encoder_destroy(encoder);
 

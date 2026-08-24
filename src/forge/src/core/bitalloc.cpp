@@ -58,35 +58,6 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
     return a;
 }
 
-// Factored out - and now exported - so every curve this file derives from a
-// spectrum is banded with identical arithmetic: the exponent-derived one
-// compute_bit_allocation uses, the encoder-only real-coefficient one
-// choose_delta_segments builds, and the coded-bandwidth decision in
-// ac3/encoder/bandwidth.hpp. Comparable units are the whole point.
-std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
-    std::array<int, 50> bndpsd{};
-    int j = start;
-    int k = kMaskTab[static_cast<std::size_t>(start)];
-    int lastbin = 0;
-    do {
-        // std::min<int>, not deduced: kBandStart/kBandSize hold std::int32_t,
-        // which on arm-none-eabi is `long int` rather than `int` - so the two
-        // arguments are different types there and deduction fails. Spelled out
-        // at every such site in this file.
-        lastbin = std::min<int>(
-            kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
-        bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
-        ++j;
-        for (int i = j; i < lastbin; ++i) {
-            bndpsd[static_cast<std::size_t>(k)] =
-                logadd(bndpsd[static_cast<std::size_t>(k)], psd[static_cast<std::size_t>(j)]);
-            ++j;
-        }
-        ++k;
-    } while (end > lastbin);
-    return bndpsd;
-}
-
 // A run of consecutive absolute bands sharing one Table 5.17 deltba code.
 struct DeltaRun {
     int band = 0;
@@ -138,7 +109,11 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     int k = kMaskTab[static_cast<std::size_t>(start)];
     int lastbin = 0;
     do {
-        lastbin = std::min(
+        // std::min<int>, not deduced: kBandStart/kBandSize hold std::int32_t,
+        // which on arm-none-eabi is `long int` rather than `int` - so the two
+        // arguments are different types there and deduction fails. Spelled out
+        // at every such site in this file.
+        lastbin = std::min<int>(
             kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
         bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
         ++j;

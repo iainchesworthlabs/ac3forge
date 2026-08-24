@@ -130,6 +130,7 @@ target_sources(forge_objects
         src/decoder/eac3_decoder.cpp
         src/decoder/transient_prenoise.cpp
         src/dsp/biquad.cpp
+        src/dsp/qmf.cpp
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
         src/encoder/assignment.cpp
@@ -157,8 +158,12 @@ target_sources(forge_objects
         src/oba/scene.cpp
         src/oba/scene_json.cpp
         src/oba/scene_text.cpp
+        src/quality/distortion.cpp
+        src/quality/perceptual.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
+        src/verify/eac3_mirror.cpp
+        src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
         src/verify/selfcheck.cpp
         src/version.cpp)

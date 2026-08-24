@@ -161,6 +161,30 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_G
     target_compile_options(ac3_warnings INTERFACE -Wno-array-bounds)
 endif()
 
+# -Wmaybe-uninitialized false positive under GCC 16 at -O2/-O3 (Release), on
+# the arm64 leg specifically (config-linux-gcc-arm64, real arm64 hardware -
+# GitHub's ubuntu-24.04-arm runner, ci.yml's "Linux GCC (arm64)" leg; not
+# seen on the same GCC 16 building x86_64) - the same general failure
+# category as the two cases just above: post-inlining dataflow analysis
+# loses provenance across a chain of optimizer-introduced moves and flags a
+# path that never actually executes uninitialized. Eac3Decoder::
+# decode_substream's transient pre-noise hold-back path
+# (src/forge/src/decoder/eac3_decoder.cpp,
+# `DecodedSubstream ready = std::move(*pending_slot);`) move-constructs a
+# DecodedSubstream - which nests a std::optional<oba::DecodedProgram>
+# holding a std::vector<oba::DynamicObject> - from an already-engaged
+# optional inside another optional's payload; the guard immediately above it
+# (`pending_slot.has_value()`) is exactly the initialization invariant GCC's
+# analysis fails to carry through the inlined std::optional/std::vector move
+# constructors on this target. Scoped to GCC >= 16, matching the -Warray-
+# bounds precedent, rather than to arm64 specifically - CMAKE_CXX_COMPILER_
+# VERSION is known at configure time on every leg, but CMAKE_SYSTEM_PROCESSOR
+# is only reliable post-toolchain-file, which runs after this file - so a
+# no-op on x86_64 costs nothing and keeps this one condition to maintain.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+    target_compile_options(ac3_warnings INTERFACE -Wno-maybe-uninitialized)
+endif()
+
 # ---------------------------------------------------------------------------
 # AC3_WARNINGS_OFF_FLAG - switches every warning off for one source file.
 #

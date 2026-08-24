@@ -30,6 +30,12 @@ struct BitAllocCodes {
     int dbpbcod = 2;
     int floorcod = 4;
     int fgaincod = 4;
+
+    // An encoder searching these per frame needs to know whether a candidate
+    // is the one it already has (see encoder.cpp step 9a), and every member
+    // is a plain transmitted code, so the defaulted comparison says exactly
+    // the right thing.
+    [[nodiscard]] friend bool operator==(const BitAllocCodes&, const BitAllocCodes&) = default;
 };
 
 // Tables 7.11 and 7.8. Exposed because an encoder picking the coupling
