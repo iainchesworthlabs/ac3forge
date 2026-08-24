@@ -38,6 +38,34 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   as gaps rather than half-enforced: zero heap traffic in the decode loop (today's steady state
   is 45-85 allocations/frame) and a float32-only internal path. See
   [docs/building.md](docs/building.md#minimum-footprint-decoder-profile).
+- **Multiple independent substreams — more than one programme per stream** (roadmap `DC5`).
+  §E2.3.1.2 allows eight independent substreams and broadcast DD+ uses them for multi-language
+  and associated services (audio description, commentary); this project handled exactly one, and
+  handled a stream carrying two *wrongly rather than loudly* — `ac3::io::scan` started a new
+  access unit at every independent frame without comparing `substreamid`, so I0 and I1 came back
+  as alternating frames of one programme.
+
+  Now: `ac3::io::scan` groups by programme and reports them on `ScannedStream::programmes`;
+  `ac3::split_access_units` takes an optional programme id and `ac3::programme_ids()` enumerates
+  what a stream carries; `DecoderConfig::programme` picks one to decode and
+  `DecodedAccessUnit::programme` reports which one a result came from; and
+  `AccessUnitConfig::additional` lets the encoder author further programmes, each with its own
+  layout, bit rate, dialnorm and DRC state. The `dec3` box now declares every independent
+  substream (`num_ind_sub`, per-substream `bsmod`/`acmod`/`lfeon`/`asvc`) instead of always
+  claiming one.
+
+  On the command line, `decode`, `qc` and `levels` take `programme=<0..7>` and work on exactly
+  one — without it they take the first the stream carries and say so when there is more than one,
+  rather than folding two unrelated programmes into one WAV or one loudness figure.
+  `eac3-encode` takes `programme2=<file>` with `programme2-layout=`, `programme2-bitrate=` and
+  `programme2-dialnorm=`.
+
+  FFmpeg cannot check any of this: `ff_ac3_parse_header` rejects `substreamid != 0` without
+  distinguishing `strmtyp`, and because its raw E-AC-3 demuxer packs one frame period's
+  substreams into a single packet, a second programme makes it refuse *every* packet and emit
+  nothing — main programme included. Measured against ffmpeg 8.0.1 and recorded in
+  [docs/verification.md](docs/verification.md#where-the-oracles-dont-reach).
+
 - **Third-party Atmos streams decode** (roadmap `DC6`). The object layer used to recognise only
   the shapes this project's own encoder writes and refuse everything else, which is most of what
   real content carries. OAMD now reads any number of metadata update blocks at any sample offset
@@ -733,6 +761,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   metadata is timed across a full six-block frame, and shortening that is unstarted work.
 
 ### Fixed
+
+- **`split_access_units` no longer reads an AC-3 frame's `crc1` as `strmtyp`/`substreamid`.**
+  Those fields only live in byte 2 of an Annex E frame; in an AC-3 one that byte is part of
+  `crc1` and aliases to "dependent" about a quarter of the time, merging runs of frames into one
+  access unit. The framing now gates on each frame's own `bsid`, which is at bit 40 in both
+  generations. A real disc authoring a bsid-6 independent substream with a bsid-16 dependent
+  behind it hit this (see `apps/android/.../file_replay.cpp`, which measured 176 of 480 groups
+  corrupted and worked around it locally).
 
 - **The MOS column carries real numbers** (`VX6`). `visqol-python` was deliberately not
   installed in CI, so all ~3,758 rows on the `quality-history` branch carried `mos_lqo: null`

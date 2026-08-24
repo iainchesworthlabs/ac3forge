@@ -107,6 +107,28 @@ Bytes stereo_eac3_stream(int frames) {
     return stream;
 }
 
+// A stream carrying TS 103 420 §8.3.1's addbsi object marker with no EMDF
+// container behind it - the shape src/forge/src/oba/atmos.cpp used to emit
+// for a bed51 request before PR #344 closed that hole at the source (see
+// AtmosConfig::emit_object_metadata's own comment). AtmosEncoder can no
+// longer build this shape - that IS the fix - so strip_objects' "marker left
+// without a container" case is exercised by setting oba_complexity_index
+// directly, the same way stereo_eac3_stream above bypasses AtmosEncoder.
+Bytes bed_stream_with_dangling_marker(int frames) {
+    const ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448,
+                        .acmod = ac3::Acmod::k3_2,
+                        .lfe = true,
+                        .oba_complexity_index = 1}};
+    Bytes stream;
+    for (int f = 0; f < frames; ++f) {
+        const auto unit = ac3::eac3::build_silent_access_unit(config);
+        REQUIRE(unit.has_value());
+        stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
+    }
+    return stream;
+}
+
 Bytes stereo_ac3_stream(int frames) {
     Bytes stream;
     for (int f = 0; f < frames; ++f) {
@@ -187,6 +209,30 @@ TEST_CASE("strip_objects re-derives frmsiz and re-stamps crc2", "[io][strip]") {
     }
 }
 
+// A stream can carry the addbsi object-audio marker with no EMDF container
+// behind it - real E-AC-3 in the wild predating this project, or a bed51
+// stream from before PR #344 fixed AtmosEncoder at the source - so scan
+// would report an object layer for a stream that has none, and anything
+// reading that (a dec3 box's Atmos extension, an HLS CHANNELS="<N>/JOC"
+// attribute) claims objects that were never encoded. Taking the marker out
+// is the same rule the container itself follows: objects, or no signalling
+// at all.
+TEST_CASE("strip_objects removes an object marker left without a container", "[io][strip]") {
+    const Bytes bed51 = bed_stream_with_dangling_marker(3);
+    const auto before = ac3::io::scan(bed51);
+    REQUIRE(before.has_value());
+    REQUIRE(before->oba_complexity_index.has_value());
+
+    const auto stripped = ac3::io::strip_objects(bed51);
+    REQUIRE(stripped.has_value());
+    CHECK(stripped->frames_total == 3);
+    CHECK(stripped->frames_stripped == 3);
+    const auto after = ac3::io::scan(stripped->bytes);
+    REQUIRE(after.has_value());
+    CHECK_FALSE(after->oba_complexity_index.has_value());
+    CHECK(decode_all(stripped->bytes) == decode_all(bed51));
+}
+
 TEST_CASE("strip_objects passes through what has no object layer", "[io][strip]") {
     SECTION("a stream of a shape the frame walker does not map") {
         // A stereo E-AC-3 stream is outside ac3::emdf::walk_frame's scope,
@@ -199,28 +245,6 @@ TEST_CASE("strip_objects passes through what has no object layer", "[io][strip]"
         CHECK(stripped->frames_total == 3);
         CHECK(stripped->frames_stripped == 0);
         CHECK(stripped->bytes == stream);
-    }
-
-    SECTION("'bed51' mode - no container and, since the encoder-level fix, no marker either") {
-        // src/forge/src/oba/atmos.cpp only sets TS 103 420 §8.3.1's addbsi
-        // object-audio marker (oba_complexity_index) when the container is
-        // actually emitted - the same objects-or-nothing rule
-        // encode_frame() applies to the container itself, and the rule
-        // strip_objects exists to restore for a stream some OTHER encoder
-        // left inconsistent. This project's own encoder no longer produces
-        // the inconsistency strip_objects was written to fix, so there is
-        // nothing here to strip - a pass-through, exactly like the
-        // shape-the-walker-cannot-map case above.
-        const Bytes bed51 = encode_atmos_stream(3, /*emit_objects=*/false);
-        const auto before = ac3::io::scan(bed51);
-        REQUIRE(before.has_value());
-        CHECK_FALSE(before->oba_complexity_index.has_value());
-
-        const auto stripped = ac3::io::strip_objects(bed51);
-        REQUIRE(stripped.has_value());
-        CHECK(stripped->frames_total == 3);
-        CHECK(stripped->frames_stripped == 0);
-        CHECK(stripped->bytes == bed51);
     }
 }
 

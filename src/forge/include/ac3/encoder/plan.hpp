@@ -488,6 +488,18 @@ enum class PlanError : std::uint8_t {
 // substreams occupy one frame period, not one frame.
 [[nodiscard]] AC3FORGE_EXPORT eac3::AccessUnitConfig eac3_config(const Plan& plan);
 
+// One programme of an access unit, built from a plan of its own: the same
+// independent-plus-dependents shape eac3_config() produces, without the
+// AccessUnitConfig wrapper. A front end authoring a second independent
+// substream (§E2.3.1.2 - a second language, an audio description, a
+// commentary) plans it exactly like the first, with its own layout, rate,
+// tools and metadata, and pushes the result onto
+// AccessUnitConfig::additional.
+//
+// substreamid is not set here: the access unit assigns it by position, so a
+// programme does not know its own id until it is placed.
+[[nodiscard]] AC3FORGE_EXPORT eac3::ProgrammeConfig eac3_programme(const Plan& plan);
+
 // The one diagnosis every front end shares: std::nullopt if this plan is one
 // the encoders can actually be built from, else the first thing wrong with
 // it, ready for describe(). Worth asking BEFORE constructing an encoder from

@@ -2647,6 +2647,25 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         return std::unexpected(DecodeError::kInvalidStream);
     }
 
+    // §E2.3.1.2 programme selection, ahead of any decoding at all: a unit
+    // belonging to another programme is skipped whole rather than decoded and
+    // discarded, so none of this decoder's per-identity state (overlap-add,
+    // JOC continuity, the §3.7 hold-back queues) ever advances for a
+    // programme the caller did not ask for. The unit's first frame is by
+    // definition its independent substream, and its substreamid IS the
+    // programme id.
+    if (config_.programme) {
+        BitReader peek{frames->front()};
+        const auto lead_bsi = parse_bsi(peek, frames->front().size());
+        if (!lead_bsi) {
+            return std::unexpected(lead_bsi.error());
+        }
+        if (lead_bsi->substreamid != *config_.programme ||
+            lead_bsi->strmtyp == eac3::StreamType::kDependent) {
+            return std::optional<DecodedAccessUnit>(std::nullopt);
+        }
+    }
+
     // §3.7: each frame's substream identity is needed below regardless of
     // whether decode_substream releases it or holds it back this call - a
     // held-back frame has no DecodedSubstream to read strmtyp/substreamid
@@ -2747,6 +2766,11 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             break;
         }
     }
+    // The independent substream's own substreamid: 0 for every
+    // single-programme stream, and under a std::nullopt
+    // DecoderConfig::programme the only thing distinguishing one programme's
+    // units from another's.
+    out.programme = lead.substreamid;
     out.substream_count = static_cast<int>(substreams.size());
 
     // The PCM target for one program slot: the caller's span when

@@ -1169,8 +1169,17 @@ eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
 }  // namespace
 
 eac3::AccessUnitConfig eac3_config(const Plan& plan) {
+    auto programme = eac3_programme(plan);
+    // FrameConfig is trivially copyable; only the dependent vector is worth
+    // moving.
+    return {.independent = programme.independent,
+            .dependents = std::move(programme.dependents),
+            .additional = {}};
+}
+
+eac3::ProgrammeConfig eac3_programme(const Plan& plan) {
     const auto cp = resolve(plan);
-    eac3::AccessUnitConfig out;
+    eac3::ProgrammeConfig out;
     auto& independent = out.independent;
     independent.sample_rate = plan.sample_rate;
     independent.bitrate_kbps = plan.bitrate_kbps;
