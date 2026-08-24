@@ -48,6 +48,22 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
     return 0;
 }
 
+// §8.2.8: which strategy an exponent set that serves `span` blocks should
+// use. A set that covers one block alone can afford the coarsest banding,
+// because it is resent next block anyway; one that has to last the frame
+// earns the finest. Both encoders plan reuse runs with this - and Annex E's
+// Table E2.10 is built on exactly the same rule, so an E-AC-3 frame code and
+// an AC-3 per-block strategy come out of the same function.
+[[nodiscard]] constexpr ExpStrategy strategy_for_span(int span) {
+    if (span <= 1) {
+        return ExpStrategy::kD45;
+    }
+    if (span <= 3) {
+        return ExpStrategy::kD25;
+    }
+    return ExpStrategy::kD15;
+}
+
 // §7.1.3 group-count formulas (fbw channels, endmant mantissas).
 [[nodiscard]] constexpr int exponent_group_count(ExpStrategy strategy, int endmant) {
     switch (strategy) {

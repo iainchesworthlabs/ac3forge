@@ -128,7 +128,7 @@ std::optional<plan::Routing> routing_for_sources(const plan::Plan& p, const Load
 }
 
 void gather_frame(const LoadedSources& sources, std::size_t start,
-                  std::vector<std::vector<float>>& dest) {
+                  std::vector<std::vector<float>>& dest, int samples_per_frame) {
     std::size_t flat = 0;
     for (std::size_t s = 0; s < sources.wavs.size(); ++s) {
         const auto& wav = sources.wavs[s];
@@ -137,7 +137,7 @@ void gather_frame(const LoadedSources& sources, std::size_t start,
         for (const auto& channel : wav.channels) {
             const float hold = total > 0 ? channel[total - 1] : 0.0f;
             auto& out = dest[flat];
-            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            for (int i = 0; i < samples_per_frame; ++i) {
                 const std::size_t at = start + static_cast<std::size_t>(i);
                 if (at < offset) {
                     out[static_cast<std::size_t>(i)] = 0.0f;
