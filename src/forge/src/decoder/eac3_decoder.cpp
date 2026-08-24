@@ -528,7 +528,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         return decoded;
     }
     if (auto concealed = conceal(decoded.error(), slot)) {
-        return std::move(concealed);
+        return concealed;
     }
     return decoded;
 }
