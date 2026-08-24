@@ -291,7 +291,7 @@ passthrough are available on this build's platform, and why not when they aren't
 the CLI's `UNAVAILABLE HERE` messaging for `devices`, `record`, `monitor`, `live`, `outputs`
 and `play`.
 
-### `ac3::iec61937` — S/PDIF burst packing
+### `ac3::iec61937` — S/PDIF burst packing and de-framing
 
 `ac3/sinks/iec61937.hpp`. Packs AC-3 or E-AC-3 elementary-stream frames into IEC 61937 burst
 framing — the wrapper a compressed bitstream needs over PCM-shaped hardware/interfaces (S/PDIF,
@@ -302,6 +302,30 @@ bytes not bits — is independently verified against both FFmpeg's `spdif_header
 Microsoft's own IEC 61937 documentation (both fetched live and cross-checked against each
 other, not recalled), plus round-trip and real-audio unit tests. This header only produces the
 framed bytes; getting them onto real hardware is `PassthroughSink`, below.
+
+**De-framing** (the other direction) is `BurstReader`, `unwrap_stream` and
+`PassthroughDetector`. `BurstReader` is a streaming `Pa`/`Pb`/`Pc`/`Pd` parser: data types 0x01
+and 0x15, both 16-bit word orders, the stuffing between bursts, `Pd`'s two different units, and
+E-AC-3's 4× carrier with its multi-syncframe bursts. Feed it carrier bytes in whatever chunks
+the source produces and take elementary-stream bytes out; it holds one burst plus the caller's
+chunk and nothing more, so a two-hour capture costs what a two-second one does. `unwrap_stream`
+is the batch form, mirroring `wrap_stream`.
+
+The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
+device — so nothing taken from `Pd` is believed past its data type's repetition period, and a
+preamble not backed by a `0x0B77` syncframe is treated as a false match to resync past rather
+than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that honest.
+
+This is also what closes the loop on the wrap side: bursts written by this project *and* by
+FFmpeg's `spdif` muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
+little-endian and big-endian carriers alike. Backs `ac3cli unspdif`.
+
+`PassthroughDetector` answers the capture-side question — is this endpoint delivering PCM, or
+somebody's bursts? — from the same interleaved float frames `ac3::audio::Capture` delivers,
+using `carrier_from_capture` to recover the PCM16 words exactly (every backend converts int16
+to float by dividing by 32768, so nothing is lost). `ac3cli record` uses it to write the
+elementary stream instead of encoding noise; `ac3cli live` uses it to stop rather than encode a
+whole session of it.
 
 ### `ac3::audio::PassthroughSink` — exclusive-mode passthrough
 
