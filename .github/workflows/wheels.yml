@@ -20,7 +20,7 @@ on:
       - "CMakeLists.txt"
       - ".github/workflows/wheels.yml"
   push:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - "python/**"
       - "src/forge/**"

@@ -11,7 +11,7 @@ Four separate mechanisms, not one, and it matters which is which:
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
-  ms/frame number, not just a pass/fail, on every push to `develop`/`main`. It exists
+  ms/frame number, not just a pass/fail, on every push to `main`. It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
   over time even while it keeps passing.
 - **This page's per-kernel tables**: `ac3kernelbench`
@@ -74,7 +74,7 @@ slice), consistent with the ~33-38 µs the change targeted. The gate that actual
 matters for this change is byte-identical output, not a timing number: see the PF2
 commit message for the corpus that was checked.
 
-`tools/ci/append_performance_history.py` appends every `develop`/`main` run's numbers
+`tools/ci/append_performance_history.py` appends every `main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
 `gh-pages`: incremental, no publish-cadence coupling, fetchable client-side with no
@@ -351,7 +351,7 @@ of per-commit numbers.
     ]);
     const anyData = perBranch.some((records) => records.length > 0);
     if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
+      root.innerHTML = '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
       return;
     }
     root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i], releasesBySha)).join("\n");
@@ -502,7 +502,7 @@ decode spends; the bare row is what the oracle costs.
     const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
     const anyData = perBranch.some((records) => records.length > 0);
     if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
+      root.innerHTML = '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
       return;
     }
     root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
@@ -759,7 +759,7 @@ the table silently.
     const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
     const anyData = perBranch.some((records) => records.length > 0);
     if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
+      root.innerHTML = '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
       return;
     }
     root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
