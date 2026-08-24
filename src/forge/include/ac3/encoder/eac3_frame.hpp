@@ -16,6 +16,7 @@
 #include "ac3/export.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 
 // E-AC-3 (Dolby Digital Plus) framing - ATSC A/52:2018 Annex E, bsid 16.
 //
@@ -311,6 +312,20 @@ struct FrameConfig {
     // keys its "Dolby Digital Plus + Dolby Atmos" report off. std::nullopt
     // writes addbsie == 0, which is what every stream here did before.
     std::optional<int> oba_complexity_index = std::nullopt;
+
+    // --- self-check (ac3/verify/eac3_mirror.hpp) -----------------------------
+    // When set, the encoder records the per-block model it wrote this frame
+    // for - bit offsets, exponents, bit allocation, delta correction, AHT
+    // gains and the coupling/spectral-extension coordinates - into this
+    // trace, for comparison against a decoder's own reading of the same
+    // frame. One trace per SUBSTREAM: an AccessUnitEncoder's substreams each
+    // carry their own FrameConfig and so their own pointer, and
+    // verify::Eac3AccessUnitTrace is what holds a whole access unit's worth.
+    //
+    // Null by default, which costs one branch per block and no allocation.
+    // Nothing about the encoded output depends on it: the trace reads state
+    // the encoder already has and never steers a decision.
+    verify::Eac3SubstreamTrace* trace = nullptr;
 };
 
 // Words per syncframe at a given rate. E-AC-3 signals the size directly, so

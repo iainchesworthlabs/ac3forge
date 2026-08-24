@@ -248,11 +248,24 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   helper (every container writer computes timing privately today). `strmtyp 2` convertible
   streams — the spec's own no-re-encode path, refused by `validate()` today — stay out until
   someone needs them.
-- [ ] **DC10 (XL)** — QMF-domain JOC. The matrix is estimated and applied in the MDCT domain
-  (`joc.hpp`: the tree has no filterbank) while §6.6.6 and every licensed decoder run the
-  64-band complex QMF, so the encoder optimises for a reconstruction Dolby's decoder never
-  performs, and object quality on real hardware is confirmed audible rather than measured.
-  Research-grade; UX8 or the Shield path gives it a measurement.
+- [x] **DC10 (XL)** — QMF-domain JOC. `ac3::dsp::QmfAnalysis`/`QmfSynthesis` is the 64-band
+  complex filterbank §7.1 calls for — 640-tap prototype designed in-tree for exact perfect
+  reconstruction (`tools/generators/gen_qmf_prototype.py`), 128-point FFT on the shared radix-2
+  core. `joc::Domain` selects where the matrix is estimated (`AtmosConfig::joc_domain`) and
+  applied (`DecoderConfig::joc_domain`); `kQmf` is the default on both sides and the MDCT-band
+  path stays as `joc-domain=mdct`. Mean per-object SNR, four placements: 22.8 dB
+  MDCT-estimated/MDCT-reconstructed, 23.5 dB MDCT-estimated/QMF-reconstructed (what a licensed
+  decoder was getting), 28.6 dB QMF/QMF; 20.2 → 26.5 dB on moving objects. Encode
+  0.62 → 0.74 ms/frame of a 32 ms budget, decode 0.88 → 0.70 (cheaper: the MDCT path's inverse
+  is pinned to the direct form). Object audio now lags the bed by 576 samples rather than 256 —
+  `joc::reconstruction_delay(domain)`. **Still unmeasured:** how these streams reconstruct
+  through a real licensed decoder. Every number above is this decoder measuring this encoder,
+  and a domain fix is precisely the kind of change that cannot self-validate. The Shield/AVR
+  path is the route, and it needs two things this branch could not supply: the hardware, and a
+  valid signing key — a licensed decoder will not engage object decoding at all without the
+  EMDF authenticity tag, so an unsigned stream tests the 5.1 bed and nothing else. UX8 does not
+  substitute: it renders *this* decoder's reconstructed objects through Dolby's renderer, which
+  says nothing about how Dolby's own reconstruction reads this matrix.
 
 ## IO. Streams in and out
 
@@ -435,7 +448,7 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   `--check-envelope` measures the per-layout rate floors and §E2.3.1.3's 11-bit `frmsiz` word
   ceiling, which at the half rates sits inside Table 5.18's own rate list. First finding, fixed:
   `eac3-encode` aborted on an assertion above that ceiling at every layout.
-- [ ] **VX2 (L)** — E-AC-3 mirror self-check. `DecoderConfig::trace` is "AC-3 only
+- [x] **VX2 (L)** — E-AC-3 mirror self-check. `DecoderConfig::trace` is "AC-3 only
   (FrameDecoder); Eac3Decoder does not write one". For ecpl, tpn, fscod2 and 7.1.4 the in-repo
   round trip is the only check, and `docs/verification.md` admits a misreading shared by both
   sides passes it. Per-substream, per-block diffs of exponents, bap, delta, AHT gains, coupling
@@ -488,12 +501,31 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   `quality_race.py` modes through `--material`. `tools/generators` is documented and the fixture
   corpus is versioned (`corpus.json`, `CORPUS_VERSION`) and hash-enforced
   (`tools/checks/check_corpus.py`).
-- [ ] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR is measured exactly
-  once, in a unit test with a 10 dB floor against 18–35 dB measured (`tests/oba/test_atmos.cpp`);
-  a 15 dB JOC regression passes CI and no trend page sees it.
+- [x] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR used to be measured
+  exactly once, in a unit test with a 10 dB floor against 18–35 dB measured
+  (`tests/oba/test_atmos.cpp`), so a 15 dB JOC regression passed CI and no trend page saw it.
+  `quality_race.py`'s `objects` mode now encodes a committed five-object scene
+  (`tests/golden/audio/reference_objects.wav` plus its placements) with `atmos-encode`, decodes
+  it back to per-object WAVs, and records SNR/LSD/leakage/MOS per object at 256 and 448 kbit/s
+  on `docs/object-quality-trend.md`. LSD needed an object-specific form
+  (objects are narrow-band, so the codec legs' banded measure reads 10–38 dB for a healthy
+  reconstruction); the out-of-band half became a leakage figure, which is the object-specific
+  failure mode. Self-consistency only — there is no external oracle for object decode at all.
+  DC10's own head-to-head MDCT-vs-QMF domain comparison
+  (`tests/oba/test_atmos.cpp`) predates this trend leg and stays as a permanent regression test
+  alongside it.
 - [ ] **VX9 (M)** — A listening test. README and `docs/verification.md` have carried "no
   listening test has been run" through nine releases. One documented MUSHRA or ABX session over
   the landscape legs on VX7's material, with the protocol and results on `docs/landscape.md`.
+  *Apparatus merged, session not run:* `tools/listening/` builds the blind stimulus set (hidden
+  reference, BS.1534-3's two anchors, one arm per encoder, everything decoded by FFmpeg so the
+  decoder is a constant) and scores the answers back into a table with confidence intervals,
+  and the protocol is on `docs/landscape.md`. The listening itself is human time. Building it
+  also found the two things VX7 has to land first: `reference_51.wav` carries 0.059% of its
+  energy above 3.5 kHz, so both BS.1534 anchors are inaudible on both 5.1 legs and cannot scale
+  a MUSHRA session there, and the items are 1.9 s against BS.1534-3's ~10 s. VX7 has since landed
+  real speech/music fixtures — a session over those, rather than the synthetic 5.1 fixture, is
+  the better one to run.
 - [x] **VX10 (S)** — Reference-mode end-to-end gate. `verify_gold_reference.sh` takes
   `TRANSFORM_MODE=reference`, which puts `mode=reference` on every encode and decode it runs and
   suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
@@ -700,8 +732,8 @@ no SIMD and no threading anywhere in the codec core.
 - [ ] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
   "CRC failed at frame N" or "unknown EMDF payload skipped". Tracy is profiling, not diagnostics.
 - [ ] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
-  mask curves as CSV/JSON/Parquet from the trace (AC-3 today, E-AC-3 with VX2), reachable from
-  Python.
+  mask curves as CSV/JSON/Parquet from the trace (both codecs carry one since `VX2`),
+  reachable from Python.
 
 ## UX. Applications
 

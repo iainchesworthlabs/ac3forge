@@ -59,6 +59,7 @@ add_executable(ac3tests
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
+    dsp/test_dsp_qmf.cpp
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
     encoder/test_eac3_short_syncframes.cpp
@@ -96,6 +97,7 @@ add_executable(ac3tests
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
     oba/test_scene.cpp
+    verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
@@ -133,12 +135,14 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/e
 # target's path only.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
-# test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
-# committed programme-material fixtures rather than a synthetic signal - the delta bit
-# allocation state it compares only ends part-way through a frame on material that really
-# does change character mid-frame, which is what made those files the reproduction for the
-# bug this check exists to catch. Passed as a path rather than resolved from argv[0]: ctest
-# runs the binary from the build tree, which is nowhere near the fixtures.
+# test_selfcheck.cpp and test_eac3_selfcheck.cpp run the encoder/decoder mirror check
+# (ac3::verify) over the committed programme-material fixtures rather than a synthetic
+# signal - the delta bit allocation state it compares only ends part-way through a frame on
+# material that really does change character mid-frame, which is what made those files the
+# reproduction for the bug this check exists to catch, and the Annex E tools it also
+# compares (AHT gains, coupling and spectral-extension coordinates) say nothing at all on
+# silence. Passed as a path rather than resolved from argv[0]: ctest runs the binary from
+# the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
 
