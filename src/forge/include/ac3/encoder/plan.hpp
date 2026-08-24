@@ -11,6 +11,7 @@
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/export.hpp"
@@ -240,6 +241,16 @@ struct Tools {
     // spx_atten above. Deliberately NOT part of any(): whether a stream
     // used a coding tool is a bitstream question this flag never touches.
     bool fast_mdct = true;
+    // EncoderConfig::search - the per-frame search over transmitted bit
+    // allocation parameters, judged on the error the decoder will
+    // reconstruct (ac3/quality/distortion.hpp). Like fast_mdct above this is
+    // not a coding tool that changes the bitstream's SYNTAX, so it is
+    // likewise not part of any(); unlike fast_mdct it does change which
+    // codes a frame carries. kNone by default, matching the library config
+    // it feeds. AC-3 only so far: the E-AC-3 encoder's own step 9 has a
+    // different shape (Table E2.10 strategies hoisted to audfrm, snroffststr
+    // never exercised) and wiring it is EQ1/EQ2 work, not this.
+    quality::Criterion search = quality::Criterion::kNone;
 
     // §7.3.4 dithflag, per-channel-per-block content decision - likewise not
     // a coding tool (a decoder that never receives a set dithflag still
@@ -362,6 +373,7 @@ struct Plan {
 enum class PlanError : std::uint8_t {
     kLayoutNeedsEac3,      // an immersive layout (or channel selection) asked of AC-3
     kBitrateNotLegal,      // AC-3 takes only the 19 Table 5.18 rates
+    kBitrateNotFramable,   // E-AC-3: a substream's frame size does not fit frmsiz's 11 bits
     kNoSourceLayout,       // no standard speaker layout has that many channels
     kInvalidChannels,      // custom_locations is not a channel selection allocate() can satisfy
     kSampleRateNeedsEac3,  // fscod2 (24/22.05/16 kHz) asked of AC-3, which has no such field
@@ -374,7 +386,11 @@ enum class PlanError : std::uint8_t {
 // set, else channel_plan_for(layout). Every function below that consumes a
 // Plan's channels goes through this, so a custom selection and a named
 // layout are built exactly the same way. Assumes `plan` already passed
-// validate(), the way ac3_config/eac3_config already assume a valid bitrate.
+// validate(), the way ac3_config/eac3_config already assume a valid bitrate -
+// with the one deliberate exception validate() itself makes, which calls
+// eac3_config() (and so this) to reach the per-substream rates it has to
+// check. That call is made only after the channel checks have passed, so what
+// it resolves is always a selection allocate() could satisfy.
 [[nodiscard]] AC3FORGE_EXPORT ChannelPlan resolve(const Plan& plan);
 
 // AC-3 only; the caller has already checked carries(). Coupling comes from
@@ -387,6 +403,13 @@ enum class PlanError : std::uint8_t {
 // substreams occupy one frame period, not one frame.
 [[nodiscard]] AC3FORGE_EXPORT eac3::AccessUnitConfig eac3_config(const Plan& plan);
 
+// The one diagnosis every front end shares: std::nullopt if this plan is one
+// the encoders can actually be built from, else the first thing wrong with
+// it, ready for describe(). Worth asking BEFORE constructing an encoder from
+// ac3_config/eac3_config: a config either of those produces from a plan this
+// refuses is one no encoder can report on, because a constructor has nowhere
+// to return a verdict to. eac3::AccessUnitEncoder's simply builds no
+// substreams, which leaves its channel_count() at zero.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<PlanError> validate(const Plan& plan);
 
 // --- routing a source onto a plan -------------------------------------------

@@ -150,13 +150,20 @@ both encoders decide from content rather than from the bit rate.
   per-frame quality knob (`VbrConfig`) with no race leg, no trend row and no measured
   rate-distortion curve; add a sweep mode to `quality_race.py`, then a long-run average-rate
   (ABR) mode with a bit reservoir, which is what a streaming ladder or a mux actually asks for.
-- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model.
-  `encoder.cpp` records that the only in-loop quality criterion is the composite SNR offset, and
-  that both earlier attempts to search per-frame bit-allocation codes and exponent strategies
-  failed for exactly that reason. `ac3::verify` already models the decoder's reconstruction; a
-  per-candidate distortion measure on top of it lets the transmitted knobs (EQ2, EQ5, EQ7, delta
-  segments) be chosen on real error, and a tonality/masking estimate can drive them. Last in the
-  theme; needs VX6 and VX7 to validate on anything other than fixture SNR.
+- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
+  measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
+  against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
+  model), wired into a per-frame `dbpbcod`/`fgaincod` search (`EncoderConfig::search`) with real
+  hysteresis, and validated on real CC0/CC-BY material (not fixture SNR - VX6/VX7's own gap,
+  closed locally for this) against FFmpeg's decode by SNR/LSD/ViSQOL. The distortion criterion is
+  a real win from 448 kbit/s up; at 192 it trades SNR against per-band shape and currently
+  costs more than it buys. The perceptual criterion currently loses at every rate tested - its
+  model is validated in isolation but not yet calibrated well enough to beat the fixed defaults
+  on real material with rematrixing active. Both stay off by default. What's NOT done: neither
+  criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet (only the two `BitAllocCodes` fields
+  the encoder's own dead-end comment named), E-AC-3 isn't wired (needs EQ3), and the perceptual
+  model needs further calibration before it is worth turning on. See
+  `docs/library/quality.md` and `docs/library/encoding-ac3.md`'s Decision search section.
 
 ## DC. Decoder and consumer output
 
@@ -262,7 +269,6 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Still open: widening `decode`/`qc`/`levels`/`play`/`monitor` and the GUI's QC/Inspect pickers
   to accept containers directly, and container-to-container remux.
 - [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
->>>>>>> github/develop
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
   Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
@@ -450,23 +456,42 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
   for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
   through it - see `gen_external_baseline.py`'s module docstring.
-- [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
-  not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
-  trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the
-  dependency and lock (S); then baseline v2: MOS on the external side, the DEE 5.1 legs re-scored
-  around the Ls-channel drop (`UNVERIFIED_DEE_LEGS`), and low-rate legs where spectral extension
-  and coupling actually run (the only stereo leg sits at 96 kbit/s per channel, above every
-  measured tool crossover).
-- [ ] **VX7 (M)** — Real programme material. Every landscape and trend number rests on 2.5 s of
-  `sin()`/FIR-noise fixtures, and `encoder.cpp` records a fake 2.1 dB win from tuning against
-  them. Redistributable (CC0/public-domain) speech and music legs beside the synthetic ones, and
-  `tools/generators` packaged as a versioned corpus.
-- [ ] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR is measured exactly
-  once, in a unit test with a 10 dB floor against 18–35 dB measured (`tests/oba/test_atmos.cpp`);
-  a 15 dB JOC regression passes CI and no trend page sees it.
+- [x] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is hash-pinned in
+  `requirements-ffmpeg-validate` and installed on the `ffmpeg-validate` leg, so `mos_lqo` is a
+  real number rather than null in every row from 2026-08-23 on; `MOS_WINDOW_S` caps ViSQOL's
+  super-linear cost, and the history appender has a soft MOS regression tier. Baseline v2 carries
+  MOS on the external side, re-scores both DEE 5.1 legs (the Ls-channel drop is an artefact of
+  DEE's discrete-multichannel input path; `--input-format wav_list` does not have it, so
+  `UNVERIFIED_DEE_LEGS` is empty), and adds five legs, four of them at rates where spectral
+  extension and coupling actually run.
+- [x] **VX7 (M)** — Real programme material. Two 30 s CC0 fixtures — full-band speech and music,
+  both natively 48 kHz and losslessly sourced — run as their own landscape and trend legs beside
+  the synthetic ones, which stay for series continuity, and are available to the other
+  `quality_race.py` modes through `--material`. `tools/generators` is documented and the fixture
+  corpus is versioned (`corpus.json`, `CORPUS_VERSION`) and hash-enforced
+  (`tools/checks/check_corpus.py`).
+- [x] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR used to be measured
+  exactly once, in a unit test with a 10 dB floor against 18–35 dB measured
+  (`tests/oba/test_atmos.cpp`), so a 15 dB JOC regression passed CI and no trend page saw it.
+  `quality_race.py`'s `objects` mode now encodes a committed five-object scene
+  (`tests/golden/audio/reference_objects.wav` plus its placements) with `atmos-encode`, decodes
+  it back to per-object WAVs, and records SNR/LSD/leakage/MOS per object at 256 and 448 kbit/s
+  on `docs/object-quality-trend.md`. LSD needed an object-specific form
+  (objects are narrow-band, so the codec legs' banded measure reads 10–38 dB for a healthy
+  reconstruction); the out-of-band half became a leakage figure, which is the object-specific
+  failure mode. Self-consistency only — there is no external oracle for object decode at all.
 - [ ] **VX9 (M)** — A listening test. README and `docs/verification.md` have carried "no
   listening test has been run" through nine releases. One documented MUSHRA or ABX session over
   the landscape legs on VX7's material, with the protocol and results on `docs/landscape.md`.
+  *Apparatus merged, session not run:* `tools/listening/` builds the blind stimulus set (hidden
+  reference, BS.1534-3's two anchors, one arm per encoder, everything decoded by FFmpeg so the
+  decoder is a constant) and scores the answers back into a table with confidence intervals,
+  and the protocol is on `docs/landscape.md`. The listening itself is human time. Building it
+  also found the two things VX7 has to land first: `reference_51.wav` carries 0.059% of its
+  energy above 3.5 kHz, so both BS.1534 anchors are inaudible on both 5.1 legs and cannot scale
+  a MUSHRA session there, and the items are 1.9 s against BS.1534-3's ~10 s. VX7 has since landed
+  real speech/music fixtures — a session over those, rather than the synthetic 5.1 fixture, is
+  the better one to run.
 - [x] **VX10 (S)** — Reference-mode end-to-end gate. `verify_gold_reference.sh` takes
   `TRANSFORM_MODE=reference`, which puts `mode=reference` on every encode and decode it runs and
   suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
@@ -523,12 +548,23 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
 - [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
   instrumented test for the Android bridge's device-free paths.
-- [ ] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
+- [x] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
   posture, per-access-unit allocation caps and decode resource limits — what a media server
   wants to read before linking a decoder against internet input.
-- [ ] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
+  `docs/threat-model.md`, cross-referenced from `SECURITY.md`, README and
+  `docs/library/decoding.md`. Every enforced limit is tabulated with the field width it comes
+  from; the three that are not enforced (no cap on stream length, no decode time bound, ADM
+  parsers unfuzzed) are recorded as gaps with the mitigation on the caller. Writing it found and
+  fixed one real defect: `parse_wav` read its `fmt `/`data` chunk fields at fixed offsets past a
+  tag located by searching the whole buffer, with no bound on either — a heap over-read on a file
+  whose last four bytes read `"fmt "`.
+- [x] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
   tool and layout with expected decode hashes, so other decoders can test against this project.
-  The complement of VX4.
+  The complement of VX4. `tools/generators/gen_conformance_vectors.py` emits 60 vectors (21
+  AC-3, 35 E-AC-3, 4 Atmos) with the source PCM, per-vector hashes, decoded per-channel levels
+  and a derived FFmpeg-readability column; `docs/conformance-vectors.md` is the usage page and
+  the release workflow attaches the bundle beside the SBOM and attestations. Hashes are
+  per-toolchain until VX11/VX12; the source material stays synthetic until VX7.
 - [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
   `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
   (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a
@@ -828,7 +864,7 @@ All merged to `develop` by v0.9.0-beta.1 unless noted; `CHANGELOG.md` has the de
 | F3 | WASM build plus browser demo | merged (UX5 extends it) |
 | F4 | Package-manager presence | carried → DR1–DR5 (PyPI and the tap are live) |
 | F5 | API freeze → v1.0.0 | carried → AP1 |
-| G1 | Perceptual-quality leg | merged, column never populated in CI (VX6) |
+| G1 | Perceptual-quality leg | merged; column populated in CI as of VX6 |
 | G2 | Backfill thin test coverage | merged |
 | G3 | Differential decoder fuzzing against FFmpeg | merged |
 | G4 | Encoder input-space fuzzing | merged, both codecs (AC-3 under G4, E-AC-3 under VX1) |
