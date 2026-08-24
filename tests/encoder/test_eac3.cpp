@@ -216,14 +216,17 @@ std::vector<std::size_t> vbr_frame_sizes(const ac3::eac3::FrameConfig& config,
 
 }  // namespace
 
-TEST_CASE("E-AC-3 bamode 0 takes the Annex E allocation defaults", "[eac3]") {
-    // Table E1.4's else-branch fixes floorcod at 0x7. The §8.2.12 basic
-    // -encoder recommendation - what BitAllocCodes defaults to, and what the
-    // AC-3 encoder rightly uses - is 4. floorcod sets the masking floor, so
-    // the wrong one makes the encoder believe almost nothing costs bits: the
-    // SNR search then saturates at the maximum offset and sizes the frame for
-    // an allocation the decoder will not reproduce, leaving every block after
-    // the first at the wrong bit offset.
+TEST_CASE("E-AC-3 transmits the allocation parameters it allocated against", "[eac3]") {
+    // bamode 1: the frame states its own sdcycod/fdcycod/sgaincod/dbpbcod/
+    // floorcod in block 0 instead of inheriting Table E1.4's else-branch. The
+    // hazard is the same one that existed when it inherited them - the
+    // encoder sizing the frame for one allocation while the decoder reads it
+    // with another - only now it is a mismatch between what the encoder
+    // allocated against and what it wrote, rather than between the spec's two
+    // default sets. floorcod is where it bites hardest: too low a masking
+    // floor makes the encoder believe almost nothing costs bits, the SNR
+    // search saturates at the maximum offset, and every block after the first
+    // lands at the wrong bit offset.
     //
     // Silence cannot catch this. Zero SNR offsets trip §7.2.2.1.1, which
     // zeroes the allocation before floorcod is ever consulted, so the frame
@@ -243,6 +246,14 @@ TEST_CASE("E-AC-3 bamode 0 takes the Annex E allocation defaults", "[eac3]") {
         REQUIRE(frame.has_value());
         CHECK(frame->size() == 768);
         CHECK(ac3::crc16(std::span{*frame}.subspan(2)) == 0x0000);
+        // audfrm's bamode flag: bsi is 54 bits for this 2/0 no-LFE shape with
+        // addbsie clear, then expstre, ahte, snroffststr(2), transproce,
+        // blkswe and dithflage - the same count "carrying metadata sets
+        // skipflde" in tests/emdf/test_emdf.cpp walks to reach skipflde at
+        // bit 64.
+        ac3::BitReader flags{*frame};
+        flags.skip(54 + 1 + 1 + 2 + 1 + 1 + 1);
+        CHECK(flags.read(1) == 1);  // bamode
         if (f == 0) {
             continue;  // the fade-in frame proves nothing
         }

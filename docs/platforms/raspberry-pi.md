@@ -32,9 +32,9 @@ and none is planned.
 ## Requirements
 
 Same as [Linux](linux.md#toolchains) generally, but Raspberry Pi OS's own package archive (Debian
-13 "Trixie" as of this writing) doesn't necessarily carry the exact GCC 16 / Clang 21 versions CI
+13 "Trixie" as of this writing) doesn't necessarily carry the exact GCC 16 / Clang 22 versions CI
 pins. `cmake/toolchains/linux.{gcc,llvm}.toolchain.cmake` already `find_program` a fallback list
-(`gcc-16, gcc, gcc-15, gcc-14, gcc-13` / `clang-21, clang, clang-20, clang-19`), so an older distro compiler
+(`gcc-16, gcc, gcc-15, gcc-14, gcc-13` / `clang-22, clang, clang-21, clang-20`), so an older distro compiler
 is picked up automatically - the version pin is a CI reproducibility choice, not a hard requirement
 of the code. See [Verified configuration](#verified-configuration) for what was actually resolved on
 real hardware.
@@ -111,7 +111,7 @@ Run for real, over SSH, on:
 |---|---|
 | Board | Raspberry Pi 4 Model B rev 1.1 (2GB) |
 | OS | Raspberry Pi OS 13 "Trixie" (Debian 13.6 base), kernel 6.18.34+rpt-rpi-v8 |
-| Compilers | GCC 14.2.0 and Clang 19.1.7 (Trixie's apt archive; Trixie has no `gcc-16`/`clang-21` yet - the toolchain files' fallback `find_program` list picked these up automatically, no configuration needed) |
+| Compilers | GCC 14.2.0 and Clang 19.1.7 (Trixie's apt archive; Trixie has no `gcc-16`/`clang-22` yet - the toolchain files' fallback `find_program` list picked these up automatically, no configuration needed) |
 | CMake | 3.31.6, Ninja 1.12.1 |
 | Qt | 6.8.2, apt-packaged (`qt6-base-dev`, `qt6-declarative-dev`) |
 | ALSA | `libasound2-dev` 1.2.14 |
