@@ -132,18 +132,6 @@ struct Options {
     // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
     ac3::plan::Metadata p{};
-    // 'record'/'live' with container=fmp4 only: how many of the most recent
-    // media segments the HLS playlist and DASH MPD list - a rolling live
-    // window (mp4::FragmentOptions::playlist_window_segments). 0, the
-    // default, lists every segment, which is what a session whose directory
-    // will be served whole afterwards wants; a real origin deleting segments
-    // behind itself sets its own depth here.
-    std::uint32_t fmp4_window_segments = 0;
-    // 'live' only: a second ("slave") capture device index, same numbering
-    // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
-    // positional already reads. Unset means the classic single-device
-    // session, unchanged from before this option existed.
-    std::optional<int> capture2 = std::nullopt;
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
     // operator both asks (sign-objects) and provides a key - either
     // signing-key=<path> here, or the AC3FORGE_SIGNING_KEY[_FILE] env vars
