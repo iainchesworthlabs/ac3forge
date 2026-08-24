@@ -44,6 +44,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 #include "real_audio.hpp"
 
 namespace {
@@ -150,9 +151,22 @@ Result bench_eac3_auto(std::string name, perf::FrameSource& source, ac3::Acmod a
     return timer.stop(std::move(name), kFrames);
 }
 
-Result bench_atmos_4obj(perf::FrameSource& source, bool fast_mdct) {
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .fast_mdct = fast_mdct}, kObjects};
-    const char* name = fast_mdct ? "atmos_4obj_fast_mdct" : "atmos_4obj";
+// `domain` is AtmosConfig::joc_domain - which §7.1 space the reconstruction
+// matrix is estimated in. kMdctBand is what the two plain rows below pin;
+// the QMF row exists because kQmf is the *default*, and a row here names a
+// configuration rather than "whatever the default is" (the same relationship
+// plain_51 has to plain_51_fast_mdct), so the trend series stay continuous
+// across a default change instead of taking a step nobody can read later.
+Result bench_atmos_4obj(perf::FrameSource& source, bool fast_mdct,
+                        ac3::joc::Domain domain = ac3::joc::Domain::kMdctBand) {
+    ac3::oba::AtmosEncoder encoder{
+        {.bitrate_kbps = 448, .fast_mdct = fast_mdct, .joc_domain = domain}, kObjects};
+    const char* name = "atmos_4obj";
+    if (domain == ac3::joc::Domain::kQmf) {
+        name = fast_mdct ? "atmos_4obj_qmf_fast_mdct" : "atmos_4obj_qmf";
+    } else if (fast_mdct) {
+        name = "atmos_4obj_fast_mdct";
+    }
     const auto placement = object_placement();
 
     Timer timer;
@@ -339,6 +353,17 @@ int main(int argc, char** argv) {
     }
     if (wanted("atmos_4obj_fast_mdct")) {
         results.push_back(bench_atmos_4obj(four_object, /*fast_mdct=*/true));
+    }
+    // The same object encode with the reconstruction matrix estimated in
+    // §7.1's QMF instead of over MDCT bins (AtmosConfig::joc_domain) - which
+    // is the DEFAULT, while the two rows above stay pinned to kMdctBand. A
+    // row here names a configuration, not "whatever the default is" (the
+    // same relationship plain_51 has to plain_51_fast_mdct), so the trend
+    // series stay continuous across a default change instead of taking a
+    // step nobody can read later.
+    if (wanted("atmos_4obj_qmf_fast_mdct")) {
+        results.push_back(
+            bench_atmos_4obj(four_object, /*fast_mdct=*/true, ac3::joc::Domain::kQmf));
     }
     if (wanted("ac3_51_decode")) {
         results.push_back(bench_ac3_decode(ac3_stream));

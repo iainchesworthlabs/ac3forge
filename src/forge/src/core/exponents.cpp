@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 
 namespace ac3 {
@@ -17,6 +18,66 @@ namespace ac3 {
 // already amortise a call, and one of them - the E-AC-3 AHT path - reads a
 // column across the six blocks' transform axis rather than a contiguous run
 // of coefficients, so it has no to_fixed25 half to fuse with.
+
+namespace {
+
+// The clamp-and-narrow tail of to_fixed25, shared with the batched form below
+// so the §7.2.2 range rule exists in exactly one place and the two cannot
+// drift into disagreeing. to_fixed25 itself stays header-inline (see above);
+// this mirrors its clamp rather than calling it because the batched form's
+// input is already-rounded, so re-deriving the round from a raw coefficient
+// would redo work the SIMD lanes just did.
+std::int32_t clamp_fixed25(double scaled) {
+    if (scaled >= 16777215.0) {
+        return 16777215;  // 2^24 - 1
+    }
+    if (scaled <= -16777216.0) {
+        return -16777216;  // -2^24
+    }
+    return static_cast<std::int32_t>(scaled);
+}
+
+}  // namespace
+
+// Two coefficients per iteration through the arch seam (ROADMAP PF5).
+//
+// arch::round_ties_away is contractually std::round - IEEE-754
+// roundToIntegralTiesAway - on every member of the seam, so each lane's
+// result is the same double the scalar path above computes, and the clamp is
+// then literally the same function. tests/core/test_simd_kernels.cpp checks
+// the whole batch form against to_fixed25 element by element over real
+// coefficients and an adversarial value set, on every leg.
+//
+// The win differs sharply by architecture, and that is the point of having
+// measured it rather than assumed: AArch64 spends one FRINTA instruction per
+// lane, x86-64 has no rounding instruction at all below SSE4.1 and trades an
+// out-of-line libm round() call for about a dozen in-line SSE2 operations,
+// and the generic build calls std::round twice and gains only the loop
+// structure. See docs/performance-trend.md.
+//
+// This is a distinct entry point from exponents.hpp's fused 3-arg
+// to_fixed25_block (coeffs+fixed+exponents, PF2): that one exists for the
+// encoders' hot per-bin loop, where both halves are inline so the compiler
+// keeps a bin's fixed-point value in a register between them and never
+// spills it to fuse with a second, SIMD-only stage. This one exists for
+// callers - like the AHT path this file's own header comment above
+// mentions - that want the conversion alone.
+void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32_t> fixed) {
+    assert(coefficients.size() == fixed.size());
+    const auto scale = internal::arch::f64x2::broadcast(16777216.0);  // 2^24
+    std::size_t i = 0;
+    for (; i + 2 <= coefficients.size(); i += 2) {
+        const auto scaled = internal::arch::round_ties_away(
+            internal::arch::f64x2::load(coefficients.data() + i) * scale);
+        fixed[i] = clamp_fixed25(scaled.lane0());
+        fixed[i + 1] = clamp_fixed25(scaled.lane1());
+    }
+    // Mantissa counts are odd (37, 61, ... 253), so the tail is real.
+    for (; i < coefficients.size(); ++i) {
+        fixed[i] = to_fixed25(coefficients[i]);
+    }
+}
+
 void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8_t> exponents) {
     assert(fixed.size() == exponents.size());
     for (std::size_t i = 0; i < fixed.size(); ++i) {

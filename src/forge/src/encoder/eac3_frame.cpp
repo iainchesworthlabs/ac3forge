@@ -30,6 +30,7 @@
 
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 #include "dither.hpp"
 #include "snr_search.hpp"
 
@@ -441,6 +442,22 @@ struct Payload {
     }
 };
 
+
+// Which band of `bands` a coefficient falls in, or the last band when it falls
+// past the layout entirely. Used only by the self-check's trace, to expand a
+// per-band coupling coordinate back out over the sub-bands it covers the way
+// a decoder does - derived from the BandLayout group_bands() already produced
+// rather than by re-walking cplbndstrc, so it shares no code with the
+// decoder's own expansion and a disagreement between the two is visible.
+[[nodiscard]] int band_of_bin(const BandLayout& bands, int bin) {
+    for (int bnd = 0; bnd < bands.count; ++bnd) {
+        const auto at = static_cast<std::size_t>(bnd);
+        if (bin >= bands.start[at] && bin < bands.start[at] + bands.size[at]) {
+            return bnd;
+        }
+    }
+    return bands.count > 0 ? bands.count - 1 : 0;
+}
 
 // §E3.3.2: the rematrixing bands cannot reach above whichever tool takes over
 // the spectrum first, so both their count and where the last one stops depend
@@ -1063,8 +1080,13 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
 // Everything from the sync word to the end of the last block: the whole
 // frame bar padding and the tail. Silence and real audio go through this one
 // function, so the two can never drift apart on field placement.
+// `trace` is non-null only on the REAL write of a frame, never on the
+// size probes: those run against a payload the rate search has not finished
+// settling, and a trace taken from one would describe a frame that never
+// went on the wire. See ac3/verify/eac3_mirror.hpp.
 void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
-                const Payload& payload, std::span<const std::byte> metadata = {}) {
+                const Payload& payload, std::span<const std::byte> metadata = {},
+                verify::Eac3SubstreamTrace* trace = nullptr) {
     const int nfchans = fullbw_channel_count(config.acmod);
     const bool dependent = config.strmtyp == StreamType::kDependent;
     const auto& cpl = payload.cpl;
@@ -1289,9 +1311,133 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     // decoder reads as spectral extension being switched on.
     w.put(0, 1);  // blkstrtinfoe
 
+    // The self-check's encoder-side view of everything audfrm hoisted out of
+    // the blocks (ac3/verify/eac3_mirror.hpp). Recorded here rather than at
+    // the top: `payload` is settled by now on the real write, and this is
+    // the point past which every remaining field is a block's.
+    if (trace != nullptr) {
+        trace->reset();
+        trace->strmtyp = config.strmtyp;
+        trace->substreamid = config.substreamid;
+        trace->blocks_coded = kBlocksPerFrame;
+        trace->fbw_channels = nfchans;
+        trace->coded_channels = nfchans + (config.lfe ? 1 : 0);
+        trace->transproce = payload.transproce;
+        if (payload.transproce) {
+            trace->chintransproc.assign(payload.chintransproc.begin(),
+                                        payload.chintransproc.end());
+            trace->transprocloc = payload.transprocloc;
+            trace->transproclen = payload.transproclen;
+        }
+    }
+
+    // The self-check's encoder-side per-block view (ac3/verify/eac3_mirror.hpp).
+    // Recorded from `w`, the real writer, so bit_offset is the offset a
+    // decoder has to arrive at; and from `payload`, which the rate search has
+    // finished settling by the time this emit runs for real. Nothing here
+    // steers a decision - it reads state the encoder already holds.
+    const auto record_block = [&](int blk, std::size_t bit_offset) {
+        auto& block = trace->blocks[static_cast<std::size_t>(blk)];
+        block.entered = true;
+        block.bit_offset = bit_offset;
+        // Per block, from a frame-level flag, because this encoder couples
+        // either every block or none (see CouplingPlan) - which is also what
+        // leaves ncplregs at 1. A per-block coupling decision would have to
+        // be read from wherever it is made instead, or this trace would
+        // describe a frame the emitter below does not write.
+        block.cplinu = cpl.in_use;
+        block.ecplinu = cpl.in_use && cpl.enhanced;
+        block.cplstrtmant = cpl.in_use ? cpl.strtmant : 0;
+        block.cplendmant = cpl.in_use ? cpl.endmant : 0;
+        block.spxinu = spx.in_use;
+        block.spx_startmant = spx.in_use ? spx.startmant : 0;
+        block.spx_endmant = spx.in_use ? spx.endmant : 0;
+        block.spx_copystart = spx.in_use ? spx.copystart : 0;
+
+        block.streams.resize(payload.chans.size());
+        for (std::size_t s = 0; s < payload.chans.size(); ++s) {
+            const auto& plan = payload.chans[s];
+            auto& stream = block.streams[s];
+            // Table E2.10 code 0 gives the whole frame one exponent set per
+            // stream, so every block copies the same arrays out - which is
+            // the point: a per-block trace stays right if that ever stops
+            // being true.
+            stream.exponents = plan.decoded;
+            stream.bap = plan.bap;
+            stream.delta = plan.delta;
+            stream.start = plan.start;
+            stream.endmant = plan.endmant;
+            stream.aht = plan.aht;
+            // §E3.4's chgaqmod and its gain words are transmitted once per
+            // frame, in block 0's mantissa element - the only block a decoder
+            // can have read them in, so the only one either side records them
+            // in.
+            stream.gaqmod = 0;
+            stream.gain.clear();
+            if (plan.aht && blk == 0) {
+                stream.gaqmod = plan.gaqmod;
+                stream.gain = plan.aht_gain;
+            }
+        }
+
+        block.channels.resize(static_cast<std::size_t>(nfchans));
+        for (int ch = 0; ch < nfchans; ++ch) {
+            const auto at = static_cast<std::size_t>(blk) * static_cast<std::size_t>(nfchans) +
+                            static_cast<std::size_t>(ch);
+            auto& channel = block.channels[static_cast<std::size_t>(ch)];
+            channel.blksw = payload.chans[static_cast<std::size_t>(ch)]
+                                .blksw[static_cast<std::size_t>(blk)];
+            // chincpl/chinspx are never partial here: this encoder puts every
+            // full-bandwidth channel in whichever tool it turns on at all.
+            channel.in_coupling = cpl.in_use;
+            channel.cplco.clear();
+            channel.ecplamp.clear();
+            channel.ecplangle.clear();
+            channel.ecplchaos.clear();
+            channel.ecpltrans = false;  // no per-block transient tuning yet
+            if (cpl.in_use && !cpl.enhanced) {
+                const auto count = static_cast<std::size_t>(cpl.bands.count);
+                channel.cplco.resize(static_cast<std::size_t>(cpl.nsubnd));
+                for (int sbnd = 0; sbnd < cpl.nsubnd; ++sbnd) {
+                    const int bin = cpl.strtmant + sbnd * coupling::kBinsPerSubBand;
+                    const auto bnd = static_cast<std::size_t>(band_of_bin(cpl.bands, bin));
+                    channel.cplco[static_cast<std::size_t>(sbnd)] =
+                        coupling::decode_coordinate(cpl.coords[at * count + bnd],
+                                                    cpl.master[at]);
+                }
+            } else if (cpl.in_use) {
+                const auto nbnd = static_cast<std::size_t>(std::max(cpl.ecpl_bands.count, 1));
+                const auto base = at * nbnd;
+                for (int bnd = 0; bnd < cpl.ecpl_bands.count; ++bnd) {
+                    const auto i = base + static_cast<std::size_t>(bnd);
+                    channel.ecplamp.push_back(cpl.ecplamp[i]);
+                    channel.ecplangle.push_back(cpl.ecplangle[i]);
+                    channel.ecplchaos.push_back(cpl.ecplchaos[i]);
+                }
+            }
+            channel.in_spx = spx.in_use;
+            channel.spxblnd = 0;
+            channel.spxco.clear();
+            if (spx.in_use) {
+                const auto count = static_cast<std::size_t>(spx.bands.count);
+                channel.spxblnd = spx.blend[at];
+                channel.spxco.resize(count);
+                for (std::size_t bnd = 0; bnd < count; ++bnd) {
+                    channel.spxco[bnd] = coupling::decode_coordinate(
+                        spx.coords[at * count + bnd], spx.master[at],
+                        coupling::kSpxMantissaBits);
+                }
+            }
+        }
+        block.allocated = true;
+    };
+
     // --- audblk x6 (Table E1.4) ---
     for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
         const bool first = blk == 0;
+        if (trace != nullptr) {
+            record_block(blk, w.bit_count());
+        }
         if (blkswe) {
             for (int ch = 0; ch < nfchans; ++ch) {
                 w.put(payload.chans[static_cast<std::size_t>(ch)]
@@ -1621,6 +1767,13 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             for (int ch = 0; ch < nfchans && !any_delta; ++ch) {
                 any_delta = payload.chans[static_cast<std::size_t>(ch)].delta.deltnseg > 0;
             }
+            if (trace != nullptr) {
+                // Recorded here rather than in record_block above, since only
+                // this branch knows what actually went on the wire; a frame
+                // with dbaflde clear sends no deltbaie at all and both sides
+                // leave it false.
+                trace->blocks[static_cast<std::size_t>(blk)].deltbaie = any_delta;
+            }
             w.put(any_delta ? 1 : 0, 1);  // deltbaie
             if (any_delta) {
                 // §5.4.3.47-57's syntax table sends every stream's 2-bit
@@ -1671,6 +1824,8 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
 std::expected<std::vector<std::byte>, FrameError> finish_frame(
     const FrameConfig& config, std::uint32_t words, const Payload& payload,
     std::span<const std::byte> aux) {
+    // config.trace, if any, goes only to the second (real) emit below - see
+    // emit_frame's own note on why the probe must not write one.
     AC3_ZONE_SCOPED_N("finish_frame_pack_mux");
     const std::uint32_t total_bytes = words * 2;
     const std::uint32_t total_bits = total_bytes * 8;
@@ -1689,7 +1844,7 @@ std::expected<std::vector<std::byte>, FrameError> finish_frame(
     const std::uint32_t spare = total_bits - content_bits - kTailBits;
 
     BitWriter w;
-    emit_frame(w, config, words, payload, aux);
+    emit_frame(w, config, words, payload, aux, config.trace);
     for (std::uint32_t i = 0; i < spare; ++i) {
         w.put(0, 1);  // auxbits: padding, and nothing else
     }
@@ -1996,6 +2151,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::span<const std::span<const float>> channels, const FrameMetadata& metadata,
     AuxPayload aux) {
     AC3_ZONE_SCOPED_N("FrameEncoder::encode_frame");
+    // Before the first early return below, so a caller that keeps one trace
+    // across frames never sees a previous frame's blocks left behind by an
+    // encode that failed before it reached emit_frame.
+    if (config_.trace != nullptr) {
+        config_.trace->reset();
+    }
     if (const auto ok = validate(config_); !ok) {
         return std::unexpected(ok.error());
     }
@@ -2843,11 +3004,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
                 const auto& source = coeffs_at(s, blk);
                 auto& out = fixed_at(s, blk);
-                // One fused pass over the stream's bins rather than a
-                // per-bin conversion loop followed by a second walk in
-                // extract_exponents - see exponents.hpp's to_fixed25_block.
-                to_fixed25_block(
-                    std::span{source}.subspan(static_cast<std::size_t>(plan.start), span),
+                // Two coefficients at a time through the architecture seam
+                // (ROADMAP PF5), identical values to the bin-by-bin form -
+                // see to_fixed25_block in exponents.cpp.
+                to_fixed25_block(std::span<const double>{source}.subspan(
+                                     static_cast<std::size_t>(plan.start), span),
+                                 std::span{out}.subspan(static_cast<std::size_t>(plan.start),
+                                                        span));
+                extract_exponents(
                     std::span{out}.subspan(static_cast<std::size_t>(plan.start), span),
                     axis_exps);
                 for (std::size_t bin = 0; bin < span; ++bin) {

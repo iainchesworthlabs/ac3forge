@@ -115,6 +115,18 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
     return truncated;
 }
 
+// The same conversion over a contiguous run of coefficients, which is how
+// every caller on the encode path actually uses it - about 9,100 bins a
+// frame. Value-for-value identical to calling to_fixed25 on each element
+// (it is the same rounding and the same clamp); the batch form exists
+// because it can do the rounding two lanes at a time through the
+// architecture seam, and because on x86-64 that replaces an out-of-line call
+// to libm's round() per element with in-line SSE2 arithmetic - see
+// src/forge/src/internal/arch/x86_64/ac3/internal/arch/simd.hpp. The spans
+// must be the same length.
+AC3FORGE_EXPORT void to_fixed25_block(std::span<const double> coefficients,
+                                      std::span<std::int32_t> fixed);
+
 // §8.2.7: leading zeros of the 24-bit magnitude, capped at 24 (zero input).
 //
 // Inline for the same reason to_fixed25 is: it is the other half of the
