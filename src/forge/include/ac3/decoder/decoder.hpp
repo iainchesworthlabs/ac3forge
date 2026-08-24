@@ -13,6 +13,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
 #include "ac3/oba/joc.hpp"
@@ -122,11 +123,40 @@ struct DecoderConfig {
     // before the refusal, which is the case the comparison is most useful in.
     // AC-3 only (FrameDecoder); Eac3Decoder does not write one.
     verify::FrameTrace* trace = nullptr;
+    // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
+    // Which coding tools each block used and what exponent strategy each
+    // stream carried, recorded on the way past. Null by default, at the same
+    // one-branch-per-block cost `trace` above already sets the precedent for,
+    // and written by BOTH decoders rather than just the AC-3 one - the
+    // Annex E tools are most of what makes it worth having. Filled
+    // incrementally: a frame the decoder ends up refusing leaves behind
+    // everything it read before the refusal.
+    FrameSyntax* syntax = nullptr;
+    // Parse every field exactly as a full decode does, but stop short of
+    // turning the coefficients into audio: no inverse transform, no
+    // overlap-add, no JOC object reconstruction and, for Eac3Decoder, no
+    // per-access-unit channel combination. The returned metadata - and any
+    // trace above - is identical to a full decode's; `channels` and
+    // `object_audio` come back empty.
+    //
+    // This exists because inspecting a stream and rendering it are different
+    // jobs with very different costs. Everything a reader wants to know about
+    // a frame (its metadata, its tool usage, its object layer) is settled by
+    // the parse; the transform is the expensive part and answers none of it.
+    // `ac3cli probe` runs the whole of a file this way. Note what it does NOT
+    // skip: the mantissas are still read, because the bit position of every
+    // subsequent field depends on them - a "parse" that skipped those would
+    // not be parsing the same stream.
+    bool skip_reconstruction = false;
 };
 
 struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 0;
+    // §5.4.1.3/§5.4.2.1, reported rather than merely checked: an inspection
+    // tool wants both off the wire, and nothing else here carries them.
+    int bsid = 8;
+    int bsmod = 0;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     int dialnorm = 31;
@@ -194,6 +224,10 @@ class AC3FORGE_EXPORT FrameDecoder {
 struct DecodedSubstream {
     eac3::StreamType strmtyp = eac3::StreamType::kIndependent;
     int substreamid = 0;
+    // §E2.3.1.6 and Annex E's infomdate payload. bsmod is 0 ("not indicated")
+    // where infomdate was clear, matching io::ScannedStream::bsmod.
+    int bsid = eac3::kBsid;
+    int bsmod = 0;
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;

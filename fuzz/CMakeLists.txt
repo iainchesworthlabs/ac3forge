@@ -91,6 +91,12 @@ ac3forge_add_fuzzer(fuzz_eac3_decode)
 # (src/forge/src/io/wav.cpp).
 ac3forge_add_fuzzer(fuzz_wav_read)
 
+# ac3::iec61937::BurstReader: IEC 61937 burst de-framing, driven the way
+# ac3cli's 'unspdif' drives it (src/forge/src/sinks/iec61937.cpp). The one
+# entry point here whose input is by definition off a wire - an S/PDIF or
+# HDMI capture - and whose Pd word is an attacker-chosen length.
+ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
+
 # --- Differential mode (roadmap G3) -----------------------------------------
 # Same decode paths as fuzz_ac3_decode/fuzz_eac3_decode above, but instead of
 # only checking for a crash/sanitizer trip, these also decode the same
