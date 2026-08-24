@@ -48,6 +48,8 @@ void set_numblkscod(std::span<std::byte> frame, int numblkscod) {
                                      ((static_cast<unsigned>(numblkscod) & 0x3u) << 4));
     frame[4] = std::byte{byte};
     REQUIRE(ac3::io::restamp_crc(frame).has_value());
+}
+
 // `frames` access units of real, multi-frame object audio - not
 // build_silent_access_unit: addbsi parsing has to land on the right bit
 // offset regardless of what audio rides along after it, and going through
