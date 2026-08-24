@@ -269,6 +269,93 @@ jobs:
         shell: bash
         run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
 
+  # ruff, shellcheck and actionlint over the non-C++ half of the tree (roadmap
+  # VX14). Same shape as platform-macros and packaging-consistency above:
+  # cheap, fast, and deliberately ungated by `changes` so a script edit is
+  # reported even while a heavier leg is red.
+  #
+  # This is not ordinary lint hygiene here. The ~30 Python files under tools/
+  # ARE this project's oracles and gates - quality_race.py's SNR floors,
+  # fuzz_encoder_space.py, compare_wav.py, the four trend appenders,
+  # check_matrix_coverage.py - so a swallowed subprocess failure or a closure
+  # capturing a loop variable in one of them turns a CI check green without
+  # checking anything, and nothing downstream would ever notice. Every rule in
+  # ruff.toml's curated set was picked with that in mind; see its header.
+  #
+  # A separate job from static-analysis (clang-tidy) rather than another step
+  # inside it: that one needs a container bootstrap, a GCC install, vcpkg and a
+  # complete build before it parses its first TU. This one needs a checkout and
+  # a pip install. Keeping them apart means a broken oracle script is reported
+  # in about a minute instead of behind the slowest job on the critical path.
+  #
+  # zizmor.yml already covers workflow *security* (injectable expressions,
+  # over-broad permissions, unpinned actions); actionlint covers workflow
+  # *correctness* (undefined matrix properties, bad `needs`/`if` expressions,
+  # invalid runner labels) plus, via -shellcheck below, the shell inside every
+  # `run:` block - which no other check in this repo looks at at all.
+  script-lint:
+    name: Script Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A venv rather than a bare `pip install`: the hosted image's system
+      # Python is PEP 668 externally-managed, and --break-system-packages (what
+      # the container jobs below use, safely, because their container is thrown
+      # away) is the wrong tool on a runner whose Python other steps may still
+      # need. requirements/requirements-lint.txt is a pip-compile
+      # --generate-hashes lock like requirements-coverage.txt and
+      # requirements-ffmpeg-validate.txt, so all three linter versions are
+      # pinned by hash and move only when the lock is regenerated.
+      - name: Install linters
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .lintvenv
+          .lintvenv/bin/python -m pip install --quiet --upgrade pip
+          .lintvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-lint.txt
+          .lintvenv/bin/ruff --version
+          .lintvenv/bin/shellcheck --version | tr '\n' ' '; echo
+          .lintvenv/bin/actionlint -version
+
+      # Configuration (rule set, line length, exclusions, and the reasoning for
+      # each) lives in ruff.toml at the repository root, shared verbatim with a
+      # local `ruff check .`, the same way tools/checks/coverage_report.sh is
+      # shared with the coverage job - CI and a developer machine cannot drift
+      # onto different rules.
+      - name: ruff
+        shell: bash
+        run: .lintvenv/bin/ruff check --no-cache --output-format=github .
+
+      # `git ls-files` rather than a hard-coded list of directories: a shell
+      # script added anywhere in the tree is then linted the day it lands,
+      # instead of silently sitting outside the gate until someone remembers to
+      # widen a glob here.
+      - name: shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          printf 'shellcheck: %d script(s)\n' "${#scripts[@]}"
+          printf '  %s\n' "${scripts[@]}"
+          .lintvenv/bin/shellcheck --format=gcc "${scripts[@]}"
+
+      # -shellcheck hands actionlint the same pinned binary the step above uses,
+      # so the shell inside every `run:` block is checked too - that integration
+      # is where this job's first real finding came from (an `ls | head -1`
+      # parse in release.yml's provenance-export step). -pyflakes= disables the
+      # other integration outright: it would only see the `python -c` one-liners
+      # inside `run:` blocks, and ruff above already covers every real .py file.
+      - name: actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          .lintvenv/bin/actionlint -no-color -oneline \
+            -shellcheck .lintvenv/bin/shellcheck -pyflakes=
+
   # .clang-tidy's own header comment explains the curated check groups and
   # what got excluded from them (and why). A full Build precedes clang-tidy,
   # not just Configure: CMake 3.28's Ninja dependency-scan step (the
@@ -436,9 +523,27 @@ jobs:
       # machine cannot drift onto different filters or thresholds. The
       # mdct.cpp suspicious-hits gcov-bug workaround this step used to carry
       # inline moved there with the rest of the gcovr flags.
+      #
+      # The gate covers apps/cli as well as the nine library components since
+      # roadmap VX15 - which is why config-linux-gcc-coverage now builds the
+      # CLI, and why the Test step above takes longer than it used to. That
+      # table also prints a per-command breakdown below the gate, so a
+      # command module sitting at 0% is visible rather than averaged away.
       - name: Coverage report + gate
         shell: bash
         run: bash tools/checks/coverage_report.sh -g gcov-16
+
+      # apps/gui is the one first-party tree with no coverage number at all,
+      # and deliberately so (roadmap VX15 called it out as a separate
+      # decision): instrumenting its C++ needs a Qt kit on THIS job, and no
+      # Linux leg installs one - _build.yml puts Qt only on its `gui: true`
+      # matrix entries, which are plain builds. Adding it means either putting
+      # Qt on this container or standing up a second instrumented leg, both of
+      # which cost real runner time for a tree whose interactive surfaces are
+      # already covered by apps/gui/tests' own Qt Quick suite and whose one
+      # Qt-free class (RecordingSink) is already in ac3tests. See
+      # tools/checks/coverage_report.sh's header for the same note beside the
+      # threshold table.
 
       - name: Upload coverage report
         if: always()
@@ -778,6 +883,147 @@ jobs:
         run: |
           echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
           exit 1
+
+  # Encoder throughput, this PR against its own merge base, on one runner
+  # (roadmap VX17).
+  #
+  # The gap this closes: persist-performance-trend below only runs on pushes to
+  # develop/main, so the relative "is this slower than it was" question is not
+  # asked until after a PR has merged. The absolute question IS asked on every
+  # PR - tests/performance/test_performance.cpp's ac3perf, in every
+  # build-and-test leg - but its real-time budget carries enough headroom that
+  # a change could double ms/frame and still pass it comfortably. A PR that
+  # halved the encoder's speed would therefore go green everywhere and only
+  # surface on the trend chart afterwards.
+  #
+  # NON-BLOCKING, on purpose and in two independent ways: continue-on-error
+  # here, and tools/ci/compare_performance.py never exiting non-zero on a
+  # comparison it completed. It is also deliberately absent from ci-status's
+  # `needs` list. Timings on a shared hosted runner are noisy enough that a
+  # PR-blocking threshold would cost more in re-runs than it caught; the two
+  # checks that DO block are untouched (ac3perf's absolute budget on every PR,
+  # append_performance_history.py's hard tier on merge). What this adds is the
+  # number in front of the reviewer at review time, in the job summary, with
+  # the same soft/hard tiers the trend job applies - imported from that script
+  # rather than restated, so a PR and its own merge cannot disagree about what
+  # counts as a regression.
+  #
+  # Runner budget. This is a new job rather than an addition to an existing
+  # leg, and it builds twice, so it is kept as narrow as it can be and still
+  # answer the question:
+  #   - `--target ac3bench ac3kernelbench` only. Not the library's tests, not
+  #     the CLI, not the GUI - the same two binaries persist-performance-trend
+  #     builds, and nothing else.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so
+  #     it costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - Gated on `changes` like every other heavy job, so a docs-only PR
+  #     never starts it.
+  #   - PERF_RUNS repetitions per side. Three is the smallest number that
+  #     gives compare_performance.py a spread to report alongside each delta,
+  #     which is what lets a reader tell a real 25% move from a noisy one;
+  #     ac3bench is 200 frames per workload and takes seconds, so the
+  #     repetitions are a rounding error next to the two builds.
+  performance-compare:
+    name: Performance vs merge base
+    needs: [changes, toolchain-versions]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    continue-on-error: true
+    env:
+      PERF_RUNS: 3
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Resolve the merge base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          # On a pull_request event the checked-out HEAD is the merge commit,
+          # so BASE_SHA is already an ancestor of it and this returns BASE_SHA
+          # itself. Asking git rather than trusting that keeps the answer right
+          # if GitHub ever hands over a base tip that has moved on.
+          merge_base="$(git merge-base "$BASE_SHA" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Merge base: $merge_base"
+
+      - name: Build and run the benchmarks at this PR's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          mkdir -p perf-results/head
+          for i in $(seq 1 "$PERF_RUNS"); do
+            build/config-linux-gcc/bin/ac3bench --json-out "perf-results/head/bench$i.json"
+            build/config-linux-gcc/bin/ac3kernelbench \
+              --json-out "perf-results/head/kernels$i.json"
+          done
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_performance.py, which the
+      # base commit may not even have) exactly where they are, and gives the
+      # base its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      - name: Build and run the benchmarks at the merge base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-perf "$BASE_SHA"
+          mkdir -p perf-results/base
+          pushd ../base-perf >/dev/null
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          popd >/dev/null
+          for i in $(seq 1 "$PERF_RUNS"); do
+            ../base-perf/build/config-linux-gcc/bin/ac3bench \
+              --json-out "perf-results/base/bench$i.json"
+            ../base-perf/build/config-linux-gcc/bin/ac3kernelbench \
+              --json-out "perf-results/base/kernels$i.json"
+          done
+
+      - name: Compare and publish the job summary
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_performance.py \
+            --base-dir perf-results/base \
+            --head-dir perf-results/head \
+            --base-ref "merge base $BASE_SHORT"
 
   # FFmpeg as an independent oracle (CONTRIBUTING.md's "Oracles" list, #2),
   # automated - previously a manual/developer-only practice. Builds ac3cli
@@ -1175,7 +1421,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend ]
     runs-on: ubuntu-latest
     steps:
       - name: Gate on required job results
@@ -1187,6 +1433,7 @@ jobs:
           R_CHANGES: ${{ needs.changes.result }}
           R_MACROS: ${{ needs.platform-macros.result }}
           R_PACKAGING: ${{ needs.packaging-consistency.result }}
+          R_SCRIPTLINT: ${{ needs.script-lint.result }}
           # 'skipped' on a docs-only change, which is a pass, not a failure.
           R_TIDY: ${{ needs.static-analysis.result }}
           R_COVERAGE: ${{ needs.coverage.result }}
@@ -1203,6 +1450,7 @@ jobs:
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
                       "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
                       "packaging-consistency:$R_PACKAGING" \
+                      "script-lint:$R_SCRIPTLINT" \
                       "static-analysis:$R_TIDY" "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \

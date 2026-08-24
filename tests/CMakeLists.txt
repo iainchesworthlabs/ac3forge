@@ -82,11 +82,13 @@ add_executable(ac3tests
     meta/test_meta_qc.cpp
     meta/test_mixing.cpp
     containers/test_mp4.cpp
+    containers/test_mp4_reader.cpp
     containers/test_mpegts.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    oba/test_scene.cpp
     verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
@@ -196,8 +198,16 @@ endif()
 # top-level CMakeLists.txt processes apps/cli before tests/, so the target
 # already exists here whenever it is going to.
 # ---------------------------------------------------------------------------
+# cli/test_cli_live.cpp rides the same gate and the same AC3CLI_EXE: it covers
+# the device-facing commands (devices/outputs/record/live/monitor), which no
+# test touched at all until roadmap VX15 measured commands/audio_io.cpp and
+# commands/live_audio.cpp at 0.0% line coverage. Its cases assert what holds
+# with or without an endpoint present - see that file's own header - and carry
+# the [concurrency] tag, so the ThreadSanitizer leg reaches them through
+# `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli.cpp cli/test_cli_probe.cpp)
+    target_sources(ac3tests PRIVATE
+        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
     # well as this encoder's own output - they exercise syntax ac3forge never
@@ -279,7 +289,28 @@ target_link_libraries(ac3tests
         Catch2::Catch2WithMain)
 
 include(Catch)
-catch_discover_tests(ac3tests)
+
+# ADD_TAGS_AS_LABELS turns each case's Catch2 tags into ctest LABELS, which is
+# what lets `ctest -L concurrency` select a subset of this one binary without
+# a second discovery pass, a duplicated registration, or a name-based -R guess
+# that a renamed test would silently drop out of.
+#
+# The label that matters today is `concurrency`: tests/audio/ (the lock-free
+# SPSC ring, the silence watchdog, the clock-drift servo and the backend
+# contract) plus cli/test_cli_live.cpp (the commands that actually start the
+# capture and render threads). It is what CMakePresets.json's
+# test-linux-llvm-tsan preset runs - see .github/workflows/_build.yml's
+# ThreadSanitizer matrix entry and cmake/Sanitizers.cmake.
+#
+# The tag is on some single-threaded cases too (the resampler's own maths, the
+# watchdog's clock arithmetic), deliberately: the label marks what
+# ThreadSanitizer should be watching, and the types those cases exercise are
+# the ones that cross the audio-thread boundary in production. A new test
+# added to tests/audio/ inherits the leg by inheriting the tag.
+#
+# Every other tag in the suite becomes a label too, which costs nothing and
+# makes `ctest -L encoder` and friends work for free.
+catch_discover_tests(ac3tests ADD_TAGS_AS_LABELS)
 
 # ---------------------------------------------------------------------------
 # ac3perf - real-time throughput regression guards, deliberately a SEPARATE

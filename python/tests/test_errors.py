@@ -4,10 +4,9 @@ Result-like return. Every case here checks both the exception TYPE and its `.err
 not just that *something* was raised.
 """
 
+import ac3forge as ac3
 import numpy as np
 import pytest
-
-import ac3forge as ac3
 
 
 def test_decode_truncated_buffer_raises():
