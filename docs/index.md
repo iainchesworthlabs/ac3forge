@@ -34,6 +34,7 @@ depend on them.
 | | AC-3 (bsid 8) | E-AC-3 (bsid 16) |
 |---|---|---|
 | Coding modes | 1+1 dual mono, 1/0, 2/0, 3/0, 2/1, 3/1, 2/2, 3/2, each with or without LFE (1+1 never carries one) | the same, plus 7.1, 5.1.2, 5.1.4 and 7.1.4 through dependent substreams |
+| Programmes per stream | one | up to eight, through independent substreams (§E2.3.1.2's I0–I7) — the multi-language / associated-service shape of broadcast DD+. Each has its own layout, rate and dialnorm; labelling one as a service (`bsmod`) and mixing it against another is not there yet |
 | Sample rates | 48, 44.1, 32 kHz | 48, 44.1, 32 kHz, plus the `fscod2` half rates 24, 22.05, 16 kHz (Annex E only) |
 | Bit rates | CBR only — the 19 nominal rates of Table 5.18, 32–640 kbps | CBR (the same 19, per substream) or VBR — a quality target with optional min/max kbps bounds, per substream |
 | Transform | long (512-point) or short (2x256-point) blocks, KBD window, chosen per block per channel by a §8.2.2 transient detector | same |
@@ -101,7 +102,9 @@ from any encoder.
 
 The in-repo decoder shares its tables, bit-allocation engine, exponent decoding and IMDCT with
 the encoder. It reads AC-3 (bsid ≤ 8) and E-AC-3 (bsid 11–16), including dependent substreams,
-`chanmap`, and the §E3.8.2 render that lays a dependent's channels over the bed. Every Annex E
+`chanmap`, and the §E3.8.2 render that lays a dependent's channels over the bed. A stream
+carrying more than one programme is decoded one programme at a time — `DecoderConfig::programme`
+picks which — since independent substreams are alternatives rather than layers. Every Annex E
 coding tool decodes too — standard coupling (§E3.3), enhanced coupling (§E3.5, a full FFT-based
 phase-restoring reconstruction over 22 sub-bands), spectral extension (§E3.6, including the
 pseudo-random noise blend the standard requires but leaves the exact generator unspecified), the
@@ -159,7 +162,7 @@ produces it.
 
 | Component | What it is |
 |---|---|
-| `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told. `ac3::io::read_frame_header` is the same walk exposed per syncframe. |
+| `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told — grouped by programme, so a stream with two independent substreams describes both rather than one at twice the frame rate. `ac3::io::read_frame_header` is the same per-syncframe walk exposed on its own. |
 | `ac3::io::probe` | The stream description above (`ac3cli probe`), as a human table or a versioned JSON contract. |
 | `matroska::matroska` | A standalone MKV muxer. Links nothing from `ac3::forge` and knows nothing about AC-3. |
 | `mp4::mp4` | A standalone MP4/ISOBMFF muxer, same shape as `matroska::matroska`. `ac3::io::build_codec_config_box` builds a spec-correct `dac3`/`dec3` sample-entry box (ETSI TS 102 366 Annex F), Dolby Atmos extension included, straight off the bitstream. |

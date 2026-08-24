@@ -287,6 +287,27 @@ struct Options {
     // so these exist for the rewrite path alone.
     std::optional<int> bsmod = std::nullopt;
     std::optional<int> dsurmod = std::nullopt;
+    // 'decode'/'qc'/'levels': which programme of a multi-programme E-AC-3
+    // stream to work on - the §E2.3.1.2 substreamid of its independent
+    // substream. Unset takes the first programme the stream carries, which is
+    // the only one there is for effectively all content; the commands say so
+    // when a stream turns out to carry more than one. Never a fold of several
+    // programmes: they are alternatives (a second language, an audio
+    // description), not layers, so mixing them is never what a caller wants.
+    std::optional<int> programme;
+    // 'eac3-encode': a SECOND programme to author into the same stream as a
+    // second independent substream (§E2.3.1.2). Unset - the default - writes
+    // the single-programme stream this command always has.
+    std::optional<std::string> programme2;
+    // That programme's own layout token, bit rate and dialnorm. Empty/unset
+    // follow the second source's own channel count, half the primary's rate
+    // (an associated service is normally much narrower than the main mix) and
+    // dialnorm 31. Its own, not the primary's: a commentary track is levelled
+    // independently of the mix it is played against, which is the whole point
+    // of carrying it as a separate programme.
+    std::string programme2_layout;
+    std::optional<std::uint32_t> programme2_bitrate;
+    int programme2_dialnorm = 31;
     // 'qc' only: which soundfield to meter. false (layout=bed, the default)
     // measures the independent substream's own Table 5.8 bed through
     // BS.1770 Annex 1's basic algorithm - what this command has always
@@ -360,6 +381,18 @@ bool is_stdio_path(std::string_view path);
 // whatever is reading it downstream. The same split ffmpeg and friends make
 // between their progress/log output and the media they actually pipe.
 FILE* status_stream(std::string_view out_path);
+
+// The programme ids ac3::programme_ids() found, as "0, 1" - what every
+// command that takes programme= prints when a stream turns out to carry more
+// than one, and what it lists back when the id asked for is not among them.
+std::string format_programme_ids(std::span<const int> ids);
+
+// The programme a command should work on: `wanted` when the stream carries it,
+// else the first one it does carry; a message on stderr and std::nullopt when
+// `wanted` names a programme that is not there. `ids` is what
+// ac3::programme_ids() returned and must not be empty. Shared by decode, qc
+// and levels so all three answer a bad programme= the same way.
+std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted);
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames);
 

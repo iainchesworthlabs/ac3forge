@@ -95,31 +95,6 @@ std::expected<std::size_t, DecodeError> syncframe_bytes(std::span<const std::byt
     return *frame_size_bytes(static_cast<SampleRate>(fscod), kbps, (frmsizecod & 1) != 0);
 }
 
-// Does this syncframe open an access unit, or does it join the one in
-// progress? Independent (and convertible) Annex E substreams open one and
-// dependents join it - but so does an AC-3 syncframe, because §E2.3.1.2 says
-// "if an AC-3 bit stream is present in the E-AC-3 bit stream, then the AC-3
-// bit stream shall be processed as an independent substream assigned
-// substream ID 0". A legacy-core delivery leans on exactly that: an AC-3
-// frame carrying the bed with Annex E dependents extending it.
-//
-// bsid is checked FIRST and is the whole reason this is a function. strmtyp
-// lives in the top two bits of byte 2 of an Annex E syncframe, and in an AC-3
-// one those same bits are the top of crc1 - so reading them unconditionally
-// makes "does this frame start an access unit?" a question about a checksum,
-// answered differently for otherwise identical frames. The frames must be
-// >= 6 bytes, which split_frames has already established of every one it
-// returns.
-[[nodiscard]] bool begins_access_unit(std::span<const std::byte> frame) {
-    if (std::to_integer<std::uint32_t>(frame[5]) >> 3 <= 8) {
-        return true;  // AC-3: independent substream 0 by §E2.3.1.2
-    }
-    const auto strmtyp =
-        static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(frame[2]) >> 6);
-    return strmtyp == eac3::StreamType::kIndependent ||
-           strmtyp == eac3::StreamType::kConvertible;
-}
-
 }  // namespace
 
 std::expected<int, DecodeError> stream_bsid(std::span<const std::byte> frame) {
@@ -146,6 +121,50 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_frames
     }
     return frames;
 }
+
+namespace {
+
+// strmtyp and substreamid out of byte 2 of an E-AC-3 syncframe: strmtyp(2) |
+// substreamid(3) | frmsiz's top three bits. Read straight off the byte rather
+// than through parse_bsi, which is a whole frame's worth of work for the two
+// fields the framing layer needs.
+//
+// Gated on the frame's OWN bsid, because byte 2 only holds those fields in a
+// genuine Annex E frame - in an AC-3 one it is part of crc1, which is
+// effectively random per frame and aliases to "dependent" about a quarter of
+// the time. A stream may legally mix the two: real commercial discs author a
+// bsid-6 independent substream with a bsid-16 Atmos-carrying dependent right
+// behind it, and reading crc1 as strmtyp there swallows whole runs of access
+// units into one group (see apps/android/.../file_replay.cpp, which measured
+// exactly that and worked around it locally). bsid does not move - it sits at
+// bit 40 in both generations, deliberately - so gating on it is the reading
+// that is correct for either.
+struct Identity {
+    eac3::StreamType strmtyp;
+    int substreamid;
+};
+
+[[nodiscard]] Identity frame_identity(std::span<const std::byte> frame) {
+    const auto bsid = std::to_integer<std::uint32_t>(frame[5]) >> 3;
+    if (bsid < eac3::kMinDecodableBsid || bsid > eac3::kBsid) {
+        // An AC-3 syncframe is a whole programme's whole access unit on its
+        // own: no substream layer, so nothing to be dependent on and no
+        // second programme to number away from.
+        return {eac3::StreamType::kIndependent, 0};
+    }
+    const auto byte = std::to_integer<std::uint32_t>(frame[2]);
+    return {static_cast<eac3::StreamType>(byte >> 6), static_cast<int>((byte >> 3) & 0x07)};
+}
+
+// §E1.3.1: strmtyp 2 is an independent substream too - one whose programme was
+// previously coded as AC-3 - so it opens an access unit exactly as strmtyp 0
+// does.
+[[nodiscard]] bool begins_unit(eac3::StreamType strmtyp) {
+    return strmtyp == eac3::StreamType::kIndependent ||
+           strmtyp == eac3::StreamType::kConvertible;
+}
+
+}  // namespace
 
 bool has_eac3_extension_substreams(std::span<const std::byte> stream) {
     const auto core_bsid = stream_bsid(stream);
@@ -182,7 +201,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     std::size_t start = 0;
     std::size_t offset = 0;
     for (const auto& frame : *frames) {
-        if (begins_access_unit(frame) && offset != start) {
+        if (begins_unit(frame_identity(frame).strmtyp) && offset != start) {
             units.push_back(stream.subspan(start, offset - start));
             start = offset;
         }
@@ -193,7 +212,8 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     }
     // A stream whose very first syncframe is a dependent has lost its parent;
     // its channels have nothing to extend.
-    if (!units.empty() && !begins_access_unit(units.front())) {
+    if (!units.empty() &&
+        frame_identity(units.front()).strmtyp == eac3::StreamType::kDependent) {
         return std::unexpected(DecodeError::kInvalidStream);
     }
     return units;
@@ -201,6 +221,45 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
 
 FrameDecoder::FrameDecoder(const DecoderConfig& config)
     : config_(internal::resolve_operating_mode(config)), output_(config.output) {}
+
+std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
+    std::span<const std::byte> stream, int programme) {
+    auto units = split_access_units(stream);
+    if (!units) {
+        return std::unexpected(units.error());
+    }
+    // Each unit begins with its programme's own independent substream, so the
+    // selection is one field read per unit - no second walk of the frames.
+    // A dependent's substreamid numbers in its parent's space (§E2.3.1.2) and
+    // is never consulted here.
+    std::erase_if(*units, [programme](std::span<const std::byte> unit) {
+        return frame_identity(unit).substreamid != programme;
+    });
+    return units;
+}
+
+std::expected<std::vector<int>, DecodeError> programme_ids(std::span<const std::byte> stream) {
+    const auto units = split_access_units(stream);
+    if (!units) {
+        return std::unexpected(units.error());
+    }
+    std::vector<int> ids;
+    for (const auto& unit : *units) {
+        const int id = frame_identity(unit).substreamid;
+        // Ascending and unique: the stream repeats its programmes once per
+        // frame period, so the same handful of ids arrives over and over. At
+        // most eight of them (§E2.3.1.2), which is why this is a sorted
+        // insert rather than a set.
+        if (const auto at = std::ranges::lower_bound(ids, id);
+            at == ids.end() || *at != id) {
+            ids.insert(at, id);
+        }
+    }
+    // A stream with no access units at all reports no programmes rather than
+    // an empty-but-present one; split_frames already rejected anything that
+    // was not framing.
+    return ids;
+}
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame(
     std::span<const std::byte> frame) {

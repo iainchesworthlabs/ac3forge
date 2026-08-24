@@ -283,21 +283,44 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
 
 int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path,
                      const ac3cli::Options& meta, std::string_view objects_dir) {
+    // §E2.3.1.2: one programme is decoded, never a fold of several. A stream
+    // carrying a second independent substream carries an ALTERNATIVE - a
+    // second language, an audio description - so writing both into one WAV
+    // would splice two unrelated pieces of audio together.
+    const auto ids = ac3::programme_ids(stream);
+    if (!ids) {
+        fmt::println(stderr, "error: stream framing failed (code {})",
+                     static_cast<int>(ids.error()));
+        return 1;
+    }
+    if (ids->empty()) {
+        fmt::println(stderr, "error: no programmes in stream");
+        return 1;
+    }
+    const auto programme = choose_programme(*ids, meta.programme);
+    if (!programme) {
+        return 1;
+    }
     // Access units, not syncframes: a dependent substream is only meaningful
     // alongside the independent one it extends, and the two are rendered
     // together into one set of speaker feeds.
-    const auto units = ac3::split_access_units(stream);
+    const auto units = ac3::split_access_units(stream, *programme);
     if (!units) {
         fmt::println(stderr, "error: stream framing failed (code {})",
                      static_cast<int>(units.error()));
         return 1;
+    }
+    if (ids->size() > 1) {
+        fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
+                     ids->size(), format_programme_ids(*ids));
     }
     ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
                              .fast_imdct = meta.fast_imdct,
                              .heavy_compression = meta.p.heavy.has_value(),
                              .output = meta.output,
                              .concealment = meta.concealment,
-                             .joc_domain = meta.joc_domain}};
+                             .joc_domain = meta.joc_domain,
+                             .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
     // (the transient-pre-noise flush below).

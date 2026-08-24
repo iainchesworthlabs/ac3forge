@@ -68,6 +68,7 @@ add_executable(ac3tests
     encoder/test_eac3.cpp
     encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
+    decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp

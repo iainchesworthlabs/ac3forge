@@ -40,9 +40,17 @@ struct StreamLoudness {
 
 std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream);
 
+// `rendered_layout` is layout=bed (false, the default) or layout=rendered
+// (true) - see Options::qc_rendered_layout.
+//
+// `want_programme` is the §E2.3.1.2 substreamid of the independent substream
+// whose programme to measure - std::nullopt takes the first the stream
+// carries, which for a single-programme stream (all of them, before a second
+// independent substream is authored in) is the only one there is. Ignored for
+// AC-3, which has no substream layer.
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout);
-int run_levels(std::string_view in_path);
+           bool rendered_layout, std::optional<int> want_programme = std::nullopt);
+int run_levels(std::string_view in_path, std::optional<int> want_programme = std::nullopt);
 int run_loudness(std::string_view in_path);
 int run_spdif(std::string_view in_path, std::string_view out_path);
 int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial);
