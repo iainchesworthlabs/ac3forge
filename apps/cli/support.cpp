@@ -157,6 +157,12 @@ void print_meta_usage() {
                  "unchecked");
     fmt::println("  signing-key=<path>      the key file sign-objects/verify-objects use "
                  "(or AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)");
+    fmt::println("  verify            eac3-encode: decode every access unit as it is encoded "
+                 "and diff the decoder's model against the encoder's own - per-substream, "
+                 "per-block bit offsets, exponents, bit allocation, delta, AHT gains and the "
+                 "coupling/spectral-extension coordinates. Refuses the run on the first "
+                 "disagreement and names the block it starts at. Off by default: it decodes "
+                 "everything it encodes, so it roughly doubles the work");
     fmt::println("");
     fmt::println("source options (encode/eac3-encode; any order, after the positional "
                  "arguments):");
@@ -258,6 +264,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (token == "verify-objects") {
             out.verify_objects = true;
+            continue;
+        }
+        if (token == "verify") {
+            out.verify = true;
             continue;
         }
         if (key == "fast-mdct") {

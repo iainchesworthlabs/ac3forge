@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -178,8 +179,21 @@ AtmosEncoder::AtmosEncoder(const AtmosConfig& config, int objects)
                           .lfe = true,
                           .dialnorm = config.dialnorm,
                           .fast_mdct = config.fast_mdct,
-                          // §8.3.2.2: the object count, bed included.
-                          .oba_complexity_index = object_count(program_)}}),
+                          // §8.3.1's flag_ec3_extension_type_a plus §8.3.2.2's
+                          // complexity index - the object count, bed included.
+                          // Only when the container is actually emitted: this
+                          // marker is what a reader keys "this stream has an
+                          // object layer" off (ac3::io::scan, the dec3 box's
+                          // Atmos extension, HLS CHANNELS=.../JOC, FFmpeg's
+                          // "Dolby Digital Plus + Dolby Atmos" profile), so
+                          // writing it into a bed51 stream would advertise
+                          // objects that were never encoded - the same
+                          // objects-or-nothing rule encode_frame() applies to
+                          // the container itself.
+                          .oba_complexity_index =
+                              config.emit_object_metadata
+                                  ? std::optional<int>{object_count(program_)}
+                                  : std::nullopt}}),
       gains_(static_cast<std::size_t>(objects)),
       lfe_gains_(static_cast<std::size_t>(objects), 0.0),
       bed_(6, std::vector<float>(kSamplesPerFrame)) {
@@ -384,9 +398,11 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // the bed. So a stream this encoder cannot make such a field validate for
     // either carries objects (and is refused by that decoder) or omits the
     // container and plays as the 5.1 bed - never both. config_.emit_object_metadata
-    // picks which. The float bed built below (views) is identical regardless;
-    // the encoded output is not bit-identical across the two, because dropping
-    // the container hands its skip-field bytes back to the mantissas.
+    // picks which, for the TS 103 420 §8.3.1 addbsi marker in the constructor as
+    // well as for the container here: a bed51 stream advertises no object layer
+    // either. The float bed built below (views) is identical regardless; the
+    // encoded output is not bit-identical across the two, because dropping the
+    // container hands its skip-field bytes back to the mantissas.
     std::vector<std::byte> container;
     if (config_.emit_object_metadata) {
         const auto oamd = build_payload(program_, described);
