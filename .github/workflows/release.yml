@@ -418,8 +418,11 @@ jobs:
             name="$(basename "$f")"
             workdir="$(mktemp -d)"
             ( cd "$workdir" && gh attestation download "$OLDPWD/$f" --repo "${{ github.repository }}" )
-            bundle="$(ls "$workdir"/*.jsonl | head -1)"
-            mv "$bundle" "release-artifacts/${name}.intoto.jsonl"
+            # A glob, not `ls | head -1`: nullglob is set above, so an empty
+            # match leaves the array empty and set -u fails the step loudly
+            # rather than silently `mv`-ing an empty path.
+            bundles=("$workdir"/*.jsonl)
+            mv "${bundles[0]}" "release-artifacts/${name}.intoto.jsonl"
             rm -rf "$workdir"
           done
 

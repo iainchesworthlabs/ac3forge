@@ -365,10 +365,16 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Dolby-produced streams is allowed at all — `CONTRIBUTING.md`'s clean-room rule covers published
   standards and FFmpeg-as-oracle, not that. Stays blocked until those exist; listed so the state
   is recorded rather than rediscovered.
-- [ ] **IM7 (M)** — A public object-scene timeline type. `AtmosEncoder` takes keyframes; the
+- [x] **IM7 (M)** — A public object-scene timeline type. `AtmosEncoder` takes keyframes; the
   station-broadcast example, the GUI live room, `atmos-path` and any live source (UX4) each
   re-invent a scene description. One `ObjectScene` (JSON/YAML, interpolation and ramps,
   orientation rotation as metadata — not rendering) shared by all of them.
+  *Done: `ac3/oba/scene.hpp`. JSON, not YAML — the codec target takes no third-party
+  dependencies, so the format is parsed in-tree, and RFC 8259 is small enough to implement
+  completely where YAML 1.2 is not. `atmos-path`/`atmos-encode`, the examples and the GUI's
+  export are on it, the keyframe grammar still reads byte-identically, and `SceneCursor` is the
+  live seam UX4 plugs into. The GUI's own per-frame encode loops still build `ObjectPath`s
+  directly — a follow-up, not a gap in the type.*
 
 ## VX. Verification and oracles
 
@@ -452,21 +458,39 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   `continue-on-error` on `fuzz-short` and `fuzz-differential` (clean since 2026-08-09 and
   2026-08-16), add the differential harnesses to nightly, persist the grown corpus as an
   artifact. The ruleset edits are the repository admin's, not a PR's.
-- [ ] **VX14 (S)** — Lint and scan the non-C++ code. `codeql.yml` covers `cpp` only; ~29 Python
-  files under `tools/` implement the oracles and gates (`quality_race.py`,
-  `fuzz_encoder_space.py`, `compare_wav.py`, the trend appenders) and none are linted. `ruff`,
-  `shellcheck`, `actionlint`, and CodeQL's `python`/`javascript`/`java-kotlin`, hash-pinned like
-  the other locks.
-- [ ] **VX15 (M)** — Coverage floors for `apps/cli` (about 6,500 lines that front every CI
-  gate; `coverage_report.sh` stops at `src/`) and `pytest --cov` for `python/`. GUI C++ coverage
-  needs a Qt kit on the coverage leg and is a separate decision.
-- [ ] **VX16 (S)** — A ThreadSanitizer leg over the audio layer: a lock-free SPSC ring, a
-  silence watchdog and a drift servo shared between a real-time callback thread and the encoder
-  thread, and ASan/UBSan cannot see a race. `AC3FORGE_SANITIZERS` already takes a list; a
-  `concurrency` ctest label (none exist today).
-- [ ] **VX17 (M)** — PR-time performance comparison, merge-base vs head on one runner. Trends
-  are recorded on push only, and `ac3perf`'s absolute real-time gate has too much headroom to
-  notice a 2× slowdown.
+- [x] **VX14 (S)** — Lint and scan the non-C++ code. A `script-lint` job runs `ruff` over every
+  `.py` file (curated rule set in `ruff.toml`), `shellcheck` over `git ls-files '*.sh'` and
+  `actionlint` over the workflows, all three hash-pinned in
+  `requirements/requirements-lint.txt`. `codeql.yml` is now a language matrix with `python` and
+  `javascript-typescript` alongside `cpp`. `java-kotlin` is NOT included: CodeQL's Kotlin
+  extractor has no buildless mode, so `build-mode: none` extracted nothing and ended as a
+  configuration error on a measured dispatch run — enabling it needs JDK 17, the pinned NDK and
+  Gradle, i.e. a CodeQL step inside `_build.yml`'s existing `build-android` job rather than a
+  leg of its own. Carried forward as **VX21** below.
+- [x] **VX15 (M)** — Coverage floors for `apps/cli` and `python/`. `coverage_report.sh` gates
+  `apps/cli` at line 40 / branch 34 against a measured 54.0 / 46.5 (re-checked after roadmap
+  `IO2`'s container-reader/probe work landed in the same window), and prints a per-command
+  breakdown below the gate so a thin command module is visible rather than averaged away;
+  `wheels.yml`'s `python-coverage` job runs `pytest --cov` against the built wheel. Getting a
+  number at all needed `ac3cli` to link `ac3::coverage` itself — `--coverage` is target-scoped at
+  compile time, so linking an instrumented library was giving it the gcov runtime and no
+  instrumentation. GUI C++ coverage remains out of scope (it needs a Qt kit on the coverage leg);
+  `commands/containers.cpp` measured 0.0% at the time - since risen to 30.4% as roadmap `IO2`'s
+  own read-side work added coverage incidentally, but still well under the aggregate, so the
+  gap is carried forward as **VX22** below.
+- [x] **VX16 (S)** — A ThreadSanitizer leg over the audio layer. `config-linux-llvm-tsan` plus
+  a `Linux LLVM TSan` matrix entry, running a `concurrency` ctest label over `tests/audio/` and
+  `tests/cli/test_cli_live.cpp` (the headless CLI device paths, new here — nothing tested them
+  before). The label comes from `catch_discover_tests(... ADD_TAGS_AS_LABELS)`, which turns
+  Catch2 tags into ctest labels; two labels did already exist (`Performance`, `gui`), so this
+  follows their convention rather than introducing the mechanism. `tsan.supp` is checked in and
+  near-empty — the first run was clean. `ac3membench` is excluded from the leg: its global
+  `operator new`/`delete` replacements collide with TSan's runtime at link.
+- [x] **VX17 (M)** — PR-time performance comparison, merge base vs head on one runner. A
+  `performance-compare` job builds `ac3bench`/`ac3kernelbench` on both sides, runs each three
+  times, and posts a delta table to the job summary using the same soft/hard tiers
+  `append_performance_history.py` applies — imported from it, not restated. Non-blocking by
+  design and absent from `CI Status`; the trend-branch append stays push-only.
 - [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
   instrumented test for the Android bridge's device-free paths.
@@ -487,6 +511,18 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   and a derived FFmpeg-readability column; `docs/conformance-vectors.md` is the usage page and
   the release workflow attaches the bundle beside the SBOM and attestations. Hashes are
   per-toolchain until VX11/VX12; the source material stays synthetic until VX7.
+- [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
+  `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
+  (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a
+  configuration error), and that job already provisions JDK 17, the pinned NDK and the signing
+  key material. Split out of VX14.
+- [ ] **VX22 (S)** — CLI tests for the container commands. `apps/cli/commands/containers.cpp`
+  (`mkv`, `mp4`, `fmp4`, `ts`) measured 0.0% line coverage when VX15 first pointed the gate at
+  `apps/`; re-measured at 30.4% after roadmap `IO2`'s container-reader/`probe` work landed in the
+  same window and incidentally exercised some of it, but still well under `apps/cli`'s 54.0%
+  aggregate. Unlike `audio_io`/`live_audio` nothing about these commands needs a device — they are
+  fully testable headless, and the library-level container tests do not exercise the CLI paths
+  that wrap them. Split out of VX15.
 
 ## PF. Performance and portability
 
@@ -626,7 +662,8 @@ no SIMD and no threading anywhere in the codec core.
 - [ ] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
   room — OSC first, then MIDI and a desktop game controller. `apps/cli/main.cpp` still describes
   the synthetic orbit as "the hook a real live position source drops into once one exists"; the
-  Shield app is the only controller-driven path. Feeds IM7.
+  Shield app is the only controller-driven path. Lands on `ac3::oba::SceneCursor`, the live half
+  of IM7's scene type, which exists for exactly this.
 - [ ] **UX5 (L)** — WASM as a reusable streaming decoder: a push-frame API over
   `decode_access_unit_into`, an AudioWorklet, multichannel output or DC1's downmix, published as
   a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3

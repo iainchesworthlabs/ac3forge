@@ -263,6 +263,13 @@ jobs:
           - name: "Windows MSVC"
             runner: ${{ needs.check-runners.outputs.windows_runner_1 }}
             preset: windows-msvc
+            # Declared once, here, so `matrix.experimental` in continue-on-error
+            # above resolves against a property the matrix actually defines -
+            # without it every leg silently reads null and actionlint reports the
+            # reference as undefined. Every other leg is non-experimental by
+            # omission (the `|| false` fallback); a leg that IS experimental sets
+            # this to true and continue-on-error keeps it out of CI Status.
+            experimental: false
             # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
             # channel. Pinned by channel, not exact version: the runner image
             # ships whatever 18.x is current, and the assert step below fails
@@ -353,6 +360,35 @@ jobs:
             preset: linux-llvm-asan-ubsan
             llvm: true
             sanitizer: true
+
+          # ThreadSanitizer (roadmap VX16). A DIFFERENT question from the
+          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
+          # whether one thread's memory and arithmetic are sound, TSan asks
+          # whether two threads agree on who owns what - and no other gate in
+          # this repository can see a data race at all. src/audio is a
+          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
+          # shared between a real-time callback thread and the encoder
+          # thread, which is exactly the shape where a missing
+          # acquire/release is both easy to write and invisible until it
+          # corrupts audio on someone else's machine.
+          #
+          # Its test preset runs `-L concurrency` rather than the whole
+          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
+          # shadow memory makes every test several times slower, and the
+          # other ~600 cases are single-threaded codec maths where it has
+          # nothing to report. That keeps this leg to about the cost of a
+          # build rather than a second full matrix entry - the ctest run
+          # itself was 7 seconds over 36 tests when this landed.
+          #
+          # No `sanitizer: true`: that flag means the codec-matrix step, and
+          # driving every layout/tool combination through ac3cli is an
+          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
+          # same reasoning as the ASan+UBSan leg's own comment above.
+          - name: "Linux LLVM TSan"
+            runner: '["ubuntu-latest"]'
+            container: ubuntu:26.04
+            preset: linux-llvm-tsan
+            llvm: true
 
           # No Mac is available to the project locally, so CI remains the only
           # place this is exercised - proven green (build+test+gold-reference
