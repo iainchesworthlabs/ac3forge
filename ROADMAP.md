@@ -164,10 +164,13 @@ both encoders decide from content rather than from the bit rate.
   `run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting rejected config instead of
   reporting it — fixed to the same clean error every other unexpressable configuration already
   gets.
-- [ ] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. VBR shipped as a
-  per-frame quality knob (`VbrConfig`) with no race leg, no trend row and no measured
-  rate-distortion curve; add a sweep mode to `quality_race.py`, then a long-run average-rate
-  (ABR) mode with a bit reservoir, which is what a streaming ladder or a mux actually asks for.
+- [x] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. `quality_race.py vbr`
+  sweeps `VbrConfig::quality` and scores CBR and FFmpeg CBR at the rate each point actually
+  measured; the curve is published in
+  [docs/concepts/ac3-eac3.md](docs/concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
+  Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]` on the CLI): one composite SNR
+  offset held across frames and steered by an integral controller, over a sliding-window bit
+  reservoir that caps any window's pooled budget.
 - [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
   measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
   against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
@@ -243,19 +246,29 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   `width`/`height`/`depth`/`diffuse`, `channelLock` and `zoneExclusion` stop being the silent
   drops `docs/library/adm-bridge.md` lists (`ObjectPlacement` is a pure point source). Do the
   parse half once with DC6.
-- [ ] **DC8 (S)** — 24-bit and 32-bit integer PCM, `WAVE_FORMAT_EXTENSIBLE` wrapping them, and
-  RF64 in the plain WAV reader. `read_wav` and `WavStreamReader` accept PCM16 and float32 only,
-  so the normal professional delivery format needs an FFmpeg pre-conversion. The ADM reader has
-  the mirror-image hole (integer only, float32 refused).
-- [ ] **DC9 (M)** — Stream tools that do not re-encode the audio. (a) `ac3cli transcode in.ec3
+- [x] **DC8 (S)** — 24-bit and 32-bit integer PCM, `WAVE_FORMAT_EXTENSIBLE` wrapping them, and
+  RF64 in the plain WAV reader. `read_wav` and `WavStreamReader` accepted PCM16 and float32 only,
+  so the normal professional delivery format needed an FFmpeg pre-conversion. The ADM reader had
+  the mirror-image hole (integer only, float32 refused). Both readers now take 8/16/24/32-bit
+  integer PCM and 32/64-bit float, either wrapped in `WAVE_FORMAT_EXTENSIBLE`, with RF64/BW64
+  `ds64` sizes for files past 4 GB; the header walk and the sample conversion moved into one
+  shared translation unit so the two cannot disagree. The ADM side detects an IEEE-float master
+  up front and reads it with this module's own container walk, since the vendored libbw64
+  refuses to open one at all.
+- [x] **DC9 (M)** — Stream tools that do not re-encode the audio. (a) `ac3cli transcode in.ec3
   out.ac3`: decode and re-encode preserving dialnorm, DRC and mix metadata — the DD+-to-DD path
   for optical and AC-3-only HDMI sinks. (b) Metadata rewrite in place (dialnorm, `compr`, `bsmod`,
-  `dsurmod`) with the CRCs re-stamped, reusing the in-place rewrite plumbing `ac3::signing`
-  already has; with `LoudnessMeter` this is also a metadata-only `normalize` (A/85 §8). (c)
-  Frame-aligned `cut`/`cat` with access-unit-aware boundaries, and a public per-AU timestamp
-  helper (every container writer computes timing privately today). `strmtyp 2` convertible
-  streams — the spec's own no-re-encode path, refused by `validate()` today — stay out until
-  someone needs them.
+  `dsurmod`) with the CRCs re-stamped; with `LoudnessMeter` this is also a metadata-only
+  `normalize` (A/85 §8). (c) Frame-aligned `cut`/`cat` with access-unit-aware boundaries, and a
+  public per-AU timestamp helper. Shipped as `ac3::io::metadata_edit` (crc1 solved through
+  `ac3::solve_leading_crc`'s GF(2) inverse, only fields already on the wire rewritable) and
+  `ac3::io::access_unit_timing` over a new `ScannedStream::access_unit_samples`, which the four
+  container commands now take their `samples_per_frame` from instead of assuming 1536.
+  `transcode` carries dialnorm and the source's own `compr` word across verbatim and converts
+  the mix metadata between AC-3's two `bsi` levels and E-AC-3's `mixmdate` group; per-block
+  `dynrng` has no `bsi` field to stamp into and is regenerated from `drc=`, reported rather than
+  silently dropped. `strmtyp 2` convertible streams — the spec's own no-re-encode path, refused
+  by `validate()` — stayed out.
 - [x] **DC10 (XL)** — QMF-domain JOC. `ac3::dsp::QmfAnalysis`/`QmfSynthesis` is the 64-band
   complex filterbank §7.1 calls for — 640-tap prototype designed in-tree for exact perfect
   reconstruction (`tools/generators/gen_qmf_prototype.py`), 128-point FFT on the shared radix-2

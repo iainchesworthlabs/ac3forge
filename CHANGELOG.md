@@ -49,6 +49,64 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 - **GUI: a Service & production card** on the Metadata tab — service type, mixing level and room
   type, the Dolby Surround / Headphone / Surround EX flags where the layout carries them, A/D
   converter type, the copyright and original-bit-stream bits, and an Annex D toggle on AC-3.
+- **Wider PCM input** (roadmap `DC8`). `read_wav` and `WavStreamReader` accepted
+  `WAVE_FORMAT_PCM` at 16 bits and `WAVE_FORMAT_IEEE_FLOAT` at 32 and refused everything else,
+  so 24-bit — the normal professional delivery depth — needed an FFmpeg pre-conversion before
+  this encoder could touch it. Both now read 8/16/24/32-bit integer PCM and 32/64-bit IEEE
+  float, either wrapped in `WAVE_FORMAT_EXTENSIBLE`, and take the `data` chunk's length from a
+  `ds64` chunk for RF64 (EBU Tech 3306) and BW64 (BS.2088-1) files past RIFF's 4 GB ceiling.
+  Chunk lookup is a real RIFF walk rather than a search for the four-character code anywhere in
+  the file, so a `bext`/`iXML` payload containing the bytes `data` can no longer be mistaken for
+  the audio. The ADM reader had the mirror-image hole — integer only, IEEE float refused by the
+  vendored libbw64 at open time — and now detects a float master up front and reads it with its
+  own container walk, routing the `axml` bytes through the identical libadm parse.
+- **Stream tools** (roadmap `DC9`): five `ac3cli` commands over an already-encoded elementary
+  stream, four of which never touch a coded coefficient.
+  - `transcode in.ec3 out.ac3` decodes and re-encodes — the DD+-to-DD route to an optical link
+    or an AC-3-only HDMI sink, which had no route at all before. It carries the source's
+    `dialnorm` verbatim (§5.4.2.8 makes it a reproduction-level decision), stamps the source's
+    own `compr` word back onto each encoded frame rather than re-deriving a ceiling that
+    describes the programme and not this generation's coding, converts the mix metadata between
+    AC-3's two `bsi` levels and E-AC-3's `mixmdate` group, and folds a layout AC-3 cannot code
+    down to 5.1 per §7.8 — announced on stderr, since it changes what the listener hears.
+  - `metadata` rewrites `dialnorm`, `compr`, `bsmod` and `dsurmod` on an existing stream and
+    re-stamps its CRCs, copying the audio bytes through untouched; `normalize` is the
+    measurement-driven case, writing the `dialnorm` a BS.1770-4 measurement implies (ATSC A/85
+    §8) and nothing else.
+  - `cut` and `cat` move whole access units — an E-AC-3 access unit being an independent
+    substream plus its dependents — so a cut followed by a cat reproduces its input byte for
+    byte. `cat` refuses inputs whose codec, rate, layout or substream shape differ.
+- **`ac3::io::metadata_edit`**, the library surface behind those two: `read_frame_metadata`,
+  `edit_frame_metadata`, `edit_stream_metadata` and a public `restamp_crc`. `crc1` precedes the
+  region it covers, so it is solved through `ac3::solve_leading_crc`'s GF(2) polynomial inverse
+  rather than recomputed. Only fields already on the wire can change — `compr` behind `compre`,
+  E-AC-3's `bsmod`/`dsurmod` behind `infomdate` — and a field no syncframe carries is refused
+  before anything is written.
+- **`ac3::io::access_unit_timing`** and `ScannedStream::access_unit_samples`: where access unit
+  *i* starts and how long it lasts, in samples, seconds or an arbitrary timescale, computed from
+  the absolute sample position so nothing drifts. Every container writer computed this privately
+  from a `samples_per_frame` it was handed, and `ac3cli` passed 1536 regardless — correct only
+  while every access unit codes six blocks, which `numblkscod` does not guarantee.
+- New options: `codec=ac3|eac3` (`transcode`), and `compr=<dB>`, `compr2=<dB>`, `bsmod=<0..7>`,
+  `dsurmod=<0..3>` (`metadata`).
+- **E-AC-3 average-rate (ABR) encoding** — `ROADMAP` EQ12. `eac3::VbrConfig::abr` (a new
+  `eac3::AbrConfig`: `target_kbps`, `window_frames`) asks the encoder for a long-run average
+  bitrate while each frame's size still follows the content, which is what a streaming ladder
+  rung or a DVB mux actually contracts for and was previously reachable only by trying quality
+  values until one landed. The encoder holds one composite SNR offset across frames and steers
+  it with a conditionally-integrating controller, over a sliding-window bit reservoir that caps
+  any window of `window_frames` consecutive frames at its pooled budget. `min_kbps`/`max_kbps`
+  still bound each individual frame; a bound that excludes the average is refused rather than
+  silently missed. On the CLI it is a new leading token in the existing `vbr` grammar —
+  `avg:kbps[,win:frames]` — mutually exclusive with `q:`, because ABR moves the offset that
+  `q:` fixes and so reads no quality at all. Documented in
+  [docs/cli/metadata-options.md](docs/cli/metadata-options.md#the-vbr-token-eac3-encode-only).
+- **A measured rate-distortion curve for VBR** — the evidence VBR shipped without. A new `vbr`
+  mode in `tools/ci/quality_race.py` sweeps `VbrConfig::quality`, measures what each point
+  actually costs, and scores CBR, ABR and FFmpeg CBR *at that same measured rate*, so "does VBR
+  beat CBR at this rate" has a number rather than a warning. The curve, and what it says about
+  where each mode is worth using, is published in
+  [docs/concepts/ac3-eac3.md](docs/concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
 - **MPEG-TS ATSC profile beside DVB** (roadmap `IO6`). `mpegts::mux` now writes either
   registry's identification, chosen per stream with `MuxOptions::profile` and on the command
   line with `ac3cli ts <in> <out> atsc`. ATSC uses `stream_type` 0x81 for AC-3 (A/52:2018
@@ -340,6 +398,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- `ac3cli mkv`/`mp4`/`fmp4`/`ts` declared 1536 samples per frame for every stream. An E-AC-3
+  stream coding fewer than six blocks per syncframe (`numblkscod` 0/1/2, §E2.3.1.4 — legal, and
+  nothing this project's own encoders emit) got a track whose whole timeline was wrong by the
+  ratio. All four now take the figure from the bitstream, and refuse a stream whose access units
+  genuinely differ in length rather than muxing it to a silently wrong timeline.
 - **`ac3cli atmos ... bed51` no longer advertises an object layer it deliberately did not
   encode.** `AtmosConfig::emit_object_metadata` decided whether the EMDF container (OAMD + JOC)
   was written, but `AtmosEncoder` set TS 103 420 §8.3.1's `addbsi` object marker

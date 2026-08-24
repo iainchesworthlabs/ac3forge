@@ -29,6 +29,89 @@ following it.
 Both formats put `bsid` at bit 40 deliberately, so a reader can tell them apart before
 committing to a layout. `ac3::stream_bsid` exposes that on its own.
 
+## Where access unit *i* starts: `ac3::io::access_unit_timing`
+
+Same header. `ScannedStream::access_unit_samples` records how many samples each access unit
+codes, parallel to `access_units`. That is always 1536 for AC-3 (§5.3.1: six blocks of 256, no
+other option), but E-AC-3's `numblkscod` lets an independent substream code 1, 2, 3 or 6 blocks
+(§E2.3.1.4), so an E-AC-3 access unit is 256, 512, 768 or 1536 samples long — and a stream may
+mix lengths.
+
+```cpp
+const auto at = ac3::io::access_unit_timing(*scanned, index);
+at->start_sample;                     // samples from the start of the stream
+at->duration_samples;
+at->start_seconds();
+at->start_in_timescale(90'000);       // MPEG-2 systems clock
+at->duration_in_timescale(90'000);
+```
+
+Every value is computed from the **absolute** sample position rather than by summing per-frame
+increments. A frame duration is very often not a whole number of ticks in whatever timescale a
+container uses (1536 samples at 44.1 kHz is 34.83 ms), so a running sum drifts; computing from
+the absolute position keeps the error under one tick however long the stream runs. `duration_in_timescale`
+is the difference between this unit's converted start and the next one's, not the duration
+converted on its own — otherwise a run of durations would not add up to the start times they
+are supposed to.
+
+Three lookups go with it:
+
+| Call | Answers |
+|---|---|
+| `stream_duration_samples` / `stream_duration_seconds` | How long the whole thing is |
+| `access_unit_at_sample` / `access_unit_at_seconds` | Which unit covers a position — i.e. where a frame-aligned cut lands. A position inside a unit names that whole unit; a cut is never a split |
+| `uniform_access_unit_samples` | The one length every unit shares, or nothing when they differ |
+
+That last one is exactly the question a fixed-duration container track can answer and a variable
+one cannot: `mp4::AudioTrack`, `mpegts::AudioTrack` and `matroska::AudioTrack` each hold a single
+`samples_per_frame`, so a stream it returns nothing for cannot be described to them without
+per-sample durations they do not model. `ac3cli`'s `mkv`/`mp4`/`fmp4`/`ts` take the figure from
+here and refuse such a stream rather than muxing it to a silently wrong timeline.
+
+## Changing metadata without re-encoding: `ac3::io::metadata_edit`
+
+`ac3/io/metadata_edit.hpp`. `dialnorm`, `compr`, `bsmod` and `dsurmod` are delivery decisions —
+what a receiver is told the dialogue level is, how hard to compress on an RF output, what kind of
+service this is, whether the surrounds were matrixed. All four live in `bsi`, ahead of the first
+`audblk`, and none of them changes a coded coefficient. Re-encoding a programme to correct one
+costs a whole generation of lossy coding for nothing.
+
+```cpp
+std::vector<std::byte> stream = /* an AC-3 or E-AC-3 elementary stream */;
+const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 24, .bsmod = 2});
+// summary->syncframes visited, summary->changed actually different afterwards
+```
+
+`read_frame_metadata` reports what one syncframe carries — including E-AC-3's whole `mixmdate`
+group and AC-3's two `bsi` downmix levels — and which of the rewritable fields it transmits at
+all.
+
+The CRCs are the part that is not obvious. `crc2` is an ordinary trailing CRC. `crc1` is not:
+A/52 §7.10.1 puts it **before** the region it protects and requires the register to read zero
+once the first 5/8 of the syncframe has been shifted through, so it has to be *solved* rather
+than computed — `ac3::solve_leading_crc` (`ac3/core/crc16.hpp`) does that with a GF(2)
+polynomial inverse, and is the same function the encoder itself uses. `restamp_crc` is public
+for a caller doing its own bsi surgery (`ac3::signing::sign_atmos_frame` is the in-project
+precedent) so nobody has to reimplement that solve.
+
+Stated as limits rather than left to be discovered:
+
+- **Only fields already on the wire can change.** `compr` lives behind `compre`, and E-AC-3's
+  `bsmod`/`dsurmod` behind `infomdate`; a frame that did not transmit one has no bits to
+  overwrite, and inserting them would move every bit after it and re-frame the syncframe — which
+  is a re-encode by another name. That is `kFieldAbsent`, and the answer is to encode (or
+  transcode) with the field enabled. This project's own E-AC-3 encoder never sets `infomdate`,
+  so its streams carry no `bsmod`/`dsurmod` to rewrite.
+- A **dependent** E-AC-3 substream reports no `compr` whatever its `compre` bit says: §E3.8.5
+  repurposes that bit to mark the last dependent of the programme. Its eight bits are still
+  skipped correctly; they are simply not a `compr` word.
+- `strmtyp 2` (a convertible substream, §E2.3.1.1) is refused outright, matching
+  `ac3::plan::validate`'s own stance.
+
+A field named in an edit that **no** syncframe in the stream carries fails before anything is
+written, so the stream is either fully rewritten or left byte-for-byte alone — a metadata option
+that silently did nothing is indistinguishable from one that does not work.
+
 `ScannedStream` also carries the raw syntax values a container writer needs but cannot
 re-derive: `bsid`, `bsmod` (with `bsmod_present`, since Annex E carries it only inside
 `infomdate`), `bit_rate_code`, `dsurmod`, `mix_metadata`, `oba_complexity_index`, and — for
