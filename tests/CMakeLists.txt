@@ -136,6 +136,29 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
 
+# Where every test that writes a file writes it. Each such file's own scratch_dir()
+# helper appends its own leaf name under here, so the artefacts stay separated by
+# subject the way their old per-subject temp directories were.
+#
+# The point of routing them through a define at all is the ROOT of that path.
+# These used to sit under fs::temp_directory_path(), which depends on nothing but
+# the machine - so two ac3tests binaries built from different checkouts of this
+# repo (different worktrees, different build directories, different branches)
+# shared one directory and, because the filenames underneath are fixed, could
+# overwrite each other's intermediate files mid-test. What that produces is not an
+# obvious collision but a test failure in whichever run lost the race, in a branch
+# that has nothing to do with the change under test. CI never sees it - a runner
+# has its checkout to itself - so the whole cost lands on local development, where
+# building several worktrees of this repo at once is normal.
+#
+# Keying it to CMAKE_CURRENT_BINARY_DIR gives each build tree its own, which is
+# also the more useful place for it: the artefacts a failing test left behind end
+# up next to the binary that wrote them rather than pooled in the machine's temp
+# directory with every other build's, and `rm -rf` on a build tree takes them with
+# it. Supplied the same way AC3CLI_EXE and AC3FORGE_GOLDEN_AUDIO_DIR above are.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
+
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
 # a headless CTest run. Each directory holds the same filenames; CMake selects
