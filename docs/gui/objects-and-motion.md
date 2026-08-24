@@ -143,9 +143,17 @@ authored keeps the preset's name in the object table until a hand edit makes it 
 ### Export paths
 
 **Export paths…** writes every dynamic object's current motion — or, for a path-less object, its
-static position as a single time-0 keyframe — to a text file in `ac3cli atmos-path`'s own
-keyframe-file grammar (`object_index time_s x y z gain lfe_send`, one line per keyframe, addressed
-by each object's flat WAV channel index). Once exported, the command bar's `atmos-encode` line
+static position as a single time-0 keyframe — to a file `ac3cli atmos-path` and `atmos-encode`
+read. Which form depends on the name you save under: a `.json` name writes the
+`ac3::oba::ObjectScene` form (named objects, per-segment interpolation, a scene orientation — see
+[Spatial & Atmos objects](../library/spatial-and-atmos.md#the-serialised-form)), and anything else
+writes the keyframe columns this export has always produced (`object_index time_s x y z gain
+lfe_send`, one line per keyframe, addressed by each object's flat WAV channel index). `ac3cli`
+tells the two apart by their first character rather than their suffix, so either file works
+wherever the other does. JSON identifies an object by its position in the array rather than by an
+index column, so where the column form simply skips a bed-pinned channel, the JSON form writes it
+as a silent object holding at room centre — keeping every later object at the index a plain
+`atmos-encode` run addresses it by. Once exported, the command bar's `atmos-encode` line
 names that file as its trailing argument, so the line it shows is finally something that
 reproduces this tab's authored motion from the command line, not just a static per-channel
 placement. See [CLI → `atmos-encode`](../cli/commands.md) for the argument itself.
@@ -155,8 +163,9 @@ needs a monitored capture — the option points at [Live session](live-session.m
 offering a dead control; during a live Atmos session the room is dragged in real time instead of
 keyframed.
 
-See [Spatial & Atmos objects](../library/spatial-and-atmos.md) for the `ac3::oba::motion` API
-this timeline is a UI over — `Keyframe`, `KeyframePath`, and `evaluate_placements`.
+See [Spatial & Atmos objects](../library/spatial-and-atmos.md) for the library API this timeline
+is a UI over — `Keyframe`/`KeyframePath` per object, and `ObjectScene` for the scene the export
+writes.
 
 ## Next
 

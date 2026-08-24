@@ -10,47 +10,16 @@
 #include <utility>
 #include <vector>
 
+#include "ebml_detail.hpp"
+
 namespace matroska {
 
 namespace {
 
-// --- EBML element ids ------------------------------------------------------
-// Ids are written exactly as listed: an id already carries its own length
-// marker in the leading bits, so unlike a size it is never re-encoded.
-constexpr std::uint32_t kEbmlHeader = 0x1A45DFA3;
-constexpr std::uint32_t kEbmlVersion = 0x4286;
-constexpr std::uint32_t kEbmlReadVersion = 0x42F7;
-constexpr std::uint32_t kEbmlMaxIdLength = 0x42F2;
-constexpr std::uint32_t kEbmlMaxSizeLength = 0x42F3;
-constexpr std::uint32_t kDocType = 0x4282;
-constexpr std::uint32_t kDocTypeVersion = 0x4287;
-constexpr std::uint32_t kDocTypeReadVersion = 0x4285;
-
-constexpr std::uint32_t kSegment = 0x18538067;
-constexpr std::uint32_t kInfo = 0x1549A966;
-constexpr std::uint32_t kTimestampScale = 0x2AD7B1;
-constexpr std::uint32_t kDuration = 0x4489;
-constexpr std::uint32_t kMuxingApp = 0x4D80;
-constexpr std::uint32_t kWritingApp = 0x5741;
-
-constexpr std::uint32_t kTracks = 0x1654AE6B;
-constexpr std::uint32_t kTrackEntry = 0xAE;
-constexpr std::uint32_t kTrackNumber = 0xD7;
-constexpr std::uint32_t kTrackUid = 0x73C5;
-constexpr std::uint32_t kTrackType = 0x83;
-constexpr std::uint32_t kFlagLacing = 0x9C;
-constexpr std::uint32_t kCodecId = 0x86;
-constexpr std::uint32_t kLanguage = 0x22B59C;
-constexpr std::uint32_t kAudio = 0xE1;
-constexpr std::uint32_t kSamplingFrequency = 0xB5;
-constexpr std::uint32_t kChannels = 0x9F;
-
-constexpr std::uint32_t kCluster = 0x1F43B675;
-constexpr std::uint32_t kClusterTimestamp = 0xE7;
-constexpr std::uint32_t kSimpleBlock = 0xA3;
-
-constexpr std::uint8_t kTrackTypeAudio = 0x02;
-constexpr std::uint64_t kTimestampScaleNs = 1'000'000;  // one tick == 1 ms
+// Every EBML element id, the audio track-type value and the reserved
+// "unknown size" pattern live in ebml_detail.hpp, shared with reader.cpp -
+// see that header for why they are not transcribed twice.
+using namespace detail;
 
 using Bytes = std::vector<std::byte>;
 
@@ -147,15 +116,12 @@ Bytes build_info(const MuxOptions& options, std::uint64_t duration_ms) {
     return info;
 }
 
-// EBML's reserved "unknown size": a size vint whose value bits are ALL set,
-// at the widest width (8 bytes) this file ever writes a vint at - the
-// standard way a streamed element declares a length it cannot know yet (used
-// by Writer's Segment below). Reserving this exact pattern is what stops
-// put_vint's own automatic width-stepping from ever emitting it by accident
-// for a real size: the loop in put_vint steps to a wider width the moment a
-// real value would collide with it.
-constexpr std::uint64_t kUnknownSize = (std::uint64_t{1} << 56) - 1;
-
+// detail::kUnknownSize is EBML's reserved "unknown size" - a size vint
+// whose value bits are ALL set, at the widest width (8 bytes) this file
+// ever writes a vint at. Reserving that exact pattern is what stops
+// put_vint's own automatic width-stepping from ever emitting it by
+// accident for a real size: the loop in put_vint steps to a wider width
+// the moment a real value would collide with it.
 void put_master_unknown_size(Bytes& out, std::uint32_t id) {
     put_id(out, id);
     put_vint(out, kUnknownSize, 8);

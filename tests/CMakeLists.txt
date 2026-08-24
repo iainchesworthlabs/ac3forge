@@ -47,6 +47,7 @@ endif()
 add_executable(ac3tests
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
+    encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
@@ -54,6 +55,7 @@ add_executable(ac3tests
     core/test_bitwriter.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
+    core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
@@ -62,6 +64,7 @@ add_executable(ac3tests
     encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
     io/test_elementary.cpp
+    io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
@@ -71,20 +74,28 @@ add_executable(ac3tests
     containers/test_fmp4.cpp
     core/test_frame.cpp
     sinks/test_iec61937.cpp
+    sinks/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp
+    containers/test_matroska_reader.cpp
     core/test_mdct.cpp
     core/test_mdct_fast.cpp
     meta/test_meta_qc.cpp
     meta/test_mixing.cpp
     containers/test_mp4.cpp
+    containers/test_mp4_reader.cpp
     containers/test_mpegts.cpp
+    containers/test_mpegts_reader.cpp
+    quality/test_distortion.cpp
+    quality/test_perceptual.cpp
+    quality/test_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    oba/test_scene.cpp
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
@@ -110,6 +121,17 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src
 # account on inputs chosen to make the right answer obvious rather than only
 # through a whole encode. Same pattern as the signing headers above.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
+
+# core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
+# half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
+# builds under Clang with -fsanitize=fuzzer, but the header's
+# restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
+# frame-size tables, and whether it produces a crc1 the decoder accepts is
+# exactly the kind of thing that should be checked on every platform rather
+# than inferred from a coverage number on one. Same shape as the signing/src
+# include just above: a directory outside the public include tree, on this
+# target's path only.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
 # test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
 # committed programme-material fixtures rather than a synthetic signal - the delta bit
@@ -188,9 +210,26 @@ endif()
 # top-level CMakeLists.txt processes apps/cli before tests/, so the target
 # already exists here whenever it is going to.
 # ---------------------------------------------------------------------------
+# cli/test_cli_live.cpp rides the same gate and the same AC3CLI_EXE: it covers
+# the device-facing commands (devices/outputs/record/live/monitor), which no
+# test touched at all until roadmap VX15 measured commands/audio_io.cpp and
+# commands/live_audio.cpp at 0.0% line coverage. Its cases assert what holds
+# with or without an endpoint present - see that file's own header - and carry
+# the [concurrency] tag, so the ThreadSanitizer leg reaches them through
+# `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli.cpp)
+    target_sources(ac3tests PRIVATE
+        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
+    # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
+    # well as this encoder's own output - they exercise syntax ac3forge never
+    # emits (AHT, spectral extension, and frames this decoder declines
+    # outright), which is the only way to check that `probe` describes a FORMAT
+    # rather than this project's dialect of it. Passed as a path for the same
+    # reason AC3FORGE_GOLDEN_AUDIO_DIR is: ctest runs the binary from the build
+    # tree, nowhere near the fixtures.
+    target_compile_definitions(ac3tests PRIVATE
+        "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 endif()
 
 # RecordingSink (gui/test_recording_sink.cpp) is the GUI's one deliberately
@@ -205,6 +244,7 @@ endif()
 if(TARGET ac3gui)
     target_sources(ac3tests PRIVATE
         gui/test_recording_sink.cpp
+        "${CMAKE_SOURCE_DIR}/apps/gui/fmp4_folder_writer.cpp"
         "${CMAKE_SOURCE_DIR}/apps/gui/recording_sink.cpp")
     target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/gui")
 endif()
@@ -261,7 +301,28 @@ target_link_libraries(ac3tests
         Catch2::Catch2WithMain)
 
 include(Catch)
-catch_discover_tests(ac3tests)
+
+# ADD_TAGS_AS_LABELS turns each case's Catch2 tags into ctest LABELS, which is
+# what lets `ctest -L concurrency` select a subset of this one binary without
+# a second discovery pass, a duplicated registration, or a name-based -R guess
+# that a renamed test would silently drop out of.
+#
+# The label that matters today is `concurrency`: tests/audio/ (the lock-free
+# SPSC ring, the silence watchdog, the clock-drift servo and the backend
+# contract) plus cli/test_cli_live.cpp (the commands that actually start the
+# capture and render threads). It is what CMakePresets.json's
+# test-linux-llvm-tsan preset runs - see .github/workflows/_build.yml's
+# ThreadSanitizer matrix entry and cmake/Sanitizers.cmake.
+#
+# The tag is on some single-threaded cases too (the resampler's own maths, the
+# watchdog's clock arithmetic), deliberately: the label marks what
+# ThreadSanitizer should be watching, and the types those cases exercise are
+# the ones that cross the audio-thread boundary in production. A new test
+# added to tests/audio/ inherits the leg by inheriting the tag.
+#
+# Every other tag in the suite becomes a label too, which costs nothing and
+# makes `ctest -L encoder` and friends work for free.
+catch_discover_tests(ac3tests ADD_TAGS_AS_LABELS)
 
 # ---------------------------------------------------------------------------
 # ac3perf - real-time throughput regression guards, deliberately a SEPARATE

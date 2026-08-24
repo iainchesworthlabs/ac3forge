@@ -130,6 +130,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     }
 
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (!tools_or_error(tools, p.tools)) {
         return 1;
@@ -366,6 +367,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     }
 
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (!tools_or_error(tools, p.tools)) {
         return 1;
@@ -587,6 +589,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
     }
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));
@@ -808,6 +811,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     }
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));

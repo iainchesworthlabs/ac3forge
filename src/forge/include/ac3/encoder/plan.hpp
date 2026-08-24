@@ -11,6 +11,7 @@
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/export.hpp"
@@ -240,6 +241,16 @@ struct Tools {
     // spx_atten above. Deliberately NOT part of any(): whether a stream
     // used a coding tool is a bitstream question this flag never touches.
     bool fast_mdct = true;
+    // EncoderConfig::search - the per-frame search over transmitted bit
+    // allocation parameters, judged on the error the decoder will
+    // reconstruct (ac3/quality/distortion.hpp). Like fast_mdct above this is
+    // not a coding tool that changes the bitstream's SYNTAX, so it is
+    // likewise not part of any(); unlike fast_mdct it does change which
+    // codes a frame carries. kNone by default, matching the library config
+    // it feeds. AC-3 only so far: the E-AC-3 encoder's own step 9 has a
+    // different shape (Table E2.10 strategies hoisted to audfrm, snroffststr
+    // never exercised) and wiring it is EQ1/EQ2 work, not this.
+    quality::Criterion search = quality::Criterion::kNone;
 
     // §7.3.4 dithflag, per-channel-per-block content decision - likewise not
     // a coding tool (a decoder that never receives a set dithflag still
