@@ -201,6 +201,19 @@ struct CodedChannel {
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> wav_order(
     std::span<const eac3::chanmap::Location> locations);
 
+// Same permutation as wav_order(locations), for callers reordering a decoded
+// access unit's `channels` for playback specifically. Dual mono (acmod
+// kDualMono) is the one case with no Table E2.5 layout at all -
+// DecodedAccessUnit's own comment documents `layout` as left empty (count 0)
+// for it - so `locations` arrives empty too, and wav_order alone would
+// return an empty permutation: fed to an interleave step, that silently
+// drops every channel instead of erroring. This returns the identity order
+// over `channel_count` in that case; Ch1 and Ch2 have no speaker location to
+// sort by, only the coded order decode_access_unit already documents them
+// in, which identity preserves.
+[[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> monitor_order(
+    std::span<const eac3::chanmap::Location> locations, std::size_t channel_count);
+
 // --- Annex E coding tools ---------------------------------------------------
 
 // Every tool is a trade rather than a free win, so they are selected rather

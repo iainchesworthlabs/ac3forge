@@ -21,10 +21,18 @@
 
 namespace {
 
+// Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than
+// std::filesystem::temp_directory_path() for the reason tests/cli/test_cli.cpp's
+// own scratch_dir explains; the leaf is this file's own. The directory is created
+// in the constructor rather than by a scratch_dir() helper of the shape the other
+// files use because this file reaches its scratch space only through this RAII
+// type, which every test here already goes through.
 struct TempWav {
     std::string path;
     explicit TempWav(const char* name) {
-        path = (std::filesystem::temp_directory_path() / name).string();
+        const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / "wav_stream_reader";
+        std::filesystem::create_directories(dir);
+        path = (dir / name).string();
     }
     ~TempWav() { std::remove(path.c_str()); }
 };

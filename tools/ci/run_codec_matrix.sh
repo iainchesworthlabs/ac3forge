@@ -66,6 +66,14 @@ command -v ffmpeg >/dev/null 2>&1 || {
     echo "ffmpeg not found on PATH; it is required as the independent oracle this script checks against" >&2
     exit 1
 }
+# ffprobe ships alongside ffmpeg, but it is a separate binary and some distro
+# packagings split it out - and run_atmos_profile_check below is the only
+# oracle for the TS 103 420 object marker, so a missing ffprobe would silently
+# drop that check rather than fail.
+command -v ffprobe >/dev/null 2>&1 || {
+    echo "ffprobe not found on PATH; it reports the Atmos object marker this script asserts on" >&2
+    exit 1
+}
 
 count=0
 run() {
@@ -454,14 +462,51 @@ run_ffmpeg_check eac3enc_11_twofile.ec3
 # container, never a dependent one), so FFmpeg reads all of these - it is how
 # README.md's "FFmpeg reports Dolby Digital Plus + Dolby Atmos" claim is
 # checked at all.
+#
+# The two container modes need more than run_ffmpeg_check to tell apart. This
+# is CBR and the bed is the same programme either way, so `objects` and
+# `bed51` produce the same frame count at the same frame size and BOTH decode
+# cleanly - a strict decode cannot distinguish them. What distinguishes them
+# is TS 103 420 §8.3.1's addbsi object marker, which rides with the container
+# and is the only thing any reader has to go on; FFmpeg reports it as the
+# stream's profile, so ffprobe is the oracle for it. `objects` must show the
+# Atmos profile (that is README.md's claim, now actually asserted rather than
+# only implied by a successful decode); `bed51` must show no object layer at
+# all, or it would be advertising objects it deliberately did not encode -
+# the same empty promise an empty EMDF container would be.
+run_atmos_profile_check() {
+    count=$((count + 1))
+    echo "[$count] ffprobe atmos profile $1 (expect: $2)"
+    profile="$(ffprobe -v error -select_streams a:0 -show_entries stream=profile \
+        -of default=nw=1:nk=1 "$1")"
+    case "$2" in
+        atmos)
+            [ "$profile" = "Dolby Digital Plus + Dolby Atmos" ] || {
+                echo "$1: expected the Dolby Atmos profile, got '$profile'" >&2
+                exit 1
+            }
+            ;;
+        none)
+            case "$profile" in
+                *Atmos*)
+                    echo "$1: advertises an object layer it does not carry ('$profile')" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 for objects in 1 2 4 8; do
     run atmos "atmos_${objects}.ec3" 2 256 "$objects" 4 objects
     run decode "atmos_${objects}.ec3" "atmos_${objects}.wav"
     run_ffmpeg_check "atmos_${objects}.ec3"
+    run_atmos_profile_check "atmos_${objects}.ec3" atmos
 done
 run atmos atmos_bed51.ec3 2 256 4 4 bed51
 run decode atmos_bed51.ec3 atmos_bed51.wav
 run_ffmpeg_check atmos_bed51.ec3
+run_atmos_profile_check atmos_bed51.ec3 none
 run atmos-encode bootstrap_51.wav atmos_enc.ec3 256 6
 run decode atmos_enc.ec3 atmos_enc.wav
 run_ffmpeg_check atmos_enc.ec3

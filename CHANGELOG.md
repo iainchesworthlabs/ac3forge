@@ -49,6 +49,34 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 - **GUI: a Service & production card** on the Metadata tab — service type, mixing level and room
   type, the Dolby Surround / Headphone / Surround EX flags where the layout carries them, A/D
   converter type, the copyright and original-bit-stream bits, and an Annex D toggle on AC-3.
+- **SIMD kernels, selected by CMake rather than by `#ifdef`** (roadmap `PF5`). The codec's hot
+  kernels now run through 128-bit vector types supplied by one of
+  `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, each carrying an identically-pathed
+  `ac3/internal/arch/simd.hpp` that `src/forge/CMakeLists.txt` puts on the include path — the same
+  mechanism the profiling seam and the audio backend tree already use, and the reason no
+  translation unit in the codec has to ask what it is being compiled for. `AC3FORGE_SIMD` forces a
+  directory (`generic` is a complete scalar implementation and what a reproducibility comparison
+  should reach for); the resolved value appears in the configure summary and in
+  `ac3cli --version`. Vectorised: the DCT-IV pre/post twiddles every fast MDCT and fast IMDCT is
+  built on, analysis windowing, both inverses' twiddle stages, `dft512`'s normalisation,
+  §7.2.2.2's exponent-to-PSD conversion, and a batched `to_fixed25`. The FFT/DCT-IV core itself
+  (`fft_kernel.hpp`) is `PF4`'s own radix-4 restructuring, an algorithmic change rather than a
+  wider-lane one, and is not part of this seam; the pre/post-twiddle loops around it were
+  adapted to gather from and scatter to that kernel's digit-reversed layout rather than to
+  sequential slots, which is why the scatter/gather ends of those loops stay scalar and only the
+  arithmetic between them is vectorised.
+  Only SSE2 and base ARMv8-A Advanced SIMD are used — both part of their architecture rather than
+  optional features — so there is no `-march=` flag and no runtime dispatch, and 128 bits is the
+  native width of the platforms this was done for anyway (Raspberry Pi, the Shield's Tegra X1,
+  WASM). **Encoded output is unchanged, bit for bit**: every seam operation is exactly one
+  IEEE-754 add, subtract or multiply per lane, `tests/core/test_simd_kernels.cpp` holds each
+  primitive to bit-for-bit equality with a scalar reference in the same binary (the kernels built
+  from them are composition, not new arithmetic, so they inherit rather than need their own
+  bit-exact test), and the full `run_codec_matrix.sh` corpus — 93 streams, 272 output files across
+  every layout, Annex E tool token and metadata option — hashes identically between this build, a
+  `-DAC3FORGE_SIMD=generic` build, and the previous release. Decoded audio is likewise
+  bit-identical, which is a stronger guarantee than the fast-IMDCT work's own 7.8e-14 / 215–285 dB
+  standard. See [docs/building.md](docs/building.md).
 - **The encoder/decoder mirror self-check now covers E-AC-3** (`ac3::verify`, roadmap `VX2`).
   The AC-3 half has decoded every frame the encoder emitted and diffed the decoder's model
   against the encoder's own since 0.7.0; Annex E was explicitly out of scope, because its
@@ -270,6 +298,56 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   was read out of, and `ac3cli qc` prints that beside each verdict.
 - Roadmap item `IO12`, for BS.1770-5 Annex 4's object-based loudness algorithm — the half of
   BS.1770-5 that `IO10` deliberately left out.
+
+### Fixed
+
+- **`ac3cli atmos ... bed51` no longer advertises an object layer it deliberately did not
+  encode.** `AtmosConfig::emit_object_metadata` decided whether the EMDF container (OAMD + JOC)
+  was written, but `AtmosEncoder` set TS 103 420 §8.3.1's `addbsi` object marker
+  (`flag_ec3_extension_type_a` plus §8.3.2.2's `complexity_index_type_a`) unconditionally. That
+  marker is the only thing any reader has to go on, so a `bed51` stream — whose whole purpose is
+  to omit the container and play as a plain 5.1 bed on a decoder that would otherwise refuse an
+  object container it cannot validate — still claimed objects downstream: `ac3::io::scan`
+  reported an `oba_complexity_index`, `ac3::io::build_codec_config_box` wrote the `dec3` box's
+  Dolby Atmos extension, `ac3cli fmp4` wrote `CHANNELS="<N>/JOC"` into its HLS playlists, and
+  FFmpeg reported the profile as "Dolby Digital Plus + Dolby Atmos". The marker now follows the
+  container, which is the same objects-or-nothing rule that already ruled out emitting an empty
+  container. This changes `bed51` output bytes: the `addbsi` element shrinks to a single zero
+  `addbsie` bit and the freed bits go back to the mantissas (the frame size is unchanged — this
+  is CBR). `objects` mode is unaffected. The FFmpeg-oracle matrix now asserts the profile for
+  both modes rather than only that each decodes.
+
+### Changed
+
+- **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
+  revision of A/85 since 2013. Its §6 restates the target loudness, tolerance and true-peak
+  ceiling unchanged (−24 LKFS, ±2 dB, −2 dBTP), so **no preset number moves**; only the citation
+  does. EBU R 128 s4, Netflix's Dolby Atmos Home Mix Deliverable Requirements v2.3 and Amazon
+  were each checked against their primary sources and deliberately *not* added as presets: the
+  first two are numerically identical to presets already in the table (s4 differs only by a
+  Loudness-to-Dialogue Ratio this meter cannot measure, and the Atmos spec only by asking for a
+  5.1 re-render, which is a `layout=` choice), and no primary Amazon document was reachable to
+  cite. `ac3/meta/qc.hpp` and `docs/cli/metadata-options.md` record the reasoning for each.
+- `QcPreset` distinguishes a loudness **band** from a loudness **ceiling**
+  (`QcLoudnessLimit`). Every preset before now stated a target with a symmetric tolerance; Apple's
+  states only a level not to exceed, and gating that as a ±band would fail quiet material the
+  specification actually accepts.
+
+### Fixed
+
+- **`dialnorm=auto` and `ac3cli loudness` mis-assigned channel weights on any layout wider than
+  stereo.** `measured_dialnorm()` pushed a WAV's channels into `LoudnessMeter` in *WAV* order
+  (FL, FR, FC, LFE, BL, BR) when the meter expects AC-3 *coded* order (L, C, R, Ls, Rs, LFE). For
+  5.1 that put the LFE where `Ls` belongs — so BS.1770's +1.5 dB surround weight landed on the
+  one channel the standard excludes outright, while a real surround landed in the excluded slot
+  and was dropped entirely. Found by cross-checking against ffmpeg's `ebur128`: with signal in
+  only the LFE channel, ac3forge reported −38.61 LKFS where the oracle correctly reported no
+  loudness at all. `ac3cli levels` already applied the right permutation, which is why it never
+  showed the fault. Measured `dialnorm` values for 3-channel-and-wider sources change as a
+  result, and are now correct.
+
+### Added
+
 - **`ac3kernelbench` covers the fast transform paths and `dft512`.** The kernel series benched
   the direct IMDCT and not the fast one that has been the decode default since 0.9.0, and never
   benched `dft512` or the block-switched inverse at all. Four rows added
@@ -589,6 +667,24 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   §5.4.2.14 has five, and writing it would push every following field one bit along rather than
   merely recording the wrong level. New `plan::PlanError::kTimecodeNeedsBsid8` refuses a plan
   asking for Annex D and a time code, which occupy the same 28 bits.
+- **Floating-point contraction is pinned off** (`-ffp-contract=off`, `/fp:precise` on MSVC,
+  `/clang:-ffp-contract=off` on clang-cl), project-wide — for the SIMD seam's bit-exactness
+  argument, which needs the compiler not to silently re-fuse a vector operation into an FMA the
+  seam's intrinsics cannot express. No measurable cost on x86-64, where the flag is a no-op —
+  proven by the corpus comparison above being byte-identical against a build without it.
+  **Tested and ruled out as the explanation for roadmap `VX11`'s gold-reference gap**: the leading
+  hypothesis for why `linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` score 6.02 dB (exactly
+  one AC-3 exponent step) below every x86 leg was FMA contraction, since it is architecture-
+  dependent in exactly that pattern. With the flag pinned on every leg, the gap is unchanged —
+  those three legs still measure ~61.8 dB against x86's ~67.8 dB. `docs/building.md`'s
+  "Floating-point contraction" section carries the measurement and the surviving hypothesis (all
+  three low-scoring legs are aarch64, which points at libm's own architecture-specific
+  `sin`/`cos` in the transform twiddle tables); `VX11` stays open.
+- **`ac3kernelbench` gained the fast inverse transforms.** `imdct512_windowed_fast`,
+  `imdct256_pair_windowed` and `imdct256_pair_windowed_fast` join the per-kernel trend series; the
+  bench previously timed only the direct inverse, which has not been the default since 0.9.0, so
+  the whole decode side of a transform change was invisible to
+  [docs/performance-trend.md](docs/performance-trend.md).
 - **JOC now runs in the QMF domain by default**, encoder and decoder. Mean per-object SNR over
   four placements goes from 22.8 dB to 28.6 dB; against a decoder reconstructing in the QMF
   domain — which is what every licensed decoder does, and which the old encoder had no way to

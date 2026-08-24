@@ -3164,10 +3164,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
                 const auto& source = coeffs_at(s, blk);
                 auto& out = fixed_at(s, blk);
-                for (int bin = plan.start; bin < plan.endmant; ++bin) {
-                    out[static_cast<std::size_t>(bin)] =
-                        to_fixed25(source[static_cast<std::size_t>(bin)]);
-                }
+                // Two coefficients at a time through the architecture seam
+                // (ROADMAP PF5), identical values to the bin-by-bin form -
+                // see to_fixed25_block in exponents.cpp.
+                to_fixed25_block(std::span<const double>{source}.subspan(
+                                     static_cast<std::size_t>(plan.start), span),
+                                 std::span{out}.subspan(static_cast<std::size_t>(plan.start),
+                                                        span));
                 extract_exponents(
                     std::span{out}.subspan(static_cast<std::size_t>(plan.start), span),
                     axis_exps);

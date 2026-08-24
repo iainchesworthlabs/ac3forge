@@ -314,7 +314,11 @@ class EncoderController : public QObject {
     Q_PROPERTY(bool extrasLocked READ extrasLocked NOTIFY planChanged)
     // "<ear-level count>.<LFE count>[.<ceiling count>]", read off the actual
     // location mask so an unnamed combination still reads honestly - 3/2 +
-    // LFE + LFE2 is "5.2", 3/2 + LFE + rear + both ceiling pairs is "7.1.4".
+    // LFE + rear + LFE2 is "7.2", 3/2 + LFE + rear + both ceiling pairs is
+    // "7.1.4". A bare 3/2 + LFE + LFE2 with no other extra would read as
+    // "5.2", but chanmap::allocate() (and so toggleExtra/extrasModel) never
+    // lets the picker reach it - LFE2 alone has no full-bandwidth channel to
+    // share its dependent substream with.
     Q_PROPERTY(QString channelShapeName READ channelShapeName NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetUsed READ channelBudgetUsed NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetMax READ channelBudgetMax CONSTANT)
@@ -858,8 +862,9 @@ public:
     // first half of the file; stopping and starting a new take is honest).
     Q_INVOKABLE void switchLiveLayout(const QString& presetName);
     // Sets bed + LFE + extras together - "stereo", "5.1", "7.1", "5.1.4",
-    // "7.1.4", "5.2" or "7.2.4" - the starting points the Format tab's
-    // preset buttons offer.
+    // "7.1.4" or "7.2.4" - the starting points the Format tab's preset
+    // buttons offer. No "5.2": a bare second LFE with no other extra is an
+    // AllocationError::kOrphanLfe2, so there is nothing valid to name it.
     // Upgrades AC-3 to E-AC-3 first if the preset needs a dependent substream,
     // the same way a manual extras tick would otherwise be refused outright.
     Q_INVOKABLE void applyChannelPreset(const QString& name);

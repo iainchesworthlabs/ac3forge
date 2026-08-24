@@ -39,8 +39,14 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Scratch space for this file's own tests. AC3FORGE_TEST_SCRATCH_DIR (see
+// tests/CMakeLists.txt for why it is a build-tree path and not
+// fs::temp_directory_path()) is the whole suite's root; the leaf below is this
+// file's own. Duplicated in every test file that needs scratch space rather
+// than shared, per this project's per-file test-helper convention - only the
+// leaf name differs between the copies.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_cli_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli";
     fs::create_directories(dir);
     return dir;
 }
