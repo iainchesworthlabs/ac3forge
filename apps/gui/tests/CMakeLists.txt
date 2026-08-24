@@ -28,12 +28,18 @@ qt_add_executable(ac3gui_qmltests
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
-    fmp4_folder_writer.cpp
-    fmp4_folder_writer.hpp
-    recording_sink.cpp
-    recording_sink.hpp
+    ../common/fmp4_folder_writer.cpp
+    ../common/fmp4_folder_writer.hpp
+    ../common/recording_sink.cpp
+    ../common/recording_sink.hpp
     system_theme.cpp
     system_theme.hpp)
+
+# apps/common, for the same reason ../CMakeLists.txt names it: RecordingSink
+# and Fmp4FolderWriter moved there when ac3cli's own takes started streaming
+# through them (roadmap IO9). This target compiles the same files in,
+# exactly as it always did.
+target_include_directories(ac3gui_qmltests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 qt_add_qml_module(ac3gui_qmltests
     URI Ac3Forge

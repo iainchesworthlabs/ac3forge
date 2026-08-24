@@ -397,15 +397,28 @@ machine-readable output and a single failure exit code. Users arrive with contai
   output; a frame carrying an object layer in another shape is refused rather than passed
   through, which DC6 (widening the object parsers to real third-party content) is the natural
   place to revisit.*
-- [ ] **IO8 (M)** — CLI scripting ergonomics: a documented exit-code scheme (every failure is 1
+- [x] **IO8 (M)** — CLI scripting ergonomics: a documented exit-code scheme (every failure is 1
   today), `quiet`/progress, `help <command>` (the usage block is generated from the command
   table, so this is cheap), a man page and shell completions installed by `Packaging.cmake`.
-- [ ] **IO9 (M)** — CLI live/record parity with the GUI session. `record` is AC-3 only, `live
+  Done: `apps/cli/exit_codes.hpp` names eight codes and every `return` site is classified against
+  it; `apps/cli/usage.{hpp,cpp}` splits the usage block into topic sections a command row selects
+  from, so `help <command>` / `--help` print one row and its own grammars and an argument error
+  prints a pointer instead of the manual; `man` and `completions <shell>` render from the same
+  table and are generated and installed by the build (the Homebrew formula places the bash/fish
+  halves); `quiet`/`verbose` plus a stderr progress line on long encodes and decodes.
+- [x] **IO9 (M)** — CLI live/record parity with the GUI session. `record` is AC-3 only, `live
   mode=channels` encodes AC-3 stereo only, `container=` is `raw|mkv` while the GUI's
   `RecordingSink` also streams MPEG-TS and S/PDIF WAV; `live` still buffers every frame and
   writes once, has no device-drop watchdog, no object add/reassign and no parallel AC-3 downmix
   leg (`docs/gui/live-session.md` records the gap); `obj`/`objm` in `src=`/`map=` parse but do
-  nothing in `ac3cli`.
+  nothing in `ac3cli`. Done: `record`/`live` take `layout=`/`codec=` (any layout up to 7.1.4,
+  AC-3 or E-AC-3), `container=raw|mkv|ts|spdif` written incrementally through `RecordingSink`
+  itself (moved to `apps/common/` and compiled into both front ends), and `watchdog=<seconds>`
+  over `ac3::audio::SilenceWatchdog`; `live mode=atmos` allocates an `objects=<N>` slot budget
+  once and binds capture channels to it with `map=`; an AC-3-only passthrough endpoint gets the
+  parallel 5.1 AC-3 leg instead of a refusal (`downmix=off` to keep the refusal); and
+  `atmos-encode` assembles real objects behind `src=`/`map=`. Receiver hot-swap stays GUI-only —
+  a command line has nothing to trigger it with.
 - [x] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` gained a second
   constructor taking an `eac3::chanmap::Layout` and applying ITU-R BS.1770-5 (11/2023) Annex 3's
   extended algorithm for advanced sound systems, whose Table 4 weights each channel by position
@@ -759,14 +772,24 @@ directory; there is still no threading anywhere in the codec core.
   reassociating them would change the reference path's numbers), a WASM `simd128` directory (no
   `emsdk` on this session's machine to verify one against, and WASM reaches `generic` — a complete
   and correct scalar implementation — until then), and AVX2/NEON-wider dispatch.
-- [ ] **PF6 (M)** — A latency budget: document end-to-end encoder latency (lookahead, transient
-  detection, tpn hold-back), expose it (`ac3forge_encoder_latency_samples()`), and make EQ11's
-  short syncframes the low-latency mode. The first question an engine or conferencing integrator
-  asks.
-- [ ] **PF7 (L)** — A minimum-footprint decoder profile: static allocation only, no heap in the
-  decode loop, an explicit table ROM budget, a `-fno-exceptions`/no-RTTI audit, a float32 path,
-  and a cross-compiled no-OS CI leg (`arm-none-eabi` under QEMU). The memory programme cut decode
-  bytes per frame by more than half; this is the next step for set-top and DSP ports.
+- [x] **PF6 (M)** — A latency budget: documented end-to-end encoder latency (frame
+  granularity, MDCT/IMDCT overlap, lookahead, the §3.7 hold-back) in `ac3/latency.hpp`, measured
+  it empirically (`tests/decoder/test_latency.cpp`: an impulse and a tone burst through a real
+  encode→decode, located by peak and by cross-correlation), and exposed it -
+  `latency()`/`latency_samples()` on every encoder, `latency_samples()` on both decoders,
+  `ac3forge_encoder_latency_samples()` in the C API, `FrameEncoder.latency` in Python. An Atmos
+  object waveform's own term is `joc::reconstruction_delay(joc_domain)` — 832 samples end to end
+  with the default QMF reconstruction, not a flat multiple of the MDCT overlap. EQ11's
+  short syncframes (the low-latency mode this was meant to document) have not landed - the
+  E-AC-3 latency section names the 512-1024-sample figures they would enable and says so.
+- [x] **PF7 (L)** — A minimum-footprint decoder profile: `AC3FORGE_MINIMAL_DECODER` builds a
+  decode-only `ac3::forge_minimal` with no exceptions, no RTTI and no direct-form transform
+  tables (an explicit 1.81 MiB ROM budget, measured on the object file), proven on a
+  cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`, `build-footprint`) that decodes
+  real AC-3/E-AC-3 to the host build's own levels in 354 KB of image and 243 KB of peak heap.
+  Two requirements are recorded as open gaps rather than half-enforced: zero heap traffic in the
+  decode loop (today: 45-85 allocations/frame) and a float32-only internal path - see
+  `docs/building.md`'s Gaps section.
 - [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
   `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
   forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.

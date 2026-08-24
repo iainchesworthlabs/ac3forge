@@ -415,8 +415,14 @@ namespace {
 
 // §5.6.1.1.8/.9's inverse. The field is over 62 and the two codes above it
 // also mean "at the wall", which is what the min() is for.
+//
+// std::min<std::uint32_t>, not deduced: `code` is std::uint32_t, which on a
+// 32-bit target (arm-none-eabi, where the minimum-footprint decoder profile
+// runs) is `unsigned long` while 62u is `unsigned int` - two different types,
+// so deduction fails outright. Same everywhere else this file and
+// core/bitalloc.cpp pin a std::min/std::max argument type.
 [[nodiscard]] double xy_from_code(std::uint32_t code) {
-    return static_cast<double>(std::min(code, 62u)) / 62.0;
+    return static_cast<double>(std::min<std::uint32_t>(code, 62u)) / 62.0;
 }
 
 // §5.6.1.4 Table 19's inverse - see put_gain's own comment on why the two

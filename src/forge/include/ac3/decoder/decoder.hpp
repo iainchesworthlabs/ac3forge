@@ -17,6 +17,7 @@
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
@@ -346,6 +347,22 @@ class AC3FORGE_EXPORT FrameDecoder {
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_into(
         std::span<const std::byte> frame, std::span<const std::span<float>> channels);
 
+    // Roadmap PF6: the delay THIS decoder adds on top of whatever the
+    // encoder's own budget (ac3/latency.hpp) already accounts for. Exactly
+    // zero, and structurally so rather than by luck: decode_frame returns a
+    // frame's full kSamplesPerFrame of PCM from the call that supplies that
+    // frame's bytes, and the IMDCT overlap those samples came out of is
+    // already charged as the chain's transform term. AC-3 has no §3.7
+    // hold-back to add - see Eac3Decoder::latency_samples(), which does.
+    //
+    // Present rather than left implicit so "encoder latency plus decoder
+    // latency" is a sum a caller can actually write, with both halves
+    // answering from the object that owns the behaviour. Distinct from
+    // output_latency_samples() below: that is the OUTPUT STAGE's own delay
+    // (Lt/Rt phase shift), a separate term from this decoder's own overlap
+    // contribution and additive with it, not a duplicate of it.
+    [[nodiscard]] static constexpr int latency_samples() { return 0; }
+
     // The output stage's own added delay, in samples - see
     // OutputStage::latency_samples(). Zero for every configuration except
     // Lt/Rt with its phase shift left on.
@@ -645,6 +662,21 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // results here rather than one final assembled DecodedAccessUnit,
     // since by definition the assembly never completed.
     [[nodiscard]] std::vector<DecodedSubstream> flush();
+
+    // Roadmap PF6: the delay THIS decoder adds, same contract as
+    // FrameDecoder::latency_samples(). Zero until some substream's frame sets
+    // transproce, kSamplesPerFrame from then on - §3.7's hold-back is not a
+    // property of the decoder but of the stream it is fed, and once a
+    // substream identity's slot engages it stays engaged for the rest of the
+    // stream (decode_substream's own doc comment). Not const-foldable for
+    // that reason, unlike the AC-3 form.
+    //
+    // A caller sizing buffers before the stream starts should ask the ENCODER
+    // instead (eac3::eac3_latency), which knows from its own configuration
+    // whether the tool will ever be used; this reports what has actually
+    // happened so far. Distinct from output_latency_samples() below and
+    // additive with it - see FrameDecoder's own pair of these for why.
+    [[nodiscard]] int latency_samples() const;
 
     // The output stage's own added delay, in samples - see
     // OutputStage::latency_samples(). Zero for every configuration except

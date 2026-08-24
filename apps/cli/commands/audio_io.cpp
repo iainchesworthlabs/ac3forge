@@ -9,27 +9,33 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/watchdog.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/sinks/iec61937.hpp"
-#include "matroska/matroska.hpp"
-#include "mp4/mp4.hpp"
+#include "recording_sink.hpp"
 
 namespace ac3cli::commands {
+
+namespace plan = ac3::plan;
 
 int run_devices() {
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         fmt::println("no active capture endpoints found");
@@ -63,25 +69,35 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
                        ac3::iec61937::PassthroughDetector& detector, const Options& meta) {
     const auto channels = capture.channels();
     const bool eac3 = detector.detected() == ac3::iec61937::BurstDataType::kEac3;
-    fmt::println("");
-    fmt::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
-                 eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
-    if (meta.container != RecordContainer::kRaw) {
-        // Said rather than silently ignored: both container=mkv and
-        // container=fmp4 need the frame boundaries write_frames_or_mux/
-        // Fmp4SessionWriter work from, and this path never has them - it has
-        // a byte stream nothing here re-parsed. 'mkv'/'fmp4' turn the result
-        // into a container in one further step.
-        const char* name = meta.container == RecordContainer::kMatroska ? "mkv" : "fmp4";
-        fmt::println("container={} does not apply to a passthrough capture: writing the bare",
-                     name);
-        fmt::println("elementary stream, which 'ac3cli {}' will wrap if you want a container.",
-                     name);
+    const auto status = status_stream(out_path);
+    status_println(status, "");
+    status_println(status, "capture is bitstreaming {}, not PCM: recording the elementary stream",
+                   eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
+    if (meta.container != RecordingSink::Container::kElementary) {
+        // Said rather than silently ignored: mkv/ts/spdif/fmp4 all need the
+        // frame boundaries RecordingSink works from, and this path never has
+        // them - it has a byte stream nothing here re-parsed. 'mkv'/'ts'/
+        // 'spdif'/'fmp4' turn the result into a container in one further
+        // step.
+        std::string_view name;
+        switch (meta.container) {
+            case RecordingSink::Container::kMatroska: name = "mkv"; break;
+            case RecordingSink::Container::kMpegts: name = "ts"; break;
+            case RecordingSink::Container::kSpdif: name = "spdif"; break;
+            case RecordingSink::Container::kFmp4: name = "fmp4"; break;
+            case RecordingSink::Container::kElementary: break;
+        }
+        status_println(status,
+                       "container={} does not apply to a passthrough capture: writing the bare",
+                       name);
+        status_println(status,
+                       "elementary stream, which 'ac3cli {}' will wrap if you want a container.",
+                       name);
     }
 
     EncodedStreamSink sink;
     if (!sink.open(out_path, meta.keep_partial)) {
-        return 1;
+        return kExitOutput;
     }
     ac3::iec61937::BurstReader reader;
     std::vector<std::byte> payload;
@@ -102,61 +118,87 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
 
     if (!drain(detector.buffered())) {
         sink.abort();
-        return 1;
+        return kExitInput;
     }
     detector.clear_buffer();
 
     // The carrier's own clock, not the content's: an E-AC-3 burst period
     // spans 6144 sample frames at the 4x rate, an AC-3 one 1536 at 1x, and
-    // both come to the same 32 ms of programme.
+    // both come to the same 32 ms of programme. Watched by the same
+    // SilenceWatchdog run_record's own PCM path uses, so a bitstreaming
+    // device that vanishes mid-take is caught here too.
     const auto rate = capture.sample_rate();
     const std::uint64_t target_frames = static_cast<std::uint64_t>(seconds) * rate;
     std::uint64_t captured = 0;
     std::vector<float> interleaved(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
     std::vector<std::byte> carrier;
-    while (captured < target_frames) {
+    ac3::audio::SilenceWatchdog watchdog{meta.watchdog};
+    watchdog.reset(std::chrono::steady_clock::now());
+    const bool watching = meta.watchdog.count() > 0;
+    bool device_lost = false;
+    while (captured < target_frames && !device_lost) {
         std::size_t filled = 0;
         while (filled < interleaved.size()) {
             const auto got = capture.buffer()->read(
                 std::span{interleaved}.subspan(filled, interleaved.size() - filled));
             filled += got;
+            const auto read_at = std::chrono::steady_clock::now();
+            watchdog.on_read(got, read_at);
             if (got == 0) {
+                if (watching && watchdog.timed_out(read_at)) {
+                    device_lost = true;
+                    break;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
+        }
+        if (device_lost) {
+            break;
         }
         captured += static_cast<std::uint64_t>(ac3::kSamplesPerFrame);
         carrier.clear();
         ac3::iec61937::carrier_from_capture(interleaved, channels, carrier);
         if (!drain(carrier)) {
             sink.abort();
-            return 1;
+            return kExitInput;
         }
-        fmt::print("\r  {} burst{} captured ({:.1f} s)  ", reader.bursts(),
-                   reader.bursts() == 1 ? "" : "s",
-                   static_cast<double>(captured) / static_cast<double>(rate));
+        if (!quiet_mode()) {
+            fmt::print("\r  {} burst{} captured ({:.1f} s)  ", reader.bursts(),
+                       reader.bursts() == 1 ? "" : "s",
+                       static_cast<double>(captured) / static_cast<double>(rate));
+        }
     }
-    fmt::println("");
+    status_println(status);
 
     capture.stop();
-    if (reader.bursts() == 0) {
+    if (reader.bursts() == 0 && !device_lost) {
         sink.abort();
         fmt::println(stderr, "error: the bursts stopped before a whole one was captured");
-        return 1;
+        return kExitInput;
     }
-    if (!sink.close()) {
-        return 1;
+    const bool closed = sink.close();
+    if (!closed && !device_lost) {
+        return kExitOutput;
+    }
+    if (device_lost) {
+        fmt::println(stderr,
+                     "error: capture stopped delivering audio for {} ms; the take was stopped "
+                     "and what had already been written is kept (watchdog=0 disables this)",
+                     meta.watchdog.count());
+        return kExitRuntime;
     }
     const auto stats = capture.stats();
-    fmt::println("wrote {} {} bursts ({} bytes) to {}", reader.bursts(),
-                 eac3 ? "E-AC-3" : "AC-3", elementary_bytes, out_path);
-    fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
-                 stats.frames_silence_filled, stats.frames_dropped);
+    status_println(status, "wrote {} {} bursts ({} bytes) to {}", reader.bursts(),
+                   eac3 ? "E-AC-3" : "AC-3", elementary_bytes, out_path);
+    status_println(status, "captured {} frames, {} silence-filled, {} dropped",
+                   stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
     if (reader.skipped_bursts() > 0 || reader.false_syncs() > 0) {
-        fmt::println("{} burst(s) of another data type skipped, {} false sync(s) resynced past",
-                     reader.skipped_bursts(), reader.false_syncs());
+        status_println(status,
+                       "{} burst(s) of another data type skipped, {} false sync(s) resynced past",
+                       reader.skipped_bursts(), reader.false_syncs());
     }
-    fmt::println("no re-encode happened: this is what the source sent, byte for byte.");
-    return 0;
+    status_println(status, "no re-encode happened: this is what the source sent, byte for byte.");
+    return kExitOk;
 }
 
 }  // namespace
@@ -166,16 +208,16 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         fmt::println(stderr, "error: no capture endpoints available");
-        return 1;
+        return kExitUnavailable;
     }
     if (device_index < 0 || static_cast<std::size_t>(device_index) >= devices->size()) {
         fmt::println(stderr, "error: device index {} out of range (see 'ac3cli devices')",
                      device_index);
-        return 1;
+        return kExitUsage;
     }
     const auto& device = (*devices)[static_cast<std::size_t>(device_index)];
 
@@ -185,41 +227,87 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         case 48000: sr = ac3::SampleRate::k48000; break;
         case 44100: sr = ac3::SampleRate::k44100; break;
         case 32000: sr = ac3::SampleRate::k32000; break;
-        // Not an error on its own any more: a bitstreaming endpoint routinely
-        // runs at a rate AC-3 cannot encode at - 192 kHz is exactly the
-        // E-AC-3 carrier's 4x - so the rate gate is now the PCM path's, and
-        // is applied below only once detection has ruled a bitstream out.
+        // Not an error on its own: a bitstreaming endpoint routinely runs at a
+        // rate AC-3 cannot encode at - 192 kHz is exactly the E-AC-3 carrier's
+        // 4x - so the rate gate below is the PCM path's own, applied only
+        // once detection has ruled a bitstream out.
         default: encodable_rate = false; break;
     }
+
+    // layout=/codec= (roadmap IO9). Before this, 'record' was stereo AC-3 and
+    // nothing else, while the GUI recorded any layout the format allows - and
+    // the two shared a capture path, an encoder and a container writer, so the
+    // gap was entirely in what the CLI would let you ask for.
+    const auto take = resolve_take_plan(meta, bitrate, sr);
+    if (!take) {
+        return kExitUsage;
+    }
+    const auto channel_plan = plan::resolve(take->plan);
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-        return 1;
+        return kExitUnavailable;
     }
     const auto channels = capture.channels();
-    fmt::println("recording from \"{}\" ({} Hz, {} ch) for {} s…", device.name,
-                 capture.sample_rate(), channels, seconds);
+    const auto rate_hz = capture.sample_rate();
 
-    // A rate AC-3 cannot encode at leaves only one thing this can be. Listen
-    // until the detector decides, then either record the bursts or say what
-    // was wrong with the endpoint - which is both reasons at once, since
-    // neither alone explains why nothing can be done with it.
+    // A device that vanishes (unplugged, disabled, torn down under us) reads
+    // as an endless run of zero-byte reads, which a plain "sleep 2ms on
+    // got==0" loop cannot tell from "briefly starved" - so a recording sat
+    // there looking healthy with nothing coming in. Same class, same 3 s
+    // default and the same "stop the session the first time it fires" rule
+    // as the GUI's live session; watchdog=0 turns it off. Shared by every
+    // capture.buffer()->read() loop below, including the bitstream probe.
+    ac3::audio::SilenceWatchdog watchdog{meta.watchdog};
+    watchdog.reset(std::chrono::steady_clock::now());
+    const bool watching = meta.watchdog.count() > 0;
+    bool device_lost = false;
+    const auto read_frame = [&](std::span<float> interleaved) {
+        std::size_t filled = 0;
+        while (filled < interleaved.size()) {
+            const auto got = capture.buffer()->read(interleaved.subspan(filled));
+            filled += got;
+            const auto read_at = std::chrono::steady_clock::now();
+            watchdog.on_read(got, read_at);
+            if (got == 0) {
+                if (watching && watchdog.timed_out(read_at)) {
+                    device_lost = true;
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+    };
+
+    // Bitstream passthrough auto-detection (roadmap IO3): an endpoint fed
+    // IEC 61937 hands its bursts over as ordinary PCM - the capture API has
+    // no way to say "this is Dolby Digital" - so encoding them at face value
+    // produces noise. A device whose advertised rate AC-3 cannot encode at
+    // (encodable_rate false - typically an E-AC-3 carrier's 192 kHz 4x rate)
+    // can only be this or an unusable device, so detection is mandatory
+    // there; an encodable-rate device still gets a detection window, since
+    // an AC-3 carrier rides at an ordinary 1x rate indistinguishable from
+    // real PCM until the header bytes are parsed - see the encode loop below
+    // for how that briefer, opportunistic check works.
     if (!encodable_rate) {
         ac3::iec61937::PassthroughDetector detector;
         std::vector<float> probe(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
-        while (!detector.decided()) {
-            std::size_t filled = 0;
-            while (filled < probe.size()) {
-                const auto got = capture.buffer()->read(
-                    std::span{probe}.subspan(filled, probe.size() - filled));
-                filled += got;
-                if (got == 0) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                }
+        while (!detector.decided() && !device_lost) {
+            read_frame(probe);
+            if (device_lost) {
+                break;
             }
             detector.push(probe, channels);
+        }
+        if (device_lost) {
+            capture.stop();
+            fmt::println(stderr,
+                         "error: capture stopped delivering audio for {} ms before its format "
+                         "could be determined (watchdog=0 disables this)",
+                         meta.watchdog.count());
+            return kExitRuntime;
         }
         if (detector.detected()) {
             return record_passthrough(out_path, seconds, capture, detector, meta);
@@ -230,130 +318,214 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                      "(change the endpoint's shared-mode format in Windows sound settings), "
                      "and it is not bitstreaming IEC 61937 either",
                      device.sample_rate);
-        return 1;
+        return kExitUnavailable;
     }
 
-    // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
-    // state, and this function only constructs it once (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
-        .sample_rate = sr, .bitrate_kbps = bitrate, .fast_mdct = meta.fast_mdct});
-    // Meters what the encoder is fed, not what the endpoint delivers: a
-    // needle that moves on a channel the stream never carries would be a lie.
-    ac3::analysis::LevelMeter meter{ac3::Acmod::k2_0, false, capture.sample_rate()};
+    // The captured channels are placed onto the take's coded channels by
+    // DIRECTION, not by index - a two-channel microphone recorded onto 5.1
+    // fills L/R and leaves the rest silent, exactly as a two-channel WAV
+    // encoded onto 5.1 does (plan::route's own model). A source wider than the
+    // target folds down per 7.8.
+    const auto routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
+    if (!routing) {
+        fmt::println(stderr, "error: {} capture channels - {}", channels,
+                     plan::describe(plan::PlanError::kNoSourceLayout));
+        return kExitUsage;
+    }
+
+    const auto status = status_stream();
+    status_println(status, "recording from \"{}\" ({} Hz, {} ch) to {} {} for {} s...",
+                   device.name, rate_hz, channels,
+                   plan::codec_label(take->plan.codec), take->label, seconds);
+
+    // Heap-allocated: both encoders carry several KB of MDCT scratch/history
+    // state, and this function only constructs them once (PREfast's C6262).
+    // Both are declared, only one is built: which, is settled by take->eac3
+    // before the loop rather than tested per frame.
+    std::unique_ptr<ac3::FrameEncoder> ac3_encoder;
+    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_encoder;
+    if (take->eac3) {
+        eac3_encoder =
+            std::make_unique<ac3::eac3::AccessUnitEncoder>(plan::eac3_config(take->plan));
+    } else {
+        ac3_encoder = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(take->plan));
+    }
+    // Meters what the encoder is fed, not what the endpoint delivers: a needle
+    // that moves on a channel the stream never carries would be a lie. The
+    // bed's own acmod/lfe, widened to the coded count where a dependent adds
+    // channels past it - the same meter shape the GUI's live session builds.
+    ac3::analysis::LevelMeter meter{channel_plan.bed_acmod, channel_plan.bed_lfe, rate_hz,
+                                    routing->coded_channels};
     const std::uint64_t target_frames =
-        (static_cast<std::uint64_t>(seconds) * capture.sample_rate() + ac3::kSamplesPerFrame - 1) /
+        (static_cast<std::uint64_t>(seconds) * rate_hz + ac3::kSamplesPerFrame - 1) /
         ac3::kSamplesPerFrame;
 
+    // Streamed to its container as it is produced (roadmap IO9), through the
+    // same RecordingSink the GUI's own takes go through - so a take of any
+    // length costs one frame of memory rather than the whole session, and a
+    // crash an hour in no longer loses the hour. Opening is DEFERRED, though
+    // (see `pending` below): an encodable-rate device still gets a brief,
+    // opportunistic bitstream check, and until that decides, this is not yet
+    // known to be real PCM worth committing to disk.
+    RecordingSink sink;
+    bool sink_open = false;
+    const auto open_sink = [&] {
+        if (const auto why = sink.open(std::string{out_path}, take_sink_config(meta, *take, rate_hz));
+            !why.empty()) {
+            fmt::println(stderr, "error: {}: {}", out_path, why);
+            return false;
+        }
+        sink_open = true;
+        return true;
+    };
+
+    const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     std::vector<float> interleaved(static_cast<std::size_t>(ac3::kSamplesPerFrame) * channels);
-    std::vector<std::vector<float>> planar(2,
-                                           std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
-    std::vector<std::span<const float>> views{planar[0], planar[1]};
-    std::vector<std::vector<std::byte>> frames;
-    frames.reserve(static_cast<std::size_t>(target_frames));
+    std::vector<std::vector<float>> source(channels,
+                                           std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::span<const float>> in(channels);
+    std::vector<std::span<float>> out(nchans);
+    std::vector<std::span<const float>> views(nchans);
+    for (std::size_t c = 0; c < channels; ++c) {
+        in[c] = source[c];
+    }
+    for (std::size_t c = 0; c < nchans; ++c) {
+        out[c] = block[c];
+        views[c] = block[c];
+    }
 
     // Runs alongside the encode for the first quarter-second or so, then
-    // costs nothing at all. Encoding continues meanwhile rather than the
-    // session pausing to listen first: an ordinary microphone - which is
-    // what this almost always is - must not lose its opening.
+    // costs nothing at all (PassthroughDetector::decided() latches true).
+    // Encoding continues meanwhile rather than the session pausing to listen
+    // first - an ordinary microphone, which is what this almost always is,
+    // must not lose its opening - but nothing reaches the sink until decided:
+    // `pending` holds the handful of units encoded during that window, which
+    // either get discarded (a bitstream after all - they were noise) or
+    // flushed into the sink once opened (see below). Bounded to a fraction of
+    // a second's worth of frames, not the whole session, so IO9's
+    // bounded-memory property still holds for everything after this window.
     ac3::iec61937::PassthroughDetector detector;
+    std::vector<std::vector<std::byte>> pending;
+    std::uint64_t frames_written = 0;
 
-    while (frames.size() < target_frames) {
-        // Block until a whole AC-3 frame of interleaved samples is available.
-        std::size_t filled = 0;
-        while (filled < interleaved.size()) {
-            const auto got = capture.buffer()->read(
-                std::span{interleaved}.subspan(filled, interleaved.size() - filled));
-            filled += got;
-            if (got == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            }
+    while (frames_written < target_frames && !device_lost) {
+        // Block until a whole frame of interleaved samples is available.
+        read_frame(interleaved);
+        if (device_lost) {
+            break;
         }
         if (!detector.decided()) {
             detector.push(interleaved, channels);
             if (detector.detected()) {
-                // Everything encoded so far was burst data read as audio.
-                // Drop it and record what the source is actually sending.
-                frames.clear();
-                frames.shrink_to_fit();
+                // Everything encoded so far (`pending`) was burst data read
+                // as audio - discard it and record what the source is
+                // actually sending. Nothing was ever written to `sink`,
+                // since it is only opened once decided() rules this out.
                 return record_passthrough(out_path, seconds, capture, detector, meta);
             }
+            if (detector.decided() && !sink_open && !open_sink()) {
+                return kExitOutput;
+            }
         }
-        // Deinterleave to stereo: take the first two channels, or duplicate a
-        // mono source across both.
         for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
             const std::size_t base = static_cast<std::size_t>(i) * channels;
-            planar[0][static_cast<std::size_t>(i)] = interleaved[base];
-            planar[1][static_cast<std::size_t>(i)] =
-                channels > 1 ? interleaved[base + 1] : interleaved[base];
+            for (std::size_t ch = 0; ch < channels; ++ch) {
+                source[ch][static_cast<std::size_t>(i)] = interleaved[base + ch];
+            }
         }
+        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
         meter.process(views);
-        auto frame = encoder->encode_frame(views);
-        if (!frame) {
-            fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
-            return 1;
+
+        std::vector<std::byte> unit_bytes;
+        if (take->eac3) {
+            const auto unit = eac3_encoder->encode_access_unit(views);
+            if (!unit) {
+                fmt::println(stderr, "error: the encoder cannot express this configuration");
+                if (sink_open) {
+                    std::ignore = sink.close();
+                }
+                return kExitUsage;
+            }
+            unit_bytes = unit->bytes;
+        } else {
+            auto frame = ac3_encoder->encode_frame(views);
+            if (!frame) {
+                fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
+                if (sink_open) {
+                    std::ignore = sink.close();
+                }
+                return kExitUsage;
+            }
+            unit_bytes = std::move(*frame);
         }
-        frames.push_back(std::move(*frame));
+        if (sink_open) {
+            if (const auto why = sink.push(unit_bytes); !why.empty()) {
+                fmt::println(stderr, "error: {}: {}", out_path, why);
+                return kExitOutput;
+            }
+        } else {
+            pending.push_back(std::move(unit_bytes));
+        }
+        ++frames_written;
         // One frame is 32 ms at 48 kHz, so the meter redraws about 30 times a
         // second without any throttling of its own.
-        print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
-                                    capture.sample_rate());
+        print_live_meter(meter, static_cast<double>(frames_written * ac3::kSamplesPerFrame) /
+                                    rate_hz);
     }
-    fmt::println("");
+    status_println(status);
+
+    // The detector never decided within the whole take (a session shorter
+    // than its own detection window) - open now and flush whatever is
+    // pending, exactly as the mid-loop path does once decided() goes true.
+    if (!sink_open && !pending.empty() && !open_sink()) {
+        return kExitOutput;
+    }
+    if (sink_open) {
+        for (auto& unit_bytes : pending) {
+            if (const auto why = sink.push(unit_bytes); !why.empty()) {
+                fmt::println(stderr, "error: {}: {}", out_path, why);
+                return kExitOutput;
+            }
+        }
+    }
 
     capture.stop();
     const auto stats = capture.stats();
-    // record is always plain AC-3 stereo (see the deinterleave above, which
-    // only ever fills `planar`'s two channels) - the same track shape 'mkv'
-    // would derive by scanning this file back, just already known here.
-    const matroska::AudioTrack track{.codec_id = std::string{matroska::kCodecAc3},
-                                     .sample_rate = capture.sample_rate(),
-                                     .channels = 2,
-                                     .samples_per_frame = ac3::kSamplesPerFrame};
-    if (meta.container == RecordContainer::kFmp4) {
-        // A directory of CMAF segments and manifests rather than one file -
-        // pushed through the same incremental writer 'live' uses, one frame
-        // at a time, so the two commands leave identical directories for the
-        // same take (see Fmp4SessionWriter).
-        Fmp4SessionWriter fmp4;
-        auto problem = fmp4.open(out_path, mp4::FragmentOptions{}.frames_per_fragment,
-                                 meta.fmp4_window_segments);
-        for (const auto& frame : frames) {
-            if (!problem.empty()) {
-                break;
-            }
-            problem = fmp4.push(frame);
-        }
-        if (problem.empty()) {
-            problem = fmp4.close();
-        }
-        if (!problem.empty()) {
-            fmt::println(stderr, "error: {}", problem);
-            return 1;
-        }
-        fmt::println("wrote {} frames ({} kbps) to {} ({} fMP4/CMAF segments)", frames.size(),
-                     bitrate, out_path, fmp4.segments());
-        fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
-                     stats.frames_silence_filled, stats.frames_dropped);
-        print_channel_summary(meter);
-        return 0;
+    // Finalized whether or not the device dropped: everything already pushed
+    // is on disk and playable, which is the whole reason a take streams. A
+    // close() complaint is reported, but a lost device is the more useful
+    // diagnosis of the two and wins the exit code - a take that captured
+    // nothing before the device vanished ends as a device failure, not as a
+    // disk one.
+    const auto close_problem = sink_open ? sink.close() : std::string{};
+    if (!close_problem.empty() && !device_lost) {
+        fmt::println(stderr, "error: {}: {}", out_path, close_problem);
+        return kExitOutput;
     }
-    if (!write_frames_or_mux(out_path, meta.container == RecordContainer::kMatroska, track,
-                             frames)) {
-        return 1;
+    if (device_lost) {
+        fmt::println(stderr,
+                     "error: \"{}\" stopped delivering audio for {} ms; the take was stopped and "
+                     "what had already been written is kept (watchdog=0 disables this){}",
+                     device.name, meta.watchdog.count(),
+                     close_problem.empty() ? "" : " - " + close_problem);
+        return kExitRuntime;
     }
-    fmt::println("wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
-                 meta.container == RecordContainer::kMatroska ? " (Matroska)" : "");
-    fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
-                 stats.frames_silence_filled, stats.frames_dropped);
-    print_channel_summary(meter);
-    return 0;
+    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
+                   take->eac3 ? "access units" : "frames", bitrate, take->label, out_path,
+                   container_note(meta.container));
+    status_println(status, "captured {} frames, {} silence-filled, {} dropped",
+                   stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
+    print_channel_summary(meter, status);
+    return kExitOk;
 }
 
 int run_outputs() {
     const auto devices = ac3::audio::enumerate_render_devices();
     if (!devices) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         fmt::println("no active render endpoints found");
@@ -385,12 +557,12 @@ int run_play(std::string_view in_path, int device_index) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return 1;
+        return kExitInput;
     }
     const bool eac3 = *bsid > 8;
 
@@ -400,8 +572,7 @@ int run_play(std::string_view in_path, int device_index) {
         const auto split = ac3::split_access_units(stream);
         if (!split || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
-            return 1;
-        }
+            return kExitInput;        }
         units = *split;
         content_rate =
             sample_rate_hz(static_cast<ac3::SampleRate>(
@@ -410,8 +581,7 @@ int run_play(std::string_view in_path, int device_index) {
         const auto split = ac3::split_frames(stream);
         if (!split || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
-            return 1;
-        }
+            return kExitInput;        }
         units = *split;
         content_rate =
             sample_rate_hz(static_cast<ac3::SampleRate>(
@@ -426,11 +596,11 @@ int run_play(std::string_view in_path, int device_index) {
     // answer was a COM failure.
     if (!devices) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-        return 1;
+        return kExitUnavailable;
     }
     if (devices->empty()) {
         fmt::println(stderr, "error: no render endpoints available");
-        return 1;
+        return kExitUnavailable;
     }
     std::string device_id;
     std::string device_name = "default endpoint";
@@ -438,7 +608,7 @@ int run_play(std::string_view in_path, int device_index) {
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
             fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
                          device_index);
-            return 1;
+            return kExitUsage;
         }
         const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
         device_id = chosen.id;
@@ -449,7 +619,7 @@ int run_play(std::string_view in_path, int device_index) {
             fmt::println(stderr,
                          "error: \"{}\" does not accept {} over IEC 61937 (see 'ac3cli outputs')",
                          chosen.name, eac3 ? "E-AC-3" : "AC-3");
-            return 1;
+            return kExitUnavailable;
         }
     }
 
@@ -459,9 +629,9 @@ int run_play(std::string_view in_path, int device_index) {
         eac3 ? ac3::audio::BitstreamFormat::kEac3 : ac3::audio::BitstreamFormat::kAc3);
     if (!started) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-        return 1;
+        return kExitUnavailable;
     }
-    fmt::println("streaming {} {} to \"{}\" ({} Hz{})…", units.size(),
+    status_println(status_stream(), "streaming {} {} to \"{}\" ({} Hz{})…", units.size(),
                  eac3 ? "access units" : "frames", device_name, content_rate,
                  eac3 ? ", carrier 4x that" : " carrier");
 
@@ -472,7 +642,7 @@ int run_play(std::string_view in_path, int device_index) {
             auto result = eac3_packer.push(unit);
             if (!result) {
                 fmt::println(stderr, "error: burst wrap failed");
-                return 1;
+                return kExitRuntime;
             }
             if (!*result) {
                 continue;  // accumulating; nothing to submit yet
@@ -482,7 +652,7 @@ int run_play(std::string_view in_path, int device_index) {
             const auto wrapped = ac3::iec61937::wrap_frame(unit);
             if (!wrapped) {
                 fmt::println(stderr, "error: burst wrap failed");
-                return 1;
+                return kExitRuntime;
             }
             burst = *wrapped;
         }
@@ -498,9 +668,9 @@ int run_play(std::string_view in_path, int device_index) {
     }
     const auto stats = sink.stats();
     sink.stop();
-    fmt::println("submitted {} bursts, rendered {}, {} underruns", stats.bursts_submitted,
-                 stats.bursts_rendered, stats.underruns);
-    return 0;
+    status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",
+                   stats.bursts_submitted, stats.bursts_rendered, stats.underruns);
+    return kExitOk;
 }
 
 }  // namespace ac3cli::commands

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -17,9 +18,12 @@
 #include <utility>
 #include <vector>
 
+#include "../exit_codes.hpp"
+#include "../multi_source.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/encoder/assignment.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/object_strip.hpp"
 #include "ac3/io/wav.hpp"
@@ -32,6 +36,8 @@
 #include "../adm/atmos_adm.hpp"
 
 namespace ac3cli::commands {
+
+namespace plan = ac3::plan;
 
 namespace {
 
@@ -130,14 +136,14 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     if (objects < 1 || objects > 15) {
         fmt::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
                              "and TS 103 420 §8.3.2.2 caps the total at 16)");
-        return 1;
+        return kExitUsage;
     }
     // "objects" emits the JOC + OAMD container; "bed51" omits it so the stream
     // degrades to a plain 5.1 bed on a decoder that refuses an unvalidated
     // object container instead of falling back (see AtmosConfig).
     if (mode != "objects" && mode != "bed51") {
         fmt::println(stderr, "error: mode is 'objects' (default) or 'bed51'");
-        return 1;
+        return kExitUsage;
     }
     const bool emit_objects = mode != "bed51";
     const auto count = static_cast<std::size_t>(objects);
@@ -186,7 +192,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     // leaving no file behind, which is exactly what abort() then does.
     EncodedStreamSink out_sink;
     if (!out_sink.open(out_path, /*keep_partial=*/false, /*defer=*/meta.sign_objects)) {
-        return 1;
+        return kExitOutput;
     }
 
     std::uint64_t n0 = 0;
@@ -213,11 +219,11 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
                          "the mantissas share one frame, so try a higher bit rate",
                          objects, bitrate);
             out_sink.abort();
-            return 1;
+            return kExitUsage;
         }
         if (!out_sink.push(std::move(unit->bytes))) {
             out_sink.abort();
-            return 1;
+            return kExitOutput;
         }
     }
     // Optional object signing: writes the keyed EMDF-protection tag so a
@@ -228,46 +234,49 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     // disk in defer mode, so a plain return leaves exactly no file.
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
     if (!signed_count) {
-        return 1;
+        return kExitRuntime;
     }
     if (*signed_count > 0) {
-        fmt::println("  signed {} frames' EMDF object container with the supplied key",
-                     *signed_count);
+        status_println(status_stream(),
+                       "  signed {} frames' EMDF object container with the supplied key",
+                       *signed_count);
     }
     if (!out_sink.close()) {
-        return 1;
+        return kExitOutput;
     }
-    fmt::println("wrote {} E-AC-3 access units to {}", frames, out_path);
+    status_println(status_stream(), "wrote {} E-AC-3 access units to {}", frames, out_path);
     if (emit_objects) {
-        fmt::println("  {} dynamic objects + the bed's LFE = {} objects, JOC over a 5.1 downmix",
-                     objects, ac3::oba::object_count(encoder.program()));
+        status_println(status_stream(),
+                       "  {} dynamic objects + the bed's LFE = {} objects, JOC over a 5.1 downmix",
+                       objects, ac3::oba::object_count(encoder.program()));
     } else {
-        fmt::println("  bed51: 5.1 bed only, no object container — plays as 5.1 on a decoder "
-                     "that rejects an unvalidated one ({} objects were panned into the bed)",
-                     objects);
+        status_println(status_stream(),
+                       "  bed51: 5.1 bed only, no object container — plays as 5.1 on a decoder "
+                       "that rejects an unvalidated one ({} objects were panned into the bed)",
+                       objects);
     }
-    return 0;
+    return kExitOk;
 }
 
 int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::uint32_t seconds,
                    std::uint32_t bitrate, std::uint32_t objects_arg, const Options& meta) {
     auto contents = read_scene_file(paths_path);
     if (!contents) {
-        return 1;
+        return kExitInput;
     }
     const auto described = contents->objects.size();
     const auto objects = objects_arg != 0 ? static_cast<std::size_t>(objects_arg) : described;
     if (objects < 1 || objects > 15) {
         fmt::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
                              "and TS 103 420 §8.3.2.2 caps the total at 16)");
-        return 1;
+        return kExitUsage;
     }
     if (described > objects) {
         fmt::println(stderr,
                      "error: {} has keyframes up to object index {}, more than the {} objects "
                      "requested",
                      paths_path, described - 1, objects);
-        return 1;
+        return kExitUsage;
     }
 
     // An object the file never mentions sits still at room centre under the
@@ -278,7 +287,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
                                          .lfe_send = 0.0};
     });
     if (!scene) {
-        return 1;
+        return kExitInput;
     }
 
     ac3::oba::AtmosEncoder encoder{
@@ -301,7 +310,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     // the same synthetic-and-regenerable reason.
     EncodedStreamSink out_sink;
     if (!out_sink.open(out_path, /*keep_partial=*/false, /*defer=*/meta.sign_objects)) {
-        return 1;
+        return kExitOutput;
     }
 
     // Reused every frame rather than reallocated: evaluate_into fills it in
@@ -328,34 +337,250 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
                          "the mantissas share one frame, so try a higher bit rate",
                          objects, bitrate);
             out_sink.abort();
-            return 1;
+            return kExitUsage;
         }
         if (!out_sink.push(std::move(unit->bytes))) {
             out_sink.abort();
-            return 1;
+            return kExitOutput;
         }
     }
     // Optional object signing, same as 'atmos' - see the comments at its
     // call site there, the key-failure plain return included.
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
     if (!signed_count) {
-        return 1;
+        return kExitRuntime;
     }
     if (*signed_count > 0) {
-        fmt::println("  signed {} frames' EMDF object container with the supplied key",
-                     *signed_count);
+        status_println(status_stream(),
+                       "  signed {} frames' EMDF object container with the supplied key",
+                       *signed_count);
     }
     if (!out_sink.close()) {
-        return 1;
+        return kExitOutput;
     }
-    fmt::println("wrote {} E-AC-3 access units to {} ({} objects from {})", frames, out_path,
-                 objects, paths_path);
-    return 0;
+    status_println(status_stream(), "wrote {} E-AC-3 access units to {} ({} objects from {})",
+                   frames, out_path, objects, paths_path);
+    return kExitOk;
+}
+
+// atmos-encode with src=/map= (roadmap IO9): several sources, and an explicit
+// statement of which of their channels become which objects, instead of the
+// single-file "every channel is an object, in file order" default.
+//
+// Deliberately a second function rather than a branch inside run_atmos_encode,
+// for the same reason run_encode_multi is (see multi_source.hpp's own header):
+// the two have genuinely different data shapes - one WavData with an optional
+// streaming reader versus several whole files gathered per frame - and the
+// small amount that does overlap costs far less duplicated than a shared
+// abstraction would risk. No streaming path here: load_sources opens whole
+// files, exactly as the multi-source encode path does.
+int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
+                           std::uint32_t bitrate, const Options& meta,
+                           std::string_view paths_path) {
+    auto sources = load_sources(in_path, meta.sources, meta.offsets);
+    if (!sources) {
+        return kExitInput;
+    }
+    const auto sr = wav_sample_rate(sources->sample_rate, "E-AC-3", true);
+    if (!sr) {
+        return kExitInput;
+    }
+    std::size_t total_channels = 0;
+    for (const auto& shape : sources->shapes) {
+        total_channels += shape.channels;
+    }
+
+    // map= is what makes a multi-source object encode mean anything: with
+    // several files there is no "file order" for channels to become objects
+    // in. One source without map= keeps the classic behaviour (below), so
+    // this is only reachable with src= present or map= given explicitly.
+    plan::Assignment assignment;
+    if (meta.map_spec) {
+        if (!plan::parse_assignment(*meta.map_spec, sources->shapes, assignment)) {
+            fmt::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
+            return kExitUsage;
+        }
+    } else {
+        // src= without map=: every loaded channel becomes its own object, in
+        // load order - the natural generalisation of what one file does, and
+        // the only reading that does not silently drop somebody's second file.
+        for (std::size_t s = 0; s < sources->shapes.size(); ++s) {
+            for (std::size_t c = 0; c < sources->shapes[s].channels; ++c) {
+                assignment.set(s, c, {.kind = plan::DestinationKind::kObject});
+            }
+        }
+    }
+
+    const auto slots = object_slots_from_assignment(assignment, sources->shapes);
+    if (slots.empty()) {
+        fmt::println(stderr,
+                     "error: map= names no obj/objm destination, so this encode would carry no "
+                     "objects at all - 'eac3-encode' is the command for a purely "
+                     "channel-mapped programme");
+        return kExitUsage;
+    }
+    const std::size_t count = slots.size();
+    if (count > 15) {
+        fmt::println(stderr,
+                     "error: 1 to 15 objects (the bed's LFE is the 16th, and TS 103 420 "
+                     "8.3.2.2 caps the total at 16); this map= resolves {}",
+                     count);
+        return kExitUsage;
+    }
+
+    const auto status = status_stream(out_path);
+    int dialnorm = meta.p.dialnorm;
+    if (meta.p.measure_dialnorm) {
+        fmt::println(stderr,
+                     "error: dialnorm=auto is not supported alongside src=/map= on "
+                     "atmos-encode - object channels have no single fixed layout to measure "
+                     "loudness against; pass dialnorm=<1..31> explicitly");
+        return kExitUsage;
+    }
+
+    ac3::oba::AtmosEncoder encoder{
+        {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
+         .fast_mdct = meta.fast_mdct},
+        static_cast<int>(count)};
+
+    // Objects that reach the bed by the same route are exactly the ones JOC
+    // cannot pull apart again, so they are fanned out evenly around the room
+    // rather than stacked at one point. A multi-source map= has no source
+    // layout to take a direction from the way one file does, so this is the
+    // even fan every time.
+    std::vector<ac3::oba::ObjectPlacement> placement(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const double azimuth = 360.0 * static_cast<double>(i) / static_cast<double>(count);
+        const double radians = azimuth * std::numbers::pi / 180.0;
+        placement[i] = {.position = {.x = 0.5 - 0.5 * std::sin(radians),
+                                     .y = 0.5 - 0.5 * std::cos(radians),
+                                     .z = 0.0},
+                        .gain = 0.7 / std::sqrt(static_cast<double>(count)),
+                        .lfe_send = 0.0};
+    }
+
+    // Authored motion, keyed by OBJECT index (the order map= produced them
+    // in), not by channel: with several sources a channel index alone would
+    // not identify anything.
+    std::optional<ac3::oba::ObjectScene> scene;
+    if (!paths_path.empty()) {
+        auto contents = read_scene_file(paths_path);
+        if (!contents) {
+            return kExitInput;
+        }
+        scene = scene_of(paths_path, std::move(*contents), count,
+                         [&placement](std::size_t i) { return placement[i]; });
+        if (!scene) {
+            return kExitInput;
+        }
+    }
+
+    status_println(status, "  {} sources, {} channels -> {} objects (map= order)",
+                   sources->shapes.size(), total_channels, count);
+    if (verbose_mode()) {
+        for (std::size_t i = 0; i < count; ++i) {
+            std::string taps;
+            for (const auto& [flat, gain] : slots[i].taps) {
+                taps += taps.empty() ? "" : " + ";
+                taps += std::format("ch{}", flat);
+                if (gain != 1.0) {
+                    taps += std::format(" x{:.3f}", gain);
+                }
+            }
+            status_println(status, "    object {}: {}", i, taps.empty() ? "silent" : taps);
+        }
+    }
+
+    ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, sources->sample_rate};
+    const std::size_t total = sources->total_frames;
+    std::vector<std::vector<float>> gathered(total_channels,
+                                             std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(count);
+    std::vector<std::span<const float>> metered(6);
+    for (std::size_t i = 0; i < count; ++i) {
+        views[i] = block[i];
+    }
+    EncodedStreamSink out_sink;
+    if (!out_sink.open(out_path, meta.keep_partial, /*defer=*/meta.sign_objects)) {
+        return kExitOutput;
+    }
+    Progress progress;
+    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
+    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+        gather_frame(*sources, start, gathered);
+        for (std::size_t i = 0; i < count; ++i) {
+            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+                float sum = 0.0F;
+                for (const auto& [flat, gain] : slots[i].taps) {
+                    if (flat < gathered.size()) {
+                        sum += gathered[flat][static_cast<std::size_t>(n)] *
+                               static_cast<float>(gain);
+                    }
+                }
+                block[i][static_cast<std::size_t>(n)] = sum;
+            }
+        }
+        auto unit = scene ? encoder.encode_frame(
+                                views, scene->evaluate(
+                                           static_cast<double>(start + ac3::kSamplesPerFrame) /
+                                           static_cast<double>(sources->sample_rate)))
+                          : encoder.encode_frame(views, placement);
+        if (!unit) {
+            fmt::println(stderr,
+                         "error: cannot encode {} objects at {} kbps - the metadata and the "
+                         "mantissas share one frame, so try a higher bit rate",
+                         count, bitrate);
+            out_sink.abort();
+            return kExitUsage;
+        }
+        for (std::size_t ch = 0; ch < 6; ++ch) {
+            metered[ch] = std::span{encoder.bed()[ch]};
+        }
+        meter.process(metered);
+        if (!out_sink.push(std::move(unit->bytes))) {
+            out_sink.abort();
+            return kExitOutput;
+        }
+        progress.tick(start / ac3::kSamplesPerFrame + 1);
+    }
+    progress.finish();
+    const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
+    if (!signed_count) {
+        return kExitRuntime;
+    }
+    if (*signed_count > 0) {
+        status_println(status, "  signed {} frames' EMDF object container with the supplied key",
+                       *signed_count);
+    }
+    if (!out_sink.close()) {
+        return kExitOutput;
+    }
+    status_println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) to {}",
+                   out_sink.frames(), bitrate, sources->sample_rate, out_path);
+    status_println(status,
+                   "  {} objects + the bed's LFE = {} objects, JOC over a 5.1 downmix", count,
+                   ac3::oba::object_count(encoder.program()));
+    print_channel_summary(meter, status);
+    return kExitOk;
 }
 
 int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const Options& meta, std::string_view paths_path) {
+    // src=/map= route to the multi-source path above, which is what makes
+    // obj/objm real destinations on this command (roadmap IO9 - they parsed
+    // and did nothing here before). Without either, everything below is
+    // byte-identical to what this command always did.
+    if (!meta.sources.empty() || meta.map_spec) {
+        if (objects != 0) {
+            fmt::println(stderr,
+                         "error: [objects] counts the source channels to turn into objects, "
+                         "which map= states instead - give one or the other");
+            return kExitUsage;
+        }
+        return run_atmos_encode_multi(in_path, out_path, bitrate, meta, paths_path);
+    }
     // The same streaming-vs-whole-file split as run_encode - see its
     // comment. This command has no dual-mono merge, so only stdin and
     // dialnorm=auto (whole-programme BS.1770) force the whole-file read.
@@ -368,15 +593,14 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         wav = read_wav_arg(in_path);
         if (!wav) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
-            return 1;
-        }
+            return kExitInput;        }
     }
     const std::uint32_t src_rate = streaming ? stream_in.sample_rate() : wav->sample_rate;
     const std::size_t src_channels =
         streaming ? stream_in.channels() : wav->channels.size();
     const auto sr = wav_sample_rate(src_rate, "E-AC-3", true);
     if (!sr) {
-        return 1;
+        return kExitInput;
     }
     // One object per source channel unless told otherwise; more objects than
     // the file has channels would leave some carrying nothing.
@@ -387,7 +611,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      "error: 1 to 15 objects (the bed's LFE is the 16th, and TS 103 420 "
                      "§8.3.2.2 caps the total at 16); this file has {} channels",
                      src_channels);
-        return 1;
+        return kExitUsage;
     }
 
     // status_stream(out_path): stderr instead of stdout when out_path is "-"
@@ -404,7 +628,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         if (!measured) {
             fmt::println(stderr, "error: cannot measure loudness for this file; "
                                  "pass dialnorm=<1..31> explicitly");
-            return 1;
+            return kExitRuntime;
         }
         dialnorm = *measured;
     }
@@ -458,14 +682,14 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     if (!paths_path.empty()) {
         auto contents = read_scene_file(paths_path);
         if (!contents) {
-            return 1;
+            return kExitInput;
         }
         // Not mentioned in the file: keep exactly the placement this object
         // has today, just re-expressed as a (never-moving) automation point.
         scene = scene_of(paths_path, std::move(*contents), count,
                          [&placement](std::size_t i) { return placement[i]; });
         if (!scene) {
-            return 1;
+            return kExitInput;
         }
     }
 
@@ -480,7 +704,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // one of them after this loop.
     EncodedStreamSink out_sink;
     if (!out_sink.open(out_path, meta.keep_partial, /*defer=*/meta.sign_objects)) {
-        return 1;
+        return kExitOutput;
     }
     // Streaming reads every file channel (read_planar's contract), but only
     // the first `count` become objects - the extras land in one shared
@@ -488,6 +712,8 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     std::vector<float> stream_discard(streaming ? ac3::kSamplesPerFrame : 0);
     std::vector<std::span<float>> stream_dst(streaming ? src_channels : 0);
 
+    Progress progress;
+    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
     for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
         const auto valid = std::min<std::size_t>(ac3::kSamplesPerFrame, total - start);
         if (streaming) {
@@ -501,7 +727,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                              ac3::io::describe(got ? ac3::io::WavError::kTruncated
                                                    : got.error()));
                 out_sink.abort();
-                return 1;
+                return kExitInput;
             }
             for (std::size_t ch = 0; ch < count; ++ch) {
                 // The tail frame zero-pads past the file's end, exactly as
@@ -536,7 +762,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                          "mantissas share one frame, so try a higher bit rate",
                          count, bitrate);
             out_sink.abort();
-            return 1;
+            return kExitUsage;
         }
         // The bed exists only once the frame is encoded, so it is metered
         // afterwards - and it is the bed, not the source, that a legacy
@@ -547,33 +773,35 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         meter.process(metered);
         if (!out_sink.push(std::move(unit->bytes))) {
             out_sink.abort();
-            return 1;
+            return kExitOutput;
         }
+        progress.tick(start / ac3::kSamplesPerFrame + 1);
     }
+    progress.finish();
     // Optional object signing, same as 'atmos' - see the comments at its
     // call site there, the key-failure plain return included. Goes through
     // status_stream() like the report below: with out_path == "-" the
     // E-AC-3 bytes about to be written own stdout.
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
     if (!signed_count) {
-        return 1;
+        return kExitRuntime;
     }
     if (*signed_count > 0) {
-        fmt::println(status_stream(out_path),
-                     "  signed {} frames' EMDF object container with the supplied key",
-                     *signed_count);
+        status_println(status_stream(out_path),
+                       "  signed {} frames' EMDF object container with the supplied key",
+                       *signed_count);
     }
     if (!out_sink.close()) {
-        return 1;
+        return kExitOutput;
     }
-    fmt::println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) to {}",
-                out_sink.frames(), bitrate, src_rate, out_path);
-    fmt::println(status,
-                 "  {} objects from {} source channels + the bed's LFE = {} objects, "
-                 "JOC over a 5.1 downmix",
-                 count, src_channels, ac3::oba::object_count(encoder.program()));
+    status_println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) to {}",
+                   out_sink.frames(), bitrate, src_rate, out_path);
+    status_println(status,
+                   "  {} objects from {} source channels + the bed's LFE = {} objects, "
+                   "JOC over a 5.1 downmix",
+                   count, src_channels, ac3::oba::object_count(encoder.program()));
     print_channel_summary(meter, status);
-    return 0;
+    return kExitOk;
 }
 
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
@@ -589,18 +817,18 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
                      "error: dialnorm=auto is not supported by atmos-adm - an ADM document's bed/"
                      "object channels have no single fixed layout to measure loudness against the "
                      "way atmos-encode's WAV input does; pass dialnorm=<1..31> explicitly");
-        return 1;
+        return kExitUsage;
     }
 
     auto source = ac3cli::load_adm_atmos_source(in_path, programme_id);
     if (!source) {
         fmt::println(stderr, "error: {}: {}", in_path, source.error());
-        return 1;
+        return kExitInput;
     }
 
     const auto sr = wav_sample_rate(source->sample_rate, "E-AC-3", true);
     if (!sr) {
-        return 1;
+        return kExitInput;
     }
 
     const auto count = source->channel_count();
@@ -609,7 +837,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
                      "error: 1 to 15 bed/object channels (the bed's LFE is the 16th, and TS 103 "
                      "420 §8.3.2.2 caps the total at 16); {} resolved {} channel(s)",
                      in_path, count);
-        return 1;
+        return kExitInput;
     }
 
     ac3::oba::AtmosEncoder encoder{
@@ -629,9 +857,11 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     // defer case either.
     EncodedStreamSink out_sink;
     if (!out_sink.open(out_path, meta.keep_partial)) {
-        return 1;
+        return kExitOutput;
     }
 
+    Progress progress;
+    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
     for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
         const auto valid = std::min<std::size_t>(ac3::kSamplesPerFrame, total - start);
         for (std::size_t ch = 0; ch < count; ++ch) {
@@ -654,7 +884,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
                          "mantissas share one frame, so try a higher bit rate",
                          count, bitrate);
             out_sink.abort();
-            return 1;
+            return kExitUsage;
         }
         // The bed exists only once the frame is encoded, so it is metered afterwards - and it is
         // the bed, not the source, that a legacy decoder plays.
@@ -664,11 +894,13 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
         meter.process(metered);
         if (!out_sink.push(std::move(unit->bytes))) {
             out_sink.abort();
-            return 1;
+            return kExitOutput;
         }
+        progress.tick(start / ac3::kSamplesPerFrame + 1);
     }
+    progress.finish();
     if (!out_sink.close()) {
-        return 1;
+        return kExitOutput;
     }
 
     std::size_t bed_count = 0;
@@ -678,14 +910,14 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     // See run_encode's identical status_stream() comment: out_path == "-" means the E-AC-3 bytes
     // just written own stdout, so this report goes to stderr instead.
     const auto status = status_stream(out_path);
-    fmt::println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) from {} to {}",
-                out_sink.frames(), bitrate, source->sample_rate, in_path, out_path);
-    fmt::println(status,
-                 "  {} bed speaker feed(s) + {} dynamic object(s) + the bed's LFE = {} objects, "
-                 "JOC over a 5.1 downmix",
-                 bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
+    status_println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) from {} to {}",
+                   out_sink.frames(), bitrate, source->sample_rate, in_path, out_path);
+    status_println(status,
+                   "  {} bed speaker feed(s) + {} dynamic object(s) + the bed's LFE = {} objects, "
+                   "JOC over a 5.1 downmix",
+                   bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
     print_channel_summary(meter, status);
-    return 0;
+    return kExitOk;
 }
 
 int run_strip_objects(std::string_view in_path, std::string_view out_path,
@@ -693,12 +925,12 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
     const auto raw = read_all(in_path);
     if (raw.empty()) {
         fmt::println(stderr, "error: cannot open {}", in_path);
-        return 1;
+        return kExitInput;
     }
     const auto stripped = ac3::io::strip_objects(raw);
     if (!stripped) {
         fmt::println(stderr, "error: {}", ac3::io::describe(stripped.error()));
-        return 1;
+        return kExitInput;
     }
     // Re-scan before writing: it costs one cheap walk and it is the check
     // that matters here - a rewrite that re-derives frmsiz and re-stamps crc2
@@ -708,39 +940,39 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
     if (!rescanned) {
         fmt::println(stderr, "error: the stripped stream no longer scans: {}",
                      ac3::io::describe(rescanned.error()));
-        return 1;
+        return kExitInternal;
     }
     if (rescanned->oba_complexity_index) {
         fmt::println(stderr,
                      "error: the stripped stream still declares an object layer (complexity {})",
                      *rescanned->oba_complexity_index);
-        return 1;
+        return kExitInternal;
     }
 
     EncodedStreamSink out_sink;
     if (!out_sink.open(out_path, meta.keep_partial)) {
-        return 1;
+        return kExitOutput;
     }
     for (const auto& unit : rescanned->access_units) {
         if (!out_sink.push(unit)) {
             out_sink.abort();
-            return 1;
+            return kExitOutput;
         }
     }
     if (!out_sink.close()) {
-        return 1;
+        return kExitOutput;
     }
 
     // See run_encode's identical status_stream() comment: out_path == "-" means the E-AC-3 bytes
     // just written own stdout, so this report goes to stderr instead.
     const auto status = status_stream(out_path);
-    fmt::println(status, "stripped {} of {} frame(s) in {} -> {} ({} bytes removed, {} left)",
-                 stripped->frames_stripped, stripped->frames_total, in_path, out_path,
-                 stripped->bytes_removed, stripped->bytes.size());
-    fmt::println(status, "  {} at {} Hz, no object metadata remains",
-                 ac3::analysis::layout_name(rescanned->acmod, rescanned->lfe),
-                 ac3::sample_rate_hz(rescanned->sample_rate));
-    return 0;
+    status_println(status, "stripped {} of {} frame(s) in {} -> {} ({} bytes removed, {} left)",
+                   stripped->frames_stripped, stripped->frames_total, in_path, out_path,
+                   stripped->bytes_removed, stripped->bytes.size());
+    status_println(status, "  {} at {} Hz, no object metadata remains",
+                   ac3::analysis::layout_name(rescanned->acmod, rescanned->lfe),
+                   ac3::sample_rate_hz(rescanned->sample_rate));
+    return kExitOk;
 }
 
 }  // namespace ac3cli::commands

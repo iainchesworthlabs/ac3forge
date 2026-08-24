@@ -16,6 +16,7 @@
 #include "ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -190,6 +191,22 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] int channel_count() const {
         return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
     }
+
+    // Roadmap PF6. Constant for the life of the encoder - nothing in
+    // EncoderConfig moves any term (see ac3/latency.hpp for what each one
+    // is): AC-3 has one frame length, this encoder needs no lookahead, and
+    // §3.7's hold-back is an Annex E tool AC-3 does not have. Reported as a
+    // member function rather than a free constant so a caller holding an
+    // encoder can ask it directly, and so the E-AC-3 and Atmos encoders -
+    // where the answer DOES depend on the configuration - answer the same
+    // question the same way.
+    [[nodiscard]] LatencyBudget latency() const {
+        return LatencyBudget{.frame_samples = kSamplesPerFrame,
+                             .transform_samples = kTransformDelaySamples,
+                             .lookahead_samples = 0,
+                             .holdback_samples = 0};
+    }
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
     EncoderConfig config_;

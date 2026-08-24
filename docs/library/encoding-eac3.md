@@ -284,6 +284,54 @@ Useful `chanmap` constants (`ac3/core/eac3_tables.hpp`, Table E2.5):
 `chanmap::expand(map)` turns a map into a `Layout` you can iterate, and `chanmap::name`
 gives each location's short name.
 
+## Latency
+
+The four terms and what each one means are set out in
+[the AC-3 page's Latency section](encoding-ac3.md#latency); everything there applies here too,
+because E-AC-3 uses the same transform, the same frame length and the same
+lookahead-free block-switch decision. What differs is one tool and one shape.
+
+**`transient_prenoise` costs a frame of decoder hold-back.** §3.7's correction reaches
+*backwards* out of one frame into the one before it, so a decoder can only realize it while it
+still has that previous frame — which means returning frame N−1's PCM from the call that
+supplies frame N. That is a full frame period, permanently, from the first frame that actually
+uses the tool onward:
+
+```cpp
+ac3::eac3::FrameConfig config{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
+config.transient_prenoise = true;
+ac3::eac3::FrameEncoder encoder{config};
+encoder.latency_samples();  // 3328 = 1536 frame + 256 transform + 1536 hold-back
+```
+
+`eac3::eac3_latency(config)` answers the same question without building an encoder, which is
+what a pipeline sizing its buffers up front actually needs. Every *other* Annex E tool — AHT,
+coupling, enhanced coupling, spectral extension — is a different way of coding the same frame's
+coefficients and adds nothing: AHT packs a channel's six blocks into block 0 rather than looking
+ahead of the frame, and spx and coupling reconstruct within the block they arrive in.
+
+The hold-back engages when the tool does, not when it is configured. This encoder reuses the
+`blksw` decision rather than running a second detector, so a stream that never block-switches
+never sets `transproce` and never holds anything back — `Eac3Decoder::latency_samples()` reports
+0 until it does, and one frame from then on.
+
+**An access unit's budget is the worst of its substreams'.** Every substream codes the same 1536
+samples of the same program, so the frame and transform terms are shared rather than summed; the
+hold-back is per-substream, and `decode_access_unit` cannot assemble a program until its slowest
+substream has released. `AccessUnitEncoder::latency()` reports that.
+
+### Short syncframes (`numblkscod` 0–2) — not yet available
+
+Annex E §E2.3.1.4 allows a syncframe to carry 1, 2 or 3 blocks instead of 6, which would cut
+`frame_samples` from 1536 to 256, 512 or 768 and the total budget from 1792 samples to 512, 768
+or 1024 — 10.67 ms at 48 kHz for the shortest, against 37.33. That is the low-latency
+configuration for a conferencing or contribution path, and it is the largest single reduction
+available, since framing is by far the biggest term.
+
+The decoder here reads all four codes today. **The encoder emits six-block frames only**, so the
+figure above is what this project can currently deliver end to end. Short syncframes are
+roadmap item EQ11; when it lands, this section becomes a configuration rather than a note.
+
 ## More than one programme
 
 Dependent substreams widen *one* programme. §E2.3.1.2 also allows up to eight **independent**
@@ -335,4 +383,5 @@ just the second programme — see
 ---
 
 See also: [Metadata](metadata.md) — mix-level and DRC fields shared with AC-3, plus the
-E-AC-3-only `mixing` group; [Encoding AC-3](encoding-ac3.md) — the single-substream base case.
+E-AC-3-only `mixing` group; [Encoding AC-3](encoding-ac3.md) — the single-substream base case,
+and the full latency budget.

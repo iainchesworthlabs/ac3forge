@@ -138,7 +138,11 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     int k = kMaskTab[static_cast<std::size_t>(start)];
     int lastbin = 0;
     do {
-        lastbin = std::min(
+        // std::min<int>, not deduced: kBandStart/kBandSize hold std::int32_t,
+        // which on arm-none-eabi is `long int` rather than `int` - so the two
+        // arguments are different types there and deduction fails. Spelled out
+        // at every such site in this file.
+        lastbin = std::min<int>(
             kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
         bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
         ++j;
@@ -216,9 +220,17 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
     const int snroffset = snr_offset(csnroffst, fsnroffst);
     const int kStart = region.start;
 
-    // §7.2.2.2: exponents -> 13-bit signed log PSD.
+    // §7.2.2.2: exponents -> 13-bit signed log PSD. exponents_to_psd's own
+    // SIMD store writes std::int32_t, which on a 32-bit target
+    // (arm-none-eabi, where the minimum-footprint decoder profile runs) is
+    // `long` rather than `int` - two different types, so a separate buffer
+    // and an explicit copy into the plain-`int` one band_psd (exported,
+    // ac3/core/bitalloc.hpp) and the rest of this function already use, is
+    // needed rather than widening that public signature for one caller.
+    std::array<std::int32_t, kMaxMantissas> psd_wide{};
+    exponents_to_psd(exps, kStart, end, psd_wide);
     std::array<int, kMaxMantissas> psd{};
-    exponents_to_psd(exps, kStart, end, psd);
+    std::ranges::copy(psd_wide, psd.begin());
 
     // §7.2.2.3: banded integration via log-addition.
     const std::array<int, 50> bndpsd = band_psd(psd, kStart, end);
@@ -300,7 +312,8 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                 (dbknee - bndpsd[static_cast<std::size_t>(bin)]) >> 2;
         }
         mask[static_cast<std::size_t>(bin)] =
-            std::max(excite[static_cast<std::size_t>(bin)], hth[static_cast<std::size_t>(bin)]);
+            std::max<int>(excite[static_cast<std::size_t>(bin)],
+                          hth[static_cast<std::size_t>(bin)]);
     }
 
     // §7.2.2.6: delta bit allocation. mask[]/psd[] units are 128 per exponent
@@ -351,9 +364,9 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
         int j = kMaskTab[static_cast<std::size_t>(kStart)];
         int lastbin = 0;
         do {
-            lastbin = std::min(kBandStart[static_cast<std::size_t>(j)] +
-                                   kBandSize[static_cast<std::size_t>(j)],
-                               end);
+            lastbin = std::min<int>(kBandStart[static_cast<std::size_t>(j)] +
+                                        kBandSize[static_cast<std::size_t>(j)],
+                                    end);
             int m = mask[static_cast<std::size_t>(j)];
             m -= snroffset;
             m -= floor;
@@ -389,9 +402,15 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     // pre-quantization coefficient magnitude. Table 5.17's 128-units-per-6dB
     // step is exactly one exponent step (§7.2.2.2's psd = 3072 - exp<<7), so
     // exponent = -1 - log2(|c|) gives real_psd = 3200 + 128*log2(|c|).
+    // See compute_bit_allocation's own sibling call above for why
+    // exponents_to_psd's result needs a separate wide buffer and an explicit
+    // copy rather than landing straight in a plain `int` one on a 32-bit
+    // target.
+    std::array<std::int32_t, kMaxMantissas> psd_wide{};
+    exponents_to_psd(exps, start, end, psd_wide);
     std::array<int, kMaxMantissas> psd{};
+    std::ranges::copy(psd_wide, psd.begin());
     std::array<int, kMaxMantissas> real_psd{};
-    exponents_to_psd(exps, start, end, psd);
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
         const double magnitude = std::abs(static_cast<double>(coefficients[i]));
