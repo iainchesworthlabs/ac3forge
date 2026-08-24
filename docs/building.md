@@ -568,8 +568,9 @@ Result: configure, build and `ctest` all clean on both compilers, GUI and ALSA b
 The base suite is `ac3tests` and `ac3perf`'s Catch2 cases plus one ctest entry per example
 program; `AC3FORGE_WITH_ALSA`'s `tests/backend/alsa/` adds 14 entries (or, on a build that
 selected pipewire/ instead, `tests/backend/pipewire/` adds 5), and the GUI's Qt Quick
-Test harness (`ac3gui_qmltests`, `apps/gui/tests/CMakeLists.txt`) adds one more — unlike every
-other GUI-related target, that one harness *does* register its own `ctest` entry, gated on both
+Test harness (`ac3gui_qmltests`, `apps/gui/tests/CMakeLists.txt`) adds one more per `tst_*.qml`
+suite under `apps/gui/tests/qml/` (18 today) — unlike every other GUI-related target, that one
+harness *does* register its own `ctest` entries, gated on both
 `AC3FORGE_BUILD_GUI` and `AC3FORGE_BUILD_TESTS`. A Linux build with neither ALSA nor the GUI
 runs the base suite; with the GUI on and ALSA off it matches Windows exactly. `ac3gui --smoke`
 also runs clean headless (`QT_QPA_PLATFORM=offscreen`), encoding real audio and instantiating
@@ -620,11 +621,12 @@ below) also passes: real SNR numbers from that CI run were 61.81/61.82 dB on mac
 67.84/67.82 dB on Linux and Windows for the same material - a real but modest cross-compiler
 floating-point difference, comfortably clear of the 30 dB gate. `macos-llvm` now builds the GUI
 too (Homebrew's `qt` formula — see [GUI on macOS](platforms/macos.md#gui-on-macos)), which adds
-`ac3gui_qmltests` to that same suite the same way it does on Linux: confirmed on a real run, 582
-ctest entries total, 100% passing, `ac3gui_qmltests` itself in 39.74s (56.81s for the whole
-suite) — the first time that number has existed for macOS at all, so there is no prior baseline
-to compare it against the way the ~15s Windows number has one. Getting there needed two real
-fixes, not just turning the option on: `QSG_RENDER_LOOP=basic` (`apps/gui/tests/CMakeLists.txt`,
+the same per-suite `ac3gui_qml_tests_*` entries to that same suite the same way it does on Linux:
+confirmed on a real run before the harness split into one ctest entry per `tst_*.qml` suite (see
+`apps/gui/tests/CMakeLists.txt`), 582 ctest entries total, 100% passing, the GUI harness (then
+still a single entry) in 39.74s (56.81s for the whole suite) — the first time that number had
+existed for macOS at all, so there was no prior baseline to compare it against. Getting there
+needed two real fixes, not just turning the option on: `QSG_RENDER_LOOP=basic` (`apps/gui/tests/CMakeLists.txt`,
 `APPLE` only) for a Qt Quick threaded-render-loop deadlock that hung the suite outright before a
 single test ran, and forcing the `Fusion` style in `qml_test_main.cpp` — matching what `main.cpp` already does —
 for a second, narrower hang in a native `ComboBox` populated by real capture-device data once a
