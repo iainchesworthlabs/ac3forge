@@ -188,7 +188,8 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
         const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
         std::vector<std::vector<float>> out;
         for (int frame = 0; frame < 3; ++frame) {
-            out = ac3::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false, domain);
+            out = ac3::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
+                                       /*fast_imdct=*/false, domain);
         }
         REQUIRE(out.size() == 1);
 

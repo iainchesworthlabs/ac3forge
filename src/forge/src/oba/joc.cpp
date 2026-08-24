@@ -247,7 +247,7 @@ namespace {
 // bins, four to a §7.1 subband, one matrix step per 256-sample block.
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_mdct_band(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, bool fast_mdct) {
+    ReconstructionState& state, bool fast_mdct, bool fast_imdct) {
     const int objects = params.objects;
     const int bands = params.bands();
     const auto& mapping = kSubbandToBand[static_cast<std::size_t>(params.num_bands_idx)];
@@ -332,7 +332,7 @@ namespace {
 
             // --- synthesize, same overlap-add eac3_decoder.cpp's own
             // channel reconstruction uses ---
-            imdct512_windowed(object_mdct, x);
+            imdct512_windowed(object_mdct, x, fast_imdct);
             auto& history = state.object_history[static_cast<std::size_t>(object)];
             auto& pcm = out[static_cast<std::size_t>(object)];
             for (int n = 0; n < kSamplesPerBlock; ++n) {
@@ -482,13 +482,14 @@ namespace {
 std::vector<std::vector<float>> reconstruct(std::span<const std::span<const float>> bed,
                                             const FrameParameters& params,
                                             ReconstructionState& state, bool fast_mdct,
-                                            Domain domain) {
+                                            bool fast_imdct, Domain domain) {
     assert(bed.size() == static_cast<std::size_t>(kNumChannels5X));
     assert(params.channels == kNumChannels5X);
     assert(params.matrix.size() == params.coefficient_count());
 
-    auto out = domain == Domain::kQmf ? reconstruct_qmf(bed, params, state)
-                                      : reconstruct_mdct_band(bed, params, state, fast_mdct);
+    auto out = domain == Domain::kQmf
+                  ? reconstruct_qmf(bed, params, state)
+                  : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
 
     // The move keeps this at one matrix copy a frame, the same as when only
     // previous_matrix existed: older_matrix inherits the buffer that

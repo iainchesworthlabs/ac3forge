@@ -217,11 +217,20 @@ struct ReconstructionState {
 // 256 for kMdctBand, 576 for kQmf. Both are the algorithmic delay of the
 // transform pair that domain runs, and neither can be shortened; a caller
 // comparing the result against a known source has to shift by it, or it
-// measures the delay instead of the reconstruction. `fast_mdct` names the
-// evaluation of the MDCT pair and does nothing under kQmf, whose transform
-// has only the one form.
+// measures the delay instead of the reconstruction.
+//
+// `fast_mdct` and `fast_imdct` apply to Domain::kMdctBand only, and do
+// nothing under kQmf, whose transform has only the one form. `fast_mdct`
+// selects the §7.9.4 fold for the per-block forward analysis of the five
+// bed channels; `fast_imdct` selects the same core for step 3 of each
+// object's own §7.9.4.1 synthesis inverse - one per object per block, so 96
+// of them in a 16-object frame, which is where nearly all of kMdctBand's
+// time goes. Both default to the spec's own direct evaluations, the forms
+// every fast-path test validates against; Eac3Decoder passes
+// DecoderConfig::fast_imdct for the second.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, bool fast_mdct = false, Domain domain = Domain::kQmf);
+    ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
+    Domain domain = Domain::kQmf);
 
 }  // namespace ac3::joc

@@ -144,11 +144,159 @@ const auto unit = encoder.encode_frame(views, placement);
 Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/scripted_object_motion.cpp).
 
 `ObjectPath` is a `std::variant` of the two kinds behind one `evaluate(time_s)` interface, so a
-caller (CLI, GUI) doesn't need to know which one it holds. This layer is scoped to
-authored/batch motion — `evaluate(time_s)` is deliberately time-based so a future live-driven
-cursor could reuse it, but that plumbing isn't built here. It backs `ac3cli atmos-path` and
-`live`'s `atmos` mode, and the [station broadcast](station-broadcast.md) scene's ten authored
-object paths.
+caller doesn't need to know which one it holds. It is the *per-object* layer: one object, one
+path, no notion of a scene. `ac3cli atmos`'s built-in orbit and `live`'s `atmos` mode use it
+directly; anything with more than one object and a file to load from wants `ObjectScene` below.
+
+## The scene: `ac3::oba::ObjectScene`
+
+`ac3/oba/scene.hpp`. `AtmosEncoder::encode_frame` takes one `ObjectPlacement` per object per
+frame and nothing more, so every caller that wanted a *scene* — objects with names, a bed
+assignment, automation, a file it can be saved to and reloaded from — used to build its own.
+`ac3cli atmos-path` grew a keyframe-file grammar; the GUI's timeline grew a parallel one it
+exports in that grammar; the station-broadcast example hard-coded a cue table in C++. This is
+the one description they share.
+
+It is **metadata and authoring**, deliberately. A scene says where an object is at a moment in
+time; turning that into speaker feeds is the encoder's job, and a room-corrected render is
+[Cavern](https://github.com/VoidXH/Cavern)'s rather than this project's. `Orientation` below is the
+same kind of thing: it rewrites the coordinates that go into OAMD, so what reaches the
+bitstream is an ordinary scene that happens to have been turned.
+
+```cpp
+using ac3::oba::Interpolation;
+auto built = ac3::oba::ObjectScene::create({
+    {.name = "flyby",
+     .automation = {{.time_s = 0.0, .position = {.x = 0.0, .y = 0.5, .z = 0.5}, .gain = 0.6,
+                     .interp = Interpolation::kSmooth},
+                    {.time_s = 1.5, .position = {.x = 0.5, .y = 0.1, .z = 0.5}, .gain = 0.6,
+                     .interp = Interpolation::kSmooth},
+                    {.time_s = 3.0, .position = {.x = 1.0, .y = 0.5, .z = 0.5}, .gain = 0.6}}},
+});
+const auto& scene = *built;
+
+std::vector<ac3::oba::ObjectPlacement> placement(scene.object_count());
+scene.evaluate_into(seconds, placement);        // allocation-free, once per frame
+const auto unit = encoder.encode_frame(views, placement);
+```
+
+Full program: [`examples/scripted_object_motion.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/scripted_object_motion.cpp).
+
+### Interpolation and ramp semantics
+
+Each automation point states how the segment that *starts* at it reaches the next one, so one
+object can hold, then slide, then ease without being split into three:
+
+| `Interpolation` | Between two points |
+|---|---|
+| `kHold` | Step. The value stays this point's until the next point's instant, then jumps. Mostly for gain gating and cue-accurate teleports — a position step is audible as a click in the panning. |
+| `kLinear` (default) | Straight line, component by component. Exactly what `KeyframePath` has always done, which is why a scene built from a legacy keyframe file evaluates to the same doubles that file always produced. |
+| `kSmooth` | Smoothstep, `f*f*(3-2f)`: the value leaves and arrives with zero slope. For where a linear ramp corners audibly. |
+
+Outside the authored range, both ends **hold**: an object sits still before its first cue and
+stays put after its last, rather than extrapolating into the wall or going silent. An object
+with one point never moves. Callers evaluate at the frame's **end** time — every encode loop in
+this repository does — because `AtmosEncoder` ramps its bed between successive frames'
+placements, so the placement handed in is the value that ramp arrives *at*.
+
+### Orientation
+
+`Orientation` rotates the whole scene about the room's centre on the way out of `evaluate()`.
+Angles are radians (`orientation_from_degrees()` converts); rotation runs in a centred cube —
+x and y mapped from `[0,1]` to `[-1,+1]`, z already centred per §4.2.1 — applied yaw, then
+pitch, then roll, and mapped back with a clamp to the room. Positive yaw turns the scene
+clockwise seen from above, positive pitch raises the front, positive roll raises the right. An
+all-zero `Orientation` is an *exact* no-op, not a rotation by zero, so an un-turned scene's
+positions are bit-identical to the authored doubles.
+
+```cpp
+scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));  // front wall → right wall
+```
+
+### The live half: `SceneCursor`
+
+`SceneCursor` is the same timeline with per-object overrides an external source pushes in as
+they arrive — the seam a live position source (roadmap `UX4`: OSC, MIDI, a game controller) and
+the GUI's live room plug into, and the reason the scene type isn't just a static table.
+
+```cpp
+ac3::oba::SceneCursor cursor{std::move(scene)};
+cursor.push({.object = 0, .placement = {.position = {.x = 0.75}, .gain = 0.9}});
+cursor.sample_into(seconds, placement);   // overridden objects report the pushed value
+cursor.release(0);                        // back to the authored timeline
+```
+
+Latest-value-wins, with nothing interpolated between updates, deliberately: a controller's
+update rate is not the frame rate, guessing an intermediate position would invent motion nobody
+authored, and `AtmosEncoder` already ramps its bed between the placements it is handed — which
+is the right place for that smoothing, since it is the thing that knows the frame boundary. The
+scene's orientation applies to pushed placements too, so a live object and its authored
+neighbours never end up in different rooms.
+
+### The serialised form
+
+`to_json()` / `scene_from_json()`. **JSON, not YAML**: {fmt} (linked into this library for text
+formatting generally) formats a number, it is not a parser for either document format, so
+whichever this is still has to be read and written by code in this repository, and RFC 8259 is a
+grammar small enough to implement completely and be sure of where YAML 1.2's is not — a
+hand-rolled "YAML subset" would accept and reject files no other YAML tool agrees with, which is
+worse than not offering YAML. Both other front ends already have a JSON reader to hand (Qt's,
+Python's) if they ever want to read a scene without linking this library.
+
+```json
+{
+  "ac3forge_scene": 1,
+  "orientation": { "yaw_rad": 0, "pitch_rad": 0, "roll_rad": 0 },
+  "objects": [
+    {
+      "name": "flyby",
+      "bed": [],
+      "automation": [
+        { "t": 0, "x": 0, "y": 0.5, "z": 0.5, "gain": 0.6, "lfe": 0, "interp": "smooth" }
+      ]
+    }
+  ]
+}
+```
+
+Numbers are written short-round-tripped (the shortest decimal that reads back as the same
+`double`), one automation point per line and members in a fixed order, so a scene under version
+control shows real edits rather than formatting churn, and a save/load cycle is bit-exact. The
+reader is strict about what it does not recognise — an unknown member is an error, because a
+hand-authored file's likeliest fault is a misspelled key and silently defaulting `"gian"` to
+`1.0` would be wrong in a way nothing reports. Forward compatibility rides on the
+`ac3forge_scene` version number instead. `orientation` accepts `yaw_deg`/`pitch_deg`/`roll_deg`
+in place of the radian spellings (but never both for one axis). `bed` names TS 103 420 Table 12
+channel labels — `"lr"`, `"c"`, `"lfe"`, `"ls_rs"`, `"lb_rb"`, `"tfl_tfr"`, `"tsl_tsr"`,
+`"tbl_tbr"`, `"lw_rw"`, `"lfe2"` — and an empty array means a dynamic object.
+
+`scene_objects_from_keyframe_text()` / `to_keyframe_text()` read and write the older
+whitespace-column grammar `ac3cli atmos-path` has always taken, unchanged including its
+diagnostics — see [CLI → Commands](../cli/commands.md). `read_scene()` and `scene_from_text()`
+take either, told apart by whether the first non-whitespace character is `{`, so a path argument
+keeps working whichever form the file is in.
+
+The keyframe form is *indexed and sparse* — a file may mention objects 0 and 2 and say nothing
+about 1 — and what object 1 should then be is the caller's policy, not the library's:
+`atmos-path` fans it out at room centre under its inverse-root gain law, `atmos-encode` keeps
+that channel's existing static placement. That is why `read_scene()` returns raw
+`SceneContents` with the gaps still empty; fill them, then `ObjectScene::create`.
+`scene_from_text()` is the convenience for a caller with no policy of its own.
+
+### Not in the C API or the Python bindings
+
+Both expose `AtmosEncoder`, and `ObjectScene` deliberately does not follow it there yet. The
+shape of the type is expected to move when `UX4`'s live source lands — `SceneCursor` exists
+precisely because that seam is not finished — and both of those surfaces are candidates for the
+coming API freeze, where an experimental type would be a lasting commitment. Exposing half of
+it (say, the serialisation free functions but not the type) would be worse than exposing none:
+a C caller would get a scene it could load and not evaluate. Load and save the JSON form from
+either language and hand the resulting placements to the existing encoder bindings until the
+type settles.
+
+This layer backs `ac3cli atmos-path` and `atmos-encode`'s optional scene argument, the GUI's
+object-path export, and the [station broadcast](station-broadcast.md) scene's ten authored
+objects.
 
 ## Objects-or-nothing: `AtmosConfig::emit_object_metadata`
 

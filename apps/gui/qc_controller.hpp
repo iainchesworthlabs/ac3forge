@@ -98,14 +98,16 @@ class QcController : public QObject {
     // {label, hasLoudness, integratedLkfs, hasLra, lra, hasTruePeak,
     //  truePeakDbtp, dialnorm, claimedLkfs, deltaDb, impliedDialnorm,
     //  dialnormMatches, hasCompr, comprDb, presets}. `presets` is a list of
-    // {id, name, targetLkfs, toleranceLu, maxTruePeakDbtp, loudnessDelta,
-    //  loudnessPass, truePeakMargin, truePeakPass, pass} - every preset when
-    // presetIndex is 0 ("All presets"), exactly one otherwise - mirroring
-    // ac3cli qc's own preset=<name>|all split, see presetIndex's own comment.
+    // {id, name, source, targetLkfs, toleranceLu, loudnessIsCeiling,
+    //  maxTruePeakDbtp, loudnessDelta, loudnessPass, truePeakMargin,
+    //  truePeakPass, pass} - every preset when presetIndex is 0 ("All
+    // presets"), exactly one otherwise - mirroring ac3cli qc's own
+    // preset=<name>|all split, see presetIndex's own comment.
     Q_PROPERTY(QVariantList programmes READ programmes NOTIFY resultChanged)
-    // "All presets", then the three named delivery gates in
-    // ac3::meta::kQcPresetIds order - index 0 is the "preset=all" concept,
-    // 1..3 select one (ac3cli's own preset=ebu-r128-s2|atsc-a85|netflix).
+    // "All presets", then every named delivery gate in
+    // ac3::meta::kQcPresetIds order - index 0 is the "preset=all" concept and
+    // 1..kQcPresetIds.size() select one, so this list grows with that table
+    // rather than with a count repeated here.
     Q_PROPERTY(QStringList presetNames READ presetNames CONSTANT)
     Q_PROPERTY(int presetIndex READ presetIndex WRITE setPresetIndex NOTIFY presetChanged)
 

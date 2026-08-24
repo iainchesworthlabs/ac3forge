@@ -500,8 +500,8 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
             bed_joc_order[static_cast<std::size_t>(jc)] =
                 sub.channels[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto reconstructed =
-            ac3::joc::reconstruct(bed_joc_order, *params, state, /*fast_mdct=*/false, kDomain);
+        const auto reconstructed = ac3::joc::reconstruct(
+            bed_joc_order, *params, state, /*fast_mdct=*/false, /*fast_imdct=*/false, kDomain);
         REQUIRE(reconstructed.size() == 4);
         for (std::size_t i = 0; i < 4; ++i) {
             recovered[i].insert(recovered[i].end(), reconstructed[i].begin(), reconstructed[i].end());
@@ -609,8 +609,9 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
                 bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                     kAc3FromJoc[static_cast<std::size_t>(jc)])];
             }
-            const auto out =
-                ac3::joc::reconstruct(bed_joc_order, *params, state, false, decode_domain);
+            const auto out = ac3::joc::reconstruct(bed_joc_order, *params, state,
+                                                   /*fast_mdct=*/false, /*fast_imdct=*/false,
+                                                   decode_domain);
             REQUIRE(out.size() == kObjects);
             for (std::size_t i = 0; i < kObjects; ++i) {
                 recovered[i].insert(recovered[i].end(), out[i].begin(), out[i].end());

@@ -322,6 +322,13 @@ series per kernel. The Δ column is each run against its own series' trailing
 with: ≥ +20% is flagged as a soft drift, ≥ +100% as a hard one. Neither ever fails
 CI (see above); a flagged row here is an invitation to look, not a broken build.
 
+Several kernels appear twice, as a `<name>` / `<name>_fast` pair: the transforms
+exist in two evaluations (the spec's own direct form and an accelerated one - see
+[Verification](verification.md#performance-and-reference-modes)), and both are
+recorded, because the reference form is maintained code that a `mode=reference` run
+actually executes, not dead weight. The `_fast` row is what a default encode or
+decode spends; the bare row is what the oracle costs.
+
 <div id="kernel-trend-app">
   <p class="performance-trend-status">Loading kernel trend data…</p>
 </div>

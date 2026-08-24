@@ -6,7 +6,7 @@
 #include <numbers>
 #include <span>
 
-#include "../core/fft_radix2.hpp"
+#include "../core/fft_kernel.hpp"
 #include "qmf_prototype.hpp"
 
 namespace ac3::dsp {
@@ -42,8 +42,8 @@ const Twiddle& twiddle() {
     return table;
 }
 
-const internal::FftRadix2Tables<kFold>& fft_tables() {
-    static const internal::FftRadix2Tables<kFold> tables;
+const internal::FftTables<kFold>& fft_tables() {
+    static const internal::FftTables<kFold> tables;
     return tables;
 }
 
@@ -86,13 +86,19 @@ void QmfAnalysis::push(std::span<const float, kQmfHop> block,
     }
 
     const auto& tw = twiddle();
+    const auto& t = fft_tables();
+    // Written straight into digit-reversed position: fft_forward_bitrev
+    // expects it there (fft_kernel.hpp), the same convention dft512 and the
+    // fast MDCT fold use, so this pass and the kernel's own bit-reversal
+    // pass never coexist.
     std::array<double, kFold> spectrum_real{};
     std::array<double, kFold> spectrum_imag{};
     for (std::size_t m = 0; m < kFold; ++m) {
-        spectrum_real[m] = folded[m] * tw.real[m];
-        spectrum_imag[m] = folded[m] * tw.imag[m];
+        const std::size_t d = t.bitrev[m];
+        spectrum_real[d] = folded[m] * tw.real[m];
+        spectrum_imag[d] = folded[m] * tw.imag[m];
     }
-    internal::fft_radix2_forward<kFold>(fft_tables(), spectrum_real, spectrum_imag);
+    internal::fft_forward_bitrev<kFold>(t, spectrum_real, spectrum_imag);
 
     // The transform is conjugate-symmetric about k = 2M - 1 - k for real
     // input, so the upper half carries nothing the lower half does not.
@@ -114,13 +120,15 @@ void QmfSynthesis::pull(std::span<const double, kQmfSubbands> real,
     // An inverse DFT via the forward core: conjugating the input, running
     // the forward transform and conjugating the output computes the
     // unnormalized inverse, so no second set of tables is needed.
+    const auto& t = fft_tables();
     std::array<double, kFold> time_real{};
     std::array<double, kFold> time_imag{};
     for (std::size_t k = 0; k < static_cast<std::size_t>(kQmfSubbands); ++k) {
-        time_real[k] = real[k];
-        time_imag[k] = -imag[k];
+        const std::size_t d = t.bitrev[k];
+        time_real[d] = real[k];
+        time_imag[d] = -imag[k];
     }
-    internal::fft_radix2_forward<kFold>(fft_tables(), time_real, time_imag);
+    internal::fft_forward_bitrev<kFold>(t, time_real, time_imag);
 
     // Post-twiddle by exp(+i*pi*m/(2M)) and take the real part. With the
     // conjugation above, Re{conj(z) * conj(w)} == Re{z * w}, so the

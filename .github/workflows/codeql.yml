@@ -1,15 +1,42 @@
-# CodeQL static analysis for the C++ codec/CLI/matroska sources. Modelled on
-# CountdownSolver's .github/workflows/codeql.yml (same CMake+vcpkg shape,
-# same gitflow model) - build-mode: manual, library+CLI only, no Qt app: the
-# GUI adds nothing CodeQL needs to see and config-linux-gcc already defaults
-# AC3FORGE_BUILD_GUI off (see CMakePresets.json), so this is the same build
-# ci.yml's static-analysis (clang-tidy) job already proves clean.
+# CodeQL static analysis across every language in this repository.
 #
-# Complements platform-macros (no-#ifdef rule) and static-analysis
-# (clang-tidy) in ci.yml: those catch style/portability issues, CodeQL finds
-# actual security-relevant defects (buffer overflow, use-after-free, tainted
-# data flow) and publishes them to Security > Code scanning.
-name: CodeQL (C++)
+# The C++ leg is modelled on CountdownSolver's .github/workflows/codeql.yml
+# (same CMake+vcpkg shape, same gitflow model) - build-mode: manual,
+# library+CLI only, no Qt app: the GUI adds nothing CodeQL needs to see and
+# config-linux-gcc already defaults AC3FORGE_BUILD_GUI off (see
+# CMakePresets.json), so this is the same build ci.yml's static-analysis
+# (clang-tidy) job already proves clean.
+#
+# The other two legs (roadmap VX14) cover code the C++ leg never saw: ~30
+# Python files (the oracles and CI gates under tools/, plus the python/
+# binding package) and apps/wasm/demo.js. They take build-mode: none -
+# nothing needs compiling for CodeQL to extract them - and so run straight on
+# the hosted runner without this workflow's container, GCC install or vcpkg
+# step, which is why the steps below are conditioned on the language rather
+# than split into a second workflow.
+#
+# java-kotlin is deliberately NOT in the matrix, and that is a measured
+# result, not an oversight. It was added alongside the other two and
+# dispatched on this branch (run 32637028120, 2026-08-23); CodeQL 2.26.3
+# reported "Detected 11 Kotlin files in your project that could not be
+# processed without a build" and ended the job as a configuration error.
+# CodeQL's Kotlin extractor has no buildless mode - apps/android is 100%
+# Kotlin, so build-mode: none extracts nothing at all. The alternatives are
+# autobuild or manual, both of which mean standing up the full Android
+# toolchain this workflow otherwise has no use for: JDK 17, the pinned NDK,
+# Gradle and the object-signing key material, all of which _build.yml's
+# android job already provisions over several minutes. That is a
+# disproportionate cost for eight thin bridge/UI files, and the right shape
+# for it is a CodeQL step inside that existing job rather than a fifth leg
+# here - left as follow-up work rather than shipped as a permanently red
+# matrix entry.
+#
+# Complements platform-macros (no-#ifdef rule), static-analysis (clang-tidy)
+# and script-lint (ruff/shellcheck/actionlint) in ci.yml: those catch
+# style/portability issues, CodeQL finds actual security-relevant defects
+# (buffer overflow, use-after-free, tainted data flow) and publishes them to
+# Security > Code scanning.
+name: CodeQL
 
 on:
   push:
@@ -35,6 +62,12 @@ on:
   schedule:
     # Weekly scan catches new CodeQL query packs even without code changes.
     - cron: "17 3 * * 1"
+  # develop's merge queue (see .github/branch-protection.md) needs "Analyze
+  # (C++)" to actually report on its temporary gh-readonly-queue/... ref -
+  # see ci.yml's own merge_group comment for why the trigger alone is
+  # sufficient here (no pull_request-only context is read below).
+  merge_group:
+    branches: [ develop ]
   workflow_dispatch:
 
 concurrency:
@@ -52,14 +85,39 @@ jobs:
     permissions:
       contents: read
 
+  # `display`, not `language`, in the job name - and "C++" spelled exactly as it
+  # was before this became a matrix. The check name a branch-protection ruleset
+  # selects is this rendered string, and .github/branch-protection.md requires
+  # "Analyze (C++)" on both main and develop: renaming it to "Analyze (cpp)"
+  # would leave that required check permanently pending on every PR until an
+  # admin edited the ruleset. Adding legs is free; renaming one is not.
   analyze:
-    name: Analyze (C++)
+    name: Analyze (${{ matrix.display }})
     needs: toolchain-versions
     runs-on: ubuntu-latest
-    container: ubuntu:26.04
+    # Empty for every interpreted leg, so only the C++ one pays for the pinned
+    # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that follow).
+    container: ${{ matrix.container }}
     permissions:
       security-events: write
       contents: read
+    strategy:
+      # One language's extractor failing should not hide the others' results.
+      fail-fast: false
+      matrix:
+        include:
+          - language: cpp
+            display: C++
+            build-mode: manual
+            container: ubuntu:26.04
+          - language: python
+            display: Python
+            build-mode: none
+            container: ""
+          - language: javascript-typescript
+            display: JavaScript
+            build-mode: none
+            container: ""
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
       # silently degrades to a REST tarball download without it. Also installs
@@ -69,6 +127,7 @@ jobs:
       # AC3FORGE_BUILD_GUI, and the ALSA backend is optional, auto-detected,
       # and irrelevant to what CodeQL is scanning for here.
       - name: Bootstrap container
+        if: matrix.container
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
@@ -82,17 +141,21 @@ jobs:
           persist-credentials: false
 
       - name: Install GCC 16
+        if: matrix.language == 'cpp'
         run: bash .github/toolchain/02-gcc-toolchain.sh
 
       - uses: ./.github/actions/setup-vcpkg
+        if: matrix.language == 'cpp'
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
-          languages: cpp
-          build-mode: manual
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # Path filtering only - see the file's own header.
+          config-file: ./.github/codeql/codeql-config.yml
           # security-and-quality layers CodeQL's maintainability/reliability
           # queries on top of the default security set - the same
           # deterministic rule layer GitHub's paid Code Quality product runs,
@@ -103,15 +166,23 @@ jobs:
           # showed 179 rules and ZERO findings against the default suite's
           # 58 rules / zero - the suite starts from a clean baseline, so any
           # future finding is new signal, not inherited noise.
+          #
+          # The same suite is used for Python and JavaScript, but that
+          # measurement does NOT transfer - it was taken against the C++
+          # extractor's rule set. Both were dispatched on this branch before
+          # landing (run 32637028120, 2026-08-23) and completed clean, so
+          # they start from the same zero-findings baseline the C++ leg does.
           queries: security-and-quality
 
       - name: Configure
+        if: matrix.language == 'cpp'
         run: cmake --preset config-linux-gcc
 
       - name: Build
+        if: matrix.language == 'cpp'
         run: cmake --build --preset build-linux-gcc -- -k 0
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
-          category: "/language:cpp"
+          category: "/language:${{ matrix.language }}"
