@@ -153,13 +153,20 @@ both encoders decide from content rather than from the bit rate.
   Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]` on the CLI): one composite SNR
   offset held across frames and steered by an integral controller, over a sliding-window bit
   reservoir that caps any window's pooled budget.
-- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model.
-  `encoder.cpp` records that the only in-loop quality criterion is the composite SNR offset, and
-  that both earlier attempts to search per-frame bit-allocation codes and exponent strategies
-  failed for exactly that reason. `ac3::verify` already models the decoder's reconstruction; a
-  per-candidate distortion measure on top of it lets the transmitted knobs (EQ2, EQ5, EQ7, delta
-  segments) be chosen on real error, and a tonality/masking estimate can drive them. Last in the
-  theme; needs VX6 and VX7 to validate on anything other than fixture SNR.
+- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
+  measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
+  against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
+  model), wired into a per-frame `dbpbcod`/`fgaincod` search (`EncoderConfig::search`) with real
+  hysteresis, and validated on real CC0/CC-BY material (not fixture SNR - VX6/VX7's own gap,
+  closed locally for this) against FFmpeg's decode by SNR/LSD/ViSQOL. The distortion criterion is
+  a real win from 448 kbit/s up; at 192 it trades SNR against per-band shape and currently
+  costs more than it buys. The perceptual criterion currently loses at every rate tested - its
+  model is validated in isolation but not yet calibrated well enough to beat the fixed defaults
+  on real material with rematrixing active. Both stay off by default. What's NOT done: neither
+  criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet (only the two `BitAllocCodes` fields
+  the encoder's own dead-end comment named), E-AC-3 isn't wired (needs EQ3), and the perceptual
+  model needs further calibration before it is worth turning on. See
+  `docs/library/quality.md` and `docs/library/encoding-ac3.md`'s Decision search section.
 
 ## DC. Decoder and consumer output
 
@@ -265,7 +272,6 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Still open: widening `decode`/`qc`/`levels`/`play`/`monitor` and the GUI's QC/Inspect pickers
   to accept containers directly, and container-to-container remux.
 - [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
->>>>>>> github/develop
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
   Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
@@ -526,12 +532,23 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
 - [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
   instrumented test for the Android bridge's device-free paths.
-- [ ] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
+- [x] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
   posture, per-access-unit allocation caps and decode resource limits — what a media server
   wants to read before linking a decoder against internet input.
-- [ ] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
+  `docs/threat-model.md`, cross-referenced from `SECURITY.md`, README and
+  `docs/library/decoding.md`. Every enforced limit is tabulated with the field width it comes
+  from; the three that are not enforced (no cap on stream length, no decode time bound, ADM
+  parsers unfuzzed) are recorded as gaps with the mitigation on the caller. Writing it found and
+  fixed one real defect: `parse_wav` read its `fmt `/`data` chunk fields at fixed offsets past a
+  tag located by searching the whole buffer, with no bound on either — a heap over-read on a file
+  whose last four bytes read `"fmt "`.
+- [x] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
   tool and layout with expected decode hashes, so other decoders can test against this project.
-  The complement of VX4.
+  The complement of VX4. `tools/generators/gen_conformance_vectors.py` emits 60 vectors (21
+  AC-3, 35 E-AC-3, 4 Atmos) with the source PCM, per-vector hashes, decoded per-channel levels
+  and a derived FFmpeg-readability column; `docs/conformance-vectors.md` is the usage page and
+  the release workflow attaches the bundle beside the SBOM and attestations. Hashes are
+  per-toolchain until VX11/VX12; the source material stays synthetic until VX7.
 - [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
   `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
   (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a

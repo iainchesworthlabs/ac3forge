@@ -46,6 +46,12 @@ metadata options (any order, after the positional arguments):
                     radix-2 FFT evaluation - the decode-side mirror of fast-mdct=off above,
                     with the same relationship to its oracle (both codecs; bare fast-imdct,
                     the old opt-in, is a no-op)
+  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit allocation parameters per
+                    frame, from the error a decoder will reconstruct, instead of taking the
+                    rate-derived defaults. distortion minimises that error; perceptual weights
+                    it by a tonality/masking model first. off (the default) keeps the fixed
+                    values every release before this emitted. Costs encode time - see
+                    docs/library/quality.md for the measured figures
   mode=reference    both switches above in one word: every transform this command runs falls
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
