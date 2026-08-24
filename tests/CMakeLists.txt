@@ -62,12 +62,14 @@ add_executable(ac3tests
     dsp/test_dsp_qmf.cpp
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
+    encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
     io/test_elementary.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
+    encoder/test_exp_strategy.cpp
     core/test_exponents.cpp
     core/test_fft.cpp
     containers/test_fmp4.cpp
@@ -115,6 +117,14 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# test_exp_strategy.cpp includes exp_strategy.hpp, the exponent-run planner the
+# two encoder translation units share. It is deliberately not library surface -
+# nothing outside src/forge/src/encoder/ has any business planning exponent
+# runs - but what it decides is a cost judgement, and that is worth holding to
+# account on inputs chosen to make the right answer obvious rather than only
+# through a whole encode. Same pattern as the signing headers above.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
 
 # test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the

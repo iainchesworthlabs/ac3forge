@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/core/tables.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
@@ -79,8 +80,13 @@ std::optional<ac3::plan::Routing> routing_for_sources(
 // file, so a short source loaded alongside a long one goes silent-by-
 // holding at its own end rather than at whichever source happens to be
 // shortest overall.
+// samples_per_frame: usually ac3::kSamplesPerFrame; an E-AC-3 caller with a
+// short numblkscod (see eac3::FrameConfig::numblkscod) passes its own real
+// frame length instead - `dest` must already be sized to match, the same
+// contract its own per-channel vectors carry everywhere else in this file.
 void gather_frame(const LoadedSources& sources, std::size_t start,
-                  std::vector<std::vector<float>>& dest);
+                  std::vector<std::vector<float>>& dest,
+                  int samples_per_frame = ac3::kSamplesPerFrame);
 
 // Says what the routing did, so a run that quietly left half a layout silent
 // is visible rather than something to be discovered later on the meters.
