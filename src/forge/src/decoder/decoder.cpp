@@ -90,31 +90,6 @@ std::expected<std::size_t, DecodeError> syncframe_bytes(std::span<const std::byt
     return *frame_size_bytes(static_cast<SampleRate>(fscod), kbps, (frmsizecod & 1) != 0);
 }
 
-// Does this syncframe open an access unit, or does it join the one in
-// progress? Independent (and convertible) Annex E substreams open one and
-// dependents join it - but so does an AC-3 syncframe, because §E2.3.1.2 says
-// "if an AC-3 bit stream is present in the E-AC-3 bit stream, then the AC-3
-// bit stream shall be processed as an independent substream assigned
-// substream ID 0". A legacy-core delivery leans on exactly that: an AC-3
-// frame carrying the bed with Annex E dependents extending it.
-//
-// bsid is checked FIRST and is the whole reason this is a function. strmtyp
-// lives in the top two bits of byte 2 of an Annex E syncframe, and in an AC-3
-// one those same bits are the top of crc1 - so reading them unconditionally
-// makes "does this frame start an access unit?" a question about a checksum,
-// answered differently for otherwise identical frames. The frames must be
-// >= 6 bytes, which split_frames has already established of every one it
-// returns.
-[[nodiscard]] bool begins_access_unit(std::span<const std::byte> frame) {
-    if (std::to_integer<std::uint32_t>(frame[5]) >> 3 <= 8) {
-        return true;  // AC-3: independent substream 0 by §E2.3.1.2
-    }
-    const auto strmtyp =
-        static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(frame[2]) >> 6);
-    return strmtyp == eac3::StreamType::kIndependent ||
-           strmtyp == eac3::StreamType::kConvertible;
-}
-
 }  // namespace
 
 std::expected<int, DecodeError> stream_bsid(std::span<const std::byte> frame) {
