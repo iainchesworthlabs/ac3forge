@@ -16,6 +16,7 @@
 #include <system_error>
 #include <vector>
 
+#include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
@@ -120,9 +121,9 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
         const char* joc = have_object_audio ? ", JOC audio reconstructed"
                                             : " (JOC audio not reconstructed)";
         if (program.dynamic_only) {
-            fmt::println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
-                         metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
-                         ac3::oba::object_count(program), joc);
+            status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
+                           metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
+                           ac3::oba::object_count(program), joc);
         } else {
             // A bed program - what channel-based-immersive third-party
             // content is. Naming the bed's channels is the useful half here:
@@ -138,12 +139,12 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
             if (labels.empty()) {
                 labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
             }
-            fmt::println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
-                         labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
+            status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
+                           labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
         }
         if (metadata->trim) {
-            fmt::println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
-                         metadata->trim->warp_mode, metadata->trim->global_trim_mode);
+            status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
+                           metadata->trim->warp_mode, metadata->trim->global_trim_mode);
         }
         if (!metadata->skipped_elements.empty()) {
             std::string ids;
@@ -153,11 +154,11 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
                 }
                 ids += std::to_string(id);
             }
-            fmt::println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
+            status_println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
         }
         if (metadata->blocks.size() > 1) {
-            fmt::println(status, "  {} metadata update blocks per frame",
-                         metadata->blocks.size());
+            status_println(status, "  {} metadata update blocks per frame",
+                           metadata->blocks.size());
         }
     }
     if (objects_dir.empty()) {
@@ -169,7 +170,7 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
                      "export");
         return 0;
     }
-    fmt::println(status, "  wrote {} object WAV(s) to {}", objects_written, objects_dir);
+    status_println(status, "  wrote {} object WAV(s) to {}", objects_written, objects_dir);
     return 0;
 }
 
@@ -181,13 +182,13 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
 void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
                        double compr_min_db, double compr_max_db, std::size_t compr_frames,
                        const ac3cli::Options& meta) {
-    fmt::println(status, "  dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
-                 dynrng_note(meta));
+    status_println(status, "  dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
+                   dynrng_note(meta));
     if (compr_frames > 0) {
-        fmt::println(status, "  compr  {:+.2f} .. {:+.2f} dB over {} access units{}",
-                     compr_min_db, compr_max_db, compr_frames, compr_note(meta));
+        status_println(status, "  compr  {:+.2f} .. {:+.2f} dB over {} access units{}",
+                       compr_min_db, compr_max_db, compr_frames, compr_note(meta));
     } else {
-        fmt::println(status, "  compr  absent");
+        status_println(status, "  compr  absent");
     }
 }
 
@@ -308,7 +309,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     if (!units) {
         fmt::println(stderr, "error: stream framing failed (code {})",
                      static_cast<int>(units.error()));
-        return 1;
+        return kExitInput;
     }
     if (ids->size() > 1) {
         fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
@@ -441,13 +442,17 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             ++compr_frames;
         }
     };
+    Progress progress;
+    progress.start("decoding", units->size());
+    std::uint64_t units_done = 0;
     for (const auto& unit : *units) {
+        progress.tick(++units_done);
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
             fmt::println(stderr, "error: decode failed (code {})",
                          static_cast<int>(decoded.error()));
             abort_all();
-            return 1;
+            return kExitInput;
         }
         if (!decoded->has_value()) {
             // §3.7: this access unit's frame(s) are being held back pending
@@ -459,7 +464,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         if (!sink.is_open()) {
             first = out;
             if (!open_sink(first, out.channels.size())) {
-                return 1;
+                return kExitOutput;
             }
         }
         if (out.concealed) {
@@ -470,12 +475,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             if (!sink.append(ch, out.channels[ch])) {
                 fmt::println(stderr, "error: cannot write to {}", out_path);
                 abort_all();
-                return 1;
+                return kExitOutput;
             }
         }
         if (!append_objects(out.object_audio, sample_rate_hz(first.sample_rate))) {
             abort_all();
-            return 1;
+            return kExitOutput;
         }
     }
     // Whatever transient pre-noise processing was still holding back at
@@ -515,14 +520,14 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                     first.substream_count = 1;
                     first.object_metadata = substream.object_metadata;
                     if (!open_sink(first, substream.channels.size())) {
-                        return 1;
+                        return kExitOutput;
                     }
                 }
                 for (std::size_t ch = 0; ch < substream.channels.size(); ++ch) {
                     if (!sink.append(ch, substream.channels[ch])) {
                         fmt::println(stderr, "error: cannot write to {}", out_path);
                         abort_all();
-                        return 1;
+                        return kExitOutput;
                     }
                 }
             }
@@ -553,7 +558,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 }
                 first = synthesized;
                 if (!open_sink(first, static_cast<std::size_t>(first.layout.count))) {
-                    return 1;
+                    return kExitOutput;
                 }
             }
             // §E3.8.2 placement: each flushed substream's own channels land
@@ -588,7 +593,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                                      substream.channels[static_cast<std::size_t>(i)])) {
                         fmt::println(stderr, "error: cannot write to {}", out_path);
                         abort_all();
-                        return 1;
+                        return kExitOutput;
                     }
                 }
             }
@@ -600,13 +605,14 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             if (!append_objects(substream.object_audio,
                                 sample_rate_hz(substream.sample_rate))) {
                 abort_all();
-                return 1;
+                return kExitOutput;
             }
         }
     }
+    progress.finish();
     if (!sink.is_open()) {
         fmt::println(stderr, "error: no access units");
-        return 1;
+        return kExitInput;
     }
     // Dual mono has no Table E2.5 location to order by - decode_access_unit
     // leaves `layout` empty for exactly this case - so Ch1 and Ch2 go out in
@@ -618,23 +624,22 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     const auto written = sink.close();
     if (!written) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
-        return 1;
+        return kExitOutput;
     }
     std::size_t objects_written = 0;
     for (auto& object_sink : object_sinks) {
         if (const auto closed = object_sink.close(); !closed) {
             fmt::println(stderr, "error: {}", ac3::io::describe(closed.error()));
-            return 1;
-        }
+            return kExitOutput;        }
         ++objects_written;
     }
     if (first.acmod == ac3::Acmod::kDualMono) {
-        fmt::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
-                     units->size(), first.substream_count, out_path);
-        fmt::println(status,
-                     "  {} channels, {} Hz: Ch1 Ch2 (1+1 dual mono - two programmes, not a "
-                     "soundfield)",
-                     sink_slots, sample_rate_hz(first.sample_rate));
+        status_println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
+                       units->size(), first.substream_count, out_path);
+        status_println(status,
+                       "  {} channels, {} Hz: Ch1 Ch2 (1+1 dual mono - two programmes, not a "
+                       "soundfield)",
+                       sink_slots, sample_rate_hz(first.sample_rate));
         print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                           compr_frames, meta);
         if (first.info) {
@@ -657,18 +662,18 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         speakers += ac3::eac3::chanmap::name(first.layout[static_cast<int>(index)]);
         speakers += ' ';
     }
-    fmt::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
-                 units->size(), first.substream_count, out_path);
+    status_println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
+                   units->size(), first.substream_count, out_path);
     if (folding(meta, first.acmod)) {
         // The rendered layout is still worth naming: it is what the fold was
         // taken FROM, and a 7.1.4 folded to stereo is a materially different
         // claim from a 5.1 folded to stereo.
-        fmt::println(status, "  {} channels, {} Hz: {} -> {}", sink_slots,
-                     sample_rate_hz(first.sample_rate), speakers,
-                     fold_name(meta.output.target));
+        status_println(status, "  {} channels, {} Hz: {} -> {}", sink_slots,
+                       sample_rate_hz(first.sample_rate), speakers,
+                       fold_name(meta.output.target));
     } else {
-        fmt::println(status, "  {} channels, {} Hz: {}", map.size(),
-                     sample_rate_hz(first.sample_rate), speakers);
+        status_println(status, "  {} channels, {} Hz: {}", map.size(),
+                       sample_rate_hz(first.sample_rate), speakers);
     }
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
@@ -690,10 +695,10 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        return kExitInput;
     }
     if (!apply_object_verification(stream, meta)) {
-        return 1;
+        return kExitInput;
     }
     // bsid at bit 40 says which syntax this is, before either is assumed.
     // spdif and play branch on it the same way now that both packers handle
@@ -701,7 +706,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return 1;
+        return kExitInput;
     }
     // ...except for §E2.3.1.2's legacy core, where the first frame is AC-3 and
     // the stream is not: an AC-3 bed with Annex E dependents extending it goes
@@ -717,7 +722,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
-        return 1;
+        return kExitInput;
     }
     ac3::FrameDecoder decoder{{.drc_scale = meta.drc_scale,
                               .fast_imdct = meta.fast_imdct,
@@ -735,16 +740,20 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     double compr_min_db = 0.0;
     double compr_max_db = 0.0;
     std::size_t compr_frames = 0;
+    Progress progress;
+    progress.start("decoding", frames->size());
+    std::uint64_t frames_done = 0;
     // §7.10: frames that came back reconstructed rather than decoded. Zero
     // unless conceal= asked for it, since without it a damaged frame fails
     // the command outright a few lines down.
     std::size_t concealed_frames = 0;
     for (const auto& frame : *frames) {
+        progress.tick(++frames_done);
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
             sink.abort();
-            return 1;
+            return kExitInput;
         }
         if (decoded->concealed) {
             ++concealed_frames;
@@ -776,7 +785,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
                            folded ? std::vector<std::size_t>{}
                                   : ac3::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
                 fmt::println(stderr, "error: cannot open {} for writing", out_path);
-                return 1;
+                return kExitOutput;
             }
             // The meter reports what was WRITTEN, so a folded run meters the
             // fold rather than the coded layout it no longer carries.
@@ -793,7 +802,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             if (!sink.append(ch, decoded->channels[ch])) {
                 fmt::println(stderr, "error: cannot write to {}", out_path);
                 sink.abort();
-                return 1;
+                return kExitOutput;
             }
             views.emplace_back(decoded->channels[ch]);
         }
@@ -803,39 +812,40 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         meter->process(views);
     }
+    progress.finish();
     if (!have_first) {
         fmt::println(stderr, "error: no frames");
-        return 1;
+        return kExitInput;
     }
     const auto written = sink.close();
     if (!written) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
-        return 1;
+        return kExitOutput;
     }
     // status_stream(out_path): stderr instead of stdout when out_path is "-"
     // - the WAV bytes just written above already own stdout in that case,
     // and this report must not land in the middle of them.
     const auto status = status_stream(out_path);
     const bool folded = folding(meta, first.acmod);
-    fmt::println(status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
-                 folded ? fmt::format("{} -> {}",
-                                      ac3::analysis::layout_name(first.acmod, first.lfe),
-                                      fold_name(meta.output.target))
-                        : std::string{ac3::analysis::layout_name(first.acmod, first.lfe)},
-                 sample_rate_hz(first.sample_rate));
-    fmt::println(status, "metadata: dialnorm {} (dialogue at -{} dBFS){}", first.dialnorm,
-                 first.dialnorm, dialnorm_note(meta, first.dialnorm));
+    status_println(status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
+                   folded ? fmt::format("{} -> {}",
+                                        ac3::analysis::layout_name(first.acmod, first.lfe),
+                                        fold_name(meta.output.target))
+                          : std::string{ac3::analysis::layout_name(first.acmod, first.lfe)},
+                   sample_rate_hz(first.sample_rate));
+    status_println(status, "metadata: dialnorm {} (dialogue at -{} dBFS){}", first.dialnorm,
+                   first.dialnorm, dialnorm_note(meta, first.dialnorm));
     if (first.dialnorm2) {
-        fmt::println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
-                     *first.dialnorm2, *first.dialnorm2, first.compr2 ? ", compr2 present" : "");
+        status_println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
+                       *first.dialnorm2, *first.dialnorm2, first.compr2 ? ", compr2 present" : "");
     }
-    fmt::println(status, "          dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db,
-                 dynrng_max_db, dynrng_note(meta));
+    status_println(status, "          dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
+                   dynrng_note(meta));
     if (compr_frames > 0) {
-        fmt::println(status, "          compr  {:+.2f} .. {:+.2f} dB over {} frames{}",
-                     compr_min_db, compr_max_db, compr_frames, compr_note(meta));
+        status_println(status, "          compr  {:+.2f} .. {:+.2f} dB over {} frames{}",
+                       compr_min_db, compr_max_db, compr_frames, compr_note(meta));
     } else {
-        fmt::println(status, "          compr  absent");
+        status_println(status, "          compr  absent");
     }
     // bsid 6 is worth a line of its own: it changes how a decoder reads the
     // last 28 bits of bsi, so "this stream is Annex D" is not an aside.

@@ -250,8 +250,64 @@ have no shared soundfield for a subwoofer to sit in, and the plan layer never bu
 the encoder itself does not reject `lfe = true` here, so a caller assembling an `EncoderConfig`
 by hand has to honour the convention itself.
 
+## Latency
+
+`ac3/latency.hpp`. The first question an engine or conferencing integrator asks, answered as a
+number rather than a shrug:
+
+```cpp
+const auto budget = encoder->latency();
+std::printf("%d samples, %.2f ms
+",
+            budget.total_samples(),
+            ac3::latency_ms(budget, encoder->config().sample_rate));
+// 1792 samples, 37.33 ms
+```
+
+Everything below is **algorithmic** delay — what the coding scheme costs on an infinitely fast
+machine. Compute time is a separate question, answered by
+[the performance trend](../performance-trend.md); transport, device buffers and resampling are
+yours to add.
+
+| Term | AC-3 | Where it comes from |
+|---|---|---|
+| `frame_samples` | 1536 | `encode_frame` takes exactly one frame of PCM per channel, so nothing leaves the encoder until a whole frame has gone in. |
+| `transform_samples` | 256 | The MDCT/IMDCT time-domain-alias-cancellation overlap. |
+| `lookahead_samples` | 0 | The encoder never needs input beyond the frame it is coding. |
+| `holdback_samples` | 0 | The §3.7 hold-back is an Annex E tool; AC-3 does not have it. |
+| **`total_samples()`** | **1792** | 37.33 ms at 48 kHz, 40.63 ms at 44.1 kHz, 56.00 ms at 32 kHz. |
+
+Two of those deserve more than a table row.
+
+**The transform term is a shift, not a wait.** Block *b*'s analysis window spans input samples
+`[256b - 256, 256b + 256)`, and a decoder cannot finish any 256-sample segment until it holds
+both blocks whose windows cover it. So the frame the encoder emits reconstructs input samples
+`[-256, 1280)`: the frame's last block-worth of input is still in the encoder's overlap history
+and only reaches the wire in the next frame. Put the other way round, **decoded output sample
+`k` is input sample `k - 256`** — and that is a claim you can check, not a description of intent.
+[`tests/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/decoder/test_latency.cpp)
+puts an impulse into silence at a known absolute position, encodes, decodes, and finds it again
+256 samples later; a decaying tone burst through the same chain gives the same 256 by
+cross-correlation, which is immune to a quantizer having moved the peak.
+
+**Lookahead is zero because of how `blksw` is decided.** `TransientDetector::detect()` reads
+only the 256 *new* samples of the block it decides — §8.2.2 defines the decision on the
+analysis window's second half and nothing else — so the block-switch decision never waits for
+audio the frame does not already contain. A psychoacoustic encoder that deferred that decision
+by a block would add 256 samples here.
+
+`total_samples()` is a bound, not an average: a sample entering the encoder is delayed by
+between `transform_samples` (the last sample of a frame) and `total_samples() - 1` (the first),
+and never more. The decoder adds nothing of its own — `ac3::FrameDecoder::latency_samples()` is
+zero, structurally, because `decode_frame` returns a frame's full PCM from the call that
+supplies its bytes.
+
+The same budget is on the C API as `ac3forge_encoder_latency()` /
+`ac3forge_encoder_latency_samples()` (see [the C API](c-api.md)) and in Python as
+`FrameEncoder.latency` / `.latency_samples` (see [the Python API](python-api.md)).
+
 ---
 
 See also: [Metadata](metadata.md) — `dialnorm`, `drc`, `heavy` and the mix-level fields above
 are all configured via the metadata layer; [Encoding E-AC-3](encoding-eac3.md) — same shape,
-different container.
+different container, and one tool that changes the latency budget.

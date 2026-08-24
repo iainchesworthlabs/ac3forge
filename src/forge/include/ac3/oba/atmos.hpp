@@ -9,6 +9,7 @@
 #include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -146,6 +147,46 @@ class AC3FORGE_EXPORT AtmosEncoder {
     [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_frame(
         std::span<const std::span<const float>> objects,
         std::span<const ObjectPlacement> placement);
+
+    // Roadmap PF6. The OBJECT path's budget - what this encoder is for.
+    //
+    // Its transform term is the bed's own MDCT overlap PLUS
+    // joc::reconstruction_delay(config_.joc_domain) - not a fixed number,
+    // because which domain the decoder reconstructs in is this encoder's own
+    // config_.joc_domain choice (whatever this encoder estimated its
+    // matrices in is the only domain a decoder gets a correct answer
+    // reconstructing them in). Domain::kQmf costs dsp::kQmfDelay
+    // (kQmfTaps - kQmfHop = 576) - JOC does not code objects, it codes a
+    // matrix that pulls them back out of the decoded bed, and TS 103 420
+    // §7.1 puts that reconstruction in a 64-band complex QMF domain rather
+    // than the MDCT's, because a critically-sampled real transform relies on
+    // time-domain alias cancellation between neighbouring blocks and a
+    // per-frame matrix breaks that assumption (see ac3/dsp/qmf.hpp's own
+    // header). Domain::kMdctBand, the path that predates the filterbank,
+    // costs only another 256 - the same MDCT/IMDCT overlap as the bed's own,
+    // applied a second time over already-decoded PCM - which is cheaper but
+    // agrees with no decoder outside this project (see joc.hpp's own
+    // comment on Domain). With the default kQmf, an object sample lags its
+    // input by kTransformDelaySamples + dsp::kQmfDelay = 832. Nothing in
+    // this encoder can shorten either figure: the reconstruction transform
+    // is the decoder's, and it is what the tool is.
+    //
+    // With emit_object_metadata off there is no container, no JOC and no
+    // second transform of either kind - the stream is plain 5.1 - so the
+    // budget collapses to bed_latency()'s.
+    [[nodiscard]] LatencyBudget latency() const {
+        LatencyBudget budget = bed_latency();
+        if (config_.emit_object_metadata) {
+            budget.transform_samples += joc::reconstruction_delay(config_.joc_domain);
+        }
+        return budget;
+    }
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
+
+    // The 5.1 BED's budget: what a legacy decoder that ignores the container
+    // hears, and the figure to use when the objects are not being
+    // reconstructed. One transform overlap, like any other E-AC-3 stream.
+    [[nodiscard]] LatencyBudget bed_latency() const { return encoder_.latency(); }
 
     // Dynamic objects only. The program has one more - the bed's LFE - which
     // is what the free object_count(Program) counts.

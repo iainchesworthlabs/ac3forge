@@ -1,10 +1,13 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <expected>
 #include <filesystem>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <optional>
 #include <span>
@@ -17,6 +20,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
@@ -27,6 +31,7 @@
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
+#include "recording_sink.hpp"
 
 // The CLI-wide support layer: option/metadata parsing, path/stdio conventions, frame and WAV I/O,
 // and level reporting shared by nearly every command in main.cpp's kCommands table. Split out of
@@ -60,7 +65,22 @@ double parse_seconds_or(std::string_view text, double fallback);
 // a command line that says nothing about metadata produces exactly the stream
 // it produced before this layer existed.
 
-void print_meta_usage();
+// --- verbosity -------------------------------------------------------------
+// Set once by main(), from the `quiet`/`verbose` tokens, and read by every
+// status printer below. A global rather than another field threaded through
+// every run_* signature: the two tokens are properties of the invocation, not
+// of any one command's arguments, and every command already takes an Options
+// it would otherwise have to reach into at ~90 separate print sites.
+void set_verbosity(bool quiet, bool verbose);
+
+// True when `verbose` was given: the progress line runs whatever the run's
+// length, and the routing/source decisions name themselves as they are made.
+[[nodiscard]] bool verbose_mode();
+
+// True when `quiet` was given. Only the progress/status printers need to ask;
+// everything else goes through status_stream()/status_println(), which
+// already account for it.
+[[nodiscard]] bool quiet_mode();
 
 // Everything a command accepts after its positional arguments, in any order.
 // The metadata group is ac3::plan::Metadata verbatim; drc_scale is decode-
@@ -69,17 +89,6 @@ void print_meta_usage();
 // same trailing-options surface (parse_options) the way dialnorm2= already
 // shares it despite being layout-1+1-specific - a command that has no use
 // for a field simply never sets it.
-// Which container 'record'/'live' wrap their take in - Options::container's
-// own values. Deliberately the streamable subset of the GUI's Container combo:
-// the elementary stream, Matroska (matroska::Writer) and fragmented MP4/CMAF
-// (mp4::FragmentWriter) are the three shapes something can be written INTO as
-// a session runs.
-enum class RecordContainer : std::uint8_t {
-    kRaw,
-    kMatroska,
-    kFmp4,
-};
-
 struct Options {
     // Decoder side, for 'decode'.
     double drc_scale = 0.0;
@@ -123,18 +132,6 @@ struct Options {
     // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
     ac3::plan::Metadata p{};
-    // 'record'/'live' with container=fmp4 only: how many of the most recent
-    // media segments the HLS playlist and DASH MPD list - a rolling live
-    // window (mp4::FragmentOptions::playlist_window_segments). 0, the
-    // default, lists every segment, which is what a session whose directory
-    // will be served whole afterwards wants; a real origin deleting segments
-    // behind itself sets its own depth here.
-    std::uint32_t fmp4_window_segments = 0;
-    // 'live' only: a second ("slave") capture device index, same numbering
-    // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
-    // positional already reads. Unset means the classic single-device
-    // session, unchanged from before this option existed.
-    std::optional<int> capture2 = std::nullopt;
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
     // operator both asks (sign-objects) and provides a key - either
     // signing-key=<path> here, or the AC3FORGE_SIGNING_KEY[_FILE] env vars
@@ -172,16 +169,53 @@ struct Options {
     // share - which for ecpl, tpn, fscod2 and 7.1.4 is otherwise unchecked
     // by anything at all (docs/verification.md).
     bool verify = false;
-    // 'record'/'live' only: which container the take is written in, the same
-    // shape of choice the GUI's own Container combo offers
-    // (EncoderController::containerIndex). kRaw - the default, matching every
-    // other field here - writes exactly the .ac3/.ec3 a plain invocation
-    // always has; kMatroska muxes into one .mkv (see write_frames_or_mux);
-    // kFmp4 makes the output path a DIRECTORY of CMAF segments and live
-    // HLS/DASH manifests instead of a file (see Fmp4SessionWriter). Only the
-    // containers with an incremental writer behind them are offered here -
-    // plain MP4 and MPEG-TS are 'ac3cli mp4'/'ac3cli ts' on a finished file.
-    RecordContainer container = RecordContainer::kRaw;
+    // 'live' only: a second ("slave") capture device index, same numbering
+    // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
+    // positional already reads. Unset means the classic single-device
+    // session, unchanged from before this option existed.
+    std::optional<int> capture2 = std::nullopt;
+    // 'record'/'live' only: which container the take is written into - the
+    // same five RecordingSink streams the GUI's own Container combo offers
+    // (EncoderController::recording_sink_container). Defaults to the bare
+    // elementary stream, so a plain invocation writes exactly the .ac3/.ec3
+    // it always has. Every one of the five is written incrementally through
+    // RecordingSink itself (roadmap IO9 - there is no accumulate-then-mux
+    // path left on either command), kFmp4 included: RecordingSink's own
+    // kFmp4 backend (Fmp4FolderWriter) now takes the rolling-window option
+    // fmp4_window_segments below needs, so there is no separate writer left
+    // to maintain here the way there briefly was.
+    RecordingSink::Container container = RecordingSink::Container::kElementary;
+    // container=fmp4 only: how many of the most recent media segments the
+    // HLS playlist and DASH MPD list - a rolling live window
+    // (mp4::FragmentOptions::playlist_window_segments). 0, the default,
+    // lists every segment, which is what a session whose directory will be
+    // served whole afterwards wants; a real origin deleting segments behind
+    // itself sets its own depth here.
+    std::uint32_t fmp4_window_segments = 0;
+    // 'record'/'live' only: the encoded layout, and whether the codec is
+    // derived from it or forced. Empty layout means stereo, which is what
+    // both commands did before they could be told otherwise; codec unset
+    // means "AC-3 unless the layout needs E-AC-3", plan::carries()'s own
+    // answer. Wide layouts on record/live are roadmap IO9 - the GUI has
+    // always done them.
+    std::string take_layout;
+    std::optional<ac3::plan::Codec> take_codec;
+    // 'record'/'live' only: how long the capture device may deliver nothing
+    // before the session stops as a failure rather than sitting there
+    // reading "running" (ac3::audio::SilenceWatchdog, the same class and the
+    // same 3 s default the GUI's live session uses). 0 disables it, for a
+    // device that legitimately goes quiet for longer than that.
+    std::chrono::milliseconds watchdog{3000};
+    // 'live' only: the object-slot budget for mode=atmos, allocated once at
+    // session start so a slot bound later cannot change the stream's object
+    // count mid-session. Unset means one slot per captured channel, which is
+    // what live has always done.
+    std::optional<std::size_t> live_objects;
+    // 'live' only: whether an AC-3-only passthrough endpoint gets the
+    // parallel 5.1 AC-3 downmix leg (the default, matching the GUI's
+    // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did
+    // before roadmap IO9).
+    bool downmix_leg = true;
     // Off by default, matching every bare token here - keep whatever frames
     // a failed encode already produced, written beside the intended output
     // as <name>.partial.<ext> instead of discarded outright. The same
@@ -213,6 +247,12 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // The two verbosity tokens, recorded here as well as in the file-scope
+    // flags set_verbosity settles (see above): a command that wants to reason
+    // about them - run_live names each leg only when verbose - reads them off
+    // the Options it already has rather than calling back into a global.
+    bool quiet = false;
+    bool verbose = false;
     // Which domain JOC estimates and applies its reconstruction matrix in
     // (AtmosConfig::joc_domain / DecoderConfig::joc_domain). QMF - §7.1's
     // 64-band complex filterbank, what §6.6.6 describes and what a licensed
@@ -319,7 +359,14 @@ struct Options {
 
 // Returns false and prints the offending token on anything unrecognised: a
 // silently ignored metadata flag looks exactly like metadata that did not work.
-bool parse_options(std::span<char*> tokens, Options& out);
+//
+// `command` decides what `layout=` means: `qc`'s own is a bed/rendered switch
+// (see Options::qc_rendered_layout's comment), record/live's is a channel
+// layout name or list (Options::take_layout's). The two commands settled on
+// the same token independently - matching the GUI's own "layout" language in
+// each context - so this is the one place that has to know which command is
+// asking, everywhere else in this function stays command-agnostic.
+bool parse_options(std::span<char*> tokens, Options& out, std::string_view command);
 
 // Reads a loudness measurement someone else already pushed every sample
 // into, reports it the same way every dialnorm=auto path does, and returns
@@ -380,7 +427,22 @@ bool is_stdio_path(std::string_view path);
 // "encoded N frames..." landing in the middle of that stream would corrupt
 // whatever is reading it downstream. The same split ffmpeg and friends make
 // between their progress/log output and the media they actually pipe.
+// Under `quiet` this returns nullptr instead - "nowhere" - which every
+// status printer here treats as "print nothing". nullptr rather than the
+// platform's null device: a FILE* to NUL/dev/null would need a per-platform
+// name in a tree that deliberately has no preprocessor conditionals, and a
+// discarded write is cheaper than a real one to a real handle anyway.
+//
+// What quiet does NOT silence is a REPORTING command's report - 'levels',
+// 'loudness', 'qc', 'devices' and 'outputs' print their answer with plain
+// fmt::println, because that answer is the command's output rather than
+// commentary on it. Silencing those would leave the command doing nothing
+// observable at all.
 FILE* status_stream(std::string_view out_path);
+
+// The same, for a command with no "-"-capable output path to protect: stdout,
+// or nowhere under quiet.
+FILE* status_stream();
 
 // The programme ids ac3::programme_ids() found, as "0, 1" - what every
 // command that takes programme= prints when a stream turns out to carry more
@@ -394,66 +456,52 @@ std::string format_programme_ids(std::span<const int> ids);
 // and levels so all three answer a bad programme= the same way.
 std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted);
 
-bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames);
+// fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
+// (see status_stream above), an ordinary println otherwise. Every status line
+// in this CLI goes through this, so `quiet` is honoured in one place rather
+// than at each site.
+template <typename... Args>
+void status_println(FILE* out, fmt::format_string<Args...> format, Args&&... args) {
+    if (out != nullptr) {
+        fmt::println(out, format, std::forward<Args>(args)...);
+    }
+}
 
-// Writes `frames` either as a bare elementary stream (write_frames above) or,
-// when `matroska` is set, muxed into Matroska - the choice 'record'/'live's
-// own container= token (and the GUI's Container combo) offer. `track` is
-// built by the caller from what it already knows about the session (codec,
-// sample rate, coded channel count) rather than scanned off the bitstream
-// the way 'mkv' reads an arbitrary already-encoded file: record/live just
-// finished constructing the encoder themselves, so there is nothing to
-// rediscover. Kept beside write_frames rather than folded into it - most
-// callers have no AudioTrack to give it, and 'mkv' itself stays separate too,
-// since ITS track comes from ac3::io::scan(), not a caller-supplied one.
-bool write_frames_or_mux(std::string_view path, bool matroska, const matroska::AudioTrack& track,
-                         std::span<const std::vector<std::byte>> frames);
+inline void status_println(FILE* out) {
+    if (out != nullptr) {
+        fmt::println(out, "");
+    }
+}
 
-// container=fmp4 for 'record'/'live': streams encoded access units into a
-// DIRECTORY of CMAF media segments plus the HLS playlists and DASH MPD that
-// point at them, through mp4::FragmentWriter, rewriting the manifests each
-// time a segment closes so the directory is a servable live origin while the
-// session is still running (and a closed, VOD-shaped one afterwards).
+// A one-line "done / total" report on stderr for a run long enough to be
+// worth watching, rewritten in place the way print_live_meter's own line is.
+// stderr, never stdout: a '-' output owns stdout, and a progress line in the
+// middle of a piped elementary stream would corrupt whatever is reading it.
 //
-// The mp4::AudioTrack cannot be built until the FIRST access unit exists -
-// its dac3/dec3 payload is bitstream syntax, read by ac3::io::scan, the same
-// re-scan 'ac3cli fmp4' and the GUI both do before wrapping frames they just
-// encoded. So open() only creates and checks the directory, and the writer
-// itself is created on the first push(). Nothing here holds more than one
-// fragment's frames, which is the whole reason this exists rather than
-// accumulating a take and calling mp4::fragment() once at the end.
-class Fmp4SessionWriter {
+// Off for a short run unless `verbose` asked for it, and off entirely under
+// `quiet` - a two-second encode that prints a progress bar is noise, and the
+// point of the token pair is that a script can choose. start() decides once;
+// tick() and finish() do nothing at all when it decided no.
+class Progress {
    public:
-    // Empty on success, a user-facing message otherwise - the same contract
-    // write_frames and friends above use with their stderr prints, returned
-    // instead of printed so a caller can decide when to report it.
-    [[nodiscard]] std::string open(std::string_view directory, std::uint32_t frames_per_fragment,
-                                   std::uint32_t window_segments);
-    [[nodiscard]] std::string push(std::span<const std::byte> frame);
-    // Flushes the trailing partial fragment, then rewrites the playlists and
-    // MPD in their finished (VOD/static) form.
-    [[nodiscard]] std::string close();
-
-    [[nodiscard]] std::size_t segments() const { return segments_; }
+    // `verb` leads the line ("encoding", "decoding"); `total` is the unit
+    // count when it is known up front (frames or access units), 0 when it is
+    // not - the line then counts up without a percentage.
+    void start(std::string_view verb, std::uint64_t total);
+    void tick(std::uint64_t done);
+    // Prints the finished line and ends it, so a captured log keeps the
+    // final count instead of a half-overwritten one.
+    void finish();
 
    private:
-    [[nodiscard]] std::string start(std::span<const std::byte> first_frame);
-    [[nodiscard]] std::string write_manifests(const mp4::FragmentWriter& writer, bool finished);
-
-    std::filesystem::path dir_;
-    std::uint32_t frames_per_fragment_ = 48;
-    std::uint32_t window_segments_ = 0;
-    bool open_ = false;
-    std::size_t segments_ = 0;
-    // ISO 8601 UTC, stamped once when the first segment's writer is created -
-    // MpdOptions::availability_start_time, which anchors every segment's
-    // availability to wall-clock time for a dynamic MPD.
-    std::string availability_start_;
-    mp4::AudioTrack track_;
-    mp4::HlsOptions hls_;
-    mp4::DashOptions dash_;
-    std::optional<mp4::FragmentWriter> writer_;
+    bool active_ = false;
+    std::string verb_;
+    std::uint64_t total_ = 0;
+    std::uint64_t done_ = 0;
+    std::chrono::steady_clock::time_point last_{};
 };
+
+bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames);
 
 // Where a failed encode's frames land when keep-partial is given: ".partial"
 // spliced in before the suffix, so "out.ec3" keeps its half-finished take as
@@ -660,6 +708,75 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds);
 // custom list can never shadow one of the seven presets.
 bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Plan& plan,
                     std::string& label);
+
+// What `record`/`live` resolved their layout=/codec=/bitrate into: one
+// plan::Plan, the label to print for it, and the two facts every caller
+// immediately needs from it (which codec, how many coded channels). Shared
+// because the two commands must agree exactly - a take is a take whether or
+// not it also monitors and passes through, and roadmap IO9's whole point is
+// that neither is stereo-AC-3-only any more.
+//
+// codec= forces the codec; without it, the codec is derived - AC-3 unless the
+// layout needs the dependent substreams only E-AC-3 has, the same
+// plan::carries() answer plan::derive_codec would give for a file encode.
+struct TakePlan {
+    ac3::plan::Plan plan;
+    std::string label;
+    bool eac3 = false;
+    // What the encoder is fed: bed plus every dependent substream's channels.
+    int coded_channels = 0;
+    // What a decoder renders from them - fewer than coded_channels wherever a
+    // dependent REPLACES a bed channel (7.1 renders 8 speakers from 10 coded).
+    // The container and the monitor both want this one: 'mkv'/'ts' scanning
+    // the same finished stream count the channels it renders (ac3::io::scan),
+    // so a streamed take must declare the same number the after-the-fact wrap
+    // would, and MonitorSink is fed the decoder's own rendered channels.
+    int rendered_channels = 0;
+};
+
+// nullopt with the reason already printed: a bad layout name, a layout the
+// forced codec cannot carry, or a bitrate that codec has no frame size for.
+std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
+                                          ac3::SampleRate rate);
+
+// The RecordingSink::Config a resolved take implies, so 'record' and 'live'
+// cannot describe the same take differently to the container.
+RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take,
+                                       std::uint32_t sample_rate_hz);
+
+// One dynamic object's source taps: (flattened source channel, linear gain).
+// The flattened space concatenates every source's channels in load order -
+// source 0's first, then source 1's - which is the same numbering
+// gather_frame() fills and the same one `live`'s two capture devices use.
+//
+// One tap is a plain `obj` row. Several are `objm`: a contiguous range of ONE
+// source's channels folded to a single mono object, each tap already scaled by
+// 1/n so several full-range channels summed together do not clip past what one
+// alone would (ac3::plan::DestinationKind::kObjectMono's own contract). A slot
+// with no taps is allocated but unbound, and carried silent - the state
+// `live objects=<N>` leaves a slot in when nothing is mapped onto it.
+struct ObjectSlot {
+    std::vector<std::pair<std::size_t, double>> taps;
+};
+
+// The object slots a map= assignment describes, over `shapes`' flattened
+// channel space: every `obj` row its own slot first, in (source, channel)
+// order, then each maximal contiguous run of `objm` rows within one source
+// folded to one. Empty when the assignment names no object destination at all
+// - which is a real answer (a purely location-mapped assignment), not an
+// error, so the caller decides what to do about it.
+//
+// Shared by `atmos-encode` and `live mode=atmos` so that the objects a given
+// map= produces are the same objects either way - roadmap IO9's actual point:
+// a GUI assignment reproduced headlessly has to reproduce.
+[[nodiscard]] std::vector<ObjectSlot> object_slots_from_assignment(
+    const ac3::plan::Assignment& assignment, std::span<const ac3::plan::SourceShape> shapes);
+
+// What a "wrote N frames to <path>" line says about the container it went
+// into - " (Matroska)", " (MPEG-TS)", " (IEC 61937 WAV carrier)", or nothing
+// at all for the bare elementary stream, which is what the path's own suffix
+// already says. One function so 'record' and 'live' word it identically.
+std::string_view container_note(RecordingSink::Container container);
 
 // A WAV's rate as an fscod (or, for E-AC-3, fscod2), or a diagnosis. Shared
 // because every encode path asks the same question. Classic AC-3 has only

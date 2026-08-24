@@ -37,9 +37,18 @@
 // and the recording loop keeps that shape for it.
 //
 // Qt-free on purpose: everything here is std:: and the container libraries,
-// so tests/gui's plain C++ test can drive it against the one-shot writers
-// without a QML engine in the room. Errors come back as the user-facing
-// strings EncoderController's status line already shows - empty means fine.
+// so tests' plain C++ test can drive it against the one-shot writers without
+// a QML engine in the room. Errors come back as the user-facing strings
+// EncoderController's status line already shows - empty means fine.
+//
+// Shared by BOTH front ends since roadmap IO9, which is why it lives in
+// apps/common rather than apps/gui: `ac3cli record`/`ac3cli live` write their
+// takes through this same class, so a CLI take and a GUI take of the same
+// container are the same bytes produced the same way, and the crash-safety
+// and bounded-memory properties above are one implementation rather than
+// two. Neither app owns it; both compile it in directly (there is no
+// library target to link, the same arrangement the CLI's own support.cpp
+// has).
 class RecordingSink {
    public:
     enum class Container : std::uint8_t {
@@ -55,6 +64,11 @@ class RecordingSink {
         bool eac3 = false;
         std::uint32_t sample_rate = 48000;
         int channels = 2;
+        // kFmp4 only: how many of the most recent media segments the HLS
+        // playlist and DASH MPD list - a rolling live window
+        // (Fmp4FolderWriter::open's own parameter). 0, the default, lists
+        // every segment.
+        std::uint32_t fmp4_window_segments = 0;
     };
 
     // Empty on success. A failure here happens before any capture is worth

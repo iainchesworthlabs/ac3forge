@@ -10,6 +10,7 @@
 #include "ac3/internal/arch/simd.hpp"
 
 #include "fft_kernel.hpp"
+#include "reference_transform.hpp"
 
 namespace ac3 {
 
@@ -56,126 +57,6 @@ const Twiddles2& twiddles2() {
     return t;
 }
 
-// §7.9.4.1 step 3: the N/4-point complex "IFFT" direct-form sum needs
-// cos(8*pi*k*n/N) and sin(8*pi*k*n/N) for every (k, n) pair in the
-// kQuarter x kQuarter grid below. This depends only on (k, n), never on the
-// coefficients being transformed, so - like Twiddles/Twiddles2 above - it's
-// the same fixed matrix on every call and can be computed once instead of
-// (kQuarter^2 =) 16,384 fresh cos+sin pairs per transform.
-//
-// This is deliberately a full matrix, not a period-128 table indexed by
-// (k*n) % 128 (the trick fft.cpp's dft512 uses for its own twiddles):
-// std::cos(8*pi*k*n/N) reaches an UN-reduced angle of ~792 radians at
-// k=n=127, and empirically std::cos of that large angle differs from
-// std::cos of the small angle it's congruent to mod 2*pi by ~1.3e-13 -
-// nowhere near bit-identical, just close enough to hide under this file's
-// existing 1e-10 golden tolerances. Storing the exact expression this loop
-// already evaluated, just once instead of every call, has no such gap.
-struct InnerSumTable {
-    static constexpr int kDim = kN / 4;  // 128
-    std::array<std::array<double, kDim>, kDim> cos{};
-    std::array<std::array<double, kDim>, kDim> sin{};
-    InnerSumTable() {
-        for (int n = 0; n < kDim; ++n) {
-            for (int k = 0; k < kDim; ++k) {
-                const double angle = 8.0 * kPi * k * n / kN;
-                cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
-                sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
-            }
-        }
-    }
-};
-
-const InnerSumTable& inner_sum_table() {
-    static const InnerSumTable t;
-    return t;
-}
-
-// §7.9.4.2 step 3: the same idea, for the two independent N/8-point "IFFT"
-// sums (angle = 16*pi*k*n/N over the kEighth x kEighth grid).
-struct InnerSumPairTable {
-    static constexpr int kDim = kN / 8;  // 64
-    std::array<std::array<double, kDim>, kDim> cos{};
-    std::array<std::array<double, kDim>, kDim> sin{};
-    InnerSumPairTable() {
-        for (int n = 0; n < kDim; ++n) {
-            for (int k = 0; k < kDim; ++k) {
-                const double angle = 16.0 * kPi * k * n / kN;
-                cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
-                sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
-            }
-        }
-    }
-};
-
-const InnerSumPairTable& inner_sum_pair_table() {
-    static const InnerSumPairTable t;
-    return t;
-}
-
-// §8.2.3.2 direct form, generalized over the transform length and alpha:
-// alpha = 0/N=512 is the long transform; alpha = -1/+1 at N=256 are the two
-// halves of a block-switched block.
-//
-// cos(phase) depends only on (k, n, alpha), never on the windowed signal
-// itself, and alpha only ever takes the three values above - so it is the
-// same fixed N_len x (N_len/2) matrix on every call. This used to compute
-// std::cos(phase) fresh inside the loop below, exactly like the inverse
-// transform's own step 3 does NOT (imdct512_windowed/imdct256_pair_windowed
-// precompute their twiddle factors via Twiddles/Twiddles2 above and reuse
-// them). Measured with Tracy (docs/platforms/android.md's performance
-// investigation): that recomputation was ~79% of the ENTIRE encoder's
-// per-frame cost - 131,072 std::cos() calls per 512-point transform, 36
-// transforms a frame (6 channels x 6 blocks). Precomputing the matrix once,
-// the same way the inverse transform already does, produces bit-identical
-// coefficients (same phase formula, same std::cos(), same accumulation
-// order - only WHEN it runs changes) while removing that cost from the hot
-// path entirely.
-template <int NLen>
-struct ForwardCosTable {
-    static constexpr int kHalf = NLen / 2;
-    std::array<std::array<double, static_cast<std::size_t>(NLen)>, static_cast<std::size_t>(kHalf)>
-        value{};
-    explicit ForwardCosTable(double alpha) {
-        for (int k = 0; k < kHalf; ++k) {
-            const double factor = 2.0 * k + 1.0;
-            for (int n = 0; n < NLen; ++n) {
-                const double phase = (2.0 * kPi / (4.0 * NLen)) * (2.0 * n + 1.0) * factor +
-                                      (kPi / 4.0) * factor * (1.0 + alpha);
-                value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)] = std::cos(phase);
-            }
-        }
-    }
-};
-
-const ForwardCosTable<512>& forward_cos_table_long() {
-    static const ForwardCosTable<512> t(0.0);
-    return t;
-}
-
-const ForwardCosTable<256>& forward_cos_table_first() {
-    static const ForwardCosTable<256> t(-1.0);
-    return t;
-}
-
-const ForwardCosTable<256>& forward_cos_table_second() {
-    static const ForwardCosTable<256> t(1.0);
-    return t;
-}
-
-template <int NLen>
-void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<NLen>& table,
-                       std::span<double> coeffs) {
-    for (int k = 0; k < NLen / 2; ++k) {
-        double sum = 0.0;
-        for (int n = 0; n < NLen; ++n) {
-            sum += windowed[static_cast<std::size_t>(n)] *
-                   table.value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)];
-        }
-        coeffs[static_cast<std::size_t>(k)] = (-2.0 / NLen) * sum;
-    }
-}
-
 // --- §7.9.4 fast N/4-FFT structure (the encoder-config default; see
 // mdct512_forward's own doc comment and EncoderConfig::fast_mdct /
 // eac3::FrameConfig::fast_mdct) ---------------------------------------------
@@ -204,13 +85,14 @@ void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<N
 // Every fold computes scale * DCT-IV(u) - u a length-M "folded" input -
 // via one P = M/2-point complex FFT, the standard trick for a real-input
 // DCT-IV. The long fold was verified 2026-08-14 against ForwardCosTable
-// (this file's own direct-form ground truth) to max relative error ~3e-12
+// (the direct-form ground truth, now in
+// src/core/transform/reference/reference_transform.cpp) to max relative error ~3e-12
 // on both random data and real audio, the short folds 2026-08-15 the same
 // way; see tests/core/test_mdct_fast.cpp, which asserts a 1e-10 bound on all
 // three.
 
 // Everything angle-dependent in the fold below, computed once per NLen -
-// the same treatment Twiddles/InnerSumTable/ForwardCosTable give every
+// the same treatment Twiddles and the direct-form matrices give every
 // other transform in this file, applied to the fast path itself (phase-5
 // target 1 of the performance programme: this kernel runs 36x per frame in
 // every encode path, plus 6x per object per frame inside band_energy, and
@@ -219,7 +101,8 @@ void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<N
 //
 // - pre/post twiddles: the EXACT expressions the fold used to evaluate per
 //   call (std::cos/std::sin of -pi*m/M and -pi*(4k+1)/(4M)), stored instead
-//   of re-evaluated - bit-identical values, InnerSumTable's own reasoning.
+//   of re-evaluated - bit-identical values, the direct-form tables' own
+//   reasoning (src/core/transform/reference/reference_transform.cpp).
 // - FFT stage twiddles + bit-reversal permutation: the previous in-place
 //   FFT generated each butterfly group's j-th twiddle by ITERATED complex
 //   multiply (w *= wlen), so it carried j-1 accumulated rounding steps.
@@ -368,7 +251,7 @@ void mdct512_forward(std::span<const double, 512> windowed, std::span<double, 25
     if (fast) {
         mdct_forward_fast_core<512>(windowed, coeffs);
     } else {
-        mdct_forward_core<512>(windowed, forward_cos_table_long(), coeffs);
+        internal::reference_mdct512_forward(windowed, coeffs);
     }
 }
 
@@ -392,7 +275,7 @@ void mdct256_forward_first(std::span<const double, 256> windowed, std::span<doub
         dct4_scaled<256>(fast_mdct_tables<256>(), v, coeffs, -2.0 / 256);
         return;
     }
-    mdct_forward_core<256>(windowed, forward_cos_table_first(), coeffs);
+    internal::reference_mdct256_forward_first(windowed, coeffs);
 }
 
 void mdct256_forward_second(std::span<const double, 256> windowed, std::span<double, 128> coeffs,
@@ -415,7 +298,7 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
         dct4_scaled<256>(fast_mdct_tables<256>(), w_r, coeffs, 2.0 / 256);
         return;
     }
-    mdct_forward_core<256>(windowed, forward_cos_table_second(), coeffs);
+    internal::reference_mdct256_forward_second(windowed, coeffs);
 }
 
 void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
@@ -432,9 +315,9 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     // so the fast path is the identity IDFT(Z) = conj(FFT(conj(Z))) through
     // the same FFT kernel the forward's fast fold uses (its P = 128 tables
     // are the long fold's own, fast_mdct_tables<512>().fft). The direct
-    // branch keeps the spec's own evaluation - and keeps inner_sum_table()'s
-    // 256 KiB matrix a lazily-built oracle that a decoder running fast never
-    // materializes at all.
+    // branch keeps the spec's own evaluation, now behind
+    // src/core/reference_transform.hpp so its 256 KiB matrix can be left out
+    // of a build entirely (roadmap PF7) rather than merely never touched.
     //
     // The fast branch writes step 2's output already conjugated and already
     // digit-reversed, which is what lets the kernel skip both the input
@@ -486,23 +369,7 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
             z_re[static_cast<std::size_t>(k)] = a * c - b * s;
             z_im[static_cast<std::size_t>(k)] = b * c + a * s;
         }
-        const auto& s3 = inner_sum_table();
-        for (int n = 0; n < kQuarter; ++n) {
-            double re = 0.0;
-            double im = 0.0;
-            const auto& row_c = s3.cos[static_cast<std::size_t>(n)];
-            const auto& row_s = s3.sin[static_cast<std::size_t>(n)];
-            for (int k = 0; k < kQuarter; ++k) {
-                const double c = row_c[static_cast<std::size_t>(k)];
-                const double s = row_s[static_cast<std::size_t>(k)];
-                re += z_re[static_cast<std::size_t>(k)] * c -
-                      z_im[static_cast<std::size_t>(k)] * s;
-                im += z_re[static_cast<std::size_t>(k)] * s +
-                      z_im[static_cast<std::size_t>(k)] * c;
-            }
-            t_re[static_cast<std::size_t>(n)] = re;
-            t_im[static_cast<std::size_t>(n)] = im;
-        }
+        internal::reference_inner_sum_128(z_re, z_im, t_re, t_im);
     }
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
@@ -565,8 +432,8 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     // (fast_mdct_tables<256>().fft), once per half-block set, and - as
     // there - writes step 2 already conjugated and already digit-reversed
     // so neither costs a pass of its own. The direct branch keeps the
-    // spec's own sum and inner_sum_pair_table()'s 64 KiB matrix stays a
-    // lazily-built oracle.
+    // spec's own sum, behind the same src/core/reference_transform.hpp seam
+    // as the long form's.
     std::array<double, kEighth> z1_re{};
     std::array<double, kEighth> z1_im{};
     std::array<double, kEighth> z2_re{};
@@ -611,31 +478,11 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
             z2_re[static_cast<std::size_t>(k)] = a2 * c - b2 * s;
             z2_im[static_cast<std::size_t>(k)] = b2 * c + a2 * s;
         }
-        const auto& s3 = inner_sum_pair_table();
-        for (int n = 0; n < kEighth; ++n) {
-            double re1 = 0.0;
-            double im1 = 0.0;
-            double re2 = 0.0;
-            double im2 = 0.0;
-            const auto& row_c = s3.cos[static_cast<std::size_t>(n)];
-            const auto& row_s = s3.sin[static_cast<std::size_t>(n)];
-            for (int k = 0; k < kEighth; ++k) {
-                const double c = row_c[static_cast<std::size_t>(k)];
-                const double s = row_s[static_cast<std::size_t>(k)];
-                re1 += z1_re[static_cast<std::size_t>(k)] * c -
-                       z1_im[static_cast<std::size_t>(k)] * s;
-                im1 += z1_re[static_cast<std::size_t>(k)] * s +
-                       z1_im[static_cast<std::size_t>(k)] * c;
-                re2 += z2_re[static_cast<std::size_t>(k)] * c -
-                       z2_im[static_cast<std::size_t>(k)] * s;
-                im2 += z2_re[static_cast<std::size_t>(k)] * s +
-                       z2_im[static_cast<std::size_t>(k)] * c;
-            }
-            t1_re[static_cast<std::size_t>(n)] = re1;
-            t1_im[static_cast<std::size_t>(n)] = im1;
-            t2_re[static_cast<std::size_t>(n)] = re2;
-            t2_im[static_cast<std::size_t>(n)] = im2;
-        }
+        // Two passes over the one table rather than the interleaved loop
+        // this used to run: the two sums are independent and each output's
+        // accumulation order is unchanged, so every bit is.
+        internal::reference_inner_sum_64(z1_re, z1_im, t1_re, t1_im);
+        internal::reference_inner_sum_64(z2_re, z2_im, t2_re, t2_im);
     }
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).

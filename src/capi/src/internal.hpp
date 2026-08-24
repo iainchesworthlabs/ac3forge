@@ -13,6 +13,7 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3forge_c/ac3forge.h"
 
@@ -93,6 +94,13 @@ namespace ac3forge_c {
     return ac3::meta::HeavyConfig{.dialogue_target_dbfs = config.dialogue_target_dbfs,
                                    .peak_ceiling_dbfs = config.peak_ceiling_dbfs,
                                    .release_db_per_second = config.release_db_per_second};
+}
+
+[[nodiscard]] inline ac3forge_latency_t from_cpp(const ac3::LatencyBudget& budget) {
+    return ac3forge_latency_t{.frame_samples = budget.frame_samples,
+                              .transform_samples = budget.transform_samples,
+                              .lookahead_samples = budget.lookahead_samples,
+                              .holdback_samples = budget.holdback_samples};
 }
 
 [[nodiscard]] inline ac3forge_status_t from_cpp(ac3::FrameError error) {

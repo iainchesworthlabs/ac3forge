@@ -27,6 +27,7 @@
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/latency.hpp"
 
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -5183,6 +5184,19 @@ int AccessUnitEncoder::channel_count() const {
         }
     }
     return total;
+}
+
+LatencyBudget AccessUnitEncoder::latency() const {
+    // The independent substream's budget is the unit's baseline (frame and
+    // transform terms are shared - every substream codes the same samples),
+    // then take the worst hold-back any substream contributes; see the
+    // declaration's own comment.
+    LatencyBudget budget = eac3_latency(config_.independent);
+    for (const auto& dependent : config_.dependents) {
+        budget.holdback_samples =
+            std::max(budget.holdback_samples, eac3_latency(dependent).holdback_samples);
+    }
+    return budget;
 }
 
 std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
