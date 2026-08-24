@@ -480,12 +480,28 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   `quality_race.py` modes through `--material`. `tools/generators` is documented and the fixture
   corpus is versioned (`corpus.json`, `CORPUS_VERSION`) and hash-enforced
   (`tools/checks/check_corpus.py`).
-- [ ] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR is measured exactly
-  once, in a unit test with a 10 dB floor against 18–35 dB measured (`tests/oba/test_atmos.cpp`);
-  a 15 dB JOC regression passes CI and no trend page sees it.
+- [x] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR used to be measured
+  exactly once, in a unit test with a 10 dB floor against 18–35 dB measured
+  (`tests/oba/test_atmos.cpp`), so a 15 dB JOC regression passed CI and no trend page saw it.
+  `quality_race.py`'s `objects` mode now encodes a committed five-object scene
+  (`tests/golden/audio/reference_objects.wav` plus its placements) with `atmos-encode`, decodes
+  it back to per-object WAVs, and records SNR/LSD/leakage/MOS per object at 256 and 448 kbit/s
+  on `docs/object-quality-trend.md`. LSD needed an object-specific form
+  (objects are narrow-band, so the codec legs' banded measure reads 10–38 dB for a healthy
+  reconstruction); the out-of-band half became a leakage figure, which is the object-specific
+  failure mode. Self-consistency only — there is no external oracle for object decode at all.
 - [ ] **VX9 (M)** — A listening test. README and `docs/verification.md` have carried "no
   listening test has been run" through nine releases. One documented MUSHRA or ABX session over
   the landscape legs on VX7's material, with the protocol and results on `docs/landscape.md`.
+  *Apparatus merged, session not run:* `tools/listening/` builds the blind stimulus set (hidden
+  reference, BS.1534-3's two anchors, one arm per encoder, everything decoded by FFmpeg so the
+  decoder is a constant) and scores the answers back into a table with confidence intervals,
+  and the protocol is on `docs/landscape.md`. The listening itself is human time. Building it
+  also found the two things VX7 has to land first: `reference_51.wav` carries 0.059% of its
+  energy above 3.5 kHz, so both BS.1534 anchors are inaudible on both 5.1 legs and cannot scale
+  a MUSHRA session there, and the items are 1.9 s against BS.1534-3's ~10 s. VX7 has since landed
+  real speech/music fixtures — a session over those, rather than the synthetic 5.1 fixture, is
+  the better one to run.
 - [x] **VX10 (S)** — Reference-mode end-to-end gate. `verify_gold_reference.sh` takes
   `TRANSFORM_MODE=reference`, which puts `mode=reference` on every encode and decode it runs and
   suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a

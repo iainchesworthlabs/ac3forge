@@ -103,6 +103,11 @@ That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same go
 by commit, on every push to `develop` and `main`, so a regression shows up as a trend line
 rather than only in that run's CI log.
 
+The object layer has its own series, [Object quality trend](object-quality-trend.md): a fixed
+five-object Atmos scene encoded and decoded by each build, one delay-compensated SNR/LSD/leakage
+row per object per rate. It is a self-consistency series throughout — see "Where the oracles
+don't reach" below for why no other kind is available.
+
 ## Performance and reference modes
 
 Both transform hot spots — the forward MDCT (§8.2.3.2) and the inverse transform's step-3
@@ -278,6 +283,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
+| E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
@@ -335,6 +341,18 @@ a normal-rate stream from this encoder without issue. `fscod2` appears to be a c
 own reference implementation does not support it. So the coded audio is verified only by this
 project's own encoder/decoder round trip and the independent Python parser
 (`tools/references/eac3_parse.py`).
+
+**Object decode has no external oracle at all, and for once that is not FFmpeg's gap alone.**
+FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
+bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
+own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+plays them as the bed too. Nothing outside this repository can currently produce an independent
+object decode of an ac3forge stream, which makes this the one layer where even the partial
+oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
+resolution: [Object quality trend](object-quality-trend.md) scores each of a fixed scene's five
+objects, per commit, at two rates. The same caveat as `ecpl`/`tpn` applies with full force — a
+defect the encoder and decoder share is invisible to it.
 
 **Containers and manifests are checked externally where a reader exists, and only there.**
 `mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
