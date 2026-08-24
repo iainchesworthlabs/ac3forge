@@ -15,6 +15,7 @@
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
 #include "ac3/latency.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -46,6 +47,39 @@ namespace ac3::eac3 {
 // whose program was previously coded as AC-3, drags in a blkid/frmsizecod
 // branch nothing here would ever emit, so validate() refuses it.
 
+// Average bit rate: a long-run rate target that still lets each frame's size
+// move with the content. CBR holds every frame to the same size; VBR holds
+// every frame to the same quality and lets the rate go where it likes;
+// neither delivers what a streaming ladder rung or a DVB mux contracts for,
+// which is a deliverable AVERAGE at a frame size still free to move.
+//
+// Set VbrConfig::abr and the encoder holds one composite SNR offset across
+// frames and steers it - up while the stream is running under its target,
+// down while it is running over - so a quiet frame stays cheap and a busy
+// one is allowed to cost more, with the average landing where it was asked
+// to. Underneath that, `window_frames` consecutive frames pool one budget as
+// a hard ceiling, so no window can overrun whatever the offset is doing.
+//
+// VbrConfig::quality is NOT read under ABR. The two are different rate
+// controls: quality fixes the offset, ABR's whole job is to move it, and the
+// stream's first frame seeds the offset from its own budget search rather
+// than from a number a caller guessed. VbrConfig::min_kbps/max_kbps do still
+// apply - they bound each individual frame, which composes with a long-run
+// average rather than competing with it.
+struct AbrConfig {
+    // The long-run average, same unit and meaning as FrameConfig::bitrate_kbps.
+    std::uint32_t target_kbps = 192;
+    // How many consecutive frames share one pooled budget. At 48 kHz a frame
+    // is 1536 samples (32 ms), so the default holds the average over about a
+    // second - long enough for a bar of music or a spoken phrase to borrow
+    // from its neighbours, short enough that a mux's own buffer model still
+    // recognises the result. 1 pools nothing, which pins every frame to one
+    // frame's share and makes ABR behave as CBR; 0 is rejected by validate().
+    std::uint32_t window_frames = 32;
+};
+
+inline constexpr std::uint32_t kAbrDefaultWindowFrames = 32;
+
 // Variable bit rate: instead of fixing the frame's word count and searching
 // for the best quality that fits it (CBR's rate control, see FrameConfig's
 // own comment below), fix the quality and let the word count follow the
@@ -53,7 +87,8 @@ namespace ac3::eac3 {
 // Table 5.18 (frmsizecod), not a free word count, so it has no equivalent.
 struct VbrConfig {
     // [0, 1]: linearly maps onto the encoder's own composite SNR-offset
-    // search space (composite = round(quality * 1023)). This is not a
+    // search space (composite = round(quality * 1023)). Not read at all when
+    // `abr` below is set - see AbrConfig. This is not a
     // perceptual or cross-encoder quality scale - it is exactly as
     // meaningful as the search space is, which is to say it is monotonic in
     // "how good" for THIS encoder and nothing more, the same caveat every
@@ -81,11 +116,17 @@ struct VbrConfig {
 
     // Drives the coupling/spx begin-frequency heuristics (default_cplbegf,
     // default_spxbegf) in place of bitrate_kbps, which VBR has nothing fixed
-    // to offer them. std::nullopt resolves to max_kbps if set, else
-    // kVbrDefaultNominalKbps - a caller who wants exactly today's CBR tool
-    // behaviour at some quality supplies the same number they would have
-    // passed as bitrate_kbps.
+    // to offer them. std::nullopt resolves to abr->target_kbps if set, then
+    // max_kbps if set, else kVbrDefaultNominalKbps - a caller who wants
+    // exactly today's CBR tool behaviour at some quality supplies the same
+    // number they would have passed as bitrate_kbps.
     std::optional<std::uint32_t> nominal_kbps = std::nullopt;
+
+    // Set to hold a long-run average rate instead of letting the rate run
+    // free: the offset is steered frame to frame rather than read off
+    // `quality`, which is then unused. See AbrConfig. Unset is plain VBR,
+    // exactly as before.
+    std::optional<AbrConfig> abr = std::nullopt;
 };
 
 inline constexpr std::uint32_t kVbrDefaultNominalKbps = 192;
@@ -100,6 +141,31 @@ struct FrameConfig {
     std::optional<VbrConfig> vbr = std::nullopt;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
+    // §E2.3.1.4, Table E2.4: how many 256-sample audio blocks one syncframe
+    // carries - code 0 is one block (5.3 ms), 1 is two, 2 is three, and 3 (the
+    // default) is the usual six (32 ms). A short syncframe is a shorter
+    // FRAME, not a lower sample rate: encode_frame then wants
+    // samples_per_frame() samples per channel instead of kSamplesPerFrame,
+    // and the frame's own byte count falls with it.
+    //
+    // What it buys is granularity at the cost of repeating the whole
+    // bsi/audfrm header that much more often, which at a fixed bit rate comes
+    // straight out of the mantissas. Annex E also takes several shortcuts
+    // away below code 3 (Table E1.3): expstre is implied 1, so exponent
+    // strategies are always stated per block and never hoisted into a Table
+    // E2.10 code; ahte is implied 0, so the adaptive hybrid transform is
+    // unavailable; an independent substream carries convsync, which this
+    // encoder sets on the first frame of every group of 6 / blocks_per_frame
+    // frames - the point from which a converter to classic six-block AC-3 can
+    // start accumulating (§8.2 of Annex E's own PES-packaging text); and
+    // blkstrtinfoe disappears entirely at code 0 (there is only one block to
+    // start).
+    //
+    // Not available at the three fscod2 reduced rates: §E2.3.1.3 spends
+    // numblkscod's own bits on fscod2 there, so such a frame is implicitly
+    // always six blocks. validate() refuses the combination rather than
+    // writing a header that says one thing and a payload that says another.
+    int numblkscod = 3;
     int dialnorm = 31;
     // Annex E Table E1.2: Ch2's dialnorm, required when acmod is kDualMono
     // (1+1) — the two programmes are levelled independently.
@@ -158,7 +224,23 @@ struct FrameConfig {
     // The mixmdate group (Table E1.2). E-AC-3 dropped bsi's cmixlev and
     // surmixlev entirely, so without this a stream carries no downmix levels
     // at all and a receiver falls back on its own defaults.
+    //
+    // Everything in MixMetadata past the five levels and lfemixlevcod is
+    // written only by an INDEPENDENT substream - Table E1.2 gates the
+    // programme scale factors, the mixing-parameter block, the pan
+    // information and the per-block configuration on strmtyp == 0x0, because
+    // all four describe how to combine this programme with another one and a
+    // dependent substream is only ever part of someone else's. Set them on a
+    // dependent and they are silently not written, exactly as the syntax
+    // requires.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // The infomdat group (Table E1.2, §E2.3.1.62): what service this is, the
+    // Dolby Surround / Surround EX / Headphone flags, the mixing room, the
+    // copyright and original-bitstream bits and sourcefscod. std::nullopt
+    // clears infomdate, which is what this encoder always did before.
+    // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no home in Annex
+    // E and are not read here.
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // --- Annex E coding tools -----------------------------------------------
     // Let the encoder choose the tool set from the per-channel rate, instead
     // of taking the `coupling`/`spx`/`aht` flags below as given.
@@ -305,10 +387,14 @@ struct FrameConfig {
 };
 
 // Words per syncframe at a given rate. E-AC-3 signals the size directly, so
-// this is just the exact bit budget rounded to whole 16-bit words.
+// this is just the exact bit budget rounded to whole 16-bit words. `blocks` is
+// blocks_per_syncframe(numblkscod): a short syncframe carries proportionally
+// fewer samples, and so proportionally fewer words at the same bit rate.
 [[nodiscard]] constexpr std::uint32_t frame_words(SampleRate sample_rate,
-                                                  std::uint32_t bitrate_kbps) {
-    const std::uint64_t bits = static_cast<std::uint64_t>(bitrate_kbps) * 1000 * kSamplesPerFrame /
+                                                  std::uint32_t bitrate_kbps,
+                                                  int blocks = kBlocksPerFrame) {
+    const std::uint64_t bits = static_cast<std::uint64_t>(bitrate_kbps) * 1000 *
+                               static_cast<std::uint64_t>(blocks) * kSamplesPerBlock /
                                sample_rate_hz(sample_rate);
     return static_cast<std::uint32_t>(bits / 16);
 }
@@ -368,9 +454,9 @@ struct FrameMetadata {
 
 // Real audio through the same container. The coding profile is deliberately
 // the one reference encoders use, because those are the paths reference
-// decoders are exercised on: frame-level exponent strategies (Table E2.10
-// code 0 - D15 in block 0, reused for the other five) and frame-level SNR
-// offsets. Long blocks only; the Annex E tools are opt-in per FrameConfig.
+// decoders are exercised on: exponent strategies and SNR offsets planned per
+// frame from content (EQ1) rather than fixed. Long blocks only; the Annex E
+// tools and FrameConfig::numblkscod are opt-in.
 class AC3FORGE_EXPORT FrameEncoder {
    public:
     explicit FrameEncoder(const FrameConfig& config);
@@ -382,7 +468,8 @@ class AC3FORGE_EXPORT FrameEncoder {
 
     // channels: the full-bandwidth channels in AC-3 order (Table 5.8),
     // followed by LFE last when config.lfe is set. Each span holds exactly
-    // kSamplesPerFrame samples, nominally in [-1, 1).
+    // samples_per_frame() samples, nominally in [-1, 1) - kSamplesPerFrame
+    // unless config.numblkscod shortens the syncframe.
     [[nodiscard]] std::expected<std::vector<std::byte>, FrameError> encode_frame(
         std::span<const std::span<const float>> channels, AuxPayload aux = {});
 
@@ -399,6 +486,10 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] int channel_count() const {
         return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
     }
+    // How many samples per channel one call to encode_frame consumes.
+    [[nodiscard]] int samples_per_frame() const {
+        return blocks_per_syncframe(config_.numblkscod) * kSamplesPerBlock;
+    }
 
     // Roadmap PF6 - see ac3/latency.hpp for what each term means and
     // eac3_latency() below for why transient_prenoise is the only field of
@@ -409,6 +500,11 @@ class AC3FORGE_EXPORT FrameEncoder {
    private:
     FrameConfig config_;
     std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
+    // §E2.3.1.64: which frame of every 6 / blocks_per_syncframe(numblkscod)
+    // sets convsync - see FrameConfig::numblkscod's own comment. Unused (and
+    // left at 0) at the default numblkscod, where convsync is never written
+    // at all.
+    int convsync_counter_ = 0;
     // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
     // across frames, like history_ above.
     std::vector<TransientDetector> transient_detectors_;
@@ -468,8 +564,12 @@ class AC3FORGE_EXPORT FrameEncoder {
 };
 
 // An independent substream and the dependents that extend it. Every substream
-// codes the same 1536 samples of the same program, so a dependent contributes
-// only its own channels, its chanmap and its share of the bit rate.
+// codes the same samples of the same program, so a dependent contributes only
+// its own channels, its chanmap and its share of the bit rate - and, since
+// they are the same samples, every substream must carry the same
+// numblkscod. AccessUnitEncoder's constructor refuses a mixture rather than
+// building substreams a decoder would have no way to align against each
+// other.
 struct AccessUnitConfig {
     FrameConfig independent{};
     std::vector<FrameConfig> dependents{};

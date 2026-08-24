@@ -148,85 +148,180 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
     BitReader r{payload};
 
     // --- joc_header (§6.2.2) ---
-    if (r.read(3) != kDmxConfig5X) {  // joc_dmx_config_idx: only 5.X is reachable here
+    const int dmx_config_idx = static_cast<int>(r.read(3));
+    const int channels = dmx_channel_count(dmx_config_idx);
+    if (channels == 0) {
+        // Table 48 gives indices 5..7 no channel count, so joc_data has no
+        // loop bound and nothing after this point can be located.
         return std::nullopt;
     }
     const int objects = static_cast<int>(r.read(6)) + 1;  // joc_num_objects_bits
     if (objects > kMaxObjects) {
         return std::nullopt;
     }
-    if (r.read(3) != 0) {  // joc_ext_config_idx: no extensional configuration data
+    if (r.read(3) != 0) {
+        // joc_ext_config_idx. Table 49 reserves every nonzero value and
+        // §6.2.1 gives joc_ext_data() no syntax and no length, so there is
+        // nothing to read and nothing to skip.
         return std::nullopt;
     }
 
     // --- joc_info (§6.2.3) ---
-    // §6.3.3.2's equation is ambiguous in the published PDF for anything
-    // other than zero/zero - see build_payload's own comment - so a nonzero
-    // clip gain here is refused rather than computed from a formula this
+    // §6.3.3.2 renders ambiguously in the published PDF - the fraction, the
+    // power of two and the bracketing all collide - and the only reading the
+    // fragments support, (1 + y/32) * 2^x, does not agree with the clause's
+    // own stated range of [1; 8,75]: a real DEE stream sends x = 4, y = 0,
+    // which that reading makes 16. Nothing in TS 103 420 says where in the
+    // decode chain the gain is applied either. So it is computed, reported
+    // and left alone rather than folded into audio on a formula this
     // codebase cannot verify.
-    if (r.read(3) != 0) {  // joc_clipgain_x_bits
-        return std::nullopt;
-    }
-    if (r.read(5) != 0) {  // joc_clipgain_y_bits
-        return std::nullopt;
-    }
+    const auto clipgain_x = r.read(3);
+    const auto clipgain_y = r.read(5);
+    const double clip_gain =
+        (1.0 + static_cast<double>(clipgain_y) / 32.0) * std::exp2(static_cast<double>(clipgain_x));
     const int seq_count = static_cast<int>(r.read(10));
-
-    // FrameParameters has one num_bands_idx/fine_quant for the WHOLE matrix,
-    // matching how AtmosEncoder only ever writes one shared value for every
-    // object - so every object's own copy of these fields is read and
-    // checked to agree with the first, rather than allowed to vary per
-    // object the way the wire format in principle permits.
-    int num_bands_idx = 0;
-    bool fine_quant = false;
-    for (int object = 0; object < objects; ++object) {
-        if (r.read(1) != 1) {  // b_joc_obj_present: every object is coded every frame here
-            return std::nullopt;
-        }
-        const auto bands_idx = static_cast<int>(r.read(3));
-        if (r.read(1) != 0) {  // b_joc_sparse: whole-matrix mode only
-            return std::nullopt;
-        }
-        const bool quant = r.read(1) != 0;  // joc_num_quant_idx
-        if (object == 0) {
-            num_bands_idx = bands_idx;
-            fine_quant = quant;
-        } else if (bands_idx != num_bands_idx || quant != fine_quant) {
-            return std::nullopt;
-        }
-        // --- joc_data_point_info (§6.2.4) ---
-        if (r.read(1) != 0) {  // joc_slope_idx: smooth only
-            return std::nullopt;
-        }
-        if (r.read(1) != 0) {  // joc_num_dpoints_bits: one data point only
-            return std::nullopt;
-        }
-    }
 
     FrameParameters params;
     params.objects = objects;
-    params.channels = kNumChannels5X;
-    params.num_bands_idx = num_bands_idx;
-    params.fine_quant = fine_quant;
+    params.channels = channels;
+    params.dmx_config_idx = dmx_config_idx;
+    params.clip_gain = clip_gain;
     params.seq_count = seq_count;
+    params.shapes.assign(static_cast<std::size_t>(objects), ObjectShape{});
+
+    // Object 0's own fields, captured as scalars rather than read back from
+    // `shapes` afterward - `objects` is always >= 1 (joc_num_objects_bits + 1)
+    // so params.shapes is never empty, but a read through it later is exactly
+    // the shape GCC's -Wnull-dereference cannot see through at -O3.
+    int first_num_bands_idx = params.num_bands_idx;
+    bool first_fine_quant = params.fine_quant;
+
+    for (int object = 0; object < objects; ++object) {
+        auto& shape = params.shapes[static_cast<std::size_t>(object)];
+        shape.present = r.read(1) != 0;  // b_joc_obj_present
+        if (!shape.present) {
+            shape.data_points = 0;
+            continue;
+        }
+        shape.num_bands_idx = static_cast<int>(r.read(3));
+        shape.sparse = r.read(1) != 0;             // b_joc_sparse
+        shape.fine_quant = r.read(1) != 0;         // joc_num_quant_idx
+        // --- joc_data_point_info (§6.2.4) ---
+        shape.steep = r.read(1) != 0;              // joc_slope_idx, Table 52
+        shape.data_points = static_cast<int>(r.read(1)) + 1;
+        if (shape.steep) {
+            for (int dp = 0; dp < shape.data_points; ++dp) {
+                // §6.3.4.4: joc_offset_ts = joc_offset_ts_bits + 1.
+                shape.offset_ts[static_cast<std::size_t>(dp)] = static_cast<int>(r.read(5)) + 1;
+            }
+        }
+        if (object == 0) {
+            first_num_bands_idx = shape.num_bands_idx;
+            first_fine_quant = shape.fine_quant;
+        }
+    }
+
+    // The frame-wide fields stay meaningful for the uniform case every
+    // in-repo caller works with; `shapes` is authoritative regardless.
+    params.num_bands_idx = first_num_bands_idx;
+    params.fine_quant = first_fine_quant;
     params.matrix.assign(params.coefficient_count(), 0.0);
 
     // --- joc_data (§6.2.5) ---
-    const int steps = quant_steps(fine_quant);
-    const int bands = params.bands();
-    const std::span<const HuffCode> table =
-        fine_quant ? std::span<const HuffCode>{kMtxFine} : std::span<const HuffCode>{kMtxCoarse};
     for (int object = 0; object < objects; ++object) {
-        for (int channel = 0; channel < params.channels; ++channel) {
-            int previous = steps / 2;
-            for (int band = 0; band < bands; ++band) {
-                const int difference = huff_decode(table, r);
-                if (difference < 0) {
+        const auto& shape = params.shapes[static_cast<std::size_t>(object)];
+        if (!shape.present) {
+            continue;
+        }
+        const int steps = quant_steps(shape.fine_quant);
+        const int bands = shape.bands();
+        for (int dp = 0; dp < shape.data_points; ++dp) {
+            if (shape.sparse) {
+                // §6.2.5: one raw 3-bit channel index for band 0, then a
+                // Huffman codeword per remaining band, then one coefficient
+                // codeword per band. §6.6.2 Pseudocode 2 turns the pair into
+                // a single named channel per band, every other channel
+                // holding the sparse offset.
+                const std::span<const HuffCode> idx_table =
+                    channels == kNumChannels5X ? std::span<const HuffCode>{kIdx5ch}
+                                               : std::span<const HuffCode>{kIdx7ch};
+                std::array<int, 23> channel_idx{};  // kNumBands caps at 23
+                channel_idx[0] = static_cast<int>(r.read(3));
+                if (channel_idx[0] >= channels) {
                     return std::nullopt;
                 }
-                const int code = (previous + difference) % steps;
-                previous = code;
-                params.at(object, channel, band) = dequantize(code, fine_quant);
+                for (int band = 1; band < bands; ++band) {
+                    const int value = huff_decode(idx_table, r);
+                    if (value < 0) {
+                        return std::nullopt;
+                    }
+                    channel_idx[static_cast<std::size_t>(band)] = value;
+                }
+                // §6.6.2 offset: 50 coarse / 100 fine, which is NOT the
+                // quantizer's zero - both dequantize to about +0,4, so the
+                // channels a band does not name still leak into the object.
+                const int sparse_offset = shape.fine_quant ? 100 : 50;
+                const std::span<const HuffCode> vec_table =
+                    shape.fine_quant ? std::span<const HuffCode>{kVecFine}
+                                     : std::span<const HuffCode>{kVecCoarse};
+                for (int channel = 0; channel < channels; ++channel) {
+                    for (int band = 0; band < bands; ++band) {
+                        params.at(object, dp, channel, band) =
+                            dequantize(sparse_offset, shape.fine_quant);
+                    }
+                }
+                // Pseudocode 2's coefficient differential is against
+                // joc_mix_mtx_q[ch][pb-1] for the channel THIS band names -
+                // which is the previous band's decoded value only if that
+                // band named the same channel, and the sparse offset
+                // otherwise, since that is what every unnamed channel holds.
+                // A single running "previous" would carry a value across a
+                // channel change that the clause never puts there.
+                std::array<int, kMaxChannels> previous{};
+                previous.fill(sparse_offset);
+                for (int band = 0; band < bands; ++band) {
+                    const int value = huff_decode(vec_table, r);
+                    if (value < 0) {
+                        return std::nullopt;
+                    }
+                    // Pseudocode 2 names the RAW transmitted index of the
+                    // previous band here, not the reconstructed one - and
+                    // joc_channel_idx_mod is a scalar recomputed each band,
+                    // with no array of reconstructed values to accumulate
+                    // from, so that is deliberate rather than a typo.
+                    const int raw = channel_idx[static_cast<std::size_t>(band)];
+                    const int named =
+                        band == 0 ? raw
+                                  : (channel_idx[static_cast<std::size_t>(band - 1)] + raw) %
+                                        channels;
+                    const int code =
+                        (previous[static_cast<std::size_t>(named)] + value) % steps;
+                    previous.fill(sparse_offset);
+                    previous[static_cast<std::size_t>(named)] = code;
+                    params.at(object, dp, named, band) = dequantize(code, shape.fine_quant);
+                }
+            } else {
+                // §6.6.2 Pseudocode 3 runs the differential the other way:
+                // the decoder accumulates modulo nquant along the bands,
+                // starting from nquant/2 - the quantizer's zero - so the
+                // first band's codeword is the coefficient itself and every
+                // later one is a step.
+                const std::span<const HuffCode> table =
+                    shape.fine_quant ? std::span<const HuffCode>{kMtxFine}
+                                     : std::span<const HuffCode>{kMtxCoarse};
+                for (int channel = 0; channel < channels; ++channel) {
+                    int previous = steps / 2;
+                    for (int band = 0; band < bands; ++band) {
+                        const int difference = huff_decode(table, r);
+                        if (difference < 0) {
+                            return std::nullopt;
+                        }
+                        const int code = (previous + difference) % steps;
+                        previous = code;
+                        params.at(object, dp, channel, band) =
+                            dequantize(code, shape.fine_quant);
+                    }
+                }
             }
         }
     }
@@ -243,26 +338,65 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
 
 namespace {
 
-// Domain::kMdctBand. Unchanged from when it was the only path: 256 MDCT
-// bins, four to a §7.1 subband, one matrix step per 256-sample block.
+// §6.6.5 Pseudocode 6, for one (object, channel, subband) at one timeslot,
+// within a smooth-interpolation segment whose two endpoints are `previous`
+// (joc_mix_mtx_prev) and this object's own `dq` (its one or two transmitted
+// data points). `ts` is this object's own position in ITS frame's 24-
+// timeslot window - see each caller for how it maps its own loop variable
+// onto that window.
+[[nodiscard]] double interpolate(const ObjectShape& shape, double previous,
+                                 std::span<const double, kMaxDataPoints> dq, int ts) {
+    if (!shape.steep) {
+        if (shape.data_points == 1) {
+            return previous + static_cast<double>(ts + 1) * (dq[0] - previous) /
+                                  static_cast<double>(kQmfTimeslots);
+        }
+        constexpr int kHalf = kQmfTimeslots / 2;
+        if (ts < kHalf) {
+            return previous +
+                   static_cast<double>(ts + 1) * (dq[0] - previous) / static_cast<double>(kHalf);
+        }
+        return dq[0] + static_cast<double>(ts - kHalf + 1) * (dq[1] - dq[0]) /
+                           static_cast<double>(kQmfTimeslots - kHalf);
+    }
+    if (ts < shape.offset_ts[0]) {
+        return previous;
+    }
+    if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+        return dq[0];
+    }
+    return dq[1];
+}
+
+// Domain::kMdctBand. Per-object band count, quantizer, sparse mode,
+// interpolation slope and data-point count - everything parse_payload can
+// now produce - applied inside the same block-granular MDCT reconstruction
+// this domain has always used. `previous_matrix` is kept per QMF SUBBAND
+// rather than per parameter band (objects * channels * kQmfSubbands), which
+// is what lets an object change its band count from one frame to the next
+// and still have something meaningful to ramp from.
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_mdct_band(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state, bool fast_mdct, bool fast_imdct) {
     const int objects = params.objects;
-    const int bands = params.bands();
-    const auto& mapping = kSubbandToBand[static_cast<std::size_t>(params.num_bands_idx)];
+    const int channels = params.channels;
 
     // §6.3.3.3: no ramp on the first frame or right after a splice, and
     // equally none if the previous frame's matrix does not even have the
-    // same shape to ramp from (an object/band count change this project's
-    // own AtmosEncoder never makes mid-stream, but a general JOC stream
-    // could in principle) - both collapse to "this frame's matrix applies
-    // to the whole frame outright", the same as ReconstructionState's own
-    // default-constructed (never-reconstructed-before) state.
-    const bool has_ramp = params.seq_count != 0 &&
-                          state.previous_matrix.size() == params.matrix.size() &&
-                          state.previous_objects == objects &&
-                          state.previous_num_bands_idx == params.num_bands_idx;
+    // same shape to ramp from (an object or channel count change this
+    // project's own AtmosEncoder never makes mid-stream, but a general JOC
+    // stream could in principle) - both collapse to "this frame's matrix
+    // applies to the whole frame outright", the same as ReconstructionState's
+    // own default-constructed (never-reconstructed-before) state.
+    const std::size_t previous_size = static_cast<std::size_t>(objects) *
+                                      static_cast<std::size_t>(channels) *
+                                      static_cast<std::size_t>(kQmfSubbands);
+    const bool has_ramp = params.seq_count != 0 && state.previous_objects == objects &&
+                          state.previous_channels == channels &&
+                          state.previous_matrix.size() == previous_size;
+    if (state.previous_matrix.size() != previous_size) {
+        state.previous_matrix.assign(previous_size, 0.0);
+    }
 
     if (static_cast<int>(state.object_history.size()) != objects) {
         // A changed object count invalidates any old per-object history
@@ -286,7 +420,7 @@ namespace {
         // Only block 0 ever reads negative indices (into the previous
         // frame's tail); every later block's window sits entirely inside
         // THIS frame's own already-decoded samples.
-        for (int ch = 0; ch < kNumChannels5X; ++ch) {
+        for (int ch = 0; ch < channels; ++ch) {
             for (int n = 0; n < 512; ++n) {
                 const int index = block * kSamplesPerBlock + n - 256;
                 time[static_cast<std::size_t>(n)] =
@@ -300,32 +434,51 @@ namespace {
             mdct512_forward(windowed, bed_mdct[static_cast<std::size_t>(ch)], fast_mdct);
         }
 
-        // §6.6.5's ramp, evaluated at this block's own right edge - the same
-        // (n + 1) / kSamplesPerFrame convention atmos.cpp's own bed ramp
-        // uses, at block granularity instead of per sample.
-        const double frac =
-            static_cast<double>(block + 1) / static_cast<double>(kBlocksPerFrame);
+        // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking
+        // each block's LAST timeslot keeps the smooth single-data-point case
+        // exactly the (block + 1) / kBlocksPerFrame ramp this used to
+        // compute, and atmos.cpp's own bed ramp still agrees with it.
+        const int ts = (block + 1) * kQmfTimeslots / kBlocksPerFrame - 1;
 
         for (int object = 0; object < objects; ++object) {
+            const auto shape = params.shape(object);
+            auto& pcm = out[static_cast<std::size_t>(object)];
+            auto& history = state.object_history[static_cast<std::size_t>(object)];
+            if (!shape.present) {
+                // Nothing was coded for this object this frame. Its overlap
+                // tail still has to drain, or the next frame it reappears in
+                // would start from a stale one.
+                for (int n = 0; n < kSamplesPerBlock; ++n) {
+                    pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] =
+                        static_cast<float>(2.0 * history[static_cast<std::size_t>(n)]);
+                    history[static_cast<std::size_t>(n)] = 0.0;
+                }
+                continue;
+            }
+            const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+
             // --- §6.6.6: this object's spectrum is a per-band linear
             // combination of the downmix's ---
             for (int bin = 0; bin < 256; ++bin) {
-                const int band = mapping[static_cast<std::size_t>(bin / 4)];
+                const int subband = bin / 4;
+                const int band = mapping[static_cast<std::size_t>(subband)];
                 double sum = 0.0;
-                for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                    double m = params.at(object, ch, band);
-                    if (has_ramp) {
-                        const auto previous_index =
-                            (static_cast<std::size_t>(object) *
-                                 static_cast<std::size_t>(kNumChannels5X) +
-                             static_cast<std::size_t>(ch)) *
-                                static_cast<std::size_t>(bands) +
-                            static_cast<std::size_t>(band);
-                        const double previous = state.previous_matrix[previous_index];
-                        m = previous + frac * (m - previous);
-                    }
-                    sum += m *
-                          bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
+                for (int ch = 0; ch < channels; ++ch) {
+                    const std::array<double, kMaxDataPoints> dq = {
+                        params.at(object, 0, ch, band),
+                        shape.data_points > 1 ? params.at(object, 1, ch, band)
+                                              : params.at(object, 0, ch, band)};
+                    const std::size_t previous_index =
+                        (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
+                         static_cast<std::size_t>(ch)) *
+                            static_cast<std::size_t>(kQmfSubbands) +
+                        static_cast<std::size_t>(subband);
+                    const double previous =
+                        has_ramp ? state.previous_matrix[previous_index] : dq[0];
+                    const double m =
+                        has_ramp ? interpolate(shape, previous, dq, ts)
+                                 : dq[static_cast<std::size_t>(shape.data_points - 1)];
+                    sum += m * bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
                 }
                 object_mdct[static_cast<std::size_t>(bin)] = sum;
             }
@@ -333,8 +486,6 @@ namespace {
             // --- synthesize, same overlap-add eac3_decoder.cpp's own
             // channel reconstruction uses ---
             imdct512_windowed(object_mdct, x, fast_imdct);
-            auto& history = state.object_history[static_cast<std::size_t>(object)];
-            auto& pcm = out[static_cast<std::size_t>(object)];
             for (int n = 0; n < kSamplesPerBlock; ++n) {
                 pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
                     2.0 * (x[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
@@ -343,7 +494,7 @@ namespace {
         }
     }
 
-    for (int ch = 0; ch < kNumChannels5X; ++ch) {
+    for (int ch = 0; ch < channels; ++ch) {
         for (int n = 0; n < 256; ++n) {
             state.bed_history[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
                 static_cast<double>(
@@ -351,17 +502,49 @@ namespace {
                        [static_cast<std::size_t>(kSamplesPerFrame - 256 + n)]);
         }
     }
+    // §6.6.5's own tail: joc_mix_mtx_prev takes the LAST data point, per
+    // subband rather than per parameter band, so a band-count change next
+    // frame still has something to ramp from.
+    for (int object = 0; object < objects; ++object) {
+        const auto shape = params.shape(object);
+        const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int subband = 0; subband < kQmfSubbands; ++subband) {
+                const std::size_t index =
+                    (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
+                     static_cast<std::size_t>(ch)) *
+                        static_cast<std::size_t>(kQmfSubbands) +
+                    static_cast<std::size_t>(subband);
+                state.previous_matrix[index] =
+                    shape.present ? params.at(object, shape.data_points - 1, ch,
+                                              mapping[static_cast<std::size_t>(subband)])
+                                  : 0.0;
+            }
+        }
+    }
+    state.previous_objects = objects;
+    state.previous_channels = channels;
+
     return out;
 }
 
 // Domain::kQmf. §6.6.6 as written: analyse the downmix into §7.1's 64
 // complex subbands, take the per-band linear combination there, synthesise
-// each object back.
+// each object back. Always kNumChannels5X channels: QmfState::bed is sized
+// to it, matching the one downmix width a licensed decoder ever runs this
+// domain against (Table 47's 7-channel configurations need Lb/Rb from a
+// dependent substream no caller of this function has in hand).
 //
 // One timeslot at a time rather than a frame at a time. The frame's worth
 // of subband values would be 5 channels x 24 timeslots x 64 bins x 2 -
 // 123 KB of scratch to hold something each object consumes immediately, so
 // nothing here is buffered that does not have to be.
+//
+// `previous_matrix`/`older_matrix` are kept per QMF SUBBAND, the same
+// reasoning reconstruct_mdct_band's own comment gives: a per-object band
+// count or data-point count is free to change frame to frame, and
+// subband-resolution storage never has to reinterpret what an old value
+// meant under a band layout that no longer applies.
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_qmf(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state) {
@@ -369,8 +552,6 @@ namespace {
                   "the QMF hop has to divide the frame exactly");
 
     const int objects = params.objects;
-    const int bands = params.bands();
-    const auto& mapping = kSubbandToBand[static_cast<std::size_t>(params.num_bands_idx)];
 
     if (!state.qmf) {
         state.qmf = std::make_unique<ReconstructionState::QmfState>();
@@ -383,33 +564,20 @@ namespace {
         qmf.objects.assign(static_cast<std::size_t>(objects), dsp::QmfSynthesis{});
     }
 
-    const bool shape_matches = state.previous_matrix.size() == params.matrix.size() &&
-                               state.previous_objects == objects &&
-                               state.previous_num_bands_idx == params.num_bands_idx;
-    const bool has_previous = params.seq_count != 0 && shape_matches;
-    const bool has_older = has_previous && state.older_matrix.size() == params.matrix.size();
+    const std::size_t previous_size = static_cast<std::size_t>(objects) *
+                                      static_cast<std::size_t>(kNumChannels5X) *
+                                      static_cast<std::size_t>(kQmfSubbands);
+    const bool has_previous = params.seq_count != 0 && state.previous_objects == objects &&
+                              state.previous_channels == kNumChannels5X &&
+                              state.previous_matrix.size() == previous_size;
+    const bool has_older = has_previous && state.older_matrix.size() == previous_size;
+    if (state.previous_matrix.size() != previous_size) {
+        state.previous_matrix.assign(previous_size, 0.0);
+    }
 
     std::vector<std::vector<float>> out(
         static_cast<std::size_t>(objects),
         std::vector<float>(static_cast<std::size_t>(kSamplesPerFrame)));
-
-    // The interpolated matrix for one timeslot, one object: 5 channels by
-    // however many parameter bands the frame carries. Sized to Table 50's
-    // widest entry so it never has to be allocated, and asserted against
-    // that table rather than spelled as a literal.
-    constexpr std::size_t kWidestBandCount = 23;
-    static_assert(kWidestBandCount ==
-                      static_cast<std::size_t>(*std::ranges::max_element(kNumBands)),
-                  "Table 50 grew a wider layout than this scratch can hold");
-    std::array<std::array<double, kWidestBandCount>, kNumChannels5X> mix{};
-
-    // The three matrices §6.6.5's ramp runs between, resolved once. Each
-    // missing one falls back to the next newer, which turns the ramp that
-    // would have used it into a constant - the same "nothing meaningful to
-    // ramp from" behaviour a splice (seq_count == 0) gets.
-    const double* const current = params.matrix.data();
-    const double* const previous = has_previous ? state.previous_matrix.data() : current;
-    const double* const older = has_older ? state.older_matrix.data() : previous;
 
     for (int slot = 0; slot < dsp::kQmfSlotsPerFrame; ++slot) {
         for (int ch = 0; ch < kNumChannels5X; ++ch) {
@@ -424,40 +592,81 @@ namespace {
         // §6.6.5's ramp, but over the timeslots this call actually EMITS
         // rather than the ones it analyses. The pair's kQmfDelay means the
         // first kQmfDelaySlots of them carry the previous frame's audio, so
-        // they ramp across the previous frame's own pair of matrices; only
-        // the rest belong to the frame just parsed. Getting this wrong is
-        // silent - it just applies every matrix 576 samples early on 37% of
-        // the audio - which is why the two cases are spelled out.
+        // they finish out THAT frame's own ramp; only the rest belong to the
+        // frame just parsed. Getting this wrong is silent - it just applies
+        // every matrix 576 samples early on 37% of the audio - which is why
+        // the two cases are spelled out.
+        //
+        // The delayed tail (previous_frame) is replayed as a plain linear
+        // blend between two stored matrix snapshots, never per-object
+        // interpolation: by the time this call runs, the PREVIOUS frame's
+        // own ObjectShape (steep? how many data points?) is gone - only the
+        // numbers it produced survive in older_matrix/previous_matrix. This
+        // is not a regression - a plain blend is what this segment has
+        // always used, from before per-object shapes existed.
         const bool previous_frame = slot < dsp::kQmfDelaySlots;
-        const double* const from = previous_frame ? older : previous;
-        const double* const to = previous_frame ? previous : current;
-        const double frac =
-            previous_frame
-                ? static_cast<double>(dsp::kQmfSlotsPerFrame - dsp::kQmfDelaySlots + slot + 1) /
-                      static_cast<double>(dsp::kQmfSlotsPerFrame)
-                : static_cast<double>(slot - dsp::kQmfDelaySlots + 1) /
-                      static_cast<double>(dsp::kQmfSlotsPerFrame);
+        const double tail_frac =
+            static_cast<double>(dsp::kQmfSlotsPerFrame - dsp::kQmfDelaySlots + slot + 1) /
+            static_cast<double>(dsp::kQmfSlotsPerFrame);
+        // This frame's own content is only ever visible here for its first
+        // (kQmfSlotsPerFrame - kQmfDelaySlots) timeslots; the rest of its
+        // 24-timeslot window falls into the delayed-tail branch of the NEXT
+        // call instead, the same approximation the plain blend above makes.
+        const int ts = slot - dsp::kQmfDelaySlots;
 
         for (int object = 0; object < objects; ++object) {
-            for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                for (int band = 0; band < bands; ++band) {
-                    const std::size_t index =
-                        (static_cast<std::size_t>(object) *
-                             static_cast<std::size_t>(kNumChannels5X) +
-                         static_cast<std::size_t>(ch)) *
-                            static_cast<std::size_t>(bands) +
-                        static_cast<std::size_t>(band);
-                    mix[static_cast<std::size_t>(ch)][static_cast<std::size_t>(band)] =
-                        from[index] + frac * (to[index] - from[index]);
-                }
+            const auto shape = params.shape(object);
+            auto& synth = qmf.objects[static_cast<std::size_t>(object)];
+            if (!shape.present) {
+                // Nothing coded this frame: still pull every slot, with a
+                // silent contribution, so the filter's own internal state
+                // drains through its natural zero-input response instead of
+                // being cut off - the QMF-domain equivalent of
+                // reconstruct_mdct_band's explicit history[] drain.
+                std::ranges::fill(qmf.object_real, 0.0);
+                std::ranges::fill(qmf.object_imag, 0.0);
+                const std::span<float, dsp::kQmfHop> emitted{
+                    out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
+                    static_cast<std::size_t>(dsp::kQmfHop)};
+                synth.pull(qmf.object_real, qmf.object_imag, emitted);
+                continue;
             }
+            const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
             for (int k = 0; k < dsp::kQmfSubbands; ++k) {
                 const auto band = mapping[static_cast<std::size_t>(k)];
                 double real = 0.0;
                 double imag = 0.0;
                 for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                    const double m = mix[static_cast<std::size_t>(ch)][band];
+                    const std::size_t index =
+                        (static_cast<std::size_t>(object) *
+                             static_cast<std::size_t>(kNumChannels5X) +
+                         static_cast<std::size_t>(ch)) *
+                            static_cast<std::size_t>(kQmfSubbands) +
+                        static_cast<std::size_t>(k);
+                    // This frame's own transmitted value, used both as the
+                    // ramp's ultimate fallback (no history at all) and as
+                    // one endpoint of the current-frame segment below.
+                    const std::array<double, kMaxDataPoints> dq = {
+                        params.at(object, 0, ch, band),
+                        shape.data_points > 1 ? params.at(object, 1, ch, band)
+                                              : params.at(object, 0, ch, band)};
+                    const double previous_val =
+                        has_previous ? state.previous_matrix[index] : dq[0];
+                    double m;
+                    if (previous_frame) {
+                        // Degenerates to `previous_val` outright when there is
+                        // no older snapshot either (older_val == previous_val
+                        // in that case), which is the same "nothing to ramp
+                        // from" fallback every other domain uses.
+                        const double older_val =
+                            has_older ? state.older_matrix[index] : previous_val;
+                        m = older_val + tail_frac * (previous_val - older_val);
+                    } else {
+                        m = has_previous
+                                ? interpolate(shape, previous_val, dq, ts)
+                                : dq[static_cast<std::size_t>(shape.data_points - 1)];
+                    }
                     real += m * qmf.bed_real[static_cast<std::size_t>(ch)]
                                             [static_cast<std::size_t>(k)];
                     imag += m * qmf.bed_imag[static_cast<std::size_t>(ch)]
@@ -470,10 +679,38 @@ namespace {
             const std::span<float, dsp::kQmfHop> emitted{
                 out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
                 static_cast<std::size_t>(dsp::kQmfHop)};
-            qmf.objects[static_cast<std::size_t>(object)].pull(qmf.object_real, qmf.object_imag,
-                                                               emitted);
+            synth.pull(qmf.object_real, qmf.object_imag, emitted);
         }
     }
+
+    // The move keeps this at one matrix copy a frame: older_matrix inherits
+    // the buffer previous_matrix is about to give up, then previous_matrix
+    // is rebuilt at subband resolution from this frame's own last data
+    // point - see reconstruct_mdct_band's own tail for why that resolution,
+    // not params.matrix's own (variable, per-object) one.
+    state.older_matrix = std::move(state.previous_matrix);
+    state.previous_matrix.assign(previous_size, 0.0);
+    for (int object = 0; object < objects; ++object) {
+        const auto shape = params.shape(object);
+        const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+        for (int ch = 0; ch < kNumChannels5X; ++ch) {
+            for (int subband = 0; subband < kQmfSubbands; ++subband) {
+                const std::size_t index =
+                    (static_cast<std::size_t>(object) *
+                         static_cast<std::size_t>(kNumChannels5X) +
+                     static_cast<std::size_t>(ch)) *
+                        static_cast<std::size_t>(kQmfSubbands) +
+                    static_cast<std::size_t>(subband);
+                state.previous_matrix[index] =
+                    shape.present ? params.at(object, shape.data_points - 1, ch,
+                                              mapping[static_cast<std::size_t>(subband)])
+                                  : 0.0;
+            }
+        }
+    }
+    state.previous_objects = objects;
+    state.previous_channels = kNumChannels5X;
+
     return out;
 }
 
@@ -483,22 +720,19 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
                                             const FrameParameters& params,
                                             ReconstructionState& state, bool fast_mdct,
                                             bool fast_imdct, Domain domain) {
-    assert(bed.size() == static_cast<std::size_t>(kNumChannels5X));
-    assert(params.channels == kNumChannels5X);
+    assert(bed.size() == static_cast<std::size_t>(params.channels));
+    assert(params.channels >= 1 && params.channels <= kMaxChannels);
+    assert(domain != Domain::kQmf || params.channels == kNumChannels5X);
     assert(params.matrix.size() == params.coefficient_count());
 
-    auto out = domain == Domain::kQmf
-                  ? reconstruct_qmf(bed, params, state)
-                  : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
-
-    // The move keeps this at one matrix copy a frame, the same as when only
-    // previous_matrix existed: older_matrix inherits the buffer that
-    // previous_matrix is about to give up.
-    state.older_matrix = std::move(state.previous_matrix);
-    state.previous_matrix = params.matrix;
-    state.previous_objects = params.objects;
-    state.previous_num_bands_idx = params.num_bands_idx;
-    return out;
+    // Each domain function maintains its own previous_matrix/older_matrix/
+    // previous_objects/previous_channels internally, at the subband
+    // resolution its own comment explains, so there is no generic
+    // post-processing step here - unlike params.matrix itself, that state
+    // cannot be copied verbatim between calls once band counts and data
+    // points are allowed to vary per object.
+    return domain == Domain::kQmf ? reconstruct_qmf(bed, params, state)
+                                  : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
 }
 
 }  // namespace ac3::joc

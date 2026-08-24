@@ -17,6 +17,7 @@
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
 #include "ac3/latency.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/mirror.hpp"
@@ -102,6 +103,21 @@ struct EncoderConfig {
     // heavy-compression peak detector consults them whatever acmod is.
     meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
     meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+
+    // --- bit stream information (§5.4.2, Annex D) --------------------------
+    // The informational fields: what service this is, whether the 2/0 pair is
+    // a Dolby Surround matrix, the mixing room it was judged in, the copyright
+    // and original-bitstream bits, and the time code. Every default matches
+    // the constant this encoder wrote before any of it was configurable, so a
+    // config that leaves this alone produces the same bits it always did.
+    // BsiInfo's dheadphonmod/dsurexmod/sourcefscod have no home in AC-3 bsi
+    // and are not read here - Annex D's xbsi2 below carries the first two.
+    meta::BsiInfo info{};
+    // Annex D (§D2.2): std::nullopt writes bsid 8 with info.timecod1/2 in the
+    // two 14-bit fields; set writes bsid 6 and spends those same 28 bits on
+    // xbsi1/xbsi2 instead, at which point info.timecod1/2 are unwritable and
+    // encode_frame() refuses rather than dropping them silently.
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
 
     // --- decision search (ac3/quality) -------------------------------------
     // §7.2.2's bit allocation parameters are chosen once, from the bit rate,

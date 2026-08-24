@@ -71,6 +71,40 @@ placement[obj] = {
 const auto unit = encoder.encode_frame(views, placement);
 ```
 
+### Extent and rendering constraints
+
+An object is not necessarily a point. `ObjectPlacement` also carries TS 103 420 §5.6.1's
+extent and rendering-constraint fields, all of which reach OAMD:
+
+```cpp
+placement[obj] = {
+    .position = {.x = 0.5, .y = 0.2, .z = 0.4},
+    .gain = 1.0,
+    // §5.6.1.2 Table 17, each axis in [0, 1]. Table 17 has three shapes and
+    // only three: a point source, one value shared by all three axes, and
+    // three separate ones - build_payload picks the cheapest that fits.
+    .size = {.width = 0.4, .depth = 0.1, .height = 0.4},
+    // §5.6.1.5.1 b_object_snap - what ADM calls channelLock: render to the
+    // nearest speaker instead of panning between speakers.
+    .snap = false,
+    // §5.6.1.6 Table 20/21: which horizontal zones the renderer may use,
+    // and whether the Top-Bottom zone is in play at all.
+    .zone = ac3::oba::ZoneConstraint::kScreenOnly,
+    .enable_elevation = true,
+};
+```
+
+These are **transmitted, not rendered here**. §4.3 makes the renderer, not the decoder,
+responsible for turning an extent into loudspeaker feeds, and the 5.1 downmix this encoder
+builds is a point-source VBAP pan by construction — a downmix that spread the object would
+then be spread *again* by the receiving renderer. So a sized object is transmitted as sized and
+folded into the bed as a point, which is the honest split.
+
+`Keyframe` carries the same four fields. `size` interpolates between keyframes the way position
+and gain do (BS.2076-2 §10.3 lists width/height/depth among its interpolatable parameters);
+`snap`, `zone` and `enable_elevation` do not — they are discrete decisions with no meaningful
+halfway point, so `evaluate()` holds the earlier keyframe's value until the later one is reached.
+
 Full program: [`examples/atmos_objects.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_objects.cpp).
 
 | `AtmosConfig` | Default | Notes |
@@ -312,6 +346,15 @@ never both.
 ```cpp
 ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .emit_object_metadata = false}, kObjects};
 ```
+
+Turning it off drops TS 103 420 §8.3.1's `addbsi` object marker along with the container, so the
+stream doesn't *advertise* an object layer either. That marker (`flag_ec3_extension_type_a` plus
+§8.3.2.2's `complexity_index_type_a`) is the only thing a reader has to go on: it is what
+`ac3::io::scan` reports as `ScannedStream::oba_complexity_index`, what
+`ac3::io::build_codec_config_box` turns into the `dec3` box's Dolby Atmos extension, what
+`ac3cli fmp4` writes as an HLS `CHANNELS="<N>/JOC"` attribute, and what FFmpeg keys its
+"Dolby Digital Plus + Dolby Atmos" profile off. Left in, all four would claim objects that were
+never encoded — the same empty-promise this mode exists to avoid.
 
 Full program: [`examples/atmos_fallback.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_fallback.cpp)
 — encodes the same objects both ways and confirms both decode as an ordinary 5.1 bed.

@@ -337,6 +337,69 @@ TEST_CASE("build_channel_path with force_lfe discards the block's own position a
     CHECK(placement.lfe_send == 1.0);
 }
 
+TEST_CASE("build_channel_path maps width/height/depth and channelLock", "[admbridge]") {
+    // BS.2076-2 Table 15/16/17's extents and TS 103 420 §5.6.1.2's are the
+    // same normalized quantity on the same three axes, so this is a rename
+    // rather than a conversion - and §10.3 interpolates them, which is what
+    // the midpoint below checks.
+    auto first = block_at(0.0, 1.0, polar(30.0, 0.0));
+    first.width = 0.2;
+    first.height = 0.4;
+    first.depth = 0.6;
+    first.has_channel_lock = true;
+    first.channel_lock = true;
+    first.has_channel_lock_max_distance = true;
+    first.channel_lock_max_distance = 0.5;
+
+    auto second = block_at(1.0, 2.0, polar(-30.0, 0.0), 1.0, /*jump_position=*/false);
+    second.width = 0.6;
+    second.height = 0.0;
+    second.depth = 0.6;
+    second.has_channel_lock = true;
+    second.channel_lock = false;
+
+    const auto channel = channel_with({first, second});
+    const auto path = ac3::admbridge::build_channel_path(channel, 0.0, false);
+    REQUIRE(path.has_value());
+
+    const auto held = path->evaluate(0.5);
+    CHECK_THAT(held.size.width, Catch::Matchers::WithinAbs(0.2, 1e-12));
+    CHECK_THAT(held.size.height, Catch::Matchers::WithinAbs(0.4, 1e-12));
+    CHECK_THAT(held.size.depth, Catch::Matchers::WithinAbs(0.6, 1e-12));
+    // channelLock true with a maxDistance still becomes an unconditioned
+    // snap: b_object_snap is one bit and has no distance to condition on.
+    CHECK(held.snap);
+
+    // Halfway through block 1's ramp, size is halfway too.
+    const auto ramping = path->evaluate(2.0);
+    CHECK_THAT(ramping.size.width, Catch::Matchers::WithinAbs(0.4, 1e-12));
+    CHECK_THAT(ramping.size.height, Catch::Matchers::WithinAbs(0.2, 1e-12));
+    CHECK_THAT(ramping.size.depth, Catch::Matchers::WithinAbs(0.6, 1e-12));
+    // snap holds at the earlier keyframe until the later one is reached.
+    CHECK(ramping.snap);
+    CHECK_FALSE(path->evaluate(3.0).snap);
+}
+
+TEST_CASE("build_channel_path gives an LFE channel no extent and no snap", "[admbridge]") {
+    // force_lfe already discards position and gain; extent and channel lock
+    // follow for the same reason - an LFE has no direction, so it has no
+    // extent around one and nothing to snap to.
+    auto block = block_at(0.0, 1.0, polar(30.0, 0.0), 0.9);
+    block.width = 0.5;
+    block.height = 0.5;
+    block.depth = 0.5;
+    block.has_channel_lock = true;
+    block.channel_lock = true;
+
+    const auto channel = channel_with({block});
+    const auto path = ac3::admbridge::build_channel_path(channel, 0.0, /*force_lfe=*/true);
+    REQUIRE(path.has_value());
+    const auto placement = path->evaluate(0.5);
+    CHECK(placement.size.is_point());
+    CHECK_FALSE(placement.snap);
+    CHECK(placement.lfe_send == 1.0);
+}
+
 TEST_CASE("build_channel_path rejects an empty block sequence", "[admbridge]") {
     ac3adm::AudioChannelFormat channel;
     channel.id = "AC_EMPTY";

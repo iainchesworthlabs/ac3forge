@@ -74,7 +74,18 @@ target_include_directories(forge_minimal
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/minimal"
         # Tracy is never part of this profile - the disabled variant's macros
         # expand to nothing, which is what a footprint build wants.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled"
+        # Roadmap PF5's SIMD arch seam (src/forge/CMakeLists.txt has the full
+        # explanation): mdct.cpp/bitalloc.cpp/exponents.cpp unconditionally
+        # include ac3/internal/arch/simd.hpp now, so this profile needs a
+        # resolved directory the same way the ordinary build does - it just
+        # never needs anything other than generic/. AC3FORGE_SIMD's own
+        # auto-resolution explicitly names "a soft-float embedded target" as
+        # a generic/ case, which is exactly what arm-none-eabi is: the
+        # Cortex-M3 this profile targets has no vector unit for x86_64/
+        # aarch64's intrinsics to reach, so there is no "auto" question to
+        # ask here the way there is for the full library's desktop/Pi targets.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/generic")
 
 target_compile_features(forge_minimal PUBLIC cxx_std_23)
 

@@ -30,6 +30,50 @@ metadata options (any order, after the positional arguments):
   mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)
   lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)
   dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)
+  ltrtcmixlev=<dB>  Lt/Rt centre level, Table D2.3: +3|+1.5|0|-1.5|-3|-4.5|-6|off
+  lorocmixlev=<dB>  Lo/Ro centre level, Table D2.5 (same eight values)
+  ltrtsurmixlev=<dB>      Lt/Rt surround level, Table D2.4: -1.5|-3|-4.5|-6|off
+                    (the three louder codes are reserved)
+  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)
+
+  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod
+                    fields on Annex D's xbsi1/xbsi2 instead (§D1)
+  dsurexmod=none|off|ex|pliiz     Dolby Surround EX (Table D2.7)
+  dheadphonmod=none|off|on        Dolby Headphone (Table D2.8)
+  adconvtyp=standard|hdcd         A/D converter type (Table D2.9)
+  encinfo           AC-3 Annex D: set the encoder's own reserved bit (§D2.3.1.12)
+
+  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2)
+  bsmod=<service>   type of service, Table 5.7: cm | me | vi | hi | dialogue |
+                    commentary | emergency | voiceover (or 0..7)
+  dsurmod=none|off|on     Dolby Surround, 2/0 only (Table 5.11)
+  mixlevel=<dB SPL> peak mixing level, 80..111 (§5.4.2.14)
+  roomtyp=none|large|small        mixing room (Table 5.12)
+  mixlevel2= / roomtyp2=  Ch2's own pair, layout 1+1 only (§5.4.2.22/23)
+  langcod / langcod2      emit the reserved 0xFF language byte (§5.4.2.12); AC-3 only
+  copyright         set copyrightb (§5.4.2.24; default clear)
+  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)
+  sourcefscod       E-AC-3: source sampled at twice fscod's rate (§E2.3.1.63)
+  timecode=HH:MM:SS[:FF[.N]]      AC-3 bsid 8 only (§5.4.2.26-28)
+
+  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB (§E2.3.1.13)
+  pgmscl2=<dB>|mute Ch2's own, layout 1+1 only (§E2.3.1.15)
+  extpgmscl=<dB>|mute     the external programme's (§E2.3.1.17)
+  mixdef=none|premix|reserved|ext  mixing-parameter block (Table E2.6)
+  premixcmp=<sel>:<src>:<scale>   dynrng|compr : external|local : 0..7
+                    (§E2.3.1.19-21)
+  mixdata=<0..4095> the twelve bits mixdef=reserved reserves (§E2.3.1.23)
+  extmix=<L>,<C>,<R>,<Ls>,<Rs>,<LFE>[,<dmix>]   mixdef=ext external channel
+                    scale codes 0..15 (Table E2.8), 'off' for a channel the
+                    external programme lacks
+  auxmix=<a1>,<a2>  mixdef=ext auxiliary channel scales, same codes
+  speechmix=<d>[,<d1>:<att1>[,<d2>:<att2>]]     mixdef=ext speech enhancement
+                    data (§E2.3.1.44-51)
+  paninfo=<0..239>[:<0..63>]      E-AC-3 pan position, 1.5 degree steps
+                    clockwise from centre, mono/1+1 only (§E2.3.1.53-58)
+  paninfo2=         Ch2's own, layout 1+1 only
+  blkmixcfg=<b0,..,b5>    E-AC-3 per-block mixing configuration, six 0..31
+                    words or '-' for a block that sends none (§E2.3.1.59-61)
   couple            enable channel coupling - honored by 'encode' and 'sine' ('sine' can also
                     spell it as a 'c' layout suffix); E-AC-3 coupling is the tools argument's
                     cpl token instead
@@ -96,13 +140,79 @@ See [Metadata](../library/metadata.md) for what each of these fields actually is
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
 that page's config fields.
 
+## Bit stream information: `annexd`, `infomdat` and the service fields
+
+Everything in this group is metadata a receiver reads *about* the programme; none of it changes
+an output sample. What it decides is whether that receiver can tell a complete main programme
+from an audio-description track, whether a stereo pair is a Dolby Surround matrix, and what
+acoustic level the mix was judged at.
+
+The two gate tokens exist because the two formats carry the group differently:
+
+- **`annexd`** (AC-3 only) writes `bsid` 6. AC-3's two 14-bit `timecod` fields have never been
+  applied for their originally anticipated purpose (§D1), so Annex D spends them on `xbsi1`
+  (`dmixmod` plus separate Lt/Rt and Lo/Ro centre and surround levels) and `xbsi2` (`dsurexmod`,
+  `dheadphonmod`, `adconvtyp`). It is implied by `dmixmod=`, by any of the four level tokens, and
+  by the three `xbsi2` tokens — so `ac3cli encode in.wav out.ac3 384 51 dmixmod=ltrt` writes a
+  `bsid`-6 stream without being asked twice. `timecode=` and `annexd` are refused together: they
+  are the same 28 bits.
+- **`infomdat`** (E-AC-3 only) opens Table E1.2's `infomdat` element. It is implied by every
+  informational token — `bsmod=`, `dsurmod=`, `dsurexmod=`, `dheadphonmod=`, `adconvtyp=`,
+  `mixlevel=`, `roomtyp=`, `copyright`, `origbs=`, `sourcefscod`. AC-3 needs no such gate: those
+  fields are unconditional in its own bsi.
+
+Fields the layout has no room for are simply not written, per the syntax: `dsurmod` and
+`dheadphonmod` exist only at 2/0, `dsurexmod` only at 2/2 and 3/2, `mixlevel2`/`roomtyp2`/
+`paninfo2`/`pgmscl2` only at 1+1. Setting one anyway is not an error — it just does not reach the
+wire, which is what lets one set of options describe a programme at any layout.
+
+`langcod` is a presence flag rather than a value: §5.4.2.12 makes the byte a reserved `0xFF`, the
+language table it once indexed having been dropped in favour of the signalling layer's own
+ISO 639-2 code.
+
+```bash
+ac3cli encode in.wav out.ac3 384 51 bsmod=vi mixlevel=105 roomtyp=large copyright dmixmod=ltrt ltrtcmixlev=-1.5 dsurexmod=ex adconvtyp=hdcd
+```
+
+That is an AC-3 visually-impaired associated service, mixed at 105 dB SPL in a large X-curve
+room, copyright asserted, preferring an Lt/Rt downmix with the centre 1.5 dB down in it, flagged
+as Surround EX and captured through an HDCD converter — `bsid` 6, because the last three of those
+have nowhere else to go.
+
+## Programme mixing (E-AC-3): `pgmscl`, `mixdef`, `paninfo`, `blkmixcfg`
+
+The `mixmeta` group's five downmix levels say how to fold *this* programme down. The tokens above
+say how to combine it with a *second* one — the audio-description or commentary service a
+receiver mixes against the main programme. §E2.3.1.17's "external program" is that second stream.
+The whole group is written only by the independent substream, since a dependent is part of
+someone else's programme and has no second one of its own to talk about.
+
+`mixdef=` picks one of Table E2.6's four options and decides which of the tokens below are
+written: `premix` sends `premixcmp=` alone, `reserved` sends `mixdata=`'s twelve bits, and `ext`
+sends whichever of `extmix=`/`auxmix=`/`speechmix=` are given inside a length-prefixed block.
+Naming any of them turns `mixmeta` on.
+
+```bash
+ac3cli eac3-encode in.wav out.ec3 448 none 51 pgmscl=-6 extpgmscl=+3 \
+    mixdef=ext premixcmp=dynrng:external:0 extmix=0,2,0,off,off,15 \
+    blkmixcfg=3,-,7,-,-,31 bsmod=commentary mixlevel=98 roomtyp=small
+```
+
+In `extmix=`, `off` means the external programme has **no** such channel (§E2.3.1.31's cleared
+flag), which is not the same as a scale factor of `0` — that is Table E2.8's −1 dB. `blkmixcfg=`
+takes one word per block with `-` for a block whose `blkmixcfginfoe` stays clear.
+
+`decode` reports both groups back: any service, production, Surround or programme-mixing field
+the stream actually carries is printed under the `dynrng`/`compr` lines. A plain complete-main
+programme with none of them prints nothing extra.
+
 ## The `tools:` token (`eac3-encode`)
 
 Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | nodither | all
+        nofastmdct | nodither | numblkscod:N | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -115,7 +225,12 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         deciding it from content — neither is a coding tool (nothing in
         the bitstream's syntax changes either way), so 'none' and 'all'
         both leave them alone, and the older opt-in spelling 'fastmdct'
-        still parses as a no-op
+        still parses as a no-op;
+        numblkscod:N (0-3, default 3) shortens the syncframe to 1/2/3/6
+        blocks (5.3/10.7/16/32 ms) — every substream of the access unit
+        takes the same value, AHT is unavailable below 3 (Table E1.3 has
+        no ahte bit there — combining it with aht/auto is refused up
+        front, not silently dropped), and 'none'/'all' leave it alone too
 ```
 
 The tool set is the fourth positional argument, not an `=` option. Example:
@@ -126,21 +241,58 @@ on enhanced coupling (auto band edge) and transient pre-noise processing togethe
 combination the tools argument accepts is legal here. `all` does not currently imply `ecpl` or
 `tpn`; name them explicitly to get either.
 
+`ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
+blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
+round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
+often for the same audio, which comes straight out of the mantissas at a fixed bit rate.
+`atmos-encode` does not accept this token yet — Atmos's object metadata (OAMD/JOC) is timed and
+interpolated across a full six-block frame, and extending it to a shorter one is unstarted work,
+not merely unexposed.
+
 ## The `vbr` token (`eac3-encode` only)
 
 ```text
-vbr (eac3-encode only): off | q:0..1[,min:kbps][,max:kbps] - E-AC-3 only
+vbr (eac3-encode only): off | q:0..1[,min:kbps][,max:kbps]
+                            | avg:kbps[,win:frames][,min:kbps][,max:kbps] - E-AC-3 only
         quality is encoder-relative, not a fixed target — bit cost rises
         steeply above roughly half the range, so a high quality with no
         max bound will often refuse real programme material outright;
         bitrate_kbps still matters in vbr mode — it feeds the same
         coupling/spx frequency defaults it always has, not a target rate
+        avg:kbps instead of q: is average-rate (ABR) mode: the encoder
+        steers the SNR offset to hold that long-run average, with a
+        sliding-window bit reservoir underneath it, so a quiet frame
+        stays cheap and a busy one may cost more. It takes no quality —
+        that is the knob it exists to move — so q: and avg: are refused
+        together. win:frames sets the window (32 frames by default,
+        about a second at 48 kHz); min:/max: still bound each frame.
 ```
 
-Example: `ac3cli eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320` encodes at quality 0.4,
-capped at 320 kbps whenever the content would otherwise ask for more; `bitrate_kbps` (192 here)
-still drives the coupling/spx band-edge defaults the way it always has, since VBR has no fixed
-target rate to hand them.
+There are two rate controls here, named by the leading token.
+
+**`q:` — plain VBR.** `ac3cli eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320` encodes at
+quality 0.4, capped at 320 kbps whenever the content would otherwise ask for more; `bitrate_kbps`
+(192 here) still drives the coupling/spx band-edge defaults the way it always has, since VBR has
+no fixed target rate to hand them. What quality 0.4 actually costs, and whether it beats CBR at
+that cost, is measured in
+[E-AC-3 rate control: what VBR and ABR are worth](../concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
+
+**`avg:` — average-rate (ABR).** `ac3cli eac3-encode in.wav out.ec3 192 none stereo avg:192`
+delivers a stream that averages 192 kbps over the long run while each frame's size still follows
+the content. The encoder holds one SNR offset across frames and steers it — up while the stream is
+running under its target, down while it is over — with a sliding-window reservoir underneath as a
+hard ceiling, so no window of `win:` frames can overrun its pooled budget.
+
+`avg:` takes no quality, and passing both (`q:0.5,avg:192`) is refused rather than one half
+silently winning: quality fixes the SNR offset, and moving that offset is the whole of what ABR
+does. The stream's first frame seeds the offset from its own budget search, so there is no
+starting value to supply.
+
+`win:` sets the window in frames — 32 by default, about a second at 48 kHz. Shorter holds the
+average more tightly but gives the reservoir less to carry between a quiet passage and the loud
+one that could use its savings; longer does the opposite. `min:`/`max:` bound each individual
+frame and compose with the average, but a `min:` above the average (or a `max:` below it) makes
+the average unreachable by construction and is refused.
 
 Omit `vbr` (or pass `off`) for ordinary CBR — the default. AC-3 (`encode`) is CBR-only because
 `frmsizecod` indexes a fixed frame-size table; `eac3-silence` and `eac3-sine` are E-AC-3
@@ -359,6 +511,32 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
 
+## Stream-tool options (`transcode`, `metadata`)
+
+| Token | Command | Meaning |
+|---|---|---|
+| `codec=ac3` / `codec=eac3` | `transcode` | The output codec, when the output name's own suffix cannot say it — stdout (`-`), or a file named something other than `.ac3`/`.ec3`. Without it, an unrecognisable name is refused rather than guessed |
+| `compr=<dB>` | `metadata` | Stamp §7.7.2's compression word onto an existing stream, as the 8-bit wire value that gain implies |
+| `compr2=<dB>` | `metadata` | The same for Ch2 of a 1+1 dual-mono stream |
+| `bsmod=<0..7>` | `metadata` | Table 5.5's service type (0 = complete main, 1 = music and effects, 2 = visually impaired, …) |
+| `dsurmod=<0..3>` | `metadata` | Table 5.11's Dolby Surround mode. Coding mode 2/0 only — §5.4.2.7 transmits it nowhere else |
+
+`compr=`/`compr2=` round **down** to the nearest representable word, not to nearest: §7.7.2
+exists to give "an assured upper limit of instantaneous peak reproduced signal level", and a
+ceiling exceeded by half a step is not assured. That is the same rule
+`ac3::meta::encode_compr_at_most` applies on the encode side.
+
+`compr=` is a different thing from the `heavy`/`ceiling=`/`dialogue=` group above. Those ask an
+*encoder* to derive a compression word from the signal it is coding; `compr=` names the word
+outright, because a metadata rewrite has no signal to derive from — only bits to overwrite, and
+only where the stream already carries a `compr` word. Asking for one where it does not is
+refused, not invented.
+
+`dialnorm=` and `dialnorm2=` work on `metadata` too, but only with an explicit `1..31` value:
+`dialnorm=auto` needs a measurement, which is what `ac3cli normalize` is. On `transcode` they
+override the value carried from the source, and `dialnorm=auto` measures the *source* the same
+way an encode from a WAV would.
+
 ## Qc options (`qc`): `preset=`, `layout=`
 
 ```text
@@ -519,6 +697,8 @@ Optional positional arguments, when omitted:
 - `record` — 5 s at 192 kbps from device 0.
 - `live` — 10 s at 192 kbps.
 - `play`, `monitor` — device `-1`, the default output.
+- `transcode` — 448 kbps, and the source's own layout (folded to 5.1 when AC-3 cannot code it).
+- `cut` — from 0 s to the end of the stream.
 
 ## What the encoder accepts
 
@@ -532,6 +712,11 @@ Optional positional arguments, when omitted:
 
 ## Command-specific notes
 
+- **`transcode`/`metadata`/`normalize`/`cut`/`cat`** work on an already-encoded stream rather
+  than on PCM — see [Commands → Stream tools](commands.md#stream-tools--an-encoded-stream-in-an-encoded-stream-out)
+  for what each carries across and what it deliberately does not. Only `transcode` re-encodes.
+  Every metadata option above that a stream tool does not name is ignored by it, the same way
+  `mkv` ignores all of them.
 - **`mkv`** reads format, packet boundaries, sample rate and channel count from the bitstream
   itself, so it cannot be told the wrong ones. E-AC-3 dependent substreams are grouped into their
   access unit and counted as the channels they render.
@@ -550,7 +735,10 @@ Optional positional arguments, when omitted:
   index, so an object index the file doesn't mention keeps its default placement unchanged.
 - **`atmos` mode**: `objects` (default) writes the JOC+OAMD container; `bed51` omits it so the
   5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
-  validate, instead of falling back to the bed on its own. See
+  validate, instead of falling back to the bed on its own. `bed51` drops the TS 103 420 §8.3.1
+  `addbsi` object marker with it, so a `bed51` stream reads as ordinary 5.1 E-AC-3 all the way
+  out: no `Atmos complexity` line from `scan`, no Atmos extension in the `dec3` box `fmp4`
+  builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
   [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all

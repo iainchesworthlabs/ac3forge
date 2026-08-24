@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <iterator>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -23,6 +24,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -578,6 +580,16 @@ std::vector<std::size_t> wav_order(std::span<const eac3::chanmap::Location> loca
     return out;
 }
 
+std::vector<std::size_t> monitor_order(std::span<const eac3::chanmap::Location> locations,
+                                       std::size_t channel_count) {
+    if (locations.empty()) {
+        std::vector<std::size_t> identity(channel_count);
+        std::iota(identity.begin(), identity.end(), std::size_t{0});
+        return identity;
+    }
+    return wav_order(locations);
+}
+
 // --- tools ------------------------------------------------------------------
 
 namespace {
@@ -657,6 +669,11 @@ bool parse_tools(std::string_view text, Tools& out) {
             out.fast_mdct = false;  // the direct §8.2.3.2 reference form
         } else if (token == "nodither") {
             out.dither = false;  // dithflag pinned at 0, not content-decided
+        } else if (token.starts_with("numblkscod:")) {
+            out.numblkscod = parse_index(token.substr(11), 3);
+            if (out.numblkscod < 0) {
+                return false;
+            }
         } else if (token == "all") {
             out.coupling = true;
             out.spx = true;
@@ -691,6 +708,9 @@ std::string format_tools(const Tools& tools) {
         if (tools.gaqmod >= 0) {
             add("aht:" + std::to_string(tools.gaqmod));
         }
+        if (tools.numblkscod != 3) {
+            add("numblkscod:" + std::to_string(tools.numblkscod));
+        }
         if (!tools.fast_mdct) {
             add("nofastmdct");
         }
@@ -721,7 +741,12 @@ std::string format_tools(const Tools& tools) {
     }
     // Like noatten above, only the non-default state is worth a token: the
     // fast MDCT is what every stream does now, so formatting it would put
-    // "fastmdct" on every command line while saying nothing.
+    // "fastmdct" on every command line while saying nothing. Same reasoning
+    // for numblkscod's default of 3 (six blocks, this encoder's original and
+    // still ordinary profile).
+    if (tools.numblkscod != 3) {
+        add("numblkscod:" + std::to_string(tools.numblkscod));
+    }
     if (!tools.fast_mdct) {
         add("nofastmdct");
     }
@@ -781,12 +806,19 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
         out = std::nullopt;
         return true;
     }
-    if (!text.starts_with("q:")) {
-        return false;
-    }
-    text = text.substr(2);
+    // Two rate controls, two leading tokens. "q:" is plain VBR - a fixed
+    // quality, the rate follows. "avg:" is average-rate mode - the offset is
+    // steered to hold a rate, so a quality would be a number the encoder
+    // never reads (see eac3::AbrConfig). Asking for both names two different
+    // things at once, so the pair is refused rather than one half silently
+    // winning.
     eac3::VbrConfig vbr;
-    {
+    const bool abr = text.starts_with("avg:");
+    if (!abr) {
+        if (!text.starts_with("q:")) {
+            return false;
+        }
+        text = text.substr(2);
         const auto comma = text.find(',');
         if (!parse_unit_double(text.substr(0, comma), vbr.quality)) {
             return false;
@@ -813,12 +845,47 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
                 return false;
             }
             vbr.max_kbps = kbps;
+        } else if (token.starts_with("avg:")) {
+            // Only the LEADING token may turn ABR on: "q:0.5,avg:192" would
+            // otherwise reach here and quietly discard a quality the caller
+            // did type, and a second "avg:" would leave which of the two
+            // rates was meant unanswerable.
+            if (!abr || vbr.abr) {
+                return false;
+            }
+            if (!parse_kbps(token.substr(4), kbps)) {
+                return false;
+            }
+            // window_frames keeps AbrConfig's own default; "win:" below is
+            // the only thing that moves it.
+            vbr.abr = eac3::AbrConfig{.target_kbps = kbps};
+        } else if (token.starts_with("win:")) {
+            // Meaningless without an average to size. Since "avg:" can only
+            // lead, a "win:" reaching here with no AbrConfig built is a
+            // window around nothing rather than a reordering.
+            if (!vbr.abr) {
+                return false;
+            }
+            // Same rule parse_kbps enforces for a rate: a zero-frame window
+            // is not a window, it is a missing one.
+            if (!parse_kbps(token.substr(4), kbps)) {
+                return false;
+            }
+            vbr.abr->window_frames = kbps;
         } else {
             return false;
         }
         text = split == std::string_view::npos ? std::string_view{} : text.substr(split + 1);
     }
     if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
+        return false;
+    }
+    // Bounds that exclude the average make it unreachable by construction;
+    // the encoder's own validate() refuses the same pair, so catching it here
+    // means the CLI reports the syntax rather than a frame-encode failure
+    // several hundred frames in.
+    if (vbr.abr && ((vbr.min_kbps && *vbr.min_kbps > vbr.abr->target_kbps) ||
+                    (vbr.max_kbps && *vbr.max_kbps < vbr.abr->target_kbps))) {
         return false;
     }
     out = vbr;
@@ -829,7 +896,20 @@ std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr) {
     if (!vbr) {
         return "off";
     }
-    std::string out = "q:" + std::to_string(vbr->quality);
+    // ABR leads with avg: and never prints a quality - the encoder does not
+    // read one, so showing it would describe a knob that does nothing.
+    std::string out;
+    if (vbr->abr) {
+        out = "avg:" + std::to_string(vbr->abr->target_kbps);
+        // The window is written only when it is not the default, so a plain
+        // avg: round-trips as the plain avg: the caller typed - the same rule
+        // the optional min:/max: fields already follow by not appearing.
+        if (vbr->abr->window_frames != eac3::kAbrDefaultWindowFrames) {
+            out += ",win:" + std::to_string(vbr->abr->window_frames);
+        }
+    } else {
+        out = "q:" + std::to_string(vbr->quality);
+    }
     if (vbr->min_kbps) {
         out += ",min:" + std::to_string(*vbr->min_kbps);
     }
@@ -867,14 +947,35 @@ namespace {
 }  // namespace
 
 meta::MixMetadata mix_metadata(const Metadata& options) {
-    return {.dmixmod = options.dmixmod,
-            // Lt/Rt folds down into a matrix that will be re-decoded, so the
-            // centre traditionally sits 1.5 dB hotter there than in Lo/Ro.
-            .ltrtcmixlev = meta::MixLevel::kMinus3dB,
-            .lorocmixlev = widen(options.cmixlev),
-            .ltrtsurmixlev = meta::MixLevel::kMinus3dB,
-            .lorosurmixlev = widen(options.surmixlev),
-            .lfemixlevcod = options.lfemix};
+    // Everything past the five levels comes from mixdepth verbatim - the
+    // programme scale factors, the mixing-parameter block, the pan info and
+    // the per-block configuration have nothing to derive from.
+    meta::MixMetadata out = options.mixdepth;
+    out.dmixmod = options.dmixmod;
+    // Lt/Rt folds down into a matrix that will be re-decoded, so the centre
+    // traditionally sits 1.5 dB hotter there than in Lo/Ro. An explicit
+    // override wins over both that convention and the widening below.
+    out.ltrtcmixlev = options.ltrtcmixlev.value_or(meta::MixLevel::kMinus3dB);
+    out.lorocmixlev = options.lorocmixlev.value_or(widen(options.cmixlev));
+    out.ltrtsurmixlev = options.ltrtsurmixlev.value_or(meta::MixLevel::kMinus3dB);
+    out.lorosurmixlev = options.lorosurmixlev.value_or(widen(options.surmixlev));
+    out.lfemixlevcod = options.lfemix;
+    return out;
+}
+
+meta::AlternateBsi alternate_bsi(const Metadata& options) {
+    meta::AlternateBsi out;
+    // xbsi1 is the same five quantities mix_metadata() derives. The rest of
+    // the MixMetadata it returns has no Annex D field and is simply not read
+    // by the AC-3 writer - see MixMetadata's own comment.
+    out.mix = mix_metadata(options);
+    // dsurexmod and dheadphonmod are stated once, on `info`, because E-AC-3
+    // carries the same two fields in infomdat - one source, two homes.
+    out.extended = meta::ExtendedBsi{.dsurexmod = options.info.dsurexmod,
+                                     .dheadphonmod = options.info.dheadphonmod,
+                                     .adconvtyp = options.adconvtyp,
+                                     .encinfo = options.encinfo};
+    return out;
 }
 
 // --- configs ----------------------------------------------------------------
@@ -900,6 +1001,9 @@ std::string_view describe(PlanError error) {
         case PlanError::kVbrNeedsEac3:
             return "variable bit rate needs E-AC-3 - AC-3's frame size indexes Table 5.18 "
                    "and cannot vary freely";
+        case PlanError::kTimecodeNeedsBsid8:
+            return "Annex D's alternate syntax reuses the two time code fields (§D1), so a "
+                   "bsid-6 stream cannot carry a time code as well";
     }
     return "";
 }
@@ -928,6 +1032,13 @@ std::optional<PlanError> validate(const Plan& plan) {
     }
     if (plan.vbr && plan.codec == Codec::kAc3) {
         return PlanError::kVbrNeedsEac3;
+    }
+    // Only AC-3 has an alternate syntax to choose, and only AC-3 has a time
+    // code field for it to displace - E-AC-3 has neither, so `annexd` there is
+    // inert rather than in conflict with anything.
+    if (plan.codec == Codec::kAc3 && plan.meta.annexd &&
+        (plan.meta.info.timecod1 || plan.meta.info.timecod2)) {
+        return PlanError::kTimecodeNeedsBsid8;
     }
     // The E-AC-3 counterpart of the Table 5.18 check above. frmsiz carries a
     // free word count rather than a table index, but it is only 11 bits
@@ -1000,6 +1111,13 @@ EncoderConfig ac3_config(const Plan& plan) {
                           : std::optional<meta::HeavyConfig>(std::nullopt),
             .cmixlev = plan.meta.cmixlev,
             .surmixlev = plan.meta.surmixlev,
+            .info = plan.meta.info,
+            // Annex D and the time code occupy the same 28 bits, so asking for
+            // bsid 6 drops whatever timecode the plan carried rather than
+            // handing the encoder a config it would refuse.
+            .alternate_bsi = plan.meta.annexd
+                                 ? std::optional<meta::AlternateBsi>(alternate_bsi(plan.meta))
+                                 : std::nullopt,
             .search = plan.tools.search};
 }
 
@@ -1019,6 +1137,7 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.transient_prenoise = tools.transient_prenoise;
     config.fast_mdct = tools.fast_mdct;
     config.dither = tools.dither;
+    config.numblkscod = tools.numblkscod;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its
@@ -1034,6 +1153,15 @@ eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
     }
     if (vbr.nominal_kbps) {
         *vbr.nominal_kbps /= 2;
+    }
+    // The ABR target is a rate too, and the plan's target is what the WHOLE
+    // access unit is contracted to average - so each substream holds half of
+    // it, or the two together would deliver twice what was asked. The window
+    // is a count of frames, not a rate, so it carries over unchanged: both
+    // substreams cover the same 1536 samples and therefore the same span of
+    // time.
+    if (vbr.abr) {
+        vbr.abr->target_kbps /= 2;
     }
     return vbr;
 }
@@ -1060,6 +1188,15 @@ eac3::AccessUnitConfig eac3_config(const Plan& plan) {
     }
     if (plan.meta.mixmeta) {
         independent.mixing = mix_metadata(plan.meta);
+    }
+    if (plan.meta.infomdat) {
+        independent.info = plan.meta.info;
+        // Annex E's audprodie carries adconvtyp as a third field where AC-3's
+        // stops at roomtyp; Metadata states it once, outside audprod, so this
+        // is where it reaches the wire on this side.
+        if (independent.info->audprod) {
+            independent.info->audprod->adconvtyp = plan.meta.adconvtyp;
+        }
     }
     apply_tools(plan.tools, independent);
     independent.vbr = plan.vbr;

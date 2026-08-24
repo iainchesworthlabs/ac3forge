@@ -110,6 +110,25 @@ derivation.
 actually lives — the "x, y, z position" in the diagram above, per object, per unit of time.
 It's the metadata a renderer reads to know where each object should be placed.
 
+An object is more than a point, and OAMD says so: as well as position and gain it carries the
+object's **extent** (a width, depth and height, so a sound can be a wall of rain rather than a
+raindrop), its **priority** (which objects a renderer short of speakers should place accurately),
+**zone constraints** (which parts of the room the renderer may use — screen only, surround only,
+with or without the height layer), and **channel lock**, which asks for the object to be snapped
+to its nearest speaker instead of panned between two. All of them are read on decode and written
+on encode here; see [Spatial & Atmos objects](../library/spatial-and-atmos.md) for the API.
+
+Two things about OAMD are easy to get wrong, and both matter for reading *other people's*
+streams rather than your own:
+
+- **A programme need not be objects.** OAMD describes a *bed* just as happily — a fixed
+  7.1.4 speaker layout, coded exactly like objects but anchored to speakers. That is what most
+  channel-based-immersive Atmos content actually is, and JOC still reconstructs its eleven
+  non-LFE channels out of the 5.1 downmix.
+- **Metadata updates are not once per frame.** A frame can carry several update blocks, each
+  taking effect at its own offset into the frame and each able to code positions as steps
+  against the previous one — which is how an object moves faster than one position per 32 ms.
+
 ## EMDF
 
 **EMDF** (Extensible Metadata Delivery Format) is the generic, extensible container format
@@ -119,6 +138,43 @@ standard requires older decoders to simply skip over, since they don't know what
 That skip behaviour is *how* backward compatibility works: an old decoder ignores the EMDF
 envelope entirely and just plays the 5.1 bed underneath, no crash, no confusion, no awareness
 that objects were ever there.
+
+## Taking the object layer back out
+
+The same property makes the reverse operation trivial to define and exact to perform. Because
+the bed **is** the full mix and the object layer only ever rides in skip fields, a DD+ JOC
+stream can be turned back into a plain DD+ 5.1 stream by removing the container — no decode, no
+re-encode, and no quality cost. `ac3cli strip-objects in.ec3 out.ec3` does exactly that, and the
+result decodes to sample-identical PCM (see
+[Object-layer strip](../library/decoding.md#object-layer-strip)).
+
+That matters for delivery: Apple's HLS authoring requirements ask that an Atmos rendition be
+accompanied by an equivalent 5.1 bitstream in the same `#EXT-X-MEDIA` group, so a client that
+cannot render objects has something to select. `ac3cli fmp4 … fallback-51` writes both from one
+source stream.
+
+## The fallback rule: objects, or nothing
+
+A stream **carries objects or omits the container entirely — never an empty one, and never a
+container-less stream that still claims objects.** Both halves matter, because two different
+things advertise the object layer and they have to agree:
+
+- The **EMDF container** itself. A decoder that *validates* the container's protection field
+  treats its sync word as a commitment to object decoding: if the field doesn't check out it
+  refuses the whole stream rather than falling back to the bed. So an empty or unusable
+  container is worse than no container — with nothing to find, that decoder plays ordinary 5.1.
+  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for.
+- The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
+  §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
+  the only thing a *reader* — as opposed to a decoder — has to go on: it is what
+  `ac3::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
+  becomes an HLS `CHANNELS="<N>/JOC"` attribute, and what makes FFmpeg report the stream as
+  "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
+  packager, a player and a manifest an object layer that isn't there.
+
+So the marker follows the container: emit both, or neither. The same rule is why the strip above
+has to remove both, not just the payload, and why a 5.1 fallback from an Atmos encode omits the
+container entirely instead of writing a hollow one.
 
 ## Two honest limitations
 

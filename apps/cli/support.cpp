@@ -33,6 +33,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -57,6 +58,196 @@ bool parse_double(std::string_view text, double& out) {
     // is what a command line gives.
     const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), out);
     return ec == std::errc{} && ptr == text.data() + text.size();
+}
+
+// A whole non-negative integer with nothing else in the token, so "3x" and
+// "-1" are refused rather than silently becoming 3 and a fallback.
+bool parse_index(std::string_view text, int high, int& out) {
+    int value = 0;
+    const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (ec != std::errc{} || ptr != text.data() + text.size() || value < 0 || value > high) {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+// Split on `sep`, keeping empty pieces - "3,,5" has to fail rather than
+// quietly become two values.
+std::vector<std::string_view> split(std::string_view text, char sep) {
+    std::vector<std::string_view> parts;
+    std::size_t start = 0;
+    while (true) {
+        const auto at = text.find(sep, start);
+        if (at == std::string_view::npos) {
+            parts.push_back(text.substr(start));
+            return parts;
+        }
+        parts.push_back(text.substr(start, at - start));
+        start = at + 1;
+    }
+}
+
+// Tables D2.3-D2.6's eight levels, spelled as the decibel figure the table
+// prints. "off" is the -inf row, which is a real value there rather than an
+// absent field.
+bool parse_mix_level(std::string_view text, ac3::meta::MixLevel& out) {
+    static constexpr std::array<std::pair<std::string_view, ac3::meta::MixLevel>, 8> kLevels{{
+        {"+3", ac3::meta::MixLevel::kPlus3dB},
+        {"+1.5", ac3::meta::MixLevel::kPlus1_5dB},
+        {"0", ac3::meta::MixLevel::kUnity},
+        {"-1.5", ac3::meta::MixLevel::kMinus1_5dB},
+        {"-3", ac3::meta::MixLevel::kMinus3dB},
+        {"-4.5", ac3::meta::MixLevel::kMinus4_5dB},
+        {"-6", ac3::meta::MixLevel::kMinus6dB},
+        {"off", ac3::meta::MixLevel::kSilent},
+    }};
+    for (const auto& [name, level] : kLevels) {
+        if (name == text) {
+            out = level;
+            return true;
+        }
+    }
+    return false;
+}
+
+// §E2.3.1.13: code 0 is mute, 1..63 are -50..+12 dB in 1 dB steps. Taken as
+// the decibel figure rather than the code, since that is what a mixing desk
+// shows and the mapping is exact either way.
+bool parse_pgm_scale(std::string_view text, int& out) {
+    if (text == "mute") {
+        out = ac3::meta::kPgmScaleMute;
+        return true;
+    }
+    // A leading + is how a signed decibel figure reads on a mixing desk and
+    // in this option's own documentation, but from_chars (parse_double) does
+    // not accept one - it is not part of the grammar C++ gives it.
+    if (text.starts_with("+")) {
+        text.remove_prefix(1);
+    }
+    double db = 0.0;
+    if (!parse_double(text, db) || db < -50.0 || db > 12.0) {
+        return false;
+    }
+    const auto code = static_cast<int>(std::lround(db)) + 51;
+    if (code < 1 || code > ac3::meta::kPgmScaleMax) {
+        return false;
+    }
+    out = code;
+    return true;
+}
+
+// "<dynrng|compr>:<external|local>:<0..7>" - §E2.3.1.19-21's three fields,
+// which always travel together and so take one token.
+bool parse_premix(std::string_view text, ac3::meta::PremixCompression& out) {
+    const auto parts = split(text, ':');
+    if (parts.size() != 3) {
+        return false;
+    }
+    if (parts[0] == "dynrng") {
+        out.premixcmpsel = ac3::meta::PremixCompressionSource::kDynrng;
+    } else if (parts[0] == "compr") {
+        out.premixcmpsel = ac3::meta::PremixCompressionSource::kCompr;
+    } else {
+        return false;
+    }
+    if (parts[1] == "external") {
+        out.drcsrc = ac3::meta::DrcSource::kExternal;
+    } else if (parts[1] == "local") {
+        out.drcsrc = ac3::meta::DrcSource::kThisSubstream;
+    } else {
+        return false;
+    }
+    return parse_index(parts[2], 7, out.premixcmpscl);
+}
+
+// A comma-separated list of Table E2.8 codes, "off" for a channel the
+// external programme does not have (§E2.3.1.25's own reading of a clear
+// flag), which is not the same as a code of 0 dB.
+bool parse_scale_list(std::string_view text, std::vector<std::optional<int>>& out) {
+    out.clear();
+    for (const auto part : split(text, ',')) {
+        if (part == "off") {
+            out.emplace_back();
+            continue;
+        }
+        int code = 0;
+        if (!parse_index(part, 15, code)) {
+            return false;
+        }
+        out.emplace_back(code);
+    }
+    return true;
+}
+
+// "<spchdat>[,<spchdat1>:<spchan1att>[,<spchdat2>:<spchan2att>]]" - the
+// nesting is §E2.3.1.44-51's own, each stage present only when the one above
+// it is.
+bool parse_speech(std::string_view text, ac3::meta::SpeechEnhancement& out) {
+    const auto parts = split(text, ',');
+    if (parts.empty() || parts.size() > 3) {
+        return false;
+    }
+    if (!parse_index(parts[0], 31, out.spchdat)) {
+        return false;
+    }
+    if (parts.size() == 1) {
+        return true;
+    }
+    const auto pair = [](std::string_view piece, int data_high, int att_high, int& data,
+                         int& att) {
+        const auto halves = split(piece, ':');
+        return halves.size() == 2 && parse_index(halves[0], data_high, data) &&
+               parse_index(halves[1], att_high, att);
+    };
+    ac3::meta::SpeechEnhancement::Additional additional;
+    if (!pair(parts[1], 31, 3, additional.spchdat1, additional.spchan1att)) {
+        return false;
+    }
+    if (parts.size() == 3) {
+        ac3::meta::SpeechEnhancement::Additional::More more;
+        if (!pair(parts[2], 31, 7, more.spchdat2, more.spchan2att)) {
+            return false;
+        }
+        additional.more = more;
+    }
+    out.additional = additional;
+    return true;
+}
+
+// "<panmean>[:<paninfo>]" - the 6-bit paninfo half is reserved
+// (§E2.3.1.55), so it defaults to zero and is rarely worth naming.
+bool parse_pan(std::string_view text, ac3::meta::PanInfo& out) {
+    const auto parts = split(text, ':');
+    if (parts.size() > 2) {
+        return false;
+    }
+    if (!parse_index(parts[0], ac3::meta::kPanMeanMax, out.panmean)) {
+        return false;
+    }
+    return parts.size() == 1 || parse_index(parts[1], 63, out.paninfo);
+}
+
+// Six comma-separated 5-bit words, "-" for a block whose blkmixcfginfoe stays
+// clear.
+bool parse_block_mix_config(std::string_view text,
+                            std::array<std::optional<int>, ac3::kBlocksPerFrame>& out) {
+    const auto parts = split(text, ',');
+    if (parts.size() != out.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (parts[i] == "-") {
+            out[i].reset();
+            continue;
+        }
+        int word = 0;
+        if (!parse_index(parts[i], 31, word)) {
+            return false;
+        }
+        out[i] = word;
+    }
+    return true;
 }
 
 std::vector<std::byte> to_bytes(std::span<const char> raw) {
@@ -92,6 +283,11 @@ std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback) {
     return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
 }
 
+double parse_seconds_or(std::string_view text, double fallback) {
+    double value = 0.0;
+    return parse_double(text, value) ? value : fallback;
+}
+
 void print_meta_usage() {
     fmt::println("metadata options (any order, after the positional arguments):");
     fmt::println("  drc=<profile>     §7.7.1 dynamic range control per block");
@@ -112,8 +308,72 @@ void print_meta_usage() {
     fmt::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
     fmt::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
     fmt::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
+    fmt::println("  compr=<dB>        metadata only: stamp §7.7.2's compression word onto an");
+    fmt::println("                    existing stream (compr2=<dB> for Ch2). Rounded down, so");
+    fmt::println("                    the ceiling it promises stays a ceiling");
+    fmt::println("  bsmod=<0..7>      metadata only: Table 5.5's service type");
+    fmt::println("  dsurmod=<0..3>    metadata only: Table 5.11's Dolby Surround mode (2/0 only)");
+    fmt::println("  codec=ac3|eac3    transcode only: the output codec, when out_path's own");
+    fmt::println("                    suffix cannot say it (stdout, or an unusual name)");
     fmt::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
     fmt::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
+    fmt::println("  ltrtcmixlev=<dB>  Lt/Rt centre level, Table D2.3: "
+                 "+3|+1.5|0|-1.5|-3|-4.5|-6|off");
+    fmt::println("  lorocmixlev=<dB>  Lo/Ro centre level, Table D2.5 (same eight values)");
+    fmt::println("  ltrtsurmixlev=<dB>      Lt/Rt surround level, Table D2.4: "
+                 "-1.5|-3|-4.5|-6|off (the three louder codes are reserved)");
+    fmt::println("  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)");
+    fmt::println("                    all four ride mixmdate on E-AC-3 and Annex D's xbsi1 "
+                 "on AC-3; naming any of them turns the group on");
+    fmt::println("");
+    fmt::println("  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod "
+                 "fields on Annex D's xbsi1/xbsi2 instead (§D1) - implied by dmixmod=, the "
+                 "four levels above, and the three xbsi2 fields below");
+    fmt::println("  dsurexmod=<mode>  Dolby Surround EX, Table D2.7: {}",
+                 ac3::meta::kSurroundExModeNames);
+    fmt::println("  dheadphonmod=<mode>     Dolby Headphone, Table D2.8: {}",
+                 ac3::meta::kHeadphoneModeNames);
+    fmt::println("  adconvtyp=<type>  A/D converter, Table D2.9: {}",
+                 ac3::meta::kAdConverterNames);
+    fmt::println("  encinfo           AC-3 Annex D: set the encoder's own reserved bit "
+                 "(§D2.3.1.12)");
+    fmt::println("");
+    fmt::println("  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2) - "
+                 "implied by every informational option below, and by dsurexmod=/"
+                 "dheadphonmod=/adconvtyp= above");
+    fmt::println("  bsmod=<service>   type of service, Table 5.7: {}", ac3::meta::kBsmodNames);
+    fmt::println("  dsurmod=<mode>    Dolby Surround, 2/0 only, Table 5.11: {}",
+                 ac3::meta::kSurroundModeNames);
+    fmt::println("  mixlevel=<dB SPL>       peak mixing level, 80..111 (§5.4.2.14)");
+    fmt::println("  roomtyp=<type>    mixing room, Table 5.12: {}", ac3::meta::kRoomTypeNames);
+    fmt::println("  mixlevel2=/roomtyp2=    Ch2's own pair, layout 1+1 only (§5.4.2.22/23)");
+    fmt::println("  langcod / langcod2      emit the reserved 0xFF language byte "
+                 "(§5.4.2.12); AC-3 only");
+    fmt::println("  copyright         set copyrightb (§5.4.2.24; default clear)");
+    fmt::println("  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)");
+    fmt::println("  sourcefscod       E-AC-3: the source was sampled at twice fscod's rate "
+                 "(§E2.3.1.63)");
+    fmt::println("  timecode=<code>   AC-3 bsid 8 only: {} (§5.4.2.26-28)",
+                 ac3::meta::kTimeCodeSyntax);
+    fmt::println("");
+    fmt::println("  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB "
+                 "(§E2.3.1.13); pgmscl2= is Ch2's, extpgmscl= the external "
+                 "programme's (§E2.3.1.17)");
+    fmt::println("  mixdef=<option>   E-AC-3 mixing-parameter block, Table E2.6: "
+                 "none | premix | reserved | ext");
+    fmt::println("  premixcmp=<sel>:<src>:<scale>   dynrng|compr : external|local : 0..7 "
+                 "(§E2.3.1.19-21)");
+    fmt::println("  mixdata=<0..4095> the twelve bits mixdef=reserved reserves (§E2.3.1.23)");
+    fmt::println("  extmix=<L>,<C>,<R>,<Ls>,<Rs>,<LFE>[,<dmix>]   mixdef=ext external channel "
+                 "scale codes 0..15 (Table E2.8), 'off' for a channel the external "
+                 "programme lacks");
+    fmt::println("  auxmix=<a1>,<a2>  mixdef=ext auxiliary channel scales, same codes");
+    fmt::println("  speechmix=<d>[,<d1>:<att1>[,<d2>:<att2>]]     mixdef=ext speech "
+                 "enhancement data (§E2.3.1.44-51)");
+    fmt::println("  paninfo=<0..239>[:<0..63>]      E-AC-3 pan position, 1.5° steps clockwise "
+                 "from centre, mono/1+1 only; paninfo2= is Ch2's (§E2.3.1.53-58)");
+    fmt::println("  blkmixcfg=<b0,..,b5>    E-AC-3 per-block mixing configuration, six 0..31 "
+                 "words or '-' for a block that sends none (§E2.3.1.59-61)");
     fmt::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
                  "keep whatever frames were already encoded (named beside the intended output as "
                  "<name>.partial.<ext>) instead of discarding them - off by default, matching the "
@@ -191,6 +451,16 @@ void print_meta_usage() {
     fmt::println("  capture2=<index>  a second capture device, clock-conformed to the first "
                  "(see 'devices')");
     fmt::println("");
+    fmt::println("container options (fmp4, ts; any order, after the positional arguments):");
+    fmt::println("  fallback-51       fmp4: also write the object-stripped 5.1 companion");
+    fmt::println("                    rendition into the same #EXT-X-MEDIA group, per Apple's");
+    fmt::println("                    HLS Authoring Specification. Ignored for a stream with");
+    fmt::println("                    no object layer, which has no companion to write");
+    fmt::println("  mainid=<0-7>      ts: the main-service number this service is, or that an");
+    fmt::println("                    associated service points at. Omitted by default");
+    fmt::println("  asvc=<mask>       ts: which main services an ASSOCIATED service may be");
+    fmt::println("                    reproduced with, one bit each (decimal or 0xNN)");
+    fmt::println("");
     fmt::println("qc options (qc; any order, after the positional arguments):");
     fmt::println("  preset=<name>     gate the measurement against a named delivery spec");
     fmt::println("                    {}", ac3::meta::kQcPresetNames);
@@ -219,6 +489,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         const std::string_view value =
             eq == std::string_view::npos ? std::string_view{} : token.substr(eq + 1);
 
+        if (token == "fallback-51") {
+            out.hls_fallback_51 = true;
+            continue;
+        }
         if (token == "couple" || token == "heavy" || token == "heavy2" || token == "mixmeta" ||
             token == "keep-partial" || token == "fast-mdct") {
             if (token == "heavy") {
@@ -234,8 +508,65 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             continue;
         }
+        if (token == "annexd") {
+            out.p.annexd = true;
+            continue;
+        }
+        if (token == "infomdat") {
+            out.p.infomdat = true;
+            continue;
+        }
+        if (token == "encinfo") {
+            out.p.annexd = true;
+            out.p.encinfo = true;
+            continue;
+        }
+        if (token == "langcod" || token == "langcod2") {
+            (token == "langcod" ? out.p.info.langcod : out.p.info.langcod2) = true;
+            continue;
+        }
+        if (token == "copyright") {
+            out.p.infomdat = true;
+            out.p.info.copyrightb = true;
+            continue;
+        }
+        if (token == "sourcefscod") {
+            out.p.infomdat = true;
+            out.p.info.sourcefscod = true;
+            continue;
+        }
         if (token == "fast-imdct") {
             out.fast_imdct = true;
+            continue;
+        }
+        if (key == "mainid") {
+            // A/52 Table A4.6 / EN 300 468 D.3: a number 0-7 naming a main
+            // audio service, which associated services then point at.
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 7) {
+                fmt::println(stderr, "error: mainid must be 0-7 (got '{}')", token);
+                return false;
+            }
+            out.mainid = static_cast<int>(parsed);
+            continue;
+        }
+        if (key == "asvc") {
+            // Eight bits, one per main service this associated service may be
+            // reproduced with; bit 7 is main service 7. Accepts decimal or
+            // 0x-prefixed hex, since it reads as a mask far more often than
+            // as a number.
+            const bool hex = value.starts_with("0x") || value.starts_with("0X");
+            const std::string_view digits = hex ? value.substr(2) : value;
+            unsigned parsed = 0;
+            const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(),
+                                                   parsed, hex ? 16 : 10);
+            if (ec != std::errc{} || ptr != digits.data() + digits.size() || parsed > 255) {
+                fmt::println(stderr, "error: asvc must be 0-255 or 0x00-0xFF (got '{}')", token);
+                return false;
+            }
+            out.asvc = static_cast<int>(parsed);
             continue;
         }
         if (token == "sign-objects") {
@@ -421,6 +752,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "dialnorm") {
             if (value == "auto") {
                 out.p.measure_dialnorm = true;
+                out.dialnorm_given = true;
                 continue;
             }
             const auto n = parse_u32_or(value, 0);
@@ -429,11 +761,13 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 return false;
             }
             out.p.dialnorm = static_cast<int>(n);
+            out.dialnorm_given = true;
             continue;
         }
         if (key == "dialnorm2") {
             if (value == "auto") {
                 out.p.measure_dialnorm2 = true;
+                out.dialnorm2_given = true;
                 continue;
             }
             const auto n = parse_u32_or(value, 0);
@@ -442,6 +776,68 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 return false;
             }
             out.p.dialnorm2 = static_cast<int>(n);
+            out.dialnorm2_given = true;
+            continue;
+        }
+        if (key == "compr" || key == "compr2") {
+            // A dB gain, converted to §7.7.2's own 8-bit word. Rounded DOWN
+            // (encode_compr_at_most) rather than to nearest, for the reason
+            // ac3/meta/drc.hpp gives: §7.7.2 exists to give "an assured upper
+            // limit", and a ceiling exceeded by half a step is not assured.
+            double db = 0.0;
+            if (!parse_double(value, db)) {
+                fmt::println(stderr, "error: {} takes a gain in dB (got '{}')", key, value);
+                return false;
+            }
+            const auto word = ac3::meta::encode_compr_at_most(db);
+            if (key == "compr") {
+                out.compr_word = word;
+            } else {
+                out.compr2_word = word;
+            }
+            continue;
+        }
+        // bsmod/dsurmod are read by two different consumers: `metadata`/
+        // `transcode` (the raw code, `out.bsmod`/`out.dsurmod`, straight off
+        // Table 5.5/5.11) and `encode`/`eac3-encode` (the same code wrapped
+        // in `ac3::meta::BitstreamMode`/`SurroundMode` for the Plan below).
+        // One parse feeds both, so a value valid for one is valid for the
+        // other and the two consumers can never disagree about what was
+        // typed.
+        if (key == "bsmod") {
+            ac3::meta::BitstreamMode mode{};
+            // parse_bsmod already accepts the raw Table 5.7 code as well as
+            // the named service tokens - see its own comment.
+            if (!ac3::meta::parse_bsmod(value, mode)) {
+                fmt::println(stderr, "error: bsmod must be 0..7 (Table 5.5's service type) "
+                                     "or one of: {}",
+                             ac3::meta::kBsmodNames);
+                return false;
+            }
+            out.bsmod = static_cast<int>(mode);
+            out.p.infomdat = true;
+            out.p.info.bsmod = mode;
+            continue;
+        }
+        if (key == "dsurmod") {
+            // Table 5.11's own 2-bit field, including its reserved code 3 -
+            // parse_surround_mode has no member for that (§5.4.2.6 reads it
+            // as "not indicated", same as 0), so the raw digit is read
+            // directly rather than routed through the named-token parser.
+            const auto n = parse_u32_or(value, 4);
+            ac3::meta::SurroundMode mode{};
+            if (n <= 3) {
+                mode = n < 3 ? static_cast<ac3::meta::SurroundMode>(n)
+                             : ac3::meta::SurroundMode::kNotIndicated;
+            } else if (!ac3::meta::parse_surround_mode(value, mode)) {
+                fmt::println(stderr, "error: dsurmod must be 0..3 (Table 5.11's Dolby Surround "
+                                     "mode) or one of: {}",
+                             ac3::meta::kSurroundModeNames);
+                return false;
+            }
+            out.dsurmod = n <= 3 ? static_cast<int>(n) : static_cast<int>(mode);
+            out.p.infomdat = true;
+            out.p.info.dsurmod = mode;
             continue;
         }
         if (key == "cmixlev") {
@@ -485,7 +881,11 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             continue;
         }
         if (key == "dmixmod") {
+            // On E-AC-3 the preferred downmix rides mixmdate; on AC-3 it has
+            // nowhere to go but Annex D's xbsi1, so naming it asks for both
+            // and each codec path reads only its own flag.
             out.p.mixmeta = true;
+            out.p.annexd = true;
             if (value == "ltrt") {
                 out.p.dmixmod = ac3::meta::DownmixMode::kLtRt;
             } else if (value == "loro") {
@@ -496,6 +896,262 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 fmt::println(stderr, "error: dmixmod must be ltrt, loro or none (Table D2.2)");
                 return false;
             }
+            continue;
+        }
+        if (key == "ltrtcmixlev" || key == "lorocmixlev" || key == "ltrtsurmixlev" ||
+            key == "lorosurmixlev") {
+            ac3::meta::MixLevel level{};
+            if (!parse_mix_level(value, level)) {
+                fmt::println(stderr,
+                             "error: {} must be +3, +1.5, 0, -1.5, -3, -4.5, -6 or off "
+                             "(Tables D2.3-D2.6)",
+                             key);
+                return false;
+            }
+            const bool surround = key == "ltrtsurmixlev" || key == "lorosurmixlev";
+            // Tables D2.4/D2.6 reserve the three loudest surround codes, and a
+            // decoder receiving one substitutes 0.841 - so the level asked for
+            // is not the level applied. Refuse rather than write it.
+            if (surround && !ac3::meta::valid_surround_mix_level(level)) {
+                fmt::println(stderr,
+                             "error: {} must be -1.5, -3, -4.5, -6 or off - Tables D2.4/D2.6 "
+                             "reserve the three louder codes",
+                             key);
+                return false;
+            }
+            out.p.mixmeta = true;
+            out.p.annexd = true;
+            if (key == "ltrtcmixlev") {
+                out.p.ltrtcmixlev = level;
+            } else if (key == "lorocmixlev") {
+                out.p.lorocmixlev = level;
+            } else if (key == "ltrtsurmixlev") {
+                out.p.ltrtsurmixlev = level;
+            } else {
+                out.p.lorosurmixlev = level;
+            }
+            continue;
+        }
+        if (key == "dsurexmod" || key == "dheadphonmod" || key == "adconvtyp") {
+            // All three live in E-AC-3's infomdat and in AC-3's xbsi2, so
+            // naming one asks for whichever element this codec has.
+            out.p.infomdat = true;
+            out.p.annexd = true;
+            bool ok = false;
+            if (key == "dsurexmod") {
+                ok = ac3::meta::parse_surround_ex_mode(value, out.p.info.dsurexmod);
+            } else if (key == "dheadphonmod") {
+                ok = ac3::meta::parse_headphone_mode(value, out.p.info.dheadphonmod);
+            } else {
+                ok = ac3::meta::parse_ad_converter(value, out.p.adconvtyp);
+            }
+            if (!ok) {
+                fmt::println(stderr, "error: {} must be one of: {}", key,
+                             key == "dsurexmod"      ? ac3::meta::kSurroundExModeNames
+                             : key == "dheadphonmod" ? ac3::meta::kHeadphoneModeNames
+                                                     : ac3::meta::kAdConverterNames);
+                return false;
+            }
+            continue;
+        }
+        if (key == "codec") {
+            // 'transcode' only. Named rather than inferred when out_path is
+            // "-" or has no .ac3/.ec3 suffix to read - see Options::codec.
+            if (value == "ac3") {
+                out.codec = ac3::plan::Codec::kAc3;
+            } else if (value == "eac3" || value == "ec3") {
+                out.codec = ac3::plan::Codec::kEac3;
+            } else {
+                fmt::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", value);
+                return false;
+            }
+            continue;
+        }
+        if (key == "mixlevel" || key == "mixlevel2") {
+            const auto db = parse_u32_or(value, 0);
+            if (db < 80 || db > 111) {
+                fmt::println(stderr,
+                             "error: {} is a peak mixing level of 80..111 dB SPL (§5.4.2.14)",
+                             key);
+                return false;
+            }
+            out.p.infomdat = true;
+            auto& production = key == "mixlevel" ? out.p.info.audprod : out.p.info.audprod2;
+            if (!production) {
+                production.emplace();
+            }
+            production->mixlevel = static_cast<int>(db) - ac3::meta::kMixLevelBaseDbSpl;
+            continue;
+        }
+        if (key == "roomtyp" || key == "roomtyp2") {
+            ac3::meta::RoomType room{};
+            if (!ac3::meta::parse_room_type(value, room)) {
+                fmt::println(stderr, "error: {} must be one of: {} (Table 5.12)", key,
+                             ac3::meta::kRoomTypeNames);
+                return false;
+            }
+            out.p.infomdat = true;
+            auto& production = key == "roomtyp" ? out.p.info.audprod : out.p.info.audprod2;
+            if (!production) {
+                production.emplace();
+            }
+            production->roomtyp = room;
+            continue;
+        }
+        if (key == "origbs") {
+            out.p.infomdat = true;
+            if (value == "on") {
+                out.p.info.origbs = true;
+            } else if (value == "off") {
+                out.p.info.origbs = false;
+            } else {
+                fmt::println(stderr, "error: origbs must be on or off (§5.4.2.25)");
+                return false;
+            }
+            continue;
+        }
+        if (key == "timecode") {
+            ac3::meta::TimeCodeCoarse coarse;
+            ac3::meta::TimeCodeFine fine;
+            if (!ac3::meta::parse_timecode(value, coarse, fine)) {
+                fmt::println(stderr, "error: timecode is {} (§5.4.2.26-28)",
+                             ac3::meta::kTimeCodeSyntax);
+                return false;
+            }
+            out.p.info.timecod1 = coarse;
+            out.p.info.timecod2 = fine;
+            continue;
+        }
+        if (key == "pgmscl" || key == "pgmscl2" || key == "extpgmscl") {
+            int code = 0;
+            if (!parse_pgm_scale(value, code)) {
+                fmt::println(stderr,
+                             "error: {} is mute or a level in -50..+12 dB (§E2.3.1.13)", key);
+                return false;
+            }
+            out.p.mixmeta = true;
+            if (key == "pgmscl") {
+                out.p.mixdepth.pgmscl = code;
+            } else if (key == "pgmscl2") {
+                out.p.mixdepth.pgmscl2 = code;
+            } else {
+                out.p.mixdepth.extpgmscl = code;
+            }
+            continue;
+        }
+        if (key == "mixdef") {
+            out.p.mixmeta = true;
+            if (value == "none") {
+                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kNone;
+            } else if (value == "premix") {
+                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+            } else if (value == "reserved") {
+                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kReserved;
+            } else if (value == "ext") {
+                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+            } else {
+                fmt::println(stderr,
+                             "error: mixdef must be none, premix, reserved or ext "
+                             "(Table E2.6)");
+                return false;
+            }
+            continue;
+        }
+        if (key == "premixcmp") {
+            ac3::meta::PremixCompression premix;
+            if (!parse_premix(value, premix)) {
+                fmt::println(stderr,
+                             "error: premixcmp is <dynrng|compr>:<external|local>:<0..7> "
+                             "(§E2.3.1.19-21)");
+                return false;
+            }
+            out.p.mixmeta = true;
+            out.p.mixdepth.mixing.premix = premix;
+            // mixdef 0x3 carries its own copy inside mixdata2e, so the value
+            // has to reach whichever of the two the mixdef= token selects.
+            if (!out.p.mixdepth.mixing.external) {
+                out.p.mixdepth.mixing.external.emplace();
+            }
+            out.p.mixdepth.mixing.external->premix = premix;
+            continue;
+        }
+        if (key == "mixdata") {
+            const auto bits = parse_u32_or(value, 0xFFFF);
+            if (bits > 0x0FFF) {
+                fmt::println(stderr,
+                             "error: mixdata is the twelve bits mixdef=reserved reserves, "
+                             "0..4095 (§E2.3.1.23)");
+                return false;
+            }
+            out.p.mixmeta = true;
+            out.p.mixdepth.mixing.reserved = static_cast<std::uint16_t>(bits);
+            continue;
+        }
+        if (key == "extmix" || key == "auxmix") {
+            std::vector<std::optional<int>> scales;
+            const std::size_t wanted = key == "extmix" ? 6 : 2;
+            if (!parse_scale_list(value, scales) || scales.size() < wanted ||
+                scales.size() > wanted + (key == "extmix" ? 1 : 0)) {
+                fmt::println(stderr,
+                             "error: {} takes {} Table E2.8 codes (0..15 or 'off'){}", key,
+                             wanted,
+                             key == "extmix" ? ", optionally a seventh for the downmix scale"
+                                             : "");
+                return false;
+            }
+            out.p.mixmeta = true;
+            if (!out.p.mixdepth.mixing.external) {
+                out.p.mixdepth.mixing.external.emplace();
+            }
+            auto& external = *out.p.mixdepth.mixing.external;
+            if (key == "extmix") {
+                external.left = scales[0];
+                external.centre = scales[1];
+                external.right = scales[2];
+                external.left_surround = scales[3];
+                external.right_surround = scales[4];
+                external.lfe = scales[5];
+                external.dmixscl = scales.size() > 6 ? scales[6] : std::nullopt;
+            } else {
+                external.auxiliary = std::array<std::optional<int>, 2>{scales[0], scales[1]};
+            }
+            continue;
+        }
+        if (key == "speechmix") {
+            ac3::meta::SpeechEnhancement speech;
+            if (!parse_speech(value, speech)) {
+                fmt::println(stderr,
+                             "error: speechmix is <0..31>[,<0..31>:<0..3>[,<0..31>:<0..7>]] "
+                             "(§E2.3.1.44-51)");
+                return false;
+            }
+            out.p.mixmeta = true;
+            out.p.mixdepth.mixing.speech = speech;
+            continue;
+        }
+        if (key == "paninfo" || key == "paninfo2") {
+            ac3::meta::PanInfo pan;
+            if (!parse_pan(value, pan)) {
+                fmt::println(stderr,
+                             "error: {} is <0..239>[:<0..63>] - 1.5 degree steps clockwise "
+                             "from centre (§E2.3.1.54)",
+                             key);
+                return false;
+            }
+            out.p.mixmeta = true;
+            (key == "paninfo" ? out.p.mixdepth.pan : out.p.mixdepth.pan2) = pan;
+            continue;
+        }
+        if (key == "blkmixcfg") {
+            std::array<std::optional<int>, ac3::kBlocksPerFrame> words{};
+            if (!parse_block_mix_config(value, words)) {
+                fmt::println(stderr,
+                             "error: blkmixcfg is six comma-separated 0..31 words, '-' for a "
+                             "block that sends none (§E2.3.1.59-61)");
+                return false;
+            }
+            out.p.mixmeta = true;
+            out.p.mixdepth.blkmixcfginfo = words;
             continue;
         }
         if (key == "src") {

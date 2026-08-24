@@ -62,11 +62,16 @@ struct AtmosConfig {
     // decoding and refuses the whole stream if the field does not validate,
     // rather than falling back. With no container there is no sync word to find,
     // so it decodes the bed as ordinary 5.1. The choice is objects-or-nothing,
-    // never both. The 5.1 MIX is the same either way (the same float bed is
-    // encoded); the decoded samples are not bit-identical across the two,
-    // because the frame's rate control gives the freed skip-field bytes back to
-    // the mantissas, so the bed here is encoded at slightly higher fidelity.
-    // See encode_frame().
+    // never both - which is why turning this off also drops TS 103 420 §8.3.1's
+    // addbsi object marker (flag_ec3_extension_type_a and §8.3.2.2's complexity
+    // index): that marker is what every reader keys an object layer off
+    // (ac3::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
+    // attribute, FFmpeg's "Dolby Digital Plus + Dolby Atmos" profile), and a
+    // stream with no container has no object layer to advertise. The 5.1 MIX is
+    // the same either way (the same float bed is encoded); the decoded samples
+    // are not bit-identical across the two, because the frame's rate control
+    // gives the freed skip-field and addbsi bytes back to the mantissas, so the
+    // bed here is encoded at slightly higher fidelity. See encode_frame().
     bool emit_object_metadata = true;
     // §7.9.4 fast N/4-FFT forward MDCT (see mdct.hpp's mdct512_forward), on
     // by default - see eac3::FrameConfig::fast_mdct, which is what the bed's
@@ -104,6 +109,26 @@ struct ObjectPlacement {
     // points at it), so this is the only route - and it is deliberately not
     // part of the JOC matrix, because §6.3.2.2 bypasses the LFE entirely.
     double lfe_send = 0.0;
+
+    // --- extent and rendering constraints (TS 103 420 §5.6.1) --------------
+    // These reach the OAMD payload and stop there. Nothing in this encoder's
+    // own bed render or JOC solve reads them: §4.3 makes the renderer, not
+    // the decoder, responsible for turning an extent into loudspeaker feeds,
+    // and the 5.1 downmix here is a point-source VBAP pan by construction. So
+    // a sized object is transmitted as sized and rendered by this encoder as
+    // a point - which is the honest split, since a downmix that spread the
+    // object would then be spread AGAIN by the receiving renderer.
+    //
+    // §5.6.1.2. A point source at 0/0/0, which is the default Table 29 gives.
+    ObjectSize size{};
+    // §5.6.1.5.1 b_object_snap - what ADM calls channelLock: render the
+    // object to its nearest speaker rather than panning between speakers.
+    bool snap = false;
+    // §5.6.1.6.1 Table 20: which horizontal zones the renderer may use.
+    ZoneConstraint zone = ZoneConstraint::kNone;
+    // §5.6.1.6.2 Table 21: false excludes the Top-Bottom zone, holding the
+    // object on the listener plane however high its z says it is.
+    bool enable_elevation = true;
 };
 
 class AC3FORGE_EXPORT AtmosEncoder {
@@ -125,28 +150,34 @@ class AC3FORGE_EXPORT AtmosEncoder {
 
     // Roadmap PF6. The OBJECT path's budget - what this encoder is for.
     //
-    // Its transform term is the bed's own MDCT overlap PLUS the §7.1 QMF
-    // filterbank's own delay (dsp::kQmfDelay, 576 samples) - not, as an
-    // earlier version of this comment claimed, a second MDCT/IMDCT round
-    // trip. JOC does not code objects; it codes a matrix that pulls them
-    // back out of the decoded bed (joc::reconstruct), and TS 103 420 §7.1
-    // puts that reconstruction in a 64-band complex QMF domain rather than
-    // the MDCT's - critically-sampled real transforms rely on time-domain
-    // alias cancellation between neighbouring blocks, an assumption a
-    // per-frame matrix breaks (see ac3/dsp/qmf.hpp's own header). Analysis
-    // plus synthesis costs kQmfDelay = kQmfTaps - kQmfHop samples on top of
-    // whatever the bed already lagged by: an object sample lags its input by
-    // kTransformDelaySamples + dsp::kQmfDelay = 832, not 512. Nothing in
-    // this encoder can shorten that: the filterbank is the decoder's, and it
-    // is what the tool is.
+    // Its transform term is the bed's own MDCT overlap PLUS
+    // joc::reconstruction_delay(config_.joc_domain) - not a fixed number,
+    // because which domain the decoder reconstructs in is this encoder's own
+    // config_.joc_domain choice (whatever this encoder estimated its
+    // matrices in is the only domain a decoder gets a correct answer
+    // reconstructing them in). Domain::kQmf costs dsp::kQmfDelay
+    // (kQmfTaps - kQmfHop = 576) - JOC does not code objects, it codes a
+    // matrix that pulls them back out of the decoded bed, and TS 103 420
+    // §7.1 puts that reconstruction in a 64-band complex QMF domain rather
+    // than the MDCT's, because a critically-sampled real transform relies on
+    // time-domain alias cancellation between neighbouring blocks and a
+    // per-frame matrix breaks that assumption (see ac3/dsp/qmf.hpp's own
+    // header). Domain::kMdctBand, the path that predates the filterbank,
+    // costs only another 256 - the same MDCT/IMDCT overlap as the bed's own,
+    // applied a second time over already-decoded PCM - which is cheaper but
+    // agrees with no decoder outside this project (see joc.hpp's own
+    // comment on Domain). With the default kQmf, an object sample lags its
+    // input by kTransformDelaySamples + dsp::kQmfDelay = 832. Nothing in
+    // this encoder can shorten either figure: the reconstruction transform
+    // is the decoder's, and it is what the tool is.
     //
     // With emit_object_metadata off there is no container, no JOC and no
-    // filterbank - the stream is plain 5.1 - so the budget collapses to
-    // bed_latency()'s.
+    // second transform of either kind - the stream is plain 5.1 - so the
+    // budget collapses to bed_latency()'s.
     [[nodiscard]] LatencyBudget latency() const {
         LatencyBudget budget = bed_latency();
         if (config_.emit_object_metadata) {
-            budget.transform_samples += dsp::kQmfDelay;
+            budget.transform_samples += joc::reconstruction_delay(config_.joc_domain);
         }
         return budget;
     }

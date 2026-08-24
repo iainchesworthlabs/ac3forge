@@ -17,16 +17,31 @@ namespace {
 double lerp(double a, double b, double f) { return a + (b - a) * f; }
 
 ObjectPlacement placement_of(const Keyframe& k) {
-    return {.position = k.position, .gain = k.gain, .lfe_send = k.lfe_send};
+    return {.position = k.position,
+            .gain = k.gain,
+            .lfe_send = k.lfe_send,
+            .size = k.size,
+            .snap = k.snap,
+            .zone = k.zone,
+            .enable_elevation = k.enable_elevation};
 }
 
 ObjectPlacement interpolate(const Keyframe& a, const Keyframe& b, double time_s) {
     const double f = (time_s - a.time_s) / (b.time_s - a.time_s);
+    // Size ramps with position and gain; the three rendering flags hold at
+    // the earlier keyframe until the later one is actually reached - see
+    // Keyframe own comment for why they cannot be interpolated.
     return {.position = {.x = lerp(a.position.x, b.position.x, f),
                          .y = lerp(a.position.y, b.position.y, f),
                          .z = lerp(a.position.z, b.position.z, f)},
             .gain = lerp(a.gain, b.gain, f),
-            .lfe_send = lerp(a.lfe_send, b.lfe_send, f)};
+            .lfe_send = lerp(a.lfe_send, b.lfe_send, f),
+            .size = {.width = lerp(a.size.width, b.size.width, f),
+                     .depth = lerp(a.size.depth, b.size.depth, f),
+                     .height = lerp(a.size.height, b.size.height, f)},
+            .snap = a.snap,
+            .zone = a.zone,
+            .enable_elevation = a.enable_elevation};
 }
 
 }  // namespace

@@ -24,12 +24,14 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
 
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/quality/distortion.hpp"
 #include "ac3/quality/perceptual.hpp"
 #include "ac3/verify/mirror.hpp"
 #include "dither.hpp"
+#include "exp_strategy.hpp"
 #include "snr_search.hpp"
 
 namespace ac3 {
@@ -47,41 +49,6 @@ constexpr bool has_three_front(Acmod acmod) {
 
 constexpr bool has_surround(Acmod acmod) {
     return (static_cast<std::uint8_t>(acmod) & 0x4) != 0;
-}
-
-// §8.2.8: strategy by the number of blocks an exponent set serves.
-constexpr ExpStrategy strategy_for_span(int span) {
-    if (span <= 1) {
-        return ExpStrategy::kD45;
-    }
-    if (span <= 3) {
-        return ExpStrategy::kD25;
-    }
-    return ExpStrategy::kD15;
-}
-
-// Exponent-set change detection (§8.2.8: "when the variation exceeds a
-// threshold, new exponents will be sent").
-//
-// The threshold is a judgement about COST, so it is not one number. A full-
-// bandwidth channel's set is 4 + 7*ngrps bits - about 590 at D15 over a
-// 250-coefficient band - and spending that mid-frame has to buy back more
-// than it costs, so it waits for the exponents to have really moved: a mean
-// change above two steps, 12 dB per bin.
-//
-// The LFE's set is always two groups, 18 bits, thirty times cheaper. Holding
-// it to the same bar means almost never refreshing it, and the frame's one
-// set is then the per-bin minimum across six blocks - a scale chosen by the
-// loudest of them. Any block quieter than that is quantized against the wrong
-// scale for the sake of not spending 18 bits. So the LFE refreshes as soon as
-// its exponents move at all, which is the trade its own cost argues for.
-bool needs_new_exponents(std::span<const std::uint8_t> current,
-                         std::span<const std::uint8_t> reference, bool is_lfe) {
-    long long diff = 0;
-    for (std::size_t i = 0; i < current.size(); ++i) {
-        diff += std::abs(static_cast<int>(current[i]) - static_cast<int>(reference[i]));
-    }
-    return diff > (is_lfe ? 0 : 2 * static_cast<long long>(current.size()));
 }
 
 // Where coupling should start when the caller does not say. Sub-band 4 - bin
@@ -340,6 +307,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (dual_mono &&
         (!config_.dialnorm2 || *config_.dialnorm2 < 1 || *config_.dialnorm2 > 31)) {
         return std::unexpected(FrameError::kInvalidDialnorm);
+    }
+    if (!meta::valid_bsi_info(config_.info)) {
+        return std::unexpected(FrameError::kInvalidBsi);
+    }
+    if (config_.alternate_bsi) {
+        if (!meta::valid_alternate_bsi(*config_.alternate_bsi)) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
+        // §D1: the alternate syntax lives IN the two timecod fields. Asking
+        // for both is asking for 56 bits where the frame has 28, and quietly
+        // dropping one of them would leave the caller believing a time code
+        // went out that never did.
+        if (config_.info.timecod1 || config_.info.timecod2) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
     }
     const int nfchans = fullbw_channel_count(config_.acmod);
     const int nchans = channel_count();
@@ -881,18 +863,27 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 4. Fixed point + per-block raw exponents --------------------------
     AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
     auto& fixed = fixed_;
-    fixed.clear();
     {
-        // One reservation instead of push_back growth across ~10k bins - the
-        // exact total is knowable up front, and the phase-5 Tracy zones put
-        // this stage second only to transient detection in the former
-        // unzoned remainder.
+        // Sized once, up front: the exact total across ~10k bins is knowable
+        // before the loop, and the phase-5 Tracy zones put this stage second
+        // only to transient detection in the former unzoned remainder.
+        //
+        // resize() with no clear() before it, unlike the push_back form this
+        // replaced (ROADMAP PF5 gave every slot a contiguous destination to
+        // batch into, which needs the space to exist first). clear() would
+        // drop the size to zero and make the resize value-initialize all ten
+        // thousand elements again on every frame; without it, a steady-state
+        // frame whose layout has not changed finds the vector already the
+        // right size and the call does nothing at all. Nothing reads a stale
+        // value either way - every slot below is fully overwritten by
+        // to_fixed25_block before fixed_at can reach it, and fixed_base
+        // carries the offsets rather than them being implied by growth.
         std::size_t total = 0;
         for (int s = 0; s < streams; ++s) {
             total += static_cast<std::size_t>(stream_end(s) - stream_start(s)) *
                      kBlocksPerFrame;
         }
-        fixed.reserve(total);
+        fixed.resize(total);
     }
     auto& fixed_base = fixed_base_;
     fixed_base.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, 0);
@@ -901,21 +892,32 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // inner vector's capacity where assign would discard it.
     auto& block_exps = block_exps_;
     block_exps.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    // Where the next slot starts in `fixed`, now that the vector is sized up
+    // front and its size no longer tracks how much has been written.
+    std::size_t cursor = 0;
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
-            fixed_base[slot] = fixed.size();
-            block_exps[slot].resize(static_cast<std::size_t>(end - begin));
-            for (int bin = begin; bin < end; ++bin) {
-                const std::int32_t f =
-                    to_fixed25(coeffs_at(s, block)[static_cast<std::size_t>(bin)]);
-                fixed.push_back(f);
-                block_exps[slot][static_cast<std::size_t>(bin - begin)] =
-                    static_cast<std::uint8_t>(exponent_from_fixed(f));
-            }
+            // Batched rather than bin-by-bin (ROADMAP PF5): to_fixed25_block
+            // rounds two coefficients at a time through the architecture
+            // seam, and extract_exponents is the same per-element
+            // exponent_from_fixed this loop used to call inline. Both
+            // produce identical values to the element-wise form - see
+            // exponents.cpp - so the bitstream is unchanged.
+            const auto count = static_cast<std::size_t>(end - begin);
+            fixed_base[slot] = cursor;
+            const std::size_t base = cursor;
+            cursor += count;
+            block_exps[slot].resize(count);
+            to_fixed25_block(
+                std::span<const double>{coeffs_at(s, block)}.subspan(
+                    static_cast<std::size_t>(begin), count),
+                std::span<std::int32_t>{fixed}.subspan(base, count));
+            extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
+                              block_exps[slot]);
         }
     }
     AC3_ZONE_END(zone_fixed);
@@ -992,7 +994,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 s < nfchans &&
                 (blksw[static_cast<std::size_t>(s)][static_cast<std::size_t>(block)] ||
                  blksw[static_cast<std::size_t>(s)][static_cast<std::size_t>(block - 1)]);
-            if (needs_new_exponents(current, *reference, is_lfe) || switch_boundary) {
+            if (internal::needs_new_exponents(current, *reference, is_lfe) ||
+                switch_boundary) {
                 starts.push_back(block);
                 reference = &current;
             }
@@ -1502,14 +1505,30 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 8. Measure the side information -----------------------------------
     const auto measure_side_bits = [&] {
         std::uint32_t bits = 16 + 16 + 2 + 6;  // syncinfo
+        // bsid, bsmod, acmod, lfeon, dialnorm, compre, langcode, audprodie,
+        // copyrightb, origbs, the two 1-bit flags at the end (timecod1e and
+        // timecod2e, or Annex D's xbsi1e and xbsi2e - the same two bits either
+        // way, which is exactly the property §D3.2 relies on) and addbsie.
         std::uint32_t bsi = 25;
         if (has_three_front(config_.acmod)) bsi += 2;  // cmixlev
         if (has_surround(config_.acmod)) bsi += 2;     // surmixlev
         if (config_.acmod == Acmod::k2_0) bsi += 2;    // dsurmod
         if (config_.heavy) bsi += 8;                   // compr (§5.4.2.10)
+        if (config_.info.langcod) bsi += 8;            // langcod (§5.4.2.12)
+        if (config_.info.audprod) bsi += 5 + 2;        // mixlevel, roomtyp
         if (dual_mono) {
             bsi += 5 + 1 + 1 + 1;  // dialnorm2, compr2e, langcod2e, audprodi2e
             if (config_.heavy2) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
+            if (config_.info.langcod2) bsi += 8;
+            if (config_.info.audprod2) bsi += 5 + 2;
+        }
+        if (config_.alternate_bsi) {
+            if (config_.alternate_bsi->mix) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
+            // dsurexmod, dheadphonmod, adconvtyp, xbsi2, encinfo.
+            if (config_.alternate_bsi->extended) bsi += 2 + 2 + 1 + 8 + 1;
+        } else {
+            if (config_.info.timecod1) bsi += 14;
+            if (config_.info.timecod2) bsi += 14;
         }
         bits += bsi;
         BitWriter counter;
@@ -2060,8 +2079,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     w.put(static_cast<std::uint32_t>(config_.sample_rate), 2);
     w.put(static_cast<std::uint32_t>(*index) * 2 + (pad ? 1u : 0u), 6);
 
-    w.put(8, 5);  // bsid
-    w.put(0, 3);  // bsmod
+    // §D2.1: bsid 6 IS the announcement that the alternate syntax is in use.
+    // Everything up to origbs is identical either way (Table D2.1 restates
+    // §5.4.2 verbatim to that point); only the last 28 bits differ.
+    w.put(config_.alternate_bsi ? 6 : 8, 5);  // bsid
+    w.put(static_cast<std::uint32_t>(config_.info.bsmod), 3);
     w.put(static_cast<std::uint32_t>(config_.acmod), 3);
     if (has_three_front(config_.acmod)) {
         w.put(static_cast<std::uint32_t>(config_.cmixlev), 2);
@@ -2070,7 +2092,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         w.put(static_cast<std::uint32_t>(config_.surmixlev), 2);
     }
     if (config_.acmod == Acmod::k2_0) {
-        w.put(0, 2);  // dsurmod
+        w.put(static_cast<std::uint32_t>(config_.info.dsurmod), 2);
     }
     w.put(config_.lfe ? 1 : 0, 1);
     w.put(static_cast<std::uint32_t>(config_.dialnorm), 5);
@@ -2078,8 +2100,26 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (config_.heavy) {
         w.put(compr, 8);
     }
-    w.put(0, 1);  // langcode
-    w.put(0, 1);  // audprodie
+    // §5.4.2.12: langcod carries no information any more - the language table
+    // it once indexed was dropped - so the only thing to choose is whether the
+    // reserved 0xFF byte is present at all.
+    const auto emit_langcod = [&w](bool present) {
+        w.put(present ? 1 : 0, 1);  // langcode
+        if (present) {
+            w.put(0xFF, 8);  // langcod
+        }
+    };
+    const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
+        w.put(production ? 1 : 0, 1);  // audprodie
+        if (production) {
+            w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
+            w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
+            // No adconvtyp here: §5.4.2's audprodie stops at roomtyp. Only
+            // E-AC-3's infomdat and Annex D's xbsi2 carry that field.
+        }
+    };
+    emit_langcod(config_.info.langcod);
+    emit_audprod(config_.info.audprod);
     if (dual_mono) {
         w.put(static_cast<std::uint32_t>(*config_.dialnorm2), 5);
         // compr2e is Ch2's OWN flag (§5.4.2.11 mirrors §5.4.2.10 for the
@@ -2090,13 +2130,49 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (config_.heavy2) {
             w.put(compr2, 8);
         }
-        w.put(0, 1);  // langcod2e
-        w.put(0, 1);  // audprodi2e
+        emit_langcod(config_.info.langcod2);
+        emit_audprod(config_.info.audprod2);
     }
-    w.put(0, 1);  // copyrightb
-    w.put(1, 1);  // origbs
-    w.put(0, 1);  // timecod1e
-    w.put(0, 1);  // timecod2e
+    w.put(config_.info.copyrightb ? 1 : 0, 1);  // copyrightb
+    w.put(config_.info.origbs ? 1 : 0, 1);      // origbs
+    if (config_.alternate_bsi) {
+        const auto& alternate = *config_.alternate_bsi;
+        w.put(alternate.mix ? 1 : 0, 1);  // xbsi1e
+        if (alternate.mix) {
+            // Table D2.1's field order, which is NOT Table E1.2's: Annex D
+            // pairs the two Lt/Rt levels and then the two Lo/Ro ones, where
+            // mixmdate pairs centre with centre and surround with surround.
+            // Same five quantities, different order on the wire.
+            w.put(static_cast<std::uint32_t>(alternate.mix->dmixmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.mix->ltrtcmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->ltrtsurmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->lorocmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->lorosurmixlev), 3);
+        }
+        w.put(alternate.extended ? 1 : 0, 1);  // xbsi2e
+        if (alternate.extended) {
+            w.put(static_cast<std::uint32_t>(alternate.extended->dsurexmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.extended->dheadphonmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.extended->adconvtyp), 1);
+            w.put(0, 8);  // xbsi2: §D2.3.1.11 reserves it and requires zero
+            w.put(alternate.extended->encinfo ? 1 : 0, 1);
+        }
+    } else {
+        w.put(config_.info.timecod1 ? 1 : 0, 1);  // timecod1e
+        if (config_.info.timecod1) {
+            const auto& t = *config_.info.timecod1;
+            w.put(static_cast<std::uint32_t>(t.hours), 5);
+            w.put(static_cast<std::uint32_t>(t.minutes), 6);
+            w.put(static_cast<std::uint32_t>(t.eight_seconds), 3);
+        }
+        w.put(config_.info.timecod2 ? 1 : 0, 1);  // timecod2e
+        if (config_.info.timecod2) {
+            const auto& t = *config_.info.timecod2;
+            w.put(static_cast<std::uint32_t>(t.seconds), 3);
+            w.put(static_cast<std::uint32_t>(t.frames), 5);
+            w.put(static_cast<std::uint32_t>(t.sixty_fourths), 6);
+        }
+    }
     w.put(0, 1);  // addbsie
 
     // The self-check's encoder-side view (ac3/verify/mirror.hpp). Recorded

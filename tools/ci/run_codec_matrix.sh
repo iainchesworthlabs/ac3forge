@@ -66,6 +66,14 @@ command -v ffmpeg >/dev/null 2>&1 || {
     echo "ffmpeg not found on PATH; it is required as the independent oracle this script checks against" >&2
     exit 1
 }
+# ffprobe ships alongside ffmpeg, but it is a separate binary and some distro
+# packagings split it out - and run_atmos_profile_check below is the only
+# oracle for the TS 103 420 object marker, so a missing ffprobe would silently
+# drop that check rather than fail.
+command -v ffprobe >/dev/null 2>&1 || {
+    echo "ffprobe not found on PATH; it reports the Atmos object marker this script asserts on" >&2
+    exit 1
+}
 
 count=0
 run() {
@@ -173,6 +181,23 @@ run encode bootstrap_51.wav enc_cmix.ac3 224 stereo cmixlev=-4.5
 run_ffmpeg_check enc_cmix.ac3
 run encode bootstrap_51.wav enc_surmix.ac3 224 51 surmixlev=off
 run_ffmpeg_check enc_surmix.ac3
+# Annex D (bsid 6) and the informational bsi fields. Two rows because the two
+# halves are mutually exclusive on the wire: xbsi1/xbsi2 occupy the same 28
+# bits as timecod1/timecod2, so no single command can walk both writers.
+# §D3.2 is the reason the bsid-6 row still gets an FFmpeg check - a decoder
+# that does not know the alternate syntax reads those bits as a time code it
+# already ignores, so a refusal here would mean the frame length went wrong,
+# not that the syntax is exotic.
+run encode bootstrap_51.wav enc_annexd.ac3 384 51 annexd dmixmod=ltrt \
+    ltrtcmixlev=-1.5 ltrtsurmixlev=-3 lorocmixlev=-4.5 lorosurmixlev=off \
+    dsurexmod=ex dheadphonmod=on adconvtyp=hdcd encinfo \
+    bsmod=vi mixlevel=105 roomtyp=large copyright origbs=off langcod
+run decode enc_annexd.ac3 enc_annexd.wav
+run_ffmpeg_check enc_annexd.ac3
+run encode bootstrap_51.wav enc_bsi_timecode.ac3 256 stereo \
+    bsmod=commentary dsurmod=on mixlevel=82 roomtyp=small timecode=17:43:46:21.39
+run decode enc_bsi_timecode.ac3 enc_bsi_timecode.wav
+run_ffmpeg_check enc_bsi_timecode.ac3
 # fast-mdct=off: every other encode in this matrix now runs the default
 # §7.9.4 fast forward MDCT, so this is the leg that keeps the direct
 # §8.2.3.2 reference form - the validation oracle - walked under the
@@ -360,6 +385,53 @@ run eac3-encode bootstrap_51.wav eac3_meta.ec3 192 none 51 \
 run decode eac3_meta.ec3 eac3_meta.wav
 run_ffmpeg_check eac3_meta.ec3
 
+# The rest of Table E1.2: mixmdate past the five levels, and infomdat. Every
+# optional sub-element of mixdef 0x3 is on here at once, which is the case
+# whose LENGTH is easiest to get wrong - mixdeflen sizes the whole element,
+# so an error there lands audfrm at the wrong offset and the decode below
+# fails rather than merely reporting a wrong value. eac3_parse.py reads the
+# same stream independently.
+run eac3-encode bootstrap_51.wav eac3_mixdepth.ec3 448 none 51 \
+    mixmeta lfemix=3 dmixmod=loro pgmscl=-6 extpgmscl=+3 \
+    mixdef=ext premixcmp=compr:local:2 extmix=0,2,0,5,5,off,7 auxmix=1,off \
+    speechmix=9,3:1,4:5 blkmixcfg=3,-,7,-,-,31 \
+    infomdat bsmod=commentary dsurexmod=pliiz mixlevel=98 roomtyp=small \
+    copyright sourcefscod
+run decode eac3_mixdepth.ec3 eac3_mixdepth.wav
+run_ffmpeg_check eac3_mixdepth.ec3
+# The two shorter mixdef options, and 2/0's own infomdat pair (dsurmod and
+# dheadphonmod exist at no other layout).
+run eac3-encode bootstrap_51.wav eac3_mixdef_premix.ec3 192 none stereo \
+    mixmeta mixdef=premix premixcmp=dynrng:external:0 \
+    infomdat dsurmod=on dheadphonmod=on bsmod=me
+run decode eac3_mixdef_premix.ec3 eac3_mixdef_premix.wav
+run_ffmpeg_check eac3_mixdef_premix.ec3
+run eac3-encode bootstrap_51.wav eac3_mixdef_reserved.ec3 192 none mono \
+    mixmeta mixdef=reserved mixdata=2650 paninfo=200:41 pgmscl=mute
+run decode eac3_mixdef_reserved.ec3 eac3_mixdef_reserved.wav
+run_ffmpeg_check eac3_mixdef_reserved.ec3
+
+# --- E-AC-3 short syncframes (roadmap EQ11): numblkscod 0/1/2, each a real
+# stream through both decoders for the first time - the decoder's own
+# numblkscod != 3 path existed only because it is spec-derived, never because
+# a real stream had driven it. "cpl+numblkscod:1" covers an explicit tool
+# stacked on a short frame - AHT is the one tool a short syncframe cannot
+# carry at all (Table E1.3 has no ahte bit below six blocks; validate()
+# refuses aht/auto_tools together with numblkscod != 3, since auto may turn
+# AHT on), which is why this row pins coupling explicitly rather than asking
+# for "auto". numblkscod:0 also runs at 71 so a dependent substream (§E3.8.2's
+# overwrite, and the multi-substream access-unit assembly) is exercised at the
+# shortest frame too, not just the bed alone. ------------------------------
+for tools in "numblkscod:0" "numblkscod:1" "numblkscod:2" "cpl+numblkscod:1"; do
+    safe=$(echo "$tools" | tr ':+' '__')
+    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
+    run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
+    run_ffmpeg_check "eac3enc_${safe}.ec3"
+done
+run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 256 "numblkscod:0" 71
+run decode eac3_numblkscod0_71.ec3 eac3_numblkscod0_71_decoded.wav
+run_ffmpeg_check eac3_numblkscod0_71.ec3
+
 # --- E-AC-3 VBR: quality-targeted rate control (eac3-encode's [vbr] arg,
 # default "off" - everything above this point never touched it) -------------
 # bitrate_kbps still matters in vbr mode - it feeds the coupling/spx
@@ -367,7 +439,13 @@ run_ffmpeg_check eac3_meta.ec3
 # value rather than a placeholder. A modest quality with no max bound stays
 # well clear of the "refuses real programme material outright" warning; the
 # bounded case exercises the min:/max: syntax the unbounded one does not.
-for vbr in "q:0.3" "q:0.6,min:96,max:256"; do
+# The avg: rows are the average-rate (ABR) control, which is a DIFFERENT
+# leading token rather than another field on q: - it steers the SNR offset
+# across frames instead of reading a fixed one, so it exercises a code path
+# no q: row reaches (see eac3::AbrConfig). One plain average, one with an
+# explicit window and per-frame bounds, since those compose with the average
+# rather than replacing it.
+for vbr in "q:0.3" "q:0.6,min:96,max:256" "avg:192" "avg:192,win:8,min:96,max:448"; do
     safe=$(echo "$vbr" | tr ':,' '__')
     run eac3-encode bootstrap_51.wav "eac3_vbr_${safe}.ec3" 192 none 51 "$vbr"
     run decode "eac3_vbr_${safe}.ec3" "eac3_vbr_${safe}.wav"
@@ -411,14 +489,51 @@ run_ffmpeg_check eac3enc_11_twofile.ec3
 # container, never a dependent one), so FFmpeg reads all of these - it is how
 # README.md's "FFmpeg reports Dolby Digital Plus + Dolby Atmos" claim is
 # checked at all.
+#
+# The two container modes need more than run_ffmpeg_check to tell apart. This
+# is CBR and the bed is the same programme either way, so `objects` and
+# `bed51` produce the same frame count at the same frame size and BOTH decode
+# cleanly - a strict decode cannot distinguish them. What distinguishes them
+# is TS 103 420 §8.3.1's addbsi object marker, which rides with the container
+# and is the only thing any reader has to go on; FFmpeg reports it as the
+# stream's profile, so ffprobe is the oracle for it. `objects` must show the
+# Atmos profile (that is README.md's claim, now actually asserted rather than
+# only implied by a successful decode); `bed51` must show no object layer at
+# all, or it would be advertising objects it deliberately did not encode -
+# the same empty promise an empty EMDF container would be.
+run_atmos_profile_check() {
+    count=$((count + 1))
+    echo "[$count] ffprobe atmos profile $1 (expect: $2)"
+    profile="$(ffprobe -v error -select_streams a:0 -show_entries stream=profile \
+        -of default=nw=1:nk=1 "$1")"
+    case "$2" in
+        atmos)
+            [ "$profile" = "Dolby Digital Plus + Dolby Atmos" ] || {
+                echo "$1: expected the Dolby Atmos profile, got '$profile'" >&2
+                exit 1
+            }
+            ;;
+        none)
+            case "$profile" in
+                *Atmos*)
+                    echo "$1: advertises an object layer it does not carry ('$profile')" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 for objects in 1 2 4 8; do
     run atmos "atmos_${objects}.ec3" 2 256 "$objects" 4 objects
     run decode "atmos_${objects}.ec3" "atmos_${objects}.wav"
     run_ffmpeg_check "atmos_${objects}.ec3"
+    run_atmos_profile_check "atmos_${objects}.ec3" atmos
 done
 run atmos atmos_bed51.ec3 2 256 4 4 bed51
 run decode atmos_bed51.ec3 atmos_bed51.wav
 run_ffmpeg_check atmos_bed51.ec3
+run_atmos_profile_check atmos_bed51.ec3 none
 run atmos-encode bootstrap_51.wav atmos_enc.ec3 256 6
 run decode atmos_enc.ec3 atmos_enc.wav
 run_ffmpeg_check atmos_enc.ec3
@@ -464,6 +579,66 @@ else
     run decode atmos_adm.ec3 atmos_adm.wav
     run_ffmpeg_check atmos_adm.ec3
 fi
+
+# --- Stream tools (roadmap DC9): no re-encode except where one is the point -
+# transcode is the DD+-to-DD path and is the only one of the five that
+# re-encodes; metadata/normalize rewrite bsi in place and re-stamp the CRCs;
+# cut/cat move whole access units. Every stream any of them produces goes
+# through FFmpeg's strict decode like everything else here, which is what
+# actually proves the CRC re-stamp: -err_detect crccheck makes a wrong crc1 or
+# crc2 a failing exit code rather than a silently concealed frame.
+#
+# cut + cat is checked as a ROUND TRIP rather than by eyeballing a duration:
+# splitting a stream on an access-unit boundary and joining the halves back
+# must reproduce the input byte for byte, which is the strongest available
+# statement that a frame-aligned cut neither dropped nor duplicated anything.
+# 0.512 s is exactly 16 access units at 48 kHz, so the split needs no snapping.
+run transcode eac3enc_none.ec3 transcoded.ac3 448
+run decode transcoded.ac3 transcoded.wav
+run_ffmpeg_check transcoded.ac3
+run transcode enc_51.ac3 transcoded_up.ec3 448
+run decode transcoded_up.ec3 transcoded_up.wav
+run_ffmpeg_check transcoded_up.ec3
+# 7.1.4 has no AC-3 coding mode at all, so this is the §7.8 fold-down to 5.1
+# the command announces rather than performs quietly - the actual DD+-to-DD
+# case an immersive delivery hits. The OUTPUT is plain 5.1 AC-3, so unlike
+# eac3_714.ec3 itself (which FFmpeg refuses - see this file's header comment)
+# it does get the strict-decode check.
+run transcode eac3_714.ec3 transcoded_714.ac3 448
+run decode transcoded_714.ac3 transcoded_714.wav
+run_ffmpeg_check transcoded_714.ac3
+# Atmos in, plain AC-3 out: the object layer cannot survive (AC-3 has no EMDF
+# container), so this is the "what a legacy decoder gets" path.
+run transcode atmos_4.ec3 transcoded_atmos.ac3 448
+run decode transcoded_atmos.ac3 transcoded_atmos.wav
+run_ffmpeg_check transcoded_atmos.ac3
+
+run metadata enc_51.ac3 meta_rewritten.ac3 dialnorm=20 bsmod=2
+run decode meta_rewritten.ac3 meta_rewritten.wav
+run_ffmpeg_check meta_rewritten.ac3
+# dsurmod is 2/0's alone (§5.4.2.7), so it needs a stereo stream - asking a
+# 3/2 one for it is a refusal, by design.
+run metadata ac3_stereo.ac3 meta_dsurmod.ac3 dsurmod=2
+run_ffmpeg_check meta_dsurmod.ac3
+run metadata eac3enc_none.ec3 meta_rewritten.ec3 dialnorm=18
+run_ffmpeg_check meta_rewritten.ec3
+
+run normalize enc_51.ac3 normalized.ac3
+run decode normalized.ac3 normalized.wav
+run_ffmpeg_check normalized.ac3
+run qc normalized.ac3
+
+run cut enc_51.ac3 cut_head.ac3 0 0.512
+run cut enc_51.ac3 cut_tail.ac3 0.512
+run cat cut_rejoined.ac3 cut_head.ac3 cut_tail.ac3
+count=$((count + 1))
+echo "[$count] cut+cat round trip reproduces enc_51.ac3 byte for byte"
+cmp enc_51.ac3 cut_rejoined.ac3
+run decode cut_rejoined.ac3 cut_rejoined.wav
+run_ffmpeg_check cut_rejoined.ac3
+run cut eac3enc_none.ec3 cut_eac3.ec3 0.1 0.5
+run cat cat_eac3.ec3 cut_eac3.ec3 cut_eac3.ec3
+run_ffmpeg_check cat_eac3.ec3
 
 # --- Reporting / container passes over a representative subset -------------
 # probe (roadmap IO1): the table form, the JSON contract, and both detail
@@ -565,6 +740,53 @@ run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+# Both broadcast profiles (roadmap IO6). ATSC and DVB identify the same
+# elementary stream with different stream_type values AND different
+# descriptors, so each combination of profile and codec is its own PMT layout
+# - four in total, all of which a demuxer has to accept. mainid=/asvc= carry
+# the two identification values no single elementary stream can supply, so
+# they get a pass too.
+run ts enc_51.ac3 enc_51_atsc.ts atsc
+run ts eac3enc_none.ec3 eac3enc_none_atsc.ts atsc
+run ts atmos_4.ec3 atmos_4_atsc.ts atsc mainid=0
+run ts enc_51.ac3 enc_51_dvb_assoc.ts dvb asvc=0x05
+run_ffmpeg_check enc_51_atsc.ts
+run_ffmpeg_check eac3enc_none_atsc.ts
+run_ffmpeg_check atmos_4_atsc.ts
+
+# --- Object-layer strip (roadmap IO7) --------------------------------------
+# The claim is that the bed audio does not change at all, so this checks it
+# the only way that settles it: decode both streams and compare the PCM byte
+# for byte. FFmpeg then decodes the stripped stream independently, and reports
+# it as plain E-AC-3 rather than "Dolby Digital Plus + Dolby Atmos" - the same
+# probe README.md's own Atmos claim rests on, read the other way round.
+run strip-objects atmos_4.ec3 atmos_4_bed51.ec3
+run decode atmos_4_bed51.ec3 atmos_4_bed51.wav
+run_ffmpeg_check atmos_4_bed51.ec3
+count=$((count + 1))
+echo "[$count] bed audio is bit-identical after strip-objects"
+cmp atmos_4.wav atmos_4_bed51.wav
+count=$((count + 1))
+echo "[$count] ffprobe no longer reports an object layer on the stripped stream"
+probe_profile="$(ffprobe -v error -show_entries stream=profile \
+    -of default=noprint_wrappers=1:nokey=1 -f eac3 atmos_4_bed51.ec3 2>/dev/null || true)"
+if printf '%s' "$probe_profile" | grep -qi atmos; then
+    echo "    FAIL: atmos_4_bed51.ec3 still probes as Dolby Atmos"
+    exit 1
+fi
+# The paired HLS rendition Apple's authoring requirements ask for: the Atmos
+# one where it always was, the stripped 5.1 companion under bed51/, both in
+# one #EXT-X-MEDIA group.
+run fmp4 atmos_4.ec3 fmp4_atmos_fallback 4 fallback-51
+count=$((count + 1))
+echo "[$count] fmp4 fallback-51 wrote both renditions into one group"
+grep -q 'CHANNELS="6"' fmp4_atmos_fallback/master.m3u8
+grep -q '/JOC"' fmp4_atmos_fallback/master.m3u8
+grep -q 'URI="bed51/audio.m3u8"' fmp4_atmos_fallback/master.m3u8
+cat fmp4_atmos_fallback/bed51/init.mp4 $(ls -v fmp4_atmos_fallback/bed51/segment*.m4s) \
+    > fmp4_bed51_combined.mp4
+run_ffmpeg_check fmp4_bed51_combined.mp4
+run_ffmpeg_check fmp4_atmos_fallback/bed51/audio.m3u8
 
 # demux is the inverse of the wrapping commands above, so it is checked as an
 # inverse rather than only for a clean exit: the elementary stream that went

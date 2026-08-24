@@ -111,6 +111,7 @@ namespace ac3forge_c {
         case ac3::FrameError::kInvalidChannelMap: return AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP;
         case ac3::FrameError::kTooManyChannels: return AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
         case ac3::FrameError::kInvalidMixLevel: return AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
+        case ac3::FrameError::kInvalidBsi: return AC3FORGE_ERROR_ENCODE_INVALID_BSI;
         case ac3::FrameError::kInvalidObjectAudio:
             return AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO;
     }
