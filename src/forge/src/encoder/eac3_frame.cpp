@@ -1582,14 +1582,15 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         block.streams.resize(payload.chans.size());
         for (std::size_t s = 0; s < payload.chans.size(); ++s) {
             const auto& plan = payload.chans[s];
+            const auto& run = plan.run_at(blk);
             auto& stream = block.streams[s];
-            // Table E2.10 code 0 gives the whole frame one exponent set per
-            // stream, so every block copies the same arrays out - which is
-            // the point: a per-block trace stays right if that ever stops
-            // being true.
-            stream.exponents = plan.decoded;
-            stream.bap = plan.bap;
-            stream.delta = plan.delta;
+            // A stream's exponent set is per-run, not per-frame: a channel
+            // whose run restarts mid-frame reads a different set from here
+            // than an earlier block did, which is why this is indexed by
+            // `blk` rather than copied once outside the loop.
+            stream.exponents = run.decoded;
+            stream.bap = run.bap;
+            stream.delta = run.delta;
             stream.start = plan.start;
             stream.endmant = plan.endmant;
             stream.aht = plan.aht;
