@@ -2599,6 +2599,11 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         if (!frame_bsid) {
             return std::unexpected(frame_bsid.error());
         }
+        // §E2.3.1.2's AC-3 core is always the independent substream, never a
+        // dependent - it has no strmtyp field to say otherwise - so the
+        // concealment fallback below only ever applies to a real Annex E
+        // dependent frame.
+        bool frame_is_dependent = false;
         if (*frame_bsid <= 8) {
             keys.push_back(static_cast<int>(StreamType::kIndependent) * 8);
         } else {
@@ -2608,6 +2613,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                 return std::unexpected(bsi.error());
             }
             keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
+            frame_is_dependent = bsi->strmtyp == StreamType::kDependent;
         }
 
         auto decoded = decode_substream(frame);
@@ -2624,8 +2630,8 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             // the same programme - just narrower than the stream promised.
             // The independent substream is a different matter: without it
             // there is no program at all.
-            if (config_.concealment != ConcealmentPolicy::kNone &&
-                bsi->strmtyp == StreamType::kDependent && keys.size() > 1) {
+            if (config_.concealment != ConcealmentPolicy::kNone && frame_is_dependent &&
+                keys.size() > 1) {
                 bed_only = decoded.error();
                 keys.pop_back();
                 continue;
