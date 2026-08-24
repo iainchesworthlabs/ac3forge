@@ -6,7 +6,8 @@
 # encoder/decoder logic in isolation; this script covers the combinations a
 # real user's command line would hit - every layout, every Annex E tool
 # token, both Atmos container modes, and the metadata options - round-tripped
-# through encode -> decode -> levels/loudness/spdif/mkv/mp4.
+# through encode -> decode -> levels/loudness/spdif/mkv/mp4, and back out
+# again through demux.
 #
 # Every stream this script produces also gets FFmpeg's independent strict
 # decode (CONTRIBUTING.md's "Oracles" list, #2) alongside the in-repo
@@ -63,6 +64,14 @@ cd "$WORKDIR"
 
 command -v ffmpeg >/dev/null 2>&1 || {
     echo "ffmpeg not found on PATH; it is required as the independent oracle this script checks against" >&2
+    exit 1
+}
+# ffprobe ships alongside ffmpeg, but it is a separate binary and some distro
+# packagings split it out - and run_atmos_profile_check below is the only
+# oracle for the TS 103 420 object marker, so a missing ffprobe would silently
+# drop that check rather than fail.
+command -v ffprobe >/dev/null 2>&1 || {
+    echo "ffprobe not found on PATH; it reports the Atmos object marker this script asserts on" >&2
     exit 1
 }
 
@@ -180,6 +189,17 @@ run_ffmpeg_check enc_surmix.ac3
 run encode bootstrap_51.wav enc_fastmdct_off.ac3 256 51 fast-mdct=off
 run decode enc_fastmdct_off.ac3 enc_fastmdct_off.wav
 run_ffmpeg_check enc_fastmdct_off.ac3
+# fast-imdct=off: the decode-side half of the same choice, and until roadmap
+# VX10 the only one of the two with no matrix row at all. Every other `run
+# decode` in this script runs the default §7.9.4 fast inverse, so this is what
+# keeps the direct step-3 evaluation - the form every fast-IMDCT test is
+# validated against - walked under the sanitizers too. The E-AC-3 counterpart
+# is beside the eac3-encode rows below; `mode=reference` (both halves at once)
+# is what the second gold-reference run in .github/workflows/_build.yml
+# exercises, on a real stream with a real SNR floor rather than only for
+# crashes.
+run decode enc_fastmdct_off.ac3 enc_fastimdct_off.wav fast-imdct=off
+run decode real_51_448.ac3 real_51_448_fastimdct_off.wav fast-imdct=off
 
 # The synthetic panning-orbit generator: same AC-3 encode path as 'sine', with
 # object motion baked in rather than a fixed layout.
@@ -217,6 +237,10 @@ for tools in none "atten:2" noatten nofastmdct nodither; do
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
     run_ffmpeg_check "eac3enc_${safe}.ec3"
 done
+# The E-AC-3 side of the fast-imdct=off row added beside the AC-3 encodes
+# above: Eac3Decoder's PCM reconstruction is its own code path, not a caller
+# of the AC-3 one, so the direct §7.9.4 evaluation needs walking through both.
+run decode eac3enc_none.ec3 eac3enc_none_fastimdct_off.wav fast-imdct=off
 # Both the in-repo decoder and FFmpeg read every one of these now - two
 # independent decoders agreeing is stronger proof these Annex-E-tool encodes
 # are spec-correct than either checked alone.
@@ -291,6 +315,54 @@ for layout in 71 512 714; do
     fi
 done
 
+# --- E-AC-3 encoder/decoder mirror self-check (roadmap VX2) -----------------
+# `verify` decodes every access unit as it is encoded and diffs the decoder's
+# model against the encoder's own - per-substream, per-block bit offsets,
+# exponents, bit allocation, delta, AHT gains and the coupling/spectral-
+# extension coordinates - refusing the run at the first disagreement. It is
+# the only check here that can see a defect BOTH sides share, which is the gap
+# docs/verification.md names for ecpl, tpn, fscod2 and 7.1.4: those have no
+# external oracle at all, so a round trip and an SNR gate agree with
+# themselves however the spec was read.
+#
+# Real programme material, not bootstrap_51.wav: a stationary tone puts
+# near-identical exponents in every block, and the whole reason the AC-3 half
+# of this facility exists is a defect only real material reaches (see the
+# "AC-3: real programme material" note above). One second of it is ~31 access
+# units - well past the frame-0 false pass the same history records, and short
+# enough to run the full tool matrix twice over under the sanitizers.
+ffmpeg -v error -y -i "$FIXTURES/reference_51.wav" -t 1 mirror_51.wav
+for tools in none cpl spx aht "spx+aht" "cpl:4+spx:5" "cpl+ecpl" tpn "cpl+ecpl+tpn" all auto "all+nofastmdct"; do
+    safe=$(echo "$tools" | tr ':+' '__')
+    run eac3-encode mirror_51.wav "mirror_${safe}.ec3" 192 "$tools" 51 verify
+done
+# Every layout, with the tools and without. 7.1.4 is the one FFmpeg cannot
+# read at all, so its two dependent substreams' own traces are compared here
+# and nowhere else.
+for layout in mono stereo 51 71 512 514 714; do
+    for tools in none all; do
+        run eac3-encode mirror_51.wav "mirror_${layout}_${tools}.ec3" 256 "$tools" "$layout" verify
+    done
+done
+# 1+1 needs its own source: its routing is a strict identity on exactly two
+# source channels, never a fold-down, so a six-channel file is refused there
+# rather than downmixed.
+ffmpeg -v error -y -i "$FIXTURES/reference_stereo.wav" -t 1 mirror_stereo.wav
+run eac3-encode mirror_stereo.wav mirror_11.ec3 192 none 1+1 verify dialnorm2=24
+# fscod2, the one case Dolby's own Reference Player refuses alongside FFmpeg.
+# Resampled rather than merely re-labelled, so the encoder sees material with
+# the bandwidth the rate implies.
+for rate in 24000 22050 16000; do
+    ffmpeg -v error -y -i "$FIXTURES/reference_51.wav" -t 1 -ar "$rate" "mirror_${rate}.wav"
+    for tools in none all; do
+        run eac3-encode "mirror_${rate}.wav" "mirror_${rate}_${tools}.ec3" 96 "$tools" 51 verify
+    done
+done
+# VBR sizes the frame from the content rather than the other way round, so the
+# side-info measurement and the allocation the trace compares are reached by a
+# different path than any CBR run above.
+run eac3-encode mirror_51.wav mirror_vbr.ec3 192 all 51 "q:0.6,min:96,max:256" verify
+
 run eac3-encode bootstrap_51.wav eac3_meta.ec3 192 none 51 \
     mixmeta lfemix=10 dmixmod=ltrt drc=music-light dialnorm=auto
 run decode eac3_meta.ec3 eac3_meta.wav
@@ -347,14 +419,51 @@ run_ffmpeg_check eac3enc_11_twofile.ec3
 # container, never a dependent one), so FFmpeg reads all of these - it is how
 # README.md's "FFmpeg reports Dolby Digital Plus + Dolby Atmos" claim is
 # checked at all.
+#
+# The two container modes need more than run_ffmpeg_check to tell apart. This
+# is CBR and the bed is the same programme either way, so `objects` and
+# `bed51` produce the same frame count at the same frame size and BOTH decode
+# cleanly - a strict decode cannot distinguish them. What distinguishes them
+# is TS 103 420 §8.3.1's addbsi object marker, which rides with the container
+# and is the only thing any reader has to go on; FFmpeg reports it as the
+# stream's profile, so ffprobe is the oracle for it. `objects` must show the
+# Atmos profile (that is README.md's claim, now actually asserted rather than
+# only implied by a successful decode); `bed51` must show no object layer at
+# all, or it would be advertising objects it deliberately did not encode -
+# the same empty promise an empty EMDF container would be.
+run_atmos_profile_check() {
+    count=$((count + 1))
+    echo "[$count] ffprobe atmos profile $1 (expect: $2)"
+    profile="$(ffprobe -v error -select_streams a:0 -show_entries stream=profile \
+        -of default=nw=1:nk=1 "$1")"
+    case "$2" in
+        atmos)
+            [ "$profile" = "Dolby Digital Plus + Dolby Atmos" ] || {
+                echo "$1: expected the Dolby Atmos profile, got '$profile'" >&2
+                exit 1
+            }
+            ;;
+        none)
+            case "$profile" in
+                *Atmos*)
+                    echo "$1: advertises an object layer it does not carry ('$profile')" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 for objects in 1 2 4 8; do
     run atmos "atmos_${objects}.ec3" 2 256 "$objects" 4 objects
     run decode "atmos_${objects}.ec3" "atmos_${objects}.wav"
     run_ffmpeg_check "atmos_${objects}.ec3"
+    run_atmos_profile_check "atmos_${objects}.ec3" atmos
 done
 run atmos atmos_bed51.ec3 2 256 4 4 bed51
 run decode atmos_bed51.ec3 atmos_bed51.wav
 run_ffmpeg_check atmos_bed51.ec3
+run_atmos_profile_check atmos_bed51.ec3 none
 run atmos-encode bootstrap_51.wav atmos_enc.ec3 256 6
 run decode atmos_enc.ec3 atmos_enc.wav
 run_ffmpeg_check atmos_enc.ec3
@@ -434,6 +543,41 @@ count=$((count + 1))
 echo "[$count] qc bootstrap_51.ac3 preset=all (verdict not asserted - see comment above)"
 "$CLI" qc bootstrap_51.ac3 preset=all >/dev/null || true
 run spdif ac3_stereo.ac3 spdif_out.wav
+# unspdif closes the loop the wrap side never had, and does it against an
+# oracle rather than only against ourselves. Three legs:
+#
+#   1. our own bursts back to our own stream, byte for byte
+#   2. FFmpeg's spdif MUXER's bursts back to the same stream, byte for byte -
+#      the independent half. If our Pd, our word order or our burst period
+#      disagreed with FFmpeg's, this is where it would show, and no amount of
+#      being self-consistent would hide it.
+#   3. the same for E-AC-3, whose burst period (24576, the 4x carrier) and Pd
+#      unit (bytes, not bits) are both different from AC-3's - one passing
+#      says nothing about the other.
+#
+# `cmp -s` and not a decode check: a lossy round trip could pass a decode
+# while dropping or reordering a frame, and the whole claim here is that
+# nothing is re-encoded at all.
+run unspdif spdif_out.wav unspdif_ours.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ours.ac3 == ac3_stereo.ac3 (our own wrap round-trips byte-exactly)"
+cmp -s unspdif_ours.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (AC-3): FFmpeg's own burst muxer as the unwrap oracle"
+ffmpeg -hide_banner -loglevel error -y -f ac3 -i ac3_stereo.ac3 -c copy -f spdif ffmpeg_spdif.ac3.raw
+run unspdif ffmpeg_spdif.ac3.raw unspdif_ffmpeg.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ac3 == ac3_stereo.ac3 (FFmpeg's bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (E-AC-3): 4x carrier, 24576-byte period, Pd in bytes"
+ffmpeg -hide_banner -loglevel error -y -f eac3 -i eac3enc_none.ec3 -c copy -f spdif ffmpeg_spdif.ec3.raw
+run unspdif ffmpeg_spdif.ec3.raw unspdif_ffmpeg.ec3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ec3 == eac3enc_none.ec3 (FFmpeg's E-AC-3 bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ec3 eac3enc_none.ec3
 run mkv enc_51.ac3 enc_51.mkv
 run mkv eac3enc_none.ec3 eac3enc_none.mkv
 run mkv atmos_4.ec3 atmos_4.mkv
@@ -452,16 +596,86 @@ run mp4 atmos_4.ec3 atmos_4.mp4
 run fmp4 enc_51.ac3 fmp4_51 4
 run fmp4 eac3enc_none.ec3 fmp4_eac3 4
 run fmp4 atmos_4.ec3 fmp4_atmos 4
-# ls -v (natural/version sort) matters here, not a plain glob: a plain
-# 'segment*.m4s' glob sorts lexicographically ("segment10.m4s" before
-# "segment2.m4s"), which would concatenate fragments out of sequence order -
-# every moof's mfhd sequence_number/tfdt needs to stay monotonic for a real
-# decoder to accept the result.
-cat fmp4_atmos/init.mp4 $(ls -v fmp4_atmos/segment*.m4s) > fmp4_atmos_combined.mp4
+# Version sort matters here, not a plain glob: a plain 'segment*.m4s' glob
+# sorts lexicographically ("segment10.m4s" before "segment2.m4s"), which would
+# concatenate fragments out of sequence order - every moof's mfhd
+# sequence_number/tfdt needs to stay monotonic for a real decoder to accept
+# the result. `sort -V` over the glob rather than `ls -v`, so the file list
+# reaches cat as a properly quoted array instead of an unquoted, word-split
+# command substitution; the GNU-coreutils dependency is the same either way.
+mapfile -t fmp4_segments < <(printf '%s\n' fmp4_atmos/segment*.m4s | sort -V)
+cat fmp4_atmos/init.mp4 "${fmp4_segments[@]}" > fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+
+# demux is the inverse of the wrapping commands above, so it is checked as an
+# inverse rather than only for a clean exit: the elementary stream that went
+# into the container has to be the one that comes back out, byte for byte. A
+# reader that dropped a frame or trimmed a trailing byte would still produce
+# something FFmpeg mostly decodes, which is why cmp is the assertion here and
+# a decode is not.
+run demux enc_51.mkv demux_51.ac3
+cmp -s enc_51.ac3 demux_51.ac3 || {
+    echo "demux enc_51.mkv did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux eac3enc_none.mkv demux_eac3.ec3
+cmp -s eac3enc_none.ec3 demux_eac3.ec3 || {
+    echo "demux eac3enc_none.mkv did not reproduce eac3enc_none.ec3 byte for byte" >&2
+    exit 1
+}
+# The Atmos stream matters on its own: its access units carry dependent
+# substreams, so a reader that mistook a substream for an access-unit
+# boundary would only show up here.
+run demux atmos_4.mkv demux_atmos.ec3
+cmp -s atmos_4.ec3 demux_atmos.ec3 || {
+    echo "demux atmos_4.mkv did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+# And the recovered stream still decodes, which is the end-to-end statement:
+# container in, playable elementary stream out.
+run_ffmpeg_check demux_atmos.ec3
+
+# The same three through MP4 rather than Matroska. An MP4 is the harder case:
+# its sample table is an index resolved against the file, so a chunk-offset or
+# stsc misreading shows up as shifted bytes here and nowhere else.
+run demux enc_51.mp4 demux_mp4_51.ac3
+cmp -s enc_51.ac3 demux_mp4_51.ac3 || {
+    echo "demux enc_51.mp4 did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux atmos_4.mp4 demux_mp4_atmos.ec3
+cmp -s atmos_4.ec3 demux_mp4_atmos.ec3 || {
+    echo "demux atmos_4.mp4 did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+run_ffmpeg_check demux_mp4_atmos.ec3
+# A fragmented MP4 too: init segment plus every media segment concatenated,
+# which is what a player is handed and a completely different code path from
+# the plain sample table above (moof/traf/trun rather than stsc/stsz/stco).
+run demux fmp4_atmos_combined.mp4 demux_fmp4_atmos.ec3
+cmp -s atmos_4.ec3 demux_fmp4_atmos.ec3 || {
+    echo "demux of the fragmented MP4 did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+
+# And through MPEG-TS: the writer implements the DVB profile (stream_type
+# 0x06 plus a descriptor), so this is the one leg above that also proves the
+# reader's DVB path end to end, not just the ATSC/registration paths the
+# reader-side unit tests cover on their own.
+run demux enc_51.ts demux_ts_51.ac3
+cmp -s enc_51.ac3 demux_ts_51.ac3 || {
+    echo "demux enc_51.ts did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux atmos_4.ts demux_ts_atmos.ec3
+cmp -s atmos_4.ec3 demux_ts_atmos.ec3 || {
+    echo "demux atmos_4.ts did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+run_ffmpeg_check demux_ts_atmos.ec3
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

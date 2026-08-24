@@ -2,9 +2,10 @@
 
 Encoding commands in [Commands](commands.md) take these after their positional arguments, in any
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
-takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=` and (`live`
-only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
-`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`
+takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=`/`fmp4-window=`
+and (`live` only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
+`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`,
+`joc-domain=`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
 — of the three Atmos commands, only `atmos-encode` measures:
 
@@ -46,10 +47,20 @@ metadata options (any order, after the positional arguments):
                     radix-2 FFT evaluation - the decode-side mirror of fast-mdct=off above,
                     with the same relationship to its oracle (both codecs; bare fast-imdct,
                     the old opt-in, is a no-op)
+  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit allocation parameters per
+                    frame, from the error a decoder will reconstruct, instead of taking the
+                    rate-derived defaults. distortion minimises that error; perceptual weights
+                    it by a tonality/masking model first. off (the default) keeps the fixed
+                    values every release before this emitted. Costs encode time - see
+                    docs/library/quality.md for the measured figures
   mode=reference    both switches above in one word: every transform this command runs falls
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction matrix over 256
+                    MDCT bins instead of the default §7.1 64-band complex QMF - cheaper, ~5 dB
+                    worse per object, and not the domain a licensed decoder reconstructs in.
+                    Not part of mode= in either direction (=qmf names the default)
   dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per channel per block from
                     content - the same reach as fast-mdct=off (encode/sine and the
                     atmos/record/live session builders); eac3-encode's [tools] positional can
@@ -58,12 +69,20 @@ metadata options (any order, after the positional arguments):
                     is for a run that needs bit-for-bit agreement between two decoders of the
                     same stream more than it needs dither's own perceptual benefit -
                     tools/checks/verify_gold_reference.sh is the one caller that does
+  verify            eac3-encode: decode every access unit as it is encoded and diff the
+                    decoder's model against the encoder's own, refusing the run at the first
+                    disagreement - off by default, since it roughly doubles the work
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
-                    ebu-r128-s2 | atsc-a85 | netflix
+                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
   preset=all        gate against every preset above
                     omitted: measure and report only, no gate
+  layout=bed        the default - meter the independent substream's own
+                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)
+  layout=rendered   meter the whole assembled program instead, every
+                    dependent substream's height/wide/rear channels
+                    included (BS.1770-5 Annex 3's extended algorithm)
 ```
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
@@ -261,7 +280,7 @@ The GUI's own multi-source Format-tab table (**Add source…** plus a per-channe
 is a direct front end over this same grammar — see
 [GUI → Multi-source & assignment](../gui/source-assignment.md).
 
-## Record/live options (`record`, `live`): `container=mkv`
+## Record/live options (`record`, `live`): `container=`
 
 ```text
 record/live options (record, live; any order, after the positional arguments):
@@ -269,6 +288,13 @@ record/live options (record, live; any order, after the positional arguments):
                      stream this writes by default - same shape of choice as
                      the GUI's own Container setting (container=matroska is
                      an accepted alias)
+  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live
+                     HLS playlists and a dynamic DASH MPD, updated as the
+                     session runs - the output path names the folder
+                     (container=cmaf is an accepted alias)
+  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the
+                     playlist/MPD (a rolling live window); 0, the default, keeps
+                     every segment
   container=raw     the default, spelled out
 ```
 
@@ -283,9 +309,28 @@ this page follows. This is the same choice the GUI's own Container combo offers 
 session](../gui/live-session.md#take-durability) for how a live session's own take durability
 differs slightly between the two front ends.
 
+`container=fmp4` (alias `container=cmaf`) is the same choice for fragmented MP4/CMAF, with one
+shape difference the format forces: the output path names a **folder**, not a file, because the
+container is a set of files. It is written incrementally — `init.mp4` at the first frame, a
+`segment*.m4s` each time a fragment closes, and `audio.m3u8`/`master.m3u8`/`manifest.mpd`
+rewritten alongside it — so the folder is a servable live origin *while the session is still
+running*: the playlist carries no `#EXT-X-ENDLIST` and the MPD is `type="dynamic"` with an
+`availabilityStartTime` until the session stops, at which point the trailing partial fragment is
+flushed and both close to their VOD/static forms. `live` never accumulates the take in memory on
+this path at all; `record`, which encodes to a fixed length up front, pushes its frames through
+the same writer so the two leave identical folders for the same take.
+
+`fmp4-window=<n>` bounds what the manifests list to the last *n* segments — `#EXT-X-MEDIA-SEQUENCE`
+and the MPD's `@startNumber`/`SegmentTimeline` advance with the window, which is what a real
+origin deleting segments behind itself needs. The segments themselves are still written; only the
+manifests roll. RFC 8216 §6.2.2 wants a live playlist to hold at least three target durations of
+media, so an `<n>` below 3 is accepted but not something a player will enjoy. The default, 0,
+lists every segment — right for a session whose folder will be served whole afterwards.
+
 ```bash
 ac3cli record out.mkv 30 192 0 container=mkv
 ac3cli live out.mkv 0 30 448 -2 -2 atmos container=mkv
+ac3cli live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
 ```
 
 ## Live options (`live`): `capture2=`
@@ -314,14 +359,19 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
 
-## Qc options (`qc`): `preset=`
+## Qc options (`qc`): `preset=`, `layout=`
 
 ```text
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
-                    ebu-r128-s2 | atsc-a85 | netflix
+                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
   preset=all        gate against every preset above
                     omitted: measure and report only, no gate
+  layout=bed        the default - meter the independent substream's own
+                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)
+  layout=rendered   meter the whole assembled program instead, every
+                    dependent substream's height/wide/rear channels
+                    included (BS.1770-5 Annex 3's extended algorithm)
 ```
 
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
@@ -331,11 +381,94 @@ not a tolerance band). The numbers are defined in `ac3::meta::qc_preset()`
 ([`ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/forge/include/ac3/meta/qc.hpp)), each
 read directly from its own primary source rather than recalled from memory:
 
-| Preset | Target | Tolerance | Max true peak | Source |
-|---|---|---|---|---|
-| `ebu-r128-s2` | −23.0 LUFS | ±1.0 LU | −1.0 dBTP | EBU R 128 s2 "Loudness in Streaming" (Geneva, November 2023, v3) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, November 2023, v5) recommendations (h) and (m) |
-| `atsc-a85` | −24.0 LKFS | ±2.0 dB | −2.0 dBTP | ATSC A/85:2013 (with Corrigendum No. 1, 11 February 2021) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange" |
-| `netflix` | −27.0 LKFS | ±2.0 LU | −2.0 dBTP | Netflix "Sound Mix Specifications & Best Practices" v1.6, Near-field Audio Prerequisites for Mix Facilities |
+| Preset | Loudness | Max true peak | Source (version, date) |
+|---|---|---|---|
+| `ebu-r128-s2` | −23.0 LUFS ±1.0 LU | −1.0 dBTP | EBU R 128 s2 "Loudness in Streaming" (Geneva, **November 2023, v3**) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, **November 2023, v5**) recommendations (h) and (m) |
+| `atsc-a85` | −24.0 LKFS ±2.0 dB | −2.0 dBTP | ATSC **A/85:2026-07** (approved **8 July 2026**) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange" |
+| `atsc-a85-streaming` | −25.0 LKFS ±2.0 LU | −2.0 dBTP | ATSC **A/85:2026-07** (approved **8 July 2026**) Annex L.5 — "Selecting a Loudness value between −23 and −27 LKFS is recommended", restated in Annex M's Table M.1 |
+| `netflix` | −27.0 LKFS ±2.0 LU | −2.0 dBTP | Netflix "Sound Mix Specifications & Best Practices" **v1.6**, Near-field Audio Prerequisites for Mix Facilities; Netflix "Dolby Atmos Home Mix Deliverable Requirements" **v2.3** states the same numbers for an Atmos deliverable |
+| `apple-music-atmos` | **≤ −18.0 LKFS** (a ceiling, not a band) | −1.0 dBTP | Apple "Immersive Audio Source Profile" (Apple Video and Audio Asset Guide), Dolby Atmos music deliverables — "should not exceed −18 LKFS measured as per ITU-R BS. 1770-4" |
+
+Two of these need a word of explanation.
+
+`atsc-a85-streaming` carries a **band**, not a point. Annex L.5 asks a streaming service to pick "only one
+specific and consistent Target Loudness" somewhere between −23 and −27 LKFS; −25.0 ±2.0 reproduces those two
+edges exactly. The −25.0 midpoint is an artefact of how this table is shaped and is *not* a level the Annex
+asks anyone to aim for — it names −23, −24 and −27 as the values real operators actually use.
+
+`apple-music-atmos` is the one preset whose loudness figure is a **ceiling** rather than a band: Apple's clause
+is "should not exceed", so a quieter master is compliant however quiet it is. Gating that as a ±band would fail
+material the specification accepts, so `qc` prints it as `limit <= -18.0 LKFS` and passes anything at or under
+it. True peak is always a ceiling, for every preset.
+
+### Specifications deliberately not given a preset
+
+Adding these would mean shipping a second name for a verdict already on offer, so they are documented here
+instead:
+
+- **EBU R 128 s4** "Loudness Normalisation of Cinematic Content" (November 2023). Recommendation (m) normalises
+  Programme Loudness to "a Target Level of −23.0 LUFS" and (l) repeats the −1 dBTP ceiling — numerically
+  identical to `ebu-r128-s2`. What s4 adds is recommendation (j), a Loudness-to-Dialogue Ratio not exceeding
+  5 LU; that is a Programme-minus-Dialogue figure, and `LoudnessMeter` has no dialogue gate, so the single
+  clause that would distinguish an s4 preset is also the one this meter cannot evaluate.
+- **Netflix Dolby Atmos Home Mix Deliverable Requirements v2.3**. Same three numbers as `netflix`. What it adds
+  is scope rather than numbers — "Loudness and peaks should be measured via a 5.1 rerender" — which is a
+  `layout=` choice, not a gate.
+- **Amazon.** Prime Video figures are widely repeated at −24 LKFS/−2 dBTP, but every source found for them is a
+  third-party summary and Amazon's own delivery specifications sit behind a partner portal. Nothing in this
+  table is cited to a document that was not read, so the row is absent rather than guessed — and −24/±2/−2
+  would in any case restate `atsc-a85`.
+
+### `layout=bed` (default) and `layout=rendered`
+
+`layout=` chooses *which soundfield* is metered, and with it which of BS.1770's two algorithms does the
+metering:
+
+| | What is measured | Algorithm |
+|---|---|---|
+| `layout=bed` (default) | The independent substream's own Table 5.8 bed | BS.1770 Annex 1's basic algorithm — Table 3 weights, keyed on `acmod` |
+| `layout=rendered` | The whole assembled program, every dependent substream's channels laid over the bed in Table E2.5 order | BS.1770-5 (11/2023) Annex 3's extended algorithm — Table 4 weights, keyed on each channel's position |
+
+The default is `bed`, which is what `qc` has always measured. On a stream that carries dependent substreams,
+`bed` now says so explicitly rather than silently reporting the 5.1 as if it were the whole programme:
+
+```text
+qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+  note: this stream carries dependent substreams whose channels (height, wide, rear)
+        are NOT in the figures above - layout=rendered measures them as well
+```
+
+`layout=rendered` is what makes 7.1, 5.1.2, 5.1.4 and 7.1.4 measurable at all, since none of those channels is
+a member of Table 5.8. Annex 3's Table 4 weights a channel by where it sits: **1.41 (+1.5 dB)** for anything
+between 60° and 120° azimuth below 30° elevation, **1.00** everywhere else. Applied to Table E2.5's locations
+that gives:
+
+| Weight | Locations | BS.2051 label |
+|---|---|---|
+| 1.41 (+1.5 dB) | `Ls` `Rs` `Lsd` `Rsd` `Lw` `Rw` | M±110, M±090, M±060 |
+| 1.00 (0 dB) | `L` `C` `R` `Lc` `Rc` | M+000, M±030, M±SC |
+| 1.00 (0 dB) | `Lrs` `Rrs` `Cs` | M±135, M+180 |
+| 1.00 (0 dB) | `Vhl` `Vhr` `Vhc` `Lts` `Rts` `Ts` | every U/T position |
+| excluded | `LFE` `LFE2` | — |
+
+Two results there are worth reading twice, because reasoning from the channel *names* gets both wrong: a 7.1
+layout's rear pair is **not** surround-weighted (M±135 is past the 120° edge), and **no** height channel is
+either (Table 4's elevation row simply does not cover the upper layer). The wides *are*, sitting exactly on the
+inclusive 60° edge.
+
+That first one is where other meters differ. ffmpeg's `ebur128`, probed one channel at a time, weights a 7.1
+layout's back surrounds at 1.41 just like its side surrounds — it generalises Annex 1's Table 3 by channel
+*name*, so anything called a surround gets +1.5 dB. Annex 3's Table 4 and Table 5 both put M±135 at 1.00, and
+`layout=rendered` follows the standard, so expect a 1.5 dB disagreement on exactly those two channels. On 5.1
+the two agree to within 0.02 dB, which is why `ebur128` is a good cross-check for `layout=bed` and not for
+`layout=rendered`.
+
+For a plain 5.1 stream the two algorithms are the same function — `Ls`/`Rs` are M±110, inside Table 4's +1.5 dB
+sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes nothing there. The one Table 5.8
+layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
+meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
+a rear centre at M+180, at unity.
 
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the
@@ -417,7 +550,10 @@ Optional positional arguments, when omitted:
   index, so an object index the file doesn't mention keeps its default placement unchanged.
 - **`atmos` mode**: `objects` (default) writes the JOC+OAMD container; `bed51` omits it so the
   5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
-  validate, instead of falling back to the bed on its own. See
+  validate, instead of falling back to the bed on its own. `bed51` drops the TS 103 420 §8.3.1
+  `addbsi` object marker with it, so a `bed51` stream reads as ordinary 5.1 E-AC-3 all the way
+  out: no `Atmos complexity` line from `scan`, no Atmos extension in the `dec3` box `fmp4`
+  builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
   [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all
@@ -464,6 +600,42 @@ Optional positional arguments, when omitted:
   `mode=reference fast-mdct=off` is redundant but harmless, and `mode=performance fast-imdct=off`
   runs a fast encode with a reference decode. `eac3-encode`'s `[tools]` positional still wins
   the forward-MDCT half if both are given, exactly as it does against `fast-mdct=off`.
+- **`joc-domain=qmf|mdct`**: which domain JOC's reconstruction matrix is estimated in (on
+  `atmos`, `atmos-path` and `atmos-encode`) and applied in (on `decode`). `qmf` — the default —
+  is TS 103 420 §7.1's 64-subband complex filterbank, which is what §6.6.6 describes and what a
+  licensed decoder runs. `mdct` selects the 256-bin MDCT approximation this project used before
+  it had a filterbank: cheaper on the encode side, but about 5 dB worse per object (22.8 dB
+  against 27.7–28.6 dB mean per-object SNR over four placements; 20.2 dB against 26.5 dB on
+  moving objects), and correct only against a decoder given the same token. Use it to reproduce
+  output from before 0.9.0, not for new material. Unlike `fast-mdct=off` / `fast-imdct=off` this
+  is **not** part of `mode=` in either direction: those two are the same answer computed two
+  ways, agreeing to ~1e-12, while these are different answers — see
+  [Atmos & JOC](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
+  domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
+  them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
+- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`ac3::verify`,
+  see [Validation](../verification.md#six-independent-checks)) over every access unit the command
+  emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
+  decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
+  correction, AHT gain mode and gains, and the coupling, enhanced-coupling and
+  spectral-extension coordinates — is diffed against the encoder's own. The first disagreement
+  refuses the run (exit 1) and names where the two sides parted company, down to the substream,
+  block, coded stream and bin:
+
+  ```
+  error: verify: the encoder and decoder disagree about access unit 0
+  frame 0 substream 0 block 2 channel 1: bap[10] encoder=8 decoder=9
+  ```
+
+  A clean run prints one extra line beside the usual summary and writes exactly the stream it
+  would have written anyway — the check reads state the encoder already has and never steers a
+  decision. Off by default because it decodes everything it encodes, which roughly doubles the
+  work. What it buys is the class of defect a round trip cannot see: the two sides differing in
+  a way the audio survives. That matters most for `ecpl`, `tpn`, `fscod2` and `714`, which have
+  no external decoder to check against at all — see
+  [Validation → where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+  `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
+  (`ac3::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →

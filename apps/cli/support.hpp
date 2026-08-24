@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <expected>
+#include <filesystem>
 #include <fstream>
 #include <optional>
 #include <span>
@@ -11,13 +13,18 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/quality/distortion.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/dash.hpp"
+#include "mp4/hls.hpp"
+#include "mp4/mp4.hpp"
 
 // The CLI-wide support layer: option/metadata parsing, path/stdio conventions, frame and WAV I/O,
 // and level reporting shared by nearly every command in main.cpp's kCommands table. Split out of
@@ -54,6 +61,17 @@ void print_meta_usage();
 // same trailing-options surface (parse_options) the way dialnorm2= already
 // shares it despite being layout-1+1-specific - a command that has no use
 // for a field simply never sets it.
+// Which container 'record'/'live' wrap their take in - Options::container's
+// own values. Deliberately the streamable subset of the GUI's Container combo:
+// the elementary stream, Matroska (matroska::Writer) and fragmented MP4/CMAF
+// (mp4::FragmentWriter) are the three shapes something can be written INTO as
+// a session runs.
+enum class RecordContainer : std::uint8_t {
+    kRaw,
+    kMatroska,
+    kFmp4,
+};
+
 struct Options {
     ac3::plan::Metadata p{};
     // Decoder side, for 'decode'.
@@ -89,18 +107,38 @@ struct Options {
     // an unsigned one unless the operator opts in here - see
     // docs/concepts/object-signing.md.
     bool verify_objects = false;
+    // 'eac3-encode' only: run ac3::verify's E-AC-3 encoder/decoder mirror
+    // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
+    // command emits, and refuse the run on the first disagreement. Off by
+    // default like every bare token here, and deliberately so: it decodes
+    // every access unit a second time on top of encoding it, which roughly
+    // doubles the work. What it buys is the one class of defect a round trip
+    // cannot see - a misreading of Annex E that the encoder and the decoder
+    // share - which for ecpl, tpn, fscod2 and 7.1.4 is otherwise unchecked
+    // by anything at all (docs/verification.md).
+    bool verify = false;
     // 'live' only: a second ("slave") capture device index, same numbering
     // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
     // positional already reads. Unset means the classic single-device
     // session, unchanged from before this option existed.
     std::optional<int> capture2 = std::nullopt;
-    // 'record'/'live' only: write straight to Matroska instead of the bare
-    // elementary stream they write by default - the same shape of choice the
-    // GUI's own Container combo offers (EncoderController::containerIndex ==
-    // kContainerMatroska), see write_frames_or_mux. Off by default, matching
-    // every bare-token/off-by-default field here: a plain invocation writes
-    // exactly the .ac3/.ec3 it always has.
-    bool matroska_container = false;
+    // 'record'/'live' only: which container the take is written in, the same
+    // shape of choice the GUI's own Container combo offers
+    // (EncoderController::containerIndex). kRaw - the default, matching every
+    // other field here - writes exactly the .ac3/.ec3 a plain invocation
+    // always has; kMatroska muxes into one .mkv (see write_frames_or_mux);
+    // kFmp4 makes the output path a DIRECTORY of CMAF segments and live
+    // HLS/DASH manifests instead of a file (see Fmp4SessionWriter). Only the
+    // containers with an incremental writer behind them are offered here -
+    // plain MP4 and MPEG-TS are 'ac3cli mp4'/'ac3cli ts' on a finished file.
+    RecordContainer container = RecordContainer::kRaw;
+    // 'record'/'live' with container=fmp4 only: how many of the most recent
+    // media segments the HLS playlist and DASH MPD list - a rolling live
+    // window (mp4::FragmentOptions::playlist_window_segments). 0, the
+    // default, lists every segment, which is what a session whose directory
+    // will be served whole afterwards wants; a real origin deleting segments
+    // behind itself sets its own depth here.
+    std::uint32_t fmp4_window_segments = 0;
     // Off by default, matching every bare token here - keep whatever frames
     // a failed encode already produced, written beside the intended output
     // as <name>.partial.<ext> instead of discarded outright. The same
@@ -132,6 +170,29 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // Which domain JOC estimates and applies its reconstruction matrix in
+    // (AtmosConfig::joc_domain / DecoderConfig::joc_domain). QMF - §7.1's
+    // 64-band complex filterbank, what §6.6.6 describes and what a licensed
+    // decoder runs - is the default; joc-domain=mdct selects the cheaper
+    // 256-bin MDCT approximation this project used before it had a
+    // filterbank.
+    //
+    // Deliberately outside mode= in both directions. The two transform
+    // switches mode= drives are the same answer computed two ways, agreeing
+    // to ~1e-12, so naming the fast one costs nothing; these two domains
+    // are different answers about 5 dB apart, and a speed preference should
+    // not silently pick the worse one. mode=reference has nothing to add
+    // either - the default is already §6.6.6's own domain - so mode= stays
+    // exactly the two transform switches it has always been.
+    ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
+    // The per-frame search over §7.2.2's transmitted bit allocation
+    // parameters, judged on the reconstruction error the decoder will
+    // produce (EncoderConfig::search, ac3/quality/distortion.hpp).
+    // search=distortion minimises that error; search=perceptual weights it
+    // by a tonality/masking model first. Off by default, like the library
+    // config it feeds - it costs encode time, and this project does not turn
+    // a decision knob on without the numbers. AC-3 encodes only.
+    ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
     // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
     // of the human-readable table. Off by default - a bare `ac3cli probe
     // <file>` is meant to be read by a person, and every other command here
@@ -162,6 +223,13 @@ struct Options {
     // Unset (measure-only, no gate) is the default - a plain
     // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
+    // 'qc' only: which soundfield to meter. false (layout=bed, the default)
+    // measures the independent substream's own Table 5.8 bed through
+    // BS.1770 Annex 1's basic algorithm - what this command has always
+    // done. true (layout=rendered) measures the whole assembled program,
+    // every dependent substream's height/wide/rear channels included,
+    // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
+    bool qc_rendered_layout = false;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a
@@ -243,6 +311,52 @@ bool write_frames(std::string_view path, std::span<const std::vector<std::byte>>
 // since ITS track comes from ac3::io::scan(), not a caller-supplied one.
 bool write_frames_or_mux(std::string_view path, bool matroska, const matroska::AudioTrack& track,
                          std::span<const std::vector<std::byte>> frames);
+
+// container=fmp4 for 'record'/'live': streams encoded access units into a
+// DIRECTORY of CMAF media segments plus the HLS playlists and DASH MPD that
+// point at them, through mp4::FragmentWriter, rewriting the manifests each
+// time a segment closes so the directory is a servable live origin while the
+// session is still running (and a closed, VOD-shaped one afterwards).
+//
+// The mp4::AudioTrack cannot be built until the FIRST access unit exists -
+// its dac3/dec3 payload is bitstream syntax, read by ac3::io::scan, the same
+// re-scan 'ac3cli fmp4' and the GUI both do before wrapping frames they just
+// encoded. So open() only creates and checks the directory, and the writer
+// itself is created on the first push(). Nothing here holds more than one
+// fragment's frames, which is the whole reason this exists rather than
+// accumulating a take and calling mp4::fragment() once at the end.
+class Fmp4SessionWriter {
+   public:
+    // Empty on success, a user-facing message otherwise - the same contract
+    // write_frames and friends above use with their stderr prints, returned
+    // instead of printed so a caller can decide when to report it.
+    [[nodiscard]] std::string open(std::string_view directory, std::uint32_t frames_per_fragment,
+                                   std::uint32_t window_segments);
+    [[nodiscard]] std::string push(std::span<const std::byte> frame);
+    // Flushes the trailing partial fragment, then rewrites the playlists and
+    // MPD in their finished (VOD/static) form.
+    [[nodiscard]] std::string close();
+
+    [[nodiscard]] std::size_t segments() const { return segments_; }
+
+   private:
+    [[nodiscard]] std::string start(std::span<const std::byte> first_frame);
+    [[nodiscard]] std::string write_manifests(const mp4::FragmentWriter& writer, bool finished);
+
+    std::filesystem::path dir_;
+    std::uint32_t frames_per_fragment_ = 48;
+    std::uint32_t window_segments_ = 0;
+    bool open_ = false;
+    std::size_t segments_ = 0;
+    // ISO 8601 UTC, stamped once when the first segment's writer is created -
+    // MpdOptions::availability_start_time, which anchors every segment's
+    // availability to wall-clock time for a dynamic MPD.
+    std::string availability_start_;
+    mp4::AudioTrack track_;
+    mp4::HlsOptions hls_;
+    mp4::DashOptions dash_;
+    std::optional<mp4::FragmentWriter> writer_;
+};
 
 // Where a failed encode's frames land when keep-partial is given: ".partial"
 // spliced in before the suffix, so "out.ec3" keeps its half-finished take as

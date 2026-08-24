@@ -21,10 +21,18 @@
 
 namespace {
 
+// Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than
+// std::filesystem::temp_directory_path() for the reason tests/cli/test_cli.cpp's
+// own scratch_dir explains; the leaf is this file's own. The directory is created
+// in the constructor rather than by a scratch_dir() helper of the shape the other
+// files use because this file reaches its scratch space only through this RAII
+// type, which every test here already goes through.
 struct TempWav {
     std::string path;
     explicit TempWav(const char* name) {
-        path = (std::filesystem::temp_directory_path() / name).string();
+        const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / "wav_stream_reader";
+        std::filesystem::create_directories(dir);
+        path = (dir / name).string();
     }
     ~TempWav() { std::remove(path.c_str()); }
 };
@@ -148,6 +156,11 @@ TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
         const auto result = reader.open(bogus.path);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+
+        // A rejected open() must not leave the OS file handle held: on
+        // Windows a lingering handle turns this delete into a sharing
+        // violation instead of a clean removal.
+        CHECK(std::remove(bogus.path.c_str()) == 0);
     }
 
     SECTION("reading while closed") {

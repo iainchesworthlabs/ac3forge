@@ -18,6 +18,7 @@
 #include "ac3/export.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
 
 // The in-repo AC-3 / E-AC-3 decoder — the validation pyramid's strongest
@@ -89,13 +90,16 @@ struct DecoderConfig {
     // because it exists to check what the encoder wrote, and a decoder that
     // silently rescales its output cannot be the reference for that.
     double drc_scale = 0.0;
-    // §7.9.4 step 3's complex transform evaluated via the same radix-2 FFT
-    // core the encoder's fast MDCT fold uses, instead of the pseudocode's
-    // direct O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's
-    // inverse doc comment. Applies to the PCM reconstruction paths of both
-    // decoders; the encoder-internal inverse uses (spx/ecpl copy-source
-    // reconstruction) and JOC object reconstruction deliberately stay on
-    // the direct form, so nothing about ENCODED output ever depends on this
+    // §7.9.4 step 3's complex transform evaluated via the same FFT core the
+    // encoder's fast MDCT fold uses, instead of the pseudocode's direct
+    // O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's
+    // inverse doc comment. Applies to every inverse transform a DECODE
+    // runs: both decoders' PCM reconstruction, the three per-block
+    // inverses inside eac3::ecpl_channel_spectrum's enhanced-coupling
+    // reconstruction, and joc::reconstruct's per-object synthesis. It
+    // never reaches an encoder: the encoder-internal inverse uses
+    // (spx/ecpl copy-source reconstruction) read eac3::FrameConfig's own
+    // fast_mdct instead, so nothing about ENCODED output depends on this
     // flag. Default ON since the owner accepted the quality evidence (the
     // same gate EncoderConfig::fast_mdct passed through): worst
     // transform-level relative error 7.8e-14 against the direct form, 180 s
@@ -111,6 +115,23 @@ struct DecoderConfig {
     // dynrng for any syncframe that carries no compr, so this composes with
     // drc_scale rather than replacing it.
     bool heavy_compression = false;
+    // Which domain JOC object reconstruction applies §6.6.6's matrix in.
+    // joc::Domain::kQmf is what the clause describes and what a licensed
+    // decoder runs: §7.1's 64-band complex QMF, ac3::dsp::QmfAnalysis.
+    // joc::Domain::kMdctBand is the cheaper approximation over 256 MDCT
+    // bins that predates this tree having a filterbank at all - correct
+    // only for a stream whose matrix was estimated the same way, which in
+    // practice means one this project's own encoder produced with
+    // AtmosConfig::joc_domain to match. Note the two domains do not have
+    // the same latency: object audio lags the bed by
+    // joc::reconstruction_delay(domain), 256 samples against 576.
+    //
+    // Default kQmf: it is both what the clause says and, measured, the
+    // cheaper of the two here - 0.70 ms/frame against 0.88 for four
+    // objects, because the MDCT path's inverse is deliberately pinned to
+    // §7.9.4's direct form while the filterbank has only the one
+    // evaluation.
+    joc::Domain joc_domain = joc::Domain::kQmf;
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // The decoder's half of EncoderConfig::trace: when set, decode_frame()
     // records the same per-block, per-stream state it derived from the wire,
@@ -118,8 +139,16 @@ struct DecoderConfig {
     // the encoder's - one branch per block. Filled INCREMENTALLY, so a frame
     // the decoder ends up refusing still leaves behind everything it read
     // before the refusal, which is the case the comparison is most useful in.
-    // AC-3 only (FrameDecoder); Eac3Decoder does not write one.
+    // AC-3 only (FrameDecoder) - see eac3_trace below for Eac3Decoder's own.
     verify::FrameTrace* trace = nullptr;
+    // The Annex E counterpart (ac3/verify/eac3_mirror.hpp), and a whole
+    // ACCESS UNIT rather than one frame: decode_substream appends one
+    // substream's view per call, starting a fresh unit at each independent
+    // substream, so a caller stepping through syncframes by hand and one
+    // calling decode_access_unit both end up with the same accumulated
+    // trace. Filled incrementally and null by default, exactly as `trace`
+    // above.
+    verify::Eac3AccessUnitTrace* eac3_trace = nullptr;
     // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
     // Which coding tools each block used and what exponent strategy each
     // stream carried, recorded on the way past. Null by default, at the same
@@ -314,11 +343,15 @@ struct DecodedAccessUnit {
     // rather than the fixed array's unwritten tail - see
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
-    // The independent substream's own object_metadata/object_audio - see
-    // DecodedSubstream's own comments on both. Object audio only ever rides
-    // in the bed (this project's own AtmosEncoder never sends a dependent
-    // substream at all), so there is nothing to union across substreams the
-    // way `layout` does below.
+    // object_metadata/object_audio from whichever substream of the access
+    // unit carries them, first one wins - see DecodedSubstream's own comments
+    // on both. TS 103 420 §8.3.1 leaves the choice of substream to the
+    // encoder; this project's own AtmosEncoder always uses the bed (it never
+    // sends a dependent substream at all), but §E2.3.1.2's legacy-core
+    // delivery cannot - an AC-3 core has nowhere to put an EMDF container -
+    // so there the objects arrive in a dependent. Not unioned the way
+    // `layout` is below: one EMDF container describes the whole programme, so
+    // the question is which substream carries it, not how to merge several.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
     int substream_count = 0;
@@ -335,6 +368,15 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // so the substreams of successive access units stay independent of each
     // other; a caller stepping through syncframes by hand gets the same audio
     // as one calling decode_access_unit.
+    //
+    // An AC-3 syncframe (bsid <= 8) is accepted here too, and comes back as
+    // substream (kIndependent, 0) with numblkscod 3 - §E2.3.1.2 assigns an
+    // AC-3 bit stream present in an E-AC-3 bit stream exactly that identity,
+    // and a legacy-core delivery is built on it: an AC-3 frame carrying the
+    // 5.1 bed with Annex E dependents extending it to 7.1 or beyond. See
+    // core_. Note this means Eac3Decoder accepts a plain AC-3 stream as well,
+    // one access unit per syncframe; FrameDecoder remains the direct way to
+    // read one, and reports AC-3's own DecodedFrame rather than a substream.
     //
     // Returns std::nullopt exactly when a frame's PCM is being held back
     // pending transient pre-noise processing (§3.7): a stream's very first
@@ -408,7 +450,28 @@ class AC3FORGE_EXPORT Eac3Decoder {
     decode_access_unit_core(std::span<const std::byte> unit,
                             std::span<const std::span<float>> external);
 
+    // §E2.3.1.2's legacy core, presented as substream (kIndependent, 0) - see
+    // core_ below and decode_substream's own doc comment.
+    [[nodiscard]] std::expected<DecodedSubstream, DecodeError> decode_ac3_core(
+        std::span<const std::byte> frame);
+
     DecoderConfig config_{};
+
+    // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
+    // then the AC-3 bit stream shall be processed as an independent substream
+    // assigned substream ID 0." Such a frame is AC-3 syntax throughout, so an
+    // AC-3 decoder reads it and decode_ac3_core() presents the result as
+    // substream (kIndependent, 0) for §E3.8.2 to combine exactly as it
+    // combines an Annex E bed.
+    //
+    // One instance rather than a per-identity slot: a bitstream has exactly
+    // one independent substream 0, so there is only ever one core. Holding it
+    // here across calls is what gives the core's overlap-add and dither the
+    // same continuity delay_ gives every Annex E substream. Lazily allocated
+    // for the same reason delay_'s slots are - a FrameDecoder carries 12 KB
+    // of overlap-add state, and the streams that never contain a legacy core
+    // (every stream this project's own encoder produces) should not pay it.
+    std::unique_ptr<FrameDecoder> core_;
 
     // Per-substream-identity state, indexed by strmtyp * 8 + substreamid: a
     // dependent's id lives in its own numbering space (§E2.3.1.2), so id
@@ -547,5 +610,27 @@ split_access_units(std::span<const std::byte> stream);
 // is too short to hold a header.
 [[nodiscard]] AC3FORGE_EXPORT std::expected<int, DecodeError> stream_bsid(
     std::span<const std::byte> frame);
+
+// True for A/52 §E2.3.1.2's legacy-core delivery: an AC-3 syncframe standing
+// in as independent substream 0, with an Annex E DEPENDENT substream
+// immediately behind it extending the layout per §E3.8.2 - a 5.1 AC-3 bed
+// plus, typically, the two rear surrounds that make it 7.1.
+//
+// The point of it is that stream_bsid() alone cannot tell such a stream from
+// plain AC-3: both open with an AC-3 syncframe, and a caller that dispatches
+// on that one value sends this one down the frame-at-a-time AC-3 path, which
+// reaches the dependent and refuses it as "valid AC-3 this decoder does not
+// implement". These streams need split_access_units + Eac3Decoder, which
+// handle the core natively (see Eac3Decoder::decode_substream).
+//
+// Reads the first two syncframes and no further. That is all the arrangement
+// needs to be recognised, and it keeps the check O(1) on a caller that is
+// only trying to pick a code path; a stream that contradicts itself later is
+// the decode's problem to report, not this predicate's to pre-empt. False
+// for anything it cannot read, including a truncated or desynchronised
+// stream - "not this arrangement" is the safe answer, and every caller has a
+// real decode behind it to produce the actual error.
+[[nodiscard]] AC3FORGE_EXPORT bool has_eac3_extension_substreams(
+    std::span<const std::byte> stream);
 
 }  // namespace ac3

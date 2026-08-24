@@ -886,6 +886,11 @@ std::string_view describe(PlanError error) {
                    "(AC-3 codes nothing wider than 3/2 + LFE)";
         case PlanError::kBitrateNotLegal:
             return "AC-3 takes only the 19 nominal rates of Table 5.18";
+        case PlanError::kBitrateNotFramable:
+            return "E-AC-3 signals the frame size in frmsiz, which is 11 bits, so a syncframe "
+                   "holds 1 to 2048 words - at 48 kHz that is 1 to 1024 kbit/s, less at a lower "
+                   "sample rate, and a layout with dependent substreams gives each of them half "
+                   "the rate";
         case PlanError::kNoSourceLayout:
             return "no standard speaker layout has that many channels";
         case PlanError::kInvalidChannels:
@@ -911,8 +916,9 @@ std::optional<PlanError> validate(const Plan& plan) {
     } else if (!carries(plan.codec, plan.layout)) {
         return PlanError::kLayoutNeedsEac3;
     }
-    // E-AC-3 signals frmsiz directly, so any rate is expressible there; AC-3
-    // indexes Table 5.18 and cannot say anything else.
+    // AC-3 indexes Table 5.18 and cannot say anything else. E-AC-3 signals
+    // frmsiz directly, so any rate its 11 bits can hold is expressible there -
+    // which is a range of its own, checked at the end of this function.
     if (plan.codec == Codec::kAc3 && !is_valid_bitrate(plan.bitrate_kbps)) {
         return PlanError::kBitrateNotLegal;
     }
@@ -922,6 +928,41 @@ std::optional<PlanError> validate(const Plan& plan) {
     }
     if (plan.vbr && plan.codec == Codec::kAc3) {
         return PlanError::kVbrNeedsEac3;
+    }
+    // The E-AC-3 counterpart of the Table 5.18 check above. frmsiz carries a
+    // free word count rather than a table index, but it is only 11 bits
+    // (§E2.3.1.3), so a syncframe still has a range: 1 to kMaxFrameWords
+    // words, and a rate outside it cannot be signalled at all.
+    //
+    // The rate that has to fit is a SUBSTREAM's, not the plan's - eac3_config()
+    // gives the independent substream the whole rate and each dependent half
+    // of it, so both ends are reachable from one plan (1 kbit/s stereo is
+    // fine; 1 kbit/s 7.1.4 leaves its dependents with a frame of no words at
+    // all). Asking eac3_config() for the configs it will really build is what
+    // keeps this from drifting away from that split.
+    //
+    // Without this the verdict exists only inside the frame encoder, which
+    // reaches it too late to be reported: a rejected config leaves
+    // AccessUnitEncoder with no substreams and therefore no channels, and a
+    // front end that sized its buffers from the plan disagrees with it before
+    // the first frame is encoded.
+    if (plan.codec == Codec::kEac3) {
+        // Under VBR the content decides the word count and bitrate_kbps is
+        // only a tool heuristic, so there is nothing fixed to check - the same
+        // exemption eac3_frame.cpp's own validate() makes, per substream
+        // because halve_vbr_bounds() gives dependents their own VBR config.
+        const auto framable = [](const eac3::FrameConfig& sub) {
+            if (sub.vbr) {
+                return true;
+            }
+            const auto words = eac3::frame_words(sub.sample_rate, sub.bitrate_kbps);
+            return words >= 1 && words <= eac3::kMaxFrameWords;
+        };
+        const auto config = eac3_config(plan);
+        if (!framable(config.independent) ||
+            !std::ranges::all_of(config.dependents, framable)) {
+            return PlanError::kBitrateNotFramable;
+        }
     }
     return std::nullopt;
 }
@@ -958,7 +999,8 @@ EncoderConfig ac3_config(const Plan& plan) {
                           ? plan.meta.heavy2
                           : std::optional<meta::HeavyConfig>(std::nullopt),
             .cmixlev = plan.meta.cmixlev,
-            .surmixlev = plan.meta.surmixlev};
+            .surmixlev = plan.meta.surmixlev,
+            .search = plan.tools.search};
 }
 
 namespace {

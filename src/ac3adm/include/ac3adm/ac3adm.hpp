@@ -45,7 +45,13 @@ namespace ac3adm {
 
 enum class AdmError : std::uint8_t {
     kCannotOpen,        // path could not be opened for reading
-    kNotRiff,            // not a RIFF/RF64/BW64 WAVE file
+    kNotRiff,            // not a well-formed RIFF/RF64/BW64 WAVE file. Two cases: the file is
+                         // not RIFF at all (reserved, like kMissingFmt/kMissingData below -
+                         // libbw64 rejects that at open time through the same untyped exception
+                         // family, so it surfaces as kCannotOpen instead), OR its chunk table is
+                         // internally inconsistent - a chunk other than <data> declaring more
+                         // bytes than the file contains, which adm.cpp's chunk_sizes_fit()
+                         // refuses before libbw64 can allocate from that number
     kMissingFmt,         // no <fmt > chunk found
     kMissingData,        // no <data> chunk found
     kUnsupportedFormat,  // <fmt > names a format libbw64 cannot decode (e.g. IEEE-float/formatTag

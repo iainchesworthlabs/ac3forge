@@ -22,6 +22,7 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/encoder/silent_frame.hpp"
@@ -29,6 +30,7 @@
 
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 #include "dither.hpp"
 #include "snr_search.hpp"
 
@@ -370,6 +372,11 @@ struct SpxPlan {
 struct Payload {
     int csnroffst = 0;
     int fsnroffst = 0;
+    // The coded bandwidth actually transmitted this frame, resolved from
+    // FrameConfig::chbwcod or - when that asks for auto - from the frame's
+    // own spectrum (see step 2). The block writer reads it from here rather
+    // than from the config, which no longer holds the answer.
+    int chbwcod = 60;
     bool ahte = false;  // some stream uses the adaptive hybrid transform
     // §3.7: sized to nfchans wherever set at all (transproce implies every
     // vector below is). This encoder's own heuristic - see where these are
@@ -412,6 +419,7 @@ struct Payload {
     void reset_for_frame() {
         csnroffst = 0;
         fsnroffst = 0;
+        chbwcod = 60;
         ahte = false;
         transproce = false;
         chintransproc.clear();
@@ -434,6 +442,22 @@ struct Payload {
     }
 };
 
+
+// Which band of `bands` a coefficient falls in, or the last band when it falls
+// past the layout entirely. Used only by the self-check's trace, to expand a
+// per-band coupling coordinate back out over the sub-bands it covers the way
+// a decoder does - derived from the BandLayout group_bands() already produced
+// rather than by re-walking cplbndstrc, so it shares no code with the
+// decoder's own expansion and a disagreement between the two is visible.
+[[nodiscard]] int band_of_bin(const BandLayout& bands, int bin) {
+    for (int bnd = 0; bnd < bands.count; ++bnd) {
+        const auto at = static_cast<std::size_t>(bnd);
+        if (bin >= bands.start[at] && bin < bands.start[at] + bands.size[at]) {
+            return bnd;
+        }
+    }
+    return bands.count > 0 ? bands.count - 1 : 0;
+}
 
 // §E3.3.2: the rematrixing bands cannot reach above whichever tool takes over
 // the spectrum first, so both their count and where the last one stops depend
@@ -1056,8 +1080,13 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
 // Everything from the sync word to the end of the last block: the whole
 // frame bar padding and the tail. Silence and real audio go through this one
 // function, so the two can never drift apart on field placement.
+// `trace` is non-null only on the REAL write of a frame, never on the
+// size probes: those run against a payload the rate search has not finished
+// settling, and a trace taken from one would describe a frame that never
+// went on the wire. See ac3/verify/eac3_mirror.hpp.
 void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
-                const Payload& payload, std::span<const std::byte> metadata = {}) {
+                const Payload& payload, std::span<const std::byte> metadata = {},
+                verify::Eac3SubstreamTrace* trace = nullptr) {
     const int nfchans = fullbw_channel_count(config.acmod);
     const bool dependent = config.strmtyp == StreamType::kDependent;
     const auto& cpl = payload.cpl;
@@ -1282,9 +1311,133 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     // decoder reads as spectral extension being switched on.
     w.put(0, 1);  // blkstrtinfoe
 
+    // The self-check's encoder-side view of everything audfrm hoisted out of
+    // the blocks (ac3/verify/eac3_mirror.hpp). Recorded here rather than at
+    // the top: `payload` is settled by now on the real write, and this is
+    // the point past which every remaining field is a block's.
+    if (trace != nullptr) {
+        trace->reset();
+        trace->strmtyp = config.strmtyp;
+        trace->substreamid = config.substreamid;
+        trace->blocks_coded = kBlocksPerFrame;
+        trace->fbw_channels = nfchans;
+        trace->coded_channels = nfchans + (config.lfe ? 1 : 0);
+        trace->transproce = payload.transproce;
+        if (payload.transproce) {
+            trace->chintransproc.assign(payload.chintransproc.begin(),
+                                        payload.chintransproc.end());
+            trace->transprocloc = payload.transprocloc;
+            trace->transproclen = payload.transproclen;
+        }
+    }
+
+    // The self-check's encoder-side per-block view (ac3/verify/eac3_mirror.hpp).
+    // Recorded from `w`, the real writer, so bit_offset is the offset a
+    // decoder has to arrive at; and from `payload`, which the rate search has
+    // finished settling by the time this emit runs for real. Nothing here
+    // steers a decision - it reads state the encoder already holds.
+    const auto record_block = [&](int blk, std::size_t bit_offset) {
+        auto& block = trace->blocks[static_cast<std::size_t>(blk)];
+        block.entered = true;
+        block.bit_offset = bit_offset;
+        // Per block, from a frame-level flag, because this encoder couples
+        // either every block or none (see CouplingPlan) - which is also what
+        // leaves ncplregs at 1. A per-block coupling decision would have to
+        // be read from wherever it is made instead, or this trace would
+        // describe a frame the emitter below does not write.
+        block.cplinu = cpl.in_use;
+        block.ecplinu = cpl.in_use && cpl.enhanced;
+        block.cplstrtmant = cpl.in_use ? cpl.strtmant : 0;
+        block.cplendmant = cpl.in_use ? cpl.endmant : 0;
+        block.spxinu = spx.in_use;
+        block.spx_startmant = spx.in_use ? spx.startmant : 0;
+        block.spx_endmant = spx.in_use ? spx.endmant : 0;
+        block.spx_copystart = spx.in_use ? spx.copystart : 0;
+
+        block.streams.resize(payload.chans.size());
+        for (std::size_t s = 0; s < payload.chans.size(); ++s) {
+            const auto& plan = payload.chans[s];
+            auto& stream = block.streams[s];
+            // Table E2.10 code 0 gives the whole frame one exponent set per
+            // stream, so every block copies the same arrays out - which is
+            // the point: a per-block trace stays right if that ever stops
+            // being true.
+            stream.exponents = plan.decoded;
+            stream.bap = plan.bap;
+            stream.delta = plan.delta;
+            stream.start = plan.start;
+            stream.endmant = plan.endmant;
+            stream.aht = plan.aht;
+            // §E3.4's chgaqmod and its gain words are transmitted once per
+            // frame, in block 0's mantissa element - the only block a decoder
+            // can have read them in, so the only one either side records them
+            // in.
+            stream.gaqmod = 0;
+            stream.gain.clear();
+            if (plan.aht && blk == 0) {
+                stream.gaqmod = plan.gaqmod;
+                stream.gain = plan.aht_gain;
+            }
+        }
+
+        block.channels.resize(static_cast<std::size_t>(nfchans));
+        for (int ch = 0; ch < nfchans; ++ch) {
+            const auto at = static_cast<std::size_t>(blk) * static_cast<std::size_t>(nfchans) +
+                            static_cast<std::size_t>(ch);
+            auto& channel = block.channels[static_cast<std::size_t>(ch)];
+            channel.blksw = payload.chans[static_cast<std::size_t>(ch)]
+                                .blksw[static_cast<std::size_t>(blk)];
+            // chincpl/chinspx are never partial here: this encoder puts every
+            // full-bandwidth channel in whichever tool it turns on at all.
+            channel.in_coupling = cpl.in_use;
+            channel.cplco.clear();
+            channel.ecplamp.clear();
+            channel.ecplangle.clear();
+            channel.ecplchaos.clear();
+            channel.ecpltrans = false;  // no per-block transient tuning yet
+            if (cpl.in_use && !cpl.enhanced) {
+                const auto count = static_cast<std::size_t>(cpl.bands.count);
+                channel.cplco.resize(static_cast<std::size_t>(cpl.nsubnd));
+                for (int sbnd = 0; sbnd < cpl.nsubnd; ++sbnd) {
+                    const int bin = cpl.strtmant + sbnd * coupling::kBinsPerSubBand;
+                    const auto bnd = static_cast<std::size_t>(band_of_bin(cpl.bands, bin));
+                    channel.cplco[static_cast<std::size_t>(sbnd)] =
+                        coupling::decode_coordinate(cpl.coords[at * count + bnd],
+                                                    cpl.master[at]);
+                }
+            } else if (cpl.in_use) {
+                const auto nbnd = static_cast<std::size_t>(std::max(cpl.ecpl_bands.count, 1));
+                const auto base = at * nbnd;
+                for (int bnd = 0; bnd < cpl.ecpl_bands.count; ++bnd) {
+                    const auto i = base + static_cast<std::size_t>(bnd);
+                    channel.ecplamp.push_back(cpl.ecplamp[i]);
+                    channel.ecplangle.push_back(cpl.ecplangle[i]);
+                    channel.ecplchaos.push_back(cpl.ecplchaos[i]);
+                }
+            }
+            channel.in_spx = spx.in_use;
+            channel.spxblnd = 0;
+            channel.spxco.clear();
+            if (spx.in_use) {
+                const auto count = static_cast<std::size_t>(spx.bands.count);
+                channel.spxblnd = spx.blend[at];
+                channel.spxco.resize(count);
+                for (std::size_t bnd = 0; bnd < count; ++bnd) {
+                    channel.spxco[bnd] = coupling::decode_coordinate(
+                        spx.coords[at * count + bnd], spx.master[at],
+                        coupling::kSpxMantissaBits);
+                }
+            }
+        }
+        block.allocated = true;
+    };
+
     // --- audblk x6 (Table E1.4) ---
     for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
         const bool first = blk == 0;
+        if (trace != nullptr) {
+            record_block(blk, w.bit_count());
+        }
         if (blkswe) {
             for (int ch = 0; ch < nfchans; ++ch) {
                 w.put(payload.chans[static_cast<std::size_t>(ch)]
@@ -1541,7 +1694,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         if (first) {
             if (!cpl.in_use && !spx.in_use) {
                 for (int ch = 0; ch < nfchans; ++ch) {
-                    w.put(static_cast<std::uint32_t>(config.chbwcod), 6);
+                    w.put(static_cast<std::uint32_t>(payload.chbwcod), 6);
                 }
             }
             // Exponents: the coupling channel first, then fbw, then LFE.
@@ -1614,6 +1767,13 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             for (int ch = 0; ch < nfchans && !any_delta; ++ch) {
                 any_delta = payload.chans[static_cast<std::size_t>(ch)].delta.deltnseg > 0;
             }
+            if (trace != nullptr) {
+                // Recorded here rather than in record_block above, since only
+                // this branch knows what actually went on the wire; a frame
+                // with dbaflde clear sends no deltbaie at all and both sides
+                // leave it false.
+                trace->blocks[static_cast<std::size_t>(blk)].deltbaie = any_delta;
+            }
             w.put(any_delta ? 1 : 0, 1);  // deltbaie
             if (any_delta) {
                 // §5.4.3.47-57's syntax table sends every stream's 2-bit
@@ -1664,6 +1824,8 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
 std::expected<std::vector<std::byte>, FrameError> finish_frame(
     const FrameConfig& config, std::uint32_t words, const Payload& payload,
     std::span<const std::byte> aux) {
+    // config.trace, if any, goes only to the second (real) emit below - see
+    // emit_frame's own note on why the probe must not write one.
     AC3_ZONE_SCOPED_N("finish_frame_pack_mux");
     const std::uint32_t total_bytes = words * 2;
     const std::uint32_t total_bits = total_bytes * 8;
@@ -1682,7 +1844,7 @@ std::expected<std::vector<std::byte>, FrameError> finish_frame(
     const std::uint32_t spare = total_bits - content_bits - kTailBits;
 
     BitWriter w;
-    emit_frame(w, config, words, payload, aux);
+    emit_frame(w, config, words, payload, aux, config.trace);
     for (std::uint32_t i = 0; i < spare; ++i) {
         w.put(0, 1);  // auxbits: padding, and nothing else
     }
@@ -1835,7 +1997,13 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     }
 
     const int nfchans = fullbw_channel_count(config.acmod);
-    const int endmant = ((config.chbwcod + 12) * 3) + 37;
+    // Silence has no spectrum for the content-adaptive edge to read, so the
+    // auto value resolves to the full band here - which is what this path
+    // has always emitted, and costs nothing: every exponent is kMaxExponent
+    // and §7.2.2.1.1's all-zero allocation means no mantissa exists at any
+    // bandwidth.
+    const int silent_chbwcod = config.chbwcod < 0 ? 60 : config.chbwcod;
+    const int endmant = encoder::endmant_for_chbwcod(silent_chbwcod);
 
     // Exponents: an all-quiet ramp, so the decoder's own allocation returns
     // zero everywhere. Both offsets stay at zero, which §7.2.2.1.1 defines as
@@ -1844,6 +2012,7 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     // Coupling stays off: a silent frame has nothing to share, and switching
     // it on would only add coordinates describing zero.
     Payload payload;
+    payload.chbwcod = silent_chbwcod;
     const std::vector<std::uint8_t> quiet(static_cast<std::size_t>(endmant), kMaxExponent);
     for (int ch = 0; ch < nfchans; ++ch) {
         ChannelPlan plan;
@@ -1982,6 +2151,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::span<const std::span<const float>> channels, const FrameMetadata& metadata,
     AuxPayload aux) {
     AC3_ZONE_SCOPED_N("FrameEncoder::encode_frame");
+    // Before the first early return below, so a caller that keeps one trace
+    // across frames never sees a previous frame's blocks left behind by an
+    // encode that failed before it reached emit_frame.
+    if (config_.trace != nullptr) {
+        config_.trace->reset();
+    }
     if (const auto ok = validate(config_); !ok) {
         return std::unexpected(ok.error());
     }
@@ -2342,10 +2517,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // holds when `in_use` does not, whichever branch above cleared it.
     cpl.enhanced = cpl.enhanced && cpl.in_use;
 
-    // §E3.3.3: whichever tool takes over first sets the coded bandwidth.
-    const int fbw_endmant = cpl.in_use    ? cpl.strtmant
-                            : spx.in_use  ? spx.startmant
-                                          : ((config_.chbwcod + 12) * 3) + 37;
+    // §E3.3.3's coded bandwidth - see its real assignment below, after the
+    // transient pre-noise block, for what decides it and why. Declared as a
+    // plain mutable int (not const) because the stream_start/stream_end
+    // lambdas just below need to close over it now, and coupling/spectral
+    // extension are the only two of its three cases settled at this point.
+    int fbw_endmant = 0;
     // Streams: the fbw channels, the LFE, then the coupling channel as one
     // more stream carrying the shared high band.
     const int cpl_stream = cpl.in_use ? nchans : -1;
@@ -2391,6 +2568,56 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
     }
+
+    // Coded bandwidth (§E3.3.3), for a channel not otherwise decided by
+    // coupling or spectral extension - both already chosen above, from the
+    // same MDCT coefficients this reads.
+    //
+    // This encoder used to transmit chbwcod 60 - the whole 23.7 kHz - at
+    // every rate, on the reasoning that E-AC-3's own tools take the high
+    // band over whenever it cannot be afforded. They do, but only below the
+    // rates at which `auto` turns them on: at 96 kbit/s per channel neither
+    // coupling nor spectral extension runs (their ceilings are 40 and 56),
+    // and the frame spread its ~512 bits per channel per block across all
+    // 253 mantissas. Narrowing to where the content actually is buys that
+    // back - measured on real programme material, E-AC-3 stereo at
+    // 192 kbit/s with the AHT-only tool set `auto` chose before EQ9's
+    // content-based selection landed:
+    //
+    //             chbwcod 60      chbwcod 30
+    //   samba     27.66 dB        29.18 dB     MOS 4.705 -> 4.713
+    //   bells     32.42 dB        34.29 dB     MOS 4.000 -> 4.038
+    //
+    // and the high-band energy ratio improves with it rather than against
+    // it (samba -0.40 -> -0.30 dB above 10 kHz), because the bins that
+    // survive are coded well enough to reach the decoder at all. Computed
+    // unconditionally, whether or not this frame ends up coupled or
+    // extended: it costs one pass over coefficients the transform already
+    // produced, and chbwcod_state_ has to keep tracking the content even on
+    // a frame where it is not transmitted, so the narrow-step limit has
+    // something real to glide from on the frame it is next needed.
+    int chbwcod = config_.chbwcod;
+    if (chbwcod < 0) {
+        std::array<std::uint8_t, 253> peak_exponents{};
+        peak_exponents.fill(static_cast<std::uint8_t>(kMaxExponent));
+        for (int ch = 0; ch < nfchans; ++ch) {
+            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                encoder::accumulate_peak_exponents(coeffs_at(ch, blk), peak_exponents);
+            }
+        }
+        chbwcod = encoder::choose_chbwcod(tool_reference_kbps, nfchans, peak_exponents,
+                                          config_.sample_rate, chbwcod_state_);
+    }
+    chbwcod_state_ = chbwcod;
+    payload.chbwcod = chbwcod;
+
+    // §E3.3.3: whichever tool takes over first sets the coded bandwidth.
+    // Assigns the forward-declared fbw_endmant above (see its own comment) -
+    // the stream_start/stream_end lambdas already close over it by reference,
+    // so this is the write that gives them a real value.
+    fbw_endmant = cpl.in_use    ? cpl.strtmant
+                 : spx.in_use   ? spx.startmant
+                                : encoder::endmant_for_chbwcod(chbwcod);
 
     // --- 3. Coupling: the shared channel and its coordinates ---------------
     const auto nbnd = static_cast<std::size_t>(std::max(cpl.bands.count, 1));
@@ -2548,7 +2775,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
                 auto& zr = ecpl_zr_scratch_;
                 auto& zi = ecpl_zi_scratch_;
-                ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                ecpl_channel_spectrum(prev, curr, next, zr, zi, config_.fast_mdct);
                 auto& baseline_a = ecpl_baseline_a_scratch_;
                 auto& baseline_b = ecpl_baseline_b_scratch_;
                 ecpl_channel_coefficients(zr, zi, unity_amp, zero_angle, cpl.strtmant,
@@ -3450,7 +3677,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     const auto& next = neighbor(blk + 1, ecpl_next_scratch_);
                     auto& zr = ecpl_zr_scratch_;
                     auto& zi = ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi, config_.fast_mdct);
 
                     const int bins = cpl.endmant - cpl.strtmant;
                     std::vector<double> amp_bin(static_cast<std::size_t>(bins));

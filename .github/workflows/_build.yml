@@ -56,6 +56,14 @@ on:
         description: "github.ref_name at the call site, for the same reason as persist_quality_trend above. Empty when persist_quality_trend is false."
         type: string
         default: ""
+      publish_conformance_vectors:
+        description: >-
+          Run the conformance-vector generator's determinism check and upload the bundle as an
+          artifact for release.yml to attach (roadmap VX20, docs/conformance-vectors.md). The
+          generator itself runs on the linux-gcc leg either way - see that step's own comment;
+          this input only adds the second, verifying pass and the upload. Set by release.yml.
+        type: boolean
+        default: false
     secrets:
       ATMOS_SIGNING_KEY:
         description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the Shield app signs Atmos objects at runtime - on any build, debug or release. Unset -> no asset is written and the app streams the safe unsigned bed51. A signed APK contains this key and must never be distributed."
@@ -255,6 +263,13 @@ jobs:
           - name: "Windows MSVC"
             runner: ${{ needs.check-runners.outputs.windows_runner_1 }}
             preset: windows-msvc
+            # Declared once, here, so `matrix.experimental` in continue-on-error
+            # above resolves against a property the matrix actually defines -
+            # without it every leg silently reads null and actionlint reports the
+            # reference as undefined. Every other leg is non-experimental by
+            # omission (the `|| false` fallback); a leg that IS experimental sets
+            # this to true and continue-on-error keeps it out of CI Status.
+            experimental: false
             # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
             # channel. Pinned by channel, not exact version: the runner image
             # ships whatever 18.x is current, and the assert step below fails
@@ -290,6 +305,7 @@ jobs:
             release_package: true
             alsa_fallback: true
             gold_reference: true
+            conformance_vectors: true
 
           - name: "Linux LLVM (clang)"
             runner: ${{ needs.check-runners.outputs.linux_runner_2 }}
@@ -344,6 +360,35 @@ jobs:
             preset: linux-llvm-asan-ubsan
             llvm: true
             sanitizer: true
+
+          # ThreadSanitizer (roadmap VX16). A DIFFERENT question from the
+          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
+          # whether one thread's memory and arithmetic are sound, TSan asks
+          # whether two threads agree on who owns what - and no other gate in
+          # this repository can see a data race at all. src/audio is a
+          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
+          # shared between a real-time callback thread and the encoder
+          # thread, which is exactly the shape where a missing
+          # acquire/release is both easy to write and invisible until it
+          # corrupts audio on someone else's machine.
+          #
+          # Its test preset runs `-L concurrency` rather than the whole
+          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
+          # shadow memory makes every test several times slower, and the
+          # other ~600 cases are single-threaded codec maths where it has
+          # nothing to report. That keeps this leg to about the cost of a
+          # build rather than a second full matrix entry - the ctest run
+          # itself was 7 seconds over 36 tests when this landed.
+          #
+          # No `sanitizer: true`: that flag means the codec-matrix step, and
+          # driving every layout/tool combination through ac3cli is an
+          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
+          # same reasoning as the ASan+UBSan leg's own comment above.
+          - name: "Linux LLVM TSan"
+            runner: '["ubuntu-latest"]'
+            container: ubuntu:26.04
+            preset: linux-llvm-tsan
+            llvm: true
 
           # No Mac is available to the project locally, so CI remains the only
           # place this is exercised - proven green (build+test+gold-reference
@@ -699,6 +744,30 @@ jobs:
           fi
           bash tools/checks/verify_gold_reference.sh "$bin"
 
+      # The same gate a second time, on the spec's own direct transform
+      # evaluations instead of the fast paths (roadmap VX10). 0.9.0 flipped
+      # both transform defaults, and from then until this step existed every
+      # CI gate that touched a real stream ran in performance mode: the
+      # normative §8.2.3.2 forward MDCT and §7.9.4 step-3 inverse - the oracle
+      # every fast path is validated against - were covered only by
+      # transform-level unit tests. A change to either fast path could take
+      # its own reference with it and no end-to-end gate would notice.
+      #
+      # One leg, not all seven: mode=reference changes the arithmetic inside
+      # the transforms, not anything platform-specific, so paying for it on
+      # every leg would buy nothing. linux-gcc is the leg with the broadest
+      # coverage elsewhere (GUI, the ALSA fallback) and is a required check.
+      # Its labels are suffixed (see the script's own TRANSFORM_MODE comment),
+      # so its per-check JSON results sit beside the performance-mode run's in
+      # the same artifact rather than overwriting them.
+      - name: Gold reference gate (mode=reference)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          TRANSFORM_MODE: reference
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
       # own header comment for why it is a separate job rather than each leg
@@ -770,6 +839,59 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+
+      # Roadmap VX20: the conformance vector set - one stream per coding tool,
+      # layout and sample rate this encoder can produce, each with the PCM it
+      # was encoded from and the expected decode hashes, published as a
+      # release asset so another decoder implementer has something concrete to
+      # test against (docs/conformance-vectors.md).
+      #
+      # It runs on EVERY call, not just a release, deliberately: the generator
+      # drives real ac3cli command lines, and an option rename would otherwise
+      # rot it silently until the next tag - by which point the fix is
+      # blocking a release rather than a pull request. The release-only extra
+      # is --check-determinism, which regenerates the whole bundle a second
+      # time and fails if a single hash moved; that doubles the runtime, which
+      # is worth paying once per release and not once per push.
+      #
+      # One leg only. Encoded output is not bit-identical across compilers or
+      # architectures yet (docs/building.md; roadmap VX11/VX12), so a second
+      # leg's bundle would differ from this one's for no useful reason - the
+      # manifest records the toolchain that built it either way. linux-gcc is
+      # the leg that carries it because it is the x86-64 reference toolchain
+      # and already a release_package leg.
+      #
+      # python3 is not in the container bootstrap: nothing else in this job
+      # needs it.
+      - name: Install python3 (conformance vectors)
+        if: matrix.conformance_vectors
+        run: apt-get install -y -qq --no-install-recommends python3
+
+      - name: Generate conformance vectors
+        if: matrix.conformance_vectors
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+          PUBLISH: ${{ inputs.publish_conformance_vectors }}
+        run: |
+          set -euo pipefail
+          cli="build/config-${PRESET}/bin/ac3cli"
+          version="$("$cli" --version | head -1 | awk '{print $NF}')"
+          extra=""
+          if [ "$PUBLISH" = "true" ]; then
+            extra="--check-determinism --archive"
+          fi
+          # Word-split on purpose: $extra is either empty or two flags.
+          # shellcheck disable=SC2086
+          python3 tools/generators/gen_conformance_vectors.py --cli "$cli" --out "dist/ac3forge-conformance-vectors-${version}" $extra
+
+      - name: Upload conformance vectors
+        if: matrix.conformance_vectors && inputs.publish_conformance_vectors
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-vectors
+          path: dist/*.tar.gz
+          if-no-files-found: error
 
       # The other side of the ALSA switch: a Linux machine without libasound's
       # development headers must still configure, build and pass everything,

@@ -1,6 +1,6 @@
 {
-  "baseline_version": 1,
-  "generated_date": "2026-08-12",
+  "baseline_version": 2,
+  "generated_date": "2026-08-23",
   "tools": {
     "ffmpeg": {
       "version": "ffmpeg version 8.0.1-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers"
@@ -20,17 +20,23 @@
           "snr_db": 39.00494384765625,
           "lsd_db": null,
           "hf_db": null,
+          "mos_lqo": 3.4802288633547356,
           "decoded_with": "ffmpeg",
           "measured_kbps": 453.01759999999996
         },
         "dee": {
-          "status": "unverified",
-          "reason": "DEE build v6.5.4-dme+b56bc97e drops the Ls channel for discrete 6-channel 5.1 input (confirmed via tone probe, channel-index-locked) - see tools/generators/gen_external_baseline.py's module docstring."
-        },
-        "ours_at_baseline_time": {
-          "snr_db": 36.02410888671875,
+          "snr_db": 36.57493209838867,
           "lsd_db": null,
           "hf_db": null,
+          "mos_lqo": 3.020239673440581,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 453.01759999999996
+        },
+        "ours_at_baseline_time": {
+          "snr_db": 39.94963073730469,
+          "lsd_db": null,
+          "hf_db": null,
+          "mos_lqo": 3.6695315047077512,
           "decoded_with": "ours",
           "measured_kbps": 453.01759999999996
         }
@@ -46,6 +52,7 @@
           "snr_db": 32.810523986816406,
           "lsd_db": 0.828455735075527,
           "hf_db": -0.9107148233870128,
+          "mos_lqo": 4.602475580244711,
           "decoded_with": "ffmpeg",
           "measured_kbps": 192.512
         },
@@ -53,13 +60,16 @@
           "snr_db": 33.31864929199219,
           "lsd_db": 1.899412041800419,
           "hf_db": -0.8104806035555444,
+          "mos_lqo": 4.603243802106254,
           "decoded_with": "ffmpeg",
-          "measured_kbps": 192.512
+          "measured_kbps": 192.512,
+          "decoder_note": "FFmpeg 8.0.1 reads 93 of this stream's 94 frames cleanly but fails frame 0 from cold (\"exponent 25 is out-of-range\"), concealing it by repeating block 0 across blocks 1-4. The score here is unaffected because score_fixed's FIXED_ALIGN skips the first 0.2 s, which is where that frame sits; scored across the whole file FFmpeg's decode is 14.30 dB instead. What says 33.32 dB measures DEE's encoder and not FFmpeg's concealment is that ac3forge's own decoder reads frame 0 correctly and scores this same fixture 33.3236 dB through the same window, 0.005 dB away - see tools/generators/gen_external_baseline.py's module docstring."
         },
         "ours_at_baseline_time": {
-          "snr_db": 21.655664443969727,
-          "lsd_db": 0.9800096601329651,
-          "hf_db": -0.614782040356936,
+          "snr_db": 31.9773006439209,
+          "lsd_db": 1.9489204292021594,
+          "hf_db": -2.6618333287385916,
+          "mos_lqo": 4.375788685918223,
           "decoded_with": "ours",
           "measured_kbps": 192.512
         }
@@ -75,19 +85,177 @@
           "snr_db": 31.14073944091797,
           "lsd_db": 5.741009176481866,
           "hf_db": -6.154981450302442,
+          "mos_lqo": 2.359310583688858,
           "decoded_with": "ffmpeg",
           "measured_kbps": 258.8672
         },
         "dee": {
-          "status": "unverified",
-          "reason": "DEE build v6.5.4-dme+b56bc97e drops the Ls channel for discrete 6-channel 5.1 input (confirmed via tone probe, channel-index-locked) - see tools/generators/gen_external_baseline.py's module docstring."
+          "snr_db": 31.564971923828125,
+          "lsd_db": 3.8452080286711214,
+          "hf_db": -2.3925006361996655,
+          "mos_lqo": 2.7196047852366867,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 258.8672
         },
         "ours_at_baseline_time": {
           "snr_db": 31.629106521606445,
-          "lsd_db": 4.783468887121625,
-          "hf_db": 0.13309915936214464,
+          "lsd_db": 4.783468887578489,
+          "hf_db": 0.13309915936213904,
+          "mos_lqo": 2.6846844837396917,
           "decoded_with": "ours",
           "measured_kbps": 258.8672
+        }
+      }
+    },
+    "eac3-stereo-96": {
+      "codec": "eac3",
+      "layout": "stereo",
+      "bitrate_kbps": 96,
+      "source_wav": "tests/golden/audio/reference_stereo.wav",
+      "scores": {
+        "ffmpeg": {
+          "snr_db": 5.627847194671631,
+          "lsd_db": 8.44650586596939,
+          "hf_db": -76.0108824047203,
+          "mos_lqo": 2.988255031723307,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 96.256
+        },
+        "dee": {
+          "snr_db": 11.383424758911133,
+          "lsd_db": 4.101577750632775,
+          "hf_db": -3.8018976381138754,
+          "mos_lqo": 3.7992344898605754,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 96.256
+        },
+        "ours_at_baseline_time": {
+          "snr_db": 24.231937408447266,
+          "lsd_db": 5.095066892828092,
+          "hf_db": -0.5660552128813946,
+          "mos_lqo": 3.7010483796285523,
+          "decoded_with": "ours",
+          "measured_kbps": 96.256
+        }
+      }
+    },
+    "eac3-stereo-64": {
+      "codec": "eac3",
+      "layout": "stereo",
+      "bitrate_kbps": 64,
+      "source_wav": "tests/golden/audio/reference_stereo.wav",
+      "scores": {
+        "ffmpeg": {
+          "snr_db": 5.6088690757751465,
+          "lsd_db": 9.833342133313138,
+          "hf_db": -75.99749682837468,
+          "mos_lqo": 2.985509755357117,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 64.17066666666666
+        },
+        "dee": {
+          "status": "unverified",
+          "reason": "DEE's stereo Dolby Digital Plus data rate starts at 96 kbit/s (dee_ddp_encoder --morehelp data-rate); 64 is refused outright."
+        },
+        "ours_at_baseline_time": {
+          "snr_db": 16.795913696289062,
+          "lsd_db": 7.203855425199542,
+          "hf_db": -0.3121957378277521,
+          "mos_lqo": 4.313856225795511,
+          "decoded_with": "ours",
+          "measured_kbps": 64.17066666666666
+        }
+      }
+    },
+    "ac3-music-stereo-192": {
+      "codec": "ac3",
+      "layout": "stereo",
+      "bitrate_kbps": 192,
+      "source_wav": "build/fixture_programme_music_stereo.wav",
+      "scores": {
+        "ffmpeg": {
+          "snr_db": 33.36212921142578,
+          "lsd_db": null,
+          "hf_db": null,
+          "mos_lqo": 4.723552352156593,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 192.1024
+        },
+        "dee": {
+          "snr_db": 33.43621063232422,
+          "lsd_db": null,
+          "hf_db": null,
+          "mos_lqo": 4.699583806947715,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 192.1024
+        },
+        "ours_at_baseline_time": {
+          "snr_db": 32.48133087158203,
+          "lsd_db": null,
+          "hf_db": null,
+          "mos_lqo": 4.663345783390012,
+          "decoded_with": "ours",
+          "measured_kbps": 192.1024
+        }
+      }
+    },
+    "eac3-music-stereo-96": {
+      "codec": "eac3",
+      "layout": "stereo",
+      "bitrate_kbps": 96,
+      "source_wav": "build/fixture_programme_music_stereo.wav",
+      "scores": {
+        "ffmpeg": {
+          "snr_db": 23.245983123779297,
+          "lsd_db": 9.154608755601188,
+          "hf_db": -51.61863309522783,
+          "mos_lqo": 3.094020872972573,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 96.0512
+        },
+        "dee": {
+          "snr_db": 19.747364044189453,
+          "lsd_db": 1.5714483646487079,
+          "hf_db": -2.833582231931542,
+          "mos_lqo": 4.670214979005342,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 96.0512
+        },
+        "ours_at_baseline_time": {
+          "snr_db": 20.90388298034668,
+          "lsd_db": 1.4717152806534017,
+          "hf_db": 4.690824750472049,
+          "mos_lqo": 4.373493137373812,
+          "decoded_with": "ours",
+          "measured_kbps": 96.0512
+        }
+      }
+    },
+    "eac3-speech-stereo-64": {
+      "codec": "eac3",
+      "layout": "stereo",
+      "bitrate_kbps": 64,
+      "source_wav": "build/fixture_programme_speech_stereo.wav",
+      "scores": {
+        "ffmpeg": {
+          "snr_db": 18.77891731262207,
+          "lsd_db": 11.024230364264,
+          "hf_db": -67.8171086403242,
+          "mos_lqo": 2.277014669822088,
+          "decoded_with": "ffmpeg",
+          "measured_kbps": 64.03413333333333
+        },
+        "dee": {
+          "status": "unverified",
+          "reason": "DEE's stereo Dolby Digital Plus data rate starts at 96 kbit/s (dee_ddp_encoder --morehelp data-rate); 64 is refused outright."
+        },
+        "ours_at_baseline_time": {
+          "snr_db": 18.21348762512207,
+          "lsd_db": 5.235869036026744,
+          "hf_db": -3.672336250729141,
+          "mos_lqo": 3.637323835815863,
+          "decoded_with": "ours",
+          "measured_kbps": 64.03413333333333
         }
       }
     }

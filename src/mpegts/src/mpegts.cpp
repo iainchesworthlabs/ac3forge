@@ -3,6 +3,15 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <span>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "ts_detail.hpp"
 
 namespace mpegts {
 
@@ -10,34 +19,12 @@ namespace {
 
 using Bytes = std::vector<std::byte>;
 
-constexpr std::size_t kTsPacketSize = 188;
-constexpr std::uint8_t kSyncByte = 0x47;
-constexpr std::uint16_t kPatPid = 0x0000;
-
-// ISO/IEC 13818-1 Table 2-34: 0x06 is "ITU-T Rec. H.222.0 | ISO/IEC 13818-1
-// PES packets containing private data" - not an MPEG audio stream_type at
-// all. This is deliberate: DVB does not register a stream_type of its own
-// for AC-3/E-AC-3 (unlike ATSC's 0x81), so a DVB-conformant demuxer is
-// expected to find 0x06 plus one of the descriptors below in the PMT and
-// treat the PID as AC-3/E-AC-3 on that basis alone. See mpegts.hpp's header
-// comment for why this project implements the DVB profile rather than
-// ATSC's.
-constexpr std::uint8_t kStreamTypePrivateData = 0x06;
-
-// ISO/IEC 13818-1 Table 2-22's audio stream_id range ('110x xxxx') does not
-// apply here - stream_type 0x06 payloads are carried as PES private data,
-// which Table 2-19 puts under stream_id 0xBD (private_stream_1). Unlike a
-// DVD-Video private_stream_1, DVB's use of it for AC-3 carries no extra
-// sub-stream-id byte in front of the payload (that convention is specific to
-// DVD-Video's own multiplexing rules, not ISO/IEC 13818-1 or DVB's use of
-// it) - the PES payload here is the raw AC-3/E-AC-3 access unit, nothing
-// else.
-constexpr std::uint8_t kPesStreamIdPrivateStream1 = 0xBD;
-
-// ETSI EN 300 468 Annex D.2, Table D.1.
-constexpr std::uint8_t kTagAc3Descriptor = 0x6A;
-// ETSI EN 300 468 Annex D.4, Table D.3.
-constexpr std::uint8_t kTagEnhancedAc3Descriptor = 0x7A;
+// Every packet/PID constant, the stream_type and descriptor tag numbers and
+// the PSI section CRC live in ts_detail.hpp, shared with reader.cpp - see
+// that header for why they are not transcribed twice. The reasoning for
+// each is there too, including why stream_type 0x06 rather than an audio
+// one, and why the CRC is the non-reflected MPEG-2 variant.
+using namespace detail;
 
 void put_byte(Bytes& out, std::uint8_t value) { out.push_back(static_cast<std::byte>(value)); }
 
@@ -471,8 +458,8 @@ std::expected<Writer, MuxError> Writer::create(const AudioTrack& track,
 
 Writer::Writer(AudioTrack track, MuxOptions options, std::vector<std::byte> pat_section,
                std::vector<std::byte> pmt_section)
-    : track_(std::move(track)),
-      options_(std::move(options)),
+    : track_(track),
+      options_(options),
       pat_section_(std::move(pat_section)),
       pmt_section_(std::move(pmt_section)) {}
 

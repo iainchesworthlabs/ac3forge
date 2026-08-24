@@ -29,6 +29,7 @@
 #include "ac3/encoder/plan.hpp"
 #include "ac3/oba/motion.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 
@@ -311,7 +312,11 @@ class EncoderController : public QObject {
     Q_PROPERTY(bool extrasLocked READ extrasLocked NOTIFY planChanged)
     // "<ear-level count>.<LFE count>[.<ceiling count>]", read off the actual
     // location mask so an unnamed combination still reads honestly - 3/2 +
-    // LFE + LFE2 is "5.2", 3/2 + LFE + rear + both ceiling pairs is "7.1.4".
+    // LFE + rear + LFE2 is "7.2", 3/2 + LFE + rear + both ceiling pairs is
+    // "7.1.4". A bare 3/2 + LFE + LFE2 with no other extra would read as
+    // "5.2", but chanmap::allocate() (and so toggleExtra/extrasModel) never
+    // lets the picker reach it - LFE2 alone has no full-bandwidth channel to
+    // share its dependent substream with.
     Q_PROPERTY(QString channelShapeName READ channelShapeName NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetUsed READ channelBudgetUsed NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetMax READ channelBudgetMax CONSTANT)
@@ -783,8 +788,9 @@ public:
     // first half of the file; stopping and starting a new take is honest).
     Q_INVOKABLE void switchLiveLayout(const QString& presetName);
     // Sets bed + LFE + extras together - "stereo", "5.1", "7.1", "5.1.4",
-    // "7.1.4", "5.2" or "7.2.4" - the starting points the Format tab's
-    // preset buttons offer.
+    // "7.1.4" or "7.2.4" - the starting points the Format tab's preset
+    // buttons offer. No "5.2": a bare second LFE with no other extra is an
+    // AllocationError::kOrphanLfe2, so there is nothing valid to name it.
     // Upgrades AC-3 to E-AC-3 first if the preset needs a dependent substream,
     // the same way a manual extras tick would otherwise be refused outright.
     Q_INVOKABLE void applyChannelPreset(const QString& name);
@@ -849,6 +855,18 @@ public:
     // channels have no equivalent in atmos-encode's model and are not
     // written. Returns false if the file could not be opened for writing.
     Q_INVOKABLE bool exportObjectPaths(const QUrl& url) const;
+    // The same objects as an ac3::oba::ObjectScene in JSON (ac3/oba/scene.hpp)
+    // rather than as keyframe columns: named, with per-segment interpolation
+    // and an orientation the columns have nowhere to put, and reloadable
+    // without loss. ac3cli's atmos-path and atmos-encode read this form too,
+    // told apart from the column form by its first character, so the command
+    // bar's line works with either file. Where the column form SKIPS a
+    // bed-pinned channel's index, this one has to fill it - JSON identifies an
+    // object by its position in the array - so such a channel is written as a
+    // silent object holding at room centre, keeping every later object at the
+    // index atmos-encode would address it by. False if the file could not be
+    // written.
+    Q_INVOKABLE bool exportObjectScene(const QUrl& url) const;
     // Starts the audible motion preview: every current object rendered
     // through ac3::oba::AtmosEncoder the same way encodeObjects() would,
     // its 5.1 bed played back live and paced in real time (not run flat-
@@ -1241,6 +1259,16 @@ private:
     // entry for this index's (source, channel) identity, sorted by time, or
     // empty if it has none.
     [[nodiscard]] std::vector<ac3::oba::Keyframe> sortedKeyframes(int objectIndex) const;
+    // Every object both export paths write, as ac3::oba::SceneObjects indexed
+    // by FLAT channel index - so a bed-pinned channel's index is present but
+    // empty, which is how the keyframe column form spells a skipped object.
+    // exportObjectScene fills those in; exportObjectPaths leaves them out, the
+    // behaviour that form has always had.
+    [[nodiscard]] std::vector<ac3::oba::SceneObject> exportableSceneObjects() const;
+    // Writes `text` to `url` (a local file where it names one), returning
+    // false if it could not be opened or fully written - the return both
+    // export entry points give QML.
+    static bool writeTextFile(const QUrl& url, const std::string& text);
     // flatIndex's (source, channel) pair in sourceShapes()'s own flat
     // addressing - the same loop objectSourceLabel uses to name it.
     [[nodiscard]] ObjectKey sourceChannelForFlatIndex(std::size_t flatIndex) const;
