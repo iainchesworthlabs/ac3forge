@@ -3,9 +3,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <fmt/format.h>
+#include <span>
 #include <string>
+#include <string_view>
 
 #include "manifest_detail.hpp"
+#include "mp4/mp4.hpp"
 
 namespace mp4 {
 

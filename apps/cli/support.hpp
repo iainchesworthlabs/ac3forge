@@ -13,10 +13,12 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/quality/distortion.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -105,6 +107,16 @@ struct Options {
     // an unsigned one unless the operator opts in here - see
     // docs/concepts/object-signing.md.
     bool verify_objects = false;
+    // 'eac3-encode' only: run ac3::verify's E-AC-3 encoder/decoder mirror
+    // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
+    // command emits, and refuse the run on the first disagreement. Off by
+    // default like every bare token here, and deliberately so: it decodes
+    // every access unit a second time on top of encoding it, which roughly
+    // doubles the work. What it buys is the one class of defect a round trip
+    // cannot see - a misreading of Annex E that the encoder and the decoder
+    // share - which for ecpl, tpn, fscod2 and 7.1.4 is otherwise unchecked
+    // by anything at all (docs/verification.md).
+    bool verify = false;
     // 'live' only: a second ("slave") capture device index, same numbering
     // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
     // positional already reads. Unset means the classic single-device
@@ -158,6 +170,29 @@ struct Options {
     // reads it; the QC/levels/playback decoders stay on the library
     // default, where a ~1e-12 difference cannot move a reported figure.
     bool fast_imdct = true;
+    // Which domain JOC estimates and applies its reconstruction matrix in
+    // (AtmosConfig::joc_domain / DecoderConfig::joc_domain). QMF - §7.1's
+    // 64-band complex filterbank, what §6.6.6 describes and what a licensed
+    // decoder runs - is the default; joc-domain=mdct selects the cheaper
+    // 256-bin MDCT approximation this project used before it had a
+    // filterbank.
+    //
+    // Deliberately outside mode= in both directions. The two transform
+    // switches mode= drives are the same answer computed two ways, agreeing
+    // to ~1e-12, so naming the fast one costs nothing; these two domains
+    // are different answers about 5 dB apart, and a speed preference should
+    // not silently pick the worse one. mode=reference has nothing to add
+    // either - the default is already §6.6.6's own domain - so mode= stays
+    // exactly the two transform switches it has always been.
+    ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
+    // The per-frame search over §7.2.2's transmitted bit allocation
+    // parameters, judged on the reconstruction error the decoder will
+    // produce (EncoderConfig::search, ac3/quality/distortion.hpp).
+    // search=distortion minimises that error; search=perceptual weights it
+    // by a tonality/masking model first. Off by default, like the library
+    // config it feeds - it costs encode time, and this project does not turn
+    // a decision knob on without the numbers. AC-3 encodes only.
+    ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
     // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
     // of the human-readable table. Off by default - a bare `ac3cli probe
     // <file>` is meant to be read by a person, and every other command here

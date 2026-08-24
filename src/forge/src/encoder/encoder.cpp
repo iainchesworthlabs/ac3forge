@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -25,6 +26,8 @@
 
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/quality/distortion.hpp"
+#include "ac3/quality/perceptual.hpp"
 #include "ac3/verify/mirror.hpp"
 #include "dither.hpp"
 #include "snr_search.hpp"
@@ -161,6 +164,48 @@ int fgaincod_for(const EncoderConfig& config, int nfchans) {
     return std::clamp(numerator / kSpanKbps, 0, 7);
 }
 
+// Step 9a's candidate set: what the per-frame search over transmitted bit
+// allocation parameters is allowed to try, on top of the no-search defaults
+// (dbpbcod 3, fgaincod_for's own rate-adaptive curve above) - which the
+// search's own incumbent/defaults handling scores explicitly rather than
+// relying on it appearing here by coincidence, so turning the search on can
+// never silently discard fgaincod_for's measured win.
+//
+// Six, not all 8192. The declaration of `codes` in encode_frame records
+// which of the six parameters were measured to matter and which were not,
+// and a search is only worth running over the ones that move the result:
+//
+//   floorcod  - inert. The floor never binds at any rate on any material
+//               tried, so all eight values encode identically.
+//   sdcycod / fdcycod / sgaincod
+//             - move the result by tenths of a decibel, and sgaincod also
+//               drags cplsleak with it. Not worth a settlement each.
+//   dbpbcod   - large and rate-dependent: 2 (the §8.2.12 recommendation)
+//               against 3 (measured better at every rate on every material,
+//               by +5.9 dB at 192 and +1.2 dB at 640).
+//   fgaincod  - fgaincod_for above already answers this per frame from the
+//               rate alone; these three fixed values are what is left to
+//               try beyond that curve - the SNR-only sweep in step 0's
+//               comment measured fgaincod 1 worth +2 dB at 448 and +7 dB at
+//               640 while regressing at 192, which is a sharper local
+//               optimum than a smooth rate curve can express on its own.
+//
+// So the set is dbpbcod {2, 3} x fgaincod {1, 2, 4}. Every other field keeps
+// the §8.2.12 basic-encoder value in every candidate.
+constexpr std::array<BitAllocCodes, 6> kCodeCandidates = {
+    BitAllocCodes{.dbpbcod = 2, .fgaincod = 1}, BitAllocCodes{.dbpbcod = 2, .fgaincod = 2},
+    BitAllocCodes{.dbpbcod = 2, .fgaincod = 4}, BitAllocCodes{.dbpbcod = 3, .fgaincod = 1},
+    BitAllocCodes{.dbpbcod = 3, .fgaincod = 2}, BitAllocCodes{.dbpbcod = 3, .fgaincod = 4},
+};
+
+// How much better a candidate has to measure before the frame changes its
+// codes. Two reasons it is not zero. A win of a hundredth of a decibel is
+// measurement noise rather than anything audible; and these codes are
+// transmitted per frame, so a search flipping between two near-equal answers
+// would modulate the masking curve at the frame rate - 31 Hz at 48 kHz - for
+// no benefit at all.
+constexpr double kCodeSwitchMarginDb = 0.05;
+
 // Step 9's SNR-offset search result: the composite offset it found, and the
 // mantissa bit cost AT that offset (so a caller never has to re-run
 // compute_bit_allocation over every stream just to learn what its own search
@@ -210,6 +255,35 @@ struct FrameEncoder::PlanScratch {
     std::vector<int> starts;
     std::vector<std::uint8_t> raw;
     std::vector<double> peak_mag;
+
+    // --- step 9a's decision search (EncoderConfig::search) ------------------
+    // All unused, and the model unconstructed, when the search is off.
+    //
+    // The model is here rather than in encoder.hpp because it carries state
+    // ACROSS frames - its tonality estimate extrapolates from the previous
+    // two blocks, and the previous frame's last two blocks are what make
+    // blocks 0 and 1 of this one as good as the rest. std::optional because
+    // it needs the sample rate and a channel count to construct, which
+    // FrameEncoder's constructor has, and because a config that never asks
+    // for the search should never pay for its tables.
+    std::optional<quality::PerceptualModel> perceptual;
+    // Whether the frame the model last saw was a coupling frame. cplinu is
+    // not stable across frames (§8.2.4.1 excludes a block-switched channel,
+    // so a transient turns coupling off for that frame), and stream index
+    // nchans is the coupling channel only while it is on - so its history
+    // has to be dropped whenever that changes, or this frame's coupling
+    // spectrum would be extrapolated from a spectrum belonging to a
+    // different signal.
+    bool coupled_last_frame = false;
+    // Per (stream, block): the measured reconstruction noise at the
+    // allocation run_bap currently holds, and the masking thresholds it is
+    // judged against. Split that finely for the same reason noise_to_mask
+    // weighs bands separately rather than dividing sums - a channel with
+    // slack must not pay for a channel without, and neither must a loud
+    // block for a quiet one.
+    std::vector<quality::BandNoise> measured;
+    std::vector<std::array<double, quality::kBands>> thresholds;
+    quality::BlockAnalysis analysis;
 };
 
 FrameEncoder::~FrameEncoder() = default;
@@ -638,14 +712,20 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // fgaincod itself is no longer fixed; see fgaincod_for above for the
     // rate-dependent curve and the measurement behind it.
     //
-    // Searching these per frame was considered and rejected: the only
-    // in-loop quality criterion this encoder has is the composite SNR offset
-    // step 9 maximises, and that number is not comparable between two
-    // different code sets, because each set produces a different masking
-    // curve for the offset to sit on. A sound search would have to
-    // reconstruct and measure real distortion per candidate, which is a far
-    // larger change than the uniform win above justifies.
-    const BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_, nfchans)};
+    // Searching these per frame was considered and rejected once, because
+    // the only in-loop quality criterion this encoder had was the composite
+    // SNR offset step 9 maximises, and that number is not comparable between
+    // two different code sets: each set produces a different masking curve
+    // for the offset to sit on. A sound search would have to reconstruct and
+    // measure real distortion per candidate.
+    //
+    // ac3::quality does exactly that (see ac3/quality/distortion.hpp), so
+    // step 9a below now runs the search these values are the starting point
+    // for - but only when EncoderConfig::search asks for it. fgaincod_for's
+    // rate-adaptive curve above is the no-search default either way; the
+    // search (when on) tries kCodeCandidates around it and keeps whichever
+    // measures better, dbpbcod included.
+    BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_, nfchans)};
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
     // The coupling channel is one more stream on the end, so its coefficient
@@ -909,18 +989,27 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 4. Fixed point + per-block raw exponents --------------------------
     AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
     auto& fixed = fixed_;
-    fixed.clear();
     {
-        // One reservation instead of push_back growth across ~10k bins - the
-        // exact total is knowable up front, and the phase-5 Tracy zones put
-        // this stage second only to transient detection in the former
-        // unzoned remainder.
+        // Sized once, up front: the exact total across ~10k bins is knowable
+        // before the loop, and the phase-5 Tracy zones put this stage second
+        // only to transient detection in the former unzoned remainder.
+        //
+        // resize() with no clear() before it, unlike the push_back form this
+        // replaced (ROADMAP PF5 gave every slot a contiguous destination to
+        // batch into, which needs the space to exist first). clear() would
+        // drop the size to zero and make the resize value-initialize all ten
+        // thousand elements again on every frame; without it, a steady-state
+        // frame whose layout has not changed finds the vector already the
+        // right size and the call does nothing at all. Nothing reads a stale
+        // value either way - every slot below is fully overwritten by
+        // to_fixed25_block before fixed_at can reach it, and fixed_base
+        // carries the offsets rather than them being implied by growth.
         std::size_t total = 0;
         for (int s = 0; s < streams; ++s) {
             total += static_cast<std::size_t>(stream_end(s) - stream_start(s)) *
                      kBlocksPerFrame;
         }
-        fixed.reserve(total);
+        fixed.resize(total);
     }
     auto& fixed_base = fixed_base_;
     fixed_base.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, 0);
@@ -929,21 +1018,32 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // inner vector's capacity where assign would discard it.
     auto& block_exps = block_exps_;
     block_exps.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    // Where the next slot starts in `fixed`, now that the vector is sized up
+    // front and its size no longer tracks how much has been written.
+    std::size_t cursor = 0;
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
-            fixed_base[slot] = fixed.size();
-            block_exps[slot].resize(static_cast<std::size_t>(end - begin));
-            for (int bin = begin; bin < end; ++bin) {
-                const std::int32_t f =
-                    to_fixed25(coeffs_at(s, block)[static_cast<std::size_t>(bin)]);
-                fixed.push_back(f);
-                block_exps[slot][static_cast<std::size_t>(bin - begin)] =
-                    static_cast<std::uint8_t>(exponent_from_fixed(f));
-            }
+            // Batched rather than bin-by-bin (ROADMAP PF5): to_fixed25_block
+            // rounds two coefficients at a time through the architecture
+            // seam, and extract_exponents is the same per-element
+            // exponent_from_fixed this loop used to call inline. Both
+            // produce identical values to the element-wise form - see
+            // exponents.cpp - so the bitstream is unchanged.
+            const auto count = static_cast<std::size_t>(end - begin);
+            fixed_base[slot] = cursor;
+            const std::size_t base = cursor;
+            cursor += count;
+            block_exps[slot].resize(count);
+            to_fixed25_block(
+                std::span<const double>{coeffs_at(s, block)}.subspan(
+                    static_cast<std::size_t>(begin), count),
+                std::span<std::int32_t>{fixed}.subspan(base, count));
+            extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
+                              block_exps[slot]);
         }
     }
     AC3_ZONE_END(zone_fixed);
@@ -1136,15 +1236,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // The transmitted leaks continue the masking decay across the coupling
     // boundary; derive them from the coupling channel's own first band so the
     // allocator starts from a sensible level rather than a fixed guess.
+    //
+    // A lambda rather than a one-off, because both seeds are functions of
+    // codes.fgaincod/sgaincod: a candidate that moves either has to move
+    // these with it, or the allocator would run against a decay the stream
+    // does not transmit.
     int cplfleak = 0;
     int cplsleak = 0;
-    if (cplinu) {
+    const auto seed_coupling_leaks = [&] {
+        if (!cplinu) {
+            return;
+        }
         const auto& first_run = plan[static_cast<std::size_t>(cpl_stream)].runs.front();
         const int exp = first_run.decoded[static_cast<std::size_t>(cplstrtmant)];
         const int psd = 3072 - (exp << 7);
         cplfleak = std::clamp((psd - fast_gain(codes.fgaincod) - 768) >> 8, 0, 7);
         cplsleak = std::clamp((psd - slow_gain(codes.sgaincod) - 768) >> 8, 0, 7);
-    }
+    };
+    seed_coupling_leaks();
 
     // --- 7. The block emitter ----------------------------------------------
     // One function writes a block's side information; the bit budget is
@@ -1668,83 +1777,332 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         return {found, last_eval == found ? last_bits : bits_at(found)};
     };
 
-    auto [lo, mantissa_bits] = search(budget);
-
-    // §7.2.2.6 says delta is a pure refinement, and step 8 above already
-    // guarantees it never costs a frame its FIT. It can still cost a frame
-    // composite SNR offset - quality - even while comfortably fitting: every
-    // delta segment is side-info bits taken out of the same budget that
-    // would otherwise buy a higher offset, and a correction that lowers the
-    // mask in one band asks for MORE mantissa precision there, not less.
-    // Coupling is where this was first caught, because "coupling must not
-    // cost more bits than the channels it replaces" (test_encoder.cpp) is a
-    // standing promise this encoder makes about the resulting composite
-    // offset, and it broke - at 96 kbit/s stereo, no exotic layout required -
-    // the moment delta became eligible during coupling (see step 5's
-    // comment). But nothing in the reasoning above is about coupling: a
-    // delta segment costs the same 12 bits, out of the same budget, whether
-    // or not a coupling channel exists. Gating the check on cplinu just meant
-    // the one layout that never couples never got it - and that is where it
-    // cost the most. At 448 kbit/s 5.1 this encoder emitted about ten
-    // segments per block, 724 bits per frame (5% of the whole frame), and
-    // paid for them with roughly 44 composite offset units across every
-    // channel; measured against FFmpeg on the same file, dropping them is
-    // worth over 2 dB. So whenever there is a delta queued to send (step 8's
-    // fit-based fallback may already have cleared every one of them), the
-    // search is repeated with delta fully cleared, and whichever pass reaches
-    // the higher composite offset wins - a tie keeps delta, since at equal
-    // offset it is a strictly free correction.
-    bool any_delta = false;
-    for (const auto& p : plan) {
-        for (const auto& run : p.runs) {
-            any_delta = any_delta || run.delta.deltnseg > 0;
+    // Everything from here to the end of the delta race is one settlement of
+    // the frame at the CURRENT `codes`, and a search over codes has to be
+    // able to run it more than once - so it is a lambda rather than straight
+    // line code. Two pieces of state it mutates have to be rewound first:
+    // `budget`, which the delta race may swap for the no-delta one, and the
+    // plan's delta segments, which that race may leave cleared. Rewinding
+    // them at entry rather than at exit keeps the winning candidate's state
+    // in place for step 10, which is the state that must survive.
+    const std::uint32_t budget_with_delta = budget;
+    // Fixed-size for the same reason the race's own copy is: DeltaSegments is
+    // a small POD, streams never exceed nchans + 1, and a run per block is
+    // the most a stream can have.
+    std::array<std::array<DeltaSegments, kBlocksPerFrame>, 7> original_delta{};
+    assert(plan.size() <= original_delta.size());
+    for (std::size_t s = 0; s < plan.size(); ++s) {
+        assert(plan[s].runs.size() <= original_delta[s].size());
+        for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
+            original_delta[s][r] = plan[s].runs[r].delta;
         }
     }
-    if (any_delta) {
-        // Fixed-size: DeltaSegments is a small POD, streams never exceed
-        // nchans + 1 and a run per block is the most a stream can have, so
-        // ~1.2 KB of stack replaces eight heap allocations on every frame
-        // that runs the delta on/off race.
-        std::array<std::array<DeltaSegments, kBlocksPerFrame>, 7> saved{};
-        assert(plan.size() <= saved.size());
+
+    struct Settlement {
+        int composite = 0;
+        std::uint32_t mantissa_bits = 0;
+    };
+    const auto settle = [&]() -> Settlement {
+        budget = budget_with_delta;
         for (std::size_t s = 0; s < plan.size(); ++s) {
-            assert(plan[s].runs.size() <= saved[s].size());
             for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
-                saved[s][r] = plan[s].runs[r].delta;
-                plan[s].runs[r].delta = {};
+                plan[s].runs[r].delta = original_delta[s][r];
             }
         }
-        const std::uint32_t side_bits_without = measure_side_bits();
-        // Clearing delta only ever removes bits from the side information,
-        // so this cannot be larger than what step 8 already proved fits.
-        assert(side_bits_without <= side_bits);
-        const std::uint32_t budget_without = total_bits - side_bits_without - detail::kTailBits;
-        const auto without = search(budget_without);
-        if (without.composite > lo) {
-            lo = without.composite;
-            budget = budget_without;
-            mantissa_bits = without.mantissa_bits;
-            // Deltas are already cleared above; leave them that way.
-        } else {
+        auto [lo, mantissa_bits] = search(budget);
+
+        // §7.2.2.6 says delta is a pure refinement, and step 8 above already
+        // guarantees it never costs a frame its FIT. It can still cost a frame
+        // composite SNR offset - quality - even while comfortably fitting: every
+        // delta segment is side-info bits taken out of the same budget that
+        // would otherwise buy a higher offset, and a correction that lowers the
+        // mask in one band asks for MORE mantissa precision there, not less.
+        // Coupling is where this was first caught, because "coupling must not
+        // cost more bits than the channels it replaces" (test_encoder.cpp) is a
+        // standing promise this encoder makes about the resulting composite
+        // offset, and it broke - at 96 kbit/s stereo, no exotic layout required -
+        // the moment delta became eligible during coupling (see step 5's
+        // comment). But nothing in the reasoning above is about coupling: a
+        // delta segment costs the same 12 bits, out of the same budget, whether
+        // or not a coupling channel exists. Gating the check on cplinu just meant
+        // the one layout that never couples never got it - and that is where it
+        // cost the most. At 448 kbit/s 5.1 this encoder emitted about ten
+        // segments per block, 724 bits per frame (5% of the whole frame), and
+        // paid for them with roughly 44 composite offset units across every
+        // channel; measured against FFmpeg on the same file, dropping them is
+        // worth over 2 dB. So whenever there is a delta queued to send (step 8's
+        // fit-based fallback may already have cleared every one of them), the
+        // search is repeated with delta fully cleared, and whichever pass reaches
+        // the higher composite offset wins - a tie keeps delta, since at equal
+        // offset it is a strictly free correction.
+        bool any_delta = false;
+        for (const auto& p : plan) {
+            for (const auto& run : p.runs) {
+                any_delta = any_delta || run.delta.deltnseg > 0;
+            }
+        }
+        if (any_delta) {
+            // Fixed-size: DeltaSegments is a small POD, streams never exceed
+            // nchans + 1 and a run per block is the most a stream can have, so
+            // ~1.2 KB of stack replaces eight heap allocations on every frame
+            // that runs the delta on/off race.
+            std::array<std::array<DeltaSegments, kBlocksPerFrame>, 7> saved{};
+            assert(plan.size() <= saved.size());
             for (std::size_t s = 0; s < plan.size(); ++s) {
+                assert(plan[s].runs.size() <= saved[s].size());
                 for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
-                    plan[s].runs[r].delta = saved[s][r];
+                    saved[s][r] = plan[s].runs[r].delta;
+                    plan[s].runs[r].delta = {};
                 }
             }
-            // run_bap was left holding the no-delta pass's allocation above;
-            // restoring plan's deltas invalidates it, so step 10 needs a
-            // fresh evaluation at the winning (delta) composite.
-            mantissa_bits = bits_at(lo);
+            const std::uint32_t side_bits_without = measure_side_bits();
+            // Clearing delta only ever removes bits from the side information,
+            // so this cannot be larger than what step 8 already proved fits.
+            assert(side_bits_without <= side_bits);
+            const std::uint32_t budget_without = total_bits - side_bits_without - detail::kTailBits;
+            const auto without = search(budget_without);
+            if (without.composite > lo) {
+                lo = without.composite;
+                budget = budget_without;
+                mantissa_bits = without.mantissa_bits;
+                // Deltas are already cleared above; leave them that way.
+            } else {
+                for (std::size_t s = 0; s < plan.size(); ++s) {
+                    for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
+                        plan[s].runs[r].delta = saved[s][r];
+                    }
+                }
+                // run_bap was left holding the no-delta pass's allocation above;
+                // restoring plan's deltas invalidates it, so step 10 needs a
+                // fresh evaluation at the winning (delta) composite.
+                mantissa_bits = bits_at(lo);
+            }
         }
+
+
+        return {.composite = lo, .mantissa_bits = mantissa_bits};
+    };
+
+    Settlement settlement = settle();
+
+    // --- 9a. Search the transmitted bit allocation parameters ---------------
+    // The search the declaration of `codes` records as rejected, now that
+    // there is something to judge it with. Everything above chose those
+    // values once, from the bit rate, on measurements averaged over whole
+    // files; this asks the same question of THIS frame and answers it from
+    // the error the decoder will reconstruct.
+    if (config_.search != quality::Criterion::kNone) {
+        AC3_ZONE_SCOPED_N("step9a_codes_search");
+        // Per (stream, block), not per stream. Masking is a within-block
+        // phenomenon, and a frame-summed threshold would let a loud block's
+        // slack pay for a quiet block's excess - the same failure
+        // noise_to_mask avoids across bands and the per-stream split avoids
+        // across channels.
+        const auto slot_count = static_cast<std::size_t>(streams) * kBlocksPerFrame;
+        auto& measured = scratch_->measured;
+        measured.resize(slot_count);
+        const auto slot_of = [&](int s, int block) {
+            return static_cast<std::size_t>(s) * kBlocksPerFrame +
+                   static_cast<std::size_t>(block);
+        };
+
+        // The measurement at whatever allocation run_bap currently holds -
+        // which, after a settle(), is the winning composite offset's.
+        const auto measure = [&] {
+            AC3_ZONE_SCOPED_N("step9a_measure");
+            for (auto& slot : measured) {
+                slot.reset();
+            }
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                for (int s = 0; s < streams; ++s) {
+                    const auto& p = plan[static_cast<std::size_t>(s)];
+                    const auto run = static_cast<std::size_t>(
+                        p.run_of_block[static_cast<std::size_t>(block)]);
+                    const int begin = stream_start(s);
+                    const int end = stream_end(s);
+                    quality::accumulate_block(
+                        std::span<const std::int32_t>(fixed).subspan(
+                            fixed_base[slot_of(s, block)],
+                            static_cast<std::size_t>(end - begin)),
+                        p.runs[run].decoded, run_bap[static_cast<std::size_t>(s)][run], begin,
+                        end, measured[slot_of(s, block)]);
+                }
+            }
+        };
+
+        // The masking thresholds, when they are wanted. Once per frame, not
+        // once per candidate: they describe the SIGNAL, and no choice of
+        // codes changes that. This is the whole reason the psychoacoustic
+        // analysis is affordable here at all - it is fixed overhead against
+        // a variable-length search, not a per-candidate cost.
+        auto& thresholds = scratch_->thresholds;
+        if (config_.search == quality::Criterion::kPerceptual) {
+            AC3_ZONE_SCOPED_N("step9a_perceptual");
+            if (!scratch_->perceptual.has_value()) {
+                // nchans + 1: every coded stream, with the coupling channel's
+                // slot present whether or not this frame uses it.
+                scratch_->perceptual.emplace(config_.sample_rate, nchans + 1);
+            }
+            auto& model = *scratch_->perceptual;
+            if (cplinu != scratch_->coupled_last_frame && cpl_stream >= 0) {
+                model.reset(cpl_stream);
+            }
+            scratch_->coupled_last_frame = cplinu;
+
+            thresholds.assign(slot_count, {});
+            auto& analysis = scratch_->analysis;
+            // Block-outer, stream-inner: analyse() advances one channel's
+            // history by exactly one block, so each stream's calls have to
+            // arrive in block order.
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                for (int s = 0; s < streams; ++s) {
+                    model.analyse(s, coeffs_at(s, block), stream_end(s), analysis);
+                    thresholds[slot_of(s, block)] = analysis.threshold;
+                }
+            }
+        }
+
+        // Lower is better, in dB, for both criteria - so the switch margin
+        // below is one constant that means the same thing either way. The
+        // perceptual criterion's own quantity is a bit count rather than a
+        // ratio, so it is put on a log scale here for that reason alone: a
+        // 0.05 dB margin is then about 1.2% either way.
+        const auto score = [&]() -> double {
+            measure();
+            if (config_.search == quality::Criterion::kDistortion) {
+                // Per STREAM, mean of the ratios - not one ratio of pooled
+                // power across every stream. Rematrixing and coupling both
+                // routinely leave one stream far quieter than another (a
+                // rematrixed difference channel against its sum, a coupled
+                // channel's shared high band against a full-bandwidth low
+                // one), and a pooled ratio is dominated by whichever stream
+                // is loudest: a candidate could serve the quiet stream worse
+                // while barely moving the pooled number, because the quiet
+                // stream's absolute noise is small next to the loud
+                // stream's. That is the exact "loud pays for quiet" failure
+                // noise_to_mask's own mean-of-ratios exists to avoid one
+                // level down (across bands) - measured on real 2/0 material
+                // with rematrixing active, pooling here cost 1.8 dB of SNR
+                // and 0.45 dB of log-spectral distance against a mono
+                // control (no rematrixing) that showed neither.
+                double sum_ratio = 0.0;
+                int counted = 0;
+                for (int s = 0; s < streams; ++s) {
+                    double signal = 0.0;
+                    double noise = 0.0;
+                    for (int block = 0; block < kBlocksPerFrame; ++block) {
+                        const auto& slot = measured[slot_of(s, block)];
+                        signal += slot.total_signal();
+                        noise += slot.total_noise();
+                    }
+                    if (signal > 0.0) {
+                        sum_ratio += noise / std::max(signal, 1e-300);
+                        ++counted;
+                    }
+                }
+                if (counted == 0) {
+                    return -quality::kMaxSnrDb;
+                }
+                return 10.0 * std::log10(sum_ratio / counted);  // mean noise-to-signal
+            }
+            double bits = 0.0;
+            for (std::size_t slot = 0; slot < slot_count; ++slot) {
+                bits += quality::noise_to_mask(measured[slot], thresholds[slot]).audible_bits;
+            }
+            // Summed, not averaged: these are bits of audible error, and the
+            // frame's total is what a listener meets. A floor keeps a
+            // transparent frame off the log's asymptote without ever being
+            // reachable by a frame that has any audible error at all.
+            constexpr double kBitsFloor = 1e-6;
+            return 10.0 * std::log10(std::max(bits, kBitsFloor));
+        };
+
+        // The incumbent is the PREVIOUS FRAME's winning codes, not the fixed
+        // defaults `codes` currently holds - see previous_codes_'s own
+        // comment on FrameEncoder for why: comparing every frame against the
+        // same fixed baseline gives "stay where you were" no advantage over
+        // switching, which turns the margin below into real hysteresis
+        // instead of a per-frame coin flip. `codes` is still the defaults
+        // here and `settlement` already reflects them from the search that
+        // ran above this point, so the extra settlement below runs only when
+        // the previous frame actually chose something else.
+        const BitAllocCodes defaults = codes;
+        const BitAllocCodes incumbent = previous_codes_;
+        codes = incumbent;
+        if (!(incumbent == defaults)) {
+            seed_coupling_leaks();
+            settlement = settle();
+        }
+        BitAllocCodes best_codes = incumbent;
+        Settlement best_settlement = settlement;
+        double best = score();
+        BitAllocCodes last_tried = incumbent;
+
+        // `defaults` - dbpbcod 3 at fgaincod_for's own rate-adaptive curve -
+        // is scored explicitly here rather than left to appear only if it
+        // happens to match one of kCodeCandidates' fixed values. Without
+        // this, turning the search on could silently discard that curve's
+        // own measured win on every frame whose incumbent and every fixed
+        // candidate both lose to it, which defeats the point of it existing.
+        if (!(defaults == incumbent)) {
+            codes = defaults;
+            seed_coupling_leaks();
+            const Settlement trial = settle();
+            last_tried = defaults;
+            const double value = score();
+            if (value < best - kCodeSwitchMarginDb) {
+                best = value;
+                best_codes = defaults;
+                best_settlement = trial;
+            }
+        }
+
+        for (const BitAllocCodes& candidate : kCodeCandidates) {
+            if (candidate == incumbent || candidate == defaults) {
+                continue;  // already scored above
+            }
+            codes = candidate;
+            seed_coupling_leaks();
+            const Settlement trial = settle();
+            last_tried = candidate;
+            const double value = score();
+            // A margin, not a strict comparison. Two things want it: a
+            // candidate that wins by a hundredth of a decibel is noise in
+            // the measurement rather than a difference anyone could hear,
+            // and the codes are transmitted per frame - so a search that
+            // flipped between two near-equal answers every 32 ms would
+            // modulate the masking curve at 31 Hz for nothing.
+            if (value < best - kCodeSwitchMarginDb) {
+                best = value;
+                best_codes = candidate;
+                best_settlement = trial;
+            }
+        }
+
+        codes = best_codes;
+        if (last_tried == best_codes) {
+            settlement = best_settlement;
+        } else {
+            // run_bap, the plan's deltas and `budget` all belong to the last
+            // candidate tried, not to the winner. Re-settling is the only
+            // way to put them back: keeping a copy per candidate would mean
+            // copying every stream's every run's allocation six times a
+            // frame, which costs more than the one extra settlement does.
+            seed_coupling_leaks();
+            settlement = settle();
+        }
+        previous_codes_ = best_codes;
     }
 
+    const int lo = settlement.composite;
+    const std::uint32_t mantissa_bits = settlement.mantissa_bits;
     snr_search_hint_ = lo;
     csnroffst = lo >> 4;
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);
     AC3_ZONE_END(zone_snr_search);
 
-    // --- 9a. Dither substitution per channel per block ---------------------
+    // --- 9b. Dither substitution per channel per block ---------------------
     // §7.3.4, decided from what the allocation above actually left out - see
     // dither.hpp for the comparison itself. It has to run here rather than
     // anywhere earlier: run_bap holds the winning offset's allocation only

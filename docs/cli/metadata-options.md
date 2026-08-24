@@ -4,7 +4,8 @@ Encoding commands in [Commands](commands.md) take these after their positional a
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
 takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=`/`fmp4-window=`
 and (`live` only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
-`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`
+`cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`,
+`joc-domain=`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
 — of the three Atmos commands, only `atmos-encode` measures:
 
@@ -46,10 +47,20 @@ metadata options (any order, after the positional arguments):
                     radix-2 FFT evaluation - the decode-side mirror of fast-mdct=off above,
                     with the same relationship to its oracle (both codecs; bare fast-imdct,
                     the old opt-in, is a no-op)
+  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit allocation parameters per
+                    frame, from the error a decoder will reconstruct, instead of taking the
+                    rate-derived defaults. distortion minimises that error; perceptual weights
+                    it by a tonality/masking model first. off (the default) keeps the fixed
+                    values every release before this emitted. Costs encode time - see
+                    docs/library/quality.md for the measured figures
   mode=reference    both switches above in one word: every transform this command runs falls
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction matrix over 256
+                    MDCT bins instead of the default §7.1 64-band complex QMF - cheaper, ~5 dB
+                    worse per object, and not the domain a licensed decoder reconstructs in.
+                    Not part of mode= in either direction (=qmf names the default)
   dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per channel per block from
                     content - the same reach as fast-mdct=off (encode/sine and the
                     atmos/record/live session builders); eac3-encode's [tools] positional can
@@ -58,6 +69,9 @@ metadata options (any order, after the positional arguments):
                     is for a run that needs bit-for-bit agreement between two decoders of the
                     same stream more than it needs dither's own perceptual benefit -
                     tools/checks/verify_gold_reference.sh is the one caller that does
+  verify            eac3-encode: decode every access unit as it is encoded and diff the
+                    decoder's model against the encoder's own, refusing the run at the first
+                    disagreement - off by default, since it roughly doubles the work
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -536,7 +550,10 @@ Optional positional arguments, when omitted:
   index, so an object index the file doesn't mention keeps its default placement unchanged.
 - **`atmos` mode**: `objects` (default) writes the JOC+OAMD container; `bed51` omits it so the
   5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
-  validate, instead of falling back to the bed on its own. See
+  validate, instead of falling back to the bed on its own. `bed51` drops the TS 103 420 §8.3.1
+  `addbsi` object marker with it, so a `bed51` stream reads as ordinary 5.1 E-AC-3 all the way
+  out: no `Atmos complexity` line from `scan`, no Atmos extension in the `dec3` box `fmp4`
+  builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
   [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all
@@ -583,6 +600,42 @@ Optional positional arguments, when omitted:
   `mode=reference fast-mdct=off` is redundant but harmless, and `mode=performance fast-imdct=off`
   runs a fast encode with a reference decode. `eac3-encode`'s `[tools]` positional still wins
   the forward-MDCT half if both are given, exactly as it does against `fast-mdct=off`.
+- **`joc-domain=qmf|mdct`**: which domain JOC's reconstruction matrix is estimated in (on
+  `atmos`, `atmos-path` and `atmos-encode`) and applied in (on `decode`). `qmf` — the default —
+  is TS 103 420 §7.1's 64-subband complex filterbank, which is what §6.6.6 describes and what a
+  licensed decoder runs. `mdct` selects the 256-bin MDCT approximation this project used before
+  it had a filterbank: cheaper on the encode side, but about 5 dB worse per object (22.8 dB
+  against 27.7–28.6 dB mean per-object SNR over four placements; 20.2 dB against 26.5 dB on
+  moving objects), and correct only against a decoder given the same token. Use it to reproduce
+  output from before 0.9.0, not for new material. Unlike `fast-mdct=off` / `fast-imdct=off` this
+  is **not** part of `mode=` in either direction: those two are the same answer computed two
+  ways, agreeing to ~1e-12, while these are different answers — see
+  [Atmos & JOC](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
+  domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
+  them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
+- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`ac3::verify`,
+  see [Validation](../verification.md#six-independent-checks)) over every access unit the command
+  emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
+  decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
+  correction, AHT gain mode and gains, and the coupling, enhanced-coupling and
+  spectral-extension coordinates — is diffed against the encoder's own. The first disagreement
+  refuses the run (exit 1) and names where the two sides parted company, down to the substream,
+  block, coded stream and bin:
+
+  ```
+  error: verify: the encoder and decoder disagree about access unit 0
+  frame 0 substream 0 block 2 channel 1: bap[10] encoder=8 decoder=9
+  ```
+
+  A clean run prints one extra line beside the usual summary and writes exactly the stream it
+  would have written anyway — the check reads state the encoder already has and never steers a
+  decision. Off by default because it decodes everything it encodes, which roughly doubles the
+  work. What it buys is the class of defect a round trip cannot see: the two sides differing in
+  a way the audio survives. That matters most for `ecpl`, `tpn`, `fscod2` and `714`, which have
+  no external decoder to check against at all — see
+  [Validation → where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+  `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
+  (`ac3::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →

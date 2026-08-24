@@ -40,8 +40,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
+// shares; the leaf name below is this file's own.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_cli_probe_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli_probe";
     fs::create_directories(dir);
     return dir;
 }
@@ -264,8 +266,11 @@ TEST_CASE("probe reads a foreign E-AC-3 stream at both tiers", "[cli][probe]") {
     CHECK(status == 0);
 
     // AHT is Annex E syntax this encoder never emits, so seeing it reported at
-    // all is only possible off a foreign stream.
-    CHECK(json_field(json_section(document, "tools"), "aht_syncframes") == "79");
+    // all is only possible off a foreign stream. Not all 79: this baseline is
+    // DEE's real encoder output (tools/generators/gen_external_baseline.py),
+    // and it does not use AHT on every syncframe of this particular leg -
+    // measured directly off the committed file, not derived from the total.
+    CHECK(json_field(json_section(document, "tools"), "aht_syncframes") == "77");
 }
 
 TEST_CASE("probe reports the object layer of an Atmos stream", "[cli][probe][atmos]") {

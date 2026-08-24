@@ -32,8 +32,8 @@ Modes:
                has an external oracle at all.
   trend      - the CI-time half of the external-encoder landscape
                comparison (tools/generators/gen_external_baseline.py is the local-only
-               half that actually invokes FFmpeg/DEE): encodes the three
-               committed fixed legs with THIS build and scores everything
+               half that actually invokes FFmpeg/DEE): encodes every
+               committed fixed leg with THIS build and scores everything
                through this project's own decoder, so it needs neither
                FFmpeg's nor DEE's own encoder. Compute-only, no gate; see
                race_trend(). `--json-out PATH` writes the rows as JSON.
@@ -42,6 +42,20 @@ Modes:
                render_spectrograms() - this part DOES need an `ffmpeg`
                binary, only ever to decode the already-committed
                tests/golden/external-baseline/ bitstreams, never to encode.
+  objects    - object-reconstruction quality: the committed five-object
+               scene (tests/golden/audio/reference_objects.wav plus its
+               .paths placements) encoded with `atmos-encode` and decoded
+               back to per-object WAVs, one SNR/LSD/MOS row per object per
+               rate. Compute-only, no gate; see race_objects(). There is no
+               external oracle for object decode at all - not FFmpeg's
+               decoder, not Dolby's - so this is a self-consistency series
+               throughout, which that function's own comment spells out.
+               `--json-out PATH` writes the rows as JSON.
+
+Every mode except `ci` and `trend` takes `--material synth|speech|music`,
+which swaps the synthesized source for one of the committed 30 s CC0
+programme fixtures - see MATERIALS near main() for why that matters and why
+those two modes decline it.
 
 Usage (repo root, after building):  python tools/ci/quality_race.py [mode]
 Set AC3CLI to override the ac3cli binary (see CLI below); CI always does.
@@ -321,12 +335,48 @@ except ImportError:
 _visqol_api = None
 _visqol_warned = False
 
+# How much audio ViSQOL is ever handed for one score, in seconds.
+#
+# ViSQOL's patch matching is super-linear in signal length. Measured on this
+# package (visqol-python 3.7.0, one machine, same synthetic pair truncated to
+# each length):
+#
+#   2 s -> 2.2 s     4 s -> 5.8 s     6 s -> 9.8 s     8 s -> 14.1 s
+#   3 s -> 3.9 s    10 s -> 20.5 s   30 s -> 127.8 s
+#
+# so a 30 s programme fixture costs 30x what a 3 s synthetic one does, and
+# `trend` mode makes 62 distinct scoring calls per run across its eight legs.
+# Uncapped, the programme legs alone would add over half an hour to a
+# pull-request job. Capped at 4 s, the whole column measured about seven
+# minutes (a full `trend` run took 10m48s with ViSQOL and 3m59s with it
+# stubbed out).
+#
+# 4 s is where the score itself has converged: the same pair reads 4.336 at
+# 2 s, 4.272 at 4 s, 4.257 at 6 s and 4.251 at 8 s, so the residual against a
+# much longer window is ~0.02 MOS - and it is a CONSTANT offset, because the
+# window is always the same deterministic span of the same fixture. Trend
+# deltas, which is what every consumer of this column actually reads, are
+# unaffected by a constant offset; only the absolute value moves, and only by
+# less than the difference between two adjacent tool sets.
+#
+# Anything shorter than this is scored whole, so the existing 2.5-3 s
+# synthetic fixtures are unaffected by this cap existing.
+MOS_WINDOW_S = 4.0
+
 
 def perceptual_score(o, d, rate=RATE):
     """MOS-LQO via ViSQOL audio mode, or None if it isn't available.
 
     o/d are aligned original/decoded arrays from align()/score_fixed, any
-    channel count. Downmixed to mono by hand (plain channel average) before
+    channel count. Trimmed to MOS_WINDOW_S (see its own comment for the
+    measured cost curve that makes the cap necessary) around the MIDDLE of
+    the overlap rather than its start - a fixture's first second is the most
+    likely place to find a fade-in, and align()'s own leading trim varies by
+    a handful of samples between calls, so a centred window is both more
+    representative and less sensitive to that. The same span is taken from
+    both arrays, so the alignment align() established is preserved.
+
+    Downmixed to mono by hand (plain channel average) before
     scoring rather than handed through as-is: measure_from_arrays() accepts
     a multi-channel array without erroring, but a real 6-channel A/B scored
     3.38 through its own internal handling against 1.60 for the identical
@@ -355,6 +405,11 @@ def perceptual_score(o, d, rate=RATE):
     if _visqol_api is None:
         _visqol_api = VisqolApi()
         _visqol_api.create(mode="audio")
+    window = int(MOS_WINDOW_S * rate)
+    n = min(len(o), len(d))
+    if n > window:
+        start = (n - window) // 2
+        o, d = o[start:start + window], d[start:start + window]
     mono_o = np.ascontiguousarray((o.mean(axis=1) if o.ndim > 1 else o), dtype=np.float64)
     mono_d = np.ascontiguousarray((d.mean(axis=1) if d.ndim > 1 else d), dtype=np.float64)
     try:
@@ -688,11 +743,66 @@ def race_ci(original, source, original_51, source_51):
 # the local-only, never-in-CI script and this mode is the opposite: CI-only,
 # no external encoder ever invoked.
 AUDIO_DIR = REPO / "tests" / "golden" / "audio"
+
+
+# The programme fixtures ship as FLAC (tools/generators/gen_programme_fixtures.py's
+# own docstring says why: 3.1 MB against 5.8 MB of WAV each, under a standing
+# repo constraint on fixture bytes). Nothing else in this file, and nothing in
+# ac3cli, reads FLAC - so every fixture path goes through this one function,
+# which hands back a WAV path either way and only ever shells out for the FLAC
+# case. ffmpeg is already a hard dependency of every mode here.
+#
+# Cached under BUILD by name: `trend` alone reads the same fixture ten-plus
+# times across variants, and re-decoding 30 s of FLAC per row would be pure
+# waste. Regenerated when the FLAC is newer than the WAV, so editing a fixture
+# locally does not leave a stale decode behind.
+def materialise_fixture(path):
+    path = Path(path)
+    if path.suffix != ".flac":
+        return path
+    out = BUILD / f"fixture_{path.stem}.wav"
+    if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
+        BUILD.mkdir(parents=True, exist_ok=True)
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-c:a", "pcm_s16le", str(out)])
+    return out
+
+
+SPEECH_FIXTURE = AUDIO_DIR / "programme_speech_stereo.flac"
+MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
+
+# Kept in sync by hand with tools/generators/gen_external_baseline.py's LEGS -
+# see this section's own header for why this file must never import that one.
+#
+# Two things changed at baseline_version 2. First, real programme material:
+# the five reference_* legs are 2.5-3 s of sin()/noise/FIR (see
+# gen_programme_fixtures.py for what that costs), and the three programme_*
+# ones are 30 s CC0 recordings that roll off the way real material does. The
+# synthetic legs are NOT retired - their series go back to the first
+# baseline, and breaking that continuity to swap material would throw away
+# the history the landscape page exists to show.
+#
+# Second, rates where the Annex E tools actually run. `auto` turns coupling on
+# below 12 + 14n kbit/s per channel and spectral extension below 56 (see
+# eac3_frame.cpp's coupling_rate_ceiling/kSpxRateCeiling), and the only stereo
+# leg sat at 192 kbit/s - 96 per channel, above both - so `auto` chose no
+# tools at all there and the landscape never once compared this project's
+# Annex E work against FFmpeg's or DEE's at a rate where it exists. The two
+# stereo legs added here bracket both crossovers: 96 kbit/s is 48 per channel
+# (spectral extension on, coupling off - it isolates spx) and 64 kbit/s is 32
+# per channel (both on). The 5.1 legs already sat below both ceilings at
+# 256 kbit/s, which is why no low-rate 5.1 leg is added.
 TREND_LEGS = [
     {"name": "ac3-51-448", "codec": "ac3", "kbps": 448, "wav": AUDIO_DIR / "reference_51.wav"},
     {"name": "eac3-stereo-192", "codec": "eac3", "kbps": 192,
      "wav": AUDIO_DIR / "reference_stereo.wav"},
     {"name": "eac3-51-256", "codec": "eac3", "kbps": 256, "wav": AUDIO_DIR / "reference_51.wav"},
+    {"name": "eac3-stereo-96", "codec": "eac3", "kbps": 96,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "eac3-stereo-64", "codec": "eac3", "kbps": 64,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "ac3-music-stereo-192", "codec": "ac3", "kbps": 192, "wav": MUSIC_FIXTURE},
+    {"name": "eac3-music-stereo-96", "codec": "eac3", "kbps": 96, "wav": MUSIC_FIXTURE},
+    {"name": "eac3-speech-stereo-64", "codec": "eac3", "kbps": 64, "wav": SPEECH_FIXTURE},
 ]
 
 
@@ -733,7 +843,8 @@ def race_trend(json_out=None):
     results = []
     ext = {"ac3": "ac3", "eac3": "ec3"}
     for leg in TREND_LEGS:
-        name, codec, kbps, wav = leg["name"], leg["codec"], leg["kbps"], leg["wav"]
+        name, codec, kbps = leg["name"], leg["codec"], leg["kbps"]
+        wav = materialise_fixture(leg["wav"])
         is_eac3 = codec == "eac3"
         original = read_wav_any(wav)
         seconds = len(original) / RATE
@@ -794,6 +905,12 @@ def race_trend(json_out=None):
 # never-runs-in-CI boundary docs/landscape.md documents for the numbers.
 
 
+# How many seconds of each leg the spectrogram images cover. See the
+# centring code in render_spectrograms() for why this is capped rather than
+# rendering whole fixtures.
+SPECTROGRAM_SPAN_S = 10.0
+
+
 def _decode_baseline(coded_path, tag):
     scratch = BUILD / f"spectrogram_{tag}.wav"
     run(["ffmpeg", "-v", "error", "-y", "-i", str(coded_path), "-c:a", "pcm_f32le", str(scratch)])
@@ -843,8 +960,8 @@ def render_spectrograms(out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for leg in TREND_LEGS:
-        name, codec, wav = leg["name"], leg["codec"], leg["wav"]
-        original = read_wav_any(wav)
+        name, codec = leg["name"], leg["codec"]
+        original = read_wav_any(materialise_fixture(leg["wav"]))
         ours_wav = BUILD / f"trend_{name}_landscape.wav"
         if not ours_wav.exists():
             raise SystemExit(f"{ours_wav} missing - render_spectrograms must run after "
@@ -853,6 +970,13 @@ def render_spectrograms(out_dir):
         _, d_ours, _ = align(original, read_wav_f32(ours_wav), **FIXED_ALIGN)
         panels = [("original", original), ("ac3forge", d_ours)]
 
+        if name not in manifest["legs"]:
+            raise SystemExit(
+                f"leg '{name}' is in TREND_LEGS but not in the committed external baseline "
+                f"(baseline_version {manifest['baseline_version']}). Those two lists are kept in "
+                "sync by hand - see TREND_LEGS' own comment. Rerun "
+                "tools/generators/gen_external_baseline.py locally, with its LEGS updated to "
+                "match, and commit the manifest it writes.")
         leg_scores = manifest["legs"][name]["scores"]
         for tool_label in ("ffmpeg", "dee"):
             entry = leg_scores.get(tool_label, {})
@@ -866,14 +990,26 @@ def render_spectrograms(out_dir):
             panels.append((tool_label, d))
 
         # Same span for every row - align()'s own overlap trim can differ by
-        # a handful of samples between calls.
+        # a handful of samples between calls - and capped at
+        # SPECTROGRAM_SPAN_S, centred, mainly so every leg's image is drawn
+        # at a comparable time scale instead of squeezing 30 s of programme
+        # material into the width a 3 s synthetic fixture gets. It trims the
+        # PNGs too, but only somewhat - most of a programme leg's file size
+        # is spectral detail, not duration (1.78 MB whole, 1.43 MB capped,
+        # against 0.49 MB for a synthetic leg) - so this is a legibility
+        # change first and a size one second. What the image is for, showing
+        # what each encoder did to the spectrum, reads the same either way.
         n = min(p[1].shape[0] for p in panels)
+        span = int(SPECTROGRAM_SPAN_S * RATE)
+        offset = (n - span) // 2 if n > span else 0
+        n = min(n, span)
 
         fig, axes = plt.subplots(len(panels), 1, figsize=(11, 2.0 * len(panels)), sharex=True)
         if len(panels) == 1:
             axes = [axes]
         for ax, (label, data) in zip(axes, panels, strict=True):
-            mono = data[:n].mean(axis=1) if data.ndim > 1 else data[:n]
+            chunk = data[offset:offset + n]
+            mono = chunk.mean(axis=1) if chunk.ndim > 1 else chunk
             _plot_spectrogram(ax, mono, f"{name} - {label}")
         axes[-1].set_xlabel("seconds")
         fig.tight_layout()
@@ -881,6 +1017,263 @@ def render_spectrograms(out_dir):
         fig.savefig(out_path, dpi=130)
         plt.close(fig)
         print(f"wrote {out_path}")
+
+
+# --- Object-reconstruction quality mode ---------------------------------------
+#
+# The only quality series this project has for its OBJECT layer. Every codec
+# layer beside it - AC-3, E-AC-3, and each Annex E tool - has a per-commit
+# trend row; object reconstruction had exactly one measurement anywhere in
+# the tree, tests/oba/test_atmos.cpp's `snr_db > 10.0` against 18-35 dB
+# measured, so a 10-20 dB JOC regression passed CI and appeared on no page.
+#
+# The loop is the one that unit test runs, moved out to the CLI and to a
+# committed scene: encode tests/golden/audio/reference_objects.wav (five mono
+# object essences as WAV channels) with `atmos-encode`, driven by the
+# committed placements in reference_objects.paths, then decode with
+# `decode <stream> <bed> <objects_dir>` and score each exported object_NN.wav
+# against the source channel it came from. tools/generators/gen_object_scene_wav.py
+# generates both committed files and documents the scene.
+#
+# THERE IS NO EXTERNAL ORACLE FOR OBJECT DECODE AT ALL - a weaker position
+# than even ecpl/tpn are in (see decode_scores_ours' docstring). FFmpeg has no
+# JOC reconstruction at all, and Dolby's own decoder gates object decoding on
+# a keyed authenticity tag this project ships no key for (docs/concepts/
+# atmos-joc.md), so it plays these streams as their 5.1 bed and never
+# produces objects to compare against. This is a pure self-consistency
+# series: this project's own encoder and decoder share one reading of TS 103
+# 420, so a genuine regression in either still collapses these numbers, and a
+# defect both sides agree on is invisible here. docs/object-quality-trend.md
+# says exactly that on the page itself.
+OBJECTS_WAV = AUDIO_DIR / "reference_objects.wav"
+OBJECTS_PATHS = AUDIO_DIR / "reference_objects.paths"
+
+# Kept in sync by hand with gen_object_scene_wav.py's OBJECT_NAMES (that
+# module is stdlib-only and local-only, this one is numpy-based and CI-side -
+# the same no-cross-import rule race_trend already follows with
+# gen_external_baseline.py). Each name is a trend series' `variant`, so
+# renaming one starts a new series rather than continuing the old one.
+OBJECT_NAMES = ["broadcast", "comet", "engine", "pod-hi", "pod-lo"]
+
+# Two rates, because they fail differently. At 256 kbit/s the five objects are
+# reconstructed out of a bed whose own mantissas are the binding constraint;
+# at 448 (AtmosConfig's default) the bed is comfortable and what is left is
+# the reconstruction limit itself. Measured against a real build (2026-08-23):
+# 9.6-18.6 dB at 256, 11.9-22.7 dB at 448. A regression in bit allocation
+# moves the first far more than the second; one in the JOC matrix moves both.
+OBJECT_LEGS = [
+    dict(name="atmos-objects-256", kbps=256),
+    dict(name="atmos-objects-448", kbps=448),
+]
+
+# joc::reconstruct is a DELAYED identity, not an instantaneous one: two
+# stacked MDCT round trips carry two stacked 256-sample algorithmic delays -
+# one from the real encode+decode of the bed, one more from reconstruct()'s
+# own forward+inverse pass over that decoded bed. tests/oba/test_atmos.cpp
+# derives the same 512 and its comment carries the full reasoning. Fixed here
+# rather than searched for by cross-correlation the way align() does for the
+# codec legs: the delay is a known property of the transform pair, and a
+# correlation search would silently absorb a real timing regression as "just
+# a different lag" instead of reporting it as the SNR collapse it is.
+# Confirmed empirically against this exact scene before being fixed here -
+# the correlation peak lands on 512 for every object.
+OBJECT_DELAY = 512
+
+# Skipped at each end, in samples: one syncframe of warm-up and cool-down,
+# matching the unit test's own kSkip. The decoder's first frame has no
+# previous half-block to overlap-add against and the last object frame is the
+# tail of one, so scoring either would measure the transform's edges rather
+# than the reconstruction.
+OBJECT_SKIP = 1536
+
+
+# A band is "occupied" by an object if its reference energy is within this
+# much of the object's loudest band. Everything below the line is treated as
+# out-of-band and scored as leakage instead of as spectral distance - see
+# object_spectral_scores. 40 dB is a wide net on purpose: it has to keep an
+# object's real skirts and harmonics inside, and how much of the spectrum
+# that is varies enormously by object. Measured over this scene's five: the
+# engine and pod-hi occupy 3 of the 24 Bark bands each, pod-lo 4, broadcast
+# 13, and the comet - broadband hiss - all 24, which is why it is the one
+# object with no leakage figure at all.
+OBJECT_BAND_FLOOR_DB = 40.0
+
+
+def _fmt_leak(leak):
+    """"-" for an object that occupies every band, same convention as
+    _fmt_mos' own missing-value cell."""
+    return "-" if leak is None else f"{leak:+.1f}"
+
+
+def object_spectral_scores(o, d):
+    """Banded LSD over the bands this object occupies, plus its leakage.
+
+    spectral_scores() as written cannot be used directly on an object.
+    Objects are individually NARROW-BAND by nature - this scene's engine is
+    58-232 Hz and its pod-hi is 4.7-9.4 kHz - so most of the 24 Bark bands
+    hold nothing but the reference's own numerical floor, and any leakage
+    from the four other objects into one of those bands is a ratio against
+    ~zero. Run unmodified, that reports this scene's objects at 10-38 dB
+    "log-spectral distance", which is a true statement about band ratios and
+    a useless one about envelope fidelity: it is dominated by bands the
+    object was never in. spectral_scores' own frame-level `loud` filter
+    exists for exactly this reason one axis over (it drops near-silent
+    frames); this is the same idea applied to bands.
+
+    So the two questions are separated and both reported:
+
+    lsd_db  - mean |10 log10(coded/reference)| per band per loud frame, over
+              the OCCUPIED bands only. Directly comparable in meaning to
+              every other LSD in this file, just restricted to the part of
+              the spectrum the object is actually in.
+    leak_db - all the coded energy that landed OUTSIDE those bands, against
+              all the reference energy inside them. This is the measure
+              specific to object coding: the audible failure of a JOC
+              reconstruction is another object's content arriving in this
+              one, and for well-separated objects that lands where this
+              object has no content of its own. Lower is better. None - not
+              a large negative number - for an object that occupies every
+              band, since there is then nowhere outside for anything to leak
+              into and no measurement to report; this scene's comet, a
+              broadband hiss, is exactly that case.
+    """
+    so = _spectrogram(o)
+    sd = _spectrogram(d)
+    # Same near-silent-frame filter as spectral_scores, and for the same
+    # reason: a frame whose band ratios are all floor-against-floor would
+    # otherwise swamp the average.
+    energy = so.sum(axis=1)
+    loud = energy > 1e-6 * max(energy.max(), 1e-30)
+    band_o = np.array([so[loud, lo:hi].sum() for lo, hi in BANDS])
+    band_d = np.array([sd[loud, lo:hi].sum() for lo, hi in BANDS])
+    occupied = band_o >= band_o.max() * 10 ** (-OBJECT_BAND_FLOOR_DB / 10.0)
+
+    lsd = []
+    leak = (None if occupied.all()
+            else 10 * np.log10(max(band_d[~occupied].sum(), 1e-30) /
+                               max(band_o[occupied].sum(), 1e-30)))
+    for (lo, hi), inside in zip(BANDS, occupied):
+        if not inside:
+            continue
+        eo = so[loud, lo:hi].sum(axis=1) + 1e-12
+        ed = sd[loud, lo:hi].sum(axis=1) + 1e-12
+        lsd.append(np.mean(np.abs(10 * np.log10(ed / eo))))
+    return float(np.mean(lsd)), (None if leak is None else float(leak))
+
+
+def object_scores(source, recovered, perceptual=False):
+    """SNR/LSD/leakage/MOS for one object, at the fixed OBJECT_DELAY.
+
+    source/recovered are 1-D float arrays: the scene channel this object was
+    built from, and the object_NN.wav the decoder exported for it. Both are
+    trimmed to the common overlap with OBJECT_SKIP samples dropped at each
+    end, and stay 1-D - _spectrogram and perceptual_score both read a single
+    channel that way, and there is no second channel to average over here
+    the way there is on every other mode's material.
+    """
+    n = min(len(source) - OBJECT_SKIP,
+            len(recovered) - OBJECT_DELAY - OBJECT_SKIP) - OBJECT_SKIP
+    if n <= 0:
+        raise SystemExit("object audio is shorter than the warm-up/cool-down window")
+    o = source[OBJECT_SKIP:OBJECT_SKIP + n]
+    d = recovered[OBJECT_SKIP + OBJECT_DELAY:OBJECT_SKIP + OBJECT_DELAY + n]
+    snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
+    lsd, leak = object_spectral_scores(o, d)
+    mos = perceptual_score(o, d) if perceptual else None
+    return float(snr), lsd, leak, (None if mos is None else float(mos))
+
+
+def race_objects(json_out=None):
+    """One row per (leg, object), plus a `scene` row per leg.
+
+    The `scene` row is the plain mean of that leg's per-object SNR/LSD/leakage
+    (and of MOS where every object has one) - a single number per leg for a reader
+    who wants "did the object layer move" without reading five rows, and the
+    row docs/object-quality-trend.md charts by default. It is a mean of the
+    objects, not a separate measurement: an object that collapses on its own
+    shows up here diluted by four that did not, which is exactly why the
+    per-object rows exist beside it rather than instead of it.
+    """
+    if not OBJECTS_WAV.exists() or not OBJECTS_PATHS.exists():
+        raise SystemExit(f"missing {OBJECTS_WAV} / {OBJECTS_PATHS} - regenerate them with "
+                         "python tools/generators/gen_object_scene_wav.py")
+    source = read_wav_any(OBJECTS_WAV)
+    if source.shape[1] != len(OBJECT_NAMES):
+        raise SystemExit(f"{OBJECTS_WAV} has {source.shape[1]} channels, but OBJECT_NAMES lists "
+                         f"{len(OBJECT_NAMES)} - regenerate the scene, or fix the list")
+    seconds = len(source) / RATE
+
+    print(f"{'leg':<18} | {'object':<10} | {'SNR dB':>7} | {'LSD dB':>6} | "
+          f"{'leak dB':>7} | {'MOS':>4} | {'kbps':>6}")
+    print("-" * 72)
+
+    results = []
+    for leg in OBJECT_LEGS:
+        name, kbps = leg["name"], leg["kbps"]
+        coded = BUILD / f"objects_{name}.ec3"
+        bed = BUILD / f"objects_{name}_bed.wav"
+        objects_dir = BUILD / f"objects_{name}"
+        # Any previous run's exports are removed first: the decoder writes one
+        # object_NN.wav per object it reconstructs, so a run that produced
+        # FEWER objects than the last one would otherwise be scored partly
+        # against stale files left behind by the earlier run.
+        if objects_dir.exists():
+            for stale in objects_dir.glob("object_*.wav"):
+                stale.unlink()
+        run([CLI, "atmos-encode", str(OBJECTS_WAV), str(coded), str(kbps),
+             str(len(OBJECT_NAMES)), str(OBJECTS_PATHS)])
+        run([CLI, "decode", str(coded), str(bed), str(objects_dir)])
+        kbps_measured = measured_kbps(coded, seconds)
+
+        rows = []
+        for index, object_name in enumerate(OBJECT_NAMES):
+            exported = objects_dir / f"object_{index:02}.wav"
+            if not exported.exists():
+                raise SystemExit(f"{exported} was not written - the decoder reconstructed fewer "
+                                 f"than {len(OBJECT_NAMES)} objects from {coded}")
+            recovered = read_wav_f32(exported)[:, 0]
+            snr, lsd, leak, mos = object_scores(np.ascontiguousarray(source[:, index]),
+                                                np.ascontiguousarray(recovered),
+                                                perceptual=True)
+            rows.append(dict(leg=name, bitrate_kbps=kbps, variant=object_name, snr_db=snr,
+                             lsd_db=lsd, leak_db=leak, mos_lqo=mos,
+                             measured_kbps=float(kbps_measured)))
+
+        # Every mean is taken over `objects` rather than over `rows`, which
+        # the scene row is about to join: averaging a list while appending
+        # the average to it is the kind of thing that works today and breaks
+        # the moment someone moves the append.
+        objects = list(rows)
+        every_mos = [r["mos_lqo"] for r in objects]
+        every_leak = [r["leak_db"] for r in objects if r["leak_db"] is not None]
+        rows.append(dict(
+            leg=name, bitrate_kbps=kbps, variant="scene",
+            snr_db=float(np.mean([r["snr_db"] for r in objects])),
+            lsd_db=float(np.mean([r["lsd_db"] for r in objects])),
+            # Averaged over the objects that HAVE a leakage figure: an
+            # object occupying every band contributes no measurement rather
+            # than a floor value that would drag the scene mean down by
+            # hundreds of dB (see object_spectral_scores).
+            leak_db=(float(np.mean(every_leak)) if every_leak else None),
+            mos_lqo=(None if any(m is None for m in every_mos)
+                     else float(np.mean(every_mos))),
+            measured_kbps=float(kbps_measured)))
+
+        for row in rows:
+            print(f"{row['leg']:<18} | {row['variant']:<10} | {row['snr_db']:>7.2f} | "
+                  f"{row['lsd_db']:>6.2f} | {_fmt_leak(row['leak_db']):>7} | "
+                  f"{_fmt_mos(row['mos_lqo']):>4} | {row['measured_kbps']:>6.1f}")
+        print()
+        results.extend(rows)
+
+    print("No external oracle exists for object decode - FFmpeg has no JOC reconstruction, and")
+    print("Dolby's own decoder needs a key this project does not ship, so it plays these streams")
+    print("as their 5.1 bed. These are self-consistency numbers; see race_objects' own comment.")
+
+    if json_out is not None:
+        Path(json_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(json_out).write_text(json.dumps({"rows": results}, indent=2) + "\n")
+        print(f"wrote {json_out}")
 
 
 DRP = Path(r"C:\Program Files\Dolby\Dolby Reference Player")
@@ -917,7 +1310,18 @@ def dolby_decode(coded, wav):
 
 
 def agreement_db(a, b):
-    """How closely two decodings of the same bits match, in dB."""
+    """How closely two decodings of the same bits match, in dB.
+
+    Presumes both decodes came from a stream encoded with nodither: §7.3.4
+    leaves the actual dither VALUES decoder-defined ("any reasonably random
+    sequence"), so once dithflag is really decided from content, two
+    independent, spec-correct decoders given the same dithered stream diverge
+    in the dithered bins by design, not by bug - which would silently lower
+    every number this function reports for no reason related to a regression.
+    crosscheck() below asks for nodither on every tools set it puts through
+    here so this premise actually holds; see tools/checks/verify_gold_
+    reference.sh, which needed the same fix for the same reason.
+    """
     a, b = a[:, 0].astype(np.float64), b[:, 0].astype(np.float64)
     probe = b[200000:232768]
     corr = np.correlate(a[199000:234000], probe, mode="valid")
@@ -942,8 +1346,14 @@ def crosscheck(original, source):
     for tools in ("none", "cpl", "spx", "aht", "all"):
         coded = BUILD / f"x_{tools}.ec3"
         cmd = [CLI, "eac3-encode", source, coded, "128"]
-        if tools != "none":
-            cmd.append(tools)
+        # nodither on every tools set - see agreement_db's own comment for
+        # why: it keeps this a comparison of the SAME bitstream through two
+        # decoders instead of a measurement of dither's own legitimate
+        # decoder-to-decoder divergence. "none" has no '+' form of its own
+        # (parse_tools() treats it as an exact-match special case that cannot
+        # join with another token), so it becomes bare "nodither" rather than
+        # "none+nodither".
+        cmd.append("nodither" if tools == "none" else f"{tools}+nodither")
         run(cmd)
         ff_wav = BUILD / f"x_{tools}_ff.wav"
         run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
@@ -1121,14 +1531,59 @@ def race_fast_mdct(source, original):
     print("verified-error comment; a large negative delta would be a regression.")
 
 
+# `--material speech|music` on the interactive modes: score against one of the
+# committed 30 s CC0 programme fixtures instead of make_material()'s
+# synthesized tones-and-noise. Opt-in, never a default, and deliberately not
+# accepted by `ci` or `trend` - `ci` is a hard gate whose floors were set
+# against the synthesized material and would all have to move, and `trend`
+# already carries the programme fixtures as their own legs (TREND_LEGS) rather
+# than as an alternative source for the existing ones.
+#
+# This is the knob for the encoder-tuning question this project has already
+# been caught by once: a bit-allocation or bandwidth policy that looks like a
+# win on the synthetic fixtures needs re-measuring on material that is not
+# band-limited like they are, and before this there was nowhere to do that
+# except by hand (see src/lib/src/encoder/encoder.cpp's chbwcod comment, and
+# tools/generators/gen_programme_fixtures.py for the measured spectra).
+MATERIALS = {"speech": SPEECH_FIXTURE, "music": MUSIC_FIXTURE}
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "ac3"
     BUILD.mkdir(exist_ok=True)
-    left, right = make_material()
-    source = BUILD / "race_src.wav"
-    write_wav_f32(source, left, right)
-    original = read_wav_f32(source)
-    seconds = len(left) / RATE
+
+    material = "synth"
+    if "--material" in sys.argv:
+        material = sys.argv[sys.argv.index("--material") + 1]
+        if material not in MATERIALS and material != "synth":
+            raise SystemExit(f"unknown material '{material}' (synth | speech | music)")
+        if material != "synth" and which in ("ci", "trend"):
+            raise SystemExit(
+                f"--material is not accepted by '{which}' mode - see MATERIALS' own comment. "
+                "`ci` gates against floors set on the synthesized material; `trend` already "
+                "carries the programme fixtures as their own legs.")
+        # Rejected rather than silently ignored: this mode replaces `source`
+        # with make_material_51() unconditionally, and both programme fixtures
+        # are stereo - there is no redistributable native 5.1 programme source
+        # (see gen_programme_fixtures.py's own docstring for why an upmix is
+        # not a substitute).
+        if material != "synth" and which == "eac3-51":
+            raise SystemExit(
+                "--material is not accepted by 'eac3-51' mode: both programme fixtures are "
+                "stereo and this mode is 5.1-only.")
+
+    if material == "synth":
+        left, right = make_material()
+        source = BUILD / "race_src.wav"
+        write_wav_f32(source, left, right)
+        original = read_wav_f32(source)
+        seconds = len(left) / RATE
+    else:
+        source = materialise_fixture(MATERIALS[material])
+        original = read_wav_any(source)
+        seconds = len(original) / RATE
+        print(f"material: {MATERIALS[material].name} ({seconds:.1f}s, "
+              f"{original.shape[1]} channels)")
     if which == "eac3":
         race_eac3(original, source, seconds)
     elif which == "eac3-51":
@@ -1160,10 +1615,17 @@ def main():
         if "--spectrogram-dir" in sys.argv:
             spectrogram_dir = Path(sys.argv[sys.argv.index("--spectrogram-dir") + 1])
             render_spectrograms(spectrogram_dir)
+    elif which == "objects":
+        json_out = None
+        if "--json-out" in sys.argv:
+            json_out = Path(sys.argv[sys.argv.index("--json-out") + 1])
+        race_objects(json_out=json_out)
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend)")
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend | "
+            f"objects)"
+            "\n[--material synth|speech|music] on every mode except ci, trend and eac3-51.")
 
 
 if __name__ == "__main__":

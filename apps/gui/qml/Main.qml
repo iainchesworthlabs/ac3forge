@@ -2624,7 +2624,7 @@ ApplicationWindow {
                                     spacing: Theme.space2
 
                                     Repeater {
-                                        model: ["5.1", "7.1", "5.1.4", "7.1.4", "5.2", "7.2.4"]
+                                        model: ["5.1", "7.1", "5.1.4", "7.1.4", "7.2.4"]
                                         delegate: Button {
                                             required property string modelData
                                             objectName: "preset-" + modelData
@@ -2914,13 +2914,24 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: Theme.space2
 
-                                    readonly property bool lfe2On: {
+                                    readonly property var lfe2Row: {
                                         const extras = EncoderController.extrasModel;
                                         for (let i = 0; i < extras.length; i++) {
-                                            if (extras[i].id === "lfe2") return extras[i].checked;
+                                            if (extras[i].id === "lfe2") return extras[i];
                                         }
-                                        return false;
+                                        return null;
                                     }
+                                    readonly property bool lfe2On: lfe2Row !== null && lfe2Row.checked
+                                    // "Two" shares its allocator check with the Extras row it
+                                    // is really a hidden checkbox for - lfe2Row.enabled is false
+                                    // when no other extra is ticked (LFE2 would be orphaned in
+                                    // its own dependent substream, chanmap::AllocationError::
+                                    // kOrphanLfe2), the exact case a bare "5.2" preset used to
+                                    // hit blind. Already-on always stays selectable so "Two" can
+                                    // still be clicked back down to "One".
+                                    readonly property bool lfe2Selectable: lfe2On
+                                                                           || (lfe2Row !== null && lfe2Row.enabled)
+                                    readonly property string lfe2Reason: lfe2Row !== null ? lfe2Row.reason : ""
                                     readonly property int lfeCount: !EncoderController.bedLfe
                                                                     ? 0 : (lfe2On ? 2 : 1)
                                     id: lfeRow
@@ -2948,6 +2959,7 @@ ApplicationWindow {
                                             readonly property bool locked: EncoderController.bedLfeLocked
                                                                            || EncoderController.busy
                                                                            || (modelData.n === 2 && EncoderController.extrasLocked)
+                                                                           || (modelData.n === 2 && !lfeRow.lfe2Selectable)
 
                                             objectName: "lfeCount-" + modelData.n
                                             Layout.preferredWidth: 130
@@ -2978,6 +2990,18 @@ ApplicationWindow {
                                         }
                                     }
                                     Item { Layout.fillWidth: true }
+                                }
+                                Text {
+                                    // Same right-hand-column convention as the Extras rows
+                                    // below (extraRow.modelData.reason) - "Two" is really a
+                                    // checkbox for the same "lfe2" extra, so an unreachable
+                                    // click says why instead of doing nothing.
+                                    visible: !lfeRow.lfe2On && lfeRow.lfe2Reason.length > 0
+                                    Layout.fillWidth: true
+                                    text: lfeRow.lfe2Reason
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 11
+                                    color: Theme.textMuted
                                 }
                                 Text {
                                     visible: window.showExplanations

@@ -30,6 +30,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 #include "gain.hpp"
 
 // E-AC-3 syncframe decoding, ATSC A/52:2018 Annex E Tables E1.2, E1.3 and E1.4.
@@ -643,6 +644,35 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         return std::unexpected(DecodeError::kInvalidStream);
     }
 
+    // The self-check's decoder-side view (ac3/verify/eac3_mirror.hpp). Opened
+    // here, once bsi and audfrm have both parsed - everything below is filled
+    // INCREMENTALLY, so a frame this call ends up refusing still leaves
+    // behind everything it managed to read, which is the case the comparison
+    // is most useful in. An independent substream starts a fresh access unit,
+    // the same rule split_access_units delimits them by.
+    verify::Eac3SubstreamTrace* trace = nullptr;
+    if (config_.eac3_trace != nullptr) {
+        trace = &config_.eac3_trace->begin_substream(bsi->strmtyp == StreamType::kIndependent);
+        trace->strmtyp = bsi->strmtyp;
+        trace->substreamid = bsi->substreamid;
+        trace->blocks_coded = nblks;
+        trace->fbw_channels = nfchans;
+        trace->coded_channels = nchans;
+        trace->transproce = frm->transproce;
+        if (frm->transproce) {
+            const auto count = static_cast<std::size_t>(nfchans);
+            trace->chintransproc.assign(frm->chintransproc.begin(),
+                                        frm->chintransproc.begin() +
+                                            static_cast<std::ptrdiff_t>(count));
+            trace->transprocloc.assign(frm->transprocloc.begin(),
+                                       frm->transprocloc.begin() +
+                                           static_cast<std::ptrdiff_t>(count));
+            trace->transproclen.assign(frm->transproclen.begin(),
+                                       frm->transproclen.begin() +
+                                           static_cast<std::ptrdiff_t>(count));
+        }
+    }
+
     DecodedSubstream out;
     out.strmtyp = bsi->strmtyp;
     out.substreamid = bsi->substreamid;
@@ -870,6 +900,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     std::vector<std::byte> joc_bytes;
 
     for (int blk = 0; blk < nblks; ++blk) {
+        verify::Eac3BlockTrace* block_trace = nullptr;
+        if (trace != nullptr) {
+            block_trace = &trace->blocks[static_cast<std::size_t>(blk)];
+            block_trace->entered = true;
+            // The localiser, taken before this block's first field is read -
+            // the same instant the encoder takes its own.
+            block_trace->bit_offset = r.bit_position();
+        }
         const auto strategy = [&](int ch) {
             return ch < nfchans
                        ? frm->chexpstr[static_cast<std::size_t>(blk)][static_cast<std::size_t>(ch)]
@@ -1521,7 +1559,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 cplsleak = static_cast<int>(r.read(3));
             }
         }
-        if (frm->dbaflde && r.read(1) != 0) {  // deltbaie
+        // Read into a local rather than tested inline so the self-check can
+        // see it; the short-circuit is unchanged, so a frame with dbaflde
+        // clear still consumes no bit here.
+        const bool deltbaie = frm->dbaflde && r.read(1) != 0;
+        if (block_trace != nullptr) {
+            block_trace->deltbaie = deltbaie;
+        }
+        if (deltbaie) {
             // §E2.3.2.9/§5.4.3.49-57: the syntax table reads every stream's
             // 2-bit cpldeltbae/deltbae[ch] code FIRST, then every stream's
             // segment data - not interleaved per stream - so all codes are
@@ -1716,6 +1761,78 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                     .delta = delta[static_cast<std::size_t>(ch)]});
         }
 
+        // The self-check's per-block view (ac3/verify/eac3_mirror.hpp), taken
+        // here: everything the two sides model about this block - its tool
+        // geometry, its exponents, its allocation, its coordinates - is
+        // final by now, and the mantissas below are the first thing whose
+        // WIDTH depends on all of it.
+        if (block_trace != nullptr) {
+            const bool cplinu = frm->cplinu[static_cast<std::size_t>(blk)];
+            block_trace->cplinu = cplinu;
+            block_trace->ecplinu = cplinu && ecplinu_now;
+            block_trace->cplstrtmant = cplinu ? cplstrtmant : 0;
+            block_trace->cplendmant = cplinu ? cplendmant : 0;
+            block_trace->spxinu = spxinu;
+            block_trace->spx_startmant = spxinu ? spx_startmant : 0;
+            block_trace->spx_endmant = spxinu ? spx_endmant : 0;
+            block_trace->spx_copystart = spxinu ? spx_copystart : 0;
+
+            const auto coded = static_cast<std::size_t>(nchans);
+            block_trace->streams.resize(coded + (cplinu ? 1U : 0U));
+            for (std::size_t slot = 0; slot < block_trace->streams.size(); ++slot) {
+                // The trace numbers the coupling stream just past the coded
+                // channels, the way the encoder does; this decoder parks it
+                // at a fixed internal slot instead, so the two are mapped
+                // onto each other here rather than left to compare across
+                // different numbering.
+                const auto s = slot < coded ? slot : static_cast<std::size_t>(kCplStream);
+                auto& stream = block_trace->streams[slot];
+                stream.exponents = exps[s];
+                stream.bap = bap[s];
+                // Only a full-bandwidth channel has a delta slot at all -
+                // §E2.3.2.9 bounds its deltbae[ch] loop by nfchans, so the
+                // LFE and the coupling stream carry none.
+                stream.delta = s < static_cast<std::size_t>(nfchans) ? delta[s] : DeltaSegments{};
+                stream.start = s == static_cast<std::size_t>(kCplStream) ? cplstrtmant : 0;
+                stream.endmant = endmant[s];
+                stream.aht = frm->ahtinu[s];
+                // gaqmod and gain are patched in after the mantissas below -
+                // they are transmitted once a frame, in block 0's mantissa
+                // element, so this is too early to know them.
+                stream.gaqmod = 0;
+                stream.gain.clear();
+            }
+
+            block_trace->channels.resize(static_cast<std::size_t>(nfchans));
+            for (int ch = 0; ch < nfchans; ++ch) {
+                const auto uch = static_cast<std::size_t>(ch);
+                auto& channel = block_trace->channels[uch];
+                channel.blksw = blksw[uch];
+                channel.in_coupling = cplinu && chincpl[uch];
+                channel.cplco.clear();
+                channel.ecplamp.clear();
+                channel.ecplangle.clear();
+                channel.ecplchaos.clear();
+                channel.ecpltrans = false;
+                if (channel.in_coupling && !ecplinu_now) {
+                    channel.cplco = cplco[uch];
+                } else if (channel.in_coupling) {
+                    channel.ecplamp = ecplamp_raw[uch];
+                    channel.ecplangle = ecplangle_raw[uch];
+                    channel.ecplchaos = ecplchaos_raw[uch];
+                    channel.ecpltrans = ecpltrans_persist[uch];
+                }
+                channel.in_spx = spxinu && chinspx[uch];
+                channel.spxblnd = 0;
+                channel.spxco.clear();
+                if (channel.in_spx) {
+                    channel.spxblnd = spxblnd[uch];
+                    channel.spxco = spxco[uch];
+                }
+            }
+            block_trace->allocated = true;
+        }
+
         // Mantissas, in coded order: fbw channels (the first coupled one
         // pulling in the shared coupling channel right after it, same as
         // AC-3), then the LFE.
@@ -1796,6 +1913,22 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 const int alt = gaqmod == 1 ? 2 : 4;
                 for (const int bin : gain_carrying_bins) {
                     gain[static_cast<std::size_t>(bin)] = r.read(1) != 0 ? alt : 1;
+                }
+            }
+            if (block_trace != nullptr) {
+                // §E3.4.4.2's gain words exist once per frame, here in block
+                // 0 - the only place either side can record them, and the
+                // one AHT quantity that is neither transmitted plainly nor
+                // derivable from the allocation.
+                const auto slot = s == kCplStream ? static_cast<std::size_t>(nchans)
+                                                  : static_cast<std::size_t>(s);
+                if (slot < block_trace->streams.size()) {
+                    auto& traced = block_trace->streams[slot];
+                    traced.gaqmod = gaqmod;
+                    traced.gain.assign(gain.size(), 1);
+                    for (std::size_t i = 0; i < gain.size(); ++i) {
+                        traced.gain[i] = static_cast<std::uint8_t>(gain[i]);
+                    }
                 }
             }
 
@@ -2248,7 +2381,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     joc_slot = std::make_unique<joc::ReconstructionState>();
                 }
                 out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
-                                                    /*fast_mdct=*/false, config_.fast_imdct);
+                                                    /*fast_mdct=*/false, config_.fast_imdct,
+                                                    config_.joc_domain);
             }
         }
     }

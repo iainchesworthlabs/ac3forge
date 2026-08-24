@@ -28,8 +28,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
+// shares; the leaf name below is this file's own.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_wav_reader_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "wav_reader";
     fs::create_directories(dir);
     return dir;
 }
@@ -295,6 +297,72 @@ TEST_CASE("read_wav rejects data that is not a RIFF/WAVE file", "[wav]") {
         const auto result = ac3::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+    }
+}
+
+TEST_CASE("read_wav refuses a chunk tag too close to the end to carry its own fields",
+          "[wav]") {
+    // parse_wav locates "fmt " and "data" by searching the whole buffer, then
+    // reads fixed offsets past each. A file long enough to clear the 44-byte
+    // minimum can still put either tag within a few bytes of the end, at which
+    // point those reads index past the buffer - a heap over-read on an
+    // attacker- or accident-supplied file. WavStreamReader::open already
+    // guards the same field layout; these are the whole-file parser's half.
+    SECTION("\"fmt \" in the last four bytes") {
+        std::string bytes = "RIFF";
+        put_le32(bytes, 48);
+        bytes += "WAVE";
+        bytes.append(36, 'x');
+        bytes += "fmt ";  // offset 48; the format tag would be read at 56
+        REQUIRE(bytes.size() == 52);
+        const auto path = write_raw("fmt_at_end.wav", bytes);
+        const auto result = ac3::io::read_wav(path.string());
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+    }
+    SECTION("\"data\" without its own size field") {
+        // A complete, valid fmt chunk, then a "data" tag with only three of
+        // the four size bytes behind it.
+        std::string bytes = "RIFF";
+        put_le32(bytes, 40);
+        bytes += "WAVE";
+        bytes += "fmt ";
+        put_le32(bytes, 16);
+        put_le16(bytes, 1);      // PCM
+        put_le16(bytes, 2);      // channels
+        put_le32(bytes, 48000);  // sample rate
+        put_le32(bytes, 192000);
+        put_le16(bytes, 4);
+        put_le16(bytes, 16);  // bits
+        bytes += "data";
+        bytes.append(3, char{0});  // one byte short of the declared-size field
+        const auto path = write_raw("data_truncated_header.wav", bytes);
+        const auto result = ac3::io::read_wav(path.string());
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+    }
+    SECTION("WAVE_FORMAT_EXTENSIBLE tag without the extension it points into") {
+        // fmt through `bits` is present (so the 24-byte guard passes) but the
+        // chunk stops there, leaving no SubFormat GUID to resolve 0xFFFE
+        // against. The tag stays 0xFFFE, which no supported-format branch
+        // accepts, so this is a format refusal rather than an over-read.
+        std::string bytes = "RIFF";
+        put_le32(bytes, 40);
+        bytes += "WAVE";
+        bytes += "fmt ";
+        put_le32(bytes, 16);
+        put_le16(bytes, 0xFFFE);
+        put_le16(bytes, 2);
+        put_le32(bytes, 48000);
+        put_le32(bytes, 192000);
+        put_le16(bytes, 4);
+        put_le16(bytes, 16);
+        bytes += "data";
+        put_le32(bytes, 0);
+        const auto path = write_raw("extensible_no_extension.wav", bytes);
+        const auto result = ac3::io::read_wav(path.string());
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
     }
 }
 
