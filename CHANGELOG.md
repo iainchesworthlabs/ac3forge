@@ -235,6 +235,56 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   was read out of, and `ac3cli qc` prints that beside each verdict.
 - Roadmap item `IO12`, for BS.1770-5 Annex 4's object-based loudness algorithm — the half of
   BS.1770-5 that `IO10` deliberately left out.
+
+### Fixed
+
+- **`ac3cli atmos ... bed51` no longer advertises an object layer it deliberately did not
+  encode.** `AtmosConfig::emit_object_metadata` decided whether the EMDF container (OAMD + JOC)
+  was written, but `AtmosEncoder` set TS 103 420 §8.3.1's `addbsi` object marker
+  (`flag_ec3_extension_type_a` plus §8.3.2.2's `complexity_index_type_a`) unconditionally. That
+  marker is the only thing any reader has to go on, so a `bed51` stream — whose whole purpose is
+  to omit the container and play as a plain 5.1 bed on a decoder that would otherwise refuse an
+  object container it cannot validate — still claimed objects downstream: `ac3::io::scan`
+  reported an `oba_complexity_index`, `ac3::io::build_codec_config_box` wrote the `dec3` box's
+  Dolby Atmos extension, `ac3cli fmp4` wrote `CHANNELS="<N>/JOC"` into its HLS playlists, and
+  FFmpeg reported the profile as "Dolby Digital Plus + Dolby Atmos". The marker now follows the
+  container, which is the same objects-or-nothing rule that already ruled out emitting an empty
+  container. This changes `bed51` output bytes: the `addbsi` element shrinks to a single zero
+  `addbsie` bit and the freed bits go back to the mantissas (the frame size is unchanged — this
+  is CBR). `objects` mode is unaffected. The FFmpeg-oracle matrix now asserts the profile for
+  both modes rather than only that each decodes.
+
+### Changed
+
+- **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
+  revision of A/85 since 2013. Its §6 restates the target loudness, tolerance and true-peak
+  ceiling unchanged (−24 LKFS, ±2 dB, −2 dBTP), so **no preset number moves**; only the citation
+  does. EBU R 128 s4, Netflix's Dolby Atmos Home Mix Deliverable Requirements v2.3 and Amazon
+  were each checked against their primary sources and deliberately *not* added as presets: the
+  first two are numerically identical to presets already in the table (s4 differs only by a
+  Loudness-to-Dialogue Ratio this meter cannot measure, and the Atmos spec only by asking for a
+  5.1 re-render, which is a `layout=` choice), and no primary Amazon document was reachable to
+  cite. `ac3/meta/qc.hpp` and `docs/cli/metadata-options.md` record the reasoning for each.
+- `QcPreset` distinguishes a loudness **band** from a loudness **ceiling**
+  (`QcLoudnessLimit`). Every preset before now stated a target with a symmetric tolerance; Apple's
+  states only a level not to exceed, and gating that as a ±band would fail quiet material the
+  specification actually accepts.
+
+### Fixed
+
+- **`dialnorm=auto` and `ac3cli loudness` mis-assigned channel weights on any layout wider than
+  stereo.** `measured_dialnorm()` pushed a WAV's channels into `LoudnessMeter` in *WAV* order
+  (FL, FR, FC, LFE, BL, BR) when the meter expects AC-3 *coded* order (L, C, R, Ls, Rs, LFE). For
+  5.1 that put the LFE where `Ls` belongs — so BS.1770's +1.5 dB surround weight landed on the
+  one channel the standard excludes outright, while a real surround landed in the excluded slot
+  and was dropped entirely. Found by cross-checking against ffmpeg's `ebur128`: with signal in
+  only the LFE channel, ac3forge reported −38.61 LKFS where the oracle correctly reported no
+  loudness at all. `ac3cli levels` already applied the right permutation, which is why it never
+  showed the fault. Measured `dialnorm` values for 3-channel-and-wider sources change as a
+  result, and are now correct.
+
+### Added
+
 - **`ac3kernelbench` covers the fast transform paths and `dft512`.** The kernel series benched
   the direct IMDCT and not the fast one that has been the decode default since 0.9.0, and never
   benched `dft512` or the block-switched inverse at all. Four rows added
