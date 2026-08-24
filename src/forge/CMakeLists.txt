@@ -122,6 +122,7 @@ target_sources(forge_objects
         src/dsp/qmf.cpp
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
+        src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
         src/encoder/bandwidth.cpp
         src/encoder/coupling.cpp
@@ -132,6 +133,7 @@ target_sources(forge_objects
         src/encoder/transient.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/object_strip.cpp
         src/io/probe.cpp
         src/io/wav.cpp
         src/io/wav_stream_reader.cpp
@@ -181,6 +183,71 @@ else()
     target_include_directories(forge_objects PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
 endif()
+
+# ---------------------------------------------------------------------------
+# The SIMD arch tree (ROADMAP PF5).
+#
+# Exactly the mechanism directly above, on the architecture axis instead of
+# the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
+# identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
+# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
+# codec core resolves to it. No translation unit ever asks what it is being
+# compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
+# and adding an architecture means adding a directory, not editing
+# conditionals in the kernels.
+#
+# The kernels themselves are NOT duplicated per directory. They live once,
+# in shared code (src/core/fft_radix2.hpp, src/core/mdct.cpp,
+# src/core/bitalloc.cpp, src/core/exponents.cpp), written against the two
+# 128-bit vector types the header defines; the directories carry the types
+# and their operations. See the generic header for why that is what makes
+# the bit-exactness claim testable.
+#
+# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
+# reproducibility comparison wants (is a difference between two machines the
+# vector kernels or something else?), and is the reference
+# tests/core/test_simd_kernels.cpp's scalar side is written to match.
+# ---------------------------------------------------------------------------
+set(AC3FORGE_SIMD "auto" CACHE STRING
+    "SIMD kernel directory: auto (from CMAKE_SYSTEM_PROCESSOR), generic, x86_64, or aarch64")
+set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
+
+if(AC3FORGE_SIMD STREQUAL "auto")
+    # AC3FORGE_BUILD_ARCH is resolved further up this file for version
+    # strings, from the same CMAKE_SYSTEM_PROCESSOR; reuse it rather than
+    # spelling the platform regexes a second time and letting the two drift.
+    # Anything that is not one of the two architectures with a directory -
+    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a soft-float
+    # embedded target - lands on generic, which is a complete implementation
+    # and not a stub.
+    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
+        set(AC3FORGE_SIMD_RESOLVED "x86_64")
+    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
+        set(AC3FORGE_SIMD_RESOLVED "aarch64")
+    else()
+        set(AC3FORGE_SIMD_RESOLVED "generic")
+    endif()
+else()
+    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
+endif()
+
+set(AC3FORGE_ARCH_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/${AC3FORGE_SIMD_RESOLVED}")
+if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
+    message(FATAL_ERROR
+        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
+        "directory under src/forge/src/internal/arch/. Add "
+        "src/forge/src/internal/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
+        "the portable implementation and is a working starting point.")
+endif()
+target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
+
+# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
+# simd.hpp the library was built with - the same white-box arrangement
+# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
+set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
+# For the configure summary at the end of the top-level CMakeLists.txt.
+set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 
 target_compile_features(forge_objects PUBLIC cxx_std_23)
 

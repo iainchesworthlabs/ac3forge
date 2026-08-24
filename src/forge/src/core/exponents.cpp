@@ -10,12 +10,17 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 
 namespace ac3 {
 
-std::int32_t to_fixed25(double c) {
-    const double scaled = std::round(c * 16777216.0);  // 2^24
+namespace {
+
+// The clamp-and-narrow tail of to_fixed25, shared by the one-at-a-time and
+// the batched forms so the §7.2.2 range rule exists in exactly one place and
+// the two cannot drift into disagreeing.
+std::int32_t clamp_fixed25(double scaled) {
     if (scaled >= 16777215.0) {
         return 16777215;  // 2^24 - 1
     }
@@ -23,6 +28,43 @@ std::int32_t to_fixed25(double c) {
         return -16777216;  // -2^24
     }
     return static_cast<std::int32_t>(scaled);
+}
+
+}  // namespace
+
+std::int32_t to_fixed25(double c) {
+    return clamp_fixed25(std::round(c * 16777216.0));  // 2^24
+}
+
+// Two coefficients per iteration through the arch seam (ROADMAP PF5).
+//
+// arch::round_ties_away is contractually std::round - IEEE-754
+// roundToIntegralTiesAway - on every member of the seam, so each lane's
+// result is the same double the scalar path above computes, and the clamp is
+// then literally the same function. tests/core/test_simd_kernels.cpp checks
+// the whole batch form against to_fixed25 element by element over real
+// coefficients and an adversarial value set, on every leg.
+//
+// The win differs sharply by architecture, and that is the point of having
+// measured it rather than assumed: AArch64 spends one FRINTA instruction per
+// lane, x86-64 has no rounding instruction at all below SSE4.1 and trades an
+// out-of-line libm round() call for about a dozen in-line SSE2 operations,
+// and the generic build calls std::round twice and gains only the loop
+// structure. See docs/performance-trend.md.
+void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32_t> fixed) {
+    assert(coefficients.size() == fixed.size());
+    const auto scale = internal::arch::f64x2::broadcast(16777216.0);  // 2^24
+    std::size_t i = 0;
+    for (; i + 2 <= coefficients.size(); i += 2) {
+        const auto scaled = internal::arch::round_ties_away(
+            internal::arch::f64x2::load(coefficients.data() + i) * scale);
+        fixed[i] = clamp_fixed25(scaled.lane0());
+        fixed[i + 1] = clamp_fixed25(scaled.lane1());
+    }
+    // Mantissa counts are odd (37, 61, ... 253), so the tail is real.
+    for (; i < coefficients.size(); ++i) {
+        fixed[i] = to_fixed25(coefficients[i]);
+    }
 }
 
 int exponent_from_fixed(std::int32_t fixed) {
@@ -63,10 +105,11 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
     // bin lies at or past endmant are pure padding, handled after slew
     // limiting below.
     // group_size == 0 only for ExpStrategy::kReuse, and every caller of this
-    // function passes kD15/kD25/kD45 (strategy_for_span in encoder.cpp never
-    // produces kReuse; every other call site is a hardcoded kD15) - the
-    // assert above holds for the whole call graph, clang-analyzer just
-    // cannot see across translation units to confirm it.
+    // function passes kD15/kD25/kD45 (both encoders' run planners take their
+    // strategy from strategy_for_span, which never produces kReuse; every
+    // other call site is a hardcoded kD15) - the assert above holds for the
+    // whole call graph, clang-analyzer just cannot see across translation
+    // units to confirm it.
     // NOLINTNEXTLINE(clang-analyzer-core.DivideZero)
     const int real_diffs = (endmant - 1 + group_size - 1) / group_size;
     assert(real_diffs <= diff_count);

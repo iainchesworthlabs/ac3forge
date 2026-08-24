@@ -89,30 +89,31 @@ class ProgrammeSource {
                           : whole_.frame_count();
     }
 
-    // Fills `dest` (one vector per channel, each kSamplesPerFrame long) with
-    // the samples starting at `start`. Past end-of-file every channel holds
-    // its own last real sample rather than dropping to zero, for exactly the
-    // reason the primary path does: a sudden drop to silence is itself a
-    // transient the encoder would (correctly) spend a block switch on, for a
-    // discontinuity that only exists because the file ended mid-frame. The
-    // streaming form ignores `start` beyond checking it advances in order,
-    // which the single encode loop guarantees.
-    bool fill(std::size_t start, std::vector<std::vector<float>>& dest,
+    // Fills `dest` (one vector per channel, each `frame_len` long - usually
+    // kSamplesPerFrame, shorter when the primary programme's own numblkscod
+    // is pinned below its default) with the samples starting at `start`.
+    // Past end-of-file every channel holds its own last real sample rather
+    // than dropping to zero, for exactly the reason the primary path does: a
+    // sudden drop to silence is itself a transient the encoder would
+    // (correctly) spend a block switch on, for a discontinuity that only
+    // exists because the file ended mid-frame. The streaming form ignores
+    // `start` beyond checking it advances in order, which the single encode
+    // loop guarantees.
+    bool fill(std::size_t start, std::vector<std::vector<float>>& dest, std::size_t frame_len,
               std::string_view path) {
         const std::size_t frames = frame_count();
         if (!streaming_) {
             for (std::size_t c = 0; c < dest.size(); ++c) {
                 const float hold = frames > 0 ? whole_.channels[c][frames - 1] : 0.0f;
-                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-                    const std::size_t at = start + static_cast<std::size_t>(i);
-                    dest[c][static_cast<std::size_t>(i)] =
-                        at < frames ? whole_.channels[c][at] : hold;
+                for (std::size_t i = 0; i < frame_len; ++i) {
+                    const std::size_t at = start + i;
+                    dest[c][i] = at < frames ? whole_.channels[c][at] : hold;
                 }
             }
             return true;
         }
         const std::size_t want =
-            std::min<std::size_t>(ac3::kSamplesPerFrame, frames - std::min(frames, consumed_));
+            std::min<std::size_t>(frame_len, frames - std::min(frames, consumed_));
         std::vector<std::span<float>> dst(dest.size());
         for (std::size_t c = 0; c < dest.size(); ++c) {
             dst[c] = std::span{dest[c]}.first(want);
@@ -264,10 +265,10 @@ bool eac3_config_accepted(int channel_count, std::uint32_t bitrate, ac3::SampleR
         const auto words = ac3::eac3::frame_words(rate, bitrate);
         if (words > ac3::eac3::kMaxFrameWords) {
             fmt::println(stderr,
-                        "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
-                        "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
-                        "bitrate or raise the sample rate",
-                        bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
+                         "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
+                         "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
+                         "bitrate or raise the sample rate",
+                         bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
             return false;
         }
     }
@@ -393,10 +394,14 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     const std::size_t total = sources->total_frames;
     const auto source_channels = static_cast<std::size_t>(routing->source_channels);
+    // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
+    // (the "numblkscod:N" tools token) to something below its default 3.
+    const auto samples_per_frame = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * ac3::kSamplesPerBlock);
 
     std::vector<std::vector<float>> source(source_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+                                           std::vector<float>(samples_per_frame));
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(samples_per_frame));
     std::vector<std::span<const float>> in(source_channels);
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -409,11 +414,11 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     // and the real encode loop after it, so the two can never render this
     // programme two different ways.
     auto route_frame = [&](std::size_t start) {
-        gather_frame(*sources, start, source);
+        gather_frame(*sources, start, source, static_cast<int>(samples_per_frame));
         for (std::size_t c = 0; c < source_channels; ++c) {
             in[c] = source[c];
         }
-        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+        plan::render(*routing, in, out, samples_per_frame);
     };
 
     const auto cp = plan::resolve(p);
@@ -450,7 +455,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         } else if (want_dialnorm) {
             whole.emplace(*sr, cp.bed_acmod, cp.bed_lfe);
         }
-        for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+        for (std::size_t start = 0; start < total; start += samples_per_frame) {
             route_frame(start);
             if (whole) {
                 whole->push(views);
@@ -498,7 +503,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     if (!out_sink.open(out_path, meta.keep_partial)) {
         return 1;
     }
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    for (std::size_t start = 0; start < total; start += samples_per_frame) {
         route_frame(start);
         auto unit = encoder.next(views);
         if (!unit) {
@@ -524,7 +529,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                                       : static_cast<double>(out_sink.total_bytes()) /
                                             static_cast<double>(out_sink.frames());
         const double mean_kbps = mean_bytes * 8.0 * static_cast<double>(sources->sample_rate) /
-                                 (1000.0 * ac3::kSamplesPerFrame);
+                                 (1000.0 * static_cast<double>(samples_per_frame));
         fmt::println(status,
                      "encoded {} E-AC-3 access units (vbr {}, {} Hz, {}, {} coded channels, "
                      "tools: {}) to {}",
@@ -698,6 +703,10 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     const std::size_t second_nchans =
         second ? static_cast<std::size_t>(second->routing.coded_channels) : 0;
     assert(static_cast<int>(nchans + second_nchans) == encoder.channel_count());
+    // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
+    // (the "numblkscod:N" tools token) to something below its default 3.
+    const auto samples_per_frame = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * ac3::kSamplesPerBlock);
     // The classic path has exactly one source, always index 0 in offset='s
     // numbering - see LoadedSources::offset_samples for the multi-source
     // equivalent of this same leading silence.
@@ -710,10 +719,9 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     const std::size_t total =
         std::max(offset + frame_count, second ? second->source.frame_count() : 0);
 
-    std::vector<std::vector<float>> source(src_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> source(src_channels, std::vector<float>(samples_per_frame));
     std::vector<std::vector<float>> block(nchans + second_nchans,
-                                          std::vector<float>(ac3::kSamplesPerFrame));
+                                          std::vector<float>(samples_per_frame));
     std::vector<std::span<const float>> in(source.size());
     std::vector<std::span<float>> out(nchans);
     // Every coded channel of the access unit: the first programme's, then the
@@ -733,7 +741,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     std::vector<std::span<float>> second_out(second_nchans);
     if (second) {
         second_source.assign(second->source.channels(),
-                             std::vector<float>(ac3::kSamplesPerFrame));
+                             std::vector<float>(samples_per_frame));
         second_in.resize(second_source.size());
         for (std::size_t c = 0; c < second_source.size(); ++c) {
             second_in[c] = second_source[c];
@@ -755,7 +763,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     std::vector<float> stream_hold(src_channels, 0.0f);
     std::vector<std::span<float>> stream_dst(src_channels);
     std::size_t consumed = 0;
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    for (std::size_t start = 0; start < total; start += samples_per_frame) {
         // Hold the last real sample past end-of-file rather than dropping to
         // hard zero - see run_encode's identical padding for why: a sudden
         // drop to silence is itself a transient the encoder would (correctly)
@@ -764,12 +772,11 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         // samples, offset= silence is real silence, not padding.
         if (streaming) {
             const std::size_t lead =
-                start < offset ? std::min<std::size_t>(offset - start, ac3::kSamplesPerFrame)
-                               : 0;
+                start < offset ? std::min<std::size_t>(offset - start, samples_per_frame) : 0;
             std::size_t want = 0;
-            if (lead < ac3::kSamplesPerFrame) {
+            if (lead < samples_per_frame) {
                 const std::size_t remaining = frame_count - std::min(frame_count, consumed);
-                want = std::min<std::size_t>(ac3::kSamplesPerFrame - lead, remaining);
+                want = std::min<std::size_t>(samples_per_frame - lead, remaining);
             }
             for (std::size_t c = 0; c < src_channels; ++c) {
                 std::fill_n(source[c].begin(), lead, 0.0f);
@@ -797,26 +804,25 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         } else {
             for (std::size_t c = 0; c < source.size(); ++c) {
                 const float hold = frame_count > 0 ? wav->channels[c][frame_count - 1] : 0.0f;
-                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-                    const std::size_t at = start + static_cast<std::size_t>(i);
+                for (std::size_t i = 0; i < samples_per_frame; ++i) {
+                    const std::size_t at = start + i;
                     if (at < offset) {
-                        source[c][static_cast<std::size_t>(i)] = 0.0f;
+                        source[c][i] = 0.0f;
                         continue;
                     }
                     const std::size_t shifted = at - offset;
-                    source[c][static_cast<std::size_t>(i)] =
-                        shifted < frame_count ? wav->channels[c][shifted] : hold;
+                    source[c][i] = shifted < frame_count ? wav->channels[c][shifted] : hold;
                 }
                 in[c] = source[c];
             }
         }
-        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+        plan::render(*routing, in, out, samples_per_frame);
         if (second) {
-            if (!second->source.fill(start, second_source, second->path)) {
+            if (!second->source.fill(start, second_source, samples_per_frame, second->path)) {
                 out_sink.abort();
                 return 1;
             }
-            plan::render(second->routing, second_in, second_out, ac3::kSamplesPerFrame);
+            plan::render(second->routing, second_in, second_out, samples_per_frame);
         }
         auto unit = encoder.next(views);
         if (!unit) {
@@ -843,7 +849,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                                       : static_cast<double>(out_sink.total_bytes()) /
                                             static_cast<double>(out_sink.frames());
         const double mean_kbps = mean_bytes * 8.0 * static_cast<double>(src_rate) /
-                                 (1000.0 * ac3::kSamplesPerFrame);
+                                 (1000.0 * static_cast<double>(samples_per_frame));
         fmt::println(status,
                      "encoded {} E-AC-3 access units (vbr {}, {} Hz, {}, {} coded channels, "
                      "tools: {}) to {}",

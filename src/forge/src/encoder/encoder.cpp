@@ -30,6 +30,7 @@
 #include "ac3/quality/perceptual.hpp"
 #include "ac3/verify/mirror.hpp"
 #include "dither.hpp"
+#include "exp_strategy.hpp"
 #include "snr_search.hpp"
 
 namespace ac3 {
@@ -47,41 +48,6 @@ constexpr bool has_three_front(Acmod acmod) {
 
 constexpr bool has_surround(Acmod acmod) {
     return (static_cast<std::uint8_t>(acmod) & 0x4) != 0;
-}
-
-// §8.2.8: strategy by the number of blocks an exponent set serves.
-constexpr ExpStrategy strategy_for_span(int span) {
-    if (span <= 1) {
-        return ExpStrategy::kD45;
-    }
-    if (span <= 3) {
-        return ExpStrategy::kD25;
-    }
-    return ExpStrategy::kD15;
-}
-
-// Exponent-set change detection (§8.2.8: "when the variation exceeds a
-// threshold, new exponents will be sent").
-//
-// The threshold is a judgement about COST, so it is not one number. A full-
-// bandwidth channel's set is 4 + 7*ngrps bits - about 590 at D15 over a
-// 250-coefficient band - and spending that mid-frame has to buy back more
-// than it costs, so it waits for the exponents to have really moved: a mean
-// change above two steps, 12 dB per bin.
-//
-// The LFE's set is always two groups, 18 bits, thirty times cheaper. Holding
-// it to the same bar means almost never refreshing it, and the frame's one
-// set is then the per-bin minimum across six blocks - a scale chosen by the
-// loudest of them. Any block quieter than that is quantized against the wrong
-// scale for the sake of not spending 18 bits. So the LFE refreshes as soon as
-// its exponents move at all, which is the trade its own cost argues for.
-bool needs_new_exponents(std::span<const std::uint8_t> current,
-                         std::span<const std::uint8_t> reference, bool is_lfe) {
-    long long diff = 0;
-    for (std::size_t i = 0; i < current.size(); ++i) {
-        diff += std::abs(static_cast<int>(current[i]) - static_cast<int>(reference[i]));
-    }
-    return diff > (is_lfe ? 0 : 2 * static_cast<long long>(current.size()));
 }
 
 // Where coupling should start when the caller does not say. Sub-band 4 - bin
@@ -881,18 +847,27 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 4. Fixed point + per-block raw exponents --------------------------
     AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
     auto& fixed = fixed_;
-    fixed.clear();
     {
-        // One reservation instead of push_back growth across ~10k bins - the
-        // exact total is knowable up front, and the phase-5 Tracy zones put
-        // this stage second only to transient detection in the former
-        // unzoned remainder.
+        // Sized once, up front: the exact total across ~10k bins is knowable
+        // before the loop, and the phase-5 Tracy zones put this stage second
+        // only to transient detection in the former unzoned remainder.
+        //
+        // resize() with no clear() before it, unlike the push_back form this
+        // replaced (ROADMAP PF5 gave every slot a contiguous destination to
+        // batch into, which needs the space to exist first). clear() would
+        // drop the size to zero and make the resize value-initialize all ten
+        // thousand elements again on every frame; without it, a steady-state
+        // frame whose layout has not changed finds the vector already the
+        // right size and the call does nothing at all. Nothing reads a stale
+        // value either way - every slot below is fully overwritten by
+        // to_fixed25_block before fixed_at can reach it, and fixed_base
+        // carries the offsets rather than them being implied by growth.
         std::size_t total = 0;
         for (int s = 0; s < streams; ++s) {
             total += static_cast<std::size_t>(stream_end(s) - stream_start(s)) *
                      kBlocksPerFrame;
         }
-        fixed.reserve(total);
+        fixed.resize(total);
     }
     auto& fixed_base = fixed_base_;
     fixed_base.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, 0);
@@ -901,21 +876,32 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // inner vector's capacity where assign would discard it.
     auto& block_exps = block_exps_;
     block_exps.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    // Where the next slot starts in `fixed`, now that the vector is sized up
+    // front and its size no longer tracks how much has been written.
+    std::size_t cursor = 0;
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
-            fixed_base[slot] = fixed.size();
-            block_exps[slot].resize(static_cast<std::size_t>(end - begin));
-            for (int bin = begin; bin < end; ++bin) {
-                const std::int32_t f =
-                    to_fixed25(coeffs_at(s, block)[static_cast<std::size_t>(bin)]);
-                fixed.push_back(f);
-                block_exps[slot][static_cast<std::size_t>(bin - begin)] =
-                    static_cast<std::uint8_t>(exponent_from_fixed(f));
-            }
+            // Batched rather than bin-by-bin (ROADMAP PF5): to_fixed25_block
+            // rounds two coefficients at a time through the architecture
+            // seam, and extract_exponents is the same per-element
+            // exponent_from_fixed this loop used to call inline. Both
+            // produce identical values to the element-wise form - see
+            // exponents.cpp - so the bitstream is unchanged.
+            const auto count = static_cast<std::size_t>(end - begin);
+            fixed_base[slot] = cursor;
+            const std::size_t base = cursor;
+            cursor += count;
+            block_exps[slot].resize(count);
+            to_fixed25_block(
+                std::span<const double>{coeffs_at(s, block)}.subspan(
+                    static_cast<std::size_t>(begin), count),
+                std::span<std::int32_t>{fixed}.subspan(base, count));
+            extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
+                              block_exps[slot]);
         }
     }
     AC3_ZONE_END(zone_fixed);
@@ -992,7 +978,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 s < nfchans &&
                 (blksw[static_cast<std::size_t>(s)][static_cast<std::size_t>(block)] ||
                  blksw[static_cast<std::size_t>(s)][static_cast<std::size_t>(block - 1)]);
-            if (needs_new_exponents(current, *reference, is_lfe) || switch_boundary) {
+            if (internal::needs_new_exponents(current, *reference, is_lfe) ||
+                switch_boundary) {
                 starts.push_back(block);
                 reference = &current;
             }

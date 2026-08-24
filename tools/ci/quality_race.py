@@ -17,6 +17,13 @@ Modes:
   eac3       - our E-AC-3 encoder, one row per Annex E tool set, vs FFmpeg's
                E-AC-3 encoder, at the low rates the tools exist to serve
   eac3-51    - the same for 5.1, with genuinely decorrelated channels
+  vbr        - the E-AC-3 rate-distortion curve VBR shipped without: sweeps
+               VbrConfig.quality, measures what rate each point actually
+               costs, and scores CBR and FFmpeg CBR at that same measured
+               rate - so "does VBR at a given average rate beat CBR at that
+               rate" has a number rather than a warning. Also checks the
+               average-rate (ABR) mode lands on the rate it was asked for.
+               See race_vbr(); `--json-out PATH` writes the rows as JSON.
   seam       - where the spectral extension notch lands, and how deep
   crosscheck - every tool set through BOTH decoders: FFmpeg and Dolby's own,
                via the reference player's GStreamer elements. Agreeing with
@@ -129,6 +136,70 @@ def make_material():
     return np.clip(left, -0.98, 0.98), np.clip(right, -0.98, 0.98)
 
 
+def make_material_transient():
+    """Material whose level moves BETWEEN the blocks of one frame.
+
+    make_material() above is mostly stationary across a 32 ms frame, or moves
+    slowly inside it - the case a single exponent set per frame handles well,
+    and therefore the case that says nothing about how the set is chosen. This
+    is the other case: onsets closer together than a frame, hard gates and
+    decays short enough that a frame's loudest block sits 20-30 dB above its
+    quietest. That gap is the whole cost of one exponent set per frame - every
+    quiet block quantized against a scale chosen by the loud one - so it is
+    what an exponent-run plan has to be measured on (roadmap EQ1).
+
+    Stereo, same 2 s-per-segment shape and same seed discipline as the two
+    generators above.
+    """
+    rng = np.random.default_rng(0x0B77 + 6)
+    t = np.arange(SEG) / RATE
+    segments = []
+
+    # a) percussive hits every 40 ms - about one per frame and a quarter, so
+    #    the attack lands on a different block of the frame each time.
+    def hits(period_ms, decay_ms, tone_hz, seed):
+        local = np.random.default_rng(seed)
+        out = np.zeros(SEG)
+        period = int(RATE * period_ms / 1000)
+        length = min(period, int(RATE * decay_ms / 1000) * 6)
+        n = np.arange(length)
+        env = np.exp(-n / (RATE * decay_ms / 1000))
+        for at in range(0, SEG - length, period):
+            body = np.sin(2 * np.pi * tone_hz * n / RATE)
+            out[at:at + length] += 0.85 * env * (0.7 * body + 0.3 * local.standard_normal(length))
+        return out
+
+    segments.append((hits(40, 8, 190.0, 1), hits(40, 8, 240.0, 2)))
+
+    # b) gated noise, switched every 256 samples - a block-rate square wave in
+    #    level, which is the worst case one set per frame can be handed.
+    w = rng.standard_normal(SEG)
+    gate = np.repeat(np.tile([1.0, 0.02], SEG // 512 + 1), 256)[:SEG]
+    segments.append((0.5 * w * gate, 0.5 * np.roll(w, 331) * np.roll(gate, 256)))
+
+    # c) sparse clicks over near-silence: high crest factor, and long stretches
+    #    where a frame contains exactly one loud block.
+    clicks_l = np.zeros(SEG)
+    clicks_r = np.zeros(SEG)
+    for at in rng.integers(0, SEG - 600, 24):
+        n = np.arange(600)
+        shape = np.exp(-n / 60.0) * np.sin(2 * np.pi * 3200.0 * n / RATE)
+        clicks_l[at:at + 600] += 0.9 * shape
+        clicks_r[at + 40:at + 640] += 0.8 * shape
+    floor = 0.004 * rng.standard_normal(SEG)
+    segments.append((clicks_l + floor, clicks_r + floor))
+
+    # d) a chord amplitude-modulated at 30 Hz: about two cycles per frame, so
+    #    the level swings smoothly but fully inside every frame.
+    chord = sum(np.sin(2 * np.pi * f * t) for f in (330.0, 415.3, 494.0, 660.0))
+    env = (0.5 + 0.5 * np.sin(2 * np.pi * 30.0 * t)) ** 3
+    segments.append((0.22 * chord * env, 0.22 * chord * np.roll(env, 400)))
+
+    left = np.concatenate([s[0] for s in segments]).astype(np.float32)
+    right = np.concatenate([s[1] for s in segments]).astype(np.float32)
+    return np.clip(left, -0.98, 0.98), np.clip(right, -0.98, 0.98)
+
+
 def make_material_51():
     """Six DECORRELATED channels, in WAV order (FL FR FC LFE BL BR).
 
@@ -151,6 +222,32 @@ def make_material_51():
     back_r = 0.55 * np.roll(left, -delay) + 0.05 * rng.standard_normal(n)
     channels = [left, right, centre, lfe, back_l, back_r]
     return [np.clip(c, -0.98, 0.98).astype(np.float32) for c in channels]
+
+
+def make_material_dynamic(left, right, loud_s=0.5, quiet_gain=0.05):
+    """make_material()'s programme with a slow loud/quiet envelope on top.
+
+    A bit reservoir has nothing to redistribute unless some frames genuinely
+    cost less than their share, and make_material() is deliberately dense
+    from end to end - every segment is a steady, fully-scored signal. Real
+    programme material is not: speech has gaps, music has rests, and that is
+    where an average-rate encoder banks the bits it spends on the loud parts.
+    This is the cheapest honest stand-in - alternating half-second passages at
+    full level and at `quiet_gain` (-26 dB by default) - applied with a raised
+    -cosine ramp so the gate itself is not a transient the encoder has to
+    spend bits coding.
+    """
+    n = len(left)
+    block = int(loud_s * RATE)
+    ramp = int(0.02 * RATE)
+    envelope = np.full(n, quiet_gain, dtype=np.float64)
+    for start in range(0, n, 2 * block):
+        envelope[start:start + block] = 1.0
+    # Smooth the steps: a hard gate is an impulse, and coding an impulse is
+    # not what this material is meant to be measuring.
+    window = np.hanning(2 * ramp + 1)
+    envelope = np.convolve(envelope, window / window.sum(), mode="same")
+    return (left * envelope).astype(np.float32), (right * envelope).astype(np.float32)
 
 
 def write_wav_f32(path, *channels):
@@ -561,6 +658,207 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
         print()
 
 
+# --- VBR characterisation ----------------------------------------------------
+#
+# VBR shipped as a per-frame quality knob with no evidence at all: no race
+# leg, no trend row, no rate-distortion curve - only a warning in
+# docs/concepts/ac3-eac3.md that cost "rises steeply in the top part of the
+# quality range". This is the measurement that warning was standing in for.
+#
+# The question a VBR mode exists to answer is not "what does quality 0.6
+# sound like", it is "at the rate this ends up costing, would plain CBR have
+# done better". So every sweep point is scored against a CBR encode at the
+# rate the VBR point actually measured - not at some nominal rate - and
+# against FFmpeg's own CBR encoder at the same number, which is the neutral
+# third opinion the rest of this file already leans on.
+#
+# The format's own ceiling is 2048 words per frame (frmsiz is 11 bits), which
+# at 48 kHz is 1024 kbit/s. Every sweep point carries that as its max_kbps:
+# without a bound, a high quality on real material asks for more than any
+# legal frame can hold and the encoder refuses the frame outright (see
+# VbrConfig::quality). Bounding at the FORMAT ceiling rather than at some
+# tighter number keeps the curve honest - nothing is capped that the
+# bitstream itself could have carried.
+VBR_FORMAT_MAX_KBPS = 1024
+VBR_QUALITIES = (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90)
+
+# The ABR targets checked for delivery. Spread across the rates a streaming
+# ladder actually asks E-AC-3 for, since "hits the rate it was told to hit"
+# is the whole deliverable.
+ABR_TARGETS = (96, 128, 192, 256, 384)
+
+
+def _encode_eac3(source, out, kbps, vbr=None, tools="none"):
+    cmd = [CLI, "eac3-encode", source, out, str(kbps), tools, "stereo"]
+    if vbr is not None:
+        cmd.append(vbr)
+    run(cmd)
+    return out
+
+
+def race_vbr(original, source, seconds, json_out=None):
+    """Sweep VbrConfig.quality; score each point against CBR at the SAME
+    measured rate, and against FFmpeg CBR at that rate.
+
+    Read the `gap` columns, not the absolute SNR: a sweep point that costs
+    203 kbit/s is only interesting next to what 203 kbit/s of CBR buys.
+    Positive means VBR won.
+
+    Three comparisons per point, all at the rate the VBR point measured:
+    CBR (a fixed frame size), ABR (the same rate asked for as an average),
+    and FFmpeg's own CBR encoder. The ABR column is there because "average
+    rate" and "variable rate" sound alike and are not: holding an average is
+    the same constraint CBR encodes under, so ABR is expected to score with
+    CBR rather than with VBR, and that expectation is worth having on the
+    table rather than in a comment.
+    """
+    rows = []
+    print("=== E-AC-3 VBR rate-distortion sweep (stereo, tools=none) ===")
+    print(f"{'quality':>7} | {'kbps':>6} | {'SNR dB':>7} | {'LSD dB':>6} | {'MOS':>4} | "
+          f"{'CBR SNR':>7} | {'vs CBR':>7} | {'ABR SNR':>7} | {'vs ABR':>7} | "
+          f"{'ff SNR':>7} | {'vs ff':>7}")
+    print("-" * 104)
+    for quality in VBR_QUALITIES:
+        tag = f"{quality:.2f}".replace(".", "")
+        coded = BUILD / f"vbr_q{tag}.ec3"
+        _encode_eac3(source, coded, 192, f"q:{quality},max:{VBR_FORMAT_MAX_KBPS}")
+        kbps = measured_kbps(coded, seconds)
+        snr, lsd, _hf, mos = decode_scores(original, coded, BUILD / f"vbr_q{tag}.wav",
+                                           perceptual=True)
+
+        # The comparison encode: CBR at the rate the VBR point actually cost,
+        # rounded to whole kbit/s. Anything else compares two different rates.
+        # Clamped to the format ceiling: measured_kbps divides by the SOURCE's
+        # duration, but the encoder pads the last frame out to a whole 1536
+        # samples, so a stream already pinned to 1024 kbit/s measures a
+        # fraction of a per cent above it and CBR has no legal frame that big.
+        cbr_kbps = min(VBR_FORMAT_MAX_KBPS, max(32, int(round(kbps))))
+        cbr = BUILD / f"vbr_cbr{cbr_kbps}.ec3"
+        _encode_eac3(source, cbr, cbr_kbps)
+        cbr_snr, cbr_lsd, _cbr_hf, cbr_mos = decode_scores(
+            original, cbr, BUILD / f"vbr_cbr{cbr_kbps}.wav", perceptual=True)
+
+        # ...and the same rate asked for as an AVERAGE rather than as a fixed
+        # frame size. This is the column that says what ABR is and is not
+        # for: holding an average is the same constraint CBR encodes under,
+        # so ABR is expected to land on CBR, not on VBR - and a change that
+        # quietly turned ABR into either one of them shows up right here.
+        abr = BUILD / f"vbr_abr{cbr_kbps}.ec3"
+        _encode_eac3(source, abr, 192, f"avg:{cbr_kbps}")
+        abr_snr, abr_lsd, _abr_hf, abr_mos = decode_scores(
+            original, abr, BUILD / f"vbr_abr{cbr_kbps}.wav", perceptual=True)
+        abr_kbps = measured_kbps(abr, seconds)
+
+        ff = BUILD / f"vbr_ff{cbr_kbps}.ec3"
+        run(["ffmpeg", "-v", "error", "-y", "-i", source, "-c:a", "eac3",
+             "-b:a", f"{cbr_kbps}k", ff])
+        ff_snr, ff_lsd, _ff_hf, ff_mos = decode_scores(
+            original, ff, BUILD / f"vbr_ff{cbr_kbps}.wav", strict=False, perceptual=True)
+
+        rows.append({"mode": "vbr", "quality": quality, "measured_kbps": float(kbps),
+                     "snr_db": float(snr), "lsd_db": float(lsd),
+                     "mos_lqo": None if mos is None else float(mos),
+                     "cbr_kbps": cbr_kbps, "cbr_snr_db": float(cbr_snr),
+                     "cbr_lsd_db": float(cbr_lsd),
+                     "cbr_mos_lqo": None if cbr_mos is None else float(cbr_mos),
+                     "abr_measured_kbps": float(abr_kbps), "abr_snr_db": float(abr_snr),
+                     "abr_lsd_db": float(abr_lsd),
+                     "abr_mos_lqo": None if abr_mos is None else float(abr_mos),
+                     "ffmpeg_snr_db": float(ff_snr), "ffmpeg_lsd_db": float(ff_lsd),
+                     "ffmpeg_mos_lqo": None if ff_mos is None else float(ff_mos)})
+        print(f"{quality:>7.2f} | {kbps:>6.1f} | {snr:>7.2f} | {lsd:>6.2f} | "
+              f"{_fmt_mos(mos):>4} | {cbr_snr:>7.2f} | {snr - cbr_snr:>+7.2f} | "
+              f"{abr_snr:>7.2f} | {snr - abr_snr:>+7.2f} | "
+              f"{ff_snr:>7.2f} | {snr - ff_snr:>+7.2f}")
+
+    print()
+    print("=== E-AC-3 ABR: does the average land where it was asked to? ===")
+    print(f"{'target':>6} | {'measured':>8} | {'error %':>7} | {'SNR dB':>7} | "
+          f"{'LSD dB':>6} | {'MOS':>4} | {'CBR SNR':>7} | {'vs CBR':>7}")
+    print("-" * 72)
+    for target in ABR_TARGETS:
+        coded = BUILD / f"abr_{target}.ec3"
+        # quality 1.0 makes the reservoir the only thing bounding the rate,
+        # which is what "hold this average" is being asked to mean here.
+        _encode_eac3(source, coded, 192, f"avg:{target}")
+        kbps = measured_kbps(coded, seconds)
+        snr, lsd, _hf, mos = decode_scores(original, coded, BUILD / f"abr_{target}.wav",
+                                           perceptual=True)
+        cbr = BUILD / f"abr_cbr{target}.ec3"
+        _encode_eac3(source, cbr, target)
+        cbr_snr, _cbr_lsd, _cbr_hf, _cbr_mos = decode_scores(
+            original, cbr, BUILD / f"abr_cbr{target}.wav", perceptual=False)
+        error = 100.0 * (kbps - target) / target
+        rows.append({"mode": "abr", "target_kbps": target, "measured_kbps": float(kbps),
+                     "error_pct": float(error), "snr_db": float(snr), "lsd_db": float(lsd),
+                     "mos_lqo": None if mos is None else float(mos),
+                     "cbr_snr_db": float(cbr_snr)})
+        print(f"{target:>6} | {kbps:>8.1f} | {error:>+7.2f} | {snr:>7.2f} | {lsd:>6.2f} | "
+              f"{_fmt_mos(mos):>4} | {cbr_snr:>7.2f} | {snr - cbr_snr:>+7.2f}")
+
+    # --- where the reservoir actually earns its keep -----------------------
+    #
+    # Every row above lands on its target and scores IDENTICALLY to CBR,
+    # which is not a bug and not a coincidence: at quality 1.0 the composite
+    # SNR offset saturates the bit allocation for every band regardless of
+    # what the band contains, so every frame asks for more than its share,
+    # every frame is capped at its share, and ABR reduces exactly to CBR.
+    # A reservoir can only redistribute bits that some frame declined to
+    # spend - which means a quality ceiling BELOW 1.0, on material that has
+    # cheap frames in it. make_material() has neither. This block supplies
+    # both, and is the only place in this mode where ABR is measured against
+    # CBR on a level footing rather than being it.
+    print()
+    print("=== E-AC-3 ABR on material with dynamics (loud/quiet passages) ===")
+    dyn_left, dyn_right = make_material_dynamic(*make_material())
+    dyn_source = BUILD / "vbr_dynamic.wav"
+    write_wav_f32(dyn_source, dyn_left, dyn_right)
+    dyn_original = read_wav_f32(dyn_source)
+    print(f"{'mode':<14} | {'kbps':>6} | {'SNR dB':>7} | {'LSD dB':>6} | {'MOS':>4} | "
+          f"{'vs CBR':>7}")
+    print("-" * 60)
+    dyn_target = 192
+    cbr = BUILD / f"vbr_dyn_cbr{dyn_target}.ec3"
+    _encode_eac3(dyn_source, cbr, dyn_target)
+    cbr_snr, cbr_lsd, _hf, cbr_mos = decode_scores(
+        dyn_original, cbr, BUILD / f"vbr_dyn_cbr{dyn_target}.wav", perceptual=True)
+    cbr_rate = measured_kbps(cbr, seconds)
+    rows.append({"mode": "dynamic-cbr", "target_kbps": dyn_target,
+                 "measured_kbps": float(cbr_rate), "snr_db": float(cbr_snr),
+                 "lsd_db": float(cbr_lsd),
+                 "mos_lqo": None if cbr_mos is None else float(cbr_mos)})
+    print(f"{'cbr':<14} | {cbr_rate:>6.1f} | {cbr_snr:>7.2f} | {cbr_lsd:>6.2f} | "
+          f"{_fmt_mos(cbr_mos):>4} | {0.0:>+7.2f}")
+    # The window is the one knob ABR has, so sweep it: too short and the
+    # reservoir cannot carry a quiet passage's savings as far as the loud one
+    # that needs them, too long and the offset drifts away from the content it
+    # is meant to be tracking.
+    for window in (8, 16, 32, 64):
+        coded = BUILD / f"vbr_dyn_abr_w{window}.ec3"
+        _encode_eac3(dyn_source, coded, 192, f"avg:{dyn_target},win:{window}")
+        rate = measured_kbps(coded, seconds)
+        snr, lsd, _hf2, mos = decode_scores(dyn_original, coded,
+                                            BUILD / f"vbr_dyn_abr_w{window}.wav",
+                                            perceptual=True)
+        rows.append({"mode": "dynamic-abr", "window_frames": window,
+                     "target_kbps": dyn_target, "measured_kbps": float(rate),
+                     "snr_db": float(snr), "lsd_db": float(lsd),
+                     "mos_lqo": None if mos is None else float(mos),
+                     "cbr_snr_db": float(cbr_snr)})
+        print(f"{'abr win=' + str(window):<14} | {rate:>6.1f} | {snr:>7.2f} | "
+              f"{lsd:>6.2f} | {_fmt_mos(mos):>4} | {snr - cbr_snr:>+7.2f}")
+
+    print()
+    print("gap columns are positive when ac3forge VBR/ABR beats the comparison at the")
+    print("SAME measured rate. MOS-LQO (ViSQOL audio mode, 1-4.75): '-' means")
+    print("visqol-python isn't installed - see perceptual_score()'s own docstring.")
+    if json_out is not None:
+        Path(json_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(json_out).write_text(json.dumps({"rows": rows}, indent=2) + "\n")
+        print(f"wrote {json_out}")
+    return rows
+
+
 # --- CI gate mode ------------------------------------------------------------
 #
 # Everything above prints a table for a human to read. This turns the same
@@ -579,6 +877,10 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
 # many dB, not a fraction of one, so it clears this bar by a wide margin.
 CI_STEREO_KBPS = 192
 CI_51_KBPS = 256
+# The transient leg (make_material_transient) runs at the same stereo rate as
+# the stationary one, so the two rows differ only in the material - which is
+# the comparison the exponent-run plan has to be read against.
+CI_TRANSIENT_KBPS = 192
 
 # (min SNR dB, max LSD dB) per E-AC-3 tool variant, one table per material
 # set - 256 kbps split six ways (5.1, decorrelated) is a far tighter
@@ -623,7 +925,41 @@ CI_EAC3_THRESHOLDS = {
         "cpl+spx": (9.0, 9.5),
         "all": (9.0, 10.5),
     },
+    # Transient material, measured 2026-08-23 against a real build (FFmpeg
+    # 8.0.1): none/auto/cpl/aht 5.37 dB SNR and 0.94-0.95 dB LSD, the three
+    # spectral-extension rows -0.42 to -0.43 dB SNR and 1.81-1.85 dB LSD.
+    #
+    # The absolute numbers are not comparable to the stationary stereo row's
+    # and are not meant to be: a click train over near-silence at 192 kbit/s is
+    # a hard thing to code, and a waveform SNR near zero on parametric rows is
+    # what a synthesized high band scores by construction. What this row exists
+    # for is the exponent-run plan, so its bars sit closer to the measurement
+    # than the other rows' do - about 1.4 dB of SNR margin and 0.5 dB of LSD.
+    # That is deliberate: every regression this leg actually caught while it
+    # was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD, not the
+    # many dB a collapse elsewhere would, and a floor loose enough to ignore
+    # them would have made the leg pointless.
+    "transient": {
+        "none": (4.0, 1.5),
+        "auto": (4.0, 1.5),
+        "cpl": (4.0, 1.5),
+        "spx": (-2.0, 2.6),
+        "aht": (4.0, 1.5),
+        "cpl+spx": (-2.0, 2.6),
+        "all": (-2.0, 2.6),
+    },
 }
+
+# Transient material (make_material_transient): onsets closer together than a
+# frame, hard gates, decays that leave a frame's loudest block 20-30 dB above
+# its quietest. It exists to hold the exponent-run plan (roadmap EQ1) against a
+# regression: one exponent set per frame quantizes every quiet block against a
+# scale chosen by the loud one, and this is the material where that costs the
+# most. Absolute scores here are far below the stationary stereo row's and are
+# not comparable to it - a click train over near-silence is a hard thing to
+# code at 192 kbit/s, and the floors are set from a measured build the same way
+# every other row's are.
+CI_EAC3_MEASURED_NOTE = "measured 2026-08-23 against a real build, FFmpeg 8.0.1"
 CI_AC3_MIN_SNR_DB = 30.0
 
 # The AC-3 gate was stereo-only for a long time, which left 5.1 - and with it
@@ -668,7 +1004,7 @@ def gate(name, ok, detail):
     return ok
 
 
-def race_ci(original, source, original_51, source_51):
+def race_ci(original, source, original_51, source_51, original_tr, source_tr):
     failures = []
 
     print(f"=== AC-3 @ {CI_STEREO_KBPS} kbps ===")
@@ -687,9 +1023,14 @@ def race_ci(original, source, original_51, source_51):
                 f"SNR {snr_51:.2f} dB (floor {CI_AC3_51_MIN_SNR_DB})"):
         failures.append("ac3-51")
 
-    for label, source_wav, original_pcm, kbps in (
-        ("stereo", source, original, CI_STEREO_KBPS),
-        ("51", source_51, original_51, CI_51_KBPS),
+    for label, source_wav, original_pcm, kbps, self_variants in (
+        ("stereo", source, original, CI_STEREO_KBPS, EAC3_SELF_VARIANTS),
+        ("51", source_51, original_51, CI_51_KBPS, EAC3_SELF_VARIANTS),
+        # Transient material runs the FFmpeg-checked variants only: what this
+        # leg exists to measure is how the exponent run plan copes with level
+        # moving between the blocks of a frame, and ecpl/tpn change neither
+        # the plan nor how it is spent. They have their own rows above.
+        ("transient", source_tr, original_tr, CI_TRANSIENT_KBPS, ()),
     ):
         print(f"=== E-AC-3 {label} @ {kbps} kbps ===")
         for variant, tools in EAC3_VARIANTS:
@@ -707,8 +1048,10 @@ def race_ci(original, source, original_51, source_51):
                         f"LSD {lsd:.2f} dB (ceiling {max_lsd})"):
                 failures.append(f"eac3-{label}-{variant}")
 
+        if not self_variants:
+            continue
         print(f"=== E-AC-3 {label} @ {kbps} kbps (ecpl/tpn, own-decoder oracle) ===")
-        for variant, tools in EAC3_SELF_VARIANTS:
+        for variant, tools in self_variants:
             coded = BUILD / f"ci_eac3_{label}_{variant}_{kbps}.ec3"
             run([CLI, "eac3-encode", source_wav, coded, str(kbps), tools])
             snr, lsd, _, _ = decode_scores_ours(original_pcm, coded,
@@ -1593,6 +1936,11 @@ def main():
         source = BUILD / "race_src51.wav"
         write_wav_f32(source, make_material_51())
         race_eac3(read_wav_f32(source), source, seconds, rates=(192, 256, 384))
+    elif which == "vbr":
+        json_out = None
+        if "--json-out" in sys.argv:
+            json_out = Path(sys.argv[sys.argv.index("--json-out") + 1])
+        race_vbr(original, source, seconds, json_out=json_out)
     elif which == "seam":
         seam_check(source)
     elif which == "crosscheck":
@@ -1603,10 +1951,19 @@ def main():
         race_fast_mdct(source, original)
     elif which == "ac3":
         race_ac3(original, source, seconds)
+    elif which == "eac3-transient":
+        # The same table race_eac3 prints for the stationary material, on the
+        # material an exponent-run plan actually has something to do on.
+        source = BUILD / "race_src_transient.wav"
+        write_wav_f32(source, *make_material_transient())
+        race_eac3(read_wav_f32(source), source, seconds, rates=(128, 192, 256))
     elif which == "ci":
         source_51 = BUILD / "race_src51.wav"
         write_wav_f32(source_51, make_material_51())
-        race_ci(original, source, read_wav_f32(source_51), source_51)
+        source_tr = BUILD / "race_src_transient.wav"
+        write_wav_f32(source_tr, *make_material_transient())
+        race_ci(original, source, read_wav_f32(source_51), source_51,
+                read_wav_f32(source_tr), source_tr)
     elif which == "trend":
         json_out = None
         if "--json-out" in sys.argv:
@@ -1623,8 +1980,8 @@ def main():
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend | "
-            f"objects)"
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | eac3-transient | vbr | seam | "
+            f"crosscheck | ci | trend | objects)"
             "\n[--material synth|speech|music] on every mode except ci, trend and eac3-51.")
 
 

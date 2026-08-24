@@ -53,6 +53,7 @@ add_executable(ac3tests
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
     core/test_bitwriter.cpp
+    encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
     core/test_crc_mutator.cpp
@@ -62,6 +63,7 @@ add_executable(ac3tests
     dsp/test_dsp_qmf.cpp
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
+    encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
@@ -69,6 +71,7 @@ add_executable(ac3tests
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
+    encoder/test_exp_strategy.cpp
     core/test_exponents.cpp
     core/test_fft.cpp
     containers/test_fmp4.cpp
@@ -88,6 +91,7 @@ add_executable(ac3tests
     containers/test_mp4_reader.cpp
     containers/test_mpegts.cpp
     containers/test_mpegts_reader.cpp
+    io/test_object_strip.cpp
     quality/test_distortion.cpp
     quality/test_perceptual.cpp
     quality/test_search.cpp
@@ -100,6 +104,7 @@ add_executable(ac3tests
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
+    core/test_simd_kernels.cpp
     core/test_tables.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
@@ -114,6 +119,24 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# test_bit_reservoir.cpp reaches the encoder's own internal bit_reservoir.hpp
+# (ABR's sliding-window accounting), which is plumbing between the encoder's
+# translation units rather than library surface - same pattern, same reason.
+# test_exp_strategy.cpp includes exp_strategy.hpp, the exponent-run planner the
+# two encoder translation units share. It is deliberately not library surface -
+# nothing outside src/forge/src/encoder/ has any business planning exponent
+# runs - but what it decides is a cost judgement, and that is worth holding to
+# account on inputs chosen to make the right answer obvious rather than only
+# through a whole encode. Same pattern as the signing headers above.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
+
+# test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
+# CMake selected in src/forge/CMakeLists.txt, so the test exercises the
+# f64x2/i32x4 the library was actually built with rather than a different
+# one - same white-box arrangement as src/signing/src just above and the ALSA
+# backend's internal header below.
+target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
 # half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only

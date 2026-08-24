@@ -102,7 +102,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | nodither | all
+        nofastmdct | nodither | numblkscod:N | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -115,7 +115,12 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         deciding it from content — neither is a coding tool (nothing in
         the bitstream's syntax changes either way), so 'none' and 'all'
         both leave them alone, and the older opt-in spelling 'fastmdct'
-        still parses as a no-op
+        still parses as a no-op;
+        numblkscod:N (0-3, default 3) shortens the syncframe to 1/2/3/6
+        blocks (5.3/10.7/16/32 ms) — every substream of the access unit
+        takes the same value, AHT is unavailable below 3 (Table E1.3 has
+        no ahte bit there — combining it with aht/auto is refused up
+        front, not silently dropped), and 'none'/'all' leave it alone too
 ```
 
 The tool set is the fourth positional argument, not an `=` option. Example:
@@ -126,21 +131,58 @@ on enhanced coupling (auto band edge) and transient pre-noise processing togethe
 combination the tools argument accepts is legal here. `all` does not currently imply `ecpl` or
 `tpn`; name them explicitly to get either.
 
+`ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
+blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
+round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
+often for the same audio, which comes straight out of the mantissas at a fixed bit rate.
+`atmos-encode` does not accept this token yet — Atmos's object metadata (OAMD/JOC) is timed and
+interpolated across a full six-block frame, and extending it to a shorter one is unstarted work,
+not merely unexposed.
+
 ## The `vbr` token (`eac3-encode` only)
 
 ```text
-vbr (eac3-encode only): off | q:0..1[,min:kbps][,max:kbps] - E-AC-3 only
+vbr (eac3-encode only): off | q:0..1[,min:kbps][,max:kbps]
+                            | avg:kbps[,win:frames][,min:kbps][,max:kbps] - E-AC-3 only
         quality is encoder-relative, not a fixed target — bit cost rises
         steeply above roughly half the range, so a high quality with no
         max bound will often refuse real programme material outright;
         bitrate_kbps still matters in vbr mode — it feeds the same
         coupling/spx frequency defaults it always has, not a target rate
+        avg:kbps instead of q: is average-rate (ABR) mode: the encoder
+        steers the SNR offset to hold that long-run average, with a
+        sliding-window bit reservoir underneath it, so a quiet frame
+        stays cheap and a busy one may cost more. It takes no quality —
+        that is the knob it exists to move — so q: and avg: are refused
+        together. win:frames sets the window (32 frames by default,
+        about a second at 48 kHz); min:/max: still bound each frame.
 ```
 
-Example: `ac3cli eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320` encodes at quality 0.4,
-capped at 320 kbps whenever the content would otherwise ask for more; `bitrate_kbps` (192 here)
-still drives the coupling/spx band-edge defaults the way it always has, since VBR has no fixed
-target rate to hand them.
+There are two rate controls here, named by the leading token.
+
+**`q:` — plain VBR.** `ac3cli eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320` encodes at
+quality 0.4, capped at 320 kbps whenever the content would otherwise ask for more; `bitrate_kbps`
+(192 here) still drives the coupling/spx band-edge defaults the way it always has, since VBR has
+no fixed target rate to hand them. What quality 0.4 actually costs, and whether it beats CBR at
+that cost, is measured in
+[E-AC-3 rate control: what VBR and ABR are worth](../concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
+
+**`avg:` — average-rate (ABR).** `ac3cli eac3-encode in.wav out.ec3 192 none stereo avg:192`
+delivers a stream that averages 192 kbps over the long run while each frame's size still follows
+the content. The encoder holds one SNR offset across frames and steers it — up while the stream is
+running under its target, down while it is over — with a sliding-window reservoir underneath as a
+hard ceiling, so no window of `win:` frames can overrun its pooled budget.
+
+`avg:` takes no quality, and passing both (`q:0.5,avg:192`) is refused rather than one half
+silently winning: quality fixes the SNR offset, and moving that offset is the whole of what ABR
+does. The stream's first frame seeds the offset from its own budget search, so there is no
+starting value to supply.
+
+`win:` sets the window in frames — 32 by default, about a second at 48 kHz. Shorter holds the
+average more tightly but gives the reservoir less to carry between a quiet passage and the loud
+one that could use its savings; longer does the opposite. `min:`/`max:` bound each individual
+frame and compose with the average, but a `min:` above the average (or a `max:` below it) makes
+the average unreachable by construction and is refused.
 
 Omit `vbr` (or pass `off`) for ordinary CBR — the default. AC-3 (`encode`) is CBR-only because
 `frmsizecod` indexes a fixed frame-size table; `eac3-silence` and `eac3-sine` are E-AC-3
