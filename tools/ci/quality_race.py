@@ -911,7 +911,18 @@ def dolby_decode(coded, wav):
 
 
 def agreement_db(a, b):
-    """How closely two decodings of the same bits match, in dB."""
+    """How closely two decodings of the same bits match, in dB.
+
+    Presumes both decodes came from a stream encoded with nodither: §7.3.4
+    leaves the actual dither VALUES decoder-defined ("any reasonably random
+    sequence"), so once dithflag is really decided from content, two
+    independent, spec-correct decoders given the same dithered stream diverge
+    in the dithered bins by design, not by bug - which would silently lower
+    every number this function reports for no reason related to a regression.
+    crosscheck() below asks for nodither on every tools set it puts through
+    here so this premise actually holds; see tools/checks/verify_gold_
+    reference.sh, which needed the same fix for the same reason.
+    """
     a, b = a[:, 0].astype(np.float64), b[:, 0].astype(np.float64)
     probe = b[200000:232768]
     corr = np.correlate(a[199000:234000], probe, mode="valid")
@@ -936,8 +947,14 @@ def crosscheck(original, source):
     for tools in ("none", "cpl", "spx", "aht", "all"):
         coded = BUILD / f"x_{tools}.ec3"
         cmd = [CLI, "eac3-encode", source, coded, "128"]
-        if tools != "none":
-            cmd.append(tools)
+        # nodither on every tools set - see agreement_db's own comment for
+        # why: it keeps this a comparison of the SAME bitstream through two
+        # decoders instead of a measurement of dither's own legitimate
+        # decoder-to-decoder divergence. "none" has no '+' form of its own
+        # (parse_tools() treats it as an exact-match special case that cannot
+        # join with another token), so it becomes bare "nodither" rather than
+        # "none+nodither".
+        cmd.append("nodither" if tools == "none" else f"{tools}+nodither")
         run(cmd)
         ff_wav = BUILD / f"x_{tools}_ff.wav"
         run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
