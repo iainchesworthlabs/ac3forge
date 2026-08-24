@@ -86,6 +86,16 @@ go through `fmt::printf`/`<fmt/printf.h>`, not `std::printf`, for the same NDK r
 window tables and several spec-table self-checks are
 `consteval` — a table that is wrong fails the build rather than a test.
 
+**One exception, for reading rather than writing.** {fmt} only formats *out*; it has no
+`from_chars`-equivalent for parsing text *into* a `double`, and `<charconv>`'s own **floating-point**
+`from_chars` is unavailable both on the NDK's bundled libc++ and at the macOS wheel's deployment
+target (`'from_chars' is unavailable: introduced in macOS 26.0`) — the **integer** overloads are
+fine everywhere and are used directly. Code that has to parse a decimal from user- or
+file-supplied text therefore goes through `strtod` instead (`src/forge/src/encoder/plan.cpp`,
+`encoder/assignment.cpp`, `src/forge/src/oba/scene_text.hpp`). Neither gap shows up on a Windows,
+Linux or Homebrew-macOS build, so the CI legs that catch it are Android (Shield) and Build wheels
+(macos-latest).
+
 **Warnings are errors.** `ac3::warnings` is linked privately into every first-party target,
 including `examples/`. That includes `-Wsign-conversion` and its MSVC equivalents, which in
 this codebase means a lot of explicit `static_cast<std::size_t>` on indices. Add the cast; do

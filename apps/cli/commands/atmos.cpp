@@ -6,11 +6,11 @@
 #include <cstdint>
 #include <expected>
 #include <fstream>
+#include <iterator>
 #include <numbers>
 #include <optional>
 #include <fmt/base.h>
 #include <span>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -23,6 +23,7 @@
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/motion.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "../adm/atmos_adm.hpp"
@@ -61,41 +62,61 @@ std::optional<int> apply_object_signing(std::vector<std::vector<std::byte>>& uni
     return signed_count;
 }
 
-// Parses a hand-authored keyframe file: whitespace-separated columns
-// "object_index time_s x y z gain lfe_send" per line, blank lines and '#'
-// comments (to end of line) skipped. Returns each object's keyframes, indexed
-// by object_index - an object index with no lines simply gets an empty entry.
-std::optional<std::vector<std::vector<ac3::oba::Keyframe>>> parse_path_file(
-    std::string_view path) {
-    std::ifstream in{std::string{path}};
+// Reads a scene file: either the hand-authored keyframe grammar this command
+// has always taken ("object_index time_s x y z gain lfe_send" per line, '#'
+// comments, blank lines skipped) or the JSON object-scene form, told apart by
+// their first character. Both are ac3::oba's now - see ac3/oba/scene.hpp -
+// so the GUI, the examples and this share one reader rather than three.
+//
+// Returns the file's objects and orientation without filling in the indices a
+// keyframe file skipped: what those should be is this command's policy and
+// each caller below applies its own.
+std::optional<ac3::oba::SceneContents> read_scene_file(std::string_view path) {
+    std::ifstream in{std::string{path}, std::ios::binary};
     if (!in) {
         fmt::println(stderr, "error: cannot open {}", path);
         return std::nullopt;
     }
-    std::vector<std::vector<ac3::oba::Keyframe>> by_object;
-    std::string line;
-    for (std::size_t lineno = 1; std::getline(in, line); ++lineno) {
-        if (const auto hash = line.find('#'); hash != std::string::npos) {
-            line.resize(hash);
+    const std::string text{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    auto contents = ac3::oba::read_scene(text);
+    if (!contents) {
+        // Line 0 means the format had no line to point at (a JSON-level
+        // complaint about the scene as a whole); everything else keeps the
+        // path:line: prefix this command has always printed.
+        if (contents.error().line != 0) {
+            fmt::println(stderr, "error: {}:{}: {}", path, contents.error().line,
+                         contents.error().message);
+        } else {
+            fmt::println(stderr, "error: {}: {}", path, contents.error().message);
         }
-        std::istringstream tokens{line};
-        std::size_t object = 0;
-        if (!(tokens >> object)) {
-            continue;  // blank, or comment-only, line
-        }
-        ac3::oba::Keyframe kf;
-        if (!(tokens >> kf.time_s >> kf.position.x >> kf.position.y >> kf.position.z >>
-              kf.gain >> kf.lfe_send)) {
-            fmt::println(stderr, "error: {}:{}: expected 'object time_s x y z gain lfe_send'",
-                         path, lineno);
-            return std::nullopt;
-        }
-        if (object >= by_object.size()) {
-            by_object.resize(object + 1);
-        }
-        by_object[object].push_back(kf);
+        return std::nullopt;
     }
-    return by_object;
+    return std::move(*contents);
+}
+
+// The objects a scene file described, padded out to `count` with `fallback`
+// (an index the file skipped, or one past its end), then validated. `fallback`
+// is asked for an index because atmos-encode's default placement differs per
+// object where atmos-path's does not.
+std::optional<ac3::oba::ObjectScene> scene_of(std::string_view path,
+                                              ac3::oba::SceneContents contents, std::size_t count,
+                                              const auto& fallback) {
+    contents.objects.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (contents.objects[i].automation.empty()) {
+            const ac3::oba::ObjectPlacement rest = fallback(i);
+            contents.objects[i].automation.push_back({.time_s = 0.0,
+                                                      .position = rest.position,
+                                                      .gain = rest.gain,
+                                                      .lfe_send = rest.lfe_send});
+        }
+    }
+    auto scene = ac3::oba::ObjectScene::create(std::move(contents.objects), contents.orientation);
+    if (!scene) {
+        fmt::println(stderr, "error: {}: {}", path, scene.error().message);
+        return std::nullopt;
+    }
+    return std::move(*scene);
 }
 
 }  // namespace
@@ -226,43 +247,34 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
 
 int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::uint32_t seconds,
                    std::uint32_t bitrate, std::uint32_t objects_arg, const Options& meta) {
-    const auto parsed = parse_path_file(paths_path);
-    if (!parsed) {
+    auto contents = read_scene_file(paths_path);
+    if (!contents) {
         return 1;
     }
-    const auto objects =
-        objects_arg != 0 ? static_cast<std::size_t>(objects_arg) : parsed->size();
+    const auto described = contents->objects.size();
+    const auto objects = objects_arg != 0 ? static_cast<std::size_t>(objects_arg) : described;
     if (objects < 1 || objects > 15) {
         fmt::println(stderr, "error: 1 to 15 objects (the bed's LFE is the 16th, "
                              "and TS 103 420 §8.3.2.2 caps the total at 16)");
         return 1;
     }
-    if (parsed->size() > objects) {
+    if (described > objects) {
         fmt::println(stderr,
                      "error: {} has keyframes up to object index {}, more than the {} objects "
                      "requested",
-                     paths_path, parsed->size() - 1, objects);
+                     paths_path, described - 1, objects);
         return 1;
     }
 
-    std::vector<ac3::oba::ObjectPath> paths;
-    paths.reserve(objects);
-    for (std::size_t i = 0; i < objects; ++i) {
-        if (i < parsed->size() && !(*parsed)[i].empty()) {
-            auto created = ac3::oba::KeyframePath::create((*parsed)[i]);
-            if (!created) {
-                fmt::println(stderr, "error: object {} has two keyframes at the same time_s", i);
-                return 1;
-            }
-            paths.emplace_back(std::move(*created));
-            continue;
-        }
-        auto fallback = ac3::oba::KeyframePath::create(
-            {{.time_s = 0.0,
-              .position = {.x = 0.5, .y = 0.5, .z = 0.0},
-              .gain = 0.7 / std::sqrt(static_cast<double>(objects)),
-              .lfe_send = 0.0}});
-        paths.emplace_back(std::move(*fallback));
+    // An object the file never mentions sits still at room centre under the
+    // same inverse-root gain law 'atmos' and the GUI use, exactly as before.
+    const auto scene = scene_of(paths_path, std::move(*contents), objects, [objects](std::size_t) {
+        return ac3::oba::ObjectPlacement{.position = {.x = 0.5, .y = 0.5, .z = 0.0},
+                                         .gain = 0.7 / std::sqrt(static_cast<double>(objects)),
+                                         .lfe_send = 0.0};
+    });
+    if (!scene) {
+        return 1;
     }
 
     ac3::oba::AtmosEncoder encoder{
@@ -287,10 +299,13 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
         return 1;
     }
 
+    // Reused every frame rather than reallocated: evaluate_into fills it in
+    // place, which is the whole reason it exists alongside the vector form.
+    std::vector<ac3::oba::ObjectPlacement> placement(objects);
     std::uint64_t n0 = 0;
     for (std::uint64_t f = 0; f < frames; ++f) {
         const double t = static_cast<double>(n0 + ac3::kSamplesPerFrame) / 48000.0;
-        const auto placement = ac3::oba::evaluate_placements(paths, t);
+        scene->evaluate_into(t, placement);
         for (std::size_t i = 0; i < objects; ++i) {
             for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
                 essences[i][static_cast<std::size_t>(n)] = static_cast<float>(
@@ -428,37 +443,23 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                         .lfe_send = 0.0};
     }
 
-    // An authored keyframe file (same format/addressing as atmos-path, object
+    // An authored scene file (same format/addressing as atmos-path, object
     // index == this WAV channel index) drives motion instead of the static
     // placement above; empty (the default) leaves that placement reused
     // unchanged every frame, exactly as before this argument existed - see
     // the per-frame loop below.
-    std::optional<std::vector<ac3::oba::ObjectPath>> paths;
+    std::optional<ac3::oba::ObjectScene> scene;
     if (!paths_path.empty()) {
-        const auto parsed = parse_path_file(paths_path);
-        if (!parsed) {
+        auto contents = read_scene_file(paths_path);
+        if (!contents) {
             return 1;
         }
-        paths.emplace();
-        paths->reserve(count);
-        for (std::size_t i = 0; i < count; ++i) {
-            if (i < parsed->size() && !(*parsed)[i].empty()) {
-                auto created = ac3::oba::KeyframePath::create((*parsed)[i]);
-                if (!created) {
-                    fmt::println(stderr, "error: object {} has two keyframes at the same time_s",
-                                 i);
-                    return 1;
-                }
-                paths->emplace_back(std::move(*created));
-                continue;
-            }
-            // Not mentioned in the file: keep exactly the placement this
-            // object has today, just re-expressed as a (never-moving) path.
-            auto fallback = ac3::oba::KeyframePath::create({{.time_s = 0.0,
-                                                              .position = placement[i].position,
-                                                              .gain = placement[i].gain,
-                                                              .lfe_send = placement[i].lfe_send}});
-            paths->emplace_back(std::move(*fallback));
+        // Not mentioned in the file: keep exactly the placement this object
+        // has today, just re-expressed as a (never-moving) automation point.
+        scene = scene_of(paths_path, std::move(*contents), count,
+                         [&placement](std::size_t i) { return placement[i]; });
+        if (!scene) {
+            return 1;
         }
     }
 
@@ -518,10 +519,10 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         // encodeObjects use. Without it, every frame reuses the one static
         // placement computed above, byte-identical to before this argument
         // existed.
-        auto unit = paths ? encoder.encode_frame(
-                                views, ac3::oba::evaluate_placements(
-                                           *paths, static_cast<double>(start + ac3::kSamplesPerFrame) /
-                                                       static_cast<double>(src_rate)))
+        auto unit = scene ? encoder.encode_frame(
+                                views, scene->evaluate(
+                                           static_cast<double>(start + ac3::kSamplesPerFrame) /
+                                           static_cast<double>(src_rate)))
                           : encoder.encode_frame(views, placement);
         if (!unit) {
             fmt::println(stderr,

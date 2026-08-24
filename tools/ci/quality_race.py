@@ -56,6 +56,7 @@ Usage (repo root, after building):  python tools/ci/quality_race.py [mode]
 Set AC3CLI to override the ac3cli binary (see CLI below); CI always does.
 """
 
+import itertools
 import json
 import math
 import os
@@ -194,7 +195,10 @@ def read_wav_any(path):
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # check=False, then the explicit returncode test below: the raise has to
+    # carry the command line and the captured stderr, which CalledProcessError
+    # alone would not put in the CI log.
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
 
@@ -221,7 +225,7 @@ def align(original, decoded, skip=RATE, probe_len=32768, window_extra=65536):
 
 
 def aligned_snr(original, decoded):
-    o, d, lag = align(original, decoded)
+    o, d, _lag = align(original, decoded)
     noise = d - o
     return 10 * np.log10(np.sum(o**2) / max(np.sum(noise**2), 1e-30))
 
@@ -246,7 +250,7 @@ def _bark_bands():
     edges = [0]
     for step in np.linspace(bark[1], bark[-1], 25)[1:]:
         edges.append(int(np.searchsorted(bark, step)))
-    return [(a, b) for a, b in zip(edges, edges[1:]) if b > a]
+    return [(a, b) for a, b in itertools.pairwise(edges) if b > a]
 
 
 BANDS = _bark_bands()
@@ -350,7 +354,7 @@ def perceptual_score(o, d, rate=RATE):
     same run) without being a "the tool is unavailable" condition worth
     repeating a message for.
     """
-    global _visqol_api, _visqol_warned
+    global _visqol_api, _visqol_warned  # noqa: PLW0603 - memoised handle + once-per-run flag, see the docstring
     if VisqolApi is None:
         if not _visqol_warned:
             print("  (visqol-python not installed - skipping the perceptual-quality "
@@ -364,7 +368,7 @@ def perceptual_score(o, d, rate=RATE):
     mono_d = np.ascontiguousarray((d.mean(axis=1) if d.ndim > 1 else d), dtype=np.float64)
     try:
         mos = float(_visqol_api.measure_from_arrays(mono_o, mono_d, sample_rate=rate).moslqo)
-    except Exception as exc:  # noqa: BLE001 - see graceful-degradation reasoning above
+    except Exception as exc:  # every failure mode degrades to None, see the docstring
         if not _visqol_warned:
             print(f"  (visqol scoring failed ({exc}) - skipping the perceptual-quality column)")
             _visqol_warned = True
@@ -389,7 +393,7 @@ def decode_scores(original, coded, wav_path, strict=True, perceptual=False):
         # checking. -xerror is what turns a detected error into a failing
         # process and a raised SystemExit here.
         cmd += ["-xerror", "-err_detect", "crccheck+bitstream+buffer+explode"]
-    run(cmd + ["-i", coded, "-c:a", "pcm_f32le", wav_path])
+    run([*cmd, "-i", coded, "-c:a", "pcm_f32le", wav_path])
     o, d, _ = align(original, read_wav_f32(wav_path))
     snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
     lsd, hf = spectral_scores(o, d)
@@ -426,7 +430,7 @@ def decode_scores_ours(original, coded, wav_path, perceptual=False):
 # would trim them to an empty or inverted overlap (see its docstring), so
 # external-baseline scoring (tools/generators/gen_external_baseline.py, and the `trend`
 # mode built on the same fixtures) uses this scaled-down window instead.
-FIXED_ALIGN = dict(skip=int(0.2 * RATE), probe_len=8192, window_extra=16384)
+FIXED_ALIGN = {"skip": int(0.2 * RATE), "probe_len": 8192, "window_extra": 16384}
 
 
 def score_fixed(original, decoded, perceptual=False):
@@ -492,7 +496,7 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
           f"{'HF dB':>6} | {'MOS':>4} | {'rate':>6}")
     print("-" * 62)
     for kbps in rates:
-        for label, tools in EAC3_VARIANTS + [("ffmpeg", "ffmpeg")]:
+        for label, tools in [*EAC3_VARIANTS, ("ffmpeg", "ffmpeg")]:
             coded = BUILD / f"race_e_{label}_{kbps}.ec3"
             if tools == "ffmpeg":
                 run(["ffmpeg", "-v", "error", "-y", "-i", source, "-c:a", "eac3",
@@ -694,9 +698,10 @@ def race_ci(original, source, original_51, source_51):
 # no external encoder ever invoked.
 AUDIO_DIR = REPO / "tests" / "golden" / "audio"
 TREND_LEGS = [
-    dict(name="ac3-51-448", codec="ac3", kbps=448, wav=AUDIO_DIR / "reference_51.wav"),
-    dict(name="eac3-stereo-192", codec="eac3", kbps=192, wav=AUDIO_DIR / "reference_stereo.wav"),
-    dict(name="eac3-51-256", codec="eac3", kbps=256, wav=AUDIO_DIR / "reference_51.wav"),
+    {"name": "ac3-51-448", "codec": "ac3", "kbps": 448, "wav": AUDIO_DIR / "reference_51.wav"},
+    {"name": "eac3-stereo-192", "codec": "eac3", "kbps": 192,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "eac3-51-256", "codec": "eac3", "kbps": 256, "wav": AUDIO_DIR / "reference_51.wav"},
 ]
 
 
@@ -835,13 +840,14 @@ def render_spectrograms(out_dir):
     this file stays matplotlib-free; only a caller that actually asks for
     spectrograms needs it installed.
     """
-    import matplotlib
+    import matplotlib  # noqa: PLC0415 - deliberate, see the docstring above
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt  # noqa: PLC0415 - must follow the use("Agg") call
 
-    manifest = json.loads((REPO / "tests" / "golden" / "external-baseline" / "manifest.json").read_text())
+    baseline_root = REPO / "tests" / "golden" / "external-baseline"
+    manifest = json.loads((baseline_root / "manifest.json").read_text())
     ext = {"ac3": "ac3", "eac3": "ec3"}
-    baseline_dir = REPO / "tests" / "golden" / "external-baseline"
+    baseline_dir = baseline_root
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -875,7 +881,7 @@ def render_spectrograms(out_dir):
         fig, axes = plt.subplots(len(panels), 1, figsize=(11, 2.0 * len(panels)), sharex=True)
         if len(panels) == 1:
             axes = [axes]
-        for ax, (label, data) in zip(axes, panels):
+        for ax, (label, data) in zip(axes, panels, strict=True):
             mono = data[:n].mean(axis=1) if data.ndim > 1 else data[:n]
             _plot_spectrogram(ax, mono, f"{name} - {label}")
         axes[-1].set_xlabel("seconds")
@@ -1169,7 +1175,7 @@ def dolby_decode(coded, wav):
          "!", "dlbac3parse", "!", "dlbac3dec", "!", "audioconvert",
          "!", "audio/x-raw,format=F32LE", "!", "wavenc",
          "!", "filesink", f"location={Path(wav).as_posix()}"],
-        capture_output=True, text=True, env=env)
+        capture_output=True, text=True, env=env, check=False)
     if result.returncode != 0:
         print(f"  (dolby decode failed: {result.stderr.strip().splitlines()[:1]})")
         return False

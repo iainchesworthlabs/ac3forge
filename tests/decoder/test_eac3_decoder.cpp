@@ -1609,7 +1609,17 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     // eac3_frame.cpp) but writes every dithflag[ch] bit as 0 (dither off),
     // so the frame is patched by hand to flip block 0's dithflag[0] and
     // crc2 is restored - the only CRC E-AC-3 has (no crc1, unlike AC-3).
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};  // default acmod k2_0, no LFE
+    // chbwcod is pinned to the full band rather than left at the encoder's
+    // own choice, because that choice now reads the spectrum - and silence
+    // has none, so the default narrows to chbwcod 0 (ac3/encoder/
+    // bandwidth.hpp). A narrower band is not a smaller version of this test,
+    // it is a different one: with fewer bins to fill, step 8's SNR-offset
+    // search raises the composite until every bin has a positive bap, and a
+    // frame with no zero-bap bin left has nothing for §7.3.4 dither to
+    // substitute into. Measured on this exact frame, dithered channel-0
+    // energy falls smoothly with the band - 3.4e-11 at chbwcod 60, 1.2e-11
+    // at 40, 1.5e-12 at 30 - and reaches exactly zero at 25 and below.
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .chbwcod = 60}};  // acmod k2_0, no LFE
     const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(2, silence);
     auto frame = encoder.encode_frame(views);

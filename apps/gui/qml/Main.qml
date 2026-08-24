@@ -806,20 +806,34 @@ ApplicationWindow {
     }
 
     // The Objects tab's "Export paths…" - writes every dynamic object's
-    // authored motion (or static position) to a keyframes file in
-    // ac3cli's atmos-path/atmos-encode grammar, so the exact line the
-    // command bar shows (see window.cliLine) is honestly reproducible.
+    // authored motion (or static position) to a file ac3cli's
+    // atmos-path/atmos-encode reads, so the exact line the command bar shows
+    // (see window.cliLine) is honestly reproducible.
+    //
+    // Two forms, chosen by the name the user saves under: ".json" writes the
+    // ac3::oba::ObjectScene form (named objects, per-segment interpolation, an
+    // orientation) and anything else the keyframe columns this dialog has
+    // always written. ac3cli tells them apart by their first character, not by
+    // suffix, so either file works wherever the other does.
     FileDialog {
         id: exportPathsDialog
         title: qsTr("Export object paths")
         fileMode: FileDialog.SaveFile
-        nameFilters: [qsTr("Text file (*.txt)"), qsTr("All files (*)")]
-        defaultSuffix: "txt"
+        nameFilters: [qsTr("Keyframe columns (*.txt)"), qsTr("Object scene (*.json)"),
+                      qsTr("All files (*)")]
+        // Follows the chosen filter rather than sitting at "txt": defaultSuffix
+        // is what a name typed WITHOUT an extension gets, so a fixed "txt"
+        // would hand someone who picked "Object scene" a .txt file and, by the
+        // suffix rule below, the column format they did not ask for.
+        defaultSuffix: selectedNameFilter.index === 1 ? "json" : "txt"
         currentFolder: window.outputFolderUrl()
         selectedFile: window.outputFolderUrl() + "/" + window.exportedPathsName()
         onAccepted: {
             window.exportedPathsPath = selectedFile;
-            EncoderController.exportObjectPaths(selectedFile);
+            if (selectedFile.toString().toLowerCase().endsWith(".json"))
+                EncoderController.exportObjectScene(selectedFile);
+            else
+                EncoderController.exportObjectPaths(selectedFile);
         }
     }
 
