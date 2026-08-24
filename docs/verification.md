@@ -32,6 +32,16 @@ In rough order of strength:
    the checked-in seed and regression corpora on every push and PR, and the `Fuzz Differential`
    job adds a bounded mutation budget on pushes.
 
+   The object and metadata layer is driven directly rather than through the decoder: separate
+   harnesses over `emdf::parse_container`, `oba::parse_payload`, `joc::parse_payload`,
+   `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
+   seeded from the real payloads inside this project's own Atmos streams. That matters because
+   the indirect route was mostly closed: both decoders check their CRC words before reading the
+   frame behind them, so a mutation landing in a skip field died at the checksum. The two decode
+   harnesses now carry a custom mutator that re-stamps crc1 and crc2 after mutating — crc1
+   through the GF(2) polynomial inverse it has to be solved with — while leaving one mutation in
+   four unrepaired so the rejection path itself stays reachable.
+
    Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
    `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
    configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one

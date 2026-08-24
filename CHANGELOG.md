@@ -148,9 +148,42 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
   and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
   on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
+- **Fuzzing for the object and metadata layer** (roadmap `VX3`). Five new libFuzzer harnesses
+  over the parsers that read attacker-controlled bytes out of the skip field in every Atmos
+  frame, which until now were reached only indirectly through `fuzz_eac3_decode`:
+  `fuzz_emdf_parse` (`emdf::parse_container`), `fuzz_oamd_parse` (`oba::parse_payload`),
+  `fuzz_joc_parse` (`joc::parse_payload`), `fuzz_signing_verify`
+  (`signing::verify_atmos_stream`/`verify_atmos_frame`, the one signing operation that runs on a
+  stream its caller did not produce — key and stream both fuzzed), and, behind
+  `-DAC3FORGE_BUILD_ADM=ON`, `fuzz_adm_parse` (`ac3adm::parse_bw64`). Each is seeded from the
+  real containers and payloads inside the Atmos streams `fuzz/generate-seeds.sh` already
+  encodes, extracted by a new `fuzz/metadata-seeds.py`. The first four join `fuzz/run.sh`'s
+  default list and so the existing `Fuzz Regress`/`Fuzz Short`/`Fuzz Nightly` jobs; the ADM one
+  is opt-in (`AC3FORGE_FUZZ_ADM=1`) and gets its own nightly job, because `ac3adm` is the one
+  library here with a third-party dependency footprint.
+- **A CRC-repairing custom mutator** for `fuzz_ac3_decode` and `fuzz_eac3_decode`
+  (`fuzz/crc_mutator.hpp`). Both decoders check their CRC words before reading a single bit of
+  the frame behind them, so a mutation landing in a skip field — where the EMDF container, and
+  therefore all object metadata, lives — was rejected two orders of magnitude before the parser
+  it was aimed at. The mutator re-stamps crc1 and crc2 after mutating, crc1 through the same
+  GF(2) polynomial inverse the encoder uses (it precedes the region it protects, so it is solved
+  for rather than recomputed), and deliberately leaves one mutation in four unrepaired so the
+  bad-CRC rejection path stays reachable.
 
 ### Fixed
 
+- **Seven reports at three sites, all turned up by the new harnesses**, each with a reproducer
+  under `fuzz/regressions/`. `compute_bit_allocation` walked off its own arrays on regions whose
+  shape only a debug `assert` had ever constrained — an empty region indexed its 256-entry band
+  table at `SIZE_MAX`, a region longer than the 253-mantissa ceiling wrote one element past the
+  `psd` array, and `ac3::signing`'s per-channel tally handed it a span built by violating
+  `subspan`'s precondition (a null data pointer with a non-zero size). `ac3adm::parse_bw64`
+  allocated from declared chunk sizes rather than from what the file holds, so a 104-byte file
+  claiming 4 GB of audio allocated 4 GB, and any other over-claiming chunk did the same one
+  layer down inside libbw64. And `signing::verify_atmos_frame` inherited the *signer's* debug
+  assertion that the frame is in the ac3forge Atmos subset, so a Debug build aborted on
+  `ac3cli decode <plain stereo>.ec3 out.wav verify-objects`; verification runs on streams its
+  caller did not produce, so that assertion is now signing-only.
 - **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
   §E2.3.1.3's 11-bit `frmsiz` word count can signal at the chosen sample rate — every layout,
   reachable by typing two ordinary numbers, since both a nominal Table 5.18 bitrate and an Annex E

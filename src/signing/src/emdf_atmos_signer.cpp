@@ -512,6 +512,23 @@ Parsed parse(std::span<const std::byte> frame) {
         int counts1 = 0, counts2 = 0, counts4 = 0, mant = 0;
         auto tally = [&](std::span<const std::uint8_t> e, int end, int cs, int fs,
                          const DeltaSegments& delta) {
+            // `end` is the frame's own endmant for this channel; `e` is what
+            // the exponent walk above actually produced. A malformed frame
+            // can have them disagree, and subspan() below is a precondition,
+            // not a clamp: asking for more than `e` holds is undefined, and
+            // on an EMPTY `e` it manufactures a span with a null data pointer
+            // and a non-zero size - which is exactly what UBSan caught
+            // compute_bit_allocation then dereferencing (reported by
+            // fuzz_signing_verify, roadmap VX3).
+            //
+            // A disagreement here means the bit walk has already lost sync,
+            // which is what `desynced` is for: say so and tally nothing,
+            // rather than guessing at a mantissa count and signing or
+            // verifying against a bit range that was never right.
+            if (end < 0 || static_cast<std::size_t>(end) > e.size()) {
+                desynced = true;
+                return;
+            }
             std::vector<std::uint8_t> bap(static_cast<std::size_t>(end), std::uint8_t{0});
             BitAllocRegion region{};
             region.snr_all_zero = (cs == 0 && fs == 0);
