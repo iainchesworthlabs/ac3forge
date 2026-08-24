@@ -262,7 +262,6 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Still open: widening `decode`/`qc`/`levels`/`play`/`monitor` and the GUI's QC/Inspect pickers
   to accept containers directly, and container-to-container remux.
 - [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
->>>>>>> github/develop
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
   Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
