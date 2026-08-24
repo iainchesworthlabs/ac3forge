@@ -1,12 +1,16 @@
 #include "ac3/io/elementary.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "ac3/core/bitreader.hpp"
 #include "ac3/core/eac3_tables.hpp"
@@ -176,10 +180,11 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 
 // Table E1.2's fields land straight in the public FrameHeader (see
 // elementary.hpp) rather than in a scan-private struct: `ac3cli probe` reports
-// every one of them per frame, and scan() below keeps only the first access
-// unit's - two consumers of one walk, not two walks. bsmod_present, dsurmod
-// and mix_metadata ride along the same way, for the MPEG-TS PMT descriptors
-// (mpegts::ServiceInfo) that need them one level further out still.
+// every one of them per frame, and scan() below keeps only the first
+// programme's own units - two consumers of one walk, not two walks.
+// bsmod_present, dsurmod and mix_metadata ride along the same way, for the
+// MPEG-TS PMT descriptors (mpegts::ServiceInfo) that need them one level
+// further out still.
 //
 // Table E1.2's mixing-metadata payload, walked (not interpreted) purely to
 // reach addbsi at the right bit offset - every field here mirrors
@@ -382,31 +387,62 @@ std::expected<FrameHeader, ScanError> read_eac3_header(std::span<const std::byte
     return s;
 }
 
+// One programme's running state while scan_eac3 walks the stream: everything
+// that used to be a single set of locals, now one set per independent
+// substream id, because a stream carrying I0 and I1 has two of each and
+// unioning them would describe a programme that does not exist.
+struct ProgrammeScan {
+    ScannedProgramme summary{};
+    // Table E2.5 locations unioned across the first access unit's substreams
+    // (§E3.8.2), which is what gives the RENDERED channel count and, for the
+    // lead programme, ScannedStream::channel_map.
+    std::uint16_t locations = 0;
+    // Samples each of this programme's own access units codes, parallel to
+    // summary.access_units - kept per programme even though only the lead's
+    // ends up in ScannedStream::access_unit_samples, the same "computed for
+    // all, kept from one" shape summary.access_units already has.
+    std::vector<std::uint32_t> access_unit_samples{};
+    // The block count of the access unit currently being assembled, taken
+    // from its own INDEPENDENT substream - see scan_eac3's own comment on
+    // unit_numblkscod for why this is authoritative.
+    int unit_numblkscod = 3;
+    // Substreams seen so far in the access unit currently open.
+    std::size_t substreams = 0;
+    std::size_t unit_start = 0;
+    bool unit_open = false;
+    bool first_unit = true;
+};
+
 std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> stream) {
     ScannedStream out{.kind = StreamKind::kEac3};
     std::size_t offset = 0;
-    std::size_t unit_start = 0;
-    std::size_t substreams = 0;
-    std::uint16_t locations = 0;
-    bool first_unit = true;
+    // Ascending by substreamid, and short: §E2.3.1.2 caps independent
+    // substreams at eight, so a linear find beats any keyed container.
+    std::vector<ProgrammeScan> programmes;
+    // The programme the substreams currently being walked belong to. A
+    // dependent joins whichever independent substream last opened a unit -
+    // that adjacency IS how §E2.3.1.2 associates the two, since a dependent's
+    // own substreamid numbers within its parent's space and says nothing
+    // about which parent that is.
+    ProgrammeScan* current = nullptr;
 
-    // The block count of the access unit currently being assembled, taken
-    // from its INDEPENDENT substream: §E3.8.2 requires every substream of one
-    // access unit to code the same number of blocks, and it is the
-    // independent one whose numblkscod is authoritative (a dependent repeats
-    // it).
-    int unit_numblkscod = 3;
-
-    const auto close_unit = [&](std::size_t end) {
-        if (end > unit_start) {
-            out.access_units.push_back(stream.subspan(unit_start, end - unit_start));
-            out.access_unit_samples.push_back(static_cast<std::uint32_t>(
-                eac3::blocks_per_syncframe(unit_numblkscod) * kSamplesPerBlock));
-            if (first_unit) {
-                out.substreams_per_unit = substreams;
-                first_unit = false;
-            }
+    const auto close_unit = [&](ProgrammeScan& p, std::size_t end) {
+        if (!p.unit_open || end <= p.unit_start) {
+            return;
         }
+        p.summary.access_units.push_back(stream.subspan(p.unit_start, end - p.unit_start));
+        // §E3.8.2 requires every substream of one access unit to code the
+        // same number of blocks, and it is the independent one's numblkscod
+        // that is authoritative (a dependent repeats it) - programme_configs
+        // (encoder/eac3_frame.cpp) enforces the encode-side half of the same
+        // rule.
+        p.access_unit_samples.push_back(static_cast<std::uint32_t>(
+            eac3::blocks_per_syncframe(p.unit_numblkscod) * kSamplesPerBlock));
+        if (p.first_unit) {
+            p.summary.substreams_per_unit = p.substreams;
+            p.first_unit = false;
+        }
+        p.unit_open = false;
     };
 
     while (offset < stream.size()) {
@@ -417,44 +453,40 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         if (!sub) {
             return std::unexpected(sub.error());
         }
-        // §E3.8.2: a dependent substream extends the independent one it
-        // follows. One that opens the stream has no independent to extend -
-        // matches ac3::split_access_units' identical guard in decoder.cpp.
-        if (offset == 0 && sub->strmtyp == eac3::StreamType::kDependent) {
-            return std::unexpected(ScanError::kUnsupportedStructure);
-        }
         if (offset + sub->bytes > stream.size()) {
             return std::unexpected(ScanError::kTruncated);
         }
-        // An independent substream begins a new access unit; dependents join
-        // the one in progress.
+        if (offset == 0) {
+            out.sample_rate = sub->sample_rate;
+        }
+        // An independent substream begins a new access unit OF ITS OWN
+        // PROGRAMME; dependents join the one in progress. Which programme
+        // that is comes from substreamid (§E2.3.1.2) - not from position in
+        // the stream, which is what made a two-programme stream look like one
+        // programme running at twice the frame rate.
         if (sub->strmtyp == eac3::StreamType::kIndependent) {
-            close_unit(offset);
-            unit_start = offset;
-            unit_numblkscod = sub->numblkscod;
-            substreams = 0;
-            if (out.access_units.empty()) {
-                out.sample_rate = sub->sample_rate;
-                out.acmod = sub->acmod;
-                out.lfe = sub->lfe;
-                out.bsid = sub->bsid;
-                out.bsmod = sub->bsmod;
-                out.bsmod_present = sub->bsmod_present;
-                out.dsurmod = sub->dsurmod;
-                out.mix_metadata = sub->mix_metadata;
-                locations = bed_locations(sub->acmod, sub->lfe);
+            // Close whichever programme's unit was open, not this one's: a
+            // programme's access unit ends at the next INDEPENDENT substream
+            // of ANY programme, because that is where its own dependents stop
+            // and someone else's substreams begin. Running it to this
+            // programme's own next frame instead would swallow every other
+            // programme's frame sitting in between - a span twice the size it
+            // should be, which a container would then declare and hand a
+            // player whole.
+            if (current != nullptr) {
+                close_unit(*current, offset);
             }
             // §E2.3.1.2: which independent substream ids the stream actually
-            // uses, over the WHOLE stream rather than the first access unit -
-            // a second programme's substream need not start at byte zero. See
-            // ScannedStream::independent_substreams on why this is only an
-            // observation of the ids present.
+            // uses, over the WHOLE stream rather than just the programmes
+            // this walk groups - a second programme's substream need not
+            // start at byte zero. See ScannedStream::independent_substreams
+            // on why this is only an observation of the ids present.
             out.independent_substreams = static_cast<std::uint8_t>(
                 out.independent_substreams | (1u << (sub->substreamid & 0x7)));
             // Substreams 1-3 are the ones a PMT descriptor can describe
             // individually (EN 300 468 Table D.8, A/52 Table G.4); the first
-            // occurrence of each wins, the same "first access unit decides"
-            // rule the main service's own fields follow above.
+            // occurrence of each wins, same "first access unit decides" rule
+            // the main service's own fields follow.
             if (sub->substreamid >= 1 && sub->substreamid <= 3) {
                 auto& slot = out.associated_substreams[static_cast<std::size_t>(
                     sub->substreamid - 1)];
@@ -467,31 +499,100 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
                                             .mix_metadata = sub->mix_metadata};
                 }
             }
-        } else if (first_unit) {
+            auto found = std::ranges::find(programmes, sub->substreamid,
+                                           [](const ProgrammeScan& p) {
+                                               return p.summary.substreamid;
+                                           });
+            if (found == programmes.end()) {
+                // Inserted in ascending substreamid order rather than
+                // appended, so `programmes` reads the same whichever order
+                // the stream happens to introduce its programmes in.
+                const auto at = std::ranges::lower_bound(
+                    programmes, sub->substreamid,
+                    std::ranges::less{},
+                    [](const ProgrammeScan& p) { return p.summary.substreamid; });
+                ProgrammeScan fresh;
+                fresh.summary.substreamid = sub->substreamid;
+                fresh.summary.acmod = sub->acmod;
+                fresh.summary.lfe = sub->lfe;
+                fresh.summary.bsid = sub->bsid;
+                fresh.summary.bsmod = sub->bsmod;
+                fresh.locations = bed_locations(sub->acmod, sub->lfe);
+                found = programmes.insert(at, std::move(fresh));
+            }
+            current = &*found;
+            current->unit_start = offset;
+            current->unit_open = true;
+            current->unit_numblkscod = sub->numblkscod;
+            current->substreams = 0;
+            if (out.access_units.empty() && found == programmes.begin()) {
+                out.acmod = sub->acmod;
+                out.lfe = sub->lfe;
+                out.bsid = sub->bsid;
+                out.bsmod = sub->bsmod;
+                out.bsmod_present = sub->bsmod_present;
+                out.dsurmod = sub->dsurmod;
+                out.mix_metadata = sub->mix_metadata;
+            }
+        } else if (current == nullptr) {
+            // A dependent ahead of any independent substream has no parent to
+            // extend, so there is nothing to attribute it to - the same
+            // constraint ac3::split_access_units enforces on the decode side.
+            return std::unexpected(ScanError::kUnsupportedStructure);
+        } else if (current->first_unit) {
             // §E3.8.2: a dependent's channels overwrite the bed's where they
             // correspond and extend the layout where they do not, so unioning
             // locations - not adding counts - is what gives the rendered
             // channel count.
-            locations = static_cast<std::uint16_t>(locations | sub->chanmap.value_or(0));
+            current->locations =
+                static_cast<std::uint16_t>(current->locations | sub->chanmap.value_or(0));
         }
         // TS 103 420 §8.3.1: "whichever substream carries the EMDF
         // container" sets the flag (encoder/eac3_frame.hpp), which this
         // project's own encoder always makes the independent one, but a
         // dependent is legal too - so this checks every substream of the
         // first access unit rather than just the independent one, and takes
-        // the first that has it set.
-        if (first_unit && sub->oba_complexity_index && !out.oba_complexity_index) {
-            out.oba_complexity_index = sub->oba_complexity_index;
+        // the first that has it set. Per programme: an object layer belongs
+        // to the programme whose substream carries it, not to the stream.
+        if (current->first_unit && sub->oba_complexity_index &&
+            !current->summary.oba_complexity_index) {
+            current->summary.oba_complexity_index = sub->oba_complexity_index;
         }
-        ++substreams;
+        ++current->substreams;
         offset += sub->bytes;
     }
-    close_unit(offset);
-    if (out.access_units.empty()) {
+    // Only the last programme to open one can still have a unit open - every
+    // other was closed the moment the next independent substream arrived - but
+    // close_unit already no-ops on a closed one, so this needs no bookkeeping
+    // of its own to say which.
+    for (auto& p : programmes) {
+        close_unit(p, offset);
+    }
+    if (programmes.empty() || programmes.front().summary.access_units.empty()) {
         return std::unexpected(ScanError::kEmpty);
     }
-    out.channels = eac3::chanmap::channel_count(locations);
-    out.channel_map = locations;
+    out.programmes.reserve(programmes.size());
+    std::uint16_t lead_locations = 0;
+    for (std::size_t i = 0; i < programmes.size(); ++i) {
+        auto& p = programmes[i];
+        p.summary.channels = eac3::chanmap::channel_count(p.locations);
+        if (i == 0) {
+            lead_locations = p.locations;
+        }
+        out.programmes.push_back(std::move(p.summary));
+    }
+    // The scalar summary describes the FIRST programme - see ScannedStream's
+    // own comments on access_units and programmes. bsid/bsmod/dsurmod/
+    // mix_metadata were already captured off the lead programme's own
+    // independent substream above; the rest come from its now-finished
+    // summary, same as scan_ac3_led's single-programme case.
+    const auto& lead = out.programmes.front();
+    out.channels = lead.channels;
+    out.substreams_per_unit = lead.substreams_per_unit;
+    out.oba_complexity_index = lead.oba_complexity_index;
+    out.access_units = lead.access_units;
+    out.access_unit_samples = programmes.front().access_unit_samples;
+    out.channel_map = lead_locations;
     return out;
 }
 
@@ -507,6 +608,12 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
 // on the strength of the first frame and then refusing whatever contradicts
 // the guess. A stream where no dependent ever turns up is plain AC-3 and every
 // access unit is a lone syncframe, which is exactly what this produces.
+//
+// Always exactly one programme: §E2.3.1.2 gives this shape no Annex E
+// independent substream to number a second one from, so unlike scan_eac3
+// there is no grouping to do here - the single-entry `programmes` list is
+// only what lets a caller walk it without first asking which kind of stream
+// this is.
 std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> stream) {
     ScannedStream out{.kind = StreamKind::kAc3};
     std::size_t offset = 0;
@@ -627,6 +734,16 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
     }
     out.channels = eac3::chanmap::channel_count(locations);
     out.channel_map = locations;
+    // Always one programme - see this function's own comment.
+    out.programmes.push_back({.substreamid = 0,
+                              .acmod = out.acmod,
+                              .lfe = out.lfe,
+                              .channels = out.channels,
+                              .bsid = out.bsid,
+                              .bsmod = out.bsmod,
+                              .substreams_per_unit = out.substreams_per_unit,
+                              .oba_complexity_index = out.oba_complexity_index,
+                              .access_units = out.access_units});
     return out;
 }
 
@@ -696,7 +813,7 @@ std::expected<ScannedStream, ScanError> scan(std::span<const std::byte> stream) 
     return std::unexpected(ScanError::kUnsupportedBsid);
 }
 
-// --- timing ----------------------------------------------------------------
+// --- timing ------------------------------------------------------------------
 
 std::optional<AccessUnitTiming> access_unit_timing(const ScannedStream& stream,
                                                    std::size_t index) {

@@ -310,9 +310,25 @@ Dialog {
                                     readonly property bool auditioning:
                                         index === ObjectDecodeController.auditioningIndex
 
-                                    width: auditioning ? 16 : 12
-                                    height: auditioning ? 16 : 12
+                                    // TS 103 420 §5.6.1.2's extent grows the
+                                    // dot: an object with width/depth/height
+                                    // is a region, not a point, and drawing
+                                    // both the same size hides the difference
+                                    // the bitstream actually carries.
+                                    readonly property real extent: Math.max(
+                                        planMarker.modelData.width || 0,
+                                        planMarker.modelData.depth || 0,
+                                        planMarker.modelData.height || 0)
+
+                                    width: (auditioning ? 16 : 12) + extent * 20
+                                    height: width
+                                    radius: width / 2
                                     color: auditioning ? Theme.accent : Theme.neutral800
+                                    // §5.6.1.5.1 b_object_snap: an object
+                                    // locked to a speaker is outlined rather
+                                    // than filled flat, so it reads as pinned.
+                                    border.width: planMarker.modelData.snap ? 2 : 0
+                                    border.color: Theme.textMuted
                                     x: planMarker.modelData.x * room.width - width / 2
                                     y: planMarker.modelData.y * room.height - height / 2
 
@@ -320,7 +336,11 @@ Dialog {
                                         anchors.left: parent.right
                                         anchors.leftMargin: 3
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: String(planMarker.index + 1)
+                                        // A bed channel names itself; a
+                                        // dynamic object only has an index.
+                                        text: planMarker.modelData.label
+                                            ? planMarker.modelData.label
+                                            : String(planMarker.index + 1)
                                         color: Theme.textMuted
                                         font.pixelSize: 9
                                         font.family: Theme.monoFamily
@@ -451,7 +471,11 @@ Dialog {
                                 }
                                 Text {
                                     Layout.preferredWidth: 60
-                                    text: qsTr("obj %1").arg(objectRow.index + 1)
+                                    // A bed channel names itself ("L", "Tfr");
+                                    // a dynamic object only has an index.
+                                    text: objectRow.modelData.label
+                                        ? objectRow.modelData.label
+                                        : qsTr("obj %1").arg(objectRow.index + 1)
                                     font.pixelSize: 12
                                     font.family: Theme.monoFamily
                                     color: Theme.text
@@ -473,6 +497,30 @@ Dialog {
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral700
                                 }
+                                Text {
+                                    // TS 103 420 §5.6.1.2's extent and
+                                    // §5.6.1.5.1's channel lock. Blank for a
+                                    // point source with neither, which is
+                                    // most objects and every bed channel.
+                                    Layout.preferredWidth: 150
+                                    text: {
+                                        const w = objectRow.modelData.width || 0;
+                                        const d = objectRow.modelData.depth || 0;
+                                        const hh = objectRow.modelData.height || 0;
+                                        let parts = [];
+                                        if (w > 0 || d > 0 || hh > 0) {
+                                            parts.push(qsTr("size %1/%2/%3")
+                                                .arg(w.toFixed(2)).arg(d.toFixed(2)).arg(hh.toFixed(2)));
+                                        }
+                                        if (objectRow.modelData.snap) {
+                                            parts.push(qsTr("snap"));
+                                        }
+                                        return parts.join("  ");
+                                    }
+                                    font.pixelSize: 10
+                                    font.family: Theme.monoFamily
+                                    color: Theme.neutral700
+                                }
                                 Item { Layout.fillWidth: true }
                                 Button {
                                     objectName: "oiAuditionButton-" + objectRow.index
@@ -487,7 +535,7 @@ Dialog {
                             Layout.fillWidth: true
                             Layout.topMargin: Theme.space2
                             wrapMode: Text.WordWrap
-                            text: qsTr("Positions and gain are OAMD, read straight off this frame's own metadata. Audition plays JOC's reconstructed audio for that one object — a parametric estimate, not the original source (see docs/library/spatial-and-atmos.md).")
+                            text: qsTr("Positions, gain, extent and channel lock are OAMD, read straight off this frame's own metadata. A named row is a bed channel, drawn at the nominal room position of the speaker its label names rather than at a transmitted one. Audition plays JOC's reconstructed audio for that one object — a parametric estimate, not the original source (see docs/library/spatial-and-atmos.md).")
                             font.pixelSize: 10
                             color: Theme.neutral500
                         }

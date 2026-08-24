@@ -1,11 +1,9 @@
 #include "ac3/core/exponents.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <span>
 #include <vector>
 
@@ -15,11 +13,20 @@
 
 namespace ac3 {
 
+// to_fixed25 and exponent_from_fixed are header-inline (exponents.hpp says
+// why); this stays out of line because its callers are whole-block ones that
+// already amortise a call, and one of them - the E-AC-3 AHT path - reads a
+// column across the six blocks' transform axis rather than a contiguous run
+// of coefficients, so it has no to_fixed25 half to fuse with.
+
 namespace {
 
-// The clamp-and-narrow tail of to_fixed25, shared by the one-at-a-time and
-// the batched forms so the §7.2.2 range rule exists in exactly one place and
-// the two cannot drift into disagreeing.
+// The clamp-and-narrow tail of to_fixed25, shared with the batched form below
+// so the §7.2.2 range rule exists in exactly one place and the two cannot
+// drift into disagreeing. to_fixed25 itself stays header-inline (see above);
+// this mirrors its clamp rather than calling it because the batched form's
+// input is already-rounded, so re-deriving the round from a raw coefficient
+// would redo work the SIMD lanes just did.
 std::int32_t clamp_fixed25(double scaled) {
     if (scaled >= 16777215.0) {
         return 16777215;  // 2^24 - 1
@@ -31,10 +38,6 @@ std::int32_t clamp_fixed25(double scaled) {
 }
 
 }  // namespace
-
-std::int32_t to_fixed25(double c) {
-    return clamp_fixed25(std::round(c * 16777216.0));  // 2^24
-}
 
 // Two coefficients per iteration through the arch seam (ROADMAP PF5).
 //
@@ -51,6 +54,14 @@ std::int32_t to_fixed25(double c) {
 // out-of-line libm round() call for about a dozen in-line SSE2 operations,
 // and the generic build calls std::round twice and gains only the loop
 // structure. See docs/performance-trend.md.
+//
+// This is a distinct entry point from exponents.hpp's fused 3-arg
+// to_fixed25_block (coeffs+fixed+exponents, PF2): that one exists for the
+// encoders' hot per-bin loop, where both halves are inline so the compiler
+// keeps a bin's fixed-point value in a register between them and never
+// spills it to fuse with a second, SIMD-only stage. This one exists for
+// callers - like the AHT path this file's own header comment above
+// mentions - that want the conversion alone.
 void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32_t> fixed) {
     assert(coefficients.size() == fixed.size());
     const auto scale = internal::arch::f64x2::broadcast(16777216.0);  // 2^24
@@ -65,17 +76,6 @@ void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32
     for (; i < coefficients.size(); ++i) {
         fixed[i] = to_fixed25(coefficients[i]);
     }
-}
-
-int exponent_from_fixed(std::int32_t fixed) {
-    const auto magnitude = static_cast<std::uint32_t>(std::abs(static_cast<std::int64_t>(fixed)));
-    if (magnitude == 0) {
-        return kMaxExponent;
-    }
-    // Leading zeros of the 24-bit magnitude field: countl_zero on 32 bits
-    // minus the 8 bits above it. |c| >= 0.5 (bit 23 set) gives exponent 0.
-    const int exponent = std::countl_zero(magnitude) - 8;
-    return std::clamp(exponent, 0, kMaxExponent);
 }
 
 void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8_t> exponents) {

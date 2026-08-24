@@ -15,6 +15,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/wav.hpp"
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around
@@ -909,6 +910,33 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
     constexpr std::size_t kDbafldeBit = 54 + 9;
     constexpr std::size_t kCplinuBit = 54 + 12;
 
+    // A wanted correction now pays its full segment cost again on every
+    // block it applies to, matching what `D3` already established for AC-3
+    // (see `set_run_delta`'s own comment), rather than the one-shot-per-run
+    // cost an earlier draft of this test assumed. That real, repeated cost
+    // makes the closed-loop keep/drop decision - fit with and without, keep
+    // the higher composite SNR offset - much choosier than it used to be:
+    // measured against real programme material at 96/128/192 kbit/s stereo,
+    // it keeps a correction on well under 1% of coupled frames. Synthetic
+    // content could not reproduce even that: broadband noise built from
+    // independent-phase tones computes a real, multi-segment correction
+    // every time - `choose_delta_segments` finds plenty to fix - and the
+    // closed loop rejects every single one, because independent phases
+    // average toward the flat-ish spectrum a coarse exponent already
+    // approximates tolerably. A phase-aligned harmonic series fared no
+    // better - coupling itself never activated on it, for reasons not
+    // pinned down here. Real programme material is what the closed loop
+    // actually rewards, so this drives the same golden `reference_stereo.wav`
+    // other coupling tests already trust, looped to give the low real hit
+    // rate enough tries to land at least once.
+    const auto fixture = ac3::io::read_wav(std::string{AC3FORGE_GOLDEN_AUDIO_DIR} +
+                                           "/reference_stereo.wav");
+    REQUIRE(fixture.has_value());
+    const auto& source = fixture->channels;
+    REQUIRE(source.size() == 2);
+    const auto source_samples = source[0].size();
+    REQUIRE(source_samples >= static_cast<std::size_t>(ac3::kSamplesPerFrame));
+
     ac3::Eac3Decoder decoder;
     int coupled_frames = 0;
     int coupled_frames_with_delta = 0;
@@ -924,35 +952,16 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
             {.independent = {.bitrate_kbps = kbps, .acmod = ac3::Acmod::k2_0, .coupling = true}}};
         REQUIRE(encoder.channel_count() == 2);
 
-        // Broadband and differently balanced per channel: a pure tone leaves
-        // nothing above the coupling frequency to share, and a correction
-        // only appears where the exponent-only curve and the real one
-        // genuinely diverge, which needs content across the spectrum. The
-        // noise term is a fixed LCG so the material is identical run to run.
-        std::uint32_t rng = 0x1234567u;
-        std::uint64_t n = 0;
-        for (int f = 0; f < 12; ++f) {
+        std::size_t cursor = 0;
+        for (int f = 0; f < 400; ++f) {
             std::vector<std::vector<float>> pcm(
                 2, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
             for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-                rng = rng * 1664525u + 1013904223u;
-                const double noise =
-                    static_cast<double>(static_cast<std::int32_t>(rng >> 8)) / 8388608.0 - 1.0;
-                const auto t = static_cast<double>(n + static_cast<std::uint64_t>(i)) / 48000.0;
-                for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-                    double value = 0.15 * noise;
-                    constexpr std::array<double, 5> kTones = {310.0, 1450.0, 5200.0, 9700.0,
-                                                              15100.0};
-                    for (std::size_t k = 0; k < kTones.size(); ++k) {
-                        const double weight = ch == 0 ? 1.0 / static_cast<double>(k + 1)
-                                                      : static_cast<double>(k + 1) / 5.0;
-                        value += 0.12 * weight *
-                                 std::sin(2.0 * std::numbers::pi * kTones[k] * t);
-                    }
-                    pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(value);
-                }
+                const auto idx = (cursor + static_cast<std::size_t>(i)) % source_samples;
+                pcm[0][static_cast<std::size_t>(i)] = source[0][idx];
+                pcm[1][static_cast<std::size_t>(i)] = source[1][idx];
             }
-            n += ac3::kSamplesPerFrame;
+            cursor = (cursor + static_cast<std::size_t>(ac3::kSamplesPerFrame)) % source_samples;
             std::vector<std::span<const float>> views{pcm[0], pcm[1]};
             const auto unit = encoder.encode_access_unit(views);
             REQUIRE(unit.has_value());

@@ -110,6 +110,25 @@ derivation.
 actually lives — the "x, y, z position" in the diagram above, per object, per unit of time.
 It's the metadata a renderer reads to know where each object should be placed.
 
+An object is more than a point, and OAMD says so: as well as position and gain it carries the
+object's **extent** (a width, depth and height, so a sound can be a wall of rain rather than a
+raindrop), its **priority** (which objects a renderer short of speakers should place accurately),
+**zone constraints** (which parts of the room the renderer may use — screen only, surround only,
+with or without the height layer), and **channel lock**, which asks for the object to be snapped
+to its nearest speaker instead of panned between two. All of them are read on decode and written
+on encode here; see [Spatial & Atmos objects](../library/spatial-and-atmos.md) for the API.
+
+Two things about OAMD are easy to get wrong, and both matter for reading *other people's*
+streams rather than your own:
+
+- **A programme need not be objects.** OAMD describes a *bed* just as happily — a fixed
+  7.1.4 speaker layout, coded exactly like objects but anchored to speakers. That is what most
+  channel-based-immersive Atmos content actually is, and JOC still reconstructs its eleven
+  non-LFE channels out of the 5.1 downmix.
+- **Metadata updates are not once per frame.** A frame can carry several update blocks, each
+  taking effect at its own offset into the frame and each able to code positions as steps
+  against the previous one — which is how an object moves faster than one position per 32 ms.
+
 ## EMDF
 
 **EMDF** (Extensible Metadata Delivery Format) is the generic, extensible container format

@@ -50,6 +50,18 @@ build from. The object visualization/audio is a thin JS-facing surface over `Eac
 per-object audio, `ac3::forge#169`) fields — `decoder_bindings.cpp` does no decoding of its own, it
 just accumulates what `Eac3Decoder` already produced per frame and exposes it as typed-array views.
 
+What counts as "an object" there is every JOC output, which `ac3::oba::describe_objects()` spells
+out: a dynamic object supplies its own position, size and gain, and a bed channel — what
+channel-based-immersive third-party content carries — is drawn at the nominal room position of the
+speaker its label names, with that label on its solo button. Each object's per-frame record also
+carries TS 103 420 §5.6.1.2's extent, so a sized object draws bigger than a point source.
+
+One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo/` holds a
+*committed* `ac3forge_decode.wasm` that only the docs deploy job rebuilds, so a local `mkdocs
+serve` can be running an older module than the checked-in `demo.js`. `demo.js` therefore feature-
+detects the newer bindings and derives its per-object record stride from the data rather than
+hard-coding it.
+
 ## Toolchain
 
 No vcpkg. Every other platform preset in `CMakePresets.json` chainloads through vcpkg for

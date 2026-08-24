@@ -23,7 +23,9 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/oamd.hpp"
 
 namespace ac3cli::commands {
@@ -44,10 +46,49 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
     if (metadata) {
-        fmt::println(status, "  {} dynamic objects + the bed's LFE = {} objects, OAMD present{}",
-                     metadata->objects.size(), ac3::oba::object_count(metadata->program),
-                     have_object_audio ? ", JOC audio reconstructed"
-                                       : " (JOC audio not reconstructed)");
+        const auto& program = metadata->program;
+        const char* joc = have_object_audio ? ", JOC audio reconstructed"
+                                            : " (JOC audio not reconstructed)";
+        if (program.dynamic_only) {
+            fmt::println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
+                         metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
+                         ac3::oba::object_count(program), joc);
+        } else {
+            // A bed program - what channel-based-immersive third-party
+            // content is. Naming the bed's channels is the useful half here:
+            // "12 objects" says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl
+            // Tbr" says what the stream actually carries.
+            std::string labels;
+            for (const auto label : ac3::oba::bed_labels(program.bed)) {
+                if (!labels.empty()) {
+                    labels += ' ';
+                }
+                labels += ac3::oba::describe(label);
+            }
+            if (labels.empty()) {
+                labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
+            }
+            fmt::println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
+                         labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
+        }
+        if (metadata->trim) {
+            fmt::println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
+                         metadata->trim->warp_mode, metadata->trim->global_trim_mode);
+        }
+        if (!metadata->skipped_elements.empty()) {
+            std::string ids;
+            for (const int id : metadata->skipped_elements) {
+                if (!ids.empty()) {
+                    ids += ", ";
+                }
+                ids += std::to_string(id);
+            }
+            fmt::println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
+        }
+        if (metadata->blocks.size() > 1) {
+            fmt::println(status, "  {} metadata update blocks per frame",
+                         metadata->blocks.size());
+        }
     }
     if (objects_dir.empty()) {
         return 0;
@@ -82,22 +123,135 @@ void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
     }
 }
 
+// The informational bit stream information (§5.4.2 / Table E1.2's infomdat)
+// and the downmix/mixing group beside it, reported only where the stream
+// actually says something with them.
+//
+// Silence is the point. A complete-main programme with no production notes,
+// no Surround flags and no second programme to mix against has nothing here
+// worth a line, and that describes almost every stream this tool decodes - so
+// a plain decode's report reads exactly as it always did, and anything that
+// does appear below is a claim the encoder deliberately made.
+void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod acmod) {
+    if (info.bsmod != ac3::meta::BitstreamMode::kCompleteMain) {
+        fmt::println(status, "  service: {}", ac3::meta::describe(info.bsmod, acmod));
+    }
+    if (info.dsurmod != ac3::meta::SurroundMode::kNotIndicated) {
+        fmt::println(status, "  dsurmod: {}", ac3::meta::describe(info.dsurmod));
+    }
+    if (info.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
+        fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(info.dsurexmod));
+    }
+    if (info.dheadphonmod != ac3::meta::HeadphoneMode::kNotIndicated) {
+        fmt::println(status, "  dheadphonmod: {}", ac3::meta::describe(info.dheadphonmod));
+    }
+    // The A/D converter clause is only ever appended for HDCD: "standard" is
+    // what §D2.3.1.10 tells an encoder to send when it does not know, so it
+    // is an absence of information rather than a claim - and on AC-3 the
+    // field is not part of audprodie at all (it lives in xbsi2), where
+    // printing it would suggest a bit that was never read.
+    const auto production = [&](std::string_view prefix,
+                                const ac3::meta::AudioProduction& value) {
+        fmt::println(status, "  {}mixed at {} dB SPL, {}{}", prefix,
+                     ac3::meta::mix_level_db_spl(value.mixlevel),
+                     ac3::meta::describe(value.roomtyp),
+                     value.adconvtyp == ac3::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
+    };
+    if (info.audprod) {
+        production("", *info.audprod);
+    }
+    if (info.audprod2) {
+        production("Ch2 ", *info.audprod2);
+    }
+    // origbs defaults set, so only a stream declaring itself a COPY is news.
+    if (info.copyrightb || !info.origbs) {
+        fmt::println(status, "  {}{}{}", info.copyrightb ? "copyright asserted" : "",
+                     info.copyrightb && !info.origbs ? ", " : "",
+                     info.origbs ? "" : "a copy, not the original bit stream");
+    }
+    if (info.sourcefscod) {
+        fmt::println(status, "  source sampled at twice the coded rate (§E2.3.1.63)");
+    }
+    if (info.timecod1 || info.timecod2) {
+        fmt::println(status, "  timecode: {}",
+                     ac3::meta::format_timecode(info.timecod1.value_or(ac3::meta::TimeCodeCoarse{}),
+                                                info.timecod2.value_or(ac3::meta::TimeCodeFine{})));
+    }
+}
+
+// The programme-mixing half of mixmdate: what a receiver would use to fold
+// this substream against another programme. The five downmix levels are left
+// out - they are present on every mixmdate group and say nothing about
+// whether this stream is an associated service.
+void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
+    if (mix.pgmscl) {
+        fmt::println(status, "  programme scale: {}",
+                     *mix.pgmscl == ac3::meta::kPgmScaleMute
+                         ? std::string{"mute"}
+                         : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.pgmscl)));
+    }
+    if (mix.extpgmscl) {
+        fmt::println(status, "  external programme scale: {}",
+                     *mix.extpgmscl == ac3::meta::kPgmScaleMute
+                         ? std::string{"mute"}
+                         : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.extpgmscl)));
+    }
+    if (mix.mixing.mixdef != ac3::meta::MixDefinition::kNone) {
+        fmt::println(status, "  mixdef {} ({}{}{})",
+                     static_cast<int>(mix.mixing.mixdef),
+                     mix.mixing.external ? "external channel scales" : "",
+                     mix.mixing.external && mix.mixing.speech ? ", " : "",
+                     mix.mixing.speech ? "speech enhancement data"
+                                       : (mix.mixing.external ? "" : "no sub-fields"));
+    }
+    if (mix.pan) {
+        fmt::println(status, "  pan: {:.1f} degrees clockwise from centre",
+                     static_cast<double>(mix.pan->panmean) * ac3::meta::kPanMeanDegreesPerStep);
+    }
+    if (mix.blkmixcfginfo) {
+        fmt::println(status, "  per-block mixing configuration present");
+    }
+}
+
 int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path,
                      const ac3cli::Options& meta, std::string_view objects_dir) {
+    // §E2.3.1.2: one programme is decoded, never a fold of several. A stream
+    // carrying a second independent substream carries an ALTERNATIVE - a
+    // second language, an audio description - so writing both into one WAV
+    // would splice two unrelated pieces of audio together.
+    const auto ids = ac3::programme_ids(stream);
+    if (!ids) {
+        fmt::println(stderr, "error: stream framing failed (code {})",
+                     static_cast<int>(ids.error()));
+        return 1;
+    }
+    if (ids->empty()) {
+        fmt::println(stderr, "error: no programmes in stream");
+        return 1;
+    }
+    const auto programme = choose_programme(*ids, meta.programme);
+    if (!programme) {
+        return 1;
+    }
     // Access units, not syncframes: a dependent substream is only meaningful
     // alongside the independent one it extends, and the two are rendered
     // together into one set of speaker feeds.
-    const auto units = ac3::split_access_units(stream);
+    const auto units = ac3::split_access_units(stream, *programme);
     if (!units) {
         fmt::println(stderr, "error: stream framing failed (code {})",
                      static_cast<int>(units.error()));
         return 1;
     }
+    if (ids->size() > 1) {
+        fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
+                     ids->size(), format_programme_ids(*ids));
+    }
     ac3::Eac3Decoder decoder{
         {.drc_scale = meta.drc_scale,
          .fast_imdct = meta.fast_imdct,
          .heavy_compression = meta.p.heavy.has_value(),
-         .joc_domain = meta.joc_domain}};
+         .joc_domain = meta.joc_domain,
+         .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
     // (the transient-pre-noise flush below).
@@ -389,6 +543,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                      sink_slots, sample_rate_hz(first.sample_rate));
         print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                           compr_frames, meta);
+        if (first.info) {
+            print_bsi_summary(status, *first.info, first.acmod);
+        }
+        if (first.mixing) {
+            print_mix_summary(status, *first.mixing);
+        }
         return report_decoded_objects(status, first.object_metadata, have_object_audio,
                                       objects_written, objects_dir);
     }
@@ -408,6 +568,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                  speakers);
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
+    if (first.info) {
+        print_bsi_summary(status, *first.info, first.acmod);
+    }
+    if (first.mixing) {
+        print_mix_summary(status, *first.mixing);
+    }
     return report_decoded_objects(status, first.object_metadata, have_object_audio,
                                   objects_written, objects_dir);
 }
@@ -544,6 +710,40 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
                      meta.p.heavy ? ", applied" : ", not applied");
     } else {
         fmt::println(status, "          compr  absent");
+    }
+    // bsid 6 is worth a line of its own: it changes how a decoder reads the
+    // last 28 bits of bsi, so "this stream is Annex D" is not an aside.
+    if (first.bsid != 8) {
+        fmt::println(status, "          bsid {} (Annex D alternate syntax)", first.bsid);
+    }
+    print_bsi_summary(status, first.info, first.acmod);
+    // xbsi2's three flags are AC-3's only home for what E-AC-3 puts in
+    // infomdat, so they are reported here rather than folded into `info` -
+    // which bits a field came off is part of what a decode report is for.
+    if (first.alternate_bsi && first.alternate_bsi->extended) {
+        const auto& extended = *first.alternate_bsi->extended;
+        if (extended.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
+            fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(extended.dsurexmod));
+        }
+        if (extended.dheadphonmod != ac3::meta::HeadphoneMode::kNotIndicated) {
+            fmt::println(status, "  dheadphonmod: {}",
+                         ac3::meta::describe(extended.dheadphonmod));
+        }
+        if (extended.adconvtyp != ac3::meta::AdConverterType::kStandard) {
+            fmt::println(status, "  A/D converter: {}", ac3::meta::describe(extended.adconvtyp));
+        }
+    }
+    if (first.alternate_bsi && first.alternate_bsi->mix) {
+        const auto& mix = *first.alternate_bsi->mix;
+        fmt::println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
+                             "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
+                     mix.dmixmod == ac3::meta::DownmixMode::kLtRt   ? "Lt/Rt"
+                     : mix.dmixmod == ac3::meta::DownmixMode::kLoRo ? "Lo/Ro"
+                                                                   : "not indicated",
+                     ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtcmixlev)),
+                     ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtsurmixlev)),
+                     ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),
+                     ac3::meta::to_db(ac3::meta::coefficient(mix.lorosurmixlev)));
     }
     // The have_first check above already returned if the frame loop never
     // ran, and it is that same loop's first iteration that emplaces meter.

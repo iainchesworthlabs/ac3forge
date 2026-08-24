@@ -107,6 +107,28 @@ Bytes stereo_eac3_stream(int frames) {
     return stream;
 }
 
+// A stream carrying TS 103 420 §8.3.1's addbsi object marker with no EMDF
+// container behind it - the shape src/forge/src/oba/atmos.cpp used to emit
+// for a bed51 request before PR #344 closed that hole at the source (see
+// AtmosConfig::emit_object_metadata's own comment). AtmosEncoder can no
+// longer build this shape - that IS the fix - so strip_objects' "marker left
+// without a container" case is exercised by setting oba_complexity_index
+// directly, the same way stereo_eac3_stream above bypasses AtmosEncoder.
+Bytes bed_stream_with_dangling_marker(int frames) {
+    const ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448,
+                        .acmod = ac3::Acmod::k3_2,
+                        .lfe = true,
+                        .oba_complexity_index = 1}};
+    Bytes stream;
+    for (int f = 0; f < frames; ++f) {
+        const auto unit = ac3::eac3::build_silent_access_unit(config);
+        REQUIRE(unit.has_value());
+        stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
+    }
+    return stream;
+}
+
 Bytes stereo_ac3_stream(int frames) {
     Bytes stream;
     for (int f = 0; f < frames; ++f) {
@@ -187,15 +209,16 @@ TEST_CASE("strip_objects re-derives frmsiz and re-stamps crc2", "[io][strip]") {
     }
 }
 
-// 'bed51' mode emits no EMDF container but still writes TS 103 420 §8.3.1's
-// addbsi object-audio marker - src/forge/src/oba/atmos.cpp sets
-// oba_complexity_index on the encoder config unconditionally - so scan reports
-// an object layer for a stream that has none, and anything reading that
-// (a dec3 box's Atmos extension, an HLS CHANNELS="<N>/JOC" attribute) claims
-// objects that were never encoded. Taking the marker out is the same rule the
-// container itself follows: objects, or no signalling at all.
+// A stream can carry the addbsi object-audio marker with no EMDF container
+// behind it - real E-AC-3 in the wild predating this project, or a bed51
+// stream from before PR #344 fixed AtmosEncoder at the source - so scan
+// would report an object layer for a stream that has none, and anything
+// reading that (a dec3 box's Atmos extension, an HLS CHANNELS="<N>/JOC"
+// attribute) claims objects that were never encoded. Taking the marker out
+// is the same rule the container itself follows: objects, or no signalling
+// at all.
 TEST_CASE("strip_objects removes an object marker left without a container", "[io][strip]") {
-    const Bytes bed51 = encode_atmos_stream(3, /*emit_objects=*/false);
+    const Bytes bed51 = bed_stream_with_dangling_marker(3);
     const auto before = ac3::io::scan(bed51);
     REQUIRE(before.has_value());
     REQUIRE(before->oba_complexity_index.has_value());

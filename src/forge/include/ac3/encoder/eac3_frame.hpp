@@ -14,6 +14,7 @@
 #include "ac3/encoder/silent_frame.hpp"  // FrameError
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -222,7 +223,23 @@ struct FrameConfig {
     // The mixmdate group (Table E1.2). E-AC-3 dropped bsi's cmixlev and
     // surmixlev entirely, so without this a stream carries no downmix levels
     // at all and a receiver falls back on its own defaults.
+    //
+    // Everything in MixMetadata past the five levels and lfemixlevcod is
+    // written only by an INDEPENDENT substream - Table E1.2 gates the
+    // programme scale factors, the mixing-parameter block, the pan
+    // information and the per-block configuration on strmtyp == 0x0, because
+    // all four describe how to combine this programme with another one and a
+    // dependent substream is only ever part of someone else's. Set them on a
+    // dependent and they are silently not written, exactly as the syntax
+    // requires.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // The infomdat group (Table E1.2, §E2.3.1.62): what service this is, the
+    // Dolby Surround / Surround EX / Headphone flags, the mixing room, the
+    // copyright and original-bitstream bits and sourcefscod. std::nullopt
+    // clears infomdate, which is what this encoder always did before.
+    // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no home in Annex
+    // E and are not read here.
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // --- Annex E coding tools -----------------------------------------------
     // Let the encoder choose the tool set from the per-channel rate, instead
     // of taking the `coupling`/`spx`/`aht` flags below as given.
@@ -514,16 +531,41 @@ class AC3FORGE_EXPORT FrameEncoder {
     std::optional<meta::HeavyCompressor> heavy2_;
 };
 
-// An independent substream and the dependents that extend it. Every substream
-// codes the same samples of the same program, so a dependent contributes only
-// its own channels, its chanmap and its share of the bit rate - and, since
-// they are the same samples, every substream must carry the same
-// numblkscod. AccessUnitEncoder's constructor refuses a mixture rather than
-// building substreams a decoder would have no way to align against each
-// other.
+// One programme: an independent substream and the dependents that extend it.
+// Every substream codes the same samples of the same programme, so a
+// dependent contributes only its own channels, its chanmap and its share of
+// the bit rate - and, since they are the same samples, every substream must
+// carry the same numblkscod. AccessUnitEncoder's constructor refuses a
+// mixture rather than building substreams a decoder would have no way to
+// align against each other.
+struct ProgrammeConfig {
+    FrameConfig independent{};
+    std::vector<FrameConfig> dependents{};
+};
+
+// An access unit: the first programme, plus any further ones sharing the same
+// frame period.
+//
+// §E2.3.1.2 allows eight independent substreams (I0-I7) in one elementary
+// stream. Broadcast DD+ uses the extra ones for the services A/52 §5.4.2.2
+// names - a second language, an audio description, a commentary - so that one
+// stream carries the main programme and its alternatives and a receiver picks
+// between them. They are not layers of a soundfield the way dependents are:
+// each is self-sufficient, each has its own layout and its own metadata, and
+// only one is rendered at a time.
+//
+// `independent`/`dependents` are the first programme, kept spelled out at this
+// level rather than moved into `programmes[0]` so that every caller that ever
+// built a single-programme config still does.
 struct AccessUnitConfig {
     FrameConfig independent{};
     std::vector<FrameConfig> dependents{};
+    // I1-I7: further programmes, in transmission order, each with its own
+    // dependents. Empty for the ordinary single-programme stream. substreamid
+    // is assigned by position - the first programme is I0, additional[0] is
+    // I1 and so on - the same way a dependent's id is assigned by its
+    // position in `dependents`; FrameConfig::substreamid is not read here.
+    std::vector<ProgrammeConfig> additional{};
 };
 
 // One access unit: the independent substream's frame followed by its
@@ -554,6 +596,13 @@ struct AC3FORGE_EXPORT AccessUnit {
 // dependent substream if the access unit has any, otherwise the independent
 // one. The object metadata describes the whole program, so it may not arrive
 // before every substream that contributes to it.
+//
+// "The programme", specifically - so with additional programmes present the
+// container rides in the last substream of the FIRST one, not the last
+// substream on the wire. The objects belong to a programme; a later
+// programme's substreams are a different piece of audio entirely and putting
+// the container behind them would describe one programme with another's
+// metadata position.
 [[nodiscard]] AC3FORGE_EXPORT std::expected<AccessUnit, FrameError> build_silent_access_unit(
     const AccessUnitConfig& config, AuxPayload aux = {});
 
@@ -574,33 +623,54 @@ class AC3FORGE_EXPORT AccessUnitEncoder {
     // channels: every channel of the access unit grouped by substream in
     // transmission order - the independent's first (AC-3 order, Table 5.8,
     // LFE last), then each dependent's in the order its chanmap names them.
+    // With additional programmes configured, every substream of the first
+    // programme comes first, then every substream of the second, and so on:
+    // the same order the substreams themselves go on the wire in.
     [[nodiscard]] std::expected<AccessUnit, FrameError> encode_access_unit(
         std::span<const std::span<const float>> channels, AuxPayload aux = {});
 
     [[nodiscard]] const AccessUnitConfig& config() const { return config_; }
-    // Summed across substreams: the span count encode_access_unit expects.
+    // Summed across every substream of every programme: the span count
+    // encode_access_unit expects.
     [[nodiscard]] int channel_count() const;
 
    private:
+    // One programme's encoders and metadata state. There is one of these per
+    // independent substream (§E2.3.1.2), because dialnorm, DRC and heavy
+    // compression are properties OF A PROGRAMME: a commentary track and the
+    // main mix are levelled independently, and measuring one to gain the
+    // other is exactly the mistake sharing a single set of controllers would
+    // make.
+    struct Programme {
+        std::vector<FrameEncoder> substreams;
+        // Measured on the INDEPENDENT substream's channels. That substream is
+        // by definition a self-sufficient rendering of the whole programme
+        // (§E1.3.1), so measuring it measures the programme - and the answer
+        // does not then depend on how many dependents ride along.
+        std::optional<meta::RangeController> range;
+        std::optional<meta::HeavyCompressor> heavy;
+        // Ch2's own controllers, present only when the independent substream's
+        // acmod is kDualMono. Dual mono never has dependents (1+1 has no
+        // bed/dependent split to make), so "the independent substream" and
+        // "the whole programme" are the same two channels here too.
+        std::optional<meta::RangeController> range2;
+        std::optional<meta::HeavyCompressor> heavy2;
+        // Its own copy of the independent substream's MDCT overlap - the
+        // previous access unit's last 256 samples per channel. The substream
+        // encoder keeps the same window for its transform; this copy exists
+        // because the peak §7.7.2 bounds has to be measured before any
+        // substream runs.
+        std::array<std::array<double, 256>, 6> tail{};
+        // Spans of encode_access_unit's `channels` this programme consumes,
+        // settled once in the constructor alongside the substream identities.
+        std::size_t channel_offset = 0;
+        std::size_t channel_count = 0;
+    };
+
     AccessUnitConfig config_;
-    std::vector<FrameEncoder> substreams_;
-    // The programme's own controllers, measured on the INDEPENDENT substream's
-    // channels. That substream is by definition a self-sufficient rendering of
-    // the whole programme (§E1.3.1), so measuring it measures the programme -
-    // and the answer does not then depend on how many dependents ride along.
-    std::optional<meta::RangeController> range_;
-    std::optional<meta::HeavyCompressor> heavy_;
-    // Ch2's own controllers, present only when the independent substream's
-    // acmod is kDualMono. Dual mono never has dependents (1+1 has no
-    // bed/dependent split to make), so "the independent substream" and "the
-    // whole programme" are the same two channels here too.
-    std::optional<meta::RangeController> range2_;
-    std::optional<meta::HeavyCompressor> heavy2_;
-    // Its own copy of the independent substream's MDCT overlap - the previous
-    // access unit's last 256 samples per channel. The substream encoder keeps
-    // the same window for its transform; this copy exists because the peak
-    // §7.7.2 bounds has to be measured before any substream runs.
-    std::array<std::array<double, 256>, 6> tail_{};
+    // Never empty once the constructor accepted the layout; one entry for the
+    // ordinary single-programme access unit.
+    std::vector<Programme> programmes_;
 };
 
 }  // namespace ac3::eac3

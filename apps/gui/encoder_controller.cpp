@@ -35,6 +35,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/scene.hpp"
@@ -565,17 +566,19 @@ struct EncoderController::LiveOutputWriters {
     QString path;  // the real destination the user chose
     bool matroska = false;
     // Engaged for fragmented MP4/CMAF instead of `stream`. Unlike Matroska's
-    // writer below this needs nothing from the coded channel count - its
+    // writer below this needs nothing from the rendered channel count - its
     // track comes from a scan of the first access unit - so it is fully set
     // up by openLiveOutputWriters and starts writing on the first push.
     std::optional<Fmp4FolderWriter> fmp4;
-    // Only engaged when matroska is set - constructed once the coded channel
-    // count is known (routing/atmos bed resolved), just after this struct is
-    // opened, back on the GUI thread in runLiveSession before the worker
-    // ever starts (see there). header() is written to `stream` at that same
-    // point; every push() return value is written to `stream` as the frame
-    // loop runs, and finalize()'s tail bytes at the end - see the "failure
-    // story" comment further down for exactly where.
+    // Only engaged when matroska is set - constructed once the track's
+    // rendered channel count is known (the plan/atmos bed resolved), just
+    // after this struct is opened, back on the GUI thread in runLiveSession
+    // before the worker ever starts (see there, and its own comment on why
+    // the track states rendered rather than coded channels). header() is
+    // written to `stream` at that same point; every push() return value is
+    // written to `stream` as the frame loop runs, and finalize()'s tail
+    // bytes at the end - see the "failure story" comment further down for
+    // exactly where.
     std::optional<matroska::Writer> writer;
     std::unique_ptr<ac3::io::WavStreamWriter> wav_safety;  // null when not requested
 };
@@ -979,6 +982,62 @@ QString EncoderController::metaTokens() const {
                                        : QStringLiteral("none");
         tokens.append(QStringLiteral("dmixmod=%1").arg(name));
     }
+    // The service and production group. Each token is emitted only where the
+    // value differs from a default-constructed Metadata, so a plain encode's
+    // line stays a plain line - and each of them implies its own container
+    // token on the CLI side (infomdat on E-AC-3, annexd on AC-3) exactly as
+    // the setters above do here, so none of those has to be spelled out.
+    if (meta_.info.bsmod != defaults.info.bsmod) {
+        static constexpr std::array<const char*, 8> kBsmod = {
+            "cm", "me", "vi", "hi", "dialogue", "commentary", "emergency", "voiceover"};
+        tokens.append(QStringLiteral("bsmod=%1")
+                          .arg(QLatin1String(kBsmod[static_cast<std::size_t>(meta_.info.bsmod)])));
+    }
+    if (surroundModeAvailable() && meta_.info.dsurmod != defaults.info.dsurmod) {
+        static constexpr std::array<const char*, 3> kMode = {"none", "off", "on"};
+        tokens.append(
+            QStringLiteral("dsurmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dsurmod)])));
+    }
+    if (surroundModeAvailable() && meta_.info.dheadphonmod != defaults.info.dheadphonmod) {
+        static constexpr std::array<const char*, 3> kMode = {"none", "off", "on"};
+        tokens.append(
+            QStringLiteral("dheadphonmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dheadphonmod)])));
+    }
+    if (surroundExAvailable() && meta_.info.dsurexmod != defaults.info.dsurexmod) {
+        static constexpr std::array<const char*, 4> kMode = {"none", "off", "ex", "pliiz"};
+        tokens.append(
+            QStringLiteral("dsurexmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dsurexmod)])));
+    }
+    if (meta_.info.audprod) {
+        tokens.append(QStringLiteral("mixlevel=%1").arg(mixLevelDbSpl()));
+        if (meta_.info.audprod->roomtyp != ac3::meta::RoomType::kNotIndicated) {
+            static constexpr std::array<const char*, 3> kRoom = {"none", "large", "small"};
+            tokens.append(
+                QStringLiteral("roomtyp=%1")
+                    .arg(QLatin1String(
+                        kRoom[static_cast<std::size_t>(meta_.info.audprod->roomtyp)])));
+        }
+    }
+    if (meta_.adconvtyp != defaults.adconvtyp) {
+        tokens.append(QStringLiteral("adconvtyp=hdcd"));
+    }
+    if (meta_.info.copyrightb) {
+        tokens.append(QStringLiteral("copyright"));
+    }
+    if (!meta_.info.origbs) {
+        tokens.append(QStringLiteral("origbs=off"));
+    }
+    // Only worth spelling when nothing above already implies it: the three
+    // xbsi2 tokens and dmixmod= each turn Annex D on by themselves.
+    if (codec_ == plan::Codec::kAc3 && meta_.annexd && !tokens.contains(QStringLiteral("adconvtyp=hdcd")) &&
+        meta_.info.dsurexmod == defaults.info.dsurexmod &&
+        meta_.info.dheadphonmod == defaults.info.dheadphonmod &&
+        meta_.dmixmod == defaults.dmixmod) {
+        tokens.append(QStringLiteral("annexd"));
+    }
     return tokens.join(QLatin1Char(' '));
 }
 
@@ -1040,6 +1099,45 @@ QStringList EncoderController::surmixNames() const {
 
 QStringList EncoderController::dmixNames() const {
     return {QStringLiteral("not indicated"), QStringLiteral("Lt/Rt"), QStringLiteral("Lo/Ro")};
+}
+
+// Table 5.7's eight services. Code 7 means two different things - an
+// associated voice-over at 1/0, a main karaoke service at anything wider -
+// and there is no bit distinguishing them, so the label says both rather
+// than picking one the layout might contradict a moment later.
+QStringList EncoderController::bsmodNames() const {
+    return {QStringLiteral("complete main"),
+            QStringLiteral("music and effects"),
+            QStringLiteral("visually impaired"),
+            QStringLiteral("hearing impaired"),
+            QStringLiteral("dialogue"),
+            QStringLiteral("commentary"),
+            QStringLiteral("emergency"),
+            QStringLiteral("voice over / karaoke")};
+}
+
+QStringList EncoderController::dsurmodNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Dolby Surround"),
+            QStringLiteral("Dolby Surround")};
+}
+
+QStringList EncoderController::dheadphonNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Dolby Headphone"),
+            QStringLiteral("Dolby Headphone")};
+}
+
+QStringList EncoderController::dsurexNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Surround EX"),
+            QStringLiteral("Surround EX / Pro Logic IIx"), QStringLiteral("Pro Logic IIz")};
+}
+
+QStringList EncoderController::roomTypeNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("large, X curve"),
+            QStringLiteral("small, flat")};
+}
+
+QStringList EncoderController::adConvNames() const {
+    return {QStringLiteral("standard"), QStringLiteral("HDCD")};
 }
 
 // ---------------------------------------------------------------------------
@@ -1496,6 +1594,140 @@ void EncoderController::setDmixIndex(int index) {
         return;
     }
     meta_.dmixmod = value;
+    emit planChanged();
+}
+
+// --- service and production metadata ---------------------------------------
+//
+// Every setter below marks the infomdat group wanted as well as setting its
+// own field: on E-AC-3 that element has to be opened before any of these can
+// be written at all, and a user who picks "commentary" has said what they
+// mean without needing to also find a checkbox for the container it rides in.
+// AC-3 ignores the flag - its bsi carries these fields unconditionally.
+
+void EncoderController::setBsmodIndex(int index) {
+    const auto value = static_cast<ac3::meta::BitstreamMode>(std::clamp(index, 0, 7));
+    if (value == meta_.info.bsmod) {
+        return;
+    }
+    meta_.info.bsmod = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setDsurmodIndex(int index) {
+    const auto value = static_cast<ac3::meta::SurroundMode>(std::clamp(index, 0, 2));
+    if (value == meta_.info.dsurmod) {
+        return;
+    }
+    meta_.info.dsurmod = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setDheadphonIndex(int index) {
+    const auto value = static_cast<ac3::meta::HeadphoneMode>(std::clamp(index, 0, 2));
+    if (value == meta_.info.dheadphonmod) {
+        return;
+    }
+    meta_.info.dheadphonmod = value;
+    meta_.infomdat = true;
+    // AC-3 has nowhere but Annex D's xbsi2 to put this one.
+    meta_.annexd = true;
+    emit planChanged();
+}
+
+void EncoderController::setDsurexIndex(int index) {
+    const auto value = static_cast<ac3::meta::SurroundExMode>(std::clamp(index, 0, 3));
+    if (value == meta_.info.dsurexmod) {
+        return;
+    }
+    meta_.info.dsurexmod = value;
+    meta_.infomdat = true;
+    meta_.annexd = true;
+    emit planChanged();
+}
+
+void EncoderController::setMixLevelDbSpl(int db_spl) {
+    // -1 is the "not stated" end of the control. §5.4.2.13 makes audprodie a
+    // flag of its own, so no production information is a real state rather
+    // than a level of zero - which the 5-bit field could not express anyway,
+    // its floor being 80 dB SPL.
+    if (db_spl < ac3::meta::kMixLevelBaseDbSpl) {
+        if (!meta_.info.audprod) {
+            return;
+        }
+        meta_.info.audprod.reset();
+        emit planChanged();
+        return;
+    }
+    const int clamped = std::clamp(db_spl, ac3::meta::kMixLevelBaseDbSpl,
+                                   ac3::meta::kMixLevelBaseDbSpl + 31);
+    if (clamped == mixLevelDbSpl()) {
+        return;
+    }
+    if (!meta_.info.audprod) {
+        meta_.info.audprod.emplace();
+    }
+    meta_.info.audprod->mixlevel = clamped - ac3::meta::kMixLevelBaseDbSpl;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setRoomTypeIndex(int index) {
+    const auto value = static_cast<ac3::meta::RoomType>(std::clamp(index, 0, 2));
+    if (meta_.info.audprod && value == meta_.info.audprod->roomtyp) {
+        return;
+    }
+    // Table 5.12's room type only exists inside audprodie, so naming one
+    // opens the group - at its own floor level, which is what an encoder
+    // that knows the room but not the level would send.
+    if (!meta_.info.audprod) {
+        meta_.info.audprod.emplace();
+    }
+    meta_.info.audprod->roomtyp = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setAdConvIndex(int index) {
+    const auto value = static_cast<ac3::meta::AdConverterType>(std::clamp(index, 0, 1));
+    if (value == meta_.adconvtyp) {
+        return;
+    }
+    // Stated once; eac3_config() places it inside audprodie and ac3_config()
+    // in xbsi2, so neither front end has to know where it lands. Turning
+    // both containers on is still this setter's job, since without one the
+    // choice has nowhere to be written at all.
+    meta_.adconvtyp = value;
+    meta_.annexd = true;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setCopyrightBit(bool on) {
+    if (on == meta_.info.copyrightb) {
+        return;
+    }
+    meta_.info.copyrightb = on;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setOriginalBitstream(bool on) {
+    if (on == meta_.info.origbs) {
+        return;
+    }
+    meta_.info.origbs = on;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setAnnexD(bool on) {
+    if (on == meta_.annexd) {
+        return;
+    }
+    meta_.annexd = on;
     emit planChanged();
 }
 
@@ -3733,9 +3965,9 @@ std::unique_ptr<EncoderController::LiveOutputWriters> EncoderController::openLiv
     // still fall through to the same plain elementary-stream write, rather
     // than gaining a new failure mode.
     //
-    // Matroska's own track/writer construction needs the CODED channel count
-    // (routing/atmos bed), which is not resolved yet at this point - see
-    // runLiveSession, which constructs `writers->writer` and writes its
+    // Matroska's own track/writer construction needs the RENDERED channel
+    // count (the plan/atmos bed), which is not resolved yet at this point -
+    // see runLiveSession, which constructs `writers->writer` and writes its
     // header the moment that count is known, still on the GUI thread before
     // the worker starts. fMP4's does not: its track comes from a scan of the
     // first access unit, so it is fully set up here. Either way only the
@@ -3930,10 +4162,31 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
     bool monitor_ok = false;
     if (monitor) {
         auto msink = std::make_unique<ac3::audio::MonitorSink>();
-        const auto mstarted = msink->start(
-            std::string{}, device.sample_rate,
-            static_cast<std::uint16_t>(atmos_enabled_ ? 6 : plan::coded_channels(
-                                                              effectiveChannelPlan()).size()));
+        // RENDERED, not coded - the count has to be what runLiveSession's
+        // frame loop actually SUBMITS here, which is the monitor decoder's
+        // own output interleaved by plan::wav_order over the DECODED layout:
+        // one sample per speaker the stream renders, not one per channel it
+        // spent coding them. The two part company wherever a dependent
+        // substream REPLACES a bed channel of the same location instead of
+        // adding a new one, and an endpoint opened for the wrong one of them
+        // maps every speaker wrong and paces the queue wrong on top.
+        //
+        // No plan this GUI can currently build is such a plan: the Format
+        // tab's presets set custom locations, so plan::resolve() partitions
+        // them through chanmap::allocate(), which gives each dependent
+        // strictly what the bed did not carry and so never duplicates a
+        // location. (Only the legacy named-layout table duplicates - e.g.
+        // LayoutId::k71's k71Rear re-sends the bed's Ls/Rs, ten coded for
+        // eight rendered - and the GUI names that table for nothing but
+        // object mode's 5.1 bed and 1+1.) So this is which side of the
+        // distinction the call site belongs on, not a live discrepancy being
+        // corrected; the monitor leg stays right if a duplicating plan ever
+        // does reach it. Object mode (the 5.1 bed) and dual mono are already
+        // folded into renderedChannelCount()'s own answer, so this asks it
+        // rather than re-deriving those cases here.
+        const auto mstarted =
+            msink->start(std::string{}, device.sample_rate,
+                         static_cast<std::uint16_t>(renderedChannelCount()));
         if (mstarted) {
             monitor_ok = true;
             live_monitor_sink_ = std::move(msink);
@@ -4127,10 +4380,19 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     setMetering(true);
     clearClipLatches();
 
-    // Matroska needs the CODED channel count to declare a valid AudioTrack -
-    // atmos's bed is always 6 (5.1), channel mode is routing's own coded
-    // channel count, the identical formula the worker lambda below uses for
-    // its own coded_count. Both are known now, so the writer (and its header
+    // Matroska needs a channel count to declare a valid AudioTrack, and what
+    // a container track states is what the stream RENDERS - the speakers a
+    // player ends up driving - not how many channels were spent coding them.
+    // That is what ac3::io::scan reports for a finished stream (see
+    // ScannedStream::channels' own comment), and so what ac3cli's `mkv`/`ts`
+    // declare when they wrap one after the fact: a live take written here
+    // and the same bytes wrapped by the command line afterwards must not
+    // describe the same audio differently. This is deliberately NOT the
+    // worker lambda's own coded_count below, which sizes the ENCODER's input
+    // and really does want the coded channels - the same split
+    // startLiveSession's monitor sink lands on (see its own comment there,
+    // including why no plan the GUI can currently build makes the two
+    // numbers differ). Both are known now, so the writer (and its header
     // bytes) are built here, still on the GUI thread, before the worker ever
     // starts - a track EBML/Matroska genuinely cannot describe (in practice
     // unreachable: plan::validate() and the device checks in
@@ -4139,11 +4401,11 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     // mid-take failure minutes in" promise openLiveOutputWriters' own file
     // open already gives the destination path.
     if (writers && writers->matroska) {
-        const int coded_for_track = atmos ? 6 : routing->coded_channels;
+        const int channels_for_track = renderedChannelCount();
         auto created = matroska::Writer::create(
             {.codec_id = std::string{eac3 ? matroska::kCodecEac3 : matroska::kCodecAc3},
              .sample_rate = device.sample_rate,
-             .channels = coded_for_track,
+             .channels = channels_for_track,
              .samples_per_frame = ac3::kSamplesPerFrame});
         if (!created) {
             live_capture_.reset();

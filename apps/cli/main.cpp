@@ -293,7 +293,7 @@ constexpr std::array<Command, 35> kCommands{{
          return run_cat(x.str(1), inputs);
      }},
     {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report", Needs::kNothing,
-     [](const Args& x) { return run_levels(x.str(1)); }},
+     [](const Args& x) { return run_levels(x.str(1), x.meta.programme); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
     {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
@@ -301,7 +301,7 @@ constexpr std::array<Command, 35> kCommands{{
      "preset gate",
      Needs::kNothing,
      [](const Args& x) {
-         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme);
      }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
@@ -587,7 +587,11 @@ int run_main(int argc, char** argv) {
                                token == "mixmeta" || token == "sign-objects" ||
                                token == "verify-objects" || token == "verify" ||
                                token == "keep-partial" || token == "fast-mdct" ||
-                               token == "fast-imdct" || token == "fallback-51";
+                               token == "fast-imdct" || token == "fallback-51" ||
+                               token == "annexd" || token == "infomdat" ||
+                               token == "encinfo" || token == "langcod" ||
+                               token == "langcod2" || token == "copyright" ||
+                               token == "sourcefscod";
         if (token == "couple") {
             couple_flag = true;
         }
