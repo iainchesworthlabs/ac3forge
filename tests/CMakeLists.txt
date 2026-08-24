@@ -76,11 +76,13 @@ add_executable(ac3tests
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp
+    containers/test_matroska_reader.cpp
     core/test_mdct.cpp
     core/test_mdct_fast.cpp
     meta/test_meta_qc.cpp
     meta/test_mixing.cpp
     containers/test_mp4.cpp
+    containers/test_mp4_reader.cpp
     containers/test_mpegts.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp

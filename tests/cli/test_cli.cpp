@@ -2331,6 +2331,110 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
                   log) != 0);
 }
 
+// ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
+// worth anything if it is a true inverse - the elementary stream that goes
+// into a container has to be the one that comes back out, byte for byte. A
+// container reader that dropped a frame, mis-split a block or trimmed a
+// trailing byte would still produce something a decoder mostly plays, which
+// is exactly why this is checked as bytes and not as audio.
+TEST_CASE("demux recovers the exact elementary stream a container wrapped",
+          "[cli][demux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "demux.log";
+
+    // read_bytes is a lambda local to another test case above; this one
+    // needs the same thing and defines its own rather than reaching into it.
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    // Both containers, from the same elementary stream: whichever one wrapped
+    // it, demux has to hand back the identical bytes. `wrap` names the
+    // wrapping command, which is also the extension the container gets.
+    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary,
+                                      const std::string& wrap) {
+        const auto container = dir / (elementary.stem().string() + "." + wrap);
+        const auto recovered = dir / (elementary.stem().string() + "." + wrap + ".back");
+        REQUIRE(run_cli(make, log) == 0);
+        REQUIRE(run_cli(wrap + " \"" + elementary.string() + "\" \"" + container.string() + "\"",
+                        log) == 0);
+        REQUIRE(run_cli("demux \"" + container.string() + "\" \"" + recovered.string() + "\"",
+                        log) == 0);
+        CHECK(read_bytes(recovered) == read_bytes(elementary));
+    };
+
+    SECTION("E-AC-3 through Matroska") {
+        const auto es = dir / "demux_eac3.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mkv");
+    }
+
+    SECTION("AC-3 through Matroska") {
+        const auto es = dir / "demux_ac3.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mkv");
+    }
+
+    SECTION("E-AC-3 through MP4") {
+        const auto es = dir / "demux_eac3_mp4.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mp4");
+    }
+
+    SECTION("AC-3 through MP4") {
+        const auto es = dir / "demux_ac3_mp4.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mp4");
+    }
+}
+
+TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "demux_bad.log";
+
+    // Same local helper as the round-trip case above.
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    SECTION("a bare elementary stream is not a container") {
+        // The single most likely mistake, and the one where naming the file
+        // .mkv or .mp4 would have made a name-based guess say yes.
+        const auto es = dir / "demux_bare.ac3";
+        REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
+        CHECK(run_cli("demux \"" + es.string() + "\" \"" + (dir / "demux_bare.out").string() +
+                          "\"",
+                      log) != 0);
+    }
+
+    SECTION("a truncated container reports the reader's own error") {
+        const auto es = dir / "demux_trunc.ac3";
+        const auto mkv = dir / "demux_trunc.mkv";
+        const auto cut = dir / "demux_trunc_cut.mkv";
+        REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
+        REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+        // Keep only the first 20 bytes: past the EBML header id, nowhere
+        // near a track, so there is nothing to hand back.
+        const auto whole = read_bytes(mkv);
+        REQUIRE(whole.size() > 20);
+        {
+            std::ofstream out{cut, std::ios::binary};
+            out.write(reinterpret_cast<const char*>(whole.data()), 20);
+        }
+        CHECK(run_cli("demux \"" + cut.string() + "\" \"" + (dir / "demux_trunc.out").string() +
+                          "\"",
+                      log) != 0);
+    }
+
+    SECTION("a missing input file") {
+        CHECK(run_cli("demux \"" + (dir / "demux_absent.mkv").string() + "\" \"" +
+                          (dir / "demux_absent.out").string() + "\"",
+                      log) != 0);
+    }
+}
+
 // --- unspdif (roadmap IO3) ---------------------------------------------------
 
 TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
