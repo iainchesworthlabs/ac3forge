@@ -101,7 +101,7 @@ before argument parsing and exits immediately.
 
 ## Next
 
-- [Commands](commands.md) — all 26 commands, grouped and with real usage text (`atmos-adm` only
+- [Commands](commands.md) — all 28 commands, grouped and with real usage text (`atmos-adm` only
   *runs* with `-DAC3FORGE_BUILD_ADM=ON`, but is listed either way).
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.
