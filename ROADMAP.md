@@ -456,17 +456,20 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
   for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
   through it - see `gen_external_baseline.py`'s module docstring.
-- [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
-  not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
-  trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the
-  dependency and lock (S); then baseline v2: MOS on the external side, the DEE 5.1 legs re-scored
-  around the Ls-channel drop (`UNVERIFIED_DEE_LEGS`), and low-rate legs where spectral extension
-  and coupling actually run (the only stereo leg sits at 96 kbit/s per channel, above every
-  measured tool crossover).
-- [ ] **VX7 (M)** — Real programme material. Every landscape and trend number rests on 2.5 s of
-  `sin()`/FIR-noise fixtures, and `encoder.cpp` records a fake 2.1 dB win from tuning against
-  them. Redistributable (CC0/public-domain) speech and music legs beside the synthetic ones, and
-  `tools/generators` packaged as a versioned corpus.
+- [x] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is hash-pinned in
+  `requirements-ffmpeg-validate` and installed on the `ffmpeg-validate` leg, so `mos_lqo` is a
+  real number rather than null in every row from 2026-08-23 on; `MOS_WINDOW_S` caps ViSQOL's
+  super-linear cost, and the history appender has a soft MOS regression tier. Baseline v2 carries
+  MOS on the external side, re-scores both DEE 5.1 legs (the Ls-channel drop is an artefact of
+  DEE's discrete-multichannel input path; `--input-format wav_list` does not have it, so
+  `UNVERIFIED_DEE_LEGS` is empty), and adds five legs, four of them at rates where spectral
+  extension and coupling actually run.
+- [x] **VX7 (M)** — Real programme material. Two 30 s CC0 fixtures — full-band speech and music,
+  both natively 48 kHz and losslessly sourced — run as their own landscape and trend legs beside
+  the synthetic ones, which stay for series continuity, and are available to the other
+  `quality_race.py` modes through `--material`. `tools/generators` is documented and the fixture
+  corpus is versioned (`corpus.json`, `CORPUS_VERSION`) and hash-enforced
+  (`tools/checks/check_corpus.py`).
 - [ ] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR is measured exactly
   once, in a unit test with a 10 dB floor against 18–35 dB measured (`tests/oba/test_atmos.cpp`);
   a 15 dB JOC regression passes CI and no trend page sees it.
@@ -845,7 +848,7 @@ All merged to `develop` by v0.9.0-beta.1 unless noted; `CHANGELOG.md` has the de
 | F3 | WASM build plus browser demo | merged (UX5 extends it) |
 | F4 | Package-manager presence | carried → DR1–DR5 (PyPI and the tap are live) |
 | F5 | API freeze → v1.0.0 | carried → AP1 |
-| G1 | Perceptual-quality leg | merged, column never populated in CI (VX6) |
+| G1 | Perceptual-quality leg | merged; column populated in CI as of VX6 |
 | G2 | Backfill thin test coverage | merged |
 | G3 | Differential decoder fuzzing against FFmpeg | merged |
 | G4 | Encoder input-space fuzzing | merged, both codecs (AC-3 under G4, E-AC-3 under VX1) |

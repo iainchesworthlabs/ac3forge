@@ -315,8 +315,52 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   for rather than recomputed), and deliberately leaves one mutation in four unrepaired so the
   bad-CRC rejection path stays reachable.
 
+- **Real programme material in the fixture corpus** (`VX7`). Every landscape and trend number
+  this project has published rested on 2.5–3 s of `sin()`, pseudo-random noise and FIR
+  smoothing. Both synthetic fixtures carry a flat noise plateau from 12 kHz to Nyquist at
+  roughly the level of the content below it — a shape no real programme material has, and the
+  one that made narrowing the encoder's bandwidth to 14.7 kHz look like a 2.1 dB win when it
+  would have made a 448 kbit/s encoder plainly worse to listen to. Two 30 s CC0 fixtures now sit
+  beside them: unscripted connected speech and orchestral music, both natively 48 kHz and
+  losslessly sourced, both rolling off monotonically instead of plateauing. The synthetic
+  fixtures are kept — the published series are only comparable because the material under them
+  never moved — so the programme material runs as its own legs rather than replacing anything.
+  `quality_race.py` also takes `--material speech|music` on every mode except `ci`, `trend` and
+  `eac3-51`, so an encoder policy can be re-measured on material that is not band-limited.
+- **The fixture corpus is versioned and hash-enforced.** `tests/golden/audio/corpus.json`
+  records every fixture's format, duration, SHA-256 and — for the programme ones — its upstream
+  source, that source's own SHA-256, its licence and the exact excerpt window;
+  `tools/checks/check_corpus.py` fails if any committed fixture stops matching. A regenerated
+  fixture is otherwise close to invisible: it still decodes, still has the right duration, still
+  produces a plausible SNR, and simply puts a step in every published series that reads as an
+  encoder change. `tools/generators/README.md` documents the corpus, the licences and the
+  measured spectra.
+- **Five new landscape/trend legs.** Four of them sit at rates where the Annex E tools actually
+  run. `auto` enables coupling below 12 + 14n kbit/s per channel and spectral extension below
+  56, and the only stereo leg sat at 96 per channel — above both — so every published stereo
+  comparison was of an encoder that had chosen no tools at all. The new stereo legs at 96 and
+  64 kbit/s bracket both crossovers, on synthetic and on programme material.
+
 ### Fixed
 
+- **The MOS column carries real numbers** (`VX6`). `visqol-python` was deliberately not
+  installed in CI, so all ~3,758 rows on the `quality-history` branch carried `mos_lqo: null`
+  and every MOS cell on the landscape and tool-comparison pages rendered `n/a` — the perceptual
+  half of this project's own published comparison did not exist. It is now hash-pinned in
+  `requirements-ffmpeg-validate` like every other Python dependency (seven added packages,
+  nothing already pinned moved) and installed on the `ffmpeg-validate` leg. Scoring is capped to
+  a fixed 4 s window because ViSQOL's patch matching is super-linear — measured 3.9 s of compute
+  for 3 s of audio and 127.8 s for 30 s — which keeps the whole column at about seven minutes on
+  a job ~15 minutes off the critical path. The history appender gained a soft MOS regression
+  tier (warning only, never fails a run).
+- **Both 5.1 legs have a DEE number again.** The installed DEE build drops the surround-left
+  channel when 5.1 arrives as one discrete 6-channel file, which is why `ac3-51-448` and
+  `eac3-51-256` were marked unverified and their `vs DEE` cells read `n/a`. DEE's other
+  documented input path — one mono WAV per channel, `--input-format wav_list` — does not,
+  confirmed by per-channel RMS through a full encode and decode. That path's channel order is
+  also this project's own WAV order, so the SMPTE permutation the single-file path needed (and
+  which had already cost ~15 dB on both legs once when it was missing) is gone. No leg is
+  unverified at baseline version 2.
 - **`dialnorm=auto` and `ac3cli loudness` mis-assigned channel weights on any layout wider than
   stereo.** `measured_dialnorm()` pushed a WAV's channels into `LoudnessMeter` in *WAV* order
   (FL, FR, FC, LFE, BL, BR) when the meter expects AC-3 *coded* order (L, C, R, Ls, Rs, LFE). For
