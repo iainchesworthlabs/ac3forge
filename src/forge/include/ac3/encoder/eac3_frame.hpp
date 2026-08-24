@@ -14,6 +14,7 @@
 #include "ac3/encoder/silent_frame.hpp"  // FrameError
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -222,7 +223,23 @@ struct FrameConfig {
     // The mixmdate group (Table E1.2). E-AC-3 dropped bsi's cmixlev and
     // surmixlev entirely, so without this a stream carries no downmix levels
     // at all and a receiver falls back on its own defaults.
+    //
+    // Everything in MixMetadata past the five levels and lfemixlevcod is
+    // written only by an INDEPENDENT substream - Table E1.2 gates the
+    // programme scale factors, the mixing-parameter block, the pan
+    // information and the per-block configuration on strmtyp == 0x0, because
+    // all four describe how to combine this programme with another one and a
+    // dependent substream is only ever part of someone else's. Set them on a
+    // dependent and they are silently not written, exactly as the syntax
+    // requires.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // The infomdat group (Table E1.2, §E2.3.1.62): what service this is, the
+    // Dolby Surround / Surround EX / Headphone flags, the mixing room, the
+    // copyright and original-bitstream bits and sourcefscod. std::nullopt
+    // clears infomdate, which is what this encoder always did before.
+    // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no home in Annex
+    // E and are not read here.
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // --- Annex E coding tools -----------------------------------------------
     // Let the encoder choose the tool set from the per-channel rate, instead
     // of taking the `coupling`/`spx`/`aht` flags below as given.

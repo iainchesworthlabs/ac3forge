@@ -28,6 +28,7 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
 
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -1154,6 +1155,95 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
     return std::clamp(static_cast<int>(std::lround((1.0 - flatness) * 32.0)), 0, 31);
 }
 
+// Table E1.2's mixdef element (§E2.3.1.18-52). The four options differ in how
+// many bits of mixing-control data ride along: none, a fixed five, a fixed
+// twelve, or a mixdeflen-sized field whose contents are optional and whose
+// remainder is zero fill.
+void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) {
+    // Takes its writer rather than capturing one: mixdef 0x3 below runs the
+    // whole contents through a throwaway writer first to measure them, and a
+    // helper bound to `w` would put those measurement bits into the real
+    // frame - ahead of the mixdeflen field that has not been written yet.
+    const auto emit_premix = [](BitWriter& out, const meta::PremixCompression& premix) {
+        out.put(static_cast<std::uint32_t>(premix.premixcmpsel), 1);
+        out.put(static_cast<std::uint32_t>(premix.drcsrc), 1);
+        out.put(static_cast<std::uint32_t>(premix.premixcmpscl), 3);
+    };
+    w.put(static_cast<std::uint32_t>(mixing.mixdef), 2);
+    switch (mixing.mixdef) {
+        case meta::MixDefinition::kNone:
+            return;
+        case meta::MixDefinition::kPremix:
+            emit_premix(w, mixing.premix);
+            return;
+        case meta::MixDefinition::kReserved:
+            w.put(mixing.reserved, 12);
+            return;
+        case meta::MixDefinition::kExtended:
+            break;
+    }
+
+    // mixdef 0x3. §E2.3.1.22 sizes the WHOLE element - sub-fields and the
+    // byte-alignment fill together - as mixdeflen + 2 bytes, so the contents
+    // have to be measured before the length can be written. A throwaway
+    // writer does that, the same shape measure_side_bits uses for the frame.
+    const auto emit_contents = [&](BitWriter& out) {
+        out.put(mixing.external ? 1 : 0, 1);  // mixdata2e
+        if (mixing.external) {
+            const auto& external = *mixing.external;
+            emit_premix(out, external.premix);
+            // §E2.3.1.25 onwards: one flag-plus-4-bit-code pair per channel,
+            // in Table E1.2's order, each absent when the external programme
+            // has no such channel.
+            for (const auto& scale :
+                 {external.left, external.centre, external.right, external.left_surround,
+                  external.right_surround, external.lfe, external.dmixscl}) {
+                out.put(scale ? 1 : 0, 1);
+                if (scale) {
+                    out.put(static_cast<std::uint32_t>(*scale), 4);
+                }
+            }
+            out.put(external.auxiliary ? 1 : 0, 1);  // addche
+            if (external.auxiliary) {
+                for (const auto& scale : *external.auxiliary) {
+                    out.put(scale ? 1 : 0, 1);
+                    if (scale) {
+                        out.put(static_cast<std::uint32_t>(*scale), 4);
+                    }
+                }
+            }
+        }
+        out.put(mixing.speech ? 1 : 0, 1);  // mixdata3e
+        if (mixing.speech) {
+            const auto& speech = *mixing.speech;
+            out.put(static_cast<std::uint32_t>(speech.spchdat), 5);
+            out.put(speech.additional ? 1 : 0, 1);  // addspchdate
+            if (speech.additional) {
+                out.put(static_cast<std::uint32_t>(speech.additional->spchdat1), 5);
+                out.put(static_cast<std::uint32_t>(speech.additional->spchan1att), 2);
+                out.put(speech.additional->more ? 1 : 0, 1);  // addspchdat1e
+                if (speech.additional->more) {
+                    out.put(static_cast<std::uint32_t>(speech.additional->more->spchdat2), 5);
+                    out.put(static_cast<std::uint32_t>(speech.additional->more->spchan2att), 3);
+                }
+            }
+        }
+    };
+
+    BitWriter counter;
+    emit_contents(counter);
+    const auto used = static_cast<std::uint32_t>(counter.bit_count());
+    // mixdeflen = {0..31} means {2..33} bytes, so the smallest legal element
+    // is two bytes however little is in it.
+    const std::uint32_t bytes = std::max<std::uint32_t>(2, (used + 7) / 8);
+    w.put(bytes - 2, 5);  // mixdeflen
+    emit_contents(w);
+    // §E2.3.1.52: mixdatafill rounds the element up, all bits zero.
+    for (std::uint32_t bit = used; bit < bytes * 8; ++bit) {
+        w.put(0, 1);
+    }
+}
+
 // Everything from the sync word to the end of the last block: the whole
 // frame bar padding and the tail. Silence and real audio go through this one
 // function, so the two can never drift apart on field placement.
@@ -1350,22 +1440,84 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         // ANOTHER one, which is an independent substream's business. A
         // dependent therefore stops after the levels above.
         if (!dependent) {
-            w.put(0, 1);  // pgmscle:    §E2.3.1.12, absent means 0 dB
+            // §E2.3.1.12/16: the *e flag clear means 0 dB, so an absent scale
+            // is a positive statement of unity gain in one bit rather than
+            // seven.
+            const auto emit_scale = [&w](const std::optional<int>& scale) {
+                w.put(scale ? 1 : 0, 1);
+                if (scale) {
+                    w.put(static_cast<std::uint32_t>(*scale), 6);
+                }
+            };
+            emit_scale(mix.pgmscl);
             if (acmod_value == 0x0) {
-                w.put(0, 1);  // pgmscl2e: mirrors pgmscle - no scale sent
+                emit_scale(mix.pgmscl2);
             }
-            w.put(0, 1);  // extpgmscle: §E2.3.1.16, absent means 0 dB
-            w.put(0, 2);  // mixdef:     no mixing-parameter data
+            emit_scale(mix.extpgmscl);
+            emit_mixing_parameters(w, mix.mixing);
             if (acmod_value < 0x2) {
-                w.put(0, 1);  // paninfoe
+                const auto emit_pan = [&w](const std::optional<meta::PanInfo>& pan) {
+                    w.put(pan ? 1 : 0, 1);  // paninfoe
+                    if (pan) {
+                        w.put(static_cast<std::uint32_t>(pan->panmean), 8);
+                        w.put(static_cast<std::uint32_t>(pan->paninfo), 6);
+                    }
+                };
+                emit_pan(mix.pan);
                 if (acmod_value == 0x0) {
-                    w.put(0, 1);  // paninfo2e: mirrors paninfoe - no pan sent
+                    emit_pan(mix.pan2);
                 }
             }
-            w.put(0, 1);  // frmmixcfginfoe
+            w.put(mix.blkmixcfginfo ? 1 : 0, 1);  // frmmixcfginfoe
+            if (mix.blkmixcfginfo) {
+                // Six blocks per syncframe, always - either numblkscod 0x3
+                // written above or the implicit six of a reduced-rate fscod2
+                // frame. §E2.3.1.60's one-block form (where the per-block flag
+                // is inferred set and the word is unconditional) cannot arise
+                // from this encoder, so it is not written; the decoder reads
+                // it, because a third-party stream may well use it.
+                for (const auto& word : *mix.blkmixcfginfo) {
+                    w.put(word ? 1 : 0, 1);  // blkmixcfginfoe
+                    if (word) {
+                        w.put(static_cast<std::uint32_t>(*word), 5);
+                    }
+                }
+            }
         }
     }
-    w.put(0, 1);  // infomdate
+    w.put(config.info ? 1 : 0, 1);  // infomdate
+    if (config.info) {
+        const auto& info = *config.info;
+        w.put(static_cast<std::uint32_t>(info.bsmod), 3);
+        w.put(info.copyrightb ? 1 : 0, 1);
+        w.put(info.origbs ? 1 : 0, 1);
+        if (acmod_value == 0x2) {
+            w.put(static_cast<std::uint32_t>(info.dsurmod), 2);
+            w.put(static_cast<std::uint32_t>(info.dheadphonmod), 2);
+        }
+        if (acmod_value >= 0x6) {
+            w.put(static_cast<std::uint32_t>(info.dsurexmod), 2);
+        }
+        // Unlike AC-3's own audprodie, Annex E's carries adconvtyp as a third
+        // field - AC-3 puts that one in Annex D's xbsi2 instead.
+        const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
+            w.put(production ? 1 : 0, 1);  // audprodie
+            if (production) {
+                w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
+                w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
+                w.put(static_cast<std::uint32_t>(production->adconvtyp), 1);
+            }
+        };
+        emit_audprod(info.audprod);
+        if (acmod_value == 0x0) {
+            emit_audprod(info.audprod2);
+        }
+        // §E2.3.2.6: a reduced-rate (fscod2) frame carries no sourcefscod at
+        // all - there is no "twice this rate" to point at when fscod is 0x3.
+        if (!is_reduced_rate(config.sample_rate)) {
+            w.put(info.sourcefscod ? 1 : 0, 1);
+        }
+    }
     // §E2.3.1.64: only an independent substream at a short syncframe carries
     // this - see FrameConfig::numblkscod's own comment for what the value
     // means and how payload.convsync is chosen.
@@ -2214,7 +2366,9 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         const auto& mix = *config.mixing;
         // Tables D2.4 / D2.6 reserve the three loudest surround codes, and a
         // decoder that receives one substitutes 0.841 - so writing one means
-        // the level applied is not the level asked for.
+        // the level applied is not the level asked for. valid_mix_metadata()
+        // makes that same check first, then every range the rest of Table
+        // E1.2's fields have to fit.
         if (!meta::valid_surround_mix_level(mix.ltrtsurmixlev) ||
             !meta::valid_surround_mix_level(mix.lorosurmixlev)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
@@ -2222,6 +2376,12 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         if (mix.lfemixlevcod && (*mix.lfemixlevcod < 0 || *mix.lfemixlevcod > 31)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
         }
+        if (!meta::valid_mix_metadata(mix)) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
+    }
+    if (config.info && !meta::valid_bsi_info(*config.info)) {
+        return std::unexpected(FrameError::kInvalidBsi);
     }
     return {};
 }

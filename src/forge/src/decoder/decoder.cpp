@@ -22,7 +22,9 @@
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "gain.hpp"
 
 namespace ac3 {
@@ -313,17 +315,37 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     if (bsid > 8) {
         return std::unexpected(DecodeError::kUnsupported);
     }
-    const auto bsmod = r.read(3);  // §5.4.2.1, reported on DecodedFrame
+    meta::BsiInfo info;
+    const auto bsmod = r.read(3);  // §5.4.2.1, also reported raw on DecodedFrame
+    info.bsmod = static_cast<meta::BitstreamMode>(bsmod);
     const auto acmod_value = r.read(3);
     const auto acmod = static_cast<Acmod>(acmod_value);
+    // §7.8's own fallbacks stand where the layout carries no such field, so a
+    // caller can apply these unconditionally without re-deriving the rule.
+    auto cmixlev = meta::CentreMixLevel::kMinus4_5dB;
+    auto surmixlev = meta::SurroundMixLevel::kMinus6dB;
     if ((acmod_value & 0x1) != 0 && acmod != Acmod::k1_0) {
-        (void)r.read(2);  // cmixlev
+        // Table 5.9 reserves '11'; §5.4.2.4 tells a decoder receiving it to
+        // fall back on the intermediate -4.5 dB, which is what this leaves in
+        // place rather than inventing a fourth enumerator for it.
+        const auto code = r.read(2);
+        if (code < 3) {
+            cmixlev = static_cast<meta::CentreMixLevel>(code);
+        }
     }
     if ((acmod_value & 0x4) != 0) {
-        (void)r.read(2);  // surmixlev
+        // Table 5.10 has no reserved code - '10' is a real value (surrounds
+        // dropped from the downmix) and '11' is the reserved one.
+        const auto code = r.read(2);
+        if (code < 3) {
+            surmixlev = static_cast<meta::SurroundMixLevel>(code);
+        }
     }
     if (acmod == Acmod::k2_0) {
-        (void)r.read(2);  // dsurmod
+        const auto code = r.read(2);  // dsurmod
+        if (code < 3) {
+            info.dsurmod = static_cast<meta::SurroundMode>(code);
+        }
     }
     const bool lfe = r.read(1) != 0;
     const auto dialnorm = static_cast<int>(r.read(5));
@@ -331,8 +353,32 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     if (r.read(1) != 0) {  // compre (§5.4.2.9)
         compr = static_cast<std::uint8_t>(r.read(8));
     }
-    if (r.read(1) != 0) r.skip(8);   // langcode/langcod
-    if (r.read(1) != 0) r.skip(7);   // audprodie: mixlevel + roomtyp
+    // §5.4.2.12: langcod is a reserved 0xFF wherever it appears, so the byte
+    // itself carries nothing and only its presence is worth reporting.
+    const auto read_langcod = [&r] {
+        const bool present = r.read(1) != 0;
+        if (present) {
+            r.skip(8);
+        }
+        return present;
+    };
+    const auto read_audprod = [&r]() -> std::optional<meta::AudioProduction> {
+        if (r.read(1) == 0) {  // audprodie
+            return std::nullopt;
+        }
+        meta::AudioProduction production;
+        production.mixlevel = static_cast<int>(r.read(5));
+        const auto room = r.read(2);
+        if (room < 3) {  // Table 5.12's '11' reads as "not indicated"
+            production.roomtyp = static_cast<meta::RoomType>(room);
+        }
+        // adconvtyp is not part of AC-3's audprodie - see AudioProduction's
+        // own comment - so it keeps its default here and only Annex D's xbsi2
+        // below can set it.
+        return production;
+    };
+    info.langcod = read_langcod();
+    info.audprod = read_audprod();
     std::optional<int> dialnorm2;
     std::optional<std::uint8_t> compr2;
     if (acmod == Acmod::kDualMono) {
@@ -340,14 +386,65 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         if (r.read(1) != 0) {  // compr2e
             compr2 = static_cast<std::uint8_t>(r.read(8));
         }
-        if (r.read(1) != 0) r.skip(8);  // langcod2e/langcod2
-        if (r.read(1) != 0) r.skip(7);  // audprodi2e: mixlevel2 + roomtyp2
+        info.langcod2 = read_langcod();
+        info.audprod2 = read_audprod();
     }
-    (void)r.read(1);                 // copyrightb
-    (void)r.read(1);                 // origbs
-    if (r.read(1) != 0) r.skip(14);  // timecod1
-    if (r.read(1) != 0) r.skip(14);  // timecod2
-    if (r.read(1) != 0) {            // addbsie
+    info.copyrightb = r.read(1) != 0;
+    info.origbs = r.read(1) != 0;
+    std::optional<meta::AlternateBsi> alternate_bsi;
+    if (bsid == 6) {
+        // §D2.2: bsid 6 spends the two 14-bit timecod fields on xbsi1 and
+        // xbsi2 instead. §D3.2 is explicit that a legacy decoder reading them
+        // as a time code it ignores is harmless - the fields are the same
+        // size - which is exactly why this branch can sit here and change
+        // nothing about where addbsie lands.
+        meta::AlternateBsi alternate;
+        if (r.read(1) != 0) {  // xbsi1e
+            meta::MixMetadata mix;
+            const auto mode = r.read(2);
+            if (mode < 3) {  // Table D2.2's '11' reads as "not indicated"
+                mix.dmixmod = static_cast<meta::DownmixMode>(mode);
+            }
+            // Table D2.1's order: both Lt/Rt levels, then both Lo/Ro ones.
+            mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
+            mix.ltrtsurmixlev = static_cast<meta::MixLevel>(r.read(3));
+            mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
+            mix.lorosurmixlev = static_cast<meta::MixLevel>(r.read(3));
+            // Annex D has no LFE mix level at all; std::nullopt is already
+            // MixMetadata's own "LFE mixing disabled", which is the right
+            // reading of a syntax that cannot express one.
+            alternate.mix = mix;
+        }
+        if (r.read(1) != 0) {  // xbsi2e
+            meta::ExtendedBsi extended;
+            extended.dsurexmod = static_cast<meta::SurroundExMode>(r.read(2));
+            const auto headphone = r.read(2);
+            if (headphone < 3) {  // Table D2.8's '11' reads as "not indicated"
+                extended.dheadphonmod = static_cast<meta::HeadphoneMode>(headphone);
+            }
+            extended.adconvtyp = static_cast<meta::AdConverterType>(r.read(1));
+            extended.xbsi2 = static_cast<std::uint8_t>(r.read(8));
+            extended.encinfo = r.read(1) != 0;
+            alternate.extended = extended;
+        }
+        alternate_bsi = alternate;
+    } else {
+        if (r.read(1) != 0) {  // timecod1e
+            meta::TimeCodeCoarse coarse;
+            coarse.hours = static_cast<int>(r.read(5));
+            coarse.minutes = static_cast<int>(r.read(6));
+            coarse.eight_seconds = static_cast<int>(r.read(3));
+            info.timecod1 = coarse;
+        }
+        if (r.read(1) != 0) {  // timecod2e
+            meta::TimeCodeFine fine;
+            fine.seconds = static_cast<int>(r.read(3));
+            fine.frames = static_cast<int>(r.read(5));
+            fine.sixty_fourths = static_cast<int>(r.read(6));
+            info.timecod2 = fine;
+        }
+    }
+    if (r.read(1) != 0) {  // addbsie
         const auto addbsil = r.read(6);
         r.skip((addbsil + 1) * 8);
     }
@@ -362,6 +459,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     out.bsmod = static_cast<int>(bsmod);
     out.acmod = acmod;
     out.lfe = lfe;
+    out.cmixlev = cmixlev;
+    out.surmixlev = surmixlev;
+    out.info = info;
+    out.alternate_bsi = alternate_bsi;
     out.dialnorm = dialnorm;
     out.compr = compr;
     out.dynrng.fill(meta::kDynrngUnity);

@@ -28,6 +28,30 @@ In rough order of strength:
    several real bugs — the EMDF container belonging in a skip field rather than the aux field,
    `codecdatae=0`, a dynamic-object-only programme with the LFE as an object but not a JOC
    output, and metadata flag arrays transmitted index-0-first.
+
+   One DEE-produced stream is **committed** rather than only diffed against:
+   `tests/golden/object-fixture/dee_joc_514.ec3`, a DD+ JOC encode of a synthetic 5.1.4 tone bed
+   (`tools/generators/gen_object_fixture.py`, local-only — DEE is licensed and never runs in CI).
+   It is the only Atmos stream here this project's own encoder did not make, and every part of
+   the object layer it exercises was refused outright before it existed: a bed programme with a
+   twelve-channel assignment and `b_bed_chan_distribute` set, `object_gain_idx` 3, a second
+   `oa_element` carrying a `trim_element`, `joc_dmx_config_idx` 3 with a nonzero clip gain and
+   sparse coding, and an EMDF container mixing `payload_frame_aligned` 0 and 1 across its
+   payloads. Decoding it also caught a real audio-layer bug — `audblk` reads `cplfgaincod` and
+   `cplfsnroffst` ahead of the per-channel lists when the block couples, and the decoder skipped
+   both, which no stream this project produces could have exposed.
+
+   What that fixture asserts is not just "it parses". Each of the ten channels of the source bed
+   carries a different tone, so identifying each reconstructed JOC object by which tone dominates
+   it is an independent check on both the reconstruction and the *order* the bed's channels
+   occupy — the order TS 103 420 §5.6.1.1.4 states backwards
+   (`tests/oba/test_dee_joc_fixture.cpp`).
+
+   Two limits are worth stating: DEE's `atmos_mezz` (ADM BWF) input refuses a master this project
+   authors, gating on content provenance rather than syntax, so the fixture is channel-based
+   immersive and carries no dynamic objects — object size, zone constraints and snap are covered
+   by the in-repo encode round trip instead. And retail Atmos discs, whatever they would exercise,
+   are not redistributable and are not used here.
 5. **Fuzzing, in both directions.** Into the decoder: the libFuzzer harnesses under `fuzz/` drive
    the codec's untrusted-input entry points looking for crashes and undefined behaviour
    (ASan+UBSan), and two differential harnesses decode each mutated stream with both this

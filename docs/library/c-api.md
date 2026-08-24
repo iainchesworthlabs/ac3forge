@@ -108,7 +108,10 @@ through `ac3forge_decoded_substream_has_object_metadata()`/
 `ac3forge_decoded_access_unit_has_object_metadata()` and a parallel set of accessors — program
 shape (`program_dynamic_only`/`program_lfe`/`program_bed`), each dynamic object's room-anchored
 position and gain (`..._dynamic_object`), and JOC's reconstructed per-object audio
-(`..._object_audio`/`..._object_audio_count`), index-parallel to the dynamic objects. See
+(`..._object_audio`/`..._object_audio_count`). Those audio entries are index-parallel to the
+dynamic objects for the dynamic-object-only programme this project's own encoder writes; for a
+bed programme they are its bed channels instead, and the C++ surface
+(`DecodedSubstream::object_indices`, `ac3::oba::joc_object_indices`) is what says which. See
 [Spatial & Atmos objects](spatial-and-atmos.md) for what the position/gain values mean and how
 `ac3forge_atmos_encoder_t` (the C counterpart to `ac3::oba::AtmosEncoder`) produces them.
 
