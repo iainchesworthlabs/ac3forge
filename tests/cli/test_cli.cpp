@@ -2207,6 +2207,122 @@ TEST_CASE("silence rejects an illegal bitrate and leaves no file behind", "[cli]
     CHECK(read_log(log).find("bitrate") != std::string::npos);
 }
 
+// eac3-sine builds an AccessUnitEncoder from a plan the same way eac3-encode
+// does (see that command's own "refuses a rate frmsiz cannot signal" test
+// above), and had the identical assert() - nchans == tone_hz.size(), rather
+// than encode.cpp's channel_count() comparison, but the same root cause: a
+// bitrate whose word count does not fit §E2.3.1.3's 11-bit frmsiz leaves
+// AccessUnitEncoder with no substreams. eac3-encode's own fix is a
+// post-construction check (encode.cpp's eac3_config_accepted()); this command
+// asks ac3::plan::validate() BEFORE construction instead, which is also the
+// one place precise enough to catch a layout with dependent substreams: each
+// dependent gets HALF the plan's bitrate (eac3_config()), so a rate that
+// looks framable at face value can still leave a dependent with a frame of no
+// words. eac3_config_accepted() checks the plan's own bitrate against the
+// whole-frame ceiling, not each substream's actual (possibly halved) share of
+// it, so it cannot name frmsiz as the cause there - confirmed empirically
+// below: eac3-encode at the same "1 kbit/s over 7.1.4" case this test pins
+// falls back to eac3_config_accepted()'s generic "cannot express" message.
+TEST_CASE("eac3-sine rejects a rate frmsiz cannot express", "[cli][eac3-sine][frmsiz]") {
+    const auto dir = scratch_dir();
+
+    // Shared by every rejection below: a diagnosis naming the field, and no
+    // sign of the assertion this used to be.
+    const auto check_rejected = [](const std::string& text) {
+        CHECK(text.find("error:") != std::string::npos);
+        CHECK(text.find("frmsiz") != std::string::npos);
+        CHECK(text.find("Assertion") == std::string::npos);
+    };
+
+    SECTION("1024 kbit/s at 48 kHz is exactly the ceiling, 1026 is past it") {
+        const auto ok_path = dir / "sine_frmsiz_ceiling_ok.ec3";
+        const auto ok_log = dir / "sine_frmsiz_ceiling_ok.log";
+        fs::remove(ok_path);
+        const auto ok_rc = run_cli("eac3-sine \"" + ok_path.string() + "\" 1 1024", ok_log);
+        INFO(read_log(ok_log));
+        CHECK(ok_rc == 0);
+        CHECK(fs::exists(ok_path));
+
+        const auto over_path = dir / "sine_frmsiz_ceiling_over.ec3";
+        const auto over_log = dir / "sine_frmsiz_ceiling_over.log";
+        fs::remove(over_path);
+        const auto over_rc = run_cli("eac3-sine \"" + over_path.string() + "\" 1 1026", over_log);
+        const auto text = read_log(over_log);
+        INFO(text);
+        CHECK(over_rc != 0);
+        CHECK_FALSE(fs::exists(over_path));
+        check_rejected(text);
+    }
+
+    SECTION("0 kbit/s is the same rule from the floor - a frame of no words") {
+        const auto out_path = dir / "sine_frmsiz_floor.ec3";
+        const auto log = dir / "sine_frmsiz_floor.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-sine \"" + out_path.string() + "\" 1 0", log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        check_rejected(text);
+    }
+
+    SECTION("an immersive layout's dependents each get half the rate, and that half "
+           "has to be framable too") {
+        // 1 kbit/s over 7.1.4 halves to 0 kbit/s per dependent - a frame of
+        // no words - which plan::validate() refuses by name before the
+        // encoder is ever built.
+        const auto floor_path = dir / "sine_frmsiz_dependent_floor.ec3";
+        const auto floor_log = dir / "sine_frmsiz_dependent_floor.log";
+        fs::remove(floor_path);
+        const auto floor_rc =
+            run_cli("eac3-sine \"" + floor_path.string() + "\" 1 1 440 50 714", floor_log);
+        const auto floor_text = read_log(floor_log);
+        INFO(floor_text);
+        CHECK(floor_rc != 0);
+        CHECK_FALSE(fs::exists(floor_path));
+        check_rejected(floor_text);
+
+        // 768 kbit/s is comfortably framable at every substream once halved,
+        // and actually encodes - the check above is a real ceiling, not a
+        // blanket refusal of dependent substreams.
+        const auto ok_path = dir / "sine_frmsiz_dependent_ok.ec3";
+        const auto ok_log = dir / "sine_frmsiz_dependent_ok.log";
+        fs::remove(ok_path);
+        const auto ok_rc =
+            run_cli("eac3-sine \"" + ok_path.string() + "\" 1 768 440 50 714", ok_log);
+        INFO(read_log(ok_log));
+        CHECK(ok_rc == 0);
+        CHECK(fs::exists(ok_path));
+    }
+
+    SECTION("eac3-encode meets the identical dependent-floor case with a less precise "
+           "message, since its own check runs after construction against the plan's "
+           "whole bitrate rather than each substream's own share of it") {
+        const auto wav_path = dir / "sine_frmsiz_encode_compare_in.wav";
+        const auto channels =
+            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame), 48000);
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+        const auto out_path = dir / "sine_frmsiz_encode_compare.ec3";
+        const auto log = dir / "sine_frmsiz_encode_compare.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 1 none 714",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        // Refused cleanly either way - this is not an assertion regression -
+        // but the plan layer's own diagnosis is not among its reasons, since
+        // eac3-encode never asks plan::validate() for this: encode.cpp's own
+        // post-construction check judges the plan's whole bitrate (1 kbit/s,
+        // itself framable) rather than the dependent's halved share of it.
+        CHECK(text.find("Assertion") == std::string::npos);
+        CHECK(text.find("frmsiz") == std::string::npos);
+    }
+}
+
 TEST_CASE("eac3-silence threads its layout argument through to the reported label and "
          "substream count, and decodes to genuine silence",
          "[cli][eac3-silence]") {
