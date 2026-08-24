@@ -465,6 +465,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
   note at the code and roadmap `EQ2`.
 
+- **`eac3-sine` had the identical gap**, one command over from the fix above — the same
+  unreachable `frmsiz` ceiling, met with the same `assert()` (`nchans == tone_hz.size()`) rather
+  than a diagnosis, since it builds an `AccessUnitEncoder` from a plan the same way `eac3-encode`
+  does. `ac3::plan::validate()` now carries a check of its own for this: the E-AC-3 counterpart
+  of the Table 5.18 check it already made for AC-3 (`PlanError::kBitrateNotFramable`), checked
+  against the per-substream configs `eac3_config()` really builds rather than the plan's own
+  `bitrate_kbps` — a layout with dependent substreams gives each of them half the rate, so a
+  config can be unframable there even when the plan's own number fits. `eac3-sine` asks it
+  before building an encoder, the way `run_encode`'s AC-3 path always has. VBR is exempt, as it
+  is inside the frame encoder: there the content decides the word count and `bitrate_kbps` only
+  steers the tool frequency defaults.
+
 ### Changed
 
 - **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
