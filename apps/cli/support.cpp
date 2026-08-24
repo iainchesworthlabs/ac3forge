@@ -797,16 +797,47 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             }
             continue;
         }
-        if (key == "bsmod" || key == "dsurmod") {
-            const auto limit = key == "bsmod" ? 7u : 3u;
-            const auto n = parse_u32_or(value, limit + 1);
-            if (n > limit) {
-                fmt::println(stderr, "error: {} must be 0..{} ({})", key, limit,
-                             key == "bsmod" ? "Table 5.5's service type"
-                                            : "Table 5.11's Dolby Surround mode");
+        // bsmod/dsurmod are read by two different consumers: `metadata`/
+        // `transcode` (the raw code, `out.bsmod`/`out.dsurmod`, straight off
+        // Table 5.5/5.11) and `encode`/`eac3-encode` (the same code wrapped
+        // in `ac3::meta::BitstreamMode`/`SurroundMode` for the Plan below).
+        // One parse feeds both, so a value valid for one is valid for the
+        // other and the two consumers can never disagree about what was
+        // typed.
+        if (key == "bsmod") {
+            ac3::meta::BitstreamMode mode{};
+            // parse_bsmod already accepts the raw Table 5.7 code as well as
+            // the named service tokens - see its own comment.
+            if (!ac3::meta::parse_bsmod(value, mode)) {
+                fmt::println(stderr, "error: bsmod must be 0..7 (Table 5.5's service type) "
+                                     "or one of: {}",
+                             ac3::meta::kBsmodNames);
                 return false;
             }
-            (key == "bsmod" ? out.bsmod : out.dsurmod) = static_cast<int>(n);
+            out.bsmod = static_cast<int>(mode);
+            out.p.infomdat = true;
+            out.p.info.bsmod = mode;
+            continue;
+        }
+        if (key == "dsurmod") {
+            // Table 5.11's own 2-bit field, including its reserved code 3 -
+            // parse_surround_mode has no member for that (§5.4.2.6 reads it
+            // as "not indicated", same as 0), so the raw digit is read
+            // directly rather than routed through the named-token parser.
+            const auto n = parse_u32_or(value, 4);
+            ac3::meta::SurroundMode mode{};
+            if (n <= 3) {
+                mode = n < 3 ? static_cast<ac3::meta::SurroundMode>(n)
+                             : ac3::meta::SurroundMode::kNotIndicated;
+            } else if (!ac3::meta::parse_surround_mode(value, mode)) {
+                fmt::println(stderr, "error: dsurmod must be 0..3 (Table 5.11's Dolby Surround "
+                                     "mode) or one of: {}",
+                             ac3::meta::kSurroundModeNames);
+                return false;
+            }
+            out.dsurmod = n <= 3 ? static_cast<int>(n) : static_cast<int>(mode);
+            out.p.infomdat = true;
+            out.p.info.dsurmod = mode;
             continue;
         }
         if (key == "cmixlev") {
@@ -932,24 +963,6 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 out.codec = ac3::plan::Codec::kEac3;
             } else {
                 fmt::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", value);
-                return false;
-            }
-            continue;
-        }
-        if (key == "bsmod") {
-            out.p.infomdat = true;
-            if (!ac3::meta::parse_bsmod(value, out.p.info.bsmod)) {
-                fmt::println(stderr, "error: bsmod must be one of: {} (Table 5.7)",
-                             ac3::meta::kBsmodNames);
-                return false;
-            }
-            continue;
-        }
-        if (key == "dsurmod") {
-            out.p.infomdat = true;
-            if (!ac3::meta::parse_surround_mode(value, out.p.info.dsurmod)) {
-                fmt::println(stderr, "error: dsurmod must be one of: {} (Table 5.11)",
-                             ac3::meta::kSurroundModeNames);
                 return false;
             }
             continue;
