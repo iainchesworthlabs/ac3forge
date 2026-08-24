@@ -134,13 +134,28 @@ accompanied by an equivalent 5.1 bitstream in the same `#EXT-X-MEDIA` group, so 
 cannot render objects has something to select. `ac3cli fmp4 … fallback-51` writes both from one
 source stream.
 
-**Objects or no container, never an empty one.** A container with no payloads left in it still
-*signals* an object layer — a `dec3` box's Atmos extension, a DASH `EC3_ExtensionType` property,
-an HLS `CHANNELS="<N>/JOC"` attribute all key off markers that would survive an emptying. A
-receiver told "objects are here" and handed nothing has no good move. So a stream this project
-writes either carries the object layer or omits the container outright, and the strip above
-removes it rather than blanking it. The same rule is why a 5.1 fallback from an Atmos encode
-omits the container entirely instead of writing a hollow one.
+## The fallback rule: objects, or nothing
+
+A stream **carries objects or omits the container entirely — never an empty one, and never a
+container-less stream that still claims objects.** Both halves matter, because two different
+things advertise the object layer and they have to agree:
+
+- The **EMDF container** itself. A decoder that *validates* the container's protection field
+  treats its sync word as a commitment to object decoding: if the field doesn't check out it
+  refuses the whole stream rather than falling back to the bed. So an empty or unusable
+  container is worse than no container — with nothing to find, that decoder plays ordinary 5.1.
+  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for.
+- The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
+  §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
+  the only thing a *reader* — as opposed to a decoder — has to go on: it is what
+  `ac3::io::scan` reports, what the MP4 `dec3` box's Dolby Atmos extension is built from, what
+  becomes an HLS `CHANNELS="<N>/JOC"` attribute, and what makes FFmpeg report the stream as
+  "Dolby Digital Plus + Dolby Atmos". A stream with the marker but no container promises a
+  packager, a player and a manifest an object layer that isn't there.
+
+So the marker follows the container: emit both, or neither. The same rule is why the strip above
+has to remove both, not just the payload, and why a 5.1 fallback from an Atmos encode omits the
+container entirely instead of writing a hollow one.
 
 ## Two honest limitations
 
