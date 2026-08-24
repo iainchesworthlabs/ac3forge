@@ -17,6 +17,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 
 // E-AC-3 (Dolby Digital Plus) framing - ATSC A/52:2018 Annex E, bsid 16.
 //
@@ -103,7 +104,16 @@ struct FrameConfig {
     // Annex E Table E1.2: Ch2's dialnorm, required when acmod is kDualMono
     // (1+1) — the two programmes are levelled independently.
     std::optional<int> dialnorm2 = std::nullopt;
-    int chbwcod = 60;
+    // fbw bandwidth code 0..60, or -1 for the encoder's own choice: the rate
+    // ceiling AC-3 has always used, with the frame's own spectrum narrowing
+    // it under that (ac3/encoder/bandwidth.hpp). This used to default to a
+    // fixed 60 - the whole 23.7 kHz at every rate - which at 96 kbit/s per
+    // channel, where neither coupling nor spectral extension runs, spread
+    // the frame's bits across 253 mantissas that could not each afford two.
+    // Meaningful only for a channel carrying its own high band: with either
+    // tool in use the tool's start frequency IS the coded bandwidth and
+    // chbwcod is not transmitted at all (§E3.3.3).
+    int chbwcod = -1;
 
     // --- substream identity (Table E1.2) -----------------------------------
     // The defaults describe the lone independent substream this encoder has
@@ -294,6 +304,20 @@ struct FrameConfig {
     // keys its "Dolby Digital Plus + Dolby Atmos" report off. std::nullopt
     // writes addbsie == 0, which is what every stream here did before.
     std::optional<int> oba_complexity_index = std::nullopt;
+
+    // --- self-check (ac3/verify/eac3_mirror.hpp) -----------------------------
+    // When set, the encoder records the per-block model it wrote this frame
+    // for - bit offsets, exponents, bit allocation, delta correction, AHT
+    // gains and the coupling/spectral-extension coordinates - into this
+    // trace, for comparison against a decoder's own reading of the same
+    // frame. One trace per SUBSTREAM: an AccessUnitEncoder's substreams each
+    // carry their own FrameConfig and so their own pointer, and
+    // verify::Eac3AccessUnitTrace is what holds a whole access unit's worth.
+    //
+    // Null by default, which costs one branch per block and no allocation.
+    // Nothing about the encoded output depends on it: the trace reads state
+    // the encoder already has and never steers a decision.
+    verify::Eac3SubstreamTrace* trace = nullptr;
 };
 
 // Words per syncframe at a given rate. E-AC-3 signals the size directly, so
@@ -414,6 +438,11 @@ class AC3FORGE_EXPORT FrameEncoder {
     // state only: it changes how fast the search converges, never which
     // offset it converges to. Negative until a frame has been encoded.
     int snr_search_hint_ = -1;
+    // The chbwcod last transmitted, rate-limiting how fast the content-
+    // adaptive band edge may fall. Part of the decision rather than a
+    // performance hint - the AC-3 FrameEncoder carries the same field for
+    // the same reason. Negative until a frame has been encoded.
+    int chbwcod_state_ = -1;
     // Smoothed across frames: see the AC-3 FrameEncoder for why they cannot be
     // per-frame objects.
     std::optional<meta::RangeController> range_;

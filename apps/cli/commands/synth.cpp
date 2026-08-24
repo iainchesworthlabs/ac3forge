@@ -102,6 +102,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
     }
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     const auto config = plan::ac3_config(p);
     const auto cp = plan::resolve(p);
@@ -169,7 +170,19 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     // this command's only way to reach it - same field, same meaning as
     // 'sine'/'encode's identical assignment.
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
+    // eac3-encode meets an unframable rate with its own post-construction
+    // check (encode.cpp's eac3_config_accepted()); this command builds its
+    // AccessUnitEncoder the same way and has to be asked the same question -
+    // a bitrate no substream's frmsiz can express leaves the encoder below
+    // with no substreams, so its channel_count() is 0 and the tone-per-
+    // speaker assertion after it is what a user would see instead of an
+    // error message.
+    if (const auto bad = plan::validate(p)) {
+        fmt::println(stderr, "error: {}", plan::describe(*bad));
+        return 1;
+    }
     const auto config = plan::eac3_config(p);
     const auto cp = plan::resolve(p);
 
@@ -179,6 +192,8 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     }
     ac3::eac3::AccessUnitEncoder encoder{config};
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
+    // Holds because plan::validate() above already refused everything that
+    // would leave this encoder without substreams - see its call site.
     assert(nchans == tone_hz.size());
     const double amplitude = amplitude_pct / 100.0;
 

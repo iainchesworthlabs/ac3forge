@@ -198,6 +198,17 @@ run_ffmpeg_check enc_bsi_timecode.ac3
 run encode bootstrap_51.wav enc_fastmdct_off.ac3 256 51 fast-mdct=off
 run decode enc_fastmdct_off.ac3 enc_fastmdct_off.wav
 run_ffmpeg_check enc_fastmdct_off.ac3
+# fast-imdct=off: the decode-side half of the same choice, and until roadmap
+# VX10 the only one of the two with no matrix row at all. Every other `run
+# decode` in this script runs the default §7.9.4 fast inverse, so this is what
+# keeps the direct step-3 evaluation - the form every fast-IMDCT test is
+# validated against - walked under the sanitizers too. The E-AC-3 counterpart
+# is beside the eac3-encode rows below; `mode=reference` (both halves at once)
+# is what the second gold-reference run in .github/workflows/_build.yml
+# exercises, on a real stream with a real SNR floor rather than only for
+# crashes.
+run decode enc_fastmdct_off.ac3 enc_fastimdct_off.wav fast-imdct=off
+run decode real_51_448.ac3 real_51_448_fastimdct_off.wav fast-imdct=off
 
 # The synthetic panning-orbit generator: same AC-3 encode path as 'sine', with
 # object motion baked in rather than a fixed layout.
@@ -235,6 +246,10 @@ for tools in none "atten:2" noatten nofastmdct nodither; do
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
     run_ffmpeg_check "eac3enc_${safe}.ec3"
 done
+# The E-AC-3 side of the fast-imdct=off row added beside the AC-3 encodes
+# above: Eac3Decoder's PCM reconstruction is its own code path, not a caller
+# of the AC-3 one, so the direct §7.9.4 evaluation needs walking through both.
+run decode eac3enc_none.ec3 eac3enc_none_fastimdct_off.wav fast-imdct=off
 # Both the in-repo decoder and FFmpeg read every one of these now - two
 # independent decoders agreeing is stronger proof these Annex-E-tool encodes
 # are spec-correct than either checked alone.
@@ -308,6 +323,54 @@ for layout in 71 512 714; do
         echo "    [skip] eac3_${layout}_all.ec3: no FFmpeg oracle for 7.1.4 (README.md Verification gaps) - the in-repo decoder is still checked above"
     fi
 done
+
+# --- E-AC-3 encoder/decoder mirror self-check (roadmap VX2) -----------------
+# `verify` decodes every access unit as it is encoded and diffs the decoder's
+# model against the encoder's own - per-substream, per-block bit offsets,
+# exponents, bit allocation, delta, AHT gains and the coupling/spectral-
+# extension coordinates - refusing the run at the first disagreement. It is
+# the only check here that can see a defect BOTH sides share, which is the gap
+# docs/verification.md names for ecpl, tpn, fscod2 and 7.1.4: those have no
+# external oracle at all, so a round trip and an SNR gate agree with
+# themselves however the spec was read.
+#
+# Real programme material, not bootstrap_51.wav: a stationary tone puts
+# near-identical exponents in every block, and the whole reason the AC-3 half
+# of this facility exists is a defect only real material reaches (see the
+# "AC-3: real programme material" note above). One second of it is ~31 access
+# units - well past the frame-0 false pass the same history records, and short
+# enough to run the full tool matrix twice over under the sanitizers.
+ffmpeg -v error -y -i "$FIXTURES/reference_51.wav" -t 1 mirror_51.wav
+for tools in none cpl spx aht "spx+aht" "cpl:4+spx:5" "cpl+ecpl" tpn "cpl+ecpl+tpn" all auto "all+nofastmdct"; do
+    safe=$(echo "$tools" | tr ':+' '__')
+    run eac3-encode mirror_51.wav "mirror_${safe}.ec3" 192 "$tools" 51 verify
+done
+# Every layout, with the tools and without. 7.1.4 is the one FFmpeg cannot
+# read at all, so its two dependent substreams' own traces are compared here
+# and nowhere else.
+for layout in mono stereo 51 71 512 514 714; do
+    for tools in none all; do
+        run eac3-encode mirror_51.wav "mirror_${layout}_${tools}.ec3" 256 "$tools" "$layout" verify
+    done
+done
+# 1+1 needs its own source: its routing is a strict identity on exactly two
+# source channels, never a fold-down, so a six-channel file is refused there
+# rather than downmixed.
+ffmpeg -v error -y -i "$FIXTURES/reference_stereo.wav" -t 1 mirror_stereo.wav
+run eac3-encode mirror_stereo.wav mirror_11.ec3 192 none 1+1 verify dialnorm2=24
+# fscod2, the one case Dolby's own Reference Player refuses alongside FFmpeg.
+# Resampled rather than merely re-labelled, so the encoder sees material with
+# the bandwidth the rate implies.
+for rate in 24000 22050 16000; do
+    ffmpeg -v error -y -i "$FIXTURES/reference_51.wav" -t 1 -ar "$rate" "mirror_${rate}.wav"
+    for tools in none all; do
+        run eac3-encode "mirror_${rate}.wav" "mirror_${rate}_${tools}.ec3" 96 "$tools" 51 verify
+    done
+done
+# VBR sizes the frame from the content rather than the other way round, so the
+# side-info measurement and the allocation the trace compares are reached by a
+# different path than any CBR run above.
+run eac3-encode mirror_51.wav mirror_vbr.ec3 192 all 51 "q:0.6,min:96,max:256" verify
 
 run eac3-encode bootstrap_51.wav eac3_meta.ec3 192 none 51 \
     mixmeta lfemix=10 dmixmod=ltrt drc=music-light dialnorm=auto
@@ -596,5 +659,21 @@ cmp -s atmos_4.ec3 demux_fmp4_atmos.ec3 || {
     echo "demux of the fragmented MP4 did not reproduce atmos_4.ec3 byte for byte" >&2
     exit 1
 }
+
+# And through MPEG-TS: the writer implements the DVB profile (stream_type
+# 0x06 plus a descriptor), so this is the one leg above that also proves the
+# reader's DVB path end to end, not just the ATSC/registration paths the
+# reader-side unit tests cover on their own.
+run demux enc_51.ts demux_ts_51.ac3
+cmp -s enc_51.ac3 demux_ts_51.ac3 || {
+    echo "demux enc_51.ts did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux atmos_4.ts demux_ts_atmos.ec3
+cmp -s atmos_4.ec3 demux_ts_atmos.ec3 || {
+    echo "demux atmos_4.ts did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+run_ffmpeg_check demux_ts_atmos.ec3
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

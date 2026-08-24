@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/export.hpp"
 #include "ac3/oba/joc.hpp"
@@ -73,6 +74,22 @@ struct AtmosConfig {
     // the whole object encode rides one transform path. false forces the
     // direct §8.2.3.2 reference form everywhere, for validation.
     bool fast_mdct = true;
+    // Which domain the reconstruction matrix is ESTIMATED in - and so, in
+    // practice, which domain it is correct in. §6.6.6 puts the decoder's
+    // reconstruction in §7.1's 64-band complex QMF, and every licensed
+    // decoder runs it there, so joc::Domain::kQmf is the only setting whose
+    // matrices mean on the other side what they meant here.
+    // joc::Domain::kMdctBand is what this encoder did before the filterbank
+    // existed: the same solve over 256 MDCT bins, four to a subband. It is
+    // cheaper, and it is what the in-repo decoder reconstructs best from
+    // when it is also told kMdctBand, but the agreement is between this
+    // encoder and this decoder only - a licensed decoder has no such
+    // setting, and reads every matrix as a QMF one.
+    //
+    // Default kQmf since the evidence was measured: +5.1 dB mean per-object
+    // SNR through a QMF reconstruction, for +0.26 ms/frame of encode
+    // (0.55 -> 0.80 ms of a 32 ms budget, four objects).
+    joc::Domain joc_domain = joc::Domain::kQmf;
 };
 
 // One object's placement for one frame. Positions are room-anchored per
@@ -132,6 +149,9 @@ class AC3FORGE_EXPORT AtmosEncoder {
     bool primed_ = false;
 
     std::vector<std::vector<float>> bed_;
+    // One analysis filterbank per object, for joc::Domain::kQmf's band
+    // energies. Left empty - and so free - under kMdctBand.
+    std::vector<dsp::QmfAnalysis> object_qmf_;
     std::uint64_t frames_ = 0;
 };
 
@@ -149,5 +169,28 @@ class AC3FORGE_EXPORT AtmosEncoder {
 AC3FORGE_EXPORT void band_energy(std::span<const float> signal,
                                  std::span<const std::uint8_t, 64> mapping,
                                  std::span<double> out, bool fast = false);
+
+// The same measurement in §7.1's 64-band complex QMF - one subband per
+// Table 54 entry instead of four MDCT bins standing in for one, and 24
+// timeslots of it per frame instead of six blocks. `analysis` is this
+// signal's own filterbank and must be the SAME object frame after frame:
+// a filterbank restarted every frame would see 640 samples of ramp-in each
+// time and under-read the energy at both ends.
+//
+// Absolute scale differs from band_energy's and does not matter: the solve
+// that consumes these regularizes relative to their own trace, so a common
+// factor across all objects cancels out of the matrix entirely.
+//
+// One approximation is left in, and it is in the timing rather than the
+// domain. The filterbank emits the timeslot whose window ENDS on the
+// samples just pushed, so a frame's worth of pushes yields the timeslots
+// running from kQmfDelaySlots before the frame to kQmfDelaySlots before its
+// end - while a decoder applies this frame's matrix to the timeslots that
+// reconstruct this frame. Closing that 576-sample gap would need a frame of
+// encoder lookahead; what it costs instead is that the energy average is
+// taken over a window shifted 576 samples early.
+AC3FORGE_EXPORT void qmf_band_energy(std::span<const float> signal,
+                                     std::span<const std::uint8_t, 64> mapping,
+                                     std::span<double> out, dsp::QmfAnalysis& analysis);
 
 }  // namespace ac3::oba

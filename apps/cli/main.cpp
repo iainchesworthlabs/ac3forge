@@ -275,7 +275,7 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
     {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
-    {"demux", 3, "<in.mkv|in.mp4> <out.ac3|out.ec3>",
+    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
      Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
@@ -501,12 +501,12 @@ int run_main(int argc, char** argv) {
         const bool is_option = token.find('=') != std::string_view::npos ||
                                token == "couple" || token == "heavy" || token == "heavy2" ||
                                token == "mixmeta" || token == "sign-objects" ||
-                               token == "verify-objects" || token == "keep-partial" ||
-                               token == "fast-mdct" || token == "fast-imdct" ||
-                               token == "annexd" || token == "infomdat" ||
-                               token == "encinfo" || token == "langcod" ||
-                               token == "langcod2" || token == "copyright" ||
-                               token == "sourcefscod";
+                               token == "verify-objects" || token == "verify" ||
+                               token == "keep-partial" || token == "fast-mdct" ||
+                               token == "fast-imdct" || token == "annexd" ||
+                               token == "infomdat" || token == "encinfo" ||
+                               token == "langcod" || token == "langcod2" ||
+                               token == "copyright" || token == "sourcefscod";
         if (token == "couple") {
             couple_flag = true;
         }

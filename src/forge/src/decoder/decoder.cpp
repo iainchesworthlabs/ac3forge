@@ -92,6 +92,31 @@ std::expected<std::size_t, DecodeError> syncframe_bytes(std::span<const std::byt
     return *frame_size_bytes(static_cast<SampleRate>(fscod), kbps, (frmsizecod & 1) != 0);
 }
 
+// Does this syncframe open an access unit, or does it join the one in
+// progress? Independent (and convertible) Annex E substreams open one and
+// dependents join it - but so does an AC-3 syncframe, because §E2.3.1.2 says
+// "if an AC-3 bit stream is present in the E-AC-3 bit stream, then the AC-3
+// bit stream shall be processed as an independent substream assigned
+// substream ID 0". A legacy-core delivery leans on exactly that: an AC-3
+// frame carrying the bed with Annex E dependents extending it.
+//
+// bsid is checked FIRST and is the whole reason this is a function. strmtyp
+// lives in the top two bits of byte 2 of an Annex E syncframe, and in an AC-3
+// one those same bits are the top of crc1 - so reading them unconditionally
+// makes "does this frame start an access unit?" a question about a checksum,
+// answered differently for otherwise identical frames. The frames must be
+// >= 6 bytes, which split_frames has already established of every one it
+// returns.
+[[nodiscard]] bool begins_access_unit(std::span<const std::byte> frame) {
+    if (std::to_integer<std::uint32_t>(frame[5]) >> 3 <= 8) {
+        return true;  // AC-3: independent substream 0 by §E2.3.1.2
+    }
+    const auto strmtyp =
+        static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(frame[2]) >> 6);
+    return strmtyp == eac3::StreamType::kIndependent ||
+           strmtyp == eac3::StreamType::kConvertible;
+}
+
 }  // namespace
 
 std::expected<int, DecodeError> stream_bsid(std::span<const std::byte> frame) {
@@ -119,6 +144,28 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_frames
     return frames;
 }
 
+bool has_eac3_extension_substreams(std::span<const std::byte> stream) {
+    const auto core_bsid = stream_bsid(stream);
+    if (!core_bsid || *core_bsid > 8) {
+        return false;  // not AC-3-led, so not this arrangement
+    }
+    const auto core_bytes = syncframe_bytes(stream, 0);
+    if (!core_bytes || *core_bytes >= stream.size()) {
+        return false;  // unreadable, or the core is the whole stream
+    }
+    const auto next = stream.subspan(*core_bytes);
+    // syncframe_bytes rather than stream_bsid alone: it checks the sync word
+    // and the declared size, so a second "frame" that is really trailing
+    // rubbish does not get read as a dependent on the strength of five bits.
+    const auto next_bytes = syncframe_bytes(next, 0);
+    const auto next_bsid = stream_bsid(next);
+    if (!next_bytes || !next_bsid || *next_bsid <= 8) {
+        return false;  // another AC-3 syncframe: plain AC-3
+    }
+    return static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(next[2]) >> 6) ==
+           eac3::StreamType::kDependent;
+}
+
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
     std::span<const std::byte> stream) {
     const auto frames = split_frames(stream);
@@ -132,11 +179,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     std::size_t start = 0;
     std::size_t offset = 0;
     for (const auto& frame : *frames) {
-        const auto strmtyp = static_cast<eac3::StreamType>(
-            std::to_integer<std::uint32_t>(frame[2]) >> 6);
-        const bool begins_unit = strmtyp == eac3::StreamType::kIndependent ||
-                                 strmtyp == eac3::StreamType::kConvertible;
-        if (begins_unit && offset != start) {
+        if (begins_access_unit(frame) && offset != start) {
             units.push_back(stream.subspan(start, offset - start));
             start = offset;
         }
@@ -147,9 +190,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     }
     // A stream whose very first syncframe is a dependent has lost its parent;
     // its channels have nothing to extend.
-    if (!units.empty() &&
-        (std::to_integer<std::uint32_t>(units.front()[2]) >> 6) ==
-            static_cast<std::uint32_t>(eac3::StreamType::kDependent)) {
+    if (!units.empty() && !begins_access_unit(units.front())) {
         return std::unexpected(DecodeError::kInvalidStream);
     }
     return units;

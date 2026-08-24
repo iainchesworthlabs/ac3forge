@@ -111,6 +111,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   parser (opt-in, `-DAC3FORGE_BUILD_ADM=ON`).
 - [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, mapping the parsed ADM graph onto
   `ac3::oba::AtmosEncoder` (same opt-in flag).
+- [Measuring quality](quality.md) — `ac3::quality`, the decoded-domain distortion measure and the
+  tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
 - [Header map](header-map.md) — every public header and what lives in it.
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
