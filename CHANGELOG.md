@@ -14,6 +14,35 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **Decoder output stage** (ROADMAP `DC1`). `ac3/decoder/output.hpp` adds `ac3::OutputStage` on
+  `DecoderConfig::output`: §5.4.2.8 dialnorm normalisation onto the −31 dBFS reference, §7.8's
+  Lo/Ro, Lt/Rt and mono downmixes, optional LFE mixing, and §7.7's line and RF operating modes
+  with the overload protection a fold needs but `compr` — computed for the *mono* downmix — does
+  not provide. The matrix comes from the stream's own levels, so both decoders stop discarding
+  them: `DecodedFrame` now reports `cmixlev`/`surmixlev` (§5.4.2.4/§5.4.2.5) and
+  `DecodedSubstream`/`DecodedAccessUnit` report the `mixmdate` downmix group, each
+  distinguishing "absent" from "present, and says the default". Lt/Rt's surround sum really is
+  phase shifted 90°, through a 127-tap Hilbert transformer with the direct path delayed to
+  match (63 samples, reported by `latency_samples()`); `ltrt_phase_shift = false` takes the
+  sign-only matrix instead. A rendered Table E2.5 layout §7.8 has no fold for — 7.1.4 and the
+  like — is reduced to the nearest acmod layout rather than having its extra channels dropped.
+  Everything defaults off: a decoder configured the way every existing caller configures it
+  emits the coded channels untouched, sample for sample. Verified against FFmpeg's `-ac 2`
+  decode of the same stream — 119–121 dB SNR at zero lag, differing only by §7.8.1's own
+  normalisation divisor, which FFmpeg does not apply.
+- **`ac3cli decode`/`monitor` output tokens**: `channels=2|1|as-coded`,
+  `downmix=loro|ltrt|mono`, `ltrt-phase=off`, `mix-lfe`, `drcmode=line|rf`. `monitor` also folds
+  on its own initiative when the output endpoint renders fewer channels than the programme
+  (`RenderDeviceInfo::channels`, populated on the WASAPI and ALSA backends), instead of leaving
+  a 5.1 programme to whatever the platform's shared-mode mixer averages together.
+- **§7.10 error concealment** (ROADMAP `DC2`), opt-in via `DecoderConfig::concealment`. A frame
+  that will not decode is reconstructed from the previous block's overlap — repeated and faded
+  (`kRepeatFade`) or muted through the codec's own window (`kMute`) — instead of leaving a hard
+  discontinuity in the PCM. Both work in the overlap-add domain, so a concealed frame leaves the
+  delay state exactly as the next good frame expects and recovery is an ordinary decode. The
+  substitution is reported on the result (`concealed`), and for E-AC-3 an access unit whose
+  *dependent* substream will not decode renders its bed alone rather than failing outright.
+  `ac3cli decode|monitor conceal=repeat|mute`, which report how many frames were concealed.
 - **Multiple independent substreams — more than one programme per stream** (roadmap `DC5`).
   §E2.3.1.2 allows eight independent substreams and broadcast DD+ uses them for multi-language
   and associated services (audio description, commentary); this project handled exactly one, and
@@ -904,6 +933,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The WASM decode demo plays the library's downmix**, not one of its own. The page used to
+  hand-roll a fold it labelled "NOT a spec Lo/Ro or Lt/Rt matrix" and soft-clip the result; it
+  now plays `ac3::OutputStage`'s §7.8 Lo/Ro fold with dialnorm applied — the same code
+  `ac3cli decode channels=2` runs — and needs no soft clip, because §7.8.1's normalisation means
+  a fold cannot be louder than the loudest coded sample. The per-channel visualization still
+  shows every coded channel.
 - `DecodedFrame` reports `bsid`, `cmixlev` and `surmixlev` instead of discarding the two mix
   levels — the input roadmap `DC1`'s decoder output stage needs. A layout that carries neither
   field reports §7.8's own fallbacks, so a caller can apply them unconditionally.

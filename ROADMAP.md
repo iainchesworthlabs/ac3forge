@@ -188,26 +188,30 @@ both encoders decide from content rather than from the bit rate.
 
 ## DC. Decoder and consumer output
 
-Both decoders walk every metadata payload correctly and keep almost none of it, and neither has
-an output stage. Every consumer surface improvises: the WASM demo hand-rolls a stereo fold it
-labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at all.
+Both decoders walk every metadata payload correctly and, outside the downmix levels DC1 now
+keeps, still discard almost all of it. The output stage and §7.10 concealment landed with
+DC1/DC2, so no consumer surface improvises a fold any more; what remains here is the metadata
+depth a receiver needs to do anything beyond play one programme at the right level.
 
-- [ ] **DC1 (L)** — Decoder output stage: apply dialnorm, §7.8 Lo/Ro, Lt/Rt and mono downmix
+- [x] **DC1 (L)** — Decoder output stage: apply dialnorm, §7.8 Lo/Ro, Lt/Rt and mono downmix
   using the stream's own `cmixlev`/`surmixlev` or E-AC-3 `mixmdate`, LFE mixing, and the line
-  and RF operating modes. `DecoderConfig` has only `drc_scale`, `fast_imdct`,
-  `heavy_compression` and `trace`; `decoder.cpp` discards `cmixlev`/`surmixlev`;
-  `meta::stereo_downmix`/`mono_downmix` exist but only feed the encoder's compression peak
-  detector. Expose as `ac3cli decode channels=2|1`, use it in `MonitorSink` when the device is
-  narrower than the stream, replace the WASM demo's fold, verify against FFmpeg `-ac 2`. Lo/Ro
-  plus dialnorm alone is an M; Lt/Rt's surround phase shift and RF-mode overload protection are
-  the rest. DC3/DC4 have since stopped discarding the levels: `DecodedFrame` reports
-  `cmixlev`/`surmixlev` and `DecodedSubstream` reports the whole `mixmdate` group, so the input
-  this needs is already on the wire and read back.
-- [ ] **DC2 (M)** — Error concealment (§7.10). On a CRC or truncation error the decoder returns
-  the error and `docs/library/decoding.md` tells the caller to catch it and keep going, which
-  leaves a hard discontinuity in the PCM. An opt-in policy: repeat-and-fade, mute with a window
-  ramp, render the bed alone when a dependent is missing — reported on the result so tests can
-  assert it. The live, monitor and WASM paths benefit directly.
+  and RF operating modes. Shipped as `ac3::OutputStage` (`ac3/decoder/output.hpp`) on
+  `DecoderConfig::output`, off by default; both decoders now keep the levels they used to skip.
+  `ac3cli decode|monitor channels=2|1`, `downmix=loro|ltrt|mono`, `drcmode=line|rf`, `mix-lfe`,
+  `ltrt-phase=off`; `monitor` folds on its own when the endpoint renders fewer channels than the
+  programme; the WASM demo plays the library's fold instead of one of its own. Lt/Rt's surround
+  sum is phase shifted through a 127-tap Hilbert transformer with the direct path delayed to
+  match. Lo/Ro agrees with FFmpeg `-ac 2` to 119-121 dB SNR, differing only by §7.8.1's own
+  normalisation divisor. Annex C's karaoke downmix (`bsmod` 7) is deliberately out: it
+  re-purposes `cmixlev`/`surmixlev` as vocal-channel levels, so it is a different matrix rather
+  than a variation on this one, and nothing here emits a karaoke stream to check it against.
+- [x] **DC2 (M)** — Error concealment (§7.10). Opt-in via `DecoderConfig::concealment`:
+  `kRepeatFade` or `kMute`, both working in the overlap-add domain (the decoders retain the last
+  good block's windowed transform output) so the delay state stays coherent and the fade at each
+  end is the codec's own window. Reported on the result as `concealed`; an E-AC-3 access unit
+  whose dependent will not decode renders its bed alone (`kBedOnly`). `ac3cli decode|monitor
+  conceal=repeat|mute`. Tests damage real encoded frames, which the differential fuzzers — they
+  only compare successful decodes — never did.
 - [x] **DC3 (M)** — AC-3 Annex D alternate syntax (bsid 6, `xbsi1`/`xbsi2`) and the
   informational BSI fields, encode and decode. `EncoderConfig::alternate_bsi` writes bsid 6 and
   spends the two 14-bit `timecod` fields §D1 reclaims on `dmixmod` plus separate Lt/Rt and Lo/Ro
