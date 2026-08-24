@@ -40,6 +40,48 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   decides per frame by reconstructing both ways with the already-fitted band values and keeping
   whichever is closer to the real content; on measured material it fires on a meaningful
   fraction of enhanced-coupling frames.
+- **`ac3cli probe`** (roadmap `IO1`) — what an elementary stream *declares*, without
+  reconstructing its audio: `bsid`, sample rate including Annex E's `fscod2` half rates,
+  `acmod`/`lfeon` and the resolved layout, `bsmod`, `chanmap`, the substream map
+  (independent/dependent, ids), `numblkscod`, frame and access-unit counts, duration, measured
+  bit rate with the VBR spread behind it, `dialnorm`/`compr`/`dynrng` presence and ranges, EMDF
+  payload ids, OAMD/JOC with `complexity_index` and the object/bed configuration, whether an
+  authenticity tag is present, CRC validity per frame, and how often each coding tool was used.
+  A human-readable table by default; `json=1` emits a versioned JSON document
+  (`ac3forge.probe/1`) whose schema is documented as a stable contract in
+  [docs/cli/commands.md](docs/cli/commands.md). `detail=frames` adds a per-access-unit dump and
+  `detail=blocks` adds every block's Annex E tools and exponent strategies — the in-repo
+  counterpart of `tools/references/eac3_parse.py`, which was the only field-level dump in the
+  project and shipped with nothing. The exit code is non-zero if any frame failed its CRC or the
+  parser refused it, so it works as a pipeline gate without its output being read. Memory is flat
+  in the length of the stream: the input is pulled through a fixed window and the per-frame dump
+  is written as the walk produces it.
+
+  It reads in two tiers, and a stream this decoder cannot decode is still described in full — the
+  committed DEE-encoded E-AC-3 baseline is exactly that case, where `decode` stops at
+  `decode failed (code 5)` and `probe` reports the layout, rate, duration, substream map and CRC
+  state, says which 76 of 79 syncframes the parser refused and why, and notes that the stream uses
+  AHT.
+
+- **`ac3::io::read_frame_header`** — one syncframe's bit stream information, read without
+  decoding it. Promotes the E-AC-3 bsi walk `scan()` already had internally to a public API and
+  gives AC-3 a matching one; `scan()` now goes through the same two functions rather than keeping
+  a private copy.
+
+- **`ac3::FrameSyntax`** (`ac3/decoder/syntax_trace.hpp`) — an opt-in per-block record of which
+  coding tools a syncframe used and what exponent strategy each stream carried, on the same terms
+  `ac3::verify::FrameTrace` already established: a null pointer in the `DecoderConfig` costs
+  nothing. Both decoders write one.
+
+- **`DecoderConfig::skip_reconstruction`** — parse every field exactly as a full decode does, but
+  stop before the inverse transform, overlap-add, JOC object reconstruction and channel
+  combination. The metadata is identical; the transform, which answers none of the questions an
+  inspection asks, is not paid for.
+
+- **`ac3::signing::has_authenticity_tag`** — whether a syncframe carries an authenticity tag,
+  answered **without a key**. Where the tag lives is fixed by the EMDF container's own
+  protection-length codes; only whether it *matches* needs the key.
+
 - **E-AC-3 encoder input-space fuzzing** (`tools/ci/fuzz_eac3_encoder_space.py`, roadmap `VX1`).
   The AC-3 encoder-space harness said outright where it stopped — "Scope: AC-3 only [...] E-AC-3's
   own space [...] is a real remaining gap" — and this is that gap. It draws random legal
@@ -76,6 +118,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- `ac3::signing`'s frame walk now reports "no container" for a syncframe outside the subset it
+  supports, where it previously asserted. That was sound while signing and verifying were its
+  only callers — each already knew what it was handing over — but `has_authenticity_tag` is asked
+  of every syncframe of an arbitrary stream, where an ordinary non-Atmos frame is not an error and
+  a debug build must not abort on one. Release behaviour is unchanged: it already declined to sign
+  these, just without saying so.
+- `DecodedFrame` and `DecodedSubstream` now report `bsid` and `bsmod`, which both decoders
+  already read past and discarded.
 - **E-AC-3 `auto` chooses its Annex E tools from the frame, not just the bitrate** (`EQ9`). The
   tool set used to follow from the per-channel rate alone. Two measures taken from the MDCT
   coefficients the transform has already produced now decide with it: how much of the coupling

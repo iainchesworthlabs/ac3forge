@@ -241,13 +241,21 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
 `mux()`/`Writer` only, `ac3::iec61937` only wraps, and the CLI has no inspector, no
 machine-readable output and a single failure exit code. Users arrive with containers.
 
-- [ ] **IO1 (M)** — `ac3cli probe` with JSON output: bsid, sample rate (incl. `fscod2`), layout,
+- [x] **IO1 (M)** — `ac3cli probe` with JSON output: bsid, sample rate (incl. `fscod2`), layout,
   `bsmod`, `chanmap`, the substream map, `numblkscod`, tools in use per block, frame/AU count,
   duration, bit rate and VBR statistics, dialnorm/compr/DRC presence, EMDF payloads, OAMD
   `complexity_index`, object count and bed, whether an authenticity tag is present, CRC
   validity. `ScannedStream` already carries most of it; `tools/references/eac3_parse.py` is the
   only per-field dump today. Also the natural home for an HLS/DASH manifest check (codecs
   string, `ceao`, `dec3` against the actual substream map).
+  Shipped: `ac3::io::probe` over a promoted `ac3::io::read_frame_header` (the header tier, which
+  answers for a syncframe whose audio the decoder refuses) plus the real decoders under a new
+  `DecoderConfig::skip_reconstruction` (the parse tier). Per-block tool usage and exponent
+  strategies come from a new `ac3::FrameSyntax` trace; `detail=blocks` dumps them. The JSON
+  document is versioned `ac3forge.probe/1` and documented as a contract in
+  docs/cli/commands.md. The HLS/DASH manifest check is NOT part of it and stays open: it is
+  a consumer of this document rather than part of it, and IO5 already owns the `ceao`/JOC
+  signalling half of the same question.
 - [ ] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
   (`ac-3`/`ec-3` sample entries, `stco`/`stsz`, fragmented `moof`/`trun`), MPEG-TS (PAT/PMT,
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then

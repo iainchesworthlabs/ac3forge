@@ -115,11 +115,37 @@ not do](#what-it-does-not-do)), and that holding-back is not just a `decode_subs
 its substreams set the flag, queuing whichever substreams release early rather than losing or
 misaligning them against the one still catching up.
 
+### Inspection
+
+Decoding a stream and *describing* one are different jobs. `ac3::io::probe` (`ac3cli probe`)
+does the second: it reads the bitstream and reports what the stream declares — bsid, sample
+rate including Annex E's `fscod2` half rates, `acmod`/`lfeon` and the resolved layout, `bsmod`,
+`chanmap`, the substream map, `numblkscod`, frame and access-unit counts, duration, measured bit
+rate and VBR spread, `dialnorm`/`compr`/`dynrng` presence and ranges, EMDF payload ids, OAMD/JOC
+with `complexity_index` and the object/bed configuration, whether an authenticity tag is present,
+CRC validity per frame, and how often each coding tool was used — without reconstructing a single
+sample.
+
+It reads in two tiers. `ac3::io::read_frame_header` answers for every syncframe whether or not
+its audio is readable, so a stream this decoder refuses is still described in full; the real
+decoders then run under `DecoderConfig::skip_reconstruction`, which parses every field exactly
+as a full decode does but stops before the inverse transform, for everything only the bitstream
+body carries. An opt-in per-block dump reports which Annex E tools each block used and what
+exponent strategy each stream carried — the in-repo counterpart of
+`tools/references/eac3_parse.py`, which until now was the only field-level dump in the project
+and shipped with nothing.
+
+`json=1` emits a versioned JSON document instead of the table; its schema is a stable contract,
+documented in [Commands](cli/commands.md). Memory is flat in the length of the stream on both
+sides — the input is pulled through a fixed window and the per-frame dump is written as the walk
+produces it.
+
 ### Other
 
 | Component | What it is |
 |---|---|
-| `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told. |
+| `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told. `ac3::io::read_frame_header` is the same walk exposed per syncframe. |
+| `ac3::io::probe` | The stream description above (`ac3cli probe`), as a human table or a versioned JSON contract. |
 | `matroska::matroska` | A standalone MKV muxer. Links nothing from `ac3::forge` and knows nothing about AC-3. |
 | `mp4::mp4` | A standalone MP4/ISOBMFF muxer, same shape as `matroska::matroska`. `ac3::io::build_codec_config_box` builds a spec-correct `dac3`/`dec3` sample-entry box (ETSI TS 102 366 Annex F), Dolby Atmos extension included, straight off the bitstream. |
 | `mpegts::mpegts` | A standalone MPEG-2 Transport Stream muxer (PAT + PMT + one PES-wrapped elementary stream), identifying AC-3/E-AC-3 per DVB's ETSI EN 300 468 Annex D descriptors. Links nothing from `ac3::forge` beyond the AC-3/E-AC-3 choice it is told. |
