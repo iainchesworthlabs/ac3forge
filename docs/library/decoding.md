@@ -404,6 +404,45 @@ of a unit in the one call — so a transport that can drop whole units needs its
 redundancy/retransmission above this layer; this API only guarantees that *finding* the next
 good boundary never depends on the previous one having decoded cleanly.
 
+## Streams with more than one programme
+
+§E2.3.1.2 allows eight independent substreams (I0–I7) in one elementary stream, and broadcast
+DD+ uses them for multi-language and associated services. They are **alternatives, not layers**:
+unlike a dependent substream, a second independent one is a complete programme of its own, and a
+decoder renders one of them.
+
+That matters to the framing, because the programmes interleave one frame period at a time.
+`split_access_units(stream)` delimits but does not select, so on a two-programme stream
+consecutive entries are consecutive *programmes*, not consecutive frames — feeding them straight
+through would splice two unrelated pieces of audio together.
+
+```cpp
+const auto ids = ac3::programme_ids(stream);          // e.g. {0, 1}
+const auto units = ac3::split_access_units(stream, ids->front());
+```
+
+`split_access_units(stream, programme)` keeps only that programme's units, and an empty result
+means the stream does not carry it — asking is how you find out, so it is not an error.
+
+The decoder can do the selecting instead, which is what a caller already walking every unit
+wants:
+
+```cpp
+ac3::Eac3Decoder decoder{{.programme = 1}};
+// A unit belonging to another programme returns std::nullopt, skipped before
+// any decoding — no per-substream state advances for a programme you did not
+// ask for. (std::nullopt also means the §3.7 hold-back; both call for the
+// same thing from a caller: take nothing and go on to the next unit.)
+```
+
+Leaving `DecoderConfig::programme` unset renders whatever arrives, which is what every caller got
+before the field existed and is right for the single-programme case;
+`DecodedAccessUnit::programme` then says which programme each result came from.
+
+`ac3::io::scan` reports the same thing for a muxer: `ScannedStream::programmes` describes each
+programme's layout, channel count, `bsmod` and access units, and `ScannedStream::access_units`
+is the **first** programme's units alone rather than all of them spliced into one track.
+
 ## Decoding bytes you do not control
 
 If the stream comes from the network or from a user, read

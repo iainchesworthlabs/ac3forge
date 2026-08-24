@@ -322,8 +322,9 @@ FFmpeg and the in-repo decoder are complementary, not redundant, and neither cov
 alone. FFmpeg reads Annex E coupling, spectral extension and AHT (98+ dB SNR for coupling and
 spectral extension; 62–89 dB for AHT, which genuinely recodes mantissas rather than scaling or
 synthesizing around already-decoded content, so a wider margin from bit-exact is expected there)
-— but it refuses a *second* dependent substream (`ff_ac3_parse_header` rejects
-`substreamid != 0`), which is exactly what 7.1.4 needs. The in-repo decoder reads every Annex E
+— but it refuses any substream whose `substreamid != 0` (`ff_ac3_parse_header`), which rules out
+both the second *dependent* substream 7.1.4 needs and the second *independent* one a
+multi-programme stream carries. The in-repo decoder reads every Annex E
 tool combination at every layout, 7.1.4 included, so it backstops FFmpeg's one gap — but a stream
 only the in-repo decoder can read is checked against itself, not against anything external.
 
@@ -336,6 +337,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
+| E-AC-3 with a second *independent* substream (two programmes) | no — and it poisons the first programme too | yes |
 | E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
@@ -372,6 +374,37 @@ decoded 32 E-AC-3 access units (3 substreams each) -> out.wav
 
 Fourteen channels are coded and twelve are rendered: per §E3.8.2 the dependent's Ls and Rs
 replace the bed's rather than adding to them.
+
+**A second independent substream has no external oracle either, and it is worse than 7.1.4's
+gap — FFmpeg decodes *nothing at all*, not even the main programme.** `ff_ac3_parse_header`'s
+`substreamid != 0` check does not distinguish `strmtyp`, so §E2.3.1.2's I1 is rejected exactly as
+a second dependent substream is. What makes this case worse is where the refusal lands: the raw
+E-AC-3 demuxer hands the decoder one frame period as a single packet, I0 and I1 concatenated, so
+the second programme's presence fails the whole packet. Measured against ffmpeg 8.0.1 on a
+125-access-unit two-programme stream (5.1 main plus a mono commentary):
+
+```
+$ ac3cli eac3-encode main51.wav two.ec3 448 none 51 off       programme2=commentary.wav programme2-layout=mono programme2-bitrate=96
+$ ffmpeg -v error -f eac3 -i two.ec3 -f null -
+[dec:eac3] Error submitting packet to decoder: Error number -84085770 occurred
+    Last message repeated 124 times
+[dec:eac3] Decode error rate 1 exceeds maximum 0.666667
+```
+
+Every one of the 125 packets is refused and the output file is zero bytes, even though those
+packets carry a main programme FFmpeg reads perfectly well on its own — splitting the stream by
+programme first and handing FFmpeg only I0's access units strict-decodes clean, while I1's alone
+give `invalid frame type` / `unable to determine channel mode`. So FFmpeg remains usable as an
+oracle on each programme's frames, but only after the stream has been demultiplexed by programme,
+which is what `ac3::split_access_units(stream, programme)` does.
+
+That demultiplexing is what the container path already performs — a track carries one programme,
+so `ac3cli mkv`/`mp4` write the first programme's access units (and warn about the rest) — and
+FFmpeg strict-decodes the *result* cleanly. `tools/ci/run_codec_matrix.sh` therefore skips the
+FFmpeg check on the raw two-programme stream, the same way it does for 7.1.4, but keeps it on the
+muxed file: that check is a direct guard on the access-unit boundaries, since a programme's unit
+has to end at the next independent substream of *any* programme rather than at its own next
+frame, or each span swallows the other programme's frame and FFmpeg refuses the container too.
 
 **Enhanced coupling and transient pre-noise processing have no external oracle at all — not even
 the partial one 7.1.4 gets.** FFmpeg's own Annex E parser was never written to read either

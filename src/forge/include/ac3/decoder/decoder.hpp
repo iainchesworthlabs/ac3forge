@@ -151,6 +151,24 @@ struct DecoderConfig {
     // trace. Filled incrementally and null by default, exactly as `trace`
     // above.
     verify::Eac3AccessUnitTrace* eac3_trace = nullptr;
+    // --- programme selection (§E2.3.1.2) -----------------------------------
+    // Which independent substream's programme Eac3Decoder::decode_access_unit
+    // renders. A stream may carry up to eight — a main service plus the
+    // second language, audio description or commentary a broadcaster mixes
+    // against it — and they are alternatives, not layers: only one is played
+    // at a time.
+    //
+    // std::nullopt renders whichever programme each call's access unit
+    // happens to belong to, which is what every caller got before this field
+    // existed and is exactly right for the single-programme case. Set to an
+    // id and an access unit belonging to any OTHER programme is skipped
+    // without being decoded at all — see decode_access_unit's own doc comment
+    // for what it returns then, and DecodedAccessUnit::programme for telling
+    // the results apart under std::nullopt.
+    //
+    // Ignored by decode_substream, which is deliberately below the programme
+    // layer: it decodes the frame it is handed.
+    std::optional<int> programme = std::nullopt;
     // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
     // Which coding tools each block used and what exponent strategy each
     // stream carried, recorded on the way past. Null by default, at the same
@@ -401,6 +419,11 @@ struct DecodedAccessUnit {
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
     std::vector<int> object_indices;
+    // §E2.3.1.2's substreamid of the independent substream this programme was
+    // rendered from — 0 for every single-programme stream, and the only way
+    // to tell one programme's units from another's when DecoderConfig::
+    // programme is left unset and the decoder renders whatever arrives.
+    int programme = 0;
     int substream_count = 0;
     eac3::chanmap::Layout layout;
     std::vector<std::vector<float>> channels;  // parallel to layout, except dual mono
@@ -451,6 +474,14 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // is unaffected: every substream releases every call, so the cache never
     // holds more than one call's worth at a time and every call returns a
     // populated result immediately.
+    //
+    // std::nullopt has one further cause here that decode_substream has none
+    // of: a DecoderConfig::programme was set and this unit belongs to a
+    // DIFFERENT programme (§E2.3.1.2), so there is nothing of the selected
+    // one to return. The unit is skipped before any decoding, leaving no
+    // per-substream state behind. Both causes call for the same thing from a
+    // caller — take nothing from this call and go on to the next unit — so
+    // they are one return value rather than two.
     [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError> decode_access_unit(
         std::span<const std::byte> unit);
 
@@ -650,8 +681,35 @@ split_frames(std::span<const std::byte> stream);
 // Group those syncframes into access units. A new one begins at each
 // independent substream, and the spans returned are the concatenations the
 // bitstream itself defines.
+//
+// This DELIMITS; it does not select. A stream carrying more than one
+// programme (§E2.3.1.2 allows eight independent substreams, and broadcast DD+
+// uses them for a second language or an associated service) yields the
+// programmes' units interleaved, one frame period's worth of each in turn -
+// so consecutive entries are NOT consecutive in time. Feeding them straight
+// to a decoder in that order splices two programmes together; use the
+// programme-selecting overload below, or read
+// DecodedAccessUnit::programme, to keep them apart.
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
 split_access_units(std::span<const std::byte> stream);
+
+// The access units of ONE programme, in order: those beginning with an
+// independent substream whose §E2.3.1.2 substreamid is `programme`, together
+// with the dependents that follow each. Consecutive entries here ARE
+// consecutive frame periods, which is what a decoder, a muxer or a level
+// meter needs.
+//
+// An empty result means the stream carries no such programme - not an error,
+// since asking is how a caller finds out. Use programme_ids() to enumerate
+// what is actually there.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
+split_access_units(std::span<const std::byte> stream, int programme);
+
+// The substreamid of every independent substream the stream carries, ascending
+// and without duplicates - one entry per programme. Always {0} for AC-3, which
+// has no substream layer, and for the single-programme E-AC-3 case.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<int>, DecodeError> programme_ids(
+    std::span<const std::byte> stream);
 
 // bsid at bit 40, without committing to either layout. Fails only if the span
 // is too short to hold a header.

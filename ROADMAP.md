@@ -226,13 +226,18 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   `DecodedAccessUnit`. CLI: `pgmscl=`, `pgmscl2=`, `extpgmscl=`, `mixdef=`, `premixcmp=`,
   `mixdata=`, `extmix=`, `auxmix=`, `speechmix=`, `paninfo=`, `paninfo2=`, `blkmixcfg=`,
   `infomdat`, `sourcefscod`.
-- [ ] **DC5 (L)** — Multiple independent substreams (I0–I7). `ac3::io::scan` starts a new
-  access unit at every independent frame without looking at `substreamid`, so a stream with I0
-  and I1 decodes as alternating frames of one programme; `AccessUnitConfig` has exactly one
-  `independent`. A programme list on `ScannedStream`, programme selection on decode, and a second
-  independent substream on encode — the multi-language / audio-description shape of broadcast
-  DD+, with DC3/DC4 supplying `bsmod` and the mix metadata. The decoder already keys per-substream
-  state by `strmtyp*8+substreamid`, which lowers its share.
+- [x] **DC5 (L)** — Multiple independent substreams (I0–I7). `ac3::io::scan` groups access units
+  by programme and reports the list on `ScannedStream`; `ac3::split_access_units` gained a
+  programme-selecting overload and a `programme_ids()` enumerator (and now gates its identity
+  read on each frame's own `bsid`, since byte 2 is `crc1` in an AC-3 frame);
+  `DecoderConfig::programme` selects one on decode and `DecodedAccessUnit::programme` says which
+  arrived; `AccessUnitConfig::additional` carries further programmes, each with its own layout,
+  rate, dialnorm and DRC controllers, and the `dec3` box declares them all. On the CLI:
+  `programme=<0..7>` on `decode`/`qc`/`levels`, and `programme2=` plus its layout/bitrate/dialnorm
+  on `eac3-encode`. Labelling the programmes as services (`bsmod`) and mixing one against another
+  still needs DC3/DC4 — this is the structural half. FFmpeg is no oracle here at all: its
+  `substreamid != 0` check does not distinguish `strmtyp`, and because its demuxer packs I0 and I1
+  into one packet, a second programme makes it refuse the whole stream (docs/verification.md).
 - [x] **DC6 (L)** — Decode third-party Atmos streams. OAMD now reads any number of
   `md_update_info` blocks at any offset and ramp duration, object size/zone/elevation/snap/screen
   reference/distance/explicit priority/gain reuse, differential positions, inactive objects,

@@ -4722,44 +4722,57 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
 namespace {
 
-// The substreams of one access unit in transmission order, with the identity
+// The substreams of ONE programme in transmission order, with the identity
 // fields Annex E fixes rather than leaves to the caller: the independent one
 // first, then dependents numbered from 0 in their own space, the last of which
-// carries the compre marker that closes the program.
-std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
-    const AccessUnitConfig& config) {
-    if (config.independent.strmtyp != StreamType::kIndependent) {
+// carries the compre marker that closes the programme.
+//
+// `id` is the independent substream's §E2.3.1.2 substreamid, which is the
+// programme's own position in the access unit - a dependent's id numbers
+// within its parent's space and so still starts at 0 whichever programme this
+// is. `rate` and `numblkscod` are the access unit's own: every substream of
+// every programme codes the same frame period - the same sample rate AND the
+// same block count, since numblkscod is what fixes how many samples that
+// period actually holds (AccessUnitConfig's own comment) - so a programme
+// that disagrees on either would desynchronise the whole unit, not just
+// itself.
+std::expected<std::vector<FrameConfig>, FrameError> programme_configs(
+    const ProgrammeConfig& programme, int id, SampleRate rate, int numblkscod) {
+    if (programme.independent.strmtyp != StreamType::kIndependent) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
+    if (programme.independent.sample_rate != rate ||
+        programme.independent.numblkscod != numblkscod) {
         return std::unexpected(FrameError::kInvalidSubstream);
     }
     // §E2.3.1.2: eight dependents per independent substream, no more.
-    if (config.dependents.size() > 8) {
+    if (programme.dependents.size() > 8) {
         return std::unexpected(FrameError::kInvalidSubstream);
     }
     std::vector<FrameConfig> out;
-    out.reserve(config.dependents.size() + 1);
-    out.push_back(config.independent);
-    out.back().substreamid = 0;
+    out.reserve(programme.dependents.size() + 1);
+    out.push_back(programme.independent);
+    out.back().substreamid = id;
     out.back().last_dependent = false;
 
-    for (std::size_t i = 0; i < config.dependents.size(); ++i) {
-        FrameConfig dep = config.dependents[i];
-        // Every substream codes the same samples of one program, so a
+    for (std::size_t i = 0; i < programme.dependents.size(); ++i) {
+        FrameConfig dep = programme.dependents[i];
+        // Every substream codes the same samples of one programme, so a
         // dependent cannot disagree with its parent about the sample rate or
         // how many blocks a syncframe holds - see AccessUnitConfig's own
         // comment for why a decoder has no way to align a mismatch.
-        if (dep.sample_rate != config.independent.sample_rate ||
-            dep.numblkscod != config.independent.numblkscod) {
+        if (dep.sample_rate != rate || dep.numblkscod != programme.independent.numblkscod) {
             return std::unexpected(FrameError::kInvalidSubstream);
         }
         dep.strmtyp = StreamType::kDependent;
         dep.substreamid = static_cast<int>(i);
-        dep.last_dependent = i + 1 == config.dependents.size();
+        dep.last_dependent = i + 1 == programme.dependents.size();
         // DRC is a property of the programme, not of a substream, so a
         // dependent carries the same profile whether or not the caller said
         // so - otherwise its channels would sit outside the compression its
         // siblings are inside. The words themselves come from one measurement;
         // this only settles whether the FIELDS are written.
-        dep.drc = config.independent.drc;
+        dep.drc = programme.independent.drc;
         // Heavy compression never travels on a dependent (§E3.8.5), so clear
         // it rather than let validate() reject a config the caller could not
         // reasonably have known was illegal.
@@ -4774,7 +4787,9 @@ std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
     // §E3.8.2 caps a single programme at 16 rendered channels. Each
     // substream's own chanmap-vs-acmod/lfeon agreement is checked above; this
     // is the aggregate the per-substream check cannot see, mirroring the
-    // decoder's own union-and-count at decode time (eac3_decoder.cpp).
+    // decoder's own union-and-count at decode time (eac3_decoder.cpp). Per
+    // PROGRAMME, not per access unit: a second programme is a separate
+    // rendering, so its channels do not count against the first one's cap.
     std::uint16_t occupied = 0;
     for (const auto& sub : out) {
         occupied = static_cast<std::uint16_t>(
@@ -4784,6 +4799,46 @@ std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
         return std::unexpected(FrameError::kTooManyChannels);
     }
     return out;
+}
+
+// §E2.3.1.2: eight independent substreams, I0-I7, no more.
+constexpr std::size_t kMaxProgrammes = 8;
+
+// Every programme of an access unit, each as programme_configs above built it,
+// in transmission order. The outer index IS the substreamid of that
+// programme's independent substream.
+std::expected<std::vector<std::vector<FrameConfig>>, FrameError> access_unit_configs(
+    const AccessUnitConfig& config) {
+    if (config.additional.size() + 1 > kMaxProgrammes) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
+    const SampleRate rate = config.independent.sample_rate;
+    const int numblkscod = config.independent.numblkscod;
+    std::vector<std::vector<FrameConfig>> out;
+    out.reserve(config.additional.size() + 1);
+    auto first =
+        programme_configs({config.independent, config.dependents}, 0, rate, numblkscod);
+    if (!first) {
+        return std::unexpected(first.error());
+    }
+    out.push_back(std::move(*first));
+    for (std::size_t i = 0; i < config.additional.size(); ++i) {
+        auto next = programme_configs(config.additional[i], static_cast<int>(i + 1), rate,
+                                      numblkscod);
+        if (!next) {
+            return std::unexpected(next.error());
+        }
+        out.push_back(std::move(*next));
+    }
+    return out;
+}
+
+// The substream that carries the EMDF container: the last one of the FIRST
+// programme (TS 103 420 §8.2 - see build_silent_access_unit's declaration for
+// why a later programme's substreams are never it).
+[[nodiscard]] std::size_t aux_substream_index(
+    const std::vector<std::vector<FrameConfig>>& programmes) {
+    return programmes.front().size() - 1;
 }
 
 }  // namespace
@@ -4799,31 +4854,44 @@ std::span<const std::byte> AccessUnit::substream(std::size_t index) const {
 std::uint32_t access_unit_words(const AccessUnitConfig& config) {
     // CBR only - see the declaration's own comment. A VBR substream's word
     // count depends on content no caller of this function has offered it.
-    assert(!config.independent.vbr);
-    std::uint32_t words =
-        frame_words(config.independent.sample_rate, config.independent.bitrate_kbps);
+    const auto substream_words = [](const FrameConfig& sub) {
+        assert(!sub.vbr);
+        return frame_words(sub.sample_rate, sub.bitrate_kbps);
+    };
+    std::uint32_t words = substream_words(config.independent);
     for (const auto& dep : config.dependents) {
-        assert(!dep.vbr);
-        words += frame_words(dep.sample_rate, dep.bitrate_kbps);
+        words += substream_words(dep);
+    }
+    // Every programme occupies the SAME frame period, so a second programme
+    // adds its whole rate on top rather than dividing the first one's.
+    for (const auto& programme : config.additional) {
+        words += substream_words(programme.independent);
+        for (const auto& dep : programme.dependents) {
+            words += substream_words(dep);
+        }
     }
     return words;
 }
 
 std::expected<AccessUnit, FrameError> build_silent_access_unit(
     const AccessUnitConfig& config, AuxPayload aux) {
-    const auto subs = substream_configs(config);
-    if (!subs) {
-        return std::unexpected(subs.error());
+    const auto programmes = access_unit_configs(config);
+    if (!programmes) {
+        return std::unexpected(programmes.error());
     }
+    const std::size_t aux_at = aux_substream_index(*programmes);
     AccessUnit unit;
-    for (const auto& sub : *subs) {
-        const bool carries_aux = &sub == &subs->back();  // §8.2: the last one
-        const auto frame = build_silent_frame(sub, carries_aux ? aux : AuxPayload{});
-        if (!frame) {
-            return std::unexpected(frame.error());
+    std::size_t index = 0;
+    for (const auto& programme : *programmes) {
+        for (const auto& sub : programme) {
+            const auto frame = build_silent_frame(sub, index == aux_at ? aux : AuxPayload{});
+            if (!frame) {
+                return std::unexpected(frame.error());
+            }
+            ++index;
+            unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
+            unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
         }
-        unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
-        unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
     }
     return unit;
 }
@@ -4831,85 +4899,110 @@ std::expected<AccessUnit, FrameError> build_silent_access_unit(
 AccessUnitEncoder::AccessUnitEncoder(const AccessUnitConfig& config) : config_(config) {
     // Identity is settled once here so encode_access_unit stays a hot path and
     // so a caller cannot renumber substreams between frames.
-    if (const auto subs = substream_configs(config)) {
-        for (const auto& sub : *subs) {
-            substreams_.emplace_back(sub);
+    const auto built = access_unit_configs(config);
+    if (!built) {
+        return;  // programmes_ stays empty; encode_access_unit reports why
+    }
+    std::size_t offset = 0;
+    for (std::size_t i = 0; i < built->size(); ++i) {
+        Programme state;
+        state.channel_offset = offset;
+        for (const auto& sub : (*built)[i]) {
+            state.substreams.emplace_back(sub);
+            state.channel_count +=
+                static_cast<std::size_t>(state.substreams.back().channel_count());
         }
-    }
-    // The substreams have controllers of their own, but this class always
-    // supplies the words explicitly, so those never advance. These are the
-    // ones that run.
-    const bool dual_mono = config_.independent.acmod == Acmod::kDualMono;
-    if (config_.independent.drc) {
-        range_.emplace(*config_.independent.drc, config_.independent.sample_rate);
-    }
-    // Ch2's controller is built from drc2/heavy2, never drc/heavy - see
-    // ac3::FrameEncoder::FrameEncoder for why.
-    if (dual_mono && config_.independent.drc2) {
-        range2_.emplace(*config_.independent.drc2, config_.independent.sample_rate);
-    }
-    if (config_.independent.heavy) {
-        heavy_.emplace(*config_.independent.heavy, config_.independent.sample_rate);
-    }
-    if (dual_mono && config_.independent.heavy2) {
-        heavy2_.emplace(*config_.independent.heavy2, config_.independent.sample_rate);
+        offset += state.channel_count;
+        // The substreams have controllers of their own, but this class always
+        // supplies the words explicitly, so those never advance. These are the
+        // ones that run - one set per programme, since dialnorm and the §7.7
+        // words are what a programme IS levelled by.
+        const FrameConfig& lead =
+            i == 0 ? config.independent : config.additional[i - 1].independent;
+        const bool dual_mono = lead.acmod == Acmod::kDualMono;
+        if (lead.drc) {
+            state.range.emplace(*lead.drc, lead.sample_rate);
+        }
+        // Ch2's controller is built from drc2/heavy2, never drc/heavy - see
+        // ac3::FrameEncoder::FrameEncoder for why.
+        if (dual_mono && lead.drc2) {
+            state.range2.emplace(*lead.drc2, lead.sample_rate);
+        }
+        if (lead.heavy) {
+            state.heavy.emplace(*lead.heavy, lead.sample_rate);
+        }
+        if (dual_mono && lead.heavy2) {
+            state.heavy2.emplace(*lead.heavy2, lead.sample_rate);
+        }
+        programmes_.push_back(std::move(state));
     }
 }
 
 int AccessUnitEncoder::channel_count() const {
     int total = 0;
-    for (const auto& sub : substreams_) {
-        total += sub.channel_count();
+    for (const auto& programme : programmes_) {
+        for (const auto& sub : programme.substreams) {
+            total += sub.channel_count();
+        }
     }
     return total;
 }
 
 std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
     std::span<const std::span<const float>> channels, AuxPayload aux) {
-    if (substreams_.empty()) {
+    if (programmes_.empty()) {
         // The constructor rejected the layout; re-run it for the real reason.
-        const auto subs = substream_configs(config_);
-        return std::unexpected(subs ? FrameError::kInvalidSubstream : subs.error());
+        const auto built = access_unit_configs(config_);
+        return std::unexpected(built ? FrameError::kInvalidSubstream : built.error());
     }
     assert(static_cast<int>(channels.size()) == channel_count());
 
-    // One measurement for the whole access unit, taken on the independent
-    // substream's channels - they come first, and they are a self-sufficient
-    // rendering of the programme.
-    const auto independent_count =
-        static_cast<std::size_t>(substreams_.front().channel_count());
-    const auto independent_fbw =
-        static_cast<std::size_t>(fullbw_channel_count(config_.independent.acmod));
-    const FrameMetadata metadata =
-        derive_metadata(config_.independent, std::span{tail_}.first(independent_fbw),
-                        channels.first(independent_count), range_, heavy_, &range2_, &heavy2_);
-    // substream_configs required every substream to share one numblkscod, so
-    // the independent's own is every substream's - and hence the access
-    // unit's real sample count, kSamplesPerFrame only at the default.
-    const int frame_samples =
-        blocks_per_syncframe(config_.independent.numblkscod) * kSamplesPerBlock;
-    for (std::size_t ch = 0; ch < independent_fbw; ++ch) {
-        for (int n = 0; n < kSamplesPerBlock; ++n) {
-            tail_[ch][static_cast<std::size_t>(n)] = static_cast<double>(
-                channels[ch][static_cast<std::size_t>(frame_samples - kSamplesPerBlock + n)]);
-        }
-    }
-
+    // §8.2: the object metadata rides in the last substream of the FIRST
+    // programme, so a decoder has that whole programme in hand before it
+    // reads it - see build_silent_access_unit's declaration.
+    const std::size_t aux_at = programmes_.front().substreams.size() - 1;
     AccessUnit unit;
-    std::size_t taken = 0;
-    for (auto& sub : substreams_) {
-        const auto count = static_cast<std::size_t>(sub.channel_count());
-        // §8.2: the object metadata rides in the LAST substream of the access
-        // unit, so a decoder has the whole programme in hand before it reads it.
-        const bool carries_aux = &sub == &substreams_.back();
-        const auto frame = sub.encode_frame(channels.subspan(taken, count), metadata,
-                                            carries_aux ? aux : AuxPayload{});
-        if (!frame) {
-            return std::unexpected(frame.error());
+    std::size_t index = 0;
+    for (auto& programme : programmes_) {
+        const FrameConfig& lead = programme.substreams.front().config();
+        // One measurement per PROGRAMME, taken on its own independent
+        // substream's channels - they come first within the programme, and
+        // they are a self-sufficient rendering of it.
+        const auto independent_count =
+            static_cast<std::size_t>(programme.substreams.front().channel_count());
+        const auto independent_fbw =
+            static_cast<std::size_t>(fullbw_channel_count(lead.acmod));
+        const auto own = channels.subspan(programme.channel_offset, programme.channel_count);
+        const FrameMetadata metadata = derive_metadata(
+            lead, std::span{programme.tail}.first(independent_fbw),
+            own.first(independent_count), programme.range, programme.heavy, &programme.range2,
+            &programme.heavy2);
+        // programme_configs required every substream of THIS programme to
+        // share one numblkscod, so the independent's own is every one of its
+        // substreams' - and hence this programme's real sample count,
+        // kSamplesPerFrame only at the default.
+        const int frame_samples = blocks_per_syncframe(lead.numblkscod) * kSamplesPerBlock;
+        for (std::size_t ch = 0; ch < independent_fbw; ++ch) {
+            for (int n = 0; n < kSamplesPerBlock; ++n) {
+                programme.tail[ch][static_cast<std::size_t>(n)] =
+                    static_cast<double>(own[ch][static_cast<std::size_t>(
+                        frame_samples - kSamplesPerBlock + n)]);
+            }
         }
-        taken += count;
-        unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
-        unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
+
+        std::size_t taken = 0;
+        for (auto& sub : programme.substreams) {
+            const auto count = static_cast<std::size_t>(sub.channel_count());
+            const auto frame = sub.encode_frame(own.subspan(taken, count), metadata,
+                                                index == aux_at ? aux : AuxPayload{});
+            if (!frame) {
+                return std::unexpected(frame.error());
+            }
+            taken += count;
+            ++index;
+            unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
+            unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
+        }
     }
     return unit;
 }

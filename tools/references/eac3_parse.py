@@ -6,7 +6,14 @@ diverges from reality is a place the spec tables were misread - which is
 exactly the class of bug a silent test frame cannot expose, because a stray
 bit there simply lands in zero-filled aux data and still "decodes".
 
-Usage:  python tools/references/eac3_parse.py <file.ec3> [frame_index]
+Usage:  python tools/references/eac3_parse.py <file.ec3> [frame_index] [programme]
+
+`programme` is the E2.3.1.2 substreamid of the independent substream whose
+access units to count and index - a stream carrying more than one programme
+(the multi-language / associated-service shape of broadcast DD+) interleaves
+them one frame period at a time, so without it `frame_index` walks alternating
+programmes rather than successive frames of one. It defaults to the first
+programme the stream carries, which is the only one in ordinary content.
 """
 
 import sys
@@ -912,8 +919,16 @@ def chanmap_channels(m):
     return bin(m).count('1') + bin(m & CHANMAP_PAIRS).count('1')
 
 
-def split_access_units(data):
-    """Group syncframes into access units. A new one starts at each strmtyp 0."""
+def split_access_units(data, programme=None):
+    """Group syncframes into access units, optionally for one programme only.
+
+    A new access unit starts at each strmtyp 0. Which PROGRAMME it belongs to
+    is that independent substream's own substreamid (E2.3.1.2): a stream
+    carrying I0 and I1 puts one access unit of each into every frame period,
+    so successive units are successive programmes, not successive frames.
+    Passing `programme` keeps only that one's, which is what makes unit N mean
+    frame N.
+    """
     units, offset = [], 0
     while offset + 4 <= len(data):
         assert data[offset] == 0x0B and data[offset + 1] == 0x77, 'lost sync'
@@ -926,14 +941,35 @@ def split_access_units(data):
             units.append([])
         units[-1].append((offset, size, strmtyp, substreamid))
         offset += size
-    return units
+    if programme is None:
+        return units
+    # Each unit opens with its own programme's independent substream, so the
+    # selection is that first entry's substreamid.
+    return [u for u in units if u and u[0][3] == programme]
+
+
+def programme_ids(units):
+    """The substreamid of every independent substream, ascending, deduped."""
+    return sorted({u[0][3] for u in units if u})
 
 
 def main():
     path = Path(sys.argv[1])
     want = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    programme = int(sys.argv[3]) if len(sys.argv) > 3 else None
     data = path.read_bytes()
-    units = split_access_units(data)
+    every = split_access_units(data)
+    ids = programme_ids(every)
+    if programme is None:
+        programme = ids[0]
+    elif programme not in ids:
+        raise SystemExit(f'no programme {programme} in {path} '
+                         f'(it carries {", ".join(str(i) for i in ids)})')
+    units = [u for u in every if u and u[0][3] == programme]
+    if len(ids) > 1:
+        print(f'programme {programme} of {len(ids)} '
+              f'({", ".join(str(i) for i in ids)}), '
+              f'{len(units)} access units of its own')
     if want >= len(units):
         raise SystemExit(f'only {len(units)} access units in {path}')
     unit = units[want]
