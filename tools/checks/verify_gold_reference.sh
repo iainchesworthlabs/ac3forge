@@ -369,24 +369,27 @@ EOF
     check_one "$ext_label" "$EXTERNAL_BASELINE_DIR/$ext_path" "$ext_codec" "$ext_kbps" "$ext_floor"
 done
 
-# The sixth. FFmpeg cannot read DEE's stereo E-AC-3 stream: its own decoder
-# reports "exponent 25 is out-of-range" and "error decoding the audio block"
-# on frame after frame, which under this script's strict flags is a hard
-# failure and even without them is real concealment damage - FFmpeg's decode
-# of this fixture scores 14.3 dB against the source WAV, where ac3cli's scores
-# 33.7 dB on the same alignment. So there is no FFmpeg oracle here at all,
-# the same situation run_codec_matrix.sh already handles by skipping the
-# FFmpeg check rather than tolerating its failure. The reference used instead
-# is the WAV DEE was handed, which this repository has: 33.7 dB measured, and
-# comparable to the 33.1 dB ac3cli's decoder gets on FFmpeg's own encode of
-# the same source at the same rate - two encoders' output landing within
-# 0.6 dB of each other through one decoder is what says this decode is right
-# and FFmpeg's is not. Floor 25, the same measured-minus-8 basis as above.
+# The sixth. FFmpeg fails frame 0 of DEE's stereo E-AC-3 stream from cold -
+# one frame of the 94, reporting "exponent 25 is out-of-range" and "error
+# decoding the audio block" - and conceals it by repeating block 0 across
+# blocks 1-4 rather than dropping it. Under this script's strict flags that
+# one frame is a hard failure outright, and even without them the concealment
+# is whole-file damage: FFmpeg's decode of this fixture scores 14.30 dB
+# against the source WAV, where ac3cli's scores 33.72 dB on the same
+# alignment. So there is no usable FFmpeg oracle here, the same situation
+# run_codec_matrix.sh already handles by skipping the FFmpeg check rather
+# than tolerating its failure. The reference used instead is the WAV DEE was
+# handed, which this repository has: 33.72 dB measured, and comparable to the
+# 33.1 dB ac3cli's decoder gets on FFmpeg's own encode of the same source at
+# the same rate - two encoders' output landing within 0.6 dB of each other
+# through one decoder is what says this decode is right and FFmpeg's is not.
+# Floor 25, the same measured-minus-8 basis as above.
 #
-# (This also contradicts manifest.json's recorded 33.32 dB for DEE's stereo
-# leg, which says "decoded_with": "ffmpeg". Re-measuring that number is
-# gen_external_baseline.py's business, not this gate's - noted here so the
-# discrepancy is on record rather than lost.)
+# manifest.json's 33.32 dB for this leg says "decoded_with": "ffmpeg" and is
+# not in conflict with the 14.30 dB above: quality_race.py's score_fixed
+# skips the first 0.2 s, which is exactly where the failing frame sits. See
+# gen_external_baseline.py's module docstring, which records the whole
+# analysis.
 DEE_STEREO_EC3="$EXTERNAL_BASELINE_DIR/eac3-stereo-192/dee.ec3"
 STEREO_WAV="$REPO_ROOT/tests/golden/audio/reference_stereo.wav"
 for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do

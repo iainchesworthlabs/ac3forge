@@ -384,8 +384,9 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `fuzz/README.md` says most of them do.
 - [x] **VX4 (M)** — Third-party decode interop gates. Both steps done. `verify_gold_reference.sh`
   decodes all six committed `tests/golden/external-baseline` bitstreams on every gold-reference
-  leg, five against FFmpeg's own decode and the sixth against its source WAV (FFmpeg cannot read
-  DEE's stereo E-AC-3 stream), and the six seed the decoder fuzzers. The nightly `Interop`
+  leg, five against FFmpeg's own decode and the sixth against its source WAV (FFmpeg fails frame
+  0 of DEE's stereo E-AC-3 stream and conceals it, so it is no oracle there), and the six seed
+  the decoder fuzzers. The nightly `Interop`
   workflow runs `tools/checks/verify_fate_interop.py` over seven SHA-256-pinned FATE samples,
   fetched rather than committed. Running the first step found **five** real Annex E decoder
   defects — the AHT-in-use flags, `cplfgaincod`/`cplfsnroffst`, the three band-structure default

@@ -156,11 +156,16 @@ same thing as reading somebody else's bitstream.
 
 Two divergences are recorded rather than resolved:
 
-- **FFmpeg mis-decodes DEE's stereo E-AC-3 stream.** It reports `exponent 25 is out-of-range`
-  and `error decoding the audio block` on frame after frame; measured against the source WAV,
-  FFmpeg's decode scores 14.3 dB where `ac3cli`'s scores 33.7 dB — and `ac3cli` lands within
-  0.6 dB of its own score on FFmpeg's encode of the same source at the same rate. So that one
-  fixture has no FFmpeg oracle and is scored against the source WAV instead.
+- **FFmpeg fails frame 0 of DEE's stereo E-AC-3 stream.** Exactly one frame, from cold, with
+  `exponent 25 is out-of-range`; the other 93 read cleanly, and FFmpeg conceals the failure by
+  repeating block 0 across blocks 1-4 rather than dropping the frame. Whole-file, that costs it
+  a lot: against the source WAV FFmpeg's decode scores **14.30 dB** where `ac3cli`'s scores
+  **33.72 dB** — and `ac3cli` lands within 0.6 dB of its own score on FFmpeg's encode of the same
+  source at the same rate, so the gap is FFmpeg's concealment, not DEE's encoding. The gate here
+  compares whole files, so that one fixture has no usable FFmpeg reference and is scored against
+  the source WAV instead. (`manifest.json`'s 33.32 dB for the same leg is *not* in conflict with
+  this: `quality_race.py`'s `score_fixed` skips the first 0.2 s, which is exactly where the
+  failing frame sits — see `tools/generators/gen_external_baseline.py`'s module docstring.)
 - **`wav_channel_order` writes acmods 2/1 and 3/1 in bitstream order** (L C R S), on the stated
   grounds that no WAV convention claims a mono-surround slot, while FFmpeg maps 3/1 onto
   `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and writes L R C S. The audio agrees — channel 0 at

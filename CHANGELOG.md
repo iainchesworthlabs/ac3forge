@@ -101,7 +101,7 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 - **Third-party decode interop gates** (roadmap `VX4`). The gold-reference gate now decodes all
   six committed external-baseline bitstreams with `ac3cli` on every leg and diffs each against
   FFmpeg's own decode, with per-fixture floors quoted beside their measured numbers; the one
-  fixture FFmpeg cannot read is scored against the source WAV instead. The same six streams seed
+  fixture FFmpeg cannot decode cleanly is scored against the source WAV instead. The same six streams seed
   the decoder fuzzers, so mutation starts from real third-party structure rather than only from
   this project's own encoder output. A new nightly `Interop` workflow widens the corpus to seven
   SHA-256-pinned FFmpeg FATE samples — commercially mastered material exercising spectral
@@ -133,9 +133,10 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   that tool and the previous block's structure in every later one; `firstcplcos[ch]`,
   `firstspxcos[ch]` and `firstcplleak` treated as "block 0" rather than the per-frame,
   per-channel state §E2.3.2.28-30 defines; and a block declaring "no coupling" failing to reset
-  the coupling state. All six fixtures decode now. On DEE's stereo E-AC-3 stream — which FFmpeg
-  8.0.1 mis-decodes, reporting `exponent 25 is out-of-range` — the in-repo decoder scores
-  33.7 dB against the source, where FFmpeg's own decode scores 14.3 dB.
+  the coupling state. All six fixtures decode now. On DEE's stereo E-AC-3 stream — where FFmpeg
+  8.0.1 fails frame 0 from cold (`exponent 25 is out-of-range`) and conceals it by repeating
+  block 0 — the in-repo decoder scores 33.72 dB against the source, where FFmpeg's own decode
+  scores 14.30 dB.
 
 
 - **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
