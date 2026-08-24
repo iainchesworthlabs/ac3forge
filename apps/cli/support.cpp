@@ -611,21 +611,32 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          token);
             return false;
         }
-        if (key == "downmix" && command != "live") {
-            if (value == "loro") {
+        if (key == "downmix") {
+            // Two unrelated commands share this key: live's on/off toggle for
+            // the parallel AC-3 downmix leg (§ record/live take options), and
+            // decode/monitor's §7.8 output-stage fold target. Their value
+            // spaces do not overlap, so the value itself disambiguates.
+            if (value == "on") {
+                out.downmix_leg = true;
+            } else if (value == "off") {
+                out.downmix_leg = false;
+            } else if (value == "loro") {
                 out.output.target = ac3::DownmixTarget::kLoRo;
+                out.downmix_named = true;
             } else if (value == "ltrt") {
                 out.output.target = ac3::DownmixTarget::kLtRt;
+                out.downmix_named = true;
             } else if (value == "mono") {
                 out.output.target = ac3::DownmixTarget::kMono;
+                out.downmix_named = true;
             } else {
                 fmt::println(stderr,
-                             "error: downmix is 'loro' (§7.8.1), 'ltrt' (§7.8.2, Dolby Surround "
-                             "compatible) or 'mono' (got '{}')",
+                             "error: downmix is 'on'/'off' (live) or 'loro' (§7.8.1)/'ltrt' "
+                             "(§7.8.2, Dolby Surround compatible)/'mono' (decode/monitor) "
+                             "(got '{}')",
                              token);
                 return false;
             }
-            out.downmix_named = true;
             continue;
         }
         if (key == "ltrt-phase") {
@@ -1282,17 +1293,6 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 return false;
             }
             out.live_objects = static_cast<std::size_t>(n);
-            continue;
-        }
-        if (key == "downmix") {
-            if (value == "off") {
-                out.downmix_leg = false;
-            } else if (value == "on") {
-                out.downmix_leg = true;
-            } else {
-                fmt::println(stderr, "error: downmix must be on or off (got '{}')", token);
-                return false;
-            }
             continue;
         }
         if (key == "fmp4-window") {
