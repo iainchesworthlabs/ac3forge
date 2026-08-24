@@ -13,6 +13,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
@@ -83,6 +84,51 @@ enum class DecodeError : std::uint8_t {
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(DecodeError error);
 
+// --- §7.10 error concealment ------------------------------------------------
+
+// What to do about a frame that cannot be decoded. kNone - the default - is
+// what every caller got before this existed: decode_frame returns the error
+// and the caller decides. The other two produce a frame's worth of audio
+// instead, so a stream with a damaged frame in it stays continuous rather
+// than gaining a hard discontinuity where that frame should have been.
+//
+// Both work in the overlap-add domain rather than on finished PCM, which is
+// what keeps them coherent with the frames either side: the decoders retain
+// the last successfully decoded BLOCK's windowed transform output, and
+// synthesise the concealed frame's blocks from it through the same
+// overlap-add the real ones went through. A concealed frame therefore leaves
+// the delay state in exactly the shape the next good frame expects, and the
+// fade-in and fade-out at each end are the codec's own window rather than a
+// ramp invented here.
+enum class ConcealmentPolicy : std::uint8_t {
+    kNone,
+    // Repeat the last good block, decaying towards silence across the frame
+    // and on into any further consecutive losses. Preserves the programme's
+    // texture across a short dropout, at the cost of one block of material
+    // being heard twice.
+    kRepeatFade,
+    // Substitute silence. The last good block's own overlap tail still plays
+    // out through the first block, so this fades rather than cuts.
+    kMute,
+};
+
+// What a concealed result actually did, reported on the result so a test can
+// assert on the concealment itself and not only on "the decode did not fail".
+enum class ConcealmentAction : std::uint8_t {
+    kRepeatFade,
+    kMute,
+    // E-AC-3 only: the access unit's independent (bed) substream decoded, but
+    // at least one dependent did not, so the program is rendered from the bed
+    // alone. Nothing was substituted - the channels that arrived are real -
+    // the layout is simply narrower than the stream promised.
+    kBedOnly,
+};
+
+struct Concealment {
+    DecodeError error = DecodeError::kInvalidStream;
+    ConcealmentAction action = ConcealmentAction::kMute;
+};
+
 struct DecoderConfig {
     // §7.7.1's "Partial Compression": the dynrng word may be scaled so that a
     // fraction of the coded compression is applied. 0 ignores dynrng entirely
@@ -117,6 +163,18 @@ struct DecoderConfig {
     // dynrng for any syncframe that carries no compr, so this composes with
     // drc_scale rather than replacing it.
     bool heavy_compression = false;
+    // --- output stage (ac3/decoder/output.hpp) -----------------------------
+    // dialnorm normalisation, the §7.8 downmix and §7.7's two canonical
+    // operating modes. Every field defaults to off, so a decoder configured
+    // the way every existing caller configures it emits the coded channels
+    // untouched, sample for sample. OperatingMode::kLine/kRf override
+    // drc_scale/heavy_compression above rather than composing with them -
+    // that is what makes them modes rather than two more switches; see
+    // internal::resolve_operating_mode().
+    OutputConfig output{};
+    // §7.10: what to do with a frame that will not decode. kNone returns the
+    // error, exactly as before. See ConcealmentPolicy.
+    ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
     // Which domain JOC object reconstruction applies §6.6.6's matrix in.
     // joc::Domain::kQmf is what the clause describes and what a licensed
     // decoder runs: §7.1's 64-band complex QMF, ac3::dsp::QmfAnalysis.
@@ -151,6 +209,24 @@ struct DecoderConfig {
     // trace. Filled incrementally and null by default, exactly as `trace`
     // above.
     verify::Eac3AccessUnitTrace* eac3_trace = nullptr;
+    // --- programme selection (§E2.3.1.2) -----------------------------------
+    // Which independent substream's programme Eac3Decoder::decode_access_unit
+    // renders. A stream may carry up to eight — a main service plus the
+    // second language, audio description or commentary a broadcaster mixes
+    // against it — and they are alternatives, not layers: only one is played
+    // at a time.
+    //
+    // std::nullopt renders whichever programme each call's access unit
+    // happens to belong to, which is what every caller got before this field
+    // existed and is exactly right for the single-programme case. Set to an
+    // id and an access unit belonging to any OTHER programme is skipped
+    // without being decoded at all — see decode_access_unit's own doc comment
+    // for what it returns then, and DecodedAccessUnit::programme for telling
+    // the results apart under std::nullopt.
+    //
+    // Ignored by decode_substream, which is deliberately below the programme
+    // layer: it decodes the frame it is handed.
+    std::optional<int> programme = std::nullopt;
     // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
     // Which coding tools each block used and what exponent strategy each
     // stream carried, recorded on the way past. Null by default, at the same
@@ -192,13 +268,6 @@ struct DecodedFrame {
     int bsmod = 0;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
-    // §5.4.2.4/5, Table 5.9/5.10. Transmitted only when the layout has the
-    // channels they describe; the values reported here for a layout that
-    // carries neither are the §7.8 fallbacks a decoder would use anyway
-    // (-4.5 dB centre, -6 dB surround), so a caller can apply them
-    // unconditionally.
-    meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
-    meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
     // §5.4.2's informational fields, whatever this frame carried. Fields the
     // layout gives no home to keep their defaults - a 3/2 frame sends no
     // dsurmod, so `info.dsurmod` stays "not indicated" rather than reporting
@@ -209,6 +278,14 @@ struct DecodedFrame {
     // info.timecod1/timecod2 above.
     std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
+    // §5.4.2.4/§5.4.2.5, the two downmix levels bsi carries: std::nullopt for
+    // any acmod whose bsi does not carry that field at all (cmixlev needs
+    // three front channels, surmixlev needs surrounds), which is a different
+    // statement from "carried, and says the default". ac3::mix_levels() turns
+    // the pair into the coefficients the §7.8 output stage needs, applying
+    // §7.8's own defaults where a field is absent.
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
     // §5.4.2.9: std::nullopt when compre was clear, so "no word" and "a word
     // that happens to say unity" stay distinguishable.
     std::optional<std::uint8_t> compr = std::nullopt;
@@ -226,16 +303,33 @@ struct DecodedFrame {
     // block used the short (block-switched) transform. Sized to nfchans; the
     // LFE and any coupling channel never switch, so they carry no entry.
     std::vector<std::array<bool, kBlocksPerFrame>> blksw;
-    // nchans x kSamplesPerFrame, AC-3 channel order, LFE last when present.
+    // nchans x kSamplesPerFrame, AC-3 channel order, LFE last when present -
+    // unless DecoderConfig::output asked for a fold, in which case this holds
+    // the folded output (Lo/Ro, Lt/Rt or mono) while acmod/lfe above still
+    // describe what was CODED. ac3::output_channel_count() says how many
+    // channels a given config leaves behind.
     std::vector<std::vector<float>> channels;
+    // §7.10: set only when this frame was concealed rather than decoded -
+    // std::nullopt on every ordinary frame, including when concealment is
+    // enabled and nothing went wrong. Every field above describes the last
+    // frame that DID decode, since a damaged frame's own bsi cannot be
+    // trusted, and `dynrng` reads unity throughout because no word arrived.
+    std::optional<Concealment> concealed = std::nullopt;
 };
 
 class AC3FORGE_EXPORT FrameDecoder {
    public:
     FrameDecoder() = default;
-    explicit FrameDecoder(const DecoderConfig& config) : config_(config) {}
+    explicit FrameDecoder(const DecoderConfig& config);
 
     // Decodes exactly one syncframe (the span must be exactly one frame).
+    //
+    // With DecoderConfig::concealment set, a frame that will not decode comes
+    // back as a SUCCESSFUL result carrying DecodedFrame::concealed instead of
+    // as an error - except for a failure before any frame has decoded at all,
+    // which still returns the error: concealment reconstructs from what came
+    // before it, and at the head of a stream there is nothing to reconstruct
+    // from.
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame(
         std::span<const std::byte> frame);
 
@@ -252,17 +346,47 @@ class AC3FORGE_EXPORT FrameDecoder {
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_into(
         std::span<const std::byte> frame, std::span<const std::span<float>> channels);
 
+    // The output stage's own added delay, in samples - see
+    // OutputStage::latency_samples(). Zero for every configuration except
+    // Lt/Rt with its phase shift left on.
+    [[nodiscard]] int output_latency_samples() const { return output_.latency_samples(); }
+
    private:
     // Both public forms above: `channels` empty means allocate the PCM into
     // the returned DecodedFrame, non-empty means write through the spans.
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_core(
         std::span<const std::byte> frame, std::span<const std::span<float>> channels);
+    // §7.10: a frame's worth of audio built out of retained_ under the
+    // configured policy. std::nullopt when there is nothing retained yet to
+    // build it from, which is the whole of the "damaged first frame" case.
+    [[nodiscard]] std::optional<DecodedFrame> conceal(DecodeError error,
+                                                      std::span<const std::span<float>> channels);
 
     DecoderConfig config_{};
     std::array<std::array<double, 256>, 6> delay_{};  // overlap-add state
     // §7.3.4 dither, persisting across frames like delay_ above so a long
     // stream's substituted noise does not repeat every syncframe.
     DitherGenerator dither_{};
+    // §7.8/§5.4.2.8, applied after the channels are reconstructed. Inert
+    // unless DecoderConfig::output asks for something.
+    OutputStage output_{};
+    // What §7.10 concealment reconstructs from: the metadata of the last
+    // frame that decoded, and the last BLOCK's windowed transform output per
+    // coded channel (the whole 512, not only the half delay_ keeps).
+    // Populated only while concealment is enabled, so a decoder configured
+    // the way every existing caller configures it carries none of it.
+    struct Retained {
+        DecodedFrame shape;
+        std::vector<std::array<double, 512>> last_block;
+        int nchans = 0;
+    };
+    std::optional<Retained> retained_ = std::nullopt;
+    // Where the block loop writes its last block while a frame is still in
+    // progress. Committed into retained_ only once the frame has decoded
+    // cleanly, so a frame that fails after five good blocks does not poison
+    // the material the NEXT loss is concealed from. Sized lazily at first
+    // use, so a decoder with concealment off never allocates it.
+    std::vector<std::array<double, 512>> conceal_scratch_;
 };
 
 // --- E-AC-3 ----------------------------------------------------------------
@@ -301,10 +425,15 @@ struct DecodedSubstream {
     std::optional<std::uint8_t> compr2 = std::nullopt;
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     int numblkscod = 3;
-    // Table E1.2's mixmdate group, std::nullopt when mixmdate was clear.
+    // Table E1.2's mixmdate group, std::nullopt when mixmdate was clear -
+    // separate Lt/Rt and Lo/Ro centre and surround levels plus the LFE mix
+    // level, none of which AC-3's bsi can express, through the rest of the
+    // group DC4 added (programme scale factors, the mixdef block, pan info).
     // A DEPENDENT substream's copy stops after the levels - Table E1.2 gates
     // everything past lfemixlevcod on strmtyp == 0x0 - so those fields keep
     // their defaults there rather than reporting bits that were never sent.
+    // ac3::mix_levels() turns the downmix levels alone into the coefficients
+    // the §7.8 output stage needs.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
     // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
     // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
@@ -335,6 +464,12 @@ struct DecodedSubstream {
     // five channels this substream carries (Table 47's 7-channel
     // configurations need a dependent substream's Lb/Rb).
     std::vector<std::vector<float>> object_audio;
+    // §7.10, same convention as DecodedFrame::concealed: set only when this
+    // substream was concealed rather than decoded. A concealed substream
+    // never carries an object layer - OAMD and JOC describe the frame that
+    // did not arrive, and repeating the previous frame's positions would put
+    // moving objects somewhere they demonstrably are not.
+    std::optional<Concealment> concealed = std::nullopt;
     // What each object_audio entry IS: an index into the payload's own object
     // order (bed channels, then ISF, then dynamic objects), which is
     // oba::joc_object_indices() for this program. For the
@@ -401,15 +536,29 @@ struct DecodedAccessUnit {
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
     std::vector<int> object_indices;
+    // §E2.3.1.2's substreamid of the independent substream this programme was
+    // rendered from — 0 for every single-programme stream, and the only way
+    // to tell one programme's units from another's when DecoderConfig::
+    // programme is left unset and the decoder renders whatever arrives.
+    int programme = 0;
     int substream_count = 0;
     eac3::chanmap::Layout layout;
-    std::vector<std::vector<float>> channels;  // parallel to layout, except dual mono
+    // Parallel to `layout`, except for dual mono - unless DecoderConfig::
+    // output asked for a fold, in which case this holds the folded output and
+    // `layout` still describes what was rendered before it. See
+    // ac3::output_channel_count().
+    std::vector<std::vector<float>> channels;
+    // §7.10, same convention as DecodedFrame::concealed: std::nullopt on any
+    // access unit that assembled normally. ConcealmentAction::kBedOnly is the
+    // one that only happens here - the bed decoded and a dependent did not,
+    // so the program is real but narrower than the stream promised.
+    std::optional<Concealment> concealed = std::nullopt;
 };
 
 class AC3FORGE_EXPORT Eac3Decoder {
    public:
     Eac3Decoder() = default;
-    explicit Eac3Decoder(const DecoderConfig& config) : config_(config) {}
+    explicit Eac3Decoder(const DecoderConfig& config);
 
     // Decodes one syncframe. Overlap-add state is kept per substream identity,
     // so the substreams of successive access units stay independent of each
@@ -451,6 +600,14 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // is unaffected: every substream releases every call, so the cache never
     // holds more than one call's worth at a time and every call returns a
     // populated result immediately.
+    //
+    // std::nullopt has one further cause here that decode_substream has none
+    // of: a DecoderConfig::programme was set and this unit belongs to a
+    // DIFFERENT programme (§E2.3.1.2), so there is nothing of the selected
+    // one to return. The unit is skipped before any decoding, leaving no
+    // per-substream state behind. Both causes call for the same thing from a
+    // caller — take nothing from this call and go on to the next unit — so
+    // they are one return value rather than two.
     [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError> decode_access_unit(
         std::span<const std::byte> unit);
 
@@ -489,7 +646,23 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // since by definition the assembly never completed.
     [[nodiscard]] std::vector<DecodedSubstream> flush();
 
+    // The output stage's own added delay, in samples - see
+    // OutputStage::latency_samples(). Zero for every configuration except
+    // Lt/Rt with its phase shift left on.
+    [[nodiscard]] int output_latency_samples() const { return output_.latency_samples(); }
+
    private:
+    // decode_substream without the §7.10 concealment wrapper around it.
+    [[nodiscard]] std::expected<std::optional<DecodedSubstream>, DecodeError>
+    decode_substream_core(std::span<const std::byte> frame);
+    // §7.10: a substream's worth of audio built out of retained_[slot] under
+    // the configured policy, or std::nullopt when that identity has nothing
+    // retained yet. `slot` is the identity key described below.
+    [[nodiscard]] std::optional<DecodedSubstream> conceal(DecodeError error, std::size_t slot);
+    // The §7.8 fold over an assembled access unit, in whichever storage it
+    // landed - the result's own vectors or the caller's spans. The fold
+    // itself is OutputStage's; this only decides what to hand it.
+    void apply_output(DecodedAccessUnit& out, std::span<const std::span<float>> external);
     // Both public access-unit forms above: `external` empty means allocate
     // the program PCM into the returned DecodedAccessUnit, non-empty means
     // write through the spans - the same split decode_frame_core makes.
@@ -503,6 +676,14 @@ class AC3FORGE_EXPORT Eac3Decoder {
         std::span<const std::byte> frame);
 
     DecoderConfig config_{};
+    // §5.4.2.8/§7.8, applied to the assembled program rather than to each
+    // substream: a dependent on its own is half a soundfield, and folding it
+    // separately would mean folding something nobody was ever meant to hear.
+    // Inert unless DecoderConfig::output asks for something.
+    OutputStage output_{};
+    // apply_output's and flush()'s own views onto whichever channels are
+    // being folded. A member so a steady-state decode allocates nothing.
+    std::vector<std::span<float>> au_views_;
 
     // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
     // then the AC-3 bit stream shall be processed as an independent substream
@@ -609,6 +790,7 @@ class AC3FORGE_EXPORT Eac3Decoder {
         //
         // Enhanced coupling (valid when cplinu && ecplinu_now):
         int firstchincpl = -1;
+        bool ecplangleintrp = false;
         int ecpl_begin_subbnd = 0;
         int ecpl_end_subbnd = 0;
         std::array<bool, eac3::kEcplSubBands> ecpl_structure{};
@@ -634,6 +816,27 @@ class AC3FORGE_EXPORT Eac3Decoder {
         std::array<int, eac3::chanmap::kMaxSubstreamChannels + 1> endmant{};
     };
     std::vector<BlockTail> tails_;
+    // §7.10's raw material, per substream identity: the metadata of the last
+    // frame of that identity that decoded, and its last BLOCK's windowed
+    // transform output per coded channel. Lazily allocated behind unique_ptr
+    // for the same reason delay_ is - 32 by-value slots would pin 768 KB for
+    // a stream that has one identity and (usually) no concealment at all.
+    struct RetainedSubstream {
+        DecodedSubstream shape;
+        std::array<std::array<double, 512>, 6> last_block{};
+        int nchans = 0;
+    };
+    std::array<std::unique_ptr<RetainedSubstream>, kSubstreamSlots> retained_;
+    // Where the block loop writes its last block while a frame is still in
+    // progress, committed into retained_ only once the frame has decoded
+    // cleanly - see FrameDecoder's own conceal_scratch_ for why. Sized lazily,
+    // so a decoder with concealment off never allocates it.
+    std::vector<std::array<double, 512>> conceal_scratch_;
+    // The identity of the last frame that decoded, for the one concealment
+    // case that cannot name its own: a frame damaged so far forward that even
+    // strmtyp/substreamid cannot be trusted. -1 until something decodes.
+    int last_identity_ = -1;
+
     // §7.3.4 dither (Annex E's dithflag[ch]/dithflage), shared across every
     // substream identity decode_substream ever sees - nothing about §7.3.4
     // requires per-identity separation, only that simultaneous channels'
@@ -650,8 +853,35 @@ split_frames(std::span<const std::byte> stream);
 // Group those syncframes into access units. A new one begins at each
 // independent substream, and the spans returned are the concatenations the
 // bitstream itself defines.
+//
+// This DELIMITS; it does not select. A stream carrying more than one
+// programme (§E2.3.1.2 allows eight independent substreams, and broadcast DD+
+// uses them for a second language or an associated service) yields the
+// programmes' units interleaved, one frame period's worth of each in turn -
+// so consecutive entries are NOT consecutive in time. Feeding them straight
+// to a decoder in that order splices two programmes together; use the
+// programme-selecting overload below, or read
+// DecodedAccessUnit::programme, to keep them apart.
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
 split_access_units(std::span<const std::byte> stream);
+
+// The access units of ONE programme, in order: those beginning with an
+// independent substream whose §E2.3.1.2 substreamid is `programme`, together
+// with the dependents that follow each. Consecutive entries here ARE
+// consecutive frame periods, which is what a decoder, a muxer or a level
+// meter needs.
+//
+// An empty result means the stream carries no such programme - not an error,
+// since asking is how a caller finds out. Use programme_ids() to enumerate
+// what is actually there.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
+split_access_units(std::span<const std::byte> stream, int programme);
+
+// The substreamid of every independent substream the stream carries, ascending
+// and without duplicates - one entry per programme. Always {0} for AC-3, which
+// has no substream layer, and for the single-programme E-AC-3 case.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<int>, DecodeError> programme_ids(
+    std::span<const std::byte> stream);
 
 // bsid at bit 40, without committing to either layout. Fails only if the span
 // is too short to hold a header.

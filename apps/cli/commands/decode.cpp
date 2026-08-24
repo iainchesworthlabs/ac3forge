@@ -21,6 +21,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
@@ -33,6 +34,75 @@ namespace ac3cli::commands {
 namespace {
 
 namespace plan = ac3::plan;
+
+// Whether the §7.8 output stage is going to fold this programme, which
+// decides what the sink is opened for: a fold's own channels are already L/R
+// (or a single mono channel) in that order, so the coded-layout permutation
+// every other decode applies would be wrong for them. Dual mono is never
+// folded (OutputStage refuses it - 1+1 is two programmes, not a soundfield),
+// so it keeps the coded path whatever the target says.
+bool folding(const ac3cli::Options& meta, ac3::Acmod acmod) {
+    return meta.output.target != ac3::DownmixTarget::kAsCoded && acmod != ac3::Acmod::kDualMono;
+}
+
+// The one-line name for whatever the fold produced, for the status report.
+std::string_view fold_name(ac3::DownmixTarget target) {
+    switch (target) {
+        case ac3::DownmixTarget::kLoRo: return "Lo/Ro stereo";
+        case ac3::DownmixTarget::kLtRt: return "Lt/Rt stereo";
+        case ac3::DownmixTarget::kMono: return "mono";
+        case ac3::DownmixTarget::kAsCoded: break;
+    }
+    return "as coded";
+}
+
+// What §7.7 actually did, which drcmode= can decide as well as drc=/heavy.
+// The two named modes OVERRIDE those switches inside the decoder
+// (resolve_operating_mode), so a report reading only meta.drc_scale would say
+// "not applied" about a line-mode decode that applied every word in full.
+std::string dynrng_note(const ac3cli::Options& meta) {
+    switch (meta.output.mode) {
+        case ac3::OperatingMode::kLine:
+            return ", applied in full (drcmode=line)";
+        case ac3::OperatingMode::kRf:
+            return ", applied only where no compr word exists (drcmode=rf, §7.7.2.1)";
+        case ac3::OperatingMode::kCustom:
+            break;
+    }
+    return meta.drc_scale != 0.0 ? fmt::format(", applied at scale {}", meta.drc_scale)
+                                 : ", not applied";
+}
+
+std::string compr_note(const ac3cli::Options& meta) {
+    switch (meta.output.mode) {
+        case ac3::OperatingMode::kRf:
+            return ", applied (drcmode=rf)";
+        case ac3::OperatingMode::kLine:
+            return ", not applied (drcmode=line uses dynrng)";
+        case ac3::OperatingMode::kCustom:
+            break;
+    }
+    return meta.p.heavy ? ", applied" : ", not applied";
+}
+
+// §5.4.2.8. Both named modes normalise, and so does apply_dialnorm on its own.
+std::string dialnorm_note(const ac3cli::Options& meta, int dialnorm) {
+    if (!meta.output.apply_dialnorm && meta.output.mode == ac3::OperatingMode::kCustom) {
+        return {};
+    }
+    return fmt::format(", normalised to the -31 dBFS reference ({:+.2f} dB)",
+                       ac3::meta::to_db(ac3::meta::dialnorm_gain(dialnorm)));
+}
+
+// §7.10: what a run's concealed frames should say afterwards. Silent when
+// nothing was concealed, which is every ordinary decode.
+void print_concealment_summary(FILE* status, std::size_t concealed, std::size_t total,
+                               std::string_view unit) {
+    if (concealed == 0) {
+        return;
+    }
+    fmt::println(status, "  concealed {} of {} {} (§7.10)", concealed, total, unit);
+}
 
 // Reports the object layer (if any) an E-AC-3 decode found - the decode-side
 // mirror of run_atmos_encode's own "{N} dynamic objects + the bed's LFE = {M}
@@ -112,12 +182,10 @@ void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
                        double compr_min_db, double compr_max_db, std::size_t compr_frames,
                        const ac3cli::Options& meta) {
     fmt::println(status, "  dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
-                 meta.drc_scale != 0.0 ? fmt::format(", applied at scale {}", meta.drc_scale)
-                                       : ", not applied");
+                 dynrng_note(meta));
     if (compr_frames > 0) {
         fmt::println(status, "  compr  {:+.2f} .. {:+.2f} dB over {} access units{}",
-                     compr_min_db, compr_max_db, compr_frames,
-                     meta.p.heavy ? ", applied" : ", not applied");
+                     compr_min_db, compr_max_db, compr_frames, compr_note(meta));
     } else {
         fmt::println(status, "  compr  absent");
     }
@@ -215,20 +283,44 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
 
 int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path,
                      const ac3cli::Options& meta, std::string_view objects_dir) {
+    // §E2.3.1.2: one programme is decoded, never a fold of several. A stream
+    // carrying a second independent substream carries an ALTERNATIVE - a
+    // second language, an audio description - so writing both into one WAV
+    // would splice two unrelated pieces of audio together.
+    const auto ids = ac3::programme_ids(stream);
+    if (!ids) {
+        fmt::println(stderr, "error: stream framing failed (code {})",
+                     static_cast<int>(ids.error()));
+        return 1;
+    }
+    if (ids->empty()) {
+        fmt::println(stderr, "error: no programmes in stream");
+        return 1;
+    }
+    const auto programme = choose_programme(*ids, meta.programme);
+    if (!programme) {
+        return 1;
+    }
     // Access units, not syncframes: a dependent substream is only meaningful
     // alongside the independent one it extends, and the two are rendered
     // together into one set of speaker feeds.
-    const auto units = ac3::split_access_units(stream);
+    const auto units = ac3::split_access_units(stream, *programme);
     if (!units) {
         fmt::println(stderr, "error: stream framing failed (code {})",
                      static_cast<int>(units.error()));
         return 1;
     }
-    ac3::Eac3Decoder decoder{
-        {.drc_scale = meta.drc_scale,
-         .fast_imdct = meta.fast_imdct,
-         .heavy_compression = meta.p.heavy.has_value(),
-         .joc_domain = meta.joc_domain}};
+    if (ids->size() > 1) {
+        fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
+                     ids->size(), format_programme_ids(*ids));
+    }
+    ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
+                             .fast_imdct = meta.fast_imdct,
+                             .heavy_compression = meta.p.heavy.has_value(),
+                             .output = meta.output,
+                             .concealment = meta.concealment,
+                             .joc_domain = meta.joc_domain,
+                             .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
     // (the transient-pre-noise flush below).
@@ -242,7 +334,10 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         // fell back to. Everyone else gets the WAV speaker order the encode
         // side reads a file in.
         std::vector<std::size_t> order;
-        if (unit.acmod != ac3::Acmod::kDualMono) {
+        // A fold has already put its own channels in their own order, so like
+        // dual mono it takes the identity permutation rather than the
+        // rendered layout's.
+        if (unit.acmod != ac3::Acmod::kDualMono && !folding(meta, unit.acmod)) {
             order = plan::wav_order(std::span{unit.layout.items}.first(
                 static_cast<std::size_t>(unit.layout.count)));
         }
@@ -321,6 +416,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     double compr_min_db = 0.0;
     double compr_max_db = 0.0;
     std::size_t compr_frames = 0;
+    // §7.10: access units that came back reconstructed, bed-only or otherwise
+    // concealed rather than decoded. Zero unless conceal= asked for it.
+    std::size_t concealed_units = 0;
     // numblkscod bounds how many of `dynrng`'s kBlocksPerFrame entries are
     // real: E-AC-3 (unlike AC-3) can code as few as one block per syncframe,
     // and the rest of the fixed-size array is never written (DecodedSubstream::
@@ -363,6 +461,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             if (!open_sink(first, out.channels.size())) {
                 return 1;
             }
+        }
+        if (out.concealed) {
+            ++concealed_units;
         }
         track_metadata(out.dynrng, out.numblkscod, out.compr);
         for (std::size_t ch = 0; ch < out.channels.size(); ++ch) {
@@ -461,6 +562,22 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             // loop. Different substreams may append different lengths to
             // different slots here; the sink's per-slot carry absorbs it.
             for (const auto& substream : flushed) {
+                // A fold leaves the substream with its own channels in their
+                // own order and no Table E2.5 location left to place them by
+                // - Eac3Decoder::flush() folds these for exactly the reason
+                // this loop exists, so that every frame of the stream leaves
+                // at the same width the sink was opened for.
+                if (folding(meta, substream.acmod)) {
+                    for (std::size_t ch = 0; ch < substream.channels.size() && ch < sink_slots;
+                         ++ch) {
+                        if (!sink.append(ch, substream.channels[ch])) {
+                            fmt::println(stderr, "error: cannot write to {}", out_path);
+                            abort_all();
+                            return 1;
+                        }
+                    }
+                    continue;
+                }
                 const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
                 for (int i = 0; i < locations.count; ++i) {
                     const int slot = first.layout.index_of(locations[i]);
@@ -526,6 +643,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         if (first.mixing) {
             print_mix_summary(status, *first.mixing);
         }
+        print_concealment_summary(status, concealed_units, units->size(), "access units");
         return report_decoded_objects(status, first.object_metadata, have_object_audio,
                                       objects_written, objects_dir);
     }
@@ -541,8 +659,17 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     }
     fmt::println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
                  units->size(), first.substream_count, out_path);
-    fmt::println(status, "  {} channels, {} Hz: {}", map.size(), sample_rate_hz(first.sample_rate),
-                 speakers);
+    if (folding(meta, first.acmod)) {
+        // The rendered layout is still worth naming: it is what the fold was
+        // taken FROM, and a 7.1.4 folded to stereo is a materially different
+        // claim from a 5.1 folded to stereo.
+        fmt::println(status, "  {} channels, {} Hz: {} -> {}", sink_slots,
+                     sample_rate_hz(first.sample_rate), speakers,
+                     fold_name(meta.output.target));
+    } else {
+        fmt::println(status, "  {} channels, {} Hz: {}", map.size(),
+                     sample_rate_hz(first.sample_rate), speakers);
+    }
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
     if (first.info) {
@@ -551,6 +678,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     if (first.mixing) {
         print_mix_summary(status, *first.mixing);
     }
+    print_concealment_summary(status, concealed_units, units->size(), "access units");
     return report_decoded_objects(status, first.object_metadata, have_object_audio,
                                   objects_written, objects_dir);
 }
@@ -591,10 +719,11 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
         return 1;
     }
-    ac3::FrameDecoder decoder{
-        {.drc_scale = meta.drc_scale,
-         .fast_imdct = meta.fast_imdct,
-         .heavy_compression = meta.p.heavy.has_value()}};
+    ac3::FrameDecoder decoder{{.drc_scale = meta.drc_scale,
+                              .fast_imdct = meta.fast_imdct,
+                              .heavy_compression = meta.p.heavy.has_value(),
+                              .output = meta.output,
+                              .concealment = meta.concealment}};
     PlanarWavSink sink;
     std::optional<ac3::analysis::LevelMeter> meter;
     ac3::DecodedFrame first{};
@@ -606,12 +735,19 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     double compr_min_db = 0.0;
     double compr_max_db = 0.0;
     std::size_t compr_frames = 0;
+    // §7.10: frames that came back reconstructed rather than decoded. Zero
+    // unless conceal= asked for it, since without it a damaged frame fails
+    // the command outright a few lines down.
+    std::size_t concealed_frames = 0;
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
             sink.abort();
             return 1;
+        }
+        if (decoded->concealed) {
+            ++concealed_frames;
         }
         for (const auto word : decoded->dynrng) {
             const double db = ac3::meta::to_db(ac3::meta::dynrng_gain(word));
@@ -631,13 +767,24 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             // at the end is fixed from the first frame's layout - the same
             // values, just needed up front now that samples leave as they
             // decode.
+            // A fold has already put its own channels in their own order -
+            // L then R, or the one mono channel - so it takes the identity
+            // permutation rather than the coded layout's.
+            const bool folded = folding(meta, decoded->acmod);
             if (!sink.open(out_path, sample_rate_hz(decoded->sample_rate),
                            decoded->channels.size(),
-                           ac3::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
+                           folded ? std::vector<std::size_t>{}
+                                  : ac3::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
                 fmt::println(stderr, "error: cannot open {} for writing", out_path);
                 return 1;
             }
-            meter.emplace(decoded->acmod, decoded->lfe, sample_rate_hz(decoded->sample_rate));
+            // The meter reports what was WRITTEN, so a folded run meters the
+            // fold rather than the coded layout it no longer carries.
+            meter.emplace(folded ? (decoded->channels.size() == 1 ? ac3::Acmod::k1_0
+                                                                 : ac3::Acmod::k2_0)
+                                 : decoded->acmod,
+                          folded ? false : decoded->lfe,
+                          sample_rate_hz(decoded->sample_rate));
             have_first = true;
         }
         std::vector<std::span<const float>> views;
@@ -669,22 +816,24 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // - the WAV bytes just written above already own stdout in that case,
     // and this report must not land in the middle of them.
     const auto status = status_stream(out_path);
+    const bool folded = folding(meta, first.acmod);
     fmt::println(status, "decoded {} frames -> {} ({}, {} Hz)", frames->size(), out_path,
-                 ac3::analysis::layout_name(first.acmod, first.lfe),
+                 folded ? fmt::format("{} -> {}",
+                                      ac3::analysis::layout_name(first.acmod, first.lfe),
+                                      fold_name(meta.output.target))
+                        : std::string{ac3::analysis::layout_name(first.acmod, first.lfe)},
                  sample_rate_hz(first.sample_rate));
-    fmt::println(status, "metadata: dialnorm {} (dialogue at -{} dBFS)", first.dialnorm,
-                 first.dialnorm);
+    fmt::println(status, "metadata: dialnorm {} (dialogue at -{} dBFS){}", first.dialnorm,
+                 first.dialnorm, dialnorm_note(meta, first.dialnorm));
     if (first.dialnorm2) {
         fmt::println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
                      *first.dialnorm2, *first.dialnorm2, first.compr2 ? ", compr2 present" : "");
     }
-    fmt::println(status, "          dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db, dynrng_max_db,
-                 meta.drc_scale != 0.0 ? fmt::format(", applied at scale {}", meta.drc_scale)
-                                       : ", not applied");
+    fmt::println(status, "          dynrng {:+.2f} .. {:+.2f} dB{}", dynrng_min_db,
+                 dynrng_max_db, dynrng_note(meta));
     if (compr_frames > 0) {
         fmt::println(status, "          compr  {:+.2f} .. {:+.2f} dB over {} frames{}",
-                     compr_min_db, compr_max_db, compr_frames,
-                     meta.p.heavy ? ", applied" : ", not applied");
+                     compr_min_db, compr_max_db, compr_frames, compr_note(meta));
     } else {
         fmt::println(status, "          compr  absent");
     }
@@ -722,6 +871,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
                      ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),
                      ac3::meta::to_db(ac3::meta::coefficient(mix.lorosurmixlev)));
     }
+    print_concealment_summary(status, concealed_frames, frames->size(), "frames");
     // The have_first check above already returned if the frame loop never
     // ran, and it is that same loop's first iteration that emplaces meter.
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)

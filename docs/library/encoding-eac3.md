@@ -284,6 +284,54 @@ Useful `chanmap` constants (`ac3/core/eac3_tables.hpp`, Table E2.5):
 `chanmap::expand(map)` turns a map into a `Layout` you can iterate, and `chanmap::name`
 gives each location's short name.
 
+## More than one programme
+
+Dependent substreams widen *one* programme. §E2.3.1.2 also allows up to eight **independent**
+substreams (I0–I7) in one elementary stream, and that is a different thing entirely: each is a
+self-sufficient programme with its own layout, rate and metadata, and a receiver plays one of
+them. Broadcast DD+ uses it for the services A/52 §5.4.2.2 names — a second language, an audio
+description, a commentary.
+
+`AccessUnitConfig::additional` carries them. `independent`/`dependents` stay the first
+programme; each entry of `additional` is a `ProgrammeConfig` with an independent substream and
+dependents of its own.
+
+```cpp
+ac3::eac3::AccessUnitConfig config;
+config.independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2,
+                      .lfe = true, .dialnorm = 27};
+// I1: a mono commentary, levelled independently of the mix it plays against.
+config.additional.push_back({.independent = {.bitrate_kbps = 96,
+                                             .acmod = ac3::Acmod::k1_0,
+                                             .dialnorm = 20}});
+```
+
+`substreamid` is assigned by position — the first programme is I0, `additional[0]` is I1 — the
+same way a dependent's id comes from its position in `dependents`; `FrameConfig::substreamid` is
+not read.
+
+`encode_access_unit` takes every programme's channels in one call, the first programme's first,
+in the same order the substreams go on the wire. Rates add rather than divide: substreams share
+a frame period, not a frame, so `access_unit_words` is the sum across every programme.
+
+Each programme keeps its own §7.7 measurement — its own `RangeController`/`HeavyCompressor`,
+measured on its own independent substream — because dialnorm and DRC are properties of a
+programme. Sharing one measurement across two would level a commentary by the main mix. Per
+programme, too: the §E3.8.2 16-channel cap, and the metadata a `FrameConfig` carries.
+
+Constraints: at most 8 programmes; every substream of every programme must agree on the sample
+rate, since they all code the same frame period. An Atmos EMDF container still rides in the last
+substream of the **first** programme (TS 103 420 §8.2) — the objects belong to a programme, so a
+later programme's substreams are never it.
+
+The CLI authors a second programme with `programme2=<file>` plus `programme2-layout=`,
+`programme2-bitrate=` and `programme2-dialnorm=`; see
+[docs/cli/commands.md](../cli/commands.md).
+
+One caveat worth knowing before you ship such a stream: **FFmpeg cannot read it at all**, and not
+just the second programme — see
+[docs/verification.md](../verification.md#where-the-oracles-dont-reach).
+
 ---
 
 See also: [Metadata](metadata.md) — mix-level and DRC fields shared with AC-3, plus the

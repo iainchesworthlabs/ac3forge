@@ -9,6 +9,7 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/bitalloc.hpp"
@@ -19,6 +20,7 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/internal/profiling.hpp"
@@ -93,31 +95,6 @@ std::expected<std::size_t, DecodeError> syncframe_bytes(std::span<const std::byt
     return *frame_size_bytes(static_cast<SampleRate>(fscod), kbps, (frmsizecod & 1) != 0);
 }
 
-// Does this syncframe open an access unit, or does it join the one in
-// progress? Independent (and convertible) Annex E substreams open one and
-// dependents join it - but so does an AC-3 syncframe, because §E2.3.1.2 says
-// "if an AC-3 bit stream is present in the E-AC-3 bit stream, then the AC-3
-// bit stream shall be processed as an independent substream assigned
-// substream ID 0". A legacy-core delivery leans on exactly that: an AC-3
-// frame carrying the bed with Annex E dependents extending it.
-//
-// bsid is checked FIRST and is the whole reason this is a function. strmtyp
-// lives in the top two bits of byte 2 of an Annex E syncframe, and in an AC-3
-// one those same bits are the top of crc1 - so reading them unconditionally
-// makes "does this frame start an access unit?" a question about a checksum,
-// answered differently for otherwise identical frames. The frames must be
-// >= 6 bytes, which split_frames has already established of every one it
-// returns.
-[[nodiscard]] bool begins_access_unit(std::span<const std::byte> frame) {
-    if (std::to_integer<std::uint32_t>(frame[5]) >> 3 <= 8) {
-        return true;  // AC-3: independent substream 0 by §E2.3.1.2
-    }
-    const auto strmtyp =
-        static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(frame[2]) >> 6);
-    return strmtyp == eac3::StreamType::kIndependent ||
-           strmtyp == eac3::StreamType::kConvertible;
-}
-
 }  // namespace
 
 std::expected<int, DecodeError> stream_bsid(std::span<const std::byte> frame) {
@@ -144,6 +121,50 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_frames
     }
     return frames;
 }
+
+namespace {
+
+// strmtyp and substreamid out of byte 2 of an E-AC-3 syncframe: strmtyp(2) |
+// substreamid(3) | frmsiz's top three bits. Read straight off the byte rather
+// than through parse_bsi, which is a whole frame's worth of work for the two
+// fields the framing layer needs.
+//
+// Gated on the frame's OWN bsid, because byte 2 only holds those fields in a
+// genuine Annex E frame - in an AC-3 one it is part of crc1, which is
+// effectively random per frame and aliases to "dependent" about a quarter of
+// the time. A stream may legally mix the two: real commercial discs author a
+// bsid-6 independent substream with a bsid-16 Atmos-carrying dependent right
+// behind it, and reading crc1 as strmtyp there swallows whole runs of access
+// units into one group (see apps/android/.../file_replay.cpp, which measured
+// exactly that and worked around it locally). bsid does not move - it sits at
+// bit 40 in both generations, deliberately - so gating on it is the reading
+// that is correct for either.
+struct Identity {
+    eac3::StreamType strmtyp;
+    int substreamid;
+};
+
+[[nodiscard]] Identity frame_identity(std::span<const std::byte> frame) {
+    const auto bsid = std::to_integer<std::uint32_t>(frame[5]) >> 3;
+    if (bsid < eac3::kMinDecodableBsid || bsid > eac3::kBsid) {
+        // An AC-3 syncframe is a whole programme's whole access unit on its
+        // own: no substream layer, so nothing to be dependent on and no
+        // second programme to number away from.
+        return {eac3::StreamType::kIndependent, 0};
+    }
+    const auto byte = std::to_integer<std::uint32_t>(frame[2]);
+    return {static_cast<eac3::StreamType>(byte >> 6), static_cast<int>((byte >> 3) & 0x07)};
+}
+
+// §E1.3.1: strmtyp 2 is an independent substream too - one whose programme was
+// previously coded as AC-3 - so it opens an access unit exactly as strmtyp 0
+// does.
+[[nodiscard]] bool begins_unit(eac3::StreamType strmtyp) {
+    return strmtyp == eac3::StreamType::kIndependent ||
+           strmtyp == eac3::StreamType::kConvertible;
+}
+
+}  // namespace
 
 bool has_eac3_extension_substreams(std::span<const std::byte> stream) {
     const auto core_bsid = stream_bsid(stream);
@@ -180,7 +201,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     std::size_t start = 0;
     std::size_t offset = 0;
     for (const auto& frame : *frames) {
-        if (begins_access_unit(frame) && offset != start) {
+        if (begins_unit(frame_identity(frame).strmtyp) && offset != start) {
             units.push_back(stream.subspan(start, offset - start));
             start = offset;
         }
@@ -191,20 +212,170 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     }
     // A stream whose very first syncframe is a dependent has lost its parent;
     // its channels have nothing to extend.
-    if (!units.empty() && !begins_access_unit(units.front())) {
+    if (!units.empty() &&
+        frame_identity(units.front()).strmtyp == eac3::StreamType::kDependent) {
         return std::unexpected(DecodeError::kInvalidStream);
     }
     return units;
 }
 
+FrameDecoder::FrameDecoder(const DecoderConfig& config)
+    : config_(internal::resolve_operating_mode(config)), output_(config.output) {}
+
+std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
+    std::span<const std::byte> stream, int programme) {
+    auto units = split_access_units(stream);
+    if (!units) {
+        return std::unexpected(units.error());
+    }
+    // Each unit begins with its programme's own independent substream, so the
+    // selection is one field read per unit - no second walk of the frames.
+    // A dependent's substreamid numbers in its parent's space (§E2.3.1.2) and
+    // is never consulted here.
+    std::erase_if(*units, [programme](std::span<const std::byte> unit) {
+        return frame_identity(unit).substreamid != programme;
+    });
+    return units;
+}
+
+std::expected<std::vector<int>, DecodeError> programme_ids(std::span<const std::byte> stream) {
+    const auto units = split_access_units(stream);
+    if (!units) {
+        return std::unexpected(units.error());
+    }
+    std::vector<int> ids;
+    for (const auto& unit : *units) {
+        const int id = frame_identity(unit).substreamid;
+        // Ascending and unique: the stream repeats its programmes once per
+        // frame period, so the same handful of ids arrives over and over. At
+        // most eight of them (§E2.3.1.2), which is why this is a sorted
+        // insert rather than a set.
+        if (const auto at = std::ranges::lower_bound(ids, id);
+            at == ids.end() || *at != id) {
+            ids.insert(at, id);
+        }
+    }
+    // A stream with no access units at all reports no programmes rather than
+    // an empty-but-present one; split_frames already rejected anything that
+    // was not framing.
+    return ids;
+}
+
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame(
     std::span<const std::byte> frame) {
-    return decode_frame_core(frame, {});
+    auto decoded = decode_frame_core(frame, {});
+    if (decoded) {
+        return decoded;
+    }
+    if (auto concealed = conceal(decoded.error(), {})) {
+        return std::move(*concealed);
+    }
+    return decoded;
 }
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_into(
     std::span<const std::byte> frame, std::span<const std::span<float>> channels) {
-    return decode_frame_core(frame, channels);
+    auto decoded = decode_frame_core(frame, channels);
+    if (decoded) {
+        return decoded;
+    }
+    if (auto concealed = conceal(decoded.error(), channels)) {
+        return std::move(*concealed);
+    }
+    return decoded;
+}
+
+std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
+                                                  std::span<const std::span<float>> external) {
+    // Nothing retained means this is the head of the stream: there is no
+    // previous block to reconstruct from, and inventing one would be
+    // substituting audio rather than concealing a gap in it.
+    if (config_.concealment == ConcealmentPolicy::kNone || !retained_) {
+        return std::nullopt;
+    }
+    const bool repeat = config_.concealment == ConcealmentPolicy::kRepeatFade;
+    const int nchans = retained_->nchans;
+
+    DecodedFrame out = retained_->shape;
+    // No word was transmitted, so none is reported - the persistence rule in
+    // §7.7.1.2 is about blocks within a syncframe, not about a syncframe that
+    // never arrived.
+    out.dynrng.fill(meta::kDynrngUnity);
+    out.dynrng2.fill(meta::kDynrngUnity);
+    out.concealed = Concealment{.error = error,
+                                .action = repeat ? ConcealmentAction::kRepeatFade
+                                                 : ConcealmentAction::kMute};
+
+    std::array<std::span<float>, 6> pcm_target{};
+    if (external.empty()) {
+        out.channels.assign(static_cast<std::size_t>(nchans),
+                            std::vector<float>(kSamplesPerFrame, 0.0f));
+        for (int ch = 0; ch < nchans; ++ch) {
+            pcm_target[static_cast<std::size_t>(ch)] = out.channels[static_cast<std::size_t>(ch)];
+        }
+    } else {
+        assert(static_cast<int>(external.size()) >= nchans);
+        for (int ch = 0; ch < nchans; ++ch) {
+            pcm_target[static_cast<std::size_t>(ch)] = external[static_cast<std::size_t>(ch)];
+        }
+    }
+
+    // The concealed frame goes through the SAME overlap-add the real ones do,
+    // which is what makes it join up at both ends. Under kRepeatFade each
+    // block's transform output is the last good block's, decayed; under kMute
+    // it is zero, and the first block still carries the previous frame's own
+    // window tail out of delay_ - so silence arrives as the codec's own
+    // fade rather than as a cut.
+    //
+    // 20 dB across the frame: enough that a lost frame audibly steps back
+    // instead of ringing on, and gentle enough that one lost frame in an
+    // otherwise clean stream is not itself the artefact. A run of losses
+    // keeps decaying, because the retained block is scaled by where this
+    // frame's decay finished.
+    constexpr double kDecayPerBlock = 0.6812920690579611;  // 10^(-20/(20*6))
+    double gain = kDecayPerBlock;
+    for (int block = 0; block < kBlocksPerFrame; ++block) {
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto& last = retained_->last_block[static_cast<std::size_t>(ch)];
+            auto& delay = delay_[static_cast<std::size_t>(ch)];
+            const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
+            for (int n = 0; n < 256; ++n) {
+                const auto un = static_cast<std::size_t>(n);
+                const double head = repeat ? last[un] * gain : 0.0;
+                pcm[static_cast<std::size_t>(block * 256 + n)] =
+                    static_cast<float>(2.0 * (head + delay[un]));
+                delay[un] = repeat ? last[un + 256] * gain : 0.0;
+            }
+        }
+        gain *= kDecayPerBlock;
+    }
+    if (repeat) {
+        // Where the next consecutive loss picks the decay up from. Without
+        // this a long dropout would repeat the same block at the same level
+        // forever, which is the one concealment artefact worse than the gap.
+        const double carried = gain / kDecayPerBlock;
+        for (int ch = 0; ch < nchans; ++ch) {
+            for (double& value : retained_->last_block[static_cast<std::size_t>(ch)]) {
+                value *= carried;
+            }
+        }
+    } else {
+        // kMute has already driven delay_ to zero; clearing the retained
+        // block keeps a later switch of policy from resurrecting audio from
+        // before the dropout.
+        for (int ch = 0; ch < nchans; ++ch) {
+            retained_->last_block[static_cast<std::size_t>(ch)].fill(0.0);
+        }
+    }
+
+    const auto levels = mix_levels(out.cmixlev, out.surmixlev);
+    if (external.empty()) {
+        output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm);
+    } else {
+        output_.apply(external.first(static_cast<std::size_t>(nchans)), out.acmod, out.lfe,
+                      levels, out.dialnorm);
+    }
+    return out;
 }
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
@@ -261,24 +432,26 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     info.bsmod = static_cast<meta::BitstreamMode>(bsmod);
     const auto acmod_value = r.read(3);
     const auto acmod = static_cast<Acmod>(acmod_value);
-    // §7.8's own fallbacks stand where the layout carries no such field, so a
-    // caller can apply these unconditionally without re-deriving the rule.
-    auto cmixlev = meta::CentreMixLevel::kMinus4_5dB;
-    auto surmixlev = meta::SurroundMixLevel::kMinus6dB;
+    // §5.4.2.4/§5.4.2.5. Both fields are conditional on acmod, so "absent"
+    // and "present and says the default" stay distinguishable on the result -
+    // which is what lets ac3::mix_levels() apply §7.8's own fallbacks rather
+    // than inventing values here. Code '11' is reserved for cmixlev and
+    // §5.4.2.4 says to read it as the intermediate -4.5 dB, which is what
+    // leaving it std::nullopt already produces.
+    std::optional<meta::CentreMixLevel> cmixlev;
+    std::optional<meta::SurroundMixLevel> surmixlev;
     if ((acmod_value & 0x1) != 0 && acmod != Acmod::k1_0) {
-        // Table 5.9 reserves '11'; §5.4.2.4 tells a decoder receiving it to
-        // fall back on the intermediate -4.5 dB, which is what this leaves in
-        // place rather than inventing a fourth enumerator for it.
         const auto code = r.read(2);
-        if (code < 3) {
+        if (code <= static_cast<std::uint32_t>(meta::CentreMixLevel::kMinus6dB)) {
             cmixlev = static_cast<meta::CentreMixLevel>(code);
         }
     }
     if ((acmod_value & 0x4) != 0) {
-        // Table 5.10 has no reserved code - '10' is a real value (surrounds
-        // dropped from the downmix) and '11' is the reserved one.
         const auto code = r.read(2);
-        if (code < 3) {
+        // §5.4.2.5 leaves '11' reserved with no stated substitution; treating
+        // it as "not indicated" gets §7.8's own -6 dB default, which is the
+        // only reading that does not put a made-up level on the wire's behalf.
+        if (code <= static_cast<std::uint32_t>(meta::SurroundMixLevel::kSilent)) {
             surmixlev = static_cast<meta::SurroundMixLevel>(code);
         }
     }
@@ -405,6 +578,8 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     out.info = info;
     out.alternate_bsi = alternate_bsi;
     out.dialnorm = dialnorm;
+    out.cmixlev = cmixlev;
+    out.surmixlev = surmixlev;
     out.compr = compr;
     out.dynrng.fill(meta::kDynrngUnity);
     out.dialnorm2 = dialnorm2;
@@ -435,6 +610,17 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                    static_cast<std::size_t>(kSamplesPerFrame));
             pcm_target[static_cast<std::size_t>(ch)] = external[static_cast<std::size_t>(ch)];
         }
+    }
+
+    // §7.10: whether the block loop below has to keep its last block for a
+    // future loss to be reconstructed from. Sized here rather than in the
+    // constructor because nchans is not known until now, and skipped
+    // entirely with concealment off - which is what keeps a decoder
+    // configured the way every existing caller configures it from carrying
+    // 24 KB it will never read.
+    const bool retain_last_block = config_.concealment != ConcealmentPolicy::kNone;
+    if (retain_last_block) {
+        conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
     }
 
     // §7.7.1.2: an absent word inherits from the previous BLOCK, and block 0
@@ -1138,10 +1324,56 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                         static_cast<float>(2.0 * (x[sample] + delay[sample]));
                     delay[sample] = x[static_cast<std::size_t>(256 + n)];
                 }
+                // §7.10's raw material, captured into scratch rather than
+                // straight into retained_: this frame may still be refused
+                // below, and a refused frame must not become what the NEXT
+                // loss is reconstructed from.
+                if (retain_last_block && block == kBlocksPerFrame - 1) {
+                    std::copy(x.begin(), x.end(),
+                             conceal_scratch_[static_cast<std::size_t>(ch)].begin());
+                }
             }
         }
         if (r.overflowed()) {
             return std::unexpected(DecodeError::kTruncated);
+        }
+    }
+    if (retain_last_block) {
+        if (!retained_) {
+            // Aggregate-initialised rather than emplace()d: Retained is an
+            // aggregate, and libstdc++'s optional::emplace() goes through
+            // is_constructible_v, which clang does not satisfy for an
+            // aggregate with no constructor of its own. MSVC accepts the
+            // emplace form, so this is exactly the kind of difference the
+            // Linux legs exist to catch.
+            retained_ = Retained{};
+        }
+        retained_->nchans = nchans;
+        // A swap rather than a copy: the buffer retained_ was holding comes
+        // back the other way and is re-zeroed at the top of the next frame,
+        // so neither side ever allocates again.
+        retained_->last_block.swap(conceal_scratch_);
+        // Metadata only - the PCM belongs to this frame and would be a
+        // per-frame copy of every channel if it were kept.
+        retained_->shape = out;
+        retained_->shape.channels.clear();
+        retained_->shape.concealed = std::nullopt;
+    }
+    // §5.4.2.8/§7.8, last: everything above reconstructs the CODED channels,
+    // which is what the decoder is a reference for. Whatever the caller
+    // wanted to hear instead happens here, once - except under
+    // skip_reconstruction, where there is no PCM to fold: the value form's
+    // `channels` is empty (harmless no-op below) but the decode_frame_into
+    // form's `external` spans were never written through, and folding them
+    // would read - and, for a caller who also asked for a downmix, silently
+    // rewrite - buffers this call promised to leave untouched.
+    if (!config_.skip_reconstruction) {
+        const auto levels = mix_levels(cmixlev, surmixlev);
+        if (external.empty()) {
+            output_.apply(out.channels, acmod, lfe, levels, dialnorm);
+        } else {
+            output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
+                          dialnorm);
         }
     }
     return out;

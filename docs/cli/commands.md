@@ -20,7 +20,7 @@ Usage:
   ac3cli encode        <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source; programme2= adds a second independent substream)
   ac3cli decode        <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
   ac3cli probe         <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
@@ -240,6 +240,16 @@ It decodes on the fast (FFT) inverse-transform path by default; `mode=reference`
 [Validation → Performance and reference modes](../verification.md#performance-and-reference-modes)
 for what each mode is for, and [Options & grammars](metadata-options.md) for the token rules.
 
+A stream carrying more than one programme (a second independent substream — a second language,
+an audio description) is handled one programme at a time: `decode`, `levels` and `qc` all take
+`programme=<0..7>`, and without it take the first the stream carries while saying what else was
+there. See [Options & grammars](metadata-options.md) for the token, and `eac3-encode`'s
+`programme2=` for authoring such a stream.
+
+```bash
+ac3cli decode out.ec3 commentary.wav programme=1
+```
+
 For an Atmos stream, add `objects_dir` to also export each object's reconstructed audio:
 
 ```bash
@@ -252,6 +262,55 @@ report names them (`bed [L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr] + 0 dynamic obje
 than just counting them. The report also names an OAMD trim element when one rides along, any
 `oa_element` skipped because its id is unrecognised, and how many metadata update blocks a frame
 carries when it carries more than one.
+
+### The output stage: `channels=`, `downmix=`, `drcmode=`
+
+By default `decode` writes the channels the stream codes, at the level it codes them — which is
+what a verification tool should do, and not what a listener wants. `channels=` turns on the §7.8
+output stage:
+
+```bash
+ac3cli decode surround.ac3 stereo.wav channels=2
+ac3cli decode surround.ac3 stereo.wav downmix=ltrt      # implies channels=2
+ac3cli decode surround.ac3 mono.wav   channels=1
+```
+
+`channels=2` produces §7.8.1's Lo/Ro fold, `downmix=ltrt` §7.8.2's Dolby Surround compatible
+Lt/Rt (whose surround sum really is phase shifted 90°, costing 63 samples of output delay;
+`ltrt-phase=off` takes the sign-only matrix instead), and `channels=1` §7.8's mono branch. The
+matrix comes from the stream's own `cmixlev`/`surmixlev` or `mixmdate` levels, and §7.8.1's
+normalisation means the fold can never be louder than the loudest coded sample. `mix-lfe` folds
+the LFE in as well — §7.8 makes that optional and this decoder drops it by default.
+
+`drcmode=` selects §7.7's two named consumer modes, each of which sets dialnorm normalisation
+*and* which of `dynrng`/`compr` applies — unlike `drc=` and `heavy`, which are the individual
+switches:
+
+```bash
+ac3cli decode programme.ec3 out.wav channels=2 drcmode=line   # §7.7.1
+ac3cli decode programme.ec3 out.wav channels=2 drcmode=rf     # §7.7.2, overload-protected
+```
+
+`monitor` takes all of the same tokens, and additionally folds on its own initiative when the
+output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
+otherwise means whatever the platform's shared-mode mixer averages together, with none of the
+stream's levels and none of §7.8.1's normalisation. An explicit `channels=`/`downmix=` always
+wins, and a backend that cannot report its endpoint width leaves the audio alone.
+
+### Damaged frames: `conceal=`
+
+`decode` and `monitor` stop on a frame that will not decode. `conceal=` substitutes audio for it
+instead, reconstructed from the previous block's overlap so there is no discontinuity at either
+join:
+
+```bash
+ac3cli decode recovered.ac3 out.wav conceal=repeat   # repeat-and-fade
+ac3cli decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
+```
+
+Either way the run reports how many frames or access units were concealed. Off by default: a
+decode that hides a damaged frame looks exactly like one that had nothing to hide. See
+[Decoding → Concealing it instead](../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
 
 #### `probe` — what the stream says about itself
 

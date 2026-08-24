@@ -14,6 +14,89 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **E-AC-3 delta bit allocation under coupling** (`EQ5`). `§7.2.2.6` corrections are no longer
+  skipped for every stream in a coupled frame: the coupling channel carries its own
+  `cpldeltbae` like any full-bandwidth channel, on the same per-run, per-block terms `D3`
+  already established for AC-3 — no reuse code, a wanted correction pays its full segment cost
+  again on every block it applies to. AHT streams still carry none, on measured grounds — the
+  comparison was tried on the AHT axis (where those exponents actually normalise) and still
+  lost on every AHT-carrying point, because the concentration a DCT transform buys is not
+  quantization error. Whether a correction is worth its side info is decided per frame against
+  the rate fit rather than assumed; at that real, repeated cost it wins on a modest minority of
+  coupled frames at low-to-mid bitrates (measured on real material at 96/128/192 kbit/s
+  stereo), never enough to make coupling itself the reason it's withheld.
+- **Per-channel AC-3 coupling membership** (`EQ6a`). `chincpl` is a per-channel decision now — a
+  block-switched channel is excluded from coupling for the frame while the rest still share a
+  coupling channel, rather than the whole frame losing the tool over one channel's transient
+  (the §8.2.4.1 case `docs/library/encoding-ac3.md` used to record as unhandled). Coupling
+  coordinates resend only when the quantized value actually changes rather than on a fixed
+  0/2/4 cadence, and 2/0 carries a measured `phsflg` restoring phase where an out-of-phase pair
+  would otherwise cancel in the coupling sum (up to +12.3 dB on genuinely anti-phase material).
+  Measured tradeoff: 5.1 coupled loses up to 0.4 dB SNR at 192 kbit/s, where more frequent
+  resends compete with mantissas for an already-tight budget.
+- **`ecplangleintrp` (E-AC-3 enhanced coupling angle interpolation)** (`EQ6c`). §3.5.5.3's linear
+  interpolation between band-centre angles, rather than direct per-band application, is decoded
+  now on both sides — the decoder used to refuse any stream that set the flag. The encoder
+  decides per frame by reconstructing both ways with the already-fitted band values and keeping
+  whichever is closer to the real content; on measured material it fires on a meaningful
+  fraction of enhanced-coupling frames.
+- **Decoder output stage** (ROADMAP `DC1`). `ac3/decoder/output.hpp` adds `ac3::OutputStage` on
+  `DecoderConfig::output`: §5.4.2.8 dialnorm normalisation onto the −31 dBFS reference, §7.8's
+  Lo/Ro, Lt/Rt and mono downmixes, optional LFE mixing, and §7.7's line and RF operating modes
+  with the overload protection a fold needs but `compr` — computed for the *mono* downmix — does
+  not provide. The matrix comes from the stream's own levels, so both decoders stop discarding
+  them: `DecodedFrame` now reports `cmixlev`/`surmixlev` (§5.4.2.4/§5.4.2.5) and
+  `DecodedSubstream`/`DecodedAccessUnit` report the `mixmdate` downmix group, each
+  distinguishing "absent" from "present, and says the default". Lt/Rt's surround sum really is
+  phase shifted 90°, through a 127-tap Hilbert transformer with the direct path delayed to
+  match (63 samples, reported by `latency_samples()`); `ltrt_phase_shift = false` takes the
+  sign-only matrix instead. A rendered Table E2.5 layout §7.8 has no fold for — 7.1.4 and the
+  like — is reduced to the nearest acmod layout rather than having its extra channels dropped.
+  Everything defaults off: a decoder configured the way every existing caller configures it
+  emits the coded channels untouched, sample for sample. Verified against FFmpeg's `-ac 2`
+  decode of the same stream — 119–121 dB SNR at zero lag, differing only by §7.8.1's own
+  normalisation divisor, which FFmpeg does not apply.
+- **`ac3cli decode`/`monitor` output tokens**: `channels=2|1|as-coded`,
+  `downmix=loro|ltrt|mono`, `ltrt-phase=off`, `mix-lfe`, `drcmode=line|rf`. `monitor` also folds
+  on its own initiative when the output endpoint renders fewer channels than the programme
+  (`RenderDeviceInfo::channels`, populated on the WASAPI and ALSA backends), instead of leaving
+  a 5.1 programme to whatever the platform's shared-mode mixer averages together.
+- **§7.10 error concealment** (ROADMAP `DC2`), opt-in via `DecoderConfig::concealment`. A frame
+  that will not decode is reconstructed from the previous block's overlap — repeated and faded
+  (`kRepeatFade`) or muted through the codec's own window (`kMute`) — instead of leaving a hard
+  discontinuity in the PCM. Both work in the overlap-add domain, so a concealed frame leaves the
+  delay state exactly as the next good frame expects and recovery is an ordinary decode. The
+  substitution is reported on the result (`concealed`), and for E-AC-3 an access unit whose
+  *dependent* substream will not decode renders its bed alone rather than failing outright.
+  `ac3cli decode|monitor conceal=repeat|mute`, which report how many frames were concealed.
+- **Multiple independent substreams — more than one programme per stream** (roadmap `DC5`).
+  §E2.3.1.2 allows eight independent substreams and broadcast DD+ uses them for multi-language
+  and associated services (audio description, commentary); this project handled exactly one, and
+  handled a stream carrying two *wrongly rather than loudly* — `ac3::io::scan` started a new
+  access unit at every independent frame without comparing `substreamid`, so I0 and I1 came back
+  as alternating frames of one programme.
+
+  Now: `ac3::io::scan` groups by programme and reports them on `ScannedStream::programmes`;
+  `ac3::split_access_units` takes an optional programme id and `ac3::programme_ids()` enumerates
+  what a stream carries; `DecoderConfig::programme` picks one to decode and
+  `DecodedAccessUnit::programme` reports which one a result came from; and
+  `AccessUnitConfig::additional` lets the encoder author further programmes, each with its own
+  layout, bit rate, dialnorm and DRC state. The `dec3` box now declares every independent
+  substream (`num_ind_sub`, per-substream `bsmod`/`acmod`/`lfeon`/`asvc`) instead of always
+  claiming one.
+
+  On the command line, `decode`, `qc` and `levels` take `programme=<0..7>` and work on exactly
+  one — without it they take the first the stream carries and say so when there is more than one,
+  rather than folding two unrelated programmes into one WAV or one loudness figure.
+  `eac3-encode` takes `programme2=<file>` with `programme2-layout=`, `programme2-bitrate=` and
+  `programme2-dialnorm=`.
+
+  FFmpeg cannot check any of this: `ff_ac3_parse_header` rejects `substreamid != 0` without
+  distinguishing `strmtyp`, and because its raw E-AC-3 demuxer packs one frame period's
+  substreams into a single packet, a second programme makes it refuse *every* packet and emit
+  nothing — main programme included. Measured against ffmpeg 8.0.1 and recorded in
+  [docs/verification.md](docs/verification.md#where-the-oracles-dont-reach).
+
 - **Third-party Atmos streams decode** (roadmap `DC6`). The object layer used to recognise only
   the shapes this project's own encoder writes and refuse everything else, which is most of what
   real content carries. OAMD now reads any number of metadata update blocks at any sample offset
@@ -710,6 +793,23 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **E-AC-3 decoder never read `cpldeltbae`.** Unreachable before EQ5, since coupling
+  unconditionally cleared delta on the encoder side — the first coupled frame that carried a
+  correction after that changed would have desynchronised every field behind it.
+- **AC-3 coupling desynchronised when membership was partial.** The shared channel's mantissas
+  were coded immediately after channel 0 unconditionally; once `chincpl` became per-channel
+  (EQ6a), a frame that excluded channel 0 handed the coupling channel's mantissas to the wrong
+  stream. Invisible to every structural check (frame size, both CRCs, exponent range) — only
+  visible in per-channel SNR on the low band, which is what a new regression test
+  (`tests/decoder/test_decoder.cpp`) now pins directly.
+- **`split_access_units` no longer reads an AC-3 frame's `crc1` as `strmtyp`/`substreamid`.**
+  Those fields only live in byte 2 of an Annex E frame; in an AC-3 one that byte is part of
+  `crc1` and aliases to "dependent" about a quarter of the time, merging runs of frames into one
+  access unit. The framing now gates on each frame's own `bsid`, which is at bit 40 in both
+  generations. A real disc authoring a bsid-6 independent substream with a bsid-16 dependent
+  behind it hit this (see `apps/android/.../file_replay.cpp`, which measured 176 of 480 groups
+  corrupted and worked around it locally).
+
 - **The MOS column carries real numbers** (`VX6`). `visqol-python` was deliberately not
   installed in CI, so all ~3,758 rows on the `quality-history` branch carried `mos_lqo: null`
   and every MOS cell on the landscape and tool-comparison pages rendered `n/a` — the perceptual
@@ -868,6 +968,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The WASM decode demo plays the library's downmix**, not one of its own. The page used to
+  hand-roll a fold it labelled "NOT a spec Lo/Ro or Lt/Rt matrix" and soft-clip the result; it
+  now plays `ac3::OutputStage`'s §7.8 Lo/Ro fold with dialnorm applied — the same code
+  `ac3cli decode channels=2` runs — and needs no soft clip, because §7.8.1's normalisation means
+  a fold cannot be louder than the loudest coded sample. The per-channel visualization still
+  shows every coded channel.
 - `DecodedFrame` reports `bsid`, `cmixlev` and `surmixlev` instead of discarding the two mix
   levels — the input roadmap `DC1`'s decoder output stage needs. A layout that carries neither
   field reports §7.8's own fallbacks, so a caller can apply them unconditionally.

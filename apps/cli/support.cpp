@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -28,6 +29,8 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/dec3.hpp"
@@ -39,6 +42,7 @@
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -408,6 +412,28 @@ void print_meta_usage() {
                  "decoder-defined, so this is for a run that needs bit-for-bit agreement "
                  "with another decoder more than it needs dither's own perceptual benefit "
                  "(tools/checks/verify_gold_reference.sh is the one that does)");
+    fmt::println("  channels=2|1      decode/monitor: apply the §7.8 output stage and leave "
+                 "that many channels - 2 is a stereo fold, 1 is mono. channels=as-coded (the "
+                 "default) does nothing at all. The stream's own cmixlev/surmixlev (AC-3) or "
+                 "mixmdate levels (E-AC-3) drive the matrix; §7.8.1's normalisation keeps it "
+                 "from overloading");
+    fmt::println("  downmix=loro|ltrt|mono  which fold channels= produces: §7.8.1's plain "
+                 "stereo (the default), §7.8.2's Dolby Surround compatible Lt/Rt, or mono. "
+                 "Naming one implies the width, so downmix=ltrt on its own is enough");
+    fmt::println("  ltrt-phase=off    take Lt/Rt's sign-only matrix instead of §7.8.2's real "
+                 "90-degree surround phase shift, which costs 63 samples of output delay");
+    fmt::println("  mix-lfe           fold the LFE into the downmix too (§7.8 makes it "
+                 "optional and this decoder drops it by default), at the stream's own "
+                 "lfemixlevcod where it has one and §7.8's +10 dB ideal where it does not");
+    fmt::println("  drcmode=line|rf   decode/monitor: §7.7's two named consumer modes. line "
+                 "normalises dialnorm and applies the transmitted dynrng in full; rf uses "
+                 "compr instead (falling back on dynrng per §7.7.2.1) and protects the "
+                 "downmix from overload. Both set dialnorm normalisation, unlike drc=/heavy, "
+                 "which are the individual switches. Default: neither");
+    fmt::println("  conceal=repeat|mute     decode/monitor: §7.10 error concealment. A frame "
+                 "that will not decode is reconstructed from the previous block's overlap - "
+                 "repeated and faded, or muted through the codec's own window - instead of "
+                 "failing the command. Off by default");
     fmt::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                  "signature (needs signing-key=); see docs/concepts/object-signing.md");
     fmt::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
@@ -433,6 +459,25 @@ void print_meta_usage() {
                  "channels (seconds >= 0), same 0-based numbering as src=");
     fmt::println("                    the programme is still as long as the longest one once "
                  "every offset is applied");
+    fmt::println("");
+    fmt::println("programme options (eac3-encode; any order, after the positional arguments):");
+    fmt::println("  programme2=<path> author a SECOND programme into the same stream, as a "
+                 "second independent substream (§E2.3.1.2's I1) - the multi-language / "
+                 "associated-service shape of broadcast DD+. Its own audio, layout, rate and "
+                 "dialnorm; a decoder plays one programme or the other, never both");
+    fmt::println("  programme2-layout=<name>   its layout ({}); omitted follows its own source",
+                 plan::layout_names(plan::Codec::kEac3));
+    fmt::println("  programme2-bitrate=<kbps>  its own rate, spent ON TOP of the primary's "
+                 "(substreams share a frame period, not a frame); omitted is half the primary's");
+    fmt::println("  programme2-dialnorm=<1..31>  its own dialnorm (§5.4.2.8, default 31) - not "
+                 "inherited, since a commentary or description track is levelled independently "
+                 "of the mix it plays against");
+    fmt::println("");
+    fmt::println("programme options (decode, qc, levels; any order, after the positional "
+                 "arguments):");
+    fmt::println("  programme=<0..7>  which programme of a multi-programme stream to work on, "
+                 "by the §E2.3.1.2 substreamid of its independent substream; omitted takes the "
+                 "first the stream carries");
     fmt::println("");
     fmt::println("record/live options (record, live; any order, after the positional "
                  "arguments):");
@@ -685,6 +730,107 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                          "error: mode is 'performance' (the default) or 'reference' (got '{}')",
                          token);
             return false;
+        }
+        if (token == "mix-lfe") {
+            out.output.mix_lfe = true;
+            continue;
+        }
+        if (key == "channels") {
+            // How many channels to LEAVE, which is the question an operator
+            // actually has ("this has to play on a stereo device"). Which
+            // stereo matrix is downmix='s question, and it has a default, so
+            // channels= alone is enough to get a usable fold.
+            if (value == "as-coded") {
+                out.output.target = ac3::DownmixTarget::kAsCoded;
+                continue;
+            }
+            if (value == "1") {
+                out.output.target = ac3::DownmixTarget::kMono;
+                continue;
+            }
+            if (value == "2") {
+                // A downmix= earlier on the same command line already chose
+                // the matrix; channels=2 only confirms the width.
+                if (!out.downmix_named) {
+                    out.output.target = ac3::DownmixTarget::kLoRo;
+                }
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: channels is '2' (§7.8 stereo), '1' (mono) or 'as-coded' (the "
+                         "default - no downmix at all) (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "downmix") {
+            if (value == "loro") {
+                out.output.target = ac3::DownmixTarget::kLoRo;
+            } else if (value == "ltrt") {
+                out.output.target = ac3::DownmixTarget::kLtRt;
+            } else if (value == "mono") {
+                out.output.target = ac3::DownmixTarget::kMono;
+            } else {
+                fmt::println(stderr,
+                             "error: downmix is 'loro' (§7.8.1), 'ltrt' (§7.8.2, Dolby Surround "
+                             "compatible) or 'mono' (got '{}')",
+                             token);
+                return false;
+            }
+            out.downmix_named = true;
+            continue;
+        }
+        if (key == "ltrt-phase") {
+            // The 90-degree shift on Lt/Rt's surround sum is what §7.8.2
+            // describes and costs a fixed delay on the whole output; 'off'
+            // takes the sign-only matrix a lot of hardware implements
+            // instead. Same key=off shape fast-mdct=/fast-imdct= use.
+            if (value == "off") {
+                out.output.ltrt_phase_shift = false;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: the Lt/Rt surround phase shift is the default; "
+                         "'ltrt-phase=off' selects the sign-only matrix (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "drcmode") {
+            // §7.7's two named consumer modes. Each sets dialnorm
+            // normalisation AND which of dynrng/compr applies, which is what
+            // distinguishes them from drc=/heavy - those are the individual
+            // switches, these are the two combinations that have names.
+            if (value == "line") {
+                out.output.mode = ac3::OperatingMode::kLine;
+            } else if (value == "rf") {
+                out.output.mode = ac3::OperatingMode::kRf;
+            } else if (value == "none") {
+                out.output.mode = ac3::OperatingMode::kCustom;
+            } else {
+                fmt::println(stderr,
+                             "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
+                             "overload protection) or 'none' (the default) (got '{}')",
+                             token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "conceal") {
+            // §7.10. Off by default: a decode that hits a damaged frame says
+            // so and stops, which is what a verification tool should do.
+            if (value == "repeat") {
+                out.concealment = ac3::ConcealmentPolicy::kRepeatFade;
+            } else if (value == "mute") {
+                out.concealment = ac3::ConcealmentPolicy::kMute;
+            } else if (value == "off") {
+                out.concealment = ac3::ConcealmentPolicy::kNone;
+            } else {
+                fmt::println(stderr,
+                             "error: conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
+                             "silence) or 'off' (the default) (got '{}')",
+                             token);
+                return false;
+            }
+            continue;
         }
         if (key == "drc") {
             // On the decode side drc= is a scale factor (§7.7.1 partial
@@ -1285,6 +1431,59 @@ bool parse_options(std::span<char*> tokens, Options& out) {
             out.signing_key = std::string{value};
             continue;
         }
+        if (key == "programme") {
+            // §E2.3.1.2 numbers independent substreams I0-I7, so the id is
+            // the whole of what selects a programme - there is no separate
+            // index. Checked against what the stream actually carries by the
+            // command itself, which is the only place that knows.
+            const auto id = parse_u32_or(value, 8);
+            if (id > 7) {
+                fmt::println(stderr, "error: programme= needs a substream id 0..7 (got '{}')",
+                             token);
+                return false;
+            }
+            out.programme = static_cast<int>(id);
+            continue;
+        }
+        if (key == "programme2") {
+            if (value.empty()) {
+                fmt::println(stderr, "error: programme2= needs an input file path");
+                return false;
+            }
+            out.programme2 = std::string{value};
+            continue;
+        }
+        if (key == "programme2-layout") {
+            if (value.empty()) {
+                fmt::println(stderr, "error: programme2-layout= needs a layout name ({})",
+                             plan::layout_names(plan::Codec::kEac3));
+                return false;
+            }
+            out.programme2_layout = std::string{value};
+            continue;
+        }
+        if (key == "programme2-bitrate") {
+            const auto kbps = parse_u32_or(value, 0);
+            if (kbps == 0) {
+                fmt::println(stderr,
+                             "error: programme2-bitrate= needs a rate in kbit/s (got '{}')",
+                             token);
+                return false;
+            }
+            out.programme2_bitrate = kbps;
+            continue;
+        }
+        if (key == "programme2-dialnorm") {
+            const auto dialnorm = parse_u32_or(value, 0);
+            if (dialnorm < 1 || dialnorm > 31) {
+                fmt::println(stderr,
+                             "error: programme2-dialnorm= needs 1..31 (§5.4.2.8; got '{}')",
+                             token);
+                return false;
+            }
+            out.programme2_dialnorm = static_cast<int>(dialnorm);
+            continue;
+        }
         fmt::println(stderr, "error: unknown option '{}'", token);
         print_meta_usage();
         return false;
@@ -1409,6 +1608,34 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
 bool is_stdio_path(std::string_view path) { return path == "-"; }
 
 FILE* status_stream(std::string_view out_path) { return is_stdio_path(out_path) ? stderr : stdout; }
+
+std::string format_programme_ids(std::span<const int> ids) {
+    std::string out;
+    for (const int id : ids) {
+        if (!out.empty()) {
+            out += ", ";
+        }
+        out += fmt::format("{}", id);
+    }
+    return out;
+}
+
+std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted) {
+    assert(!ids.empty());
+    // Omitted takes the first programme the stream carries rather than a
+    // hard-coded 0: §E2.3.1.2 numbers independent substreams from 0, but a
+    // stream someone has already cut a programme out of need not still start
+    // at one, and refusing it would be refusing a stream that decodes fine.
+    if (!wanted) {
+        return ids.front();
+    }
+    if (std::ranges::find(ids, *wanted) == ids.end()) {
+        fmt::println(stderr, "error: no programme {} in this stream (it carries {})", *wanted,
+                     format_programme_ids(ids));
+        return std::nullopt;
+    }
+    return wanted;
+}
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames) {
     if (is_stdio_path(path)) {

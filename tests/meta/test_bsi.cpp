@@ -10,6 +10,7 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
@@ -282,8 +283,14 @@ TEST_CASE("AC-3: a layout carrying neither mix level reports the 7.8 fallbacks",
     ac3::EncoderConfig config;
     config.acmod = ac3::Acmod::k2_0;  // no centre, no surround: neither field is sent
     const auto decoded = round_trip_ac3(config);
-    CHECK(decoded.cmixlev == ac3::meta::CentreMixLevel::kMinus4_5dB);
-    CHECK(decoded.surmixlev == ac3::meta::SurroundMixLevel::kMinus6dB);
+    // Absent, not "present and says the default" - that distinction is the
+    // whole reason these are std::optional (see DecodedFrame::cmixlev's own
+    // comment). ac3::mix_levels() is where the §7.8 fallback actually lands.
+    CHECK_FALSE(decoded.cmixlev.has_value());
+    CHECK_FALSE(decoded.surmixlev.has_value());
+    const auto levels = ac3::mix_levels(decoded.cmixlev, decoded.surmixlev);
+    CHECK(levels.loro_clev == ac3::meta::level::kMinus4_5dB);
+    CHECK(levels.loro_slev == ac3::meta::level::kMinus6dB);
 }
 
 // --- DC4: mixmdate depth and infomdat ---------------------------------------
