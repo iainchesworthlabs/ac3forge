@@ -390,6 +390,36 @@ metadata is. It is covered bit-by-bit instead
 ([tests/meta/test_drc.cpp](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/meta/test_drc.cpp),
 [tools/references/eac3_parse.py](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/references/eac3_parse.py)).
 
+## Going the other way: published conformance vectors
+
+Everything above consumes someone else's streams as an oracle. Every release also publishes a
+set this project produces — 60 streams covering each coding tool, layout and sample rate the
+encoder can emit, each with the source PCM it was encoded from, the expected decode hashes and
+per-channel levels, and a manifest saying what each vector exercises. It ships as
+`ac3forge-conformance-vectors-<version>.tar.gz`, signed and attested like every other release
+asset.
+
+The `ffmpeg` field on each vector is derived from the table above rather than typed in, so the
+published set cannot drift out of step with what this page says the oracles reach: `full` where
+FFmpeg decodes the audio, `header_only` for the `fscod2` rates, `none` for 7.1.4 and for enhanced
+coupling / transient pre-noise processing.
+
+Two limits are worth stating on this page rather than only in the bundle: the source material is
+synthetic (roadmap VX7 is what changes that), and the hashes are per-toolchain — encoded output
+is not yet bit-identical across compilers or architectures (roadmap VX11/VX12), so a bundle
+regenerated elsewhere differs from the published one for the same correct streams. Regenerating
+with the toolchain the manifest names reproduces every hash exactly, and the generator asserts
+that with `--check-determinism` rather than assuming it.
+
+See [Conformance vectors](conformance-vectors.md).
+
+## What untrusted input is checked against
+
+Correctness and robustness are different questions, and this page answers only the first. What
+happens when the bytes are hostile rather than merely wrong — the trust boundary, the
+memory-safety posture, the per-access-unit resource limits, and the gaps — is
+[Threat model](threat-model.md).
+
 ## What's confirmed against real hardware, and what isn't
 
 The codec itself is platform-independent; only capture, monitor playback and IEC 61937

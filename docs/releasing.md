@@ -460,6 +460,19 @@ which sideloading itself doesn't require. (Not to be confused with **object sign
 Atmos authenticity tag, provisioned separately via the `ATMOS_SIGNING_KEY` secret and
 unrelated to APK code-signing; see "Provisioning the Android object-signing key" below.)
 
+Alongside the packages, one artifact that is not a build of anything:
+**`ac3forge-conformance-vectors-<version>.tar.gz`**, the published conformance vector set
+(roadmap VX20) - 60 AC-3 / E-AC-3 / Atmos streams covering each coding tool, layout and sample
+rate the encoder can emit, with the source PCM each was encoded from, the expected decode hashes
+and a manifest of what each exercises. `_build.yml`'s linux-gcc leg builds it, from
+`tools/generators/gen_conformance_vectors.py`; the release call additionally sets
+`publish_conformance_vectors`, which regenerates the whole bundle a second time and fails the leg
+if a single hash moved. It lands in `release-artifacts/` after the "at least one package was
+built" check - deliberately, since it is a `.tar.gz` and would otherwise satisfy that check on
+its own - and from there it is signed, checksummed, SBOM'd and attested exactly like a package.
+See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
+uses it.
+
 No leg is `experimental: true` any more (see `ci.yml`'s status table), so all five package
 for real rather than best-effort - a packaging failure on any of them blocks the release the
 same as a build or test failure would. Every package - end-user or library - gets a `.sha512`
