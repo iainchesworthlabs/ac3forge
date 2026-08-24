@@ -16,6 +16,15 @@ target_link_libraries(ac3perf
         ac3::fmt
         Catch2::Catch2WithMain)
 
+target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# real_audio.hpp resolves tests/golden/audio's fixtures through this, so the
+# gate reads real programme material whatever directory ctest launches it
+# from - see that header for why a synthetic tone is not an acceptable
+# substitute for it.
+target_compile_definitions(ac3perf PRIVATE
+    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+
 # TEST_PREFIX so `ctest -R '^Performance::'`/`-E` can target this target's
 # cases specifically without a fragile name-based guess, and
 # `-L Performance` for the same reason via PROPERTIES below - see
@@ -37,6 +46,14 @@ catch_discover_tests(ac3perf
 add_executable(ac3bench bench_encoder.cpp)
 
 target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings ac3::fmt)
+
+target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Same real-audio fixture the kernel bench and the gate use, for the same
+# reason: a 440 Hz tone leaves the SNR search, coupling, rematrixing and the
+# block-switched transform out of the measurement entirely.
+target_compile_definitions(ac3bench PRIVATE
+    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # ---------------------------------------------------------------------------
 # ac3membench - heap-churn and footprint numbers for the same workloads as
@@ -98,6 +115,8 @@ endif()
 add_executable(ac3kernelbench kernel_bench.cpp)
 
 target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac3::warnings ac3::fmt)
+
+target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # So the binary can find tests/golden/audio's real-audio fixtures regardless
 # of the working directory it is launched from - kernel inputs synthesized
