@@ -149,13 +149,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 28 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 29 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 28> kCommands{{
+constexpr std::array<Command, 29> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -251,10 +251,13 @@ constexpr std::array<Command, 28> kCommands{{
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all]",
+    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate",
-     Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+     }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
     {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
@@ -272,6 +275,10 @@ constexpr std::array<Command, 28> kCommands{{
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
     {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+    {"demux", 3, "<in.mkv> <out.ac3|out.ec3>",
+     "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
+     "identified by its own magic bytes, not by the file name",
+     Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
     {"devices", 1, "", "input and loopback capture endpoints", Needs::kCapture,
      [](const Args&) { return run_devices(); }},
     {"outputs", 1, "", "render endpoints + AC-3/E-AC-3 passthrough support", Needs::kPassthrough,
@@ -459,6 +466,10 @@ void print_usage() {
     fmt::println("       or preset=all checks every one; omitting preset= just measures and");
     fmt::println("       reports, with no pass/fail verdict. Exit code is 0 only when every");
     fmt::println("       requested gate passes (or none was requested and decode succeeded).");
+    fmt::println("       layout=rendered meters the whole assembled program - a dependent");
+    fmt::println("       substream's height, wide and rear channels included - through");
+    fmt::println("       BS.1770-5 Annex 3's extended algorithm, instead of the default");
+    fmt::println("       layout=bed's Table 5.8 bed through Annex 1's basic one.");
 }
 
 }  // namespace

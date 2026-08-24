@@ -76,6 +76,7 @@ add_executable(ac3tests
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp
+    containers/test_matroska_reader.cpp
     core/test_mdct.cpp
     core/test_mdct_fast.cpp
     meta/test_meta_qc.cpp
