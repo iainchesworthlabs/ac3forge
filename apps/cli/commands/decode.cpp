@@ -454,7 +454,10 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
-    if (*bsid > 8) {
+    // ...except for §E2.3.1.2's legacy core, where the first frame is AC-3 and
+    // the stream is not: an AC-3 bed with Annex E dependents extending it goes
+    // down the access-unit path too, which reads the core natively.
+    if (*bsid > 8 || ac3::has_eac3_extension_substreams(stream)) {
         return run_decode_eac3(stream, out_path, meta, objects_dir);
     }
     if (!objects_dir.empty()) {

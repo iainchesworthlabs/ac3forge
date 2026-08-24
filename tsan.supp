@@ -1,0 +1,31 @@
+# ThreadSanitizer suppressions for the config-linux-llvm-tsan leg
+# (CMakePresets.json's test-linux-llvm-tsan preset points TSAN_OPTIONS at this
+# file; .github/workflows/_build.yml runs it).
+#
+# Deliberately near-empty, and to be kept that way. A suppression here hides a
+# real report, so each entry must name the library or symbol it silences and
+# say why that report is not this project's bug - the same discipline
+# .clang-tidy's NOLINT comments and cmake/Sanitizers.cmake's deliberate
+# omission of -fsanitize=integer already follow.
+#
+# The first run of this leg was clean: clang 21, `ctest -L concurrency`, 36
+# cases over tests/audio/ and tests/cli/test_cli_live.cpp, no reports. So
+# nothing below is suppressing anything today. The one entry that exists is
+# for third-party runtime code this project does not own and cannot fix, kept
+# as a documented landing spot rather than added reactively under time
+# pressure the first time a leg goes red.
+#
+# Format: one rule per line, <type>:<pattern> - see
+# https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
+#
+# NOT the place for a race in src/ or apps/. If this leg reports one of those,
+# the answer is a fix or a documented redesign, not a line here.
+
+# ALSA's own library state. libasound2 initialises global configuration lazily
+# and is not built with TSan instrumentation, so a report inside it is
+# uninstrumented-library noise rather than a finding about how this project
+# calls it. Only reached at all when a CI machine has a sound card - the
+# headless containers this leg runs on enumerate zero devices - which is
+# exactly the case that would otherwise turn the leg red on one runner and
+# green on another.
+called_from_lib:libasound.so

@@ -56,7 +56,18 @@ std::expected<WavData, WavError> parse_wav(const std::vector<char>& raw) {
     }
     const auto fmt_at = find_chunk(view, "fmt ");
     const auto data_at = find_chunk(view, "data");
-    if (fmt_at == std::string_view::npos || data_at == std::string_view::npos) {
+    // Both tags are found by searching the whole buffer, so either can sit
+    // arbitrarily close to the end - a 44-byte file whose last four bytes
+    // happen to read "fmt " passes the size check above and still has none
+    // of the fields below. Every read that follows is at a fixed offset from
+    // one of the two tags, so the two windows they need are checked once
+    // here: 24 bytes covers the fmt chunk through `bits` (a 16-byte PCM fmt
+    // chunk exactly), 8 covers the data chunk's tag and declared size. This
+    // is the same guard WavStreamReader::open already applies to the same
+    // field layout (wav_stream_reader.cpp); without it a hostile or merely
+    // truncated file indexes past the buffer.
+    if (fmt_at == std::string_view::npos || data_at == std::string_view::npos ||
+        fmt_at + 24 > raw.size() || data_at + 8 > raw.size()) {
         return std::unexpected(WavError::kNotRiffWave);
     }
 
@@ -65,9 +76,12 @@ std::expected<WavData, WavError> parse_wav(const std::vector<char>& raw) {
     const auto channel_count = read_u16(bytes, fmt_at + 10);
     const auto sample_rate = read_u32(bytes, fmt_at + 12);
     const auto bits = read_u16(bytes, fmt_at + 22);
-    if (format == 0xFFFE) {
+    if (format == 0xFFFE && fmt_at + 34 <= raw.size()) {
         // WAVE_FORMAT_EXTENSIBLE: the real tag is the first two bytes of the
-        // SubFormat GUID in the extension.
+        // SubFormat GUID in the extension. The extension is 10 bytes past the
+        // 24 checked above, and a file that claims the tag without carrying
+        // them keeps 0xFFFE - which no branch below accepts, so it falls out
+        // as kUnsupportedFormat rather than reading past the end.
         format = read_u16(bytes, fmt_at + 32);
     }
     const bool is_float = format == 3 && bits == 32;

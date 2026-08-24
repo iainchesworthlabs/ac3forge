@@ -136,47 +136,37 @@ std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte>
                           : std::expected<FrameHeader, ScanError>{h};
 }
 
-std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stream) {
-    ScannedStream out{.kind = StreamKind::kAc3, .substreams_per_unit = 1};
-    std::size_t offset = 0;
-    bool first = true;
-    while (offset < stream.size()) {
-        if (!sync_at(stream, offset)) {
-            return std::unexpected(ScanError::kLostSync);
-        }
-        const auto header = read_ac3_header(stream.subspan(offset));
-        if (!header) {
-            return std::unexpected(header.error());
-        }
-        if (offset + header->bytes > stream.size()) {
-            return std::unexpected(ScanError::kTruncated);
-        }
-        if (first) {
-            out.sample_rate = header->sample_rate;
-            out.acmod = header->acmod;
-            out.lfe = header->lfe;
-            out.channels = header->coded_channels();
-            out.bsid = header->bsid;
-            out.bsmod = header->bsmod;
-            out.bit_rate_code = header->bit_rate_code;
-            first = false;
-        }
-        out.access_units.push_back(stream.subspan(offset, header->bytes));
-        offset += header->bytes;
+// syncinfo (§5.4.1): fscod and frmsizecod share byte 4, and together index
+// Table 5.18 for the frame size.
+struct Ac3Syncinfo {
+    SampleRate sample_rate = SampleRate::k48000;
+    std::size_t bytes = 0;
+    // Table 5.18's frmsizecod high bits already index kBitratesKbps;
+    // AC3SpecificBox's bit_rate_code (ETSI TS 102 366 Annex F §F.4) is
+    // exactly that same index.
+    int bit_rate_code = 0;
+};
+
+std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byte> stream,
+                                                        std::size_t offset) {
+    if (offset + 5 > stream.size()) {
+        return std::unexpected(ScanError::kTruncated);
     }
-    // AC-3 has no substream layer at all, so the whole stream is one programme
-    // by construction. The single-entry list is what lets a caller walk
-    // `programmes` without first asking which generation it is holding.
-    out.programmes.push_back({.substreamid = 0,
-                              .acmod = out.acmod,
-                              .lfe = out.lfe,
-                              .channels = out.channels,
-                              .bsid = out.bsid,
-                              .bsmod = out.bsmod,
-                              .substreams_per_unit = 1,
-                              .oba_complexity_index = std::nullopt,
-                              .access_units = out.access_units});
-    return out;
+    const auto byte4 = std::to_integer<std::uint32_t>(stream[offset + 4]);
+    const auto fscod = byte4 >> 6;
+    const auto frmsizecod = byte4 & 0x3F;
+    if (fscod == 3 || frmsizecod > 37) {
+        return std::unexpected(ScanError::kReservedValue);
+    }
+    const auto rate = static_cast<SampleRate>(fscod);
+    const auto bytes =
+        frame_size_bytes(rate, kBitratesKbps[frmsizecod >> 1], (frmsizecod & 1) != 0);
+    if (!bytes) {
+        return std::unexpected(ScanError::kReservedValue);
+    }
+    return Ac3Syncinfo{.sample_rate = rate,
+                       .bytes = *bytes,
+                       .bit_rate_code = static_cast<int>(frmsizecod >> 1)};
 }
 
 // --- E-AC-3 ----------------------------------------------------------------
@@ -373,7 +363,8 @@ std::expected<FrameHeader, ScanError> read_eac3_header(std::span<const std::byte
 struct ProgrammeScan {
     ScannedProgramme summary{};
     // Table E2.5 locations unioned across the first access unit's substreams
-    // (§E3.8.2), which is what gives the RENDERED channel count.
+    // (§E3.8.2), which is what gives the RENDERED channel count and, for the
+    // lead programme, ScannedStream::channel_map.
     std::uint16_t locations = 0;
     // Substreams seen so far in the access unit currently open.
     std::size_t substreams = 0;
@@ -467,7 +458,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
             // A dependent ahead of any independent substream has no parent to
             // extend, so there is nothing to attribute it to - the same
             // constraint ac3::split_access_units enforces on the decode side.
-            return std::unexpected(ScanError::kOrphanDependent);
+            return std::unexpected(ScanError::kUnsupportedStructure);
         } else if (current->first_unit) {
             // §E3.8.2: a dependent's channels overwrite the bed's where they
             // correspond and extend the layout where they do not, so unioning
@@ -501,8 +492,13 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         return std::unexpected(ScanError::kEmpty);
     }
     out.programmes.reserve(programmes.size());
-    for (auto& p : programmes) {
+    std::uint16_t lead_locations = 0;
+    for (std::size_t i = 0; i < programmes.size(); ++i) {
+        auto& p = programmes[i];
         p.summary.channels = eac3::chanmap::channel_count(p.locations);
+        if (i == 0) {
+            lead_locations = p.locations;
+        }
         out.programmes.push_back(std::move(p.summary));
     }
     // The scalar summary describes the FIRST programme - see ScannedStream's
@@ -516,6 +512,147 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
     out.substreams_per_unit = lead.substreams_per_unit;
     out.oba_complexity_index = lead.oba_complexity_index;
     out.access_units = lead.access_units;
+    out.channel_map = lead_locations;
+    return out;
+}
+
+// --- AC-3, with or without Annex E extension substreams ---------------------
+
+// §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream, then
+// the AC-3 bit stream shall be processed as an independent substream assigned
+// substream ID 0." An AC-3 syncframe therefore opens an access unit exactly
+// the way an Annex E independent substream does, and the dependent substreams
+// that immediately follow it belong to it - StreamKind::kAc3CoreEac3Extension.
+//
+// One walk covers both that and plain AC-3, rather than committing to a kind
+// on the strength of the first frame and then refusing whatever contradicts
+// the guess. A stream where no dependent ever turns up is plain AC-3 and every
+// access unit is a lone syncframe, which is exactly what this produces.
+//
+// Always exactly one programme: §E2.3.1.2 gives this shape no Annex E
+// independent substream to number a second one from, so unlike scan_eac3
+// there is no grouping to do here - the single-entry `programmes` list is
+// only what lets a caller walk it without first asking which kind of stream
+// this is.
+std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> stream) {
+    ScannedStream out{.kind = StreamKind::kAc3};
+    std::size_t offset = 0;
+    std::size_t unit_start = 0;
+    std::size_t substreams = 0;
+    std::uint16_t locations = 0;
+    bool first_unit = true;
+
+    const auto close_unit = [&](std::size_t end) {
+        if (end > unit_start) {
+            out.access_units.push_back(stream.subspan(unit_start, end - unit_start));
+            if (first_unit) {
+                out.substreams_per_unit = substreams;
+                first_unit = false;
+            }
+        }
+    };
+
+    while (offset < stream.size()) {
+        if (!sync_at(stream, offset) || offset + 6 > stream.size()) {
+            return std::unexpected(ScanError::kLostSync);
+        }
+        BitReader probe{stream.subspan(offset)};
+        probe.skip(kBsidBitOffset);
+        const auto bsid = static_cast<int>(probe.read(5));
+
+        if (bsid <= kAc3MaxBsid) {
+            const auto info = read_ac3_syncinfo(stream, offset);
+            if (!info) {
+                return std::unexpected(info.error());
+            }
+            if (offset + info->bytes > stream.size()) {
+                return std::unexpected(ScanError::kTruncated);
+            }
+            close_unit(offset);
+            unit_start = offset;
+            substreams = 0;
+            if (out.access_units.empty()) {
+                // The lean read_ac3_syncinfo above is what every frame needs
+                // (a size, to step to the next one); the core's first frame
+                // additionally sets the stream-level fields, and for those
+                // read_ac3_header is the one parse that fills the whole
+                // public FrameHeader - the same one `ac3cli probe` reports.
+                const auto header = read_ac3_header(stream.subspan(offset));
+                if (!header) {
+                    return std::unexpected(header.error());
+                }
+                out.sample_rate = header->sample_rate;
+                out.acmod = header->acmod;
+                out.lfe = header->lfe;
+                out.bsid = header->bsid;
+                out.bsmod = header->bsmod;
+                out.bit_rate_code = header->bit_rate_code;
+                locations = bed_locations(header->acmod, header->lfe);
+            }
+            ++substreams;
+            offset += info->bytes;
+            continue;
+        }
+        if (bsid != eac3::kBsid) {
+            return std::unexpected(ScanError::kUnsupportedBsid);
+        }
+
+        // Annex E syntax inside an AC-3-led stream. §E2.3.1.2 gives substream
+        // ID 0 to the AC-3 frame, so the only thing that legitimately follows
+        // it here is one of ITS dependents. An Annex E independent substream
+        // would be a second programme (§E3.8.4's mixture), which is a
+        // different shape from the one this walk models - recognised and
+        // refused rather than folded into the core's access unit, where its
+        // channels would be unioned into a layout they have nothing to do
+        // with.
+        const auto sub = read_eac3_header(stream.subspan(offset));
+        if (!sub) {
+            return std::unexpected(sub.error());
+        }
+        if (sub->strmtyp != eac3::StreamType::kDependent) {
+            return std::unexpected(ScanError::kUnsupportedStructure);
+        }
+        if (substreams == 0) {
+            // A dependent with no core ahead of it to extend. Unreachable via
+            // scan() below, which only comes here when the first frame is
+            // AC-3, but the walk should not depend on its caller for that.
+            return std::unexpected(ScanError::kUnsupportedStructure);
+        }
+        if (offset + sub->bytes > stream.size()) {
+            return std::unexpected(ScanError::kTruncated);
+        }
+        out.kind = StreamKind::kAc3CoreEac3Extension;
+        if (first_unit) {
+            // §E3.8.2, exactly as scan_eac3 unions them: a dependent's
+            // channels overwrite the core's where they correspond and extend
+            // the layout where they do not.
+            locations = static_cast<std::uint16_t>(locations | sub->chanmap.value_or(0));
+        }
+        // TS 103 420 §8.3.1: the core cannot carry the object-audio marker
+        // (addbsi's object-audio use is Annex E only), so in this arrangement
+        // it is always a dependent that has it - see scan_eac3's own comment.
+        if (first_unit && sub->oba_complexity_index && !out.oba_complexity_index) {
+            out.oba_complexity_index = sub->oba_complexity_index;
+        }
+        ++substreams;
+        offset += sub->bytes;
+    }
+    close_unit(offset);
+    if (out.access_units.empty()) {
+        return std::unexpected(ScanError::kEmpty);
+    }
+    out.channels = eac3::chanmap::channel_count(locations);
+    out.channel_map = locations;
+    // Always one programme - see this function's own comment.
+    out.programmes.push_back({.substreamid = 0,
+                              .acmod = out.acmod,
+                              .lfe = out.lfe,
+                              .channels = out.channels,
+                              .bsid = out.bsid,
+                              .bsmod = out.bsmod,
+                              .substreams_per_unit = out.substreams_per_unit,
+                              .oba_complexity_index = out.oba_complexity_index,
+                              .access_units = out.access_units});
     return out;
 }
 
@@ -533,8 +670,8 @@ std::string_view describe(ScanError error) {
             return "reserved value in syncinfo";
         case ScanError::kTruncated:
             return "stream ends mid-frame";
-        case ScanError::kOrphanDependent:
-            return "dependent substream with no independent substream ahead of it";
+        case ScanError::kUnsupportedStructure:
+            return "substreams arranged in a way this reader does not model";
     }
     return "unknown error";
 }
@@ -574,7 +711,10 @@ std::expected<ScannedStream, ScanError> scan(std::span<const std::byte> stream) 
     probe.skip(kBsidBitOffset);
     const auto bsid = static_cast<int>(probe.read(5));
     if (bsid <= kAc3MaxBsid) {
-        return scan_ac3(stream);
+        // Plain AC-3 and §E2.3.1.2's legacy-core delivery are the same walk;
+        // which one this is falls out of whether any Annex E dependent
+        // actually turns up (scan_ac3_led).
+        return scan_ac3_led(stream);
     }
     if (bsid == eac3::kBsid) {
         return scan_eac3(stream);

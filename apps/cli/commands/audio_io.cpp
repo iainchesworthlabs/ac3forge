@@ -21,6 +21,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/mp4.hpp"
 
 namespace ac3cli::commands {
 
@@ -65,13 +66,17 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     fmt::println("");
     fmt::println("capture is bitstreaming {}, not PCM: recording the elementary stream",
                  eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
-    if (meta.matroska_container) {
-        // Said rather than silently ignored: container=mkv needs the frame
-        // boundaries write_frames_or_mux muxes on, and this path never has
-        // frames - it has a byte stream nothing here re-parsed. 'mkv' turns
-        // the result into Matroska in one further step.
-        fmt::println("container=mkv does not apply to a passthrough capture: writing the bare");
-        fmt::println("elementary stream, which 'ac3cli mkv' will wrap if you want a container.");
+    if (meta.container != RecordContainer::kRaw) {
+        // Said rather than silently ignored: both container=mkv and
+        // container=fmp4 need the frame boundaries write_frames_or_mux/
+        // Fmp4SessionWriter work from, and this path never has them - it has
+        // a byte stream nothing here re-parsed. 'mkv'/'fmp4' turn the result
+        // into a container in one further step.
+        const char* name = meta.container == RecordContainer::kMatroska ? "mkv" : "fmp4";
+        fmt::println("container={} does not apply to a passthrough capture: writing the bare",
+                     name);
+        fmt::println("elementary stream, which 'ac3cli {}' will wrap if you want a container.",
+                     name);
     }
 
     EncodedStreamSink sink;
@@ -304,11 +309,40 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                                      .sample_rate = capture.sample_rate(),
                                      .channels = 2,
                                      .samples_per_frame = ac3::kSamplesPerFrame};
-    if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
+    if (meta.container == RecordContainer::kFmp4) {
+        // A directory of CMAF segments and manifests rather than one file -
+        // pushed through the same incremental writer 'live' uses, one frame
+        // at a time, so the two commands leave identical directories for the
+        // same take (see Fmp4SessionWriter).
+        Fmp4SessionWriter fmp4;
+        auto problem = fmp4.open(out_path, mp4::FragmentOptions{}.frames_per_fragment,
+                                 meta.fmp4_window_segments);
+        for (const auto& frame : frames) {
+            if (!problem.empty()) {
+                break;
+            }
+            problem = fmp4.push(frame);
+        }
+        if (problem.empty()) {
+            problem = fmp4.close();
+        }
+        if (!problem.empty()) {
+            fmt::println(stderr, "error: {}", problem);
+            return 1;
+        }
+        fmt::println("wrote {} frames ({} kbps) to {} ({} fMP4/CMAF segments)", frames.size(),
+                     bitrate, out_path, fmp4.segments());
+        fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
+                     stats.frames_silence_filled, stats.frames_dropped);
+        print_channel_summary(meter);
+        return 0;
+    }
+    if (!write_frames_or_mux(out_path, meta.container == RecordContainer::kMatroska, track,
+                             frames)) {
         return 1;
     }
     fmt::println("wrote {} frames ({} kbps) to {}{}", frames.size(), bitrate, out_path,
-                 meta.matroska_container ? " (Matroska)" : "");
+                 meta.container == RecordContainer::kMatroska ? " (Matroska)" : "");
     fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
     print_channel_summary(meter);

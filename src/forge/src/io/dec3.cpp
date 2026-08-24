@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/format.h>
+#include <string>
 #include <vector>
 
 #include "ac3/core/bitwriter.hpp"
@@ -31,6 +33,18 @@ namespace {
 
 std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     BitWriter w;
+
+    // §E2.3.1.2's legacy core has no codec-config box defined for it. An
+    // AC3SpecificBox describes one AC-3 syncframe and has no field that can
+    // mention the Annex E dependents at all; an EC3SpecificBox's bsid field
+    // would have to claim the independent substream is Annex E syntax when it
+    // is an AC-3 frame. Neither is a description of what is in mdat, and
+    // guessing one produces a file whose header contradicts its payload -
+    // so this returns nothing and leaves the muxer to refuse the stream
+    // (apps/cli/commands/containers.cpp does, before ever reaching here).
+    if (stream.kind == StreamKind::kAc3CoreEac3Extension) {
+        return {};
+    }
 
     if (stream.kind == StreamKind::kAc3) {
         // ETSI TS 102 366 Annex F §F.4 AC3SpecificBox: fscod(2) + bsid(5) +
@@ -147,6 +161,13 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
         w.put(0, 1);  // flag_ec3_extension_type_a
     }
     return w.take();
+}
+
+std::string dash_channel_configuration(const ScannedStream& stream) {
+    // Four upper-case hex digits of ScannedStream::channel_map, zero-padded -
+    // see this function's own comment in ac3/io/dec3.hpp for the scheme and
+    // the citation.
+    return fmt::format("{:04X}", stream.channel_map);
 }
 
 }  // namespace ac3::io

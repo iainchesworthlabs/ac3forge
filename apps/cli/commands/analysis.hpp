@@ -13,13 +13,16 @@
 // Split out of main.cpp as part of the repo-structure review's H4 monolith split.
 namespace ac3cli::commands {
 
+// `rendered_layout` is layout=bed (false, the default) or layout=rendered
+// (true) - see Options::qc_rendered_layout.
+//
 // `want_programme` is the §E2.3.1.2 substreamid of the independent substream
 // whose programme to measure - std::nullopt takes the first the stream
 // carries, which for a single-programme stream (all of them, before a second
 // independent substream is authored in) is the only one there is. Ignored for
 // AC-3, which has no substream layer.
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           std::optional<int> want_programme = std::nullopt);
+           bool rendered_layout, std::optional<int> want_programme = std::nullopt);
 int run_levels(std::string_view in_path, std::optional<int> want_programme = std::nullopt);
 int run_loudness(std::string_view in_path);
 int run_spdif(std::string_view in_path, std::string_view out_path);
