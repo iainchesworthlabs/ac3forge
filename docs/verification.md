@@ -186,6 +186,33 @@ own reference implementation does not support it. So the coded audio is verified
 project's own encoder/decoder round trip and the independent Python parser
 (`tools/references/eac3_parse.py`).
 
+**Containers and manifests are checked externally where a reader exists, and only there.**
+`mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
+(`ffmpeg -v error -xerror -err_detect crccheck+bitstream+buffer+explode`) over the init segment
+concatenated with every media segment, and both the HLS media playlist and the DASH MPD read back
+through FFmpeg's own `hls` and `dash` demuxers at the exact original access-unit count —
+confirmed on a session written segment-by-segment by the streaming writer, not only on the batch
+form. The `ceao` compatibility brand is present in the `ftyp` and every `styp` of an
+object-audio track and does not disturb that decode.
+
+What has **not** been checked against anything external is the *meaning* of the DASH signalling.
+`EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` and the Dolby
+`audio_channel_configuration:2011` `@value` are transcribed from ETSI TS 103 420 clause D.2 and
+TS 102 366 clause I.1.2.1 (via DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3) and asserted against those
+clause texts in `tests/containers/test_fmp4.cpp`, including the element order ISO/IEC 23009-1's
+`RepresentationBaseType` sequence requires — but FFmpeg's DASH demuxer ignores supplemental
+descriptors entirely, so it confirms only that the manifest still parses and plays, not that a
+JOC-aware player would read the right complexity index from it. No MPD schema validator and no
+real DASH player has been run against these manifests. The same gap applies to the HLS
+`CHANNELS="<N>/JOC"` attribute, which predates this work.
+
+The incremental writers are held to a stronger in-repo standard instead: `mp4::FragmentWriter`'s
+media segments are asserted byte-identical to `mp4::fragment`'s over the same frames, and its
+initialization segment byte-identical once the three duration fields a live session cannot know
+are patched back — the same equality contract `mpegts::Writer` has against `mpegts::mux`. That
+makes the batch form's own external validation carry over to the streamed one by construction
+rather than by re-measuring it.
+
 **`compr` in E-AC-3 has no external oracle.** FFmpeg's Annex E header parser reads `compre` and
 then skips the word, so `-heavy_compr` changes nothing on an E-AC-3 stream however good the
 metadata is. It is covered bit-by-bit instead

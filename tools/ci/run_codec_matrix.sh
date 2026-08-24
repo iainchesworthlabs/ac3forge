@@ -402,6 +402,19 @@ else
 fi
 
 # --- Reporting / container passes over a representative subset -------------
+# probe (roadmap IO1): the table form, the JSON contract, and both detail
+# levels - over an AC-3 stream, a plain E-AC-3 one and an Atmos one so its
+# object-layer/EMDF fields see a real OAMD+JOC container at least once. Its
+# own exit code is non-zero on a CRC or parse failure (see the command's own
+# doc comment), which every stream reaching this point in the script does not
+# have, so a plain `run` (which trusts a clean 0) is the right check here -
+# the same trust every other call in this section already places in a clean
+# decode/measure.
+run probe bootstrap_51.ac3
+run probe bootstrap_51.ac3 json=1
+run probe eac3enc_none.ec3
+run probe eac3enc_none.ec3 json=1 detail=frames
+run probe atmos_4.ec3 json=1 detail=blocks
 run levels bootstrap_51.wav
 run levels enc_stereo.ac3
 run levels eac3enc_none.ec3
@@ -421,6 +434,41 @@ count=$((count + 1))
 echo "[$count] qc bootstrap_51.ac3 preset=all (verdict not asserted - see comment above)"
 "$CLI" qc bootstrap_51.ac3 preset=all >/dev/null || true
 run spdif ac3_stereo.ac3 spdif_out.wav
+# unspdif closes the loop the wrap side never had, and does it against an
+# oracle rather than only against ourselves. Three legs:
+#
+#   1. our own bursts back to our own stream, byte for byte
+#   2. FFmpeg's spdif MUXER's bursts back to the same stream, byte for byte -
+#      the independent half. If our Pd, our word order or our burst period
+#      disagreed with FFmpeg's, this is where it would show, and no amount of
+#      being self-consistent would hide it.
+#   3. the same for E-AC-3, whose burst period (24576, the 4x carrier) and Pd
+#      unit (bytes, not bits) are both different from AC-3's - one passing
+#      says nothing about the other.
+#
+# `cmp -s` and not a decode check: a lossy round trip could pass a decode
+# while dropping or reordering a frame, and the whole claim here is that
+# nothing is re-encoded at all.
+run unspdif spdif_out.wav unspdif_ours.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ours.ac3 == ac3_stereo.ac3 (our own wrap round-trips byte-exactly)"
+cmp -s unspdif_ours.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (AC-3): FFmpeg's own burst muxer as the unwrap oracle"
+ffmpeg -hide_banner -loglevel error -y -f ac3 -i ac3_stereo.ac3 -c copy -f spdif ffmpeg_spdif.ac3.raw
+run unspdif ffmpeg_spdif.ac3.raw unspdif_ffmpeg.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ac3 == ac3_stereo.ac3 (FFmpeg's bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (E-AC-3): 4x carrier, 24576-byte period, Pd in bytes"
+ffmpeg -hide_banner -loglevel error -y -f eac3 -i eac3enc_none.ec3 -c copy -f spdif ffmpeg_spdif.ec3.raw
+run unspdif ffmpeg_spdif.ec3.raw unspdif_ffmpeg.ec3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ec3 == eac3enc_none.ec3 (FFmpeg's E-AC-3 bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ec3 eac3enc_none.ec3
 run mkv enc_51.ac3 enc_51.mkv
 run mkv eac3enc_none.ec3 eac3enc_none.mkv
 run mkv atmos_4.ec3 atmos_4.mkv
