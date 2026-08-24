@@ -151,7 +151,8 @@ cmd_run() {
         # fuzz_differential_ac3_decode is a different class of finding from
         # a crash found by fuzz_ac3_decode, and minimizes into its own
         # fuzz/regressions/fuzz_differential_ac3_decode/ directory.
-        local seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
+        local seeds
+        seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
         local regressions="$REPO_ROOT/fuzz/regressions/$target"
         local extra_corpora=()
         [ -d "$seeds" ] && extra_corpora+=("$seeds")
@@ -188,7 +189,8 @@ cmd_regress() {
     configure_and_build
     local status=0
     for target in "${requested[@]}"; do
-        local seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
+        local seeds
+        seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
         local regressions="$REPO_ROOT/fuzz/regressions/$target"
         local inputs=()
         [ -d "$seeds" ] && inputs+=("$seeds")

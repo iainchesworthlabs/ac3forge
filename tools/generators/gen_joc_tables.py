@@ -18,6 +18,7 @@ equality sum(2^-len) == 1, which holds only for a complete prefix code.
 Run from the repo root:  python tools/generators/gen_joc_tables.py
 """
 
+import itertools
 import re
 from pathlib import Path
 
@@ -118,7 +119,7 @@ def parse_band_mapping():
         row = mapping[idx]
         assert set(row) == set(range(bands)), \
             f"joc_num_bands {bands}: mapping reaches {sorted(set(row))}"
-        assert all(a <= b for a, b in zip(row, row[1:])), \
+        assert all(a <= b for a, b in itertools.pairwise(row)), \
             f"joc_num_bands {bands}: mapping is not monotonic in subband"
     return mapping
 

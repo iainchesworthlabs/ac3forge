@@ -27,6 +27,35 @@ ruleset) for `main` with:
 - **Block force pushes**
 - **Restrict deletions**
 
+### What the 2026-08 CI additions did and did not change here
+
+Nothing in the `VX14`-`VX17` batch (script lint, the `apps/cli` coverage floor,
+the ThreadSanitizer leg, the PR-time performance comparison) **requires** a
+ruleset edit, and the list above is deliberately unchanged:
+
+- `Script Lint` (`ci.yml`) is in `CI Status`'s `needs` list, so it already
+  gates through the required check that exists. Selecting it as a required
+  check in its own right is optional - it would only make a lint failure name
+  itself in the merge box rather than showing up as `CI Status` failing.
+- `Linux LLVM TSan` is a `_build.yml` matrix leg, and `CI Status` covers the
+  whole matrix by design - that is what the parenthetical above means.
+- `Performance vs merge base` (`ci.yml`) must NOT be made required. It is
+  informational, carries `continue-on-error`, and is deliberately absent from
+  `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise
+  into a merge blocker.
+- `codeql.yml` became a language matrix, but its C++ leg is still named
+  `Analyze (C++)` exactly - the job's `name:` interpolates a `display` value
+  chosen for that reason, since a rename would leave the required check above
+  pending forever. The two new legs report as `Analyze (Python)` and
+  `Analyze (JavaScript)`; adding them as required checks is optional, and
+  matches how the existing CodeQL leg is treated.
+- `Python coverage` (`wheels.yml`) is a new check on a workflow that has no
+  required checks today; leaving it that way is consistent with `Build wheels`.
+
+Ruleset edits are the repository admin's, not a pull request's. If any of the
+optional checks above are wanted as required ones, add them by their exact
+names as rendered here.
+
 `develop` is where `feature/*`/`bugfix/*` work actually lands and where
 Dependabot opens its PRs (`.github/dependabot.yml` targets `develop`, not
 `main`), so give it the same rule with the same required checks - that's

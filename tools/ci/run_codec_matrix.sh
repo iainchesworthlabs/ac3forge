@@ -488,12 +488,15 @@ run mp4 atmos_4.ec3 atmos_4.mp4
 run fmp4 enc_51.ac3 fmp4_51 4
 run fmp4 eac3enc_none.ec3 fmp4_eac3 4
 run fmp4 atmos_4.ec3 fmp4_atmos 4
-# ls -v (natural/version sort) matters here, not a plain glob: a plain
-# 'segment*.m4s' glob sorts lexicographically ("segment10.m4s" before
-# "segment2.m4s"), which would concatenate fragments out of sequence order -
-# every moof's mfhd sequence_number/tfdt needs to stay monotonic for a real
-# decoder to accept the result.
-cat fmp4_atmos/init.mp4 $(ls -v fmp4_atmos/segment*.m4s) > fmp4_atmos_combined.mp4
+# Version sort matters here, not a plain glob: a plain 'segment*.m4s' glob
+# sorts lexicographically ("segment10.m4s" before "segment2.m4s"), which would
+# concatenate fragments out of sequence order - every moof's mfhd
+# sequence_number/tfdt needs to stay monotonic for a real decoder to accept
+# the result. `sort -V` over the glob rather than `ls -v`, so the file list
+# reaches cat as a properly quoted array instead of an unquoted, word-split
+# command substitution; the GNU-coreutils dependency is the same either way.
+mapfile -t fmp4_segments < <(printf '%s\n' fmp4_atmos/segment*.m4s | sort -V)
+cat fmp4_atmos/init.mp4 "${fmp4_segments[@]}" > fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
