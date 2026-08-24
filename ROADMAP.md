@@ -5,7 +5,7 @@ Ideas under consideration — a candidate list, not a commitment.
 Each item carries a stable ID so pull requests and discussions can reference it: two letters for
 the theme plus a number (`EQ1`, `IO4`). The single-letter IDs of the 2026-08-15 roadmap
 (`A1`–`G4`) are retired and listed at the end so older references still resolve. An item is
-checked off when the work is merged to `develop`; partial progress is noted inline rather than
+checked off when the work is merged to `main`; partial progress is noted inline rather than
 half-checked. Sizes are rough guesses: **S** (an afternoon), **M** (a day or two), **L** (a
 focused week), **XL** (several PRs).
 

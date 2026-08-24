@@ -2,7 +2,7 @@
 
 The commit-level half of the external-encoder landscape comparison — see
 [Landscape](landscape.md) for the release-facing headline number. Every push
-to `develop` or `main` encodes the same three fixed legs
+to `main` encodes the same three fixed legs
 [`tools/generators/gen_external_baseline.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/gen_external_baseline.py)
 measures FFmpeg's and Dolby DEE's encoders against, scores this build's own
 output through `ac3cli`'s own decoder (no FFmpeg, no DEE, at CI time — see
@@ -514,7 +514,7 @@ the column was never populated. Rows from that point on carry real numbers.
     const allRecords = [];
     TRACKS.forEach((t, i) => allRecords.push(...results[i]));
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="tool-trend-status">No tool-comparison history yet - it is written by CI on the first push to develop or main after this page landed.</p>';
+      root.innerHTML = '<p class="tool-trend-status">No tool-comparison history yet - it is written by CI on the first push to main after this page landed.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -562,4 +562,4 @@ Same mechanism as [Quality trend](quality-trend.md#where-the-data-lives): a
 dedicated `quality-history` branch, `external-comparison-<branch>.jsonl`
 this time, written by a job in `ci.yml` (`persist-external-comparison-trend`)
 downstream of `ffmpeg-validate`'s compute-only `trend` step, on direct
-pushes to `develop`/`main` only.
+pushes to `main` only.

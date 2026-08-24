@@ -40,7 +40,7 @@ name: CodeQL
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -50,7 +50,7 @@ on:
       - "requirements/requirements-docs.txt"
       - ".github/workflows/docs.yml"
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -62,12 +62,12 @@ on:
   schedule:
     # Weekly scan catches new CodeQL query packs even without code changes.
     - cron: "17 3 * * 1"
-  # develop's merge queue (see .github/branch-protection.md) needs "Analyze
+  # main's merge queue (see .github/branch-protection.md) needs "Analyze
   # (C++)" to actually report on its temporary gh-readonly-queue/... ref -
   # see ci.yml's own merge_group comment for why the trigger alone is
   # sufficient here (no pull_request-only context is read below).
   merge_group:
-    branches: [ develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -88,7 +88,7 @@ jobs:
   # `display`, not `language`, in the job name - and "C++" spelled exactly as it
   # was before this became a matrix. The check name a branch-protection ruleset
   # selects is this rendered string, and .github/branch-protection.md requires
-  # "Analyze (C++)" on both main and develop: renaming it to "Analyze (cpp)"
+  # "Analyze (C++)" on main: renaming it to "Analyze (cpp)"
   # would leave that required check permanently pending on every PR until an
   # admin edited the ruleset. Adding legs is free; renaming one is not.
   analyze:

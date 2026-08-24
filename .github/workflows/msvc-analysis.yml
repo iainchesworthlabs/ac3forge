@@ -10,7 +10,7 @@ name: MSVC Code Analysis
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -20,7 +20,7 @@ on:
       - "requirements/requirements-docs.txt"
       - ".github/workflows/docs.yml"
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
