@@ -154,6 +154,20 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   of a hand-rolled one; `ac3::signing` and the object-strip share one syncframe walk.
 - **ROADMAP.md rebuilt** for the post-0.9.0 state — see the roadmap file itself for the new
   two-letter ID scheme and what's next.
+- **Repo moved to trunk-based development.** `develop` is retired (left in place, frozen, not
+  deleted); `main` is now the single long-lived branch, and every topic branch (`feature/*`,
+  `bugfix/*` — the `release`/`hotfix`/`support` types are gone, since there is no separate
+  release-branch flow to name them for) merges straight into it. This removes the
+  `develop`→`main` promotion PR and the `main`→`develop` sync-back PR entirely — real overhead
+  the 2026-08-24 concurrent-PR push paid repeatedly. Branch protection (required checks, the
+  `code_scanning` gate, the `merge_queue`) moved from `develop` to `main` with the same
+  parameters; `.github/dependabot.yml` now targets `main`. See
+  [.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
+  and [CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#branches-and-pull-requests).
+  The `quality-history`/`performance-trend`/`object-quality-trend`/`tool-comparison-trend` pages'
+  two-track `develop`/`main` chart display is unchanged for now — historical `develop` data stays
+  visible, new data is `main`-only going forward; reworking those pages for a single-track future
+  is deliberately left as a separate follow-up rather than rushed into this change.
 
 ### Fixed
 

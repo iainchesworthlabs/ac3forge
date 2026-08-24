@@ -1,6 +1,6 @@
 # Object quality trend
 
-Per-object reconstruction quality, by commit. Every push to `develop` or
+Per-object reconstruction quality, by commit. Every push to
 `main` encodes one fixed five-object Atmos scene with this build's
 `atmos-encode`, decodes it back to per-object WAVs with this build's
 `decode`, and scores each recovered object against the source channel it was
@@ -496,7 +496,7 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
     const allRecords = [];
     TRACKS.forEach((t, i) => allRecords.push(...results[i]));
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="object-trend-status">No object-quality history yet - it is written by CI on the first push to develop or main after this page landed.</p>';
+      root.innerHTML = '<p class="object-trend-status">No object-quality history yet - it is written by CI on the first push to main after this page landed.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -563,7 +563,7 @@ Same `quality-history` branch mechanism as
 [Quality trend](quality-trend.md#where-the-data-lives) and its siblings —
 `object-quality-<branch>.jsonl` this time, written by a job in `ci.yml`
 (`persist-object-quality-trend`) downstream of `ffmpeg-validate`'s
-compute-only `objects` step, on direct pushes to `develop`/`main` only.
+compute-only `objects` step, on direct pushes to `main` only.
 
 Reproduce any row locally, after building `ac3cli`:
 

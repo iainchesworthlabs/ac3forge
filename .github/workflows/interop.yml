@@ -36,7 +36,7 @@ on:
     # workflows do not contend for the same runner-queue instant.
     - cron: '43 4 * * *'
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths:
       - 'tools/checks/verify_fate_interop.py'
       - 'tools/checks/compare_wav.py'

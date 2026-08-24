@@ -81,8 +81,8 @@ What runs against it, continuously:
   built with ASan + UBSan and `-fno-sanitize-recover=all`. Four drive the decode and parse entry
   points for crashes and undefined behaviour; two more decode the same mutated bytes with FFmpeg
   as well and diff the PCM, so a *wrong* decode that does not crash is caught too. `Fuzz Regress`
-  replays the checked-in seed and regression corpora on every push to `develop`/`main` and every
-  pull request into them; `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on
+  replays the checked-in seed and regression corpora on every push to `main` and every
+  pull request into it; `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on
   pushes, and a nightly job goes deeper.
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
