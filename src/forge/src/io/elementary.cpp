@@ -66,17 +66,43 @@ constexpr int kBsidBitOffset = 40;
 
 // --- AC-3 ------------------------------------------------------------------
 
-// Walk bsi far enough to reach lfeon, whose position depends on which of
-// cmixlev, surmixlev and dsurmod acmod brought with it (§5.4.2). bsid/bsmod
-// are captured, not skipped: build_codec_config_box() (ac3/io/dec3.hpp) needs
-// both to fill in AC3SpecificBox's own bsid/bsmod fields (ETSI TS 102 366
-// Annex F §F.4).
-std::expected<void, ScanError> read_ac3_bsi(BitReader& r, int& bsid, int& bsmod, Acmod& acmod,
-                                            bool& lfe) {
-    bsid = static_cast<int>(r.read(5));
-    bsmod = static_cast<int>(r.read(3));
+// syncinfo (§5.4.1) plus the whole of bsi (Table 5.2) up to and including
+// Ch2's dual-mono metadata - everything FrameHeader reports for an AC-3
+// frame, and no further: the timecode and addbsi fields past it say nothing
+// this reader surfaces, and AC-3 has no counterpart to Annex E's object-audio
+// addbsi marker (TS 103 420 §8.3.1 is E-AC-3 only).
+//
+// bsid/bsmod are captured rather than skipped because two separate consumers
+// need them off the wire: build_codec_config_box() (ac3/io/dec3.hpp) fills in
+// AC3SpecificBox's own bsid/bsmod fields from them (ETSI TS 102 366 Annex F
+// §F.4), and `ac3cli probe` reports them directly.
+std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte> at) {
+    if (at.size() < 5) {
+        return std::unexpected(ScanError::kTruncated);
+    }
+    FrameHeader h{.kind = StreamKind::kAc3};
+    BitReader r{at};
+    r.skip(16 + 16);  // syncword, crc1
+    const auto fscod = r.read(2);
+    const auto frmsizecod = r.read(6);
+    if (fscod == 3 || frmsizecod > 37) {
+        return std::unexpected(ScanError::kReservedValue);
+    }
+    h.sample_rate = static_cast<SampleRate>(fscod);
+    // Table 5.18: frmsizecod's high bits already index kBitratesKbps, which is
+    // exactly what AC3SpecificBox's bit_rate_code reports.
+    h.bit_rate_code = static_cast<int>(frmsizecod >> 1);
+    h.bitrate_kbps = kBitratesKbps[frmsizecod >> 1];
+    const auto bytes = frame_size_bytes(h.sample_rate, h.bitrate_kbps, (frmsizecod & 1) != 0);
+    if (!bytes) {
+        return std::unexpected(ScanError::kReservedValue);
+    }
+    h.bytes = *bytes;
+
+    h.bsid = static_cast<int>(r.read(5));
+    h.bsmod = static_cast<int>(r.read(3));
     const auto raw = r.read(3);
-    acmod = static_cast<Acmod>(raw);
+    h.acmod = static_cast<Acmod>(raw);
     if ((raw & 0x1) && raw != 0x1) {
         r.skip(2);  // cmixlev
     }
@@ -86,9 +112,25 @@ std::expected<void, ScanError> read_ac3_bsi(BitReader& r, int& bsid, int& bsmod,
     if (raw == 0x2) {
         r.skip(2);  // dsurmod
     }
-    lfe = r.read(1) != 0;
+    h.lfe = r.read(1) != 0;
+    h.dialnorm = static_cast<int>(r.read(5));
+    if (r.read(1) != 0) {  // compre (§5.4.2.9)
+        h.compr = static_cast<std::uint8_t>(r.read(8));
+    }
+    if (r.read(1) != 0) {
+        r.skip(8);  // langcode -> langcod
+    }
+    if (r.read(1) != 0) {
+        r.skip(5 + 2);  // audprodie -> mixlevel, roomtyp
+    }
+    if (h.acmod == Acmod::kDualMono) {
+        h.dialnorm2 = static_cast<int>(r.read(5));
+        if (r.read(1) != 0) {  // compr2e
+            h.compr2 = static_cast<std::uint8_t>(r.read(8));
+        }
+    }
     return r.overflowed() ? std::unexpected(ScanError::kTruncated)
-                          : std::expected<void, ScanError>{};
+                          : std::expected<FrameHeader, ScanError>{h};
 }
 
 std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stream) {
@@ -96,85 +138,52 @@ std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stre
     std::size_t offset = 0;
     bool first = true;
     while (offset < stream.size()) {
-        if (!sync_at(stream, offset) || offset + 5 > stream.size()) {
+        if (!sync_at(stream, offset)) {
             return std::unexpected(ScanError::kLostSync);
         }
-        // syncinfo: fscod and frmsizecod share byte 4, and together index
-        // Table 5.18 for the frame size.
-        const auto byte4 = std::to_integer<std::uint32_t>(stream[offset + 4]);
-        const auto fscod = byte4 >> 6;
-        const auto frmsizecod = byte4 & 0x3F;
-        if (fscod == 3 || frmsizecod > 37) {
-            return std::unexpected(ScanError::kReservedValue);
+        const auto header = read_ac3_header(stream.subspan(offset));
+        if (!header) {
+            return std::unexpected(header.error());
         }
-        const auto rate = static_cast<SampleRate>(fscod);
-        const auto bytes =
-            frame_size_bytes(rate, kBitratesKbps[frmsizecod >> 1], (frmsizecod & 1) != 0);
-        if (!bytes || offset + *bytes > stream.size()) {
+        if (offset + header->bytes > stream.size()) {
             return std::unexpected(ScanError::kTruncated);
         }
         if (first) {
-            BitReader r{stream.subspan(offset)};
-            r.skip(kBsidBitOffset);
-            int bsid = 0;
-            int bsmod = 0;
-            Acmod acmod = Acmod::k2_0;
-            bool lfe = false;
-            if (const auto ok = read_ac3_bsi(r, bsid, bsmod, acmod, lfe); !ok) {
-                return std::unexpected(ok.error());
-            }
-            out.sample_rate = rate;
-            out.acmod = acmod;
-            out.lfe = lfe;
-            out.channels = fullbw_channel_count(acmod) + (lfe ? 1 : 0);
-            out.bsid = bsid;
-            out.bsmod = bsmod;
-            // Table 5.18: frmsizecod's high bits already index kBitratesKbps
-            // above; AC3SpecificBox's bit_rate_code (ETSI TS 102 366 Annex F
-            // §F.4) is exactly that same index.
-            out.bit_rate_code = static_cast<int>(frmsizecod >> 1);
+            out.sample_rate = header->sample_rate;
+            out.acmod = header->acmod;
+            out.lfe = header->lfe;
+            out.channels = header->coded_channels();
+            out.channel_map = bed_locations(header->acmod, header->lfe);
+            out.bsid = header->bsid;
+            out.bsmod = header->bsmod;
+            out.bit_rate_code = header->bit_rate_code;
             first = false;
         }
-        out.access_units.push_back(stream.subspan(offset, *bytes));
+        out.access_units.push_back(stream.subspan(offset, header->bytes));
         // §5.3.1: an AC-3 syncframe is always six blocks of 256 samples.
         // There is no numblkscod to read - that is Annex E's addition.
         out.access_unit_samples.push_back(
             static_cast<std::uint32_t>(kBlocksPerFrame * kSamplesPerBlock));
-        offset += *bytes;
+        offset += header->bytes;
     }
     return out;
 }
 
 // --- E-AC-3 ----------------------------------------------------------------
 
-struct Substream {
-    int strmtyp = 0;
-    std::size_t bytes = 0;
-    SampleRate sample_rate = SampleRate::k48000;
-    // 0x3 doubles as "fscod2 was used" (always six blocks), matching
-    // decoder/eac3_decoder.cpp's Bsi::numblkscod convention - every
-    // downstream "is this the always-six-blocks case?" check keeps working
-    // unmodified for a value nothing ever actually transmits as 0x3 outright.
-    int numblkscod = 3;
-    int bsid = 0;
-    int bsmod = 0;  // 0 (not indicated) unless infomdate carried one
-    Acmod acmod = Acmod::k2_0;
-    bool lfe = false;
-    std::uint16_t chanmap = 0;  // 0 when chanmape was clear
-    // TS 103 420 §8.3.1/§8.3.2.2, out of THIS substream's own addbsi.
-    bool oba_extension = false;
-    int oba_complexity_index = 0;
-};
-
+// Table E1.2's fields land straight in the public FrameHeader (see
+// elementary.hpp) rather than in a scan-private struct: `ac3cli probe` reports
+// every one of them per frame, and scan() below keeps only the first access
+// unit's - two consumers of one walk, not two walks.
 // Table E1.2's mixing-metadata payload, walked (not interpreted) purely to
 // reach addbsi at the right bit offset - every field here mirrors
 // decoder/eac3_decoder.cpp's function of the same name field for field
 // (including its comments), which is deliberate: this file re-derives bsi
 // independently rather than reusing decoder internals, the same way
-// read_eac3_substream above already re-derives everything up through
+// read_eac3_header above already re-derives everything up through
 // chanmap on its own. A scan is a much smaller job than a decode and has no
 // business depending on the decoder's private Bsi/parse_bsi.
-void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
+void skip_mixing_metadata(BitReader& r, const FrameHeader& s, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     if (acmod > 0x2) {
         r.skip(2);  // dmixmod
@@ -188,7 +197,7 @@ void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
     if (s.lfe && r.read(1) != 0) {
         r.skip(5);  // lfemixlevcod
     }
-    if (s.strmtyp != static_cast<int>(eac3::StreamType::kDependent)) {
+    if (s.strmtyp != eac3::StreamType::kDependent) {
         if (r.read(1) != 0) r.skip(6);  // pgmscl
         if (acmod == 0x0 && r.read(1) != 0) r.skip(6);  // pgmscl2
         if (r.read(1) != 0) r.skip(6);  // extpgmscl
@@ -222,8 +231,8 @@ void skip_mixing_metadata(BitReader& r, const Substream& s, int nblks) {
 }
 
 // Table E1.2's informational-metadata payload: bsmod and the production
-// notes. bsmod is READ here (not skipped) - see Substream::bsmod above.
-void skip_informational_metadata(BitReader& r, Substream& s) {
+// notes. bsmod is READ here (not skipped) - see FrameHeader::bsmod.
+void skip_informational_metadata(BitReader& r, FrameHeader& s) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     s.bsmod = static_cast<int>(r.read(3));
     r.skip(1 + 1);  // copyrightb, origbs
@@ -242,12 +251,19 @@ void skip_informational_metadata(BitReader& r, Substream& s) {
     }
 }
 
-std::expected<Substream, ScanError> read_eac3_substream(std::span<const std::byte> at) {
+std::expected<FrameHeader, ScanError> read_eac3_header(std::span<const std::byte> at) {
+    if (at.size() < 6) {
+        return std::unexpected(ScanError::kTruncated);
+    }
     BitReader r{at};
     r.skip(16);  // syncword
-    Substream s;
-    s.strmtyp = static_cast<int>(r.read(2));
-    r.skip(3);  // substreamid
+    FrameHeader s{.kind = StreamKind::kEac3};
+    const auto strmtyp = r.read(2);
+    if (strmtyp == static_cast<std::uint32_t>(eac3::StreamType::kReserved)) {
+        return std::unexpected(ScanError::kReservedValue);
+    }
+    s.strmtyp = static_cast<eac3::StreamType>(strmtyp);
+    s.substreamid = static_cast<int>(r.read(3));
     s.bytes = (static_cast<std::size_t>(r.read(11)) + 1) * 2;
     const auto fscod = r.read(2);
     if (fscod == 0x3) {
@@ -261,6 +277,7 @@ std::expected<Substream, ScanError> read_eac3_substream(std::span<const std::byt
         }
         s.sample_rate = *rate;
         s.numblkscod = 0x3;
+        s.reduced_rate = true;
     } else {
         s.sample_rate = static_cast<SampleRate>(fscod);
         s.numblkscod = static_cast<int>(r.read(2));
@@ -269,17 +286,25 @@ std::expected<Substream, ScanError> read_eac3_substream(std::span<const std::byt
     s.acmod = static_cast<Acmod>(acmod);
     s.lfe = r.read(1) != 0;
     s.bsid = static_cast<int>(r.read(5));
-    r.skip(5);  // dialnorm
+    s.dialnorm = static_cast<int>(r.read(5));
+    // §E3.8.5: in a DEPENDENT substream compre marks the last dependent of the
+    // program rather than announcing a compression word - though it still
+    // drags one in. Either way the 8 bits have to be consumed; only reported
+    // as a compression word where the substream is independent/convertible and
+    // the word is actually what it says it is.
     if (r.read(1)) {
-        r.skip(8);  // compr
-    }
-    if (acmod == 0x0) {
-        r.skip(5);  // dialnorm2
-        if (r.read(1)) {
-            r.skip(8);  // compr2
+        const auto compr = static_cast<std::uint8_t>(r.read(8));
+        if (s.strmtyp != eac3::StreamType::kDependent) {
+            s.compr = compr;
         }
     }
-    if (s.strmtyp == static_cast<int>(eac3::StreamType::kDependent)) {
+    if (acmod == 0x0) {
+        s.dialnorm2 = static_cast<int>(r.read(5));
+        if (r.read(1)) {  // compr2e
+            s.compr2 = static_cast<std::uint8_t>(r.read(8));
+        }
+    }
+    if (s.strmtyp == eac3::StreamType::kDependent) {
         if (r.read(1)) {  // chanmape
             s.chanmap = static_cast<std::uint16_t>(r.read(16));
         }
@@ -291,10 +316,10 @@ std::expected<Substream, ScanError> read_eac3_substream(std::span<const std::byt
     if (r.read(1)) {  // infomdate
         skip_informational_metadata(r, s);
     }
-    if (s.strmtyp == static_cast<int>(eac3::StreamType::kIndependent) && s.numblkscod != 0x3) {
+    if (s.strmtyp == eac3::StreamType::kIndependent && s.numblkscod != 0x3) {
         r.skip(1);  // convsync
     }
-    if (s.strmtyp == static_cast<int>(eac3::StreamType::kConvertible)) {
+    if (s.strmtyp == eac3::StreamType::kConvertible) {
         const bool blkid = s.numblkscod == 0x3 || r.read(1) != 0;
         if (blkid) {
             r.skip(6);  // frmsizecod, describing the AC-3 frame this came from
@@ -318,7 +343,6 @@ std::expected<Substream, ScanError> read_eac3_substream(std::span<const std::byt
         const auto flag = r.read(1);
         std::uint32_t consumed = 8;
         if (reserved == 0 && flag != 0 && addbsi_bits >= 16) {
-            s.oba_extension = true;
             s.oba_complexity_index = static_cast<int>(r.read(8));
             consumed = 16;
         }
@@ -363,7 +387,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         if (!sync_at(stream, offset)) {
             return std::unexpected(ScanError::kLostSync);
         }
-        const auto sub = read_eac3_substream(stream.subspan(offset));
+        const auto sub = read_eac3_header(stream.subspan(offset));
         if (!sub) {
             return std::unexpected(sub.error());
         }
@@ -372,7 +396,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         }
         // An independent substream begins a new access unit; dependents join
         // the one in progress.
-        if (sub->strmtyp == static_cast<int>(eac3::StreamType::kIndependent)) {
+        if (sub->strmtyp == eac3::StreamType::kIndependent) {
             close_unit(offset);
             unit_start = offset;
             unit_numblkscod = sub->numblkscod;
@@ -390,7 +414,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
             // correspond and extend the layout where they do not, so unioning
             // locations - not adding counts - is what gives the rendered
             // channel count.
-            locations = static_cast<std::uint16_t>(locations | sub->chanmap);
+            locations = static_cast<std::uint16_t>(locations | sub->chanmap.value_or(0));
         }
         // TS 103 420 §8.3.1: "whichever substream carries the EMDF
         // container" sets the flag (encoder/eac3_frame.hpp), which this
@@ -398,7 +422,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         // dependent is legal too - so this checks every substream of the
         // first access unit rather than just the independent one, and takes
         // the first that has it set.
-        if (first_unit && sub->oba_extension && !out.oba_complexity_index) {
+        if (first_unit && sub->oba_complexity_index && !out.oba_complexity_index) {
             out.oba_complexity_index = sub->oba_complexity_index;
         }
         ++substreams;
@@ -409,6 +433,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         return std::unexpected(ScanError::kEmpty);
     }
     out.channels = eac3::chanmap::channel_count(locations);
+    out.channel_map = locations;
     return out;
 }
 
@@ -428,6 +453,28 @@ std::string_view describe(ScanError error) {
             return "stream ends mid-frame";
     }
     return "unknown error";
+}
+
+std::expected<FrameHeader, ScanError> read_frame_header(std::span<const std::byte> at) {
+    if (at.size() < 6) {
+        return std::unexpected(ScanError::kTruncated);
+    }
+    if (!sync_at(at, 0)) {
+        return std::unexpected(ScanError::kLostSync);
+    }
+    // Both formats spend exactly 40 bits before bsid, deliberately, so which
+    // reading of everything before it was correct can be settled after the
+    // fact - see this file's own header comment.
+    BitReader r{at};
+    r.skip(kBsidBitOffset);
+    const auto bsid = static_cast<int>(r.read(5));
+    if (bsid <= kAc3MaxBsid) {
+        return read_ac3_header(at);
+    }
+    if (bsid == eac3::kBsid) {
+        return read_eac3_header(at);
+    }
+    return std::unexpected(ScanError::kUnsupportedBsid);
 }
 
 std::expected<ScannedStream, ScanError> scan(std::span<const std::byte> stream) {

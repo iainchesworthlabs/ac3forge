@@ -61,7 +61,11 @@ Scope: AC-3 (`ac3cli encode`) only. The bug that motivated this is AC-3-only
 clears at block 0, so its state cannot go stale between blocks), and AC-3's
 configuration space is the one whose acceptance envelope this file pins
 below. E-AC-3's own space - the Annex E tool tokens, VBR, the wider layouts -
-is a real remaining gap, and deliberately not smuggled in half-covered here.
+is tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1), a separate file for the
+same reason this one names the scope at all: its acceptance envelope has a
+ceiling as well as a floor (frmsiz is a word count, not a table index) and its
+ORACLE is a different shape, since FFmpeg does not read E-AC-3 whole. The two
+share this file's PCM generator, which that one imports, and nothing else.
 
 Usage (repo root, after building):
   python tools/ci/fuzz_encoder_space.py --cli build/dev/bin/ac3cli.exe --cases 200
@@ -85,7 +89,7 @@ import sys
 import tempfile
 import time
 import wave
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -450,7 +454,7 @@ def _block_plan(rng, profile, blocks):
 
     if profile == "transient":
         quiet = {"amp": 0.02, "freq": 440.0, "harmonics": 8}
-        for b in range(blocks):
+        for _ in range(blocks):
             if rng.random() < 0.3:
                 plan.append(("impulse", {"amp": 1.0, "freq": 440.0, "harmonics": 8}))
             else:
@@ -523,7 +527,7 @@ def write_wav(path, data, rate, pcm16):
         payload = bytearray()
         for i in range(frames):
             for ch in range(channels):
-                value = int(round(max(-1.0, min(1.0, data[ch][i])) * 32767.0))
+                value = round(max(-1.0, min(1.0, data[ch][i])) * 32767.0)
                 payload += struct.pack("<h", value)
         with wave.open(str(path), "wb") as w:
             w.setnchannels(channels)
@@ -632,7 +636,7 @@ def draw_case(seed):
         frames=frames,
         pcm16=rng.random() < 0.7,
         audio_profile=rng.choices(
-            AUDIO_PROFILES + ["mixed"],
+            [*AUDIO_PROFILES, "mixed"],
             # `cliff` is the shape the known defect needed, so it is drawn
             # more often than an even split would give it - without crowding
             # out the profiles that would find a DIFFERENT shape's bug.
@@ -669,7 +673,10 @@ class Result:
 
 
 def _run(argv, cwd=None):
-    return subprocess.run(argv, capture_output=True, text=True, cwd=cwd)
+    # check=False: a non-zero exit is a finding to classify, not an error to
+    # raise - classify() reads the code and the stderr text to decide whether
+    # the case was a refusal, a misprobe or a real failure.
+    return subprocess.run(argv, capture_output=True, text=True, cwd=cwd, check=False)
 
 
 def ffmpeg_check(ffmpeg, path, forced=False):
@@ -690,7 +697,7 @@ def ffmpeg_check(ffmpeg, path, forced=False):
             "crccheck+bitstream+buffer+explode"]
     if forced:
         argv += ["-f", "ac3"]
-    return _run(argv + ["-i", str(path), "-f", "null", "-"])
+    return _run([*argv, "-i", str(path), "-f", "null", "-"])
 
 
 def classify(case, encode, out_path):
@@ -949,7 +956,7 @@ def main():
 
     started = time.monotonic()
     counts = {"ok": 0, "refused": 0, "misprobed": 0, "fail": 0}
-    refusals = {reason: 0 for reason in REFUSALS}
+    refusals = dict.fromkeys(REFUSALS, 0)
     failures = []
     index = 0
 
@@ -958,8 +965,8 @@ def main():
             return index < args.cases
         return (time.monotonic() - started) < args.seconds
 
-    with tempfile.TemporaryDirectory(prefix="encspace_") as workdir:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+    with (tempfile.TemporaryDirectory(prefix="encspace_") as workdir,
+          concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool):
             pending = set()
             while (budget_left() or pending) and len(failures) < args.max_failures:
                 while budget_left() and len(pending) < args.jobs * 2:

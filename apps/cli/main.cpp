@@ -24,6 +24,7 @@
 #include "commands/decode.hpp"
 #include "commands/encode.hpp"
 #include "commands/live_audio.hpp"
+#include "commands/probe.hpp"
 #include "commands/stream_tools.hpp"
 #include "commands/synth.hpp"
 #include "support.hpp"
@@ -159,13 +160,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 31 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 34 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 31> kCommands{{
+constexpr std::array<Command, 34> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -185,15 +186,15 @@ constexpr std::array<Command, 31> kCommands{{
                           x.str(6, "objects"), x.meta);
      }},
     {"atmos-path", 3, "<out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects]",
-     "objects driven by an authored keyframe file instead of the built-in orbit",
+     "objects driven by an authored scene file instead of the built-in orbit",
      Needs::kNothing,
      [](const Args& x) {
          return run_atmos_path(x.str(1), x.str(2), x.u32(3, 8), x.u32(4, 448), x.u32(5, 0),
                                x.meta);
      }},
     {"atmos-encode", 3, "<in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt]",
-     "every source channel as an object; optional: authored per-object motion from a keyframe "
-     "file (same format as atmos-path), objects it doesn't mention keep their default placement",
+     "every source channel as an object; optional: authored per-object motion from a scene "
+     "file (same formats as atmos-path), objects it doesn't mention keep their default placement",
      Needs::kNothing,
      [](const Args& x) {
          return run_atmos_encode(x.str(1), x.str(2), x.u32(3, 448), x.u32(4, 0), x.meta,
@@ -253,6 +254,10 @@ constexpr std::array<Command, 31> kCommands{{
      "JOC-reconstructed object as its own object_NN.wav there",
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3)); }},
+    {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
+     "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
+     "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
+     Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
     {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
      "decode and re-encode, carrying dialnorm, compr and the mix metadata across - the "
      "DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the "
@@ -286,12 +291,20 @@ constexpr std::array<Command, 31> kCommands{{
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all]",
+    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate",
-     Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+     }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
+    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
+     "the inverse: recover the elementary stream from IEC 61937 bursts, as captured from "
+     "an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end",
+     Needs::kNothing,
+     [](const Args& x) { return run_unspdif(x.str(1), x.str(2), x.meta.keep_partial); }},
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
     {"mp4", 3, "<in.ac3|in.ec3> <out.mp4>",
@@ -302,6 +315,10 @@ constexpr std::array<Command, 31> kCommands{{
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
     {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+    {"demux", 3, "<in.mkv|in.mp4> <out.ac3|out.ec3>",
+     "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
+     "identified by its own magic bytes, not by the file name",
+     Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
     {"devices", 1, "", "input and loopback capture endpoints", Needs::kCapture,
      [](const Args&) { return run_devices(); }},
     {"outputs", 1, "", "render endpoints + AC-3/E-AC-3 passthrough support", Needs::kPassthrough,
@@ -360,7 +377,7 @@ void print_usage() {
     fmt::println("");
     fmt::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
     fmt::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    fmt::println("       eac3-encode, atmos-encode, decode and the five stream tools");
+    fmt::println("       eac3-encode, atmos-encode, decode, probe and the five stream tools");
     fmt::println("       (transcode, metadata, normalize, cut, cat). e.g.:");
     fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
     fmt::println("       transcode to '-' cannot read the codec off the name, so pair it");
@@ -380,6 +397,11 @@ void print_usage() {
     fmt::println("record/live container=mkv: write straight to Matroska (a single command)");
     fmt::println("       instead of the bare elementary stream both write by default; 'mkv'");
     fmt::println("       remains the way to wrap an ALREADY-encoded file after the fact.");
+    fmt::println("record/live container=fmp4: the output path names a DIRECTORY, written as it");
+    fmt::println("       goes - init.mp4, segment*.m4s, and audio.m3u8/master.m3u8/manifest.mpd");
+    fmt::println("       refreshed on every segment (live HLS + a dynamic MPD while the session");
+    fmt::println("       runs, closed to VOD/static at the end). fmp4-window=<n> keeps only the");
+    fmt::println("       last n segments listed. 'fmp4' remains the after-the-fact form.");
     fmt::println("monitor/live --monitor play the 5.1 BED of an Atmos-mode stream: the decoder");
     fmt::println("       reads TS 103 420's object layer (OAMD/JOC) and reports an object count,");
     fmt::println("       but this path does not render or export objects, so this is what a");
@@ -441,6 +463,14 @@ void print_usage() {
     fmt::println("       way atmos-path does, keyed by WAV channel index; an object it doesn't");
     fmt::println("       mention keeps atmos-encode's own default (fanned-out) placement.");
     fmt::println("");
+    fmt::println("atmos-path/atmos-encode scene files come in two forms, told apart by their");
+    fmt::println("       first character, not their suffix: the keyframe columns");
+    fmt::println("       'object_index time_s x y z gain lfe_send' per line ('#' comments), or");
+    fmt::println("       an object scene in JSON (named objects, per-segment interpolation,");
+    // "{{" is fmt::format's escape for a literal brace, which is what this
+    // line is about - the character a JSON scene file starts with.
+    fmt::println("       a scene orientation) starting with '{{'. The GUI writes either.");
+    fmt::println("");
     fmt::println("mkv wraps an AC-3 or E-AC-3 elementary stream in Matroska, taking the");
     fmt::println("format, packet boundaries, sample rate and channel count from the bitstream");
     fmt::println("itself — so it cannot be told the wrong ones. E-AC-3 dependent substreams");
@@ -468,6 +498,19 @@ void print_usage() {
     fmt::println("For decode, drc=<scale> applies §7.7.1 partial compression (0 = ignore,");
     fmt::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
     fmt::println("");
+    fmt::println("probe reports what a stream DECLARES, without decoding its audio: bsid, rate");
+    fmt::println("       (fscod2 half rates included), acmod/lfeon and the resolved layout,");
+    fmt::println("       bsmod, chanmap, the substream map, frame and access-unit counts,");
+    fmt::println("       duration, measured bit rate and VBR spread, dialnorm/compr/dynrng");
+    fmt::println("       ranges, EMDF payload ids, OAMD/JOC with complexity_index and the");
+    fmt::println("       object/bed configuration, whether an authenticity tag is present,");
+    fmt::println("       per-frame CRC validity and how often each coding tool was used.");
+    fmt::println("       json=1 emits the ac3forge.probe/1 document instead (docs/cli/");
+    fmt::println("       commands.md documents it as a stable contract); detail=frames adds");
+    fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
+    fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
+    fmt::println("       failed its CRC or the parser refused it, so this works as a gate.");
+    fmt::println("");
     fmt::println("transcode/metadata/normalize/cut/cat work on an ALREADY-encoded stream.");
     fmt::println("       Only transcode re-encodes - it exists because DD+ and DD are different");
     fmt::println("       codecs and nothing else bridges them; it carries dialnorm, compr and");
@@ -484,6 +527,10 @@ void print_usage() {
     fmt::println("       or preset=all checks every one; omitting preset= just measures and");
     fmt::println("       reports, with no pass/fail verdict. Exit code is 0 only when every");
     fmt::println("       requested gate passes (or none was requested and decode succeeded).");
+    fmt::println("       layout=rendered meters the whole assembled program - a dependent");
+    fmt::println("       substream's height, wide and rear channels included - through");
+    fmt::println("       BS.1770-5 Annex 3's extended algorithm, instead of the default");
+    fmt::println("       layout=bed's Table 5.8 bed through Annex 1's basic one.");
 }
 
 }  // namespace

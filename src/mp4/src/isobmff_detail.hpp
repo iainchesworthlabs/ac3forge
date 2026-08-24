@@ -11,10 +11,11 @@
 
 #include "mp4/mp4.hpp"
 
-// Shared ISOBMFF box-writing plumbing between mp4.cpp (mux(), the
-// non-fragmented file) and fragment.cpp (fragment(), the CMAF path): the
-// low-level box/FullBox primitives, and every box builder whose shape does
-// not differ between the two (ftyp/styp's shared format, mvhd/tkhd/mdhd/
+// Shared ISOBMFF box plumbing between mp4.cpp (mux(), the non-fragmented
+// file), fragment.cpp (fragment(), the CMAF path) and reader.cpp (demux()
+// and Reader, which walk back in what the other two lay out): the low-level
+// box/FullBox primitives in both directions, and every box builder whose
+// shape does not differ between the two writers (ftyp/styp's shared format, mvhd/tkhd/mdhd/
 // hdlr/smhd/dinf, the 'ac-3'/'ec-3' sample entry + stsd, and the sample
 // tables stts/stsc/stsz/stco - a fragmented track's init segment writes
 // those last four EMPTY, but empty is just what these already do when
@@ -336,6 +337,93 @@ inline Bytes build_stco(std::span<const std::uint32_t> chunk_offsets) {
     Bytes out;
     put_fullbox(out, "stco", 0, 0, body);
     return out;
+}
+
+
+// --- the read side ----------------------------------------------------------
+// reader.cpp's primitives, kept here beside the writers' rather than in that
+// file alone: this header is where "an ISOBMFF box is a 32-bit size, then a
+// 4-byte type, then a body" is stated, and a reader that restated it
+// somewhere else could disagree with put_box() about what that means.
+
+// A box type as one big-endian 32-bit value, so a walk compares an integer
+// instead of four bytes. consteval so every use below is a compile-time
+// constant, and a caller cannot accidentally pass a runtime string.
+[[nodiscard]] consteval std::uint32_t fourcc(const char (&text)[5]) {
+    return (static_cast<std::uint32_t>(static_cast<unsigned char>(text[0])) << 24) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(text[1])) << 16) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(text[2])) << 8) |
+           static_cast<std::uint32_t>(static_cast<unsigned char>(text[3]));
+}
+
+[[nodiscard]] inline std::uint8_t get_u8(std::span<const std::byte> in, std::size_t at) {
+    return std::to_integer<std::uint8_t>(in[at]);
+}
+
+[[nodiscard]] inline std::uint16_t get_u16(std::span<const std::byte> in, std::size_t at) {
+    return static_cast<std::uint16_t>((static_cast<std::uint16_t>(get_u8(in, at)) << 8) |
+                                      get_u8(in, at + 1));
+}
+
+[[nodiscard]] inline std::uint32_t get_u32(std::span<const std::byte> in, std::size_t at) {
+    return (static_cast<std::uint32_t>(get_u16(in, at)) << 16) | get_u16(in, at + 2);
+}
+
+[[nodiscard]] inline std::uint64_t get_u64(std::span<const std::byte> in, std::size_t at) {
+    return (static_cast<std::uint64_t>(get_u32(in, at)) << 32) | get_u32(in, at + 4);
+}
+
+// One box header as read off the wire (ISO/IEC 14496-12 §4.2). `size` counts
+// the WHOLE box, header included, matching put_box()'s own field.
+struct BoxHeader {
+    std::uint32_t type = 0;
+    std::uint64_t size = 0;
+    std::uint32_t header_bytes = 0;
+    // §4.2's size == 0: "the box extends to the end of the file". Real files
+    // use it for a final mdat whose length the muxer never went back to
+    // patch, so a reader has to honour it even though this project's writers
+    // never emit it.
+    bool to_eof = false;
+};
+
+// How the read went, distinguishing "not enough bytes yet" (wait for the
+// next chunk) from "these bytes are wrong" (no further input helps) - the
+// same split reader.cpp's Matroska sibling makes, and for the same reason.
+enum class BoxRead : std::uint8_t { kOk, kNeedMore, kBad };
+
+[[nodiscard]] inline BoxRead read_box_header(std::span<const std::byte> in, std::size_t at,
+                                             BoxHeader& out) {
+    if (in.size() - at < 8) {
+        return BoxRead::kNeedMore;
+    }
+    const std::uint32_t size32 = get_u32(in, at);
+    out.type = get_u32(in, at + 4);
+    out.to_eof = false;
+    if (size32 == 1) {
+        // §4.2's largesize escape: a 64-bit length follows the type.
+        if (in.size() - at < 16) {
+            return BoxRead::kNeedMore;
+        }
+        out.size = get_u64(in, at + 8);
+        out.header_bytes = 16;
+        if (out.size < 16) {
+            return BoxRead::kBad;
+        }
+        return BoxRead::kOk;
+    }
+    out.header_bytes = 8;
+    if (size32 == 0) {
+        out.to_eof = true;
+        out.size = 0;
+        return BoxRead::kOk;
+    }
+    if (size32 < 8) {
+        // A box smaller than its own header: not a length, and the classic
+        // way a malformed file asks a walker to loop forever.
+        return BoxRead::kBad;
+    }
+    out.size = size32;
+    return BoxRead::kOk;
 }
 
 }  // namespace mp4::detail

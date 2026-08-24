@@ -27,11 +27,76 @@ ruleset) for `main` with:
 - **Block force pushes**
 - **Restrict deletions**
 
+### What the 2026-08 CI additions did and did not change here
+
+Nothing in the `VX14`-`VX17` batch (script lint, the `apps/cli` coverage floor,
+the ThreadSanitizer leg, the PR-time performance comparison) **requires** a
+ruleset edit, and the list above is deliberately unchanged:
+
+- `Script Lint` (`ci.yml`) is in `CI Status`'s `needs` list, so it already
+  gates through the required check that exists. Selecting it as a required
+  check in its own right is optional - it would only make a lint failure name
+  itself in the merge box rather than showing up as `CI Status` failing.
+- `Linux LLVM TSan` is a `_build.yml` matrix leg, and `CI Status` covers the
+  whole matrix by design - that is what the parenthetical above means.
+- `Performance vs merge base` (`ci.yml`) must NOT be made required. It is
+  informational, carries `continue-on-error`, and is deliberately absent from
+  `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise
+  into a merge blocker.
+- `codeql.yml` became a language matrix, but its C++ leg is still named
+  `Analyze (C++)` exactly - the job's `name:` interpolates a `display` value
+  chosen for that reason, since a rename would leave the required check above
+  pending forever. The two new legs report as `Analyze (Python)` and
+  `Analyze (JavaScript)`; adding them as required checks is optional, and
+  matches how the existing CodeQL leg is treated.
+- `Python coverage` (`wheels.yml`) is a new check on a workflow that has no
+  required checks today; leaving it that way is consistent with `Build wheels`.
+
+Ruleset edits are the repository admin's, not a pull request's. If any of the
+optional checks above are wanted as required ones, add them by their exact
+names as rendered here.
+
 `develop` is where `feature/*`/`bugfix/*` work actually lands and where
 Dependabot opens its PRs (`.github/dependabot.yml` targets `develop`, not
 `main`), so give it the same rule with the same required checks - that's
 where most vulnerable dependencies or CI regressions would actually be
 introduced, well before a release PR ever reaches `main`.
+
+## Merge queue (`develop` only)
+
+With many topic branches open against `develop` at once, "require branches
+to be up to date before merging" turns into a rebase treadmill: every merge
+invalidates every other open PR's up-to-date status, forcing a fresh rebase
+and a full CI re-run before the next one can land. A repository ruleset
+(`merge-queue-develop`, `target: branch`, `conditions.ref_name.include:
+refs/heads/develop`, one `merge_queue` rule) fixes this the way GitHub
+intends: PRs enter the queue once their own checks and review pass, GitHub
+merges each entry against the current queue tip server-side and re-runs the
+required checks against that up-to-date state automatically, then merges
+when green - no manual rebase-and-rerun. `main` doesn't get one: it only
+receives rare, single release-promotion merges from `develop`, none of the
+concurrent-PR churn this solves.
+
+Configured `merge_queue` rule parameters: `merge_method: MERGE` (matches
+this repo's real-merge-commit convention, not squash), `grouping_strategy:
+ALLGREEN`, `max_entries_to_build: 2` (deliberately low - self-hosted
+capacity is 3 Linux/2 Windows runners shared org-wide, see
+`docs/ci-self-hosted-runners.md`, and GitHub-hosted concurrency is capped at
+20 jobs account-wide on this org's Free plan; building more queue entries at
+once than that can bear just adds to the same backlog it's meant to
+relieve), `max_entries_to_merge: 5`, `min_entries_to_merge: 1`,
+`min_entries_to_merge_wait_minutes: 5`. Re-tune `max_entries_to_build` up if
+the self-hosted fleet grows or the account moves off the Free tier.
+
+**Every workflow that produces one of `develop`'s required status checks
+must also trigger on the `merge_group` event**, not just `push`/
+`pull_request` - GitHub only runs workflows that opt into `merge_group` on
+the queue's temporary `gh-readonly-queue/develop/...` ref, so a workflow
+missing that trigger never reports its check there and every queue entry
+sits until `check_response_timeout_minutes` expires. `ci.yml`, `codeql.yml`,
+and `dependency-review.yml` all carry it (see each workflow's own
+`merge_group` comment) - add it to anything else that later becomes a
+required check on `develop`.
 
 Since `main` only receives merges from `develop`, `release/*`, `hotfix/*` and
 `support/*` branches under this project's gitflow model (see

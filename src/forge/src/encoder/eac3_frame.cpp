@@ -584,7 +584,7 @@ struct EcplBandFit {
 
 // Where coupling starts once it IS in use and the caller has not said - the
 // geometry half of the decision, with WHETHER to couple left to
-// default_cplbegf below. Sub-band 4 - bin
+// auto_cplbegf below. Sub-band 4 - bin
 // 85, 8.0 kHz at 48 kHz - is the floor, because that is roughly where
 // per-channel waveform detail stops being what a listener is hearing. Below
 // it the envelope metric keeps improving and waveform SNR falls off a cliff;
@@ -602,7 +602,7 @@ struct EcplBandFit {
 }
 
 // The rate policy's answer when a tool buys less than it costs - see
-// default_cplbegf/default_spxbegf below. Only `auto` acts on it; a caller who
+// auto_cplbegf/auto_spxbegf below. Only `auto` acts on it; a caller who
 // names a tool explicitly still gets it, at the geometry helper's start
 // sub-band.
 constexpr int kToolOff = -1;
@@ -628,34 +628,25 @@ constexpr int kToolOff = -1;
     return 12 + 14 * nfchans;
 }
 
-// Above this per-channel rate spectral extension stops paying for itself.
-// Unlike coupling's ceiling this one does not move with the channel count -
-// synthesis replaces a band outright rather than sharing it, so what it saves
-// does not depend on how many channels are in the frame.
-//
-// Measured the same way, as the marginal gain of adding spectral extension -
-// both on its own and on top of coupling, the latter being the tighter of the
-// two because coupling has already taken the same band's cost out:
+// Spectral extension has a crossover of the same kind, and unlike coupling's
+// it does not move with the channel count - synthesis replaces a band
+// outright rather than sharing it, so what it saves does not depend on how
+// many channels are in the frame. Measured the same way, as the marginal gain
+// of adding it, both on its own and on top of coupling (the latter tighter,
+// because coupling has already taken the same band's cost out):
 //
 //   on AHT:      +1.5 dB at 48 kbit/s per channel, -0.0 at 64
 //   on AHT+cpl:  +0.4 dB at 48 kbit/s per channel, -0.1 at 64
 //
-// so the crossover sits just below 64 either way, and 56 is the midpoint of
-// the bracket containing it.
-inline constexpr int kSpxRateCeiling = 56;
-
-// Where coupling should start when `auto` is choosing, or kToolOff when it
-// should not be used at all.
-[[nodiscard]] int default_cplbegf(std::uint32_t bitrate_kbps, int nfchans) {
-    const int per_channel = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
-    if (per_channel >= coupling_rate_ceiling(nfchans)) {
-        return kToolOff;
-    }
-    return cplbegf_geometry(bitrate_kbps, nfchans);
-}
+// which put it just below 64 either way, and it was a fixed 56 - the midpoint
+// of that bracket - until spx_rate_ceiling below replaced it. That number is
+// not wrong; it is the answer to the SNR question on this material, and it is
+// recorded here because the perceptual answer, on real programme material,
+// lands about 35 kbit/s per channel higher and it is worth being able to see
+// both.
 
 // Where synthesis takes over once it IS in use and the caller has not said -
-// the geometry half, with WHETHER to extend left to default_spxbegf below.
+// the geometry half, with WHETHER to extend left to auto_spxbegf below.
 // Spectral
 // extension is the crudest of the tools - a copied band with noise stirred in
 // and an envelope painted back on - so it belongs as high as the rate allows.
@@ -677,11 +668,334 @@ inline constexpr int kSpxRateCeiling = 56;
     return 5;  // coefficient 109, 10.2 kHz
 }
 
-// Where synthesis should take over when `auto` is choosing, or kToolOff when
-// it should not be used at all.
-[[nodiscard]] int default_spxbegf(std::uint32_t bitrate_kbps, int nfchans) {
+// --- What the content says, as against what the rate says --------------------
+//
+// Both ceilings above answer one half of the question - can this bitrate
+// afford to code the band itself? Neither asks the other half: how much does
+// this band lose by being described rather than coded? That is a property of
+// the material, and the two measures below are it, taken from the frame's own
+// MDCT coefficients (which is why the transform now runs before the tool
+// decisions rather than after them).
+
+// A frame's coefficients, indexed the way encode_frame lays them out.
+struct CoeffView {
+    std::span<const std::array<double, 256>> coeffs;
+    [[nodiscard]] const std::array<double, 256>& at(int stream, int blk) const {
+        return coeffs[static_cast<std::size_t>(stream) * kBlocksPerFrame +
+                      static_cast<std::size_t>(blk)];
+    }
+};
+
+// What CouplingContent::fit comes to for independent channels of equal level -
+// point the rate ceilings above were themselves measured at, since both
+// fixtures they were measured on are decorrelated above 8 kHz. Content that
+// fits better than this has headroom the rate-only policy never knew about.
+//
+// With n independent channels of equal energy E the sum has energy nE, the
+// energy-matched coordinate is 1/sqrt(n), and the residual works out at
+// 2E(1 - 1/sqrt(n)) per channel - so the fit is 2/sqrt(n) - 1. That is 0.41
+// for a stereo pair and -0.11 for five: energy-matched coordinates restore a
+// band's level, not its waveform, and past three channels the residual
+// exceeds the signal.
+[[nodiscard]] double coupling_fit_reference(int nfchans) {
+    return 2.0 / std::sqrt(static_cast<double>(std::max(nfchans, 1))) - 1.0;
+}
+
+// How much of the coupling region survives the decoder's own reconstruction
+// of it, as a fraction of the region's energy.
+//
+// This is not an estimate. §7.4.1's shared channel is the coefficient sum and
+// the transmitted coordinate restores each band's energy, so - with the
+// 1/nfchans in the shared channel and the scale/8 in the coordinate
+// cancelling exactly, as step 3 sets them up to - the decoder lands on
+//
+//     x_k[bin] ~= sqrt(E_k(b) / E_S(b)) * S[bin],  S[bin] = sum_j x_j[bin]
+//
+// and every dB coupling costs this region is the mismatch between that
+// rank-one shape and the channels themselves. What comes back is that
+// mismatch, evaluated. Coordinate quantization and the shared channel's own
+// mantissa noise sit on top of it and are deliberately not modelled: both are
+// second-order beside the shape mismatch, and both are there whatever this
+// returns.
+//
+// 1.0 is a perfect fit - every channel already a scalar multiple of the sum
+// in every band, which is what near-mono material looks like above 8 kHz and
+// exactly the case a rate-only policy cannot see.
+struct CouplingContent {
+    // 1.0 is a perfect fit; see coupling_fit_reference for what independent
+    // channels give.
+    double fit = 0.0;
+    // The region's share of the frame's coded energy. Near zero means
+    // coupling has nothing to damage - and something to save anyway, since
+    // an empty band still costs exponents per channel.
+    double energy_share = 0.0;
+};
+
+[[nodiscard]] CouplingContent coupling_content(const CoeffView& view, int nfchans,
+                                               const BandLayout& bands, int endmant) {
+    double energy = 0.0;
+    double residual = 0.0;
+    std::array<double, 256> summed{};
+    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int bnd = 0; bnd < bands.count; ++bnd) {
+            const int low = bands.start[static_cast<std::size_t>(bnd)];
+            const int high = low + bands.size[static_cast<std::size_t>(bnd)];
+            double power_sum = 0.0;
+            for (int bin = low; bin < high; ++bin) {
+                double total = 0.0;
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    total += view.at(ch, blk)[static_cast<std::size_t>(bin)];
+                }
+                summed[static_cast<std::size_t>(bin)] = total;
+                power_sum += total * total;
+            }
+            for (int ch = 0; ch < nfchans; ++ch) {
+                double power_ch = 0.0;
+                for (int bin = low; bin < high; ++bin) {
+                    const double value = view.at(ch, blk)[static_cast<std::size_t>(bin)];
+                    power_ch += value * value;
+                }
+                const double alpha =
+                    power_sum > 0.0 ? std::sqrt(power_ch / power_sum) : 0.0;
+                for (int bin = low; bin < high; ++bin) {
+                    const double error = view.at(ch, blk)[static_cast<std::size_t>(bin)] -
+                                         alpha * summed[static_cast<std::size_t>(bin)];
+                    residual += error * error;
+                }
+                energy += power_ch;
+            }
+        }
+    }
+    double total = 0.0;
+    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int ch = 0; ch < nfchans; ++ch) {
+            const auto& bins = view.at(ch, blk);
+            for (int bin = 0; bin < endmant; ++bin) {
+                total += bins[static_cast<std::size_t>(bin)] * bins[static_cast<std::size_t>(bin)];
+            }
+        }
+    }
+    CouplingContent out;
+    out.energy_share = total > 0.0 ? energy / total : 0.0;
+    // Nothing up here at all: no fit to speak of either way, so it reads as
+    // the neutral decorrelated answer and energy_share carries the decision.
+    out.fit = energy > 0.0 ? 1.0 - residual / energy : coupling_fit_reference(nfchans);
+    return out;
+}
+
+// Two things about the extension region that decide whether synthesis can
+// stand in for it: how much of the frame's energy is up there at all, and how
+// tone-like it is.
+struct ExtensionContent {
+    // Share of the frame's total energy above the extension frequency.
+    double energy_share = 0.0;
+    // Spectral flatness of the region: ~0 for a tone, ~1 for noise. Synthesis
+    // copies a lower band, stirs in noise and paints the envelope back on -
+    // which is nearly transparent on noise and audibly wrong on a tone,
+    // because the copy lands its harmonics at the wrong frequencies.
+    double flatness = 0.0;
+};
+
+[[nodiscard]] ExtensionContent extension_content(const CoeffView& view, int nfchans,
+                                                 int startmant, int endmant) {
+    double total = 0.0;
+    double region = 0.0;
+    double log_sum = 0.0;
+    int count = 0;
+    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        for (int ch = 0; ch < nfchans; ++ch) {
+            const auto& bins = view.at(ch, blk);
+            for (int bin = 0; bin < endmant; ++bin) {
+                const double power = bins[static_cast<std::size_t>(bin)] *
+                                     bins[static_cast<std::size_t>(bin)];
+                total += power;
+                if (bin >= startmant) {
+                    region += power;
+                    log_sum += std::log(power + 1e-30);
+                    ++count;
+                }
+            }
+        }
+    }
+    ExtensionContent out;
+    if (!(total > 0.0) || count == 0) {
+        return out;
+    }
+    out.energy_share = region / total;
+    const double geometric = std::exp(log_sum / static_cast<double>(count));
+    const double arithmetic = region / static_cast<double>(count);
+    out.flatness = arithmetic > 0.0 ? std::clamp(geometric / arithmetic, 0.0, 1.0) : 0.0;
+    return out;
+}
+
+// Synthesis always runs to sub-band 17 (coefficient 229, 21.5 kHz at 48 kHz),
+// so the region whose content decides the tool is bounded by this code
+// whatever spxbegf turns out to be. See spx.endf below, which is the same 7.
+inline constexpr int kSpxTopSubBandCode = 7;
+
+// --- Where the content moves the ceilings -----------------------------------
+//
+// Both rate ceilings above were measured one way: as marginal SNR on the two
+// committed fixtures, at a sweep of bitrates. That is the right measurement
+// for a rate law and the wrong one for a tool that trades waveform fidelity
+// for a band it can describe - and it was taken on material with essentially
+// nothing in the band being traded (reference_stereo.wav carries 99.9% of its
+// energy below 8.1 kHz, and coupling starts at 8.0). The numbers below come
+// from re-measuring both on real programme material - twelve seconds each of
+// six excerpts of a 5.1 theatrical mix, at 96/128/192 kbit/s stereo and
+// 192/256/384 kbit/s 5.1, scored through this project's own decoder with
+// ViSQOL MOS-LQO alongside SNR. docs/concepts/ac3-eac3.md carries the table.
+
+// Extension's crossover, as a function of how much of the frame's energy is
+// actually up in the region synthesis would replace.
+//
+// The two anchors are measured. At a share of about 1e-4 - a frame whose top
+// end is nearly empty, which is most real programme material - synthesis is
+// still ahead at 96 kbit/s per channel, because what it replaces is a band
+// the coder was about to spend nothing on and drop. At about 3e-2 - the
+// brightest excerpts, where the top end carries real content - it is already
+// behind at 64. Log-linear between them, clamped at both ends.
+//
+// This is a much higher ceiling than the 56 above, and the difference is not
+// a correction: it is what scoring perceived quality rather than waveform SNR
+// answers. Synthesis never wins on SNR - it substitutes a described band for
+// a coded one, so the waveform error is the whole band - and on this material
+// the two crossovers sit about 35 kbit/s per channel apart. Spectral flatness
+// was measured as a second term and dropped: across these excerpts it ran
+// 0.03-0.22 with no separation the energy share did not already give, and the
+// two are confounded here (the brightest excerpts are also the least flat).
+inline constexpr double kSpxQuietShare = 1.0e-4;
+inline constexpr int kSpxQuietCeiling = 110;
+inline constexpr double kSpxRichShare = 3.0e-2;
+inline constexpr int kSpxRichCeiling = 55;
+
+[[nodiscard]] int spx_rate_ceiling(double energy_share) {
+    // Derived from the two anchors rather than written out, so moving either
+    // share moves the line with it. std::log10 is not constexpr before C++26.
+    const double quiet = std::log10(kSpxQuietShare);
+    const double rich = std::log10(kSpxRichShare);
+    // The max() is not the same as the clamp: it keeps log10 off zero for a
+    // digitally silent top end, which is a real input here.
+    const double decades =
+        std::clamp(std::log10(std::max(energy_share, kSpxQuietShare)), quiet, rich);
+    const double slope =
+        static_cast<double>(kSpxRichCeiling - kSpxQuietCeiling) / (rich - quiet);
+    return static_cast<int>(
+        std::lround(kSpxQuietCeiling + slope * (decades - quiet)));
+}
+
+// Coupling's crossover, moved by how well this frame's own region survives
+// being described instead of coded.
+//
+// The measured ceiling above stands as the answer for content that fits the
+// way the fixtures do - independently, at coupling_fit_reference. Material
+// that fits better has headroom the rate-only policy could not see: a
+// near-mono pair above 8 kHz IS a scalar multiple of its own sum, so coupling
+// costs it almost nothing and it should be coupled at rates far above the
+// fixture crossover. 1.5 is what that case needs and no more than it needs -
+// a stereo pair at 192 kbit/s is 96 per channel against a base of 40, so only
+// a fit close to 1.0 reaches it at all. Measured on the real excerpts at
+// 128 kbit/s stereo, this turns coupling on for the two that gain from it
+// (fits 0.93 and 0.85) and leaves it off for the two that lose (0.58, 0.56).
+inline constexpr double kCouplingFitGain = 1.5;
+
+[[nodiscard]] int coupling_rate_ceiling(int nfchans, double fit) {
+    const double reference = coupling_fit_reference(nfchans);
+    const double headroom = std::clamp((fit - reference) / (1.0 - reference), -1.0, 1.0);
+    const double scale = std::max(0.0, 1.0 + kCouplingFitGain * headroom);
+    return static_cast<int>(std::lround(scale * coupling_rate_ceiling(nfchans)));
+}
+
+// The fit a frame needs before `auto` will couple it at all.
+//
+// Coupling replaces every coupled channel's own coefficients above the
+// coupling frequency with one shared channel scaled per band. What that
+// leaves is CouplingContent::fit, and on real programme material it is not
+// enough: measured across six excerpts of a 5.1 theatrical mix, standard
+// coupling scored below not coupling at every (layout, rate) point tried -
+// -0.18 MOS-LQO at 96 kbit/s stereo, -0.08 at 128, -0.20 at 192, 0.00 at 192
+// kbit/s 5.1, -0.01 at 256, -0.29 at 384, and -0.13 at 32 kbit/s per channel,
+// the lowest rate this encoder will take. Whole-clip fits there run 0.11 to
+// 0.93, and even the best of them lost.
+//
+// So this is not a tuning knob with a comfortable margin - it is the line
+// above which the region genuinely IS a scalar multiple of its own sum, which
+// is the only case those measurements leave standing. 0.99 is a residual of
+// 1% of the region's energy, 20 dB down. Frames like that do exist in real
+// material - the dialogue-led and wide excerpts clear it on a tenth of their
+// frames - and testing per frame rather than per clip is what lets `auto`
+// couple exactly those and leave the rest alone, which a rate-only policy
+// applying one answer to every frame at a given bitrate could never do.
+inline constexpr double kCouplingMinFit = 0.99;
+
+// And how wide the region has to be before coupling is worth having at all.
+//
+// §E3.3.1 stops transmitting cplendf when spectral extension is in use and
+// derives it from spxbegf instead, so coupling ends exactly where synthesis
+// begins. With synthesis starting where it now does, that regularly leaves
+// coupling one or two sub-bands - 12 or 24 coefficients - to work with. What
+// it saves there is a fraction of 24 bins across the coupled channels; what
+// it still costs is a coordinate per band per channel on every other block,
+// a shared channel the allocator buys bits for, and the whole region's
+// per-channel detail. Below four sub-bands that trade is not close.
+//
+// This is why coupling all but disappears from `auto` now: measured on the
+// real excerpts, `auto` reached for it at four of the six (layout, rate)
+// points and every one of those four was a region synthesis had already
+// squeezed.
+inline constexpr int kCouplingMinSubBands = 4;
+
+// Below this share of the frame's coded energy the coupling region counts as
+// empty, and neither test above applies - see auto_cplbegf.
+//
+// This one is a boundary, not a plateau: the real excerpts and the
+// band-limited fixtures are only about an order of magnitude apart in what
+// their coupling region carries, because spectral extension leaves coupling a
+// narrow slice whose share is small on any material. Measured against both,
+// 1e-4 is where the fixtures' landscape numbers hold (30.97 -> 31.61 dB at
+// 256 kbit/s 5.1, against 31.63 before any of this) while the real excerpts
+// keep essentially all of their gain (+0.114 MOS-LQO against +0.133 with no
+// empty-region case at all, and no (layout, rate) point regressing either
+// way). Dropping the case entirely is worth those 0.019 MOS and costs 0.66 dB
+// on the recorded series; that trade was made deliberately in the other
+// direction, since 0.019 is inside the noise of a 36-cell ViSQOL average and
+// 0.66 dB is not.
+inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
+
+// Where coupling should start when `auto` is choosing, or kToolOff when it
+// should not be used at all. The rate answer, against the
+// ceiling this frame's content has earned rather than a fixed one.
+[[nodiscard]] int auto_cplbegf(std::uint32_t bitrate_kbps, int nfchans,
+                               const CouplingContent& coupling, int subbands) {
     const int per_channel = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
-    if (per_channel >= kSpxRateCeiling) {
+    if (per_channel >= coupling_rate_ceiling(nfchans, coupling.fit)) {
+        return kToolOff;
+    }
+    // A region with nothing in it is the one case that needs neither test. It
+    // cannot be damaged by being described - there is nothing there to
+    // describe wrongly - and it still costs a set of exponents per channel
+    // that coupling collapses into one, so coupling it is close to free and
+    // pays whatever the fit says. This is what the checked-in fixtures are:
+    // reference_51.wav carries 99.9% of its loudest channel's energy below
+    // 100 Hz, and coupling is worth 1.3 dB on it even squeezed to two
+    // sub-bands by spectral extension.
+    if (coupling.energy_share >= kCouplingEmptyRegionShare) {
+        // ...otherwise only where the region actually couples, and is wide
+        // enough to be worth coupling. This is `auto`'s policy, not a limit:
+        // the `cpl` token still asks for coupling at any rate, any fit and
+        // any width.
+        if (coupling.fit < kCouplingMinFit || subbands < kCouplingMinSubBands) {
+            return kToolOff;
+        }
+    }
+    return cplbegf_geometry(bitrate_kbps, nfchans);
+}
+
+// Where synthesis should take over when `auto` is choosing, or kToolOff.
+[[nodiscard]] int auto_spxbegf(std::uint32_t bitrate_kbps, int nfchans,
+                               const ExtensionContent& extension) {
+    const int per_channel = static_cast<int>(bitrate_kbps) / std::max(nfchans, 1);
+    if (per_channel >= spx_rate_ceiling(extension.energy_share)) {
         return kToolOff;
     }
     return spxbegf_geometry(bitrate_kbps, nfchans);
@@ -1681,8 +1995,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // CBR fixes the word count up front, from bitrate_kbps; VBR does not know
     // it until the content's own mantissa cost is measured in step 7, so this
-    // stays unset here and is resolved there. Either way default_cplbegf/
-    // default_spxbegf below need a rate-shaped number even under VBR, since
+    // stays unset here and is resolved there. Either way auto_cplbegf/
+    // auto_spxbegf below need a rate-shaped number even under VBR, since
     // that is what tells them how much per-channel headroom the frame has -
     // vbr->nominal_kbps (or its own fallbacks) stands in for bitrate_kbps.
     const std::uint32_t tool_reference_kbps =
@@ -1690,9 +2004,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                           config_.vbr->max_kbps.value_or(kVbrDefaultNominalKbps))
                     : config_.bitrate_kbps;
 
-    // --- 1. Tool decisions --------------------------------------------------
-    // Spectral extension is settled first, because when both tools are in use
-    // it fixes where coupling has to stop (§E3.3.1).
+    // --- 1. Frame setup -----------------------------------------------------
+    // The order from here is: block switching, then the MDCT, then the tool
+    // decisions the transform's own coefficients inform (steps 2 and 3), then
+    // coupling proper. The transform runs BEFORE the tools are chosen because
+    // choosing them from content means measuring content, and the frame's
+    // coefficients are the measurement - re-deriving the same spectrum from
+    // the PCM a second time would cost a second transform for numbers this
+    // one already has. Nothing in the MDCT depends on which tools are on: it
+    // reads the block-switch decision and nothing else.
     // The Payload lives on the encoder (state_) and reset_for_frame makes it
     // exactly a fresh one, minus the re-allocations - ~150 KB of vectors a
     // frame before this.
@@ -1713,13 +2033,130 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     auto& cpl = payload.cpl;
     auto& spx = payload.spx;
+
+    // --- Block switching (§8.2.2/§7.9) --------------------------------------
+    // Decided before the coupling decision below, because §8.2.4.1's basic-
+    // encoder guidance excludes a block-switched channel from coupling, and
+    // this codebase's coupling is frame-wide all-or-nothing rather than a
+    // per-channel toggle - so the only way to honour that exclusion without
+    // inventing bitstream machinery this phase has no room for is to leave
+    // coupling (and, below, AHT) off for the WHOLE frame whenever any
+    // eligible channel switches, rather than just that one channel.
+    AC3_ZONE_BEGIN(zone_transients, "step1_transient_detect");
+    auto& blksw = state_->blksw;
+    blksw.assign(static_cast<std::size_t>(nfchans), {});
+    auto& channel_switched = state_->channel_switched;
+    channel_switched.assign(static_cast<std::size_t>(nfchans), false);
+    bool any_switched = false;
+    for (int ch = 0; ch < nfchans; ++ch) {
+        const auto& pcm = channels[static_cast<std::size_t>(ch)];
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            // §8.2.2 defines blksw from the analysis window's SECOND half -
+            // exactly this block period's 256 NEW samples, a contiguous
+            // slice of the frame's own PCM. The window's first half was last
+            // call's segment; the detector's persistent state carries it, so
+            // no history splice (and no 512-sample gather) is needed here at
+            // all - see TransientDetector::detect.
+            const std::span<const float, kSamplesPerBlock> segment{
+                pcm.data() + static_cast<std::size_t>(blk) * kSamplesPerBlock,
+                kSamplesPerBlock};
+            const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
+            blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)] = sw;
+            channel_switched[static_cast<std::size_t>(ch)] =
+                channel_switched[static_cast<std::size_t>(ch)] || sw;
+            any_switched = any_switched || sw;
+        }
+    }
+    AC3_ZONE_END(zone_transients);
+
+    // --- 2. MDCT ------------------------------------------------------------
+    AC3_ZONE_BEGIN(zone_mdct, "step2_mdct");
+    auto& coeffs = state_->coeffs;
+    // Sized for the CODED channels only. The coupling channel is one more
+    // stream on the end, but whether there is one is a tool decision that
+    // has not been taken yet - it is taken from these very coefficients -
+    // so its slots are appended once cpl.in_use is settled, below. Appending
+    // rather than sizing for the maximum keeps a no-coupling frame's
+    // footprint where it was.
+    coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
+    const auto coeffs_at = [&](int s, int blk) -> std::array<double, 256>& {
+        return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
+                      static_cast<std::size_t>(blk)];
+    };
+    for (int ch = 0; ch < nchans; ++ch) {
+        const auto& pcm = channels[static_cast<std::size_t>(ch)];
+        auto& hist = history_[static_cast<std::size_t>(ch)];
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            auto& time = time_scratch_;
+            AC3_ZONE_BEGIN(zone_gather, "step2_gather");
+            for (int n = 0; n < 512; ++n) {
+                const int pos = blk * 256 - 256 + n;
+                time[static_cast<std::size_t>(n)] =
+                    pos < 0 ? hist[static_cast<std::size_t>(pos + 256)]
+                            : static_cast<double>(pcm[static_cast<std::size_t>(pos)]);
+            }
+            AC3_ZONE_END(zone_gather);
+            auto& windowed = windowed_scratch_;
+            AC3_ZONE_BEGIN(zone_window, "step2_window");
+            apply_analysis_window(time, windowed);
+            AC3_ZONE_END(zone_window);
+            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
+                // §7.9.2: the two half-block transforms are interleaved
+                // bin-by-bin into one ordinary 256-coefficient set - from
+                // here on, exponent/bitalloc/mantissa code cannot tell this
+                // block apart from a long one.
+                const std::span<const double, 512> full(windowed);
+                auto& first = half1_scratch_;
+                auto& second = half2_scratch_;
+                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
+                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
+                auto& out = coeffs_at(ch, blk);
+                for (int k = 0; k < 128; ++k) {
+                    out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
+                    out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
+                }
+            } else {
+                mdct512_forward(windowed, coeffs_at(ch, blk), config_.fast_mdct);
+            }
+        }
+        for (int n = 0; n < 256; ++n) {
+            hist[static_cast<std::size_t>(n)] =
+                static_cast<double>(pcm[static_cast<std::size_t>(1280 + n)]);
+        }
+    }
+
+    AC3_ZONE_END(zone_mdct);
+
+    // The frame's own spectrum, for the two tool decisions below to read. The
+    // coupling channel's slots do not exist yet - nothing here looks at them.
+    const CoeffView content{std::span{coeffs}.first(
+        static_cast<std::size_t>(nchans) * kBlocksPerFrame)};
+
+    // --- Spectral extension (§E3.6) ------------------------------------------
+    // Settled before coupling, because when both are in use it fixes where
+    // coupling has to stop (§E3.3.1).
+    //
     // `auto` asks the rate policy whether each tool is worth its cost here;
     // otherwise the caller's own flags stand. The policy answers either
     // kToolOff or the geometry helper's own value, so only the on/off
     // question needs it - the start sub-band below comes from the geometry
     // helper either way. See FrameConfig::auto_tools.
+    //
+    // Under `auto` the rate is only half of it: the same rate that cannot
+    // afford a tonal high band can afford a noise-like one twice over,
+    // because synthesis is nearly transparent on noise and audibly wrong on a
+    // tone. extension_content measures which this frame is, at the sub-band
+    // the geometry helper would start from, and auto_spxbegf trades that
+    // against the rate.
+    const int spx_candidate_begf =
+        std::clamp(config_.spxbegf >= 0 ? config_.spxbegf
+                                        : spxbegf_geometry(tool_reference_kbps, nfchans),
+                   0, 7);
+    const ExtensionContent extension = extension_content(
+        content, nfchans, spx_band_start(spx_begin_subbnd(spx_candidate_begf)),
+        spx_band_start(spx_end_subbnd(kSpxTopSubBandCode)));
     spx.in_use = config_.auto_tools
-                     ? default_spxbegf(tool_reference_kbps, nfchans) != kToolOff
+                     ? auto_spxbegf(tool_reference_kbps, nfchans, extension) != kToolOff
                      : config_.spx;
     if (spx.in_use) {
         spx.begf = std::clamp(config_.spxbegf >= 0
@@ -1765,80 +2202,61 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
     }
 
-    // --- Block switching (§8.2.2/§7.9) --------------------------------------
-    // Decided before the coupling decision below, because §8.2.4.1's basic-
-    // encoder guidance excludes a block-switched channel from coupling, and
-    // this codebase's coupling is frame-wide all-or-nothing rather than a
-    // per-channel toggle - so the only way to honour that exclusion without
-    // inventing bitstream machinery this phase has no room for is to leave
-    // coupling (and, below, AHT) off for the WHOLE frame whenever any
-    // eligible channel switches, rather than just that one channel.
-    AC3_ZONE_BEGIN(zone_transients, "step1_transient_detect");
-    auto& blksw = state_->blksw;
-    blksw.assign(static_cast<std::size_t>(nfchans), {});
-    auto& channel_switched = state_->channel_switched;
-    channel_switched.assign(static_cast<std::size_t>(nfchans), false);
-    bool any_switched = false;
-    for (int ch = 0; ch < nfchans; ++ch) {
-        const auto& pcm = channels[static_cast<std::size_t>(ch)];
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-            // §8.2.2 defines blksw from the analysis window's SECOND half -
-            // exactly this block period's 256 NEW samples, a contiguous
-            // slice of the frame's own PCM. The window's first half was last
-            // call's segment; the detector's persistent state carries it, so
-            // no history splice (and no 512-sample gather) is needed here at
-            // all - see TransientDetector::detect.
-            const std::span<const float, kSamplesPerBlock> segment{
-                pcm.data() + static_cast<std::size_t>(blk) * kSamplesPerBlock,
-                kSamplesPerBlock};
-            const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
-            blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)] = sw;
-            channel_switched[static_cast<std::size_t>(ch)] =
-                channel_switched[static_cast<std::size_t>(ch)] || sw;
-            any_switched = any_switched || sw;
-        }
-    }
-    AC3_ZONE_END(zone_transients);
-
-    // §3.7: transient pre-noise processing. Reuses the block-switch decision
-    // above rather than a second, independent transient detector - a channel
-    // gets a correction exactly where it also short-transforms. The chosen
-    // location is the first switched block's own leading edge (already a
-    // multiple of 4, so nothing is lost rounding transprocloc to the wire
-    // field's 4-sample resolution) and translen is a fixed, conservative 0:
-    // the shortest legal correction window, covering exactly the block
-    // boundary immediately before the switch with no extra margin. Neither
-    // choice is spec-mandated - only decoder reconstruction (§3.7.2) is
-    // normative - so both are this encoder's own starting heuristic, a
-    // baseline to tune once real listening (not just round-trip decode)
-    // guides it.
-    if (config_.transient_prenoise) {
-        payload.chintransproc.assign(static_cast<std::size_t>(nfchans), false);
-        payload.transprocloc.assign(static_cast<std::size_t>(nfchans), 0);
-        payload.transproclen.assign(static_cast<std::size_t>(nfchans), 0);
-        for (int ch = 0; ch < nfchans; ++ch) {
-            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-                if (blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
-                    payload.chintransproc[static_cast<std::size_t>(ch)] = true;
-                    payload.transprocloc[static_cast<std::size_t>(ch)] = blk * kSamplesPerBlock;
-                    payload.transproclen[static_cast<std::size_t>(ch)] = 0;
-                    payload.transproce = true;
-                    break;
-                }
-            }
-        }
-    }
 
     // §E2.2.3 gates the whole coupling element on acmod > 0x1, so 1/0 and the
     // rejected 1+1 cannot couple however the caller asks.
+    //
+    // Under `auto` the rate is again only half of it. What coupling costs
+    // this frame is how badly one shared channel plus per-band scale factors
+    // describe its coupling region, and coupling_content measures exactly that -
+    // at the geometry the decision would actually use, so the number belongs
+    // to the region being decided rather than to a nominal one.
+    const int cpl_candidate_begf =
+        std::clamp(config_.cplbegf >= 0 ? config_.cplbegf
+                                        : cplbegf_geometry(tool_reference_kbps, nfchans),
+                   0, 15);
+    const int cpl_candidate_endf = spx.in_use ? derived_cplendf(spx.begf) : 15;
+    CouplingContent cpl_content{.fit = coupling_fit_reference(nfchans), .energy_share = 0.0};
+    if (cpl_candidate_endf + 2 >= cpl_candidate_begf) {
+        const auto candidate_structure = kDefaultCplBandStructure;
+        const int candidate_subbnd = 3 + cpl_candidate_endf - cpl_candidate_begf;
+        cpl_content = coupling_content(
+            content, nfchans,
+            group_bands(kCplFirstBin + kCplBinsPerSubBand * cpl_candidate_begf,
+                        candidate_subbnd, kCplBinsPerSubBand,
+                        std::span{candidate_structure}.first(
+                            static_cast<std::size_t>(candidate_subbnd))),
+            kCplFirstBin + kCplBinsPerSubBand * (cpl_candidate_endf + 3));
+    }
     const bool want_coupling =
-        config_.auto_tools ? default_cplbegf(tool_reference_kbps, nfchans) != kToolOff
-                           : config_.coupling;
+        config_.auto_tools
+            ? auto_cplbegf(tool_reference_kbps, nfchans, cpl_content,
+                           3 + cpl_candidate_endf - cpl_candidate_begf) != kToolOff
+            : config_.coupling;
     cpl.in_use = want_coupling && static_cast<std::uint8_t>(config_.acmod) > 0x1 && !any_switched;
     // Enhanced coupling is a different reconstruction of the same region, not
-    // a rate decision of its own, so `auto` never reaches for it - a caller
+    // a rate decision of its own, and `auto` does not reach for it - a caller
     // who wants it asks for it, and keeps the on/off decision with it.
-    cpl.enhanced = cpl.in_use && config_.enhanced && !config_.auto_tools;
+    //
+    // Not because it sounds worse. Measured on six excerpts of a real 5.1
+    // theatrical mix it is ahead of standard coupling on ViSQOL MOS-LQO at
+    // every (layout, rate) point tried, by +0.54 MOS-LQO at 96 kbit/s stereo,
+    // +0.31 at 128, +0.18 at 192, and +0.78 / +0.55 / +0.16 at 192 / 256 /
+    // 384 kbit/s 5.1 - which is the opposite
+    // of what every SNR trend row has recorded, and the point: a
+    // phase-restoring reconstruction built on a full DFT does not preserve
+    // the waveform, it preserves what the waveform sounded like.
+    //
+    // What rules it out of `auto` is interoperability. FFmpeg's Annex E
+    // parser has no model of §E3.5's syntax at all - it does not decline an
+    // enhanced-coupling stream, it misreads it and reports a corrupt frame -
+    // and `auto` is the tool set a caller gets for asking for nothing in
+    // particular. It has to stay decodable by the decoders that exist. The
+    // same gap is why this tool has never had an external oracle and why
+    // tools/ci/quality_race.py scores it through this project's own decoder
+    // (see decode_scores_ours). docs/concepts/ac3-eac3.md carries the table
+    // and the reasoning.
+    cpl.enhanced = cpl.in_use && config_.enhanced;
     if (cpl.enhanced) {
         // begf is read as ecplbegf here, the same field reused rather than
         // duplicated - config_.cplbegf's existing rate-dependent default
@@ -1939,58 +2357,40 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         return s < nfchans ? fbw_endmant : kLfeEndmant;
     };
+    // The coupling stream's own coefficient slots, now that the decision is
+    // in. cpl_stream is nchans - the index straight after the coded channels
+    // - so a plain resize puts them exactly where coeffs_at expects, and
+    // leaves the per-channel coefficients the MDCT already wrote untouched.
+    coeffs.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
 
-    // --- 2. MDCT ------------------------------------------------------------
-    AC3_ZONE_BEGIN(zone_mdct, "step2_mdct");
-    auto& coeffs = state_->coeffs;
-    coeffs.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
-    const auto coeffs_at = [&](int s, int blk) -> std::array<double, 256>& {
-        return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
-                      static_cast<std::size_t>(blk)];
-    };
-    for (int ch = 0; ch < nchans; ++ch) {
-        const auto& pcm = channels[static_cast<std::size_t>(ch)];
-        auto& hist = history_[static_cast<std::size_t>(ch)];
-        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
-            auto& time = time_scratch_;
-            AC3_ZONE_BEGIN(zone_gather, "step2_gather");
-            for (int n = 0; n < 512; ++n) {
-                const int pos = blk * 256 - 256 + n;
-                time[static_cast<std::size_t>(n)] =
-                    pos < 0 ? hist[static_cast<std::size_t>(pos + 256)]
-                            : static_cast<double>(pcm[static_cast<std::size_t>(pos)]);
-            }
-            AC3_ZONE_END(zone_gather);
-            auto& windowed = windowed_scratch_;
-            AC3_ZONE_BEGIN(zone_window, "step2_window");
-            apply_analysis_window(time, windowed);
-            AC3_ZONE_END(zone_window);
-            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
-                // §7.9.2: the two half-block transforms are interleaved
-                // bin-by-bin into one ordinary 256-coefficient set - from
-                // here on, exponent/bitalloc/mantissa code cannot tell this
-                // block apart from a long one.
-                const std::span<const double, 512> full(windowed);
-                auto& first = half1_scratch_;
-                auto& second = half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
-                auto& out = coeffs_at(ch, blk);
-                for (int k = 0; k < 128; ++k) {
-                    out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
-                    out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
+    // §3.7: transient pre-noise processing. Reuses the block-switch decision
+    // above rather than a second, independent transient detector - a channel
+    // gets a correction exactly where it also short-transforms. The chosen
+    // location is the first switched block's own leading edge (already a
+    // multiple of 4, so nothing is lost rounding transprocloc to the wire
+    // field's 4-sample resolution) and translen is a fixed, conservative 0:
+    // the shortest legal correction window, covering exactly the block
+    // boundary immediately before the switch with no extra margin. Neither
+    // choice is spec-mandated - only decoder reconstruction (§3.7.2) is
+    // normative - so both are this encoder's own starting heuristic, a
+    // baseline to tune once real listening (not just round-trip decode)
+    // guides it.
+    if (config_.transient_prenoise) {
+        payload.chintransproc.assign(static_cast<std::size_t>(nfchans), false);
+        payload.transprocloc.assign(static_cast<std::size_t>(nfchans), 0);
+        payload.transproclen.assign(static_cast<std::size_t>(nfchans), 0);
+        for (int ch = 0; ch < nfchans; ++ch) {
+            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                if (blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]) {
+                    payload.chintransproc[static_cast<std::size_t>(ch)] = true;
+                    payload.transprocloc[static_cast<std::size_t>(ch)] = blk * kSamplesPerBlock;
+                    payload.transproclen[static_cast<std::size_t>(ch)] = 0;
+                    payload.transproce = true;
+                    break;
                 }
-            } else {
-                mdct512_forward(windowed, coeffs_at(ch, blk), config_.fast_mdct);
             }
-        }
-        for (int n = 0; n < 256; ++n) {
-            hist[static_cast<std::size_t>(n)] =
-                static_cast<double>(pcm[static_cast<std::size_t>(1280 + n)]);
         }
     }
-
-    AC3_ZONE_END(zone_mdct);
 
     // --- 3. Coupling: the shared channel and its coordinates ---------------
     const auto nbnd = static_cast<std::size_t>(std::max(cpl.bands.count, 1));
@@ -2148,7 +2548,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
                 auto& zr = ecpl_zr_scratch_;
                 auto& zi = ecpl_zi_scratch_;
-                ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                ecpl_channel_spectrum(prev, curr, next, zr, zi, config_.fast_mdct);
                 auto& baseline_a = ecpl_baseline_a_scratch_;
                 auto& baseline_b = ecpl_baseline_b_scratch_;
                 ecpl_channel_coefficients(zr, zi, unity_amp, zero_angle, cpl.strtmant,
@@ -3050,7 +3450,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     const auto& next = neighbor(blk + 1, ecpl_next_scratch_);
                     auto& zr = ecpl_zr_scratch_;
                     auto& zi = ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi, config_.fast_mdct);
 
                     const int bins = cpl.endmant - cpl.strtmant;
                     std::vector<double> amp_bin(static_cast<std::size_t>(bins));

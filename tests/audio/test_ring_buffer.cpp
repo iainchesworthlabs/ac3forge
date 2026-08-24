@@ -7,13 +7,13 @@
 
 #include "ac3/audio/ring_buffer.hpp"
 
-TEST_CASE("ring buffer rounds capacity up to a power of two", "[ring]") {
+TEST_CASE("ring buffer rounds capacity up to a power of two", "[ring][concurrency]") {
     CHECK(ac3::audio::RingBuffer(1000).capacity() == 1024);
     CHECK(ac3::audio::RingBuffer(1024).capacity() == 1024);
     CHECK(ac3::audio::RingBuffer(1).capacity() == 2);
 }
 
-TEST_CASE("write then read returns the same samples in order", "[ring]") {
+TEST_CASE("write then read returns the same samples in order", "[ring][concurrency]") {
     ac3::audio::RingBuffer ring(64);
     std::vector<float> in(40);
     std::iota(in.begin(), in.end(), 1.0f);
@@ -27,7 +27,7 @@ TEST_CASE("write then read returns the same samples in order", "[ring]") {
     CHECK(ring.dropped() == 0);
 }
 
-TEST_CASE("writes wrap around the buffer end", "[ring]") {
+TEST_CASE("writes wrap around the buffer end", "[ring][concurrency]") {
     ac3::audio::RingBuffer ring(16);  // capacity 16, usable 15
     std::vector<float> chunk(10);
     std::vector<float> out(10);
@@ -40,7 +40,7 @@ TEST_CASE("writes wrap around the buffer end", "[ring]") {
     }
 }
 
-TEST_CASE("a full buffer drops the overflow and counts it", "[ring]") {
+TEST_CASE("a full buffer drops the overflow and counts it", "[ring][concurrency]") {
     ac3::audio::RingBuffer ring(8);  // capacity 8, one slot reserved
     const std::vector<float> in(20, 0.5f);
     const auto written = ring.write(in);
@@ -54,7 +54,7 @@ TEST_CASE("a full buffer drops the overflow and counts it", "[ring]") {
     CHECK(ring.write(std::vector<float>(4, 1.0f)) == 4);
 }
 
-TEST_CASE("reads never exceed what was written", "[ring]") {
+TEST_CASE("reads never exceed what was written", "[ring][concurrency]") {
     ac3::audio::RingBuffer ring(32);
     std::vector<float> out(10);
     CHECK(ring.read(out) == 0);  // empty
@@ -63,7 +63,7 @@ TEST_CASE("reads never exceed what was written", "[ring]") {
     CHECK(ring.read(out) == 3);
 }
 
-TEST_CASE("concurrent producer and consumer preserve the sample sequence", "[ring]") {
+TEST_CASE("concurrent producer and consumer preserve the sample sequence", "[ring][concurrency]") {
     // The real usage: the WASAPI thread writes while the encoder reads. Every
     // sample that survives must appear exactly once, in order.
     constexpr std::size_t kTotal = 200'000;
