@@ -13,8 +13,9 @@ better or worse as the code changed" — one row per (leg, tool-set), not just
 the single black-box number a real user actually gets.
 
 The `landscape` row is E-AC-3's `auto` tools — the set this encoder picks
-from the per-channel rate, and so the configuration comparable to FFmpeg's/
-DEE's own automatic best-effort choices (AC-3 has no such toggle; coupling,
+from the per-channel rate *and the frame's own content* (see
+[Encoding E-AC-3](library/encoding-eac3.md#how-auto-chooses)), and so the
+configuration comparable to FFmpeg's/DEE's own automatic best-effort choices (AC-3 has no such toggle; coupling,
 rematrixing and delta bit allocation are unconditionally automatic there).
 It is the same encode as the `auto` variant row, which is why those two
 lines coincide exactly; the remaining rows are the forced sets `auto` is
