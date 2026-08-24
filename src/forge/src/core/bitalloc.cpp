@@ -14,6 +14,7 @@
 #include "ac3/core/aht_tables.hpp"
 #include "ac3/core/bitalloc_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 
 namespace ac3 {
@@ -56,6 +57,34 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
         a = std::max(0, a - 128);
     }
     return a;
+}
+
+// §7.2.2.2: exponents -> 13-bit signed log PSD, four bins at a time through
+// the arch seam (ROADMAP PF5).
+//
+// The only loop in the allocator that vectorises at all, which is worth
+// saying explicitly so nobody goes looking for the other two: §7.2.2.4's
+// excitation function is a serial recurrence (fastleak, slowleak and lowcomp
+// each carry from one band into the next, and one of them can break the loop
+// early), and §7.2.2.5's masking curve is a per-band conditional over at
+// most 50 elements. Neither is a shape a vector unit helps.
+//
+// Exactness is not an argument here the way it is for the transforms: these
+// are the same widening, shift and subtract on the same integers, and
+// integer arithmetic does not round.
+void exponents_to_psd(std::span<const std::uint8_t> exps, int start, int end,
+                      std::span<std::int32_t> psd) {
+    const auto stop = static_cast<std::size_t>(end);
+    const auto base = internal::arch::i32x4::broadcast(3072);
+    std::size_t bin = static_cast<std::size_t>(start);
+    for (; bin + 4 <= stop; bin += 4) {
+        const auto raw = internal::arch::i32x4::load_u8_widen(exps.data() + bin);
+        (base - internal::arch::shift_left<7>(raw)).store(psd.data() + bin);
+    }
+    // end is a mantissa count (37, 61, ... 253), never a multiple of four.
+    for (; bin < stop; ++bin) {
+        psd[bin] = 3072 - (exps[bin] << 7);
+    }
 }
 
 // A run of consecutive absolute bands sharing one Table 5.17 deltba code.
@@ -189,9 +218,7 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
 
     // §7.2.2.2: exponents -> 13-bit signed log PSD.
     std::array<int, kMaxMantissas> psd{};
-    for (int bin = kStart; bin < end; ++bin) {
-        psd[static_cast<std::size_t>(bin)] = 3072 - (exps[static_cast<std::size_t>(bin)] << 7);
-    }
+    exponents_to_psd(exps, kStart, end, psd);
 
     // §7.2.2.3: banded integration via log-addition.
     const std::array<int, 50> bndpsd = band_psd(psd, kStart, end);
@@ -364,9 +391,9 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     // exponent = -1 - log2(|c|) gives real_psd = 3200 + 128*log2(|c|).
     std::array<int, kMaxMantissas> psd{};
     std::array<int, kMaxMantissas> real_psd{};
+    exponents_to_psd(exps, start, end, psd);
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
-        psd[i] = 3072 - (exps[i] << 7);
         const double magnitude = std::abs(static_cast<double>(coefficients[i]));
         real_psd[i] = magnitude > 0.0
                           ? static_cast<int>(std::lround(3200.0 + 128.0 * std::log2(magnitude)))

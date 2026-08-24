@@ -62,6 +62,75 @@ include(Fmt)
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 # ---------------------------------------------------------------------------
+# Floating-point contraction: OFF, everywhere, deliberately.
+#
+# GCC and Clang both let the optimiser fuse `a * b + c` into a single
+# fused-multiply-add by default (-ffp-contract=fast for GCC, =on for Clang),
+# which keeps ONE EXTRA rounding step's worth of precision compared with
+# evaluating the multiply and the add separately. That is a perfectly
+# reasonable default for numerical code and the wrong one here, for three
+# reasons that all point the same way:
+#
+#  - It is architecture-dependent. FMA is a base ARMv8-A instruction, so
+#    every arm64 and Apple-silicon leg contracts; x86-64 has no FMA below
+#    AVX2 and this project passes no -march=, so no x86 leg does. The same
+#    source therefore computes different numbers on different legs purely
+#    because of what the ISA happens to offer - and the gold-reference gate
+#    has been recording exactly that: `linux-gcc-arm64`, `linux-llvm-arm64`
+#    and `macos-llvm` score ~61.8 dB where every x86 leg scores ~67.8 dB, a
+#    gap of 6.02 dB, which is not a vague "floating-point differences"
+#    number but precisely one AC-3 exponent step (§7.2.2.2's PSD units are
+#    128 per exponent, one exponent is 6.02 dB). A last-bit difference in an
+#    MDCT coefficient that straddles a power of two moves
+#    exponent_from_fixed()'s leading-zero count by one, and a whole band's
+#    allocation with it. See ROADMAP VX11, which this pins the policy half
+#    of.
+#  - It is invisible. Nothing in the source says a contraction happened, so
+#    the difference cannot be reviewed, only measured after the fact.
+#  - It would break the SIMD seam's correctness argument outright.
+#    src/forge/src/internal/arch/*/ac3/internal/arch/simd.hpp maps every
+#    operation to exactly one IEEE-754 add/subtract/multiply so that a
+#    vectorised kernel is bit-identical to the scalar loop it replaced. That
+#    holds only if the scalar loop is not silently getting a fused form the
+#    intrinsics cannot express (and NEON's vmulq_f64 + vsubq_f64 pair CAN be
+#    re-fused by the compiler, so "use intrinsics" is not by itself a
+#    defence).
+#
+# Cost, measured: none on x86-64, where the flag is a no-op because baseline
+# x86-64 has no FMA instruction to emit. On aarch64 it gives up FMLA in the
+# transform inner loops, and buys agreement with every other leg for it -
+# see docs/building.md's "Floating-point contraction".
+#
+# MSVC has no -ffp-contract; /fp:precise is its equivalent statement of
+# intent, and is also already its default. It is spelled out so the policy is
+# stated on every compiler rather than three of four. Like the x86-64 case
+# above it is a no-op in practice today: without an /arch: switch MSVC
+# targets baseline SSE2, which has no FMA either.
+#
+# clang-cl needs the /clang: escape. It reports CXX_COMPILER_ID "Clang" like
+# upstream Clang but parses MSVC-style arguments, and a bare
+# -ffp-contract=off there is not an error - it is a WARNING ("unknown
+# argument ignored in clang-cl"), which -Werror then turns into a failed
+# build on the windows-llvm leg while quietly meaning the policy was never
+# applied at all. Same split as cmake/CompilerWarnings.cmake's, and resolved
+# the same way: at configure time, where CMAKE_CXX_COMPILER_FRONTEND_VARIANT
+# is available, rather than in a generator expression that cannot see it.
+#
+# Project-wide via add_compile_options rather than on ac3::forge alone: the
+# benchmarks and the tests' own scalar reference kernels have to be compiled
+# under the same rules as the code they measure and check.
+# ---------------------------------------------------------------------------
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(AC3_FP_CONTRACT_FLAG "/fp:precise")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+       CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(AC3_FP_CONTRACT_FLAG "/clang:-ffp-contract=off")
+else()
+    set(AC3_FP_CONTRACT_FLAG "-ffp-contract=off")
+endif()
+add_compile_options("${AC3_FP_CONTRACT_FLAG}")
+
+# ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
 option(AC3FORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
@@ -291,3 +360,7 @@ message(STATUS "  Build Python   : ${AC3FORGE_BUILD_PYTHON}")
 # and 'play' work in this build at all - see the platform tree in
 # src/audio/CMakeLists.txt. 'posix' is the one that means no.
 message(STATUS "  Audio backend  : ${AC3FORGE_AUDIO_BACKEND}")
+# Which src/forge/src/internal/arch/ directory the codec's vector kernels
+# were compiled from (ROADMAP PF5). 'generic' is the portable scalar
+# reference; -DAC3FORGE_SIMD=generic forces it anywhere.
+message(STATUS "  SIMD kernels   : ${AC3FORGE_SIMD_RESOLVED}")
