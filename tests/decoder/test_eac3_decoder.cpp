@@ -13,6 +13,9 @@
 #include "ac3/core/crc16.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
+#include "ac3/encoder/plan.hpp"
+#include "ac3/io/wav.hpp"
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around
@@ -553,6 +556,26 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     CHECK((*au)->acmod == Acmod::kDualMono);
     CHECK((*au)->layout.count == 0);
     REQUIRE((*au)->channels.size() == 2);
+
+    // Every monitor/playback caller (ac3gui's runLiveSession, ac3cli's
+    // run_live/run_monitor) reorders decode_access_unit's `channels` for
+    // interleaving by feeding `layout` through plan::monitor_order first.
+    // layout.count == 0 above means a naive plan::wav_order call would see
+    // an empty span and return an empty permutation - fed to an interleave
+    // step, that silently drops both channels (frame_count * 0 samples)
+    // instead of erroring, which is exactly how this went unnoticed: silence
+    // on a working sink, not a crash. plan::monitor_order's whole purpose is
+    // falling back to the identity order over `channel_count` in that case,
+    // asserted here directly against the real decoded access unit, since
+    // decode_access_unit is the one fact both callers' own tests cannot
+    // otherwise pin (ac3gui's live session and ac3cli's run_live both need a
+    // real audio device Quick Test's offscreen CI has none of).
+    const auto order = ac3::plan::monitor_order(
+        std::span{(*au)->layout.items}.first(static_cast<std::size_t>((*au)->layout.count)),
+        (*au)->channels.size());
+    REQUIRE(order.size() == 2);
+    CHECK(order[0] == 0);
+    CHECK(order[1] == 1);
 }
 
 TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is not assumed",
@@ -865,6 +888,204 @@ TEST_CASE("E-AC-3 coupling round-trips are near-transparent", "[eac3][decoder][c
             CHECK(snr_db(rt.source[ch], rt.rendered[ch]) > 20.0);
         }
     }
+}
+
+TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decoder][coupling]") {
+    // §7.2.2.6 corrections used to be skipped for every stream in any frame
+    // where coupling was in use, which left two things unexercised at once:
+    // the encoder never emitted `cpldeltbae`, and the decoder never read it.
+    // The moment the first was fixed the second desynchronised every coupled
+    // frame carrying a correction - the two bits went out and nothing
+    // consumed them, so every field after them was read at the wrong offset.
+    //
+    // This pins both halves. dbaflde is a frame-level flag (Table E1.3),
+    // nine bits into audfrm - expstre, ahte, the two-bit snroffststr,
+    // transproce, blkswe, dithflage, bamode, frmfgaincode - which for a
+    // stereo independent substream with no compression word, mixing metadata
+    // or addbsi starts at bit 54, the same bsi length the malformed-coupling
+    // test above counts off emit_frame. Reading it directly is what makes
+    // this a test of coupled frames that REALLY carry corrections, rather
+    // than one that would keep passing if the encoder quietly stopped
+    // emitting them.
+    constexpr std::size_t kDbafldeBit = 54 + 9;
+    constexpr std::size_t kCplinuBit = 54 + 12;
+
+    // A wanted correction now pays its full segment cost again on every
+    // block it applies to, matching what `D3` already established for AC-3
+    // (see `set_run_delta`'s own comment), rather than the one-shot-per-run
+    // cost an earlier draft of this test assumed. That real, repeated cost
+    // makes the closed-loop keep/drop decision - fit with and without, keep
+    // the higher composite SNR offset - much choosier than it used to be:
+    // measured against real programme material at 96/128/192 kbit/s stereo,
+    // it keeps a correction on well under 1% of coupled frames. Synthetic
+    // content could not reproduce even that: broadband noise built from
+    // independent-phase tones computes a real, multi-segment correction
+    // every time - `choose_delta_segments` finds plenty to fix - and the
+    // closed loop rejects every single one, because independent phases
+    // average toward the flat-ish spectrum a coarse exponent already
+    // approximates tolerably. A phase-aligned harmonic series fared no
+    // better - coupling itself never activated on it, for reasons not
+    // pinned down here. Real programme material is what the closed loop
+    // actually rewards, so this drives the same golden `reference_stereo.wav`
+    // other coupling tests already trust, looped to give the low real hit
+    // rate enough tries to land at least once.
+    const auto fixture = ac3::io::read_wav(std::string{AC3FORGE_GOLDEN_AUDIO_DIR} +
+                                           "/reference_stereo.wav");
+    REQUIRE(fixture.has_value());
+    const auto& source = fixture->channels;
+    REQUIRE(source.size() == 2);
+    const auto source_samples = source[0].size();
+    REQUIRE(source_samples >= static_cast<std::size_t>(ac3::kSamplesPerFrame));
+
+    ac3::Eac3Decoder decoder;
+    int coupled_frames = 0;
+    int coupled_frames_with_delta = 0;
+
+    // Whether a correction earns its side info is a per-frame decision (see
+    // encode_frame's keep/drop comparison against the rate fit), and it goes
+    // the corrections' way most often where the budget is tight, so this
+    // sweeps the low rates coupling exists to serve rather than betting on
+    // one of them.
+    for (const std::uint32_t kbps : {96u, 128u, 192u}) {
+        CAPTURE(kbps);
+        ac3::eac3::AccessUnitEncoder encoder{
+            {.independent = {.bitrate_kbps = kbps, .acmod = ac3::Acmod::k2_0, .coupling = true}}};
+        REQUIRE(encoder.channel_count() == 2);
+
+        std::size_t cursor = 0;
+        for (int f = 0; f < 400; ++f) {
+            std::vector<std::vector<float>> pcm(
+                2, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                const auto idx = (cursor + static_cast<std::size_t>(i)) % source_samples;
+                pcm[0][static_cast<std::size_t>(i)] = source[0][idx];
+                pcm[1][static_cast<std::size_t>(i)] = source[1][idx];
+            }
+            cursor = (cursor + static_cast<std::size_t>(ac3::kSamplesPerFrame)) % source_samples;
+            std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+            const auto unit = encoder.encode_access_unit(views);
+            REQUIRE(unit.has_value());
+
+            ac3::BitReader reader{unit->bytes};
+            reader.skip(kCplinuBit);
+            const bool cplinu = reader.read(1) != 0;
+            ac3::BitReader delta_reader{unit->bytes};
+            delta_reader.skip(kDbafldeBit);
+            const bool dbaflde = delta_reader.read(1) != 0;
+            if (cplinu) {
+                ++coupled_frames;
+                coupled_frames_with_delta += dbaflde ? 1 : 0;
+            }
+            // The whole point: a coupled frame carrying corrections still
+            // decodes. Before the decoder learned to read cpldeltbae, the
+            // two bits went out unconsumed and this returned an error
+            // rather than audio.
+            CHECK(decoder.decode_access_unit(unit->bytes).has_value());
+        }
+    }
+    CAPTURE(coupled_frames, coupled_frames_with_delta);
+    REQUIRE(coupled_frames > 0);
+    // Not "every coupled frame" - a frame that would spend more on segments
+    // than it gains back legitimately sends none. What must not happen is
+    // coupling suppressing them wholesale, which is what this asserts.
+    CHECK(coupled_frames_with_delta > 0);
+}
+
+TEST_CASE("E-AC-3 enhanced coupling angle interpolation round-trips",
+          "[eac3][decoder][coupling][enhanced_coupling]") {
+    // ecplangleintrp (§E2.3.3.20) used to be legal syntax this decoder
+    // refused outright - no stream this project's own encoder produced set
+    // it, so the refusal was never exercised either. Now the encoder decides
+    // per frame whether §3.5.5.3's linear interpolation reconstructs closer
+    // to the real content than direct per-band application (see
+    // encode_frame's own decision, right after the per-band angle/chaos
+    // fit), and the decoder has to read both forms. This pins both halves on
+    // a stream engineered to set the flag, not just tolerate it.
+    //
+    // The bit offset below is pinned empirically rather than hand-derived:
+    // audfrm (Table E1.3) carries a per-channel/coupling/LFE exponent
+    // strategy block and a converter-exponent section ahead of the
+    // block-level cplstre/ecplinu fields the malformed-coupling test above
+    // counts through for standard coupling, so a hand count is one more
+    // thing to get quietly wrong. Instead: with this exact config (fixed
+    // bitrate, acmod, cplbegf, enhanced coupling) and this exact
+    // deterministic material, the encoder's own per-frame ecplangleintrp
+    // decision was captured directly (a temporary stderr trace at the
+    // decision site in eac3_frame.cpp, since removed) and the resulting
+    // byte-for-byte frames scanned for the one bit position whose value
+    // matches that decision on every one of 40 frames - only bit 135 does,
+    // uniquely. Kept as a magic constant rather than a formula because nothing
+    // about it should be recomputed from the config above: it is a property
+    // of THIS emit_frame ordering for THIS config, and a change to either
+    // is expected to move it, which is exactly what would make this test
+    // fail and worth another such capture.
+    constexpr int kCplbegf = 6;
+    constexpr std::size_t kAngleIntrpBit = 135;
+
+    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192,
+                                                          .acmod = ac3::Acmod::k2_0,
+                                                          .coupling = true,
+                                                          .cplbegf = kCplbegf,
+                                                          .enhanced = true}}};
+    REQUIRE(encoder.channel_count() == 2);
+    ac3::Eac3Decoder decoder;
+
+    // Several tones spread across the enhanced coupling region (bin 85,
+    // ~8.0 kHz, to bin 253, ~23.7 kHz at cplbegf 6) plus broadband noise
+    // (fixed LCG, deterministic run to run), each weighted oppositely per
+    // channel so adjacent bands genuinely disagree on angle - a single tone
+    // or a flat spectrum leaves nothing for interpolation to smooth over,
+    // and direct/interpolated reconstruction come out identical.
+    constexpr std::array<double, 5> kTones = {8500.0, 11000.0, 14000.0, 17500.0, 21000.0};
+    int frames_with_interp = 0;
+    int frames_total = 0;
+    std::uint32_t rng = 0x9e3779b9u;
+    std::uint64_t n = 0;
+    for (int f = 0; f < 20; ++f) {
+        std::vector<std::vector<float>> pcm(
+            2, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            rng = rng * 1664525u + 1013904223u;
+            const double noise =
+                static_cast<double>(static_cast<std::int32_t>(rng >> 8)) / 8388608.0 - 1.0;
+            const auto t = static_cast<double>(n + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+                double value = 0.05 * noise;
+                for (std::size_t k = 0; k < kTones.size(); ++k) {
+                    const double weight = ch == 0 ? 1.0 / static_cast<double>(k + 1)
+                                                  : static_cast<double>(k + 1) / 5.0;
+                    value += 0.08 * weight * std::sin(2.0 * std::numbers::pi * kTones[k] * t);
+                }
+                pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(value);
+            }
+        }
+        n += ac3::kSamplesPerFrame;
+        std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        ++frames_total;
+
+        ac3::BitReader reader{unit->bytes};
+        reader.skip(kAngleIntrpBit);
+        if (reader.read(1) != 0) {
+            ++frames_with_interp;
+        }
+        // The whole point: a frame that sets ecplangleintrp still decodes.
+        // Before the decoder implemented §3.5.5.3's interpolated form this
+        // returned DecodeError::kUnsupported instead of audio.
+        CHECK(decoder.decode_access_unit(unit->bytes).has_value());
+    }
+    CAPTURE(frames_total, frames_with_interp);
+    // Not "every frame" - it is a measured per-frame choice (see
+    // encode_frame's own comment), so material where direct application
+    // already reconstructs as well legitimately never sets it. What matters
+    // is that this material - built to disagree between bands - moves it at
+    // least once, and that the bit this test is reading really is
+    // ecplangleintrp: the capture this offset was pinned against showed it
+    // set on exactly frames 2, 4, 14 and 19 (1-indexed) of a 40-frame run
+    // with this same seed, and this test's first 20 frames are that same
+    // sequence's prefix - so frames_with_interp is expected to land at 4.
+    CHECK(frames_with_interp > 0);
 }
 
 TEST_CASE("E-AC-3 enhanced coupling round-trips are near-transparent",
@@ -1609,7 +1830,17 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     // eac3_frame.cpp) but writes every dithflag[ch] bit as 0 (dither off),
     // so the frame is patched by hand to flip block 0's dithflag[0] and
     // crc2 is restored - the only CRC E-AC-3 has (no crc1, unlike AC-3).
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};  // default acmod k2_0, no LFE
+    // chbwcod is pinned to the full band rather than left at the encoder's
+    // own choice, because that choice now reads the spectrum - and silence
+    // has none, so the default narrows to chbwcod 0 (ac3/encoder/
+    // bandwidth.hpp). A narrower band is not a smaller version of this test,
+    // it is a different one: with fewer bins to fill, step 8's SNR-offset
+    // search raises the composite until every bin has a positive bap, and a
+    // frame with no zero-bap bin left has nothing for §7.3.4 dither to
+    // substitute into. Measured on this exact frame, dithered channel-0
+    // energy falls smoothly with the band - 3.4e-11 at chbwcod 60, 1.2e-11
+    // at 40, 1.5e-12 at 30 - and reaches exactly zero at 25 and below.
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .chbwcod = 60}};  // acmod k2_0, no LFE
     const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(2, silence);
     auto frame = encoder.encode_frame(views);
@@ -1637,6 +1868,7 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     }
 
     auto patched = *frame;
+    patch_bits(patched, kDithflagBit0, 2, 0b00);  // start from dither off
     patch_bits(patched, kDithflagBit0, 1, 1);  // dithflag[0] = 1
 
     // Determinism: two independent decoders on the same patched frame
@@ -1692,12 +1924,19 @@ TEST_CASE("dithflag=1 on a coupled E-AC-3 channel dithers independently of its s
     // it only depends on which optional fields are structurally present).
     constexpr std::size_t kDithflagBit0 = 108;
 
+    // The encoder decides these flags from content now (src/forge/src/
+    // encoder/dither.hpp), so the dither-off baseline is established by hand
+    // rather than assumed from what it wrote - this test is about the
+    // decoder, and both sides of the comparison belong here.
+    auto cleared = *frame;
+    patch_bits(cleared, kDithflagBit0, 2, 0b00);
+
     ac3::Eac3Decoder baseline_decoder;
-    const auto baseline = baseline_decoder.decode_substream(*frame);
+    const auto baseline = baseline_decoder.decode_substream(cleared);
     REQUIRE(baseline.has_value());
     REQUIRE(baseline->has_value());
 
-    auto patched = *frame;
+    auto patched = cleared;
     patch_bits(patched, kDithflagBit0, 2, 0b11);  // dithflag[0] = dithflag[1] = 1
 
     ac3::Eac3Decoder decoder;
@@ -1917,5 +2156,143 @@ TEST_CASE("decode_access_unit_into passes dual mono through in coded order",
             equal = equal && storage[ch][i] == expect[i];
         }
         CHECK(equal);
+    }
+}
+
+// A/52 §E2.3.1.2's legacy-core delivery: "If an AC-3 bit stream is present in
+// the E-AC-3 bit stream, then the AC-3 bit stream shall be processed as an
+// independent substream assigned substream ID 0." Built the way real ones
+// are (see FFmpeg's FATE the_great_wall_7.1.eac3, cross-checked by hand while
+// writing tools/checks/verify_fate_interop.py): an AC-3 syncframe carrying
+// the 5.1 bed, immediately followed by an Annex E DEPENDENT substream whose
+// chanmap extends it - here to 7.1, the layout that sample actually uses.
+TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decoder]") {
+    using ac3::Acmod;
+    namespace cm = ac3::eac3::chanmap;
+
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .substreamid = 0,
+                                  .chanmap = cm::k71Rear,
+                                  .last_dependent = true}};
+
+    // Deliberately not the bed's own tones on Ls/Rs, for the same reason
+    // layout_cases() above uses different ones: identical tones could not
+    // tell the §E3.8.2 overwrite happening apart from the dependent being
+    // ignored outright.
+    const std::vector<double> bed_tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    const std::vector<double> rear_tones = {500.0, 1600.0, 400.0, 1800.0};
+    const std::vector<Speaker> speakers = {
+        {Location::kLeft, 1000.0},          {Location::kCentre, 800.0},
+        {Location::kRight, 1200.0},         {Location::kLeftSurround, 500.0},
+        {Location::kRightSurround, 1600.0}, {Location::kLrs, 400.0},
+        {Location::kRrs, 1800.0},           {Location::kLfe, 60.0}};
+
+    constexpr int kFrames = 4;
+    std::vector<std::byte> stream;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        std::vector<std::vector<float>> bed_block(6, std::vector<float>(ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> rear_block(4, std::vector<float>(ac3::kSamplesPerFrame));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < 6; ++ch) {
+                bed_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * bed_tones[ch] * t));
+            }
+            for (std::size_t ch = 0; ch < 4; ++ch) {
+                rear_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * rear_tones[ch] * t));
+            }
+        }
+        n0 += ac3::kSamplesPerFrame;
+
+        const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
+        const auto core_frame = core.encode_frame(bed_views);
+        REQUIRE(core_frame.has_value());
+        stream.insert(stream.end(), core_frame->begin(), core_frame->end());
+
+        const std::vector<std::span<const float>> rear_views(rear_block.begin(),
+                                                              rear_block.end());
+        const auto dep_frame = rear.encode_frame(rear_views);
+        REQUIRE(dep_frame.has_value());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    // The scanner recognises the arrangement (tests/io/test_elementary.cpp
+    // covers that claim directly); here the point is that split_access_units
+    // groups each core with its dependent, and Eac3Decoder renders the pair.
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    ac3::Eac3Decoder decoder;
+    std::vector<std::vector<float>> rendered;
+    ac3::eac3::chanmap::Layout layout;
+    int substreams = 0;
+    for (const auto& unit : *units) {
+        const auto decoded = decoder.decode_access_unit(unit);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        if (rendered.empty()) {
+            layout = (*decoded)->layout;
+            substreams = (*decoded)->substream_count;
+            rendered.resize((*decoded)->channels.size());
+        }
+        REQUIRE((*decoded)->channels.size() == rendered.size());
+        for (std::size_t ch = 0; ch < (*decoded)->channels.size(); ++ch) {
+            rendered[ch].insert(rendered[ch].end(), (*decoded)->channels[ch].begin(),
+                                (*decoded)->channels[ch].end());
+        }
+    }
+
+    REQUIRE(substreams == 2);  // the AC-3 core plus its one dependent
+    REQUIRE(layout.count == static_cast<int>(speakers.size()));
+    REQUIRE(rendered.size() == speakers.size());
+    for (std::size_t ch = 0; ch < speakers.size(); ++ch) {
+        CAPTURE(ch, ac3::eac3::chanmap::name(speakers[ch].location));
+        CHECK(layout[static_cast<int>(ch)] == speakers[ch].location);
+        CHECK(std::abs(dominant_freq_hz(rendered[ch]) - speakers[ch].tone_hz) < 10.0);
+    }
+}
+
+TEST_CASE("split_access_units keeps an AC-3 core and its dependent together",
+          "[eac3][decoder]") {
+    // frame[2]'s top two bits are crc1's, not strmtyp's, in an AC-3
+    // syncframe - the regression this test guards against is reading them as
+    // strmtyp regardless of bsid, which would split the core away from its
+    // own dependent whenever crc1 happens to look like kIndependent.
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = ac3::Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .chanmap = ac3::eac3::chanmap::k71Rear,
+                                  .last_dependent = true}};
+    std::vector<std::vector<float>> block(6, std::vector<float>(ac3::kSamplesPerFrame));
+    for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        block[0][static_cast<std::size_t>(i)] =
+            static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
+    }
+    const std::vector<std::span<const float>> bed_views(block.begin(), block.end());
+    const auto core_frame = core.encode_frame(bed_views);
+    REQUIRE(core_frame.has_value());
+    std::vector<std::vector<float>> rear_block(4, std::vector<float>(ac3::kSamplesPerFrame));
+    const std::vector<std::span<const float>> rear_views(rear_block.begin(), rear_block.end());
+    const auto dep_frame = rear.encode_frame(rear_views);
+    REQUIRE(dep_frame.has_value());
+
+    std::vector<std::byte> stream;
+    for (int f = 0; f < 3; ++f) {
+        stream.insert(stream.end(), core_frame->begin(), core_frame->end());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == 3);
+    for (const auto& unit : *units) {
+        CHECK(unit.size() == core_frame->size() + dep_frame->size());
     }
 }

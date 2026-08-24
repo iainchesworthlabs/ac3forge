@@ -4,8 +4,9 @@
 
 `ac3/encoder/eac3_frame.hpp`. Same shape, different container. E-AC-3 is not an AC-3 variant:
 no `crc1`, an arbitrary 11-bit `frmsiz` instead of a size table (so the 44.1 kHz padding
-alternation disappears), and exponent strategies for all six blocks hoisted into a frame-level
-`audfrm`.
+alternation disappears), exponent strategies planned per frame and written in whichever of Annex
+E's two forms the plan needs (a Table E2.10 code per channel, or per-block), and a syncframe
+that can carry fewer than six blocks.
 
 ```cpp
 // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
@@ -29,10 +30,17 @@ for (int frame = 0; frame < 31; ++frame) {
 }
 ```
 
-`FrameConfig` carries nearly everything `EncoderConfig` does, plus the Annex E tools. Two AC-3
-fields do not carry over as-is: there is no `cplendf` — the coupling end frequency is derived
-(the top of the coded spectrum, or from `spxbegf` when spectral extension is on, §E3.3.1) —
-and `chbwcod` defaults to a fixed 60 rather than AC-3's auto-from-bitrate −1.
+`FrameConfig` carries nearly everything `EncoderConfig` does, plus the Annex E tools. One AC-3
+field does not carry over: there is no `cplendf` — the coupling end frequency is derived (the
+top of the coded spectrum, or from `spxbegf` when spectral extension is on, §E3.3.1).
+
+`chbwcod` now behaves exactly as AC-3's does: −1, the default, asks the encoder to choose. It
+used to default to a fixed 60 — the whole 23.7 kHz at every rate — on the reasoning that Annex
+E's own tools take the high band over whenever the frame cannot afford it. They do, but only
+below the per-channel rates at which `auto` turns them on (40 kbit/s for coupling in stereo,
+56 for spectral extension), so a 192 kbit/s stereo stream ran neither and still coded every one
+of the 253 mantissas. See [Coded bandwidth](encoding-ac3.md#coded-bandwidth) for what the
+shared decision does.
 
 One field widens instead: `FrameConfig::sample_rate` also accepts the three Annex E half rates —
 `k24000`, `k22050`, `k16000` (24/22.05/16 kHz). For those the encoder writes `fscod2` in place
@@ -43,6 +51,7 @@ rejects them outright.
 
 | Field | Default | Notes |
 |---|---|---|
+| `numblkscod` | `3` | §E2.3.1.4, Table E2.4: how many 256-sample blocks a syncframe carries — 0/1/2 give 1/2/3 blocks (5.3/10.7/16 ms), the default 3 gives the usual six (32 ms). Every substream of an access unit must agree (`AccessUnitEncoder`'s constructor refuses a mismatch). Below 3, Table E1.3 implies `expstre = 1` and `ahte = 0` — the frame-level (Table E2.10) exponent-strategy form and AHT are both unwritable, so requesting either together with a short `numblkscod` is refused by `validate()` rather than silently dropped. Not available at the three reduced rates, which spend `numblkscod`'s own bits on `fscod2` instead (see below) — `validate()` refuses that combination too. |
 | `spx`, `spxbegf` | `false`, -1 | Spectral extension (§E3.6). Above the extension frequency nothing is coded: the decoder copies a lower band up, blends noise, and scales to a transmitted envelope. Cheaper and cruder than coupling, so the two stack. |
 | `spx_atten`, `spxattencod` | `true`, -1 | The §E3.6.4.2.3 notch across the seam. Six bits per channel per frame. |
 | `aht`, `gaqmod` | `false`, -1 | Adaptive hybrid transform (§E3.4): a second 6-point DCT down each bin across the frame's six blocks. Decided per channel per frame — setting the flag permits it, not forces it. |
@@ -59,6 +68,80 @@ rejects them outright.
 > verification-gap table in [Validation](../verification.md#where-the-oracles-dont-reach) for
 > which tools have an external oracle.
 
+## How `auto` chooses
+
+`FrameConfig::auto_tools` (the CLI's `tools=auto`) hands the tool set to the encoder instead of
+naming it. It overrides `coupling`/`spx`/`aht` rather than combining with them: when it is set
+they are not read at all, while `cplbegf`/`spxbegf`/`gaqmod` still steer the geometry of whatever
+it does turn on.
+
+It decides from two things — the per-channel bitrate, and the frame itself. The content half is
+measured from the MDCT coefficients the transform has already produced, so it costs a pass over
+the affected region and no second transform:
+
+| Measure | What it is | What it decides |
+|---|---|---|
+| coupling fit | How much of the coupling region's energy survives the decoder's own reconstruction of it. §7.4.1's shared channel is the coefficient sum and the transmitted coordinate restores each band's energy, so the residual against that rank-one shape is what coupling costs — this is evaluated, not estimated. 1.0 is a perfect fit (every channel already a scalar multiple of the sum, which is what near-mono material looks like above 8 kHz); independent channels of equal level land at `2/sqrt(n) - 1`, which is 0.41 for a stereo pair and slightly negative for five. | Whether to couple, and how far above the fixed rate ceiling coupling may reach. |
+| extension energy share | How much of the frame's energy sits above the extension frequency. | Whether to extend: the ceiling runs from 110 kbit/s per channel where the top end is nearly empty down to 55 where it carries real content. |
+
+The rules that fall out of those:
+
+- **Spectral extension** is on below a ceiling that moves with the energy share above. A frame
+  whose top end is nearly empty — which is most real programme material — gets synthesis at up to
+  96 kbit/s per channel, because what synthesis replaces there is a band the coder was about to
+  spend nothing on and drop. A frame whose top end carries real content loses it by 64.
+- **Coupling** needs a fit of 0.99 or better *and* a region at least four sub-bands wide.
+  §E3.3.1 derives `cplendf` from `spxbegf`, so wherever synthesis is in use coupling is left one
+  or two sub-bands — 12 or 24 coefficients — which cannot repay a coordinate per band per channel
+  plus a shared channel the allocator buys bits for. In practice `auto` now couples rarely.
+- **AHT** is always permitted and decided per channel per frame by whether the six blocks look
+  alike, which was already a content decision.
+- **Enhanced coupling** and **transient pre-noise processing** are never chosen by `auto` — see
+  [What `auto` will not choose](#what-auto-will-not-choose) below.
+
+Under VBR there is no fixed target rate, so `VbrConfig::nominal_kbps` (or `max_kbps`, or 192)
+stands in for it. The content half is unaffected: it reads the frame either way, which is most of
+what makes the VBR case work at all.
+
+### What `auto` will not choose
+
+Both of these are fully implemented, decode correctly in this project's own decoder at every
+layout, and have their own CI legs. Neither is in `auto`'s set, for different reasons.
+
+**Enhanced coupling (§E3.5)** is not a quality problem. Measured on real programme material —
+six 12 s excerpts of a 5.1 theatrical mix at six (layout, rate) points — it scores *above*
+standard coupling on ViSQOL MOS-LQO at every one of them: +0.54 MOS-LQO at 96 kbit/s stereo, +0.31 at 128 and +0.18 at 192, and +0.78 / +0.55 / +0.16 at 192 / 256 / 384 kbit/s 5.1. Every SNR trend
+row records it as a loss, and both are true: a phase-restoring reconstruction built on a full DFT
+does not preserve the waveform, it preserves what the waveform sounded like. (Against `auto`'s
+own set the margin is smaller — once spectral extension is chosen properly it has already taken
+most of the band coupling would have worked on — which is a reason to read the two coupling
+reconstructions against each other rather than against the whole tool set.)
+
+What rules it out is interoperability. FFmpeg's Annex E parser has no model of §E3.5's syntax at
+all — it does not decline an enhanced-coupling stream, it misreads it and reports a corrupt
+frame — and `auto` is the tool set a caller gets for asking for nothing in particular, so it has
+to stay decodable by the decoders that exist. `cpl+ecpl` still asks for it explicitly, and on a
+closed pipeline with a decoder known to read it, the measurements say to.
+
+**Transient pre-noise processing (§3.7)** does not pay at all, and the measurement is
+unambiguous. It overwrites the decoded audio ahead of a transient with a copy of the audio 512
+samples earlier. That substitution's error is a property of the material, not of the coder: over
+exactly the samples it touches it measures 20.7–22.5 dB at every bitrate tried, flat. The coder's
+own error over those same samples is 11.9 dB at 96 kbit/s stereo and −3.3 dB at 256 — it improves
+with rate, and it is already the better of the two at the lowest rate this encoder supports. So
+the correction lands between 6.5 and 24 dB *worse* than leaving the audio alone, everywhere it
+fires, and the gap widens as the rate rises. It is not a bit-allocation effect: outside its own
+footprint the two decodes are bit-identical. Perceptually it is a no-op — MOS-LQO matched the
+untreated encode to within 0.01 in every row measured.
+
+The mechanism is that block switching gets there first. §3.7 exists to clean up pre-echo, and
+this encoder gates the correction on the same transient detector that switches to short
+transforms — so it fires exactly where the short transforms have already confined the pre-echo,
+and substitutes earlier audio for audio that was not damaged. Treat it as a reference-correctness
+tool: it demonstrates the syntax and the §3.7.2 reconstruction, and there is no measured rate or
+content at which it improves the result.
+
+
 Block switching (§8.2.2/§7.9) is automatic here too — no config field. A channel that switches
 anywhere in the frame is excluded from both coupling (same reasoning as AC-3's) and, for this
 generation only, from AHT for that frame: AHT's own "stationary" premise (§E3.4, the opposite of
@@ -72,6 +155,26 @@ those bands are active (`nrematbd`, accounting for coupling, enhanced coupling a
 extension all separately taking over the top of the spectrum) — the boundaries and the decision
 rule are untouched, so nothing here needed reinventing beyond that band count and clamping the
 last active band to wherever this channel's own coding actually stops.
+
+The bit allocation parameters are transmitted rather than inherited (`bamode` 1). Table E1.4's
+own `bamode == 0` defaults are not §8.2.12's basic-encoder set — most of the two agree, but
+`floorcod` is 0x7 against §8.2.12's 4 — so "inherit" was never the same thing as "what AC-3
+does". Sending them costs `baie` plus eleven bits in block 0 and one bit in each of the other
+five, 17 a frame; it buys `dbpbcod` 3, the one departure the AC-3 encoder measured its way to
+(see [Encoding AC-3](encoding-ac3.md)), which lifts the masking curve over bands quieter than
+`dbknee` and sends their bits to bands that hold energy. `floorcod` stays at 0x7: it is the
+lowest of the eight and never binds, which the same sweep confirmed here as it had for AC-3.
+
+Dither substitution (§7.3.4) works exactly as it does on AC-3 — see
+[Encoding AC-3](encoding-ac3.md#dither-substitution) for the rule — with `dithflage` set so the
+per-channel flags are transmitted rather than defaulting to on. One narrowing is specific to this
+generation: dither is held off entirely for any frame that uses spectral extension. The encoder
+holds a reconstruction of what the decoder will produce there, because the extension bands are
+scaled to match the copy source's own energy, and the decoder's dither values are not
+reproducible from the encoder's side — the sequence a bin receives depends on how many zero-bit
+bins the decoder walked before it, across every stream and block. Rather than shadow that
+traversal order, the tool that would disturb it is switched off. An AHT channel is left out of
+the judgement too: its zero-`hebap` bins reconstruct as literal zero whatever the flag says.
 
 `FrameConfig::dialnorm2` (see "Dual mono" in [Encoding AC-3](encoding-ac3.md)) works exactly
 the same way here: set it alongside `dialnorm` when `acmod` is `kDualMono`. Dual mono is always a
@@ -181,7 +284,104 @@ Useful `chanmap` constants (`ac3/core/eac3_tables.hpp`, Table E2.5):
 `chanmap::expand(map)` turns a map into a `Layout` you can iterate, and `chanmap::name`
 gives each location's short name.
 
+## Latency
+
+The four terms and what each one means are set out in
+[the AC-3 page's Latency section](encoding-ac3.md#latency); everything there applies here too,
+because E-AC-3 uses the same transform, the same frame length and the same
+lookahead-free block-switch decision. What differs is one tool and one shape.
+
+**`transient_prenoise` costs a frame of decoder hold-back.** §3.7's correction reaches
+*backwards* out of one frame into the one before it, so a decoder can only realize it while it
+still has that previous frame — which means returning frame N−1's PCM from the call that
+supplies frame N. That is a full frame period, permanently, from the first frame that actually
+uses the tool onward:
+
+```cpp
+ac3::eac3::FrameConfig config{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
+config.transient_prenoise = true;
+ac3::eac3::FrameEncoder encoder{config};
+encoder.latency_samples();  // 3328 = 1536 frame + 256 transform + 1536 hold-back
+```
+
+`eac3::eac3_latency(config)` answers the same question without building an encoder, which is
+what a pipeline sizing its buffers up front actually needs. Every *other* Annex E tool — AHT,
+coupling, enhanced coupling, spectral extension — is a different way of coding the same frame's
+coefficients and adds nothing: AHT packs a channel's six blocks into block 0 rather than looking
+ahead of the frame, and spx and coupling reconstruct within the block they arrive in.
+
+The hold-back engages when the tool does, not when it is configured. This encoder reuses the
+`blksw` decision rather than running a second detector, so a stream that never block-switches
+never sets `transproce` and never holds anything back — `Eac3Decoder::latency_samples()` reports
+0 until it does, and one frame from then on.
+
+**An access unit's budget is the worst of its substreams'.** Every substream codes the same 1536
+samples of the same program, so the frame and transform terms are shared rather than summed; the
+hold-back is per-substream, and `decode_access_unit` cannot assemble a program until its slowest
+substream has released. `AccessUnitEncoder::latency()` reports that.
+
+### Short syncframes (`numblkscod` 0–2) — not yet available
+
+Annex E §E2.3.1.4 allows a syncframe to carry 1, 2 or 3 blocks instead of 6, which would cut
+`frame_samples` from 1536 to 256, 512 or 768 and the total budget from 1792 samples to 512, 768
+or 1024 — 10.67 ms at 48 kHz for the shortest, against 37.33. That is the low-latency
+configuration for a conferencing or contribution path, and it is the largest single reduction
+available, since framing is by far the biggest term.
+
+The decoder here reads all four codes today. **The encoder emits six-block frames only**, so the
+figure above is what this project can currently deliver end to end. Short syncframes are
+roadmap item EQ11; when it lands, this section becomes a configuration rather than a note.
+
+## More than one programme
+
+Dependent substreams widen *one* programme. §E2.3.1.2 also allows up to eight **independent**
+substreams (I0–I7) in one elementary stream, and that is a different thing entirely: each is a
+self-sufficient programme with its own layout, rate and metadata, and a receiver plays one of
+them. Broadcast DD+ uses it for the services A/52 §5.4.2.2 names — a second language, an audio
+description, a commentary.
+
+`AccessUnitConfig::additional` carries them. `independent`/`dependents` stay the first
+programme; each entry of `additional` is a `ProgrammeConfig` with an independent substream and
+dependents of its own.
+
+```cpp
+ac3::eac3::AccessUnitConfig config;
+config.independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2,
+                      .lfe = true, .dialnorm = 27};
+// I1: a mono commentary, levelled independently of the mix it plays against.
+config.additional.push_back({.independent = {.bitrate_kbps = 96,
+                                             .acmod = ac3::Acmod::k1_0,
+                                             .dialnorm = 20}});
+```
+
+`substreamid` is assigned by position — the first programme is I0, `additional[0]` is I1 — the
+same way a dependent's id comes from its position in `dependents`; `FrameConfig::substreamid` is
+not read.
+
+`encode_access_unit` takes every programme's channels in one call, the first programme's first,
+in the same order the substreams go on the wire. Rates add rather than divide: substreams share
+a frame period, not a frame, so `access_unit_words` is the sum across every programme.
+
+Each programme keeps its own §7.7 measurement — its own `RangeController`/`HeavyCompressor`,
+measured on its own independent substream — because dialnorm and DRC are properties of a
+programme. Sharing one measurement across two would level a commentary by the main mix. Per
+programme, too: the §E3.8.2 16-channel cap, and the metadata a `FrameConfig` carries.
+
+Constraints: at most 8 programmes; every substream of every programme must agree on the sample
+rate, since they all code the same frame period. An Atmos EMDF container still rides in the last
+substream of the **first** programme (TS 103 420 §8.2) — the objects belong to a programme, so a
+later programme's substreams are never it.
+
+The CLI authors a second programme with `programme2=<file>` plus `programme2-layout=`,
+`programme2-bitrate=` and `programme2-dialnorm=`; see
+[docs/cli/commands.md](../cli/commands.md).
+
+One caveat worth knowing before you ship such a stream: **FFmpeg cannot read it at all**, and not
+just the second programme — see
+[docs/verification.md](../verification.md#where-the-oracles-dont-reach).
+
 ---
 
 See also: [Metadata](metadata.md) — mix-level and DRC fields shared with AC-3, plus the
-E-AC-3-only `mixing` group; [Encoding AC-3](encoding-ac3.md) — the single-substream base case.
+E-AC-3-only `mixing` group; [Encoding AC-3](encoding-ac3.md) — the single-substream base case,
+and the full latency budget.

@@ -31,7 +31,7 @@ unconditionally. See "Why opt-in" below for the reasoning.
 ```cpp
 const auto document = ac3adm::parse_bw64(fixture_path);
 if (!document) {
-    std::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
+    fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
                 ac3adm::describe(document.error()).data());
     return 1;
 }
@@ -39,11 +39,11 @@ if (!document) {
 
 ```cpp
 for (const auto& programme : document->model.programmes) {
-    std::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
+    fmt::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
                 programme.content_refs.size());
 }
 for (const auto& object : document->model.objects) {
-    std::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
+    fmt::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
                 object.start_s, object.track_uid_refs.size());
 }
 ```
@@ -136,15 +136,31 @@ For the same reason, `ac3adm::ac3adm` is **not** part of the installed `find_pac
 package (see [the library overview](index.md)) and is **not** wired into the Android/Shield NDK
 build — see `src/ac3adm/CMakeLists.txt`'s own header comment for both.
 
-## Known limitation: float32 PCM
+## PCM formats
 
-Only integer PCM (8/16/24/32-bit) is currently supported. libbw64's own `<fmt >` parsing rejects
-any other `formatTag` outright — including IEEE-float (`WAVE_FORMAT_IEEE_FLOAT`, formatTag 3) —
-at open time (`"format unsupported: <tag>"`), which this module surfaces as `AdmError::
-kCannotOpen`. A float32 source file is rejected, not silently misread as integer PCM. Virtually
-every real ADM BWF master is 16- or 24-bit integer PCM in practice (EBU Tech 3306/BS.2088-1
-Annex 2 §2's own PCM-only framing), so adding float32 support has not been worth doing for
-phase 1 — see [`ac3adm/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/model.hpp)'s own `PcmAudio` comment.
+Integer PCM (8/16/24/32-bit) and IEEE float (32/64-bit) both read, and both come back as the
+same `[-1, 1)` floats on `PcmAudio::channels`. `bits_per_sample` reports the container width and
+is not, on its own, a statement about which of the two it was.
+
+The two arrive by different routes. Integer PCM goes through the vendored libbw64, which is also
+this module's reference for the container itself. libbw64's own `<fmt >` parsing rejects any
+other `formatTag` outright at open time (`"format unsupported: <tag>"`), IEEE float included, so
+a float master never reaches any of its accessors and there is nothing to widen from the
+outside. Rather than patch a dependency fetched from upstream at a pinned tag, a float file is
+detected up front and read by this module's own container walk instead
+([`src/ac3adm/src/float_pcm_bw64.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/float_pcm_bw64.hpp)) —
+which re-implements the chunk walk and the `<chna>` record table and nothing else: the `<axml>`
+bytes go through the identical libadm parse the ordinary path uses, so the ADM metadata cannot
+come out differently depending on how the samples were stored.
+
+That path is also the only one that can report `AdmError::kNotRiff`/`kMissingFmt`/`kMissingData`/
+`kUnsupportedFormat` precisely, because it does the walk itself. A file libbw64 opens and then
+rejects still surfaces as `kCannotOpen`, since its exceptions carry no type this module could map
+from — see [`ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/ac3adm.hpp)'s
+own comment on those four errors.
+
+Most real ADM BWF masters are 16- or 24-bit integer (EBU Tech 3306/BS.2088-1 Annex 2 §2's own
+PCM-only framing). Float ones exist, and used to be refused outright.
 
 ---
 

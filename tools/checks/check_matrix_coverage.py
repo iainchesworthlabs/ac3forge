@@ -28,15 +28,21 @@ directly, via the same error-message path real bad input hits:
              does, not through a listable error), so this one stays a small
              hardcoded pair with a comment saying why, checked with the same
              presence test as everything else.
-  vbr        eac3-encode's [vbr] argument is not a fixed enum - "off" or a
+  vbr        eac3-encode's [vbr] argument is not a fixed enum - "off", a
              continuous quality float plus optional min:/max: bounds
-             ("q:0..1[,min:kbps][,max:kbps]") - so there is no token list to
-             diff the way layouts/tools have. This just checks that SOME
-             quality-mode encode (a literal "q:" token) appears in the
-             matrix at all. First added after VBR support landed in the
-             library with zero matrix coverage - the exact gap this whole
-             script exists to catch - and only the CLI's own usage text
-             said the [vbr] argument existed at all.
+             ("q:0..1[,min:kbps][,max:kbps]"), or an average-rate target
+             ("avg:kbps[,win:frames]") - so there is no token list to diff
+             the way layouts/tools have. This checks that SOME encode using
+             each of the two RATE CONTROLS (a literal "q:" token, and a
+             literal "avg:" token) appears in the matrix at all. They are
+             separate checks because they are separate code paths: "q:"
+             reads a fixed SNR offset, "avg:" steers one across frames, and
+             a matrix that exercised only the first would say nothing about
+             the second. First added after VBR support landed in the library
+             with zero matrix coverage - the exact gap this whole script
+             exists to catch - and only the CLI's own usage text said the
+             [vbr] argument existed at all; the "avg:" half is checked the
+             same way for the same reason.
 
 Coverage is a presence check for commands, layouts, Atmos modes and vbr: each
 canonical token just has to appear as a whole word somewhere in the matrix
@@ -95,7 +101,9 @@ ATMOS_MODES = {"objects", "bed51"}
 
 
 def run(cli: str, *args: str) -> tuple[int, str, str]:
-    result = subprocess.run([cli, *args], capture_output=True, text=True)
+    # check=False: every caller here reads the exit code as data - a usage or
+    # "unknown layout" error IS the answer this probe is after.
+    result = subprocess.run([cli, *args], capture_output=True, text=True, check=False)
     return result.returncode, result.stdout, result.stderr
 
 
@@ -120,6 +128,15 @@ def vbr_supported(cli: str) -> bool:
         if re.match(r"\s*ac3cli\s+eac3-encode\b", line) and "[vbr]" in line:
             return True
     return False
+
+
+def abr_supported(cli: str) -> bool:
+    """Whether this build's [vbr] grammar has the average-rate control too.
+    Read off the CLI's own printed syntax (plan::kVbrSyntax), the same way
+    the layout and tool lists are read off their own error messages, so this
+    cannot drift out of step with what the binary actually accepts."""
+    _, out, _ = run(cli)
+    return re.search(r"^vbr\b.*\bavg:", out, re.MULTILINE) is not None
 
 
 def layout_names(cli: str, tmp: Path, command: str) -> set[str]:
@@ -216,8 +233,8 @@ def matrix_tool_tokens(matrix_text: str) -> set[str]:
         fields.append(m.group(1))
 
     tokens = set()
-    for field in fields:
-        field = field.strip("\"'")
+    for raw_field in fields:
+        field = raw_field.strip("\"'")
         if "$" in field or not field:
             continue
         for part in field.split("+"):
@@ -287,10 +304,15 @@ def main() -> None:
         missing = {t for t in ATMOS_MODES if not covered(matrix_text, t)}
         check("atmos-modes", ATMOS_MODES, missing)
 
-        print("E-AC-3 VBR - eac3-encode's [vbr] quality-rate mode, not a fixed enum")
+        print("E-AC-3 VBR/ABR - eac3-encode's [vbr] rate controls, not a fixed enum")
         if vbr_supported(cli):
             has_vbr = re.search(r"\bq:[0-9]", matrix_text) is not None
             check("eac3-vbr", {"q:<quality>"}, set() if has_vbr else {"q:<quality>"})
+            if abr_supported(cli):
+                has_abr = re.search(r"\bavg:[0-9]", matrix_text) is not None
+                check("eac3-abr", {"avg:<kbps>"}, set() if has_abr else {"avg:<kbps>"})
+            else:
+                print("  SKIP  eac3-abr: this ac3cli build's [vbr] grammar has no avg:")
         else:
             print("  SKIP  eac3-vbr: this ac3cli build has no [vbr] argument")
 

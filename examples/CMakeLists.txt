@@ -3,9 +3,10 @@
 #
 # They exist to be compiled: a snippet in a document rots silently, and one
 # that is a build target cannot. Each is also runnable and prints what it
-# produced, so the documented API is exercised and not merely parsed. They link
-# ac3::warnings like every other first-party target, so a documented call that
-# would make a caller's build noisy fails here first.
+# produced (via fmt::print, not std::print - see cmake/Fmt.cmake), so the
+# documented API is exercised and not merely parsed. They link ac3::warnings
+# like every other first-party target, so a documented call that would make
+# a caller's build noisy fails here first.
 # ---------------------------------------------------------------------------
 
 set(AC3FORGE_EXAMPLES
@@ -13,6 +14,7 @@ set(AC3FORGE_EXAMPLES
     encode_eac3
     decode_stream
     metadata
+    stream_edit
     spatial_objects
     atmos_objects
     station_broadcast
@@ -48,14 +50,14 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
         # No ac3::forge here - src/ac3adm is deliberately independent of it (see
         # src/ac3adm/CMakeLists.txt's header comment), so this example only needs
         # the parser itself plus the same ac3::warnings every other example gets.
-        target_link_libraries(${example} PRIVATE ac3adm::ac3adm ac3::warnings)
+        target_link_libraries(${example} PRIVATE ac3adm::ac3adm ac3::warnings ac3::fmt)
     elseif(example STREQUAL "encode_adm")
         # The one example (and roadmap B1's own phase-3 deliverable) needing ac3::forge
         # (AtmosEncoder) and the ADM modules (parse/bridge) at the same time.
         target_link_libraries(${example} PRIVATE ac3::forge ac3adm::ac3adm ac3::admbridge
-                                                  ac3::warnings)
+                                                  ac3::warnings ac3::fmt)
     else()
-        target_link_libraries(${example} PRIVATE ac3::forge ac3::warnings)
+        target_link_libraries(${example} PRIVATE ac3::forge ac3::warnings ac3::fmt)
     endif()
     set_target_properties(${example} PROPERTIES FOLDER examples)
 endforeach()

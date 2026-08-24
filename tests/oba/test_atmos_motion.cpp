@@ -14,6 +14,7 @@
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/motion.hpp"
+#include "ac3/oba/oamd.hpp"
 
 namespace {
 
@@ -320,4 +321,74 @@ TEST_CASE("two independently moving objects keep reconstructing cleanly", "[atmo
                                     std::abs(want_b)) < -20.0);
         }
     }
+}
+
+TEST_CASE("keyframe paths ramp object size but hold the rendering flags", "[atmos][motion]") {
+    // BS.2076-2 §10.3 lists width/height/depth among its interpolatable
+    // parameters and TS 103 420 sends them per metadata update, so a growing
+    // object is expressible on both sides. snap/zone/enable_elevation are
+    // discrete decisions with no halfway point, so they step instead.
+    const auto path = ac3::oba::KeyframePath::create({
+        {.time_s = 0.0,
+         .position = {.x = 0.0, .y = 0.0, .z = 0.0},
+         .size = {.width = 0.0, .depth = 0.2, .height = 1.0},
+         .snap = false,
+         .zone = ac3::oba::ZoneConstraint::kNone,
+         .enable_elevation = true},
+        {.time_s = 2.0,
+         .position = {.x = 1.0, .y = 1.0, .z = 0.0},
+         .size = {.width = 1.0, .depth = 0.6, .height = 0.0},
+         .snap = true,
+         .zone = ac3::oba::ZoneConstraint::kSurroundOnly,
+         .enable_elevation = false},
+    });
+    REQUIRE(path.has_value());
+
+    const auto mid = path->evaluate(1.0);
+    CHECK_THAT(mid.size.width, Catch::Matchers::WithinAbs(0.5, 1e-12));
+    CHECK_THAT(mid.size.depth, Catch::Matchers::WithinAbs(0.4, 1e-12));
+    CHECK_THAT(mid.size.height, Catch::Matchers::WithinAbs(0.5, 1e-12));
+    // Held at the EARLIER keyframe's values right up to the later one.
+    CHECK_FALSE(mid.snap);
+    CHECK(mid.zone == ac3::oba::ZoneConstraint::kNone);
+    CHECK(mid.enable_elevation);
+
+    const auto at_end = path->evaluate(2.0);
+    CHECK(at_end.snap);
+    CHECK(at_end.zone == ac3::oba::ZoneConstraint::kSurroundOnly);
+    CHECK_FALSE(at_end.enable_elevation);
+    CHECK_THAT(at_end.size.width, Catch::Matchers::WithinAbs(1.0, 1e-12));
+}
+
+TEST_CASE("AtmosEncoder transmits an object's size, snap and zone", "[atmos][motion]") {
+    // End to end: a placement in, a decoded OAMD payload out. The bed render
+    // deliberately ignores all three (see ObjectPlacement's own comment), so
+    // the bitstream is the only place they can be observed.
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    const auto source = tone(440.0, 0.4, 0.0, 0);
+    const std::array<std::span<const float>, 1> audio{std::span<const float>{source}};
+    const std::array<ac3::oba::ObjectPlacement, 1> placement{
+        {{.position = {.x = 0.25, .y = 0.75, .z = 0.5},
+          .gain = 1.0,
+          .size = {.width = 8.0 / 31.0, .depth = 20.0 / 31.0, .height = 31.0 / 31.0},
+          .snap = true,
+          .zone = ac3::oba::ZoneConstraint::kCentreAndBackOnly,
+          .enable_elevation = false}}};
+
+    const auto unit = encoder.encode_frame(audio, placement);
+    REQUIRE(unit.has_value());
+
+    ac3::Eac3Decoder decoder;
+    const auto decoded = decoder.decode_substream(unit->substream(0));
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->has_value());
+    REQUIRE((*decoded)->object_metadata.has_value());
+    const auto& objects = (*decoded)->object_metadata->objects;
+    REQUIRE(objects.size() == 1);
+    CHECK(objects[0].size.width == 8.0 / 31.0);
+    CHECK(objects[0].size.depth == 20.0 / 31.0);
+    CHECK(objects[0].size.height == 1.0);
+    CHECK(objects[0].snap);
+    CHECK(objects[0].zone == ac3::oba::ZoneConstraint::kCentreAndBackOnly);
+    CHECK_FALSE(objects[0].enable_elevation);
 }

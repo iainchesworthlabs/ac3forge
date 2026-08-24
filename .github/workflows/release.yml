@@ -155,6 +155,41 @@ jobs:
 
           echo "Resolved $version_tag (version $bare_version, prerelease=$is_prerelease, dry_run=$is_dry_run)"
 
+  # Advisory, never gating: by the time a release run starts, the
+  # develop -> main promotion has already merged, so the real gate is the
+  # pre-release checklist step in docs/releasing.md (review develop's own
+  # open alerts BEFORE opening the promotion PR - code-scanning alerts are
+  # tracked per-ref and the Security tab filters to the default branch, so
+  # develop's accumulate invisibly between releases). This job is the
+  # backstop for the case where that step was skipped: it surfaces any open
+  # analysis alerts loudly in the release run's log/summary instead of
+  # letting a release ship with unreviewed findings sitting in the Security
+  # tab - which is how the v0.9.0-beta.1 promotion landed alerts #83-94 on
+  # main unnoticed. Filtered to the code-analysis tools (PREfast, CodeQL):
+  # Scorecard's advisory alerts (e.g. the branch-protection score) are open
+  # deliberately and would otherwise warn on every release forever.
+  alert-review:
+    name: Open code-scanning alerts (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: read
+    steps:
+      - name: Report open PREfast/CodeQL alerts on the default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          alerts=$(gh api --paginate "repos/$REPO/code-scanning/alerts?state=open&per_page=100" \
+            -q '.[] | select(.tool.name == "PREfast" or .tool.name == "CodeQL") | [.number, .rule.id, .most_recent_instance.location.path // "-"] | @tsv')
+          if [ -n "$alerts" ]; then
+            count=$(printf '%s\n' "$alerts" | wc -l)
+            echo "::warning title=Open code-scanning alerts::$count open PREfast/CodeQL alert(s) on the default branch - review Security > Code scanning before publishing this release."
+            printf '%s\n' "$alerts"
+          else
+            echo "No open PREfast/CodeQL alerts on the default branch."
+          fi
+
   # Same reusable workflow ci.yml calls for ordinary pushes, with do_package
   # turned on: every packageable matrix leg attempts cpack, not just
   # windows-msvc. The experimental legs still run continue-on-error inside
@@ -186,6 +221,10 @@ jobs:
       # so `git describe` alone would find nothing (or the previous release).
       fetch_depth: 0
       version_tag: ${{ needs.resolve-version.outputs.version_tag }}
+      # Roadmap VX20. The generator runs on the linux-gcc leg for every call
+      # to _build.yml; this flag adds the determinism re-run and the upload
+      # that github-release below attaches. See docs/conformance-vectors.md.
+      publish_conformance_vectors: true
     # ci.yml's call to _build.yml passes none of these - it never sets
     # do_package for a release APK, so build-android's signing step has
     # nothing to decode there regardless. Threaded through even on a dry
@@ -251,6 +290,20 @@ jobs:
             exit 1
           fi
           printf '%s\n' "${artifacts[@]}"
+
+      # Deliberately after the "at least one package" check above rather than
+      # merged into the same download: the vector bundle is a .tar.gz, and
+      # that check's own glob counts .tar.gz files - downloading it first
+      # would let it stand in for a platform package and turn "every platform
+      # failed to build" into a green release. It lands in the same directory
+      # so it picks up the GPG signature, the SHA512SUMS line, the SBOM and
+      # both attestations from the steps below, exactly as every package does.
+      - name: Download conformance vectors
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: conformance-vectors
+          path: release-artifacts
+          merge-multiple: true
 
       - name: Import GPG signing key
         if: env.HAVE_GPG_KEY == 'true'
@@ -365,8 +418,11 @@ jobs:
             name="$(basename "$f")"
             workdir="$(mktemp -d)"
             ( cd "$workdir" && gh attestation download "$OLDPWD/$f" --repo "${{ github.repository }}" )
-            bundle="$(ls "$workdir"/*.jsonl | head -1)"
-            mv "$bundle" "release-artifacts/${name}.intoto.jsonl"
+            # A glob, not `ls | head -1`: nullglob is set above, so an empty
+            # match leaves the array empty and set -u fails the step loudly
+            # rather than silently `mv`-ing an empty path.
+            bundles=("$workdir"/*.jsonl)
+            mv "${bundles[0]}" "release-artifacts/${name}.intoto.jsonl"
             rm -rf "$workdir"
           done
 

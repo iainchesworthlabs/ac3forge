@@ -930,6 +930,7 @@ TEST_CASE("every ac3forge status code carries its own message", "[capi]") {
                                            AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS,
                                            AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL,
                                            AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO,
+                                           AC3FORGE_ERROR_ENCODE_INVALID_BSI,
                                            AC3FORGE_ERROR_DECODE_TRUNCATED,
                                            AC3FORGE_ERROR_DECODE_BAD_SYNC_WORD,
                                            AC3FORGE_ERROR_DECODE_BAD_CRC,
@@ -1255,4 +1256,107 @@ TEST_CASE("AC-3 dual mono metadata crosses the C boundary per channel", "[capi]"
 
     ac3forge_decoder_destroy(decoder);
     ac3forge_encoder_destroy(encoder);
+}
+
+TEST_CASE("the C latency surface reports the same budget as the C++ one", "[capi][latency]") {
+    // Roadmap PF6. The numbers themselves are established empirically in
+    // tests/decoder/test_latency.cpp (an impulse through a real encode ->
+    // decode, located to the sample); this checks that the C translation
+    // layer hands them across unchanged and that the free helpers agree with
+    // the struct they are given.
+    ac3forge_encoder_config_t config;
+    ac3forge_encoder_config_init(&config);
+    config.acmod = AC3FORGE_ACMOD_2_0;
+    config.bitrate_kbps = 192;
+
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&config, &encoder) == AC3FORGE_OK);
+
+    ac3forge_latency_t latency{};
+    ac3forge_encoder_latency(encoder, &latency);
+    CHECK(latency.frame_samples == AC3FORGE_SAMPLES_PER_FRAME);
+    CHECK(latency.transform_samples == AC3FORGE_SAMPLES_PER_BLOCK);
+    CHECK(latency.lookahead_samples == 0);
+    CHECK(latency.holdback_samples == 0);
+    CHECK(ac3forge_latency_total_samples(&latency) == 1792);
+    CHECK(ac3forge_encoder_latency_samples(encoder) == 1792);
+
+    const double ms = ac3forge_latency_ms(1792, AC3FORGE_SAMPLE_RATE_48000);
+    CHECK(ms > 37.3);
+    CHECK(ms < 37.4);
+    // The rate really is read: 1792 samples is 40.6 ms at 44.1 kHz, not 37.3.
+    CHECK(ac3forge_latency_ms(1792, AC3FORGE_SAMPLE_RATE_44100) > 40.6);
+
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_decoder_create(&decoder_config, &decoder) == AC3FORGE_OK);
+    CHECK(ac3forge_decoder_latency_samples(decoder) == 0);
+
+    ac3forge_eac3_decoder_t* eac3_decoder = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&decoder_config, &eac3_decoder) == AC3FORGE_OK);
+    // Nothing decoded yet, so nothing held back yet.
+    CHECK(ac3forge_eac3_decoder_latency_samples(eac3_decoder) == 0);
+
+    ac3forge_decoder_destroy(decoder);
+    ac3forge_eac3_decoder_destroy(eac3_decoder);
+    ac3forge_encoder_destroy(encoder);
+}
+
+TEST_CASE("the C Atmos latency surface separates the object path from the bed",
+          "[capi][latency][atmos]") {
+    ac3forge_atmos_config_t config;
+    ac3forge_atmos_config_init(&config);
+
+    ac3forge_atmos_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_atmos_encoder_create(&config, 2, &encoder) == AC3FORGE_OK);
+
+    ac3forge_latency_t objects{};
+    ac3forge_latency_t bed{};
+    ac3forge_atmos_encoder_latency(encoder, &objects);
+    ac3forge_atmos_encoder_bed_latency(encoder, &bed);
+    // The §7.1 QMF filterbank's own analysis+synthesis delay
+    // (ac3::dsp::kQmfDelay = 576, not exposed at the C boundary) on top of the
+    // already-decoded bed's own overlap - measured end to end in
+    // test_latency.cpp. 576 is spelled out here rather than named: the C API
+    // has no QMF-specific constant of its own to reference.
+    constexpr int kQmfDelay = 576;
+    CHECK(objects.transform_samples == AC3FORGE_SAMPLES_PER_BLOCK + kQmfDelay);
+    CHECK(bed.transform_samples == AC3FORGE_SAMPLES_PER_BLOCK);
+    CHECK(ac3forge_atmos_encoder_latency_samples(encoder) ==
+          ac3forge_latency_total_samples(&objects));
+    CHECK(ac3forge_latency_total_samples(&objects) ==
+          ac3forge_latency_total_samples(&bed) + kQmfDelay);
+
+    ac3forge_atmos_encoder_destroy(encoder);
+
+    // No container, no JOC, no second transform.
+    config.emit_object_metadata = 0;
+    ac3forge_atmos_encoder_t* plain = nullptr;
+    REQUIRE(ac3forge_atmos_encoder_create(&config, 2, &plain) == AC3FORGE_OK);
+    ac3forge_latency_t plain_latency{};
+    ac3forge_atmos_encoder_latency(plain, &plain_latency);
+    CHECK(plain_latency.transform_samples == AC3FORGE_SAMPLES_PER_BLOCK);
+    ac3forge_atmos_encoder_destroy(plain);
+}
+
+TEST_CASE("the C latency accessors tolerate null the way the rest of the surface does",
+          "[capi][latency]") {
+    CHECK(ac3forge_encoder_latency_samples(nullptr) == 0);
+    CHECK(ac3forge_decoder_latency_samples(nullptr) == 0);
+    CHECK(ac3forge_eac3_decoder_latency_samples(nullptr) == 0);
+    CHECK(ac3forge_atmos_encoder_latency_samples(nullptr) == 0);
+    CHECK(ac3forge_latency_total_samples(nullptr) == 0);
+
+    // The out-parameter forms leave their target untouched rather than
+    // zeroing it, same as every other _create-style out-parameter here.
+    ac3forge_latency_t sentinel{.frame_samples = -7,
+                                .transform_samples = -7,
+                                .lookahead_samples = -7,
+                                .holdback_samples = -7};
+    ac3forge_encoder_latency(nullptr, &sentinel);
+    ac3forge_atmos_encoder_latency(nullptr, &sentinel);
+    ac3forge_atmos_encoder_bed_latency(nullptr, &sentinel);
+    CHECK(sentinel.frame_samples == -7);
+    CHECK(sentinel.holdback_samples == -7);
 }

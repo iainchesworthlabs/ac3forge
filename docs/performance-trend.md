@@ -10,7 +10,7 @@ Four separate mechanisms, not one, and it matters which is which:
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
-  runs the same encoder configurations for longer (200 frames) and records the actual
+  runs the same configurations for longer (200 frames) and records the actual
   ms/frame number, not just a pass/fail, on every push to `develop`/`main`. It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
   over time even while it keeps passing.
@@ -34,6 +34,46 @@ forward MDCT should have cached) once shipped with no coverage to catch it: the 
 gate blocks a repeat outright, and the trend tables catch the gradual drift a
 pass/fail gate cannot see.
 
+## What is measured, and on what
+
+Both timing producers and the gate cover the same nine workloads: three encoders
+(`plain_51` and `plain_51_fast_mdct`, `eac3_51_auto` and `eac3_stereo_auto`,
+`atmos_4obj` and `atmos_4obj_fast_mdct`) and the three decoders that read what they
+produce (`ac3_51_decode`, `eac3_51_decode`, `atmos_4obj_decode`). Until roadmap PF1
+the E-AC-3 encoder — the largest source file in the codec — and every decode path had
+no ms/frame number and no real-time gate anywhere, so a regression in any of them was
+invisible here. The decode series are timed against streams the encode series in the
+same run just produced: a decode number only means something against a stream whose
+rate and tool set are known.
+
+Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
+through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and
+`ac3perf` ran on before PF1. A single stationary tone is not a cheaper version of
+programme material, it is a different workload: its spectrum is one bin wide, so the
+SNR-offset search converges against an allocation almost nothing competes for,
+coupling has near-nothing to share between channels, rematrixing sees a pair that is
+already identical, and the transient detector never fires — so the block-switched
+transform never runs at all. A regression confined to any of those could not move the
+number. `ac3kernelbench` had this rule from the start; PF1 applied it to the other
+two. The fixture is 78 frames long and the benches run 200, so frame indices wrap;
+the seam that creates lands in the same place on every run.
+
+Only `linux-gcc` is measured, not the full CI matrix — see the note below the append
+scripts for why. Every number on this page is that one runner's; nothing here is a
+cross-platform comparison, and a number from a developer machine is not comparable
+to one of these rows.
+
+Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
+show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
+targeted is smaller than this page's own run-to-run variance on a shared runner, so
+the effect is real but not visible against that noise floor in a 200-frame series.
+Isolated from the rest of the frame - the exact per-bin loop, `~9,100` conversions
+sized like one real 5.1 frame's worth, minimum of several runs - it measured
+~50 µs before and ~30 µs after per frame's worth of calls (a 1.5-1.8× speedup on that
+slice), consistent with the ~33-38 µs the change targeted. The gate that actually
+matters for this change is byte-identical output, not a timing number: see the PF2
+commit message for the corpus that was checked.
+
 `tools/ci/append_performance_history.py` appends every `develop`/`main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
@@ -43,6 +83,13 @@ check: a soft one (20% slower than the trailing 10-run mean, `::warning::` only)
 a hard one (100% slower - i.e. at least doubled - `::error::`, fails the
 `persist-performance-trend` CI job *after* the numbers are still recorded, so a big
 regression is never silently un-recorded just because it also failed the run).
+
+Both append scripts key every series by its own name end to end, so a workload or
+kernel added to a bench simply starts its own series: its first run has no trailing
+mean to be compared against and cannot trip its own regression gate, and it never
+perturbs an existing series' baseline. That is also why an existing series' name is
+not reused for a differently-shaped measurement — a trailing mean over two different
+workloads is a number with no owner.
 
 `tools/ci/append_kernel_history.py` does the same for `ac3kernelbench`'s per-kernel
 numbers (`kernels-develop.jsonl` / `kernels-main.jsonl`, same branch), with the same
@@ -317,10 +364,22 @@ of per-commit numbers.
 ## Per-kernel trend
 
 Same commits, one level finer: each kernel's ns/call from `ac3kernelbench`, one
-series per kernel. The Δ column is each run against its own series' trailing
+series per kernel. Both directions of both block sizes are covered in both their
+direct and fast forms — `mdct512_forward`/`_fast`, `mdct256_pair`/`_fast`,
+`imdct512_windowed`/`_fast`, `imdct256_pair`/`_fast` — so the ratio between a pair
+is what `mode=reference` costs, and the fast inverse that became the decoder's
+default in 0.9.0 has a series of its own rather than being tracked through the
+direct form no decoder runs any more. The Δ column is each run against its own series' trailing
 10-run mean - the same window and thresholds `append_kernel_history.py` annotates
 with: ≥ +20% is flagged as a soft drift, ≥ +100% as a hard one. Neither ever fails
 CI (see above); a flagged row here is an invitation to look, not a broken build.
+
+Several kernels appear twice, as a `<name>` / `<name>_fast` pair: the transforms
+exist in two evaluations (the spec's own direct form and an accelerated one - see
+[Verification](verification.md#performance-and-reference-modes)), and both are
+recorded, because the reference form is maintained code that a `mode=reference` run
+actually executes, not dead weight. The `_fast` row is what a default encode or
+decode spends; the bare row is what the oracle costs.
 
 <div id="kernel-trend-app">
   <p class="performance-trend-status">Loading kernel trend data…</p>
@@ -487,10 +546,93 @@ the table: the direct evaluation's 320 KiB of step-3 matrices are lazily
 built *static* storage, so switching the default to the FFT path removes
 them from the process (a 3-minute CLI decode's peak working set drops
 ~0.2-0.3 MiB) without moving an allocation count. Its real payoff is time,
-which the timing series on this page do not cover (they time encode only):
+which the timing series on this page did not cover when it landed (they timed
+encode only; roadmap PF1 added the three decode series after the fact):
 measured 180-second decodes went from 3.53 s to 0.79 s (AC-3) and 3.49 s to
 0.75 s (E-AC-3) when the fast path became the default - `mode=reference`
 runs the old numbers on purpose.
+
+## Minimum-footprint decoder
+
+Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
+soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
+[Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
+for what the profile changes and why.
+
+`apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
+E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from the
+run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprint` in
+`.github/workflows/_build.yml` reproduces them on every push, and
+`tools/checks/run_baremetal_probe.sh` reproduces them locally.
+
+### Static footprint
+
+| | Bytes |
+|---|---|
+| `.text` (code + read-only data) | 120,728 |
+| `.data` (initialised) | 396 |
+| `.bss` (zero-initialised) | 232,936 |
+| **Image total** | **354,060** (345.8 KiB) |
+
+Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
+attribution from the linker map):
+
+| Object | `.text` | `.bss` |
+|---|---|---|
+| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 22.8 KiB | 96.1 KiB |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 20.0 KiB | 42.3 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 36.8 KiB | 0 |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 9.3 KiB | 12.4 KiB |
+| `decoder.cpp.obj` (AC-3) | 12.2 KiB | 0 |
+| everything else, summed | 46.8 KiB | 13.1 KiB |
+
+`tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
+(`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
+`ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited, and checked by two
+`ASSERT()`s in the linker script rather than trusted.
+
+### Table ROM budget
+
+The reason PF7 asks for this figure by name: the direct-form transform tables `mode=reference`
+needs are **absent from this image entirely**, not merely unused. Measured on the object file
+with `dumpbin /HEADERS` (Windows) — the actual `.bss` reservation, not an estimate:
+
+| Table | Bytes | Only needed by |
+|---|---|---|
+| `ForwardCosTable<512>` | 1,048,576 | Direct-form forward MDCT, long — **encode**, not on this decoder's path at all |
+| `ForwardCosTable<256>` × 2 | 524,288 | Direct-form forward MDCT, short — **encode** |
+| `InnerSumTable` | 262,144 | Direct-form inverse, long — decode, `mode=reference` only |
+| `InnerSumPairTable` | 65,536 | Direct-form inverse, short — decode, `mode=reference` only |
+| **Total excluded** | **1,900,544** (1.81 MiB) | |
+| *Fast-path tables actually linked in* | *~12,600* | |
+
+A build asking for `mode=reference` in this profile gets `DecodeError::kUnsupported` rather than
+a silent fast-path substitution — see the building doc for why.
+
+### Runtime footprint
+
+| | Value |
+|---|---|
+| Peak heap | 242,986 bytes (237.3 KiB) |
+| Leaked at exit | 0 |
+| `sizeof(ac3::FrameDecoder)` | 12,312 bytes |
+| `sizeof(ac3::Eac3Decoder)` | 12,600 bytes |
+| Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
+| AC-3 allocations per frame, steady state | 45 |
+| E-AC-3 allocations per frame, steady state | 85 |
+
+The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
+for zero, and this is 45/85 — from the per-block geometry vectors inside the decoders and the
+`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
+memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
+those two return types, not to allocation *reuse*. Reaching zero means those becoming
+fixed-capacity, a public-type change tracked separately from this profile.
+
+`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak and both allocation counts
+at ceilings above these measured values, so a regression stops the build instead of drifting
+the table silently.
 
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>

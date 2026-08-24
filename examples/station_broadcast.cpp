@@ -57,6 +57,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fmt/printf.h>
 #include <fstream>
 #include <initializer_list>
 #include <memory>
@@ -69,7 +70,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
+#include "ac3/oba/scene.hpp"
 
 namespace {
 
@@ -1427,7 +1428,10 @@ class WormholeShimmer {
 };
 
 // ---------------------------------------------------------------------------
-// The scene: ten objects, each with an authored KeyframePath. Positions are
+// The scene: ten named objects in one ac3::oba::ObjectScene, each with its own
+// authored automation - the same type ac3cli's atmos-path reads from a file and
+// the GUI's timeline edits, so this cue sheet could equally have been loaded
+// from JSON rather than written here. Positions are
 // room-anchored per §4.2.1 (x 0 left wall to 1 right, y 0 front to 1 back,
 // z -1 floor to +1 ceiling); the listener sits at room centre, the station
 // far front-centre. Distance lives in the authored gains.
@@ -1447,24 +1451,26 @@ enum Object : std::size_t {
     kObjectCount,
 };
 
-ac3::oba::ObjectPath make_path(std::vector<ac3::oba::Keyframe> keyframes) {
-    auto path = ac3::oba::KeyframePath::create(std::move(keyframes));
-    if (!path) {
-        std::fputs("internal error: bad keyframe table\n", stderr);
-        std::exit(1);
-    }
-    return ac3::oba::ObjectPath{std::move(*path)};
+// Every object here is a table of authored cues, so each becomes a SceneObject
+// with linear automation - the default, and what this cue sheet was written
+// against. Names come from kObjectNames, keyed by the enum above, so the enum
+// stays the single place an object is introduced.
+ac3::oba::SceneObject make_object(std::vector<ac3::oba::AutomationPoint> automation) {
+    return {.name = {}, .bed = 0, .automation = std::move(automation)};
 }
 
-std::vector<ac3::oba::ObjectPath> build_paths() {
-    using ac3::oba::Keyframe;
-    std::vector<ac3::oba::ObjectPath> paths;
+constexpr std::array<const char*, kObjectCount> kObjectNames{
+    "broadcast",  "comet",    "jalopy_engine", "jalopy_radio", "runabout_a",
+    "runabout_b", "work_pod", "wormhole_core", "shimmer_l",    "shimmer_r"};
+
+ac3::oba::ObjectScene build_scene() {
+    std::vector<ac3::oba::SceneObject> paths;
     paths.reserve(kObjectCount);
 
     // kBroadcast: nailed to the station, far front-centre. Its gain arc IS
     // the edit: faint, firmer at the reveal, full after the close-up cut,
     // swelling for the reprise, easing out under the wormhole.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {0.0, {0.5, 0.04, 0.05}, 0.00, 0.0},
         {2.0, {0.5, 0.04, 0.05}, 0.05, 0.0},
         {14.0, {0.5, 0.04, 0.05}, 0.10, 0.0},
@@ -1482,7 +1488,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
     }));
 
     // kComet: left to right across the front, closest mid-screen.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {0.0, {0.02, 0.30, 0.15}, 0.00, 0.0},
         {1.5, {0.08, 0.28, 0.15}, 0.35, 0.0},
         {6.5, {0.45, 0.22, 0.20}, 0.50, 0.03},
@@ -1492,7 +1498,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
 
     // kJalopyEngine: in from the rear right, right past the camera, off
     // toward the station shrinking to a dot.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {25.5, {0.92, 0.95, 0.05}, 0.00, 0.0},
         {28.0, {0.85, 0.75, 0.08}, 0.35, 0.10},
         {31.0, {0.78, 0.45, 0.12}, 0.65, 0.30},
@@ -1504,7 +1510,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
 
     // kJalopyRadio: same flight, its own gain - at closest approach it is
     // louder than the station (0.75 vs 0.30) and simply drowns it.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {25.5, {0.92, 0.95, 0.05}, 0.00, 0.0},
         {28.0, {0.85, 0.75, 0.08}, 0.30, 0.0},
         {31.0, {0.78, 0.45, 0.12}, 0.60, 0.0},
@@ -1516,7 +1522,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
 
     // kRunaboutA: undocks front-centre, arcs right and OVERHEAD (z 0.65 -
     // real height metadata for a renderer with tops), exits over the rear.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {51.5, {0.52, 0.08, 0.05}, 0.00, 0.0},
         {53.0, {0.58, 0.15, 0.10}, 0.25, 0.05},
         {56.0, {0.78, 0.35, 0.30}, 0.50, 0.12},
@@ -1527,7 +1533,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
     }));
 
     // kRunaboutB: the port-side pass, rear-left to a front-left docking.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {71.5, {0.08, 0.92, 0.10}, 0.00, 0.0},
         {74.0, {0.12, 0.70, 0.20}, 0.35, 0.08},
         {77.0, {0.18, 0.42, 0.30}, 0.55, 0.14},
@@ -1537,7 +1543,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
     }));
 
     // kWorkPod: parked against an upper pylon, front-right, slightly raised.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {83.5, {0.62, 0.10, 0.35}, 0.00, 0.0},
         {85.0, {0.62, 0.10, 0.35}, 0.28, 0.0},
         {89.0, {0.62, 0.10, 0.35}, 0.25, 0.0},
@@ -1546,7 +1552,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
 
     // kWormholeCore: beyond the station. Mostly LFE - lfe_send is the only
     // route to that channel (ac3/oba/atmos.hpp).
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {102.5, {0.5, 0.02, 0.10}, 0.00, 0.0},
         {105.0, {0.5, 0.02, 0.10}, 0.38, 0.50},
         {108.0, {0.5, 0.05, 0.15}, 0.45, 0.80},
@@ -1558,7 +1564,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
     // kShimmerL / kShimmerR: the bloom splits in two and wraps outward,
     // upward, and back - the pair is what makes the opening feel bigger
     // than the front wall.
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {104.0, {0.50, 0.03, 0.20}, 0.00, 0.0},
         {106.0, {0.35, 0.15, 0.45}, 0.30, 0.0},
         {108.5, {0.18, 0.35, 0.75}, 0.45, 0.05},
@@ -1566,7 +1572,7 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
         {113.5, {0.45, 0.06, 0.20}, 0.08, 0.0},
         {114.6, {0.50, 0.03, 0.10}, 0.00, 0.0},
     }));
-    paths.push_back(make_path({
+    paths.push_back(make_object({
         {104.0, {0.50, 0.03, 0.20}, 0.00, 0.0},
         {106.0, {0.65, 0.15, 0.45}, 0.30, 0.0},
         {108.5, {0.82, 0.35, 0.75}, 0.45, 0.05},
@@ -1575,7 +1581,15 @@ std::vector<ac3::oba::ObjectPath> build_paths() {
         {114.6, {0.50, 0.03, 0.10}, 0.00, 0.0},
     }));
 
-    return paths;
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        paths[i].name = kObjectNames[i];
+    }
+    auto scene = ac3::oba::ObjectScene::create(std::move(paths));
+    if (!scene) {
+        std::fputs("internal error: bad keyframe table\n", stderr);
+        std::exit(1);
+    }
+    return std::move(*scene);
 }
 
 // Radial velocity toward the listener (room centre), for Doppler. The room
@@ -1611,7 +1625,7 @@ bool write_bytes(const std::string& path, std::span<const std::byte> bytes) {
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
     if (!out) {
-        std::printf("error: cannot write %s\n", path.c_str());
+        fmt::printf("error: cannot write %s\n", path.c_str());
         return false;
     }
     return true;
@@ -1623,13 +1637,13 @@ bool write_bytes(const std::string& path, std::span<const std::byte> bytes) {
 std::vector<double> load_music(const std::string& path) {
     const auto wav = ac3::io::read_wav(path);
     if (!wav) {
-        std::printf("error: %s: %s\n", path.c_str(),
+        fmt::printf("error: %s: %s\n", path.c_str(),
                     std::string{ac3::io::describe(wav.error())}.c_str());
         return {};
     }
     const std::size_t frames = wav->frame_count();
     if (frames == 0) {
-        std::printf("error: %s: empty file\n", path.c_str());
+        fmt::printf("error: %s: empty file\n", path.c_str());
         return {};
     }
     std::vector<double> mono(frames, 0.0);
@@ -1695,7 +1709,7 @@ int main(int argc, char** argv) {
         ac3::oba::AtmosConfig{.bitrate_kbps = kBitrateKbps, .emit_object_metadata = false},
         static_cast<int>(kObjectCount));
 
-    const auto paths = build_paths();
+    const auto scene = build_scene();
     MusicSynth anthem{compose_cover()};
     MusicSynth boogie{compose_boogie()};
     Hall hall;
@@ -1746,6 +1760,9 @@ int main(int argc, char** argv) {
     prev_dopp.fill(1.0);
     bool doppler_primed = false;
 
+    // Refilled in place each frame by the scene rather than reallocated.
+    std::vector<ac3::oba::ObjectPlacement> placement(kObjectCount);
+
     std::size_t next_cue = 0;
     std::uint64_t n0 = 0;
     for (std::uint64_t frame = 0; frame < total_frames; ++frame) {
@@ -1754,14 +1771,14 @@ int main(int argc, char** argv) {
             static_cast<double>(n0 + ac3::kSamplesPerFrame) / kRate;
         while (next_cue < kCues.size() && kCues[next_cue].t <= t_start) {
             const double t = kCues[next_cue].t;
-            std::printf("[%d:%04.1f] %s\n", static_cast<int>(t / 60.0),
+            fmt::printf("[%d:%04.1f] %s\n", static_cast<int>(t / 60.0),
                         std::fmod(t, 60.0), kCues[next_cue].label);
             ++next_cue;
         }
 
         // Both metadata layers interpolate to the END of the frame, so
         // placements are evaluated there - same convention as ac3cli.
-        const auto placement = ac3::oba::evaluate_placements(paths, t_end);
+        scene.evaluate_into(t_end, placement);
 
         for (const std::size_t obj :
              {kJalopyEngine, kRunaboutA, kRunaboutB}) {
@@ -1853,7 +1870,7 @@ int main(int argc, char** argv) {
 
         const auto unit = objects_encoder->encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed at %.1f s: %d\n", t_start,
+            fmt::printf("atmos encode failed at %.1f s: %d\n", t_start,
                         std::to_underlying(unit.error()));
             return 1;
         }
@@ -1862,7 +1879,7 @@ int main(int argc, char** argv) {
         if (!smoke_test) {
             const auto bed_unit = bed51_encoder->encode_frame(views, placement);
             if (!bed_unit) {
-                std::printf("bed51 encode failed at %.1f s: %d\n", t_start,
+                fmt::printf("bed51 encode failed at %.1f s: %d\n", t_start,
                             std::to_underlying(bed_unit.error()));
                 return 1;
             }
@@ -1877,7 +1894,7 @@ int main(int argc, char** argv) {
     }
 
     const auto encoded_frames = total_frames - first_encoded_frame;
-    std::printf("%llu access units, %zu bytes of DD+ with %d objects over a 5.1 bed\n",
+    fmt::printf("%llu access units, %zu bytes of DD+ with %d objects over a 5.1 bed\n",
                 static_cast<unsigned long long>(encoded_frames),
                 objects_stream.size(), objects_encoder->dynamic_object_count());
     if (smoke_test) {
@@ -1892,7 +1909,7 @@ int main(int argc, char** argv) {
     // The bed a legacy decoder hears, as a WAV in FL FR FC LFE BL BR order.
     const auto order = ac3::io::wav_channel_order(ac3::Acmod::k3_2, true);
     if (!ac3::io::write_wav_f32(prefix + "_bed.wav", bed_out, 48000, order)) {
-        std::printf("error: cannot write %s_bed.wav\n", prefix.c_str());
+        fmt::printf("error: cannot write %s_bed.wav\n", prefix.c_str());
         return 1;
     }
 
@@ -1918,11 +1935,11 @@ int main(int argc, char** argv) {
         }
     }
     if (!ac3::io::write_wav_f32(prefix + "_stereo.wav", stereo, 48000)) {
-        std::printf("error: cannot write %s_stereo.wav\n", prefix.c_str());
+        fmt::printf("error: cannot write %s_stereo.wav\n", prefix.c_str());
         return 1;
     }
 
-    std::printf("wrote %s.ec3 (objects), %s_bed51.ec3 (no container), "
+    fmt::printf("wrote %s.ec3 (objects), %s_bed51.ec3 (no container), "
                 "%s_bed.wav, %s_stereo.wav\n",
                 prefix.c_str(), prefix.c_str(), prefix.c_str(), prefix.c_str());
     return 0;

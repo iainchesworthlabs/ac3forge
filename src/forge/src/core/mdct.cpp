@@ -7,8 +7,10 @@
 #include <span>
 
 #include "ac3/core/window.hpp"
+#include "ac3/internal/arch/simd.hpp"
 
-#include "fft_radix2.hpp"
+#include "fft_kernel.hpp"
+#include "reference_transform.hpp"
 
 namespace ac3 {
 
@@ -55,126 +57,6 @@ const Twiddles2& twiddles2() {
     return t;
 }
 
-// §7.9.4.1 step 3: the N/4-point complex "IFFT" direct-form sum needs
-// cos(8*pi*k*n/N) and sin(8*pi*k*n/N) for every (k, n) pair in the
-// kQuarter x kQuarter grid below. This depends only on (k, n), never on the
-// coefficients being transformed, so - like Twiddles/Twiddles2 above - it's
-// the same fixed matrix on every call and can be computed once instead of
-// (kQuarter^2 =) 16,384 fresh cos+sin pairs per transform.
-//
-// This is deliberately a full matrix, not a period-128 table indexed by
-// (k*n) % 128 (the trick fft.cpp's dft512 uses for its own twiddles):
-// std::cos(8*pi*k*n/N) reaches an UN-reduced angle of ~792 radians at
-// k=n=127, and empirically std::cos of that large angle differs from
-// std::cos of the small angle it's congruent to mod 2*pi by ~1.3e-13 -
-// nowhere near bit-identical, just close enough to hide under this file's
-// existing 1e-10 golden tolerances. Storing the exact expression this loop
-// already evaluated, just once instead of every call, has no such gap.
-struct InnerSumTable {
-    static constexpr int kDim = kN / 4;  // 128
-    std::array<std::array<double, kDim>, kDim> cos{};
-    std::array<std::array<double, kDim>, kDim> sin{};
-    InnerSumTable() {
-        for (int n = 0; n < kDim; ++n) {
-            for (int k = 0; k < kDim; ++k) {
-                const double angle = 8.0 * kPi * k * n / kN;
-                cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
-                sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
-            }
-        }
-    }
-};
-
-const InnerSumTable& inner_sum_table() {
-    static const InnerSumTable t;
-    return t;
-}
-
-// §7.9.4.2 step 3: the same idea, for the two independent N/8-point "IFFT"
-// sums (angle = 16*pi*k*n/N over the kEighth x kEighth grid).
-struct InnerSumPairTable {
-    static constexpr int kDim = kN / 8;  // 64
-    std::array<std::array<double, kDim>, kDim> cos{};
-    std::array<std::array<double, kDim>, kDim> sin{};
-    InnerSumPairTable() {
-        for (int n = 0; n < kDim; ++n) {
-            for (int k = 0; k < kDim; ++k) {
-                const double angle = 16.0 * kPi * k * n / kN;
-                cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
-                sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
-            }
-        }
-    }
-};
-
-const InnerSumPairTable& inner_sum_pair_table() {
-    static const InnerSumPairTable t;
-    return t;
-}
-
-// §8.2.3.2 direct form, generalized over the transform length and alpha:
-// alpha = 0/N=512 is the long transform; alpha = -1/+1 at N=256 are the two
-// halves of a block-switched block.
-//
-// cos(phase) depends only on (k, n, alpha), never on the windowed signal
-// itself, and alpha only ever takes the three values above - so it is the
-// same fixed N_len x (N_len/2) matrix on every call. This used to compute
-// std::cos(phase) fresh inside the loop below, exactly like the inverse
-// transform's own step 3 does NOT (imdct512_windowed/imdct256_pair_windowed
-// precompute their twiddle factors via Twiddles/Twiddles2 above and reuse
-// them). Measured with Tracy (docs/platforms/android.md's performance
-// investigation): that recomputation was ~79% of the ENTIRE encoder's
-// per-frame cost - 131,072 std::cos() calls per 512-point transform, 36
-// transforms a frame (6 channels x 6 blocks). Precomputing the matrix once,
-// the same way the inverse transform already does, produces bit-identical
-// coefficients (same phase formula, same std::cos(), same accumulation
-// order - only WHEN it runs changes) while removing that cost from the hot
-// path entirely.
-template <int NLen>
-struct ForwardCosTable {
-    static constexpr int kHalf = NLen / 2;
-    std::array<std::array<double, static_cast<std::size_t>(NLen)>, static_cast<std::size_t>(kHalf)>
-        value{};
-    explicit ForwardCosTable(double alpha) {
-        for (int k = 0; k < kHalf; ++k) {
-            const double factor = 2.0 * k + 1.0;
-            for (int n = 0; n < NLen; ++n) {
-                const double phase = (2.0 * kPi / (4.0 * NLen)) * (2.0 * n + 1.0) * factor +
-                                      (kPi / 4.0) * factor * (1.0 + alpha);
-                value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)] = std::cos(phase);
-            }
-        }
-    }
-};
-
-const ForwardCosTable<512>& forward_cos_table_long() {
-    static const ForwardCosTable<512> t(0.0);
-    return t;
-}
-
-const ForwardCosTable<256>& forward_cos_table_first() {
-    static const ForwardCosTable<256> t(-1.0);
-    return t;
-}
-
-const ForwardCosTable<256>& forward_cos_table_second() {
-    static const ForwardCosTable<256> t(1.0);
-    return t;
-}
-
-template <int NLen>
-void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<NLen>& table,
-                       std::span<double> coeffs) {
-    for (int k = 0; k < NLen / 2; ++k) {
-        double sum = 0.0;
-        for (int n = 0; n < NLen; ++n) {
-            sum += windowed[static_cast<std::size_t>(n)] *
-                   table.value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)];
-        }
-        coeffs[static_cast<std::size_t>(k)] = (-2.0 / NLen) * sum;
-    }
-}
-
 // --- §7.9.4 fast N/4-FFT structure (the encoder-config default; see
 // mdct512_forward's own doc comment and EncoderConfig::fast_mdct /
 // eac3::FrameConfig::fast_mdct) ---------------------------------------------
@@ -203,13 +85,14 @@ void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<N
 // Every fold computes scale * DCT-IV(u) - u a length-M "folded" input -
 // via one P = M/2-point complex FFT, the standard trick for a real-input
 // DCT-IV. The long fold was verified 2026-08-14 against ForwardCosTable
-// (this file's own direct-form ground truth) to max relative error ~3e-12
+// (the direct-form ground truth, now in
+// src/core/transform/reference/reference_transform.cpp) to max relative error ~3e-12
 // on both random data and real audio, the short folds 2026-08-15 the same
 // way; see tests/core/test_mdct_fast.cpp, which asserts a 1e-10 bound on all
 // three.
 
 // Everything angle-dependent in the fold below, computed once per NLen -
-// the same treatment Twiddles/InnerSumTable/ForwardCosTable give every
+// the same treatment Twiddles and the direct-form matrices give every
 // other transform in this file, applied to the fast path itself (phase-5
 // target 1 of the performance programme: this kernel runs 36x per frame in
 // every encode path, plus 6x per object per frame inside band_energy, and
@@ -218,7 +101,8 @@ void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<N
 //
 // - pre/post twiddles: the EXACT expressions the fold used to evaluate per
 //   call (std::cos/std::sin of -pi*m/M and -pi*(4k+1)/(4M)), stored instead
-//   of re-evaluated - bit-identical values, InnerSumTable's own reasoning.
+//   of re-evaluated - bit-identical values, the direct-form tables' own
+//   reasoning (src/core/transform/reference/reference_transform.cpp).
 // - FFT stage twiddles + bit-reversal permutation: the previous in-place
 //   FFT generated each butterfly group's j-th twiddle by ITERATED complex
 //   multiply (w *= wlen), so it carried j-1 accumulated rounding steps.
@@ -236,10 +120,10 @@ struct FastMdctTables {
     // w[k] post-twiddle exp(-i*pi*(4k+1)/(4M)), split re/im.
     std::array<double, kP> post_re{};
     std::array<double, kP> post_im{};
-    // The P-point FFT's own tables (bit-reversal + stage twiddles) - the
-    // shared radix-2 core's, hoisted to fft_radix2.hpp verbatim so dft512
-    // can run the identical machinery at P = 512; see that header.
-    internal::FftRadix2Tables<kP> fft{};
+    // The P-point FFT's own tables (digit-reversal permutation + stage
+    // twiddles) - the shared kernel's, so dft512 runs the identical
+    // machinery at P = 512; see fft_kernel.hpp.
+    internal::FftTables<kP> fft{};
     FastMdctTables() {
         for (std::size_t m = 0; m < kP; ++m) {
             const double ang = -kPi * static_cast<double>(m) / static_cast<double>(kM);
@@ -266,6 +150,25 @@ const FastMdctTables<NLen>& fast_mdct_tables() {
 // DCT4[2k] = Re(w[k]), DCT4[M-1-2k] = -Im(w[k]). NLen names the TRANSFORM
 // whose tables carry this DCT-IV's twiddles (M = NLen/2), so the long
 // transform runs it at M = 256 and both short transforms at M = 128.
+// The pre- and post-twiddle loops run two m/k at a time through the arch
+// seam (ROADMAP PF5). Both are complex multiplies whose ARITHMETIC is
+// contiguous even though their memory access is not: the pre-twiddle
+// gathers u at stride +2 and stride -2 and scatters its result to
+// `bitrev[m]` (the kernel wants its input already digit-reversed - see
+// fft_kernel.hpp - so the quarter-split that was already gathering
+// u[2m]/u[M-1-2m] scatters on the way out instead of the kernel spending a
+// pass permuting in place); the post-twiddle reads the kernel's natural-
+// order output at stride +1 and scatters out to stride +2/-2. The seam
+// carries no shuffle or scatter-store operation, so every gather and every
+// scatter stays scalar (f64x2::set to gather, lane0/lane1 to scatter) and
+// only the arithmetic between them goes two-wide - which is where the time
+// is. Every lane performs the identical operations on the identical values
+// the scalar form did, so the coefficients are bit-identical; see
+// fft_kernel.hpp's own header comment for the algorithm this feeds and
+// tests/core/test_simd_kernels.cpp for the bit-exactness check.
+//
+// P is kM/2 - 128 for the long transform, 64 for the short pair - so it is
+// always even and neither loop needs a scalar tail.
 template <int NLen>
 void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
                  std::span<double> out, double scale) {
@@ -273,19 +176,34 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
     constexpr std::size_t P = FastMdctTables<NLen>::kP;
     std::array<double, P> z_re{};
     std::array<double, P> z_im{};
-    for (std::size_t m = 0; m < P; ++m) {
-        const double a = u[2 * m];
-        const double b = u[M - 1 - 2 * m];
-        z_re[m] = a * t.pre_re[m] - b * t.pre_im[m];
-        z_im[m] = a * t.pre_im[m] + b * t.pre_re[m];
+    for (std::size_t m = 0; m < P; m += 2) {
+        const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
+        const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
+        const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);
+        const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);
+        const auto zr = a * pre_re - b * pre_im;
+        const auto zi = a * pre_im + b * pre_re;
+        const std::size_t d0 = t.fft.bitrev[m];
+        const std::size_t d1 = t.fft.bitrev[m + 1];
+        z_re[d0] = zr.lane0();
+        z_im[d0] = zi.lane0();
+        z_re[d1] = zr.lane1();
+        z_im[d1] = zi.lane1();
     }
-    internal::fft_radix2_forward<P>(t.fft, z_re, z_im);
+    internal::fft_forward_bitrev<P>(t.fft, z_re, z_im);
 
-    for (std::size_t k = 0; k < P; ++k) {
-        const double wr = z_re[k] * t.post_re[k] - z_im[k] * t.post_im[k];
-        const double wi = z_re[k] * t.post_im[k] + z_im[k] * t.post_re[k];
-        out[2 * k] = scale * wr;
-        out[M - 1 - 2 * k] = scale * (-wi);
+    const auto scale_v = internal::arch::f64x2::broadcast(scale);
+    for (std::size_t k = 0; k < P; k += 2) {
+        const auto zr = internal::arch::f64x2::load(&z_re[k]);
+        const auto zi = internal::arch::f64x2::load(&z_im[k]);
+        const auto post_re = internal::arch::f64x2::load(&t.post_re[k]);
+        const auto post_im = internal::arch::f64x2::load(&t.post_im[k]);
+        const auto even = scale_v * (zr * post_re - zi * post_im);
+        const auto odd = scale_v * (-(zr * post_im + zi * post_re));
+        out[2 * k] = even.lane0();
+        out[2 * k + 2] = even.lane1();
+        out[M - 1 - 2 * k] = odd.lane0();
+        out[M - 3 - 2 * k] = odd.lane1();
     }
 }
 
@@ -313,10 +231,18 @@ void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> 
 
 }  // namespace
 
+// Two samples per iteration through the arch seam (ROADMAP PF5). The
+// plainest kernel in the codec - 512 independent multiplies, unit stride on
+// all three arrays - and therefore the one where the vector form is most
+// obviously the same arithmetic as the scalar one it replaced. kN is 512, so
+// there is no tail.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
-    for (int n = 0; n < kN; ++n) {
-        windowed[static_cast<std::size_t>(n)] =
-            x[static_cast<std::size_t>(n)] * kAnalysisWindow[static_cast<std::size_t>(n)];
+    const double* const in = x.data();
+    double* const out = windowed.data();
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kN); n += 2) {
+        (internal::arch::f64x2::load(in + n) *
+         internal::arch::f64x2::load(&kAnalysisWindow[n]))
+            .store(out + n);
     }
 }
 
@@ -325,7 +251,7 @@ void mdct512_forward(std::span<const double, 512> windowed, std::span<double, 25
     if (fast) {
         mdct_forward_fast_core<512>(windowed, coeffs);
     } else {
-        mdct_forward_core<512>(windowed, forward_cos_table_long(), coeffs);
+        internal::reference_mdct512_forward(windowed, coeffs);
     }
 }
 
@@ -349,7 +275,7 @@ void mdct256_forward_first(std::span<const double, 256> windowed, std::span<doub
         dct4_scaled<256>(fast_mdct_tables<256>(), v, coeffs, -2.0 / 256);
         return;
     }
-    mdct_forward_core<256>(windowed, forward_cos_table_first(), coeffs);
+    internal::reference_mdct256_forward_first(windowed, coeffs);
 }
 
 void mdct256_forward_second(std::span<const double, 256> windowed, std::span<double, 128> coeffs,
@@ -372,7 +298,7 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
         dct4_scaled<256>(fast_mdct_tables<256>(), w_r, coeffs, 2.0 / 256);
         return;
     }
-    mdct_forward_core<256>(windowed, forward_cos_table_second(), coeffs);
+    internal::reference_mdct256_forward_second(windowed, coeffs);
 }
 
 void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
@@ -381,70 +307,83 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     constexpr int kQuarter = kN / 4;  // 128
     constexpr int kEighth = kN / 8;   // 64
 
-    // Step 2: pre-transform complex multiply.
-    // Z[k] = (X[N/2-2k-1] + j*X[2k]) * (xcos1[k] + j*xsin1[k])
-    std::array<double, kQuarter> z_re{};
-    std::array<double, kQuarter> z_im{};
-    for (int k = 0; k < kQuarter; ++k) {
-        const double a = coeffs[static_cast<std::size_t>(kN / 2 - 2 * k - 1)];
-        const double b = coeffs[static_cast<std::size_t>(2 * k)];
-        const double c = tw.cos1[static_cast<std::size_t>(k)];
-        const double s = tw.sin1[static_cast<std::size_t>(k)];
-        z_re[static_cast<std::size_t>(k)] = a * c - b * s;
-        z_im[static_cast<std::size_t>(k)] = b * c + a * s;
-    }
-
-    // Step 3: N/4-point complex "IFFT". The pseudocode's sum
+    // Steps 2 and 3: the pre-transform complex multiply
+    // Z[k] = (X[N/2-2k-1] + j*X[2k]) * (xcos1[k] + j*xsin1[k]), then the
+    // N/4-point complex "IFFT". The pseudocode's sum
     // z[n] = sum_k Z[k] * (cos(8*pi*k*n/N) + j*sin(8*pi*k*n/N)), no scaling,
     // is with its +j*sin convention exactly an unscaled INVERSE DFT of Z -
     // so the fast path is the identity IDFT(Z) = conj(FFT(conj(Z))) through
-    // the same radix-2 core the forward's fast fold uses (its P = 128
-    // tables are the long fold's own, fast_mdct_tables<512>().fft). The
-    // direct branch keeps the spec's own evaluation - and keeps
-    // inner_sum_table()'s 256 KiB matrix a lazily-built oracle that a
-    // decoder running fast never materializes at all.
+    // the same FFT kernel the forward's fast fold uses (its P = 128 tables
+    // are the long fold's own, fast_mdct_tables<512>().fft). The direct
+    // branch keeps the spec's own evaluation, now behind
+    // src/core/reference_transform.hpp so its 256 KiB matrix can be left out
+    // of a build entirely (roadmap PF7) rather than merely never touched.
+    //
+    // The fast branch writes step 2's output already conjugated and already
+    // digit-reversed, which is what lets the kernel skip both the input
+    // conjugation pass and the bit-reversal pass the previous core ran
+    // (fft_kernel.hpp); the direct branch needs neither, so it writes
+    // Z[k] straight.
+    std::array<double, kQuarter> z_re{};
+    std::array<double, kQuarter> z_im{};
     std::array<double, kQuarter> t_re{};
     std::array<double, kQuarter> t_im{};
     if (fast) {
-        for (int k = 0; k < kQuarter; ++k) {
-            z_im[static_cast<std::size_t>(k)] = -z_im[static_cast<std::size_t>(k)];
+        // Two k at a time through the arch seam (ROADMAP PF5), the same
+        // gather-compute-scatter shape as dct4_scaled's pre-twiddle: the
+        // coefficient gather runs at stride -2/+2 and the scatter target is
+        // bitrev[k], so both ends stay scalar and only the six multiplies
+        // and two adds between them go two-wide. kQuarter is 128, so no
+        // tail. See dct4_scaled's own comment for the bit-exactness
+        // argument this shares.
+        const auto& fft = fast_mdct_tables<512>().fft;
+        constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
+        for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
+            const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
+                                                      coeffs[kHalfN - 2 * k - 3]);
+            const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
+            const auto c = internal::arch::f64x2::load(&tw.cos1[k]);
+            const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);
+            const auto zr = a * c - b * sn;
+            const auto zi = -(b * c + a * sn);
+            const std::size_t d0 = fft.bitrev[k];
+            const std::size_t d1 = fft.bitrev[k + 1];
+            z_re[d0] = zr.lane0();
+            z_im[d0] = zi.lane0();
+            z_re[d1] = zr.lane1();
+            z_im[d1] = zi.lane1();
         }
-        internal::fft_radix2_forward<static_cast<std::size_t>(kQuarter)>(
-            fast_mdct_tables<512>().fft, z_re, z_im);
-        for (int n = 0; n < kQuarter; ++n) {
-            t_re[static_cast<std::size_t>(n)] = z_re[static_cast<std::size_t>(n)];
-            t_im[static_cast<std::size_t>(n)] = -z_im[static_cast<std::size_t>(n)];
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter)>(fft, z_re, z_im);
+        // Unit stride throughout, so this negation goes two-wide with
+        // nothing to gather or scatter.
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+            internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);
+            (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
         }
     } else {
-        const auto& s3 = inner_sum_table();
-        for (int n = 0; n < kQuarter; ++n) {
-            double re = 0.0;
-            double im = 0.0;
-            const auto& row_c = s3.cos[static_cast<std::size_t>(n)];
-            const auto& row_s = s3.sin[static_cast<std::size_t>(n)];
-            for (int k = 0; k < kQuarter; ++k) {
-                const double c = row_c[static_cast<std::size_t>(k)];
-                const double s = row_s[static_cast<std::size_t>(k)];
-                re += z_re[static_cast<std::size_t>(k)] * c -
-                      z_im[static_cast<std::size_t>(k)] * s;
-                im += z_re[static_cast<std::size_t>(k)] * s +
-                      z_im[static_cast<std::size_t>(k)] * c;
-            }
-            t_re[static_cast<std::size_t>(n)] = re;
-            t_im[static_cast<std::size_t>(n)] = im;
+        for (int k = 0; k < kQuarter; ++k) {
+            const double a = coeffs[static_cast<std::size_t>(kN / 2 - 2 * k - 1)];
+            const double b = coeffs[static_cast<std::size_t>(2 * k)];
+            const double c = tw.cos1[static_cast<std::size_t>(k)];
+            const double s = tw.sin1[static_cast<std::size_t>(k)];
+            z_re[static_cast<std::size_t>(k)] = a * c - b * s;
+            z_im[static_cast<std::size_t>(k)] = b * c + a * s;
         }
+        internal::reference_inner_sum_128(z_re, z_im, t_re, t_im);
     }
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
+    // Unit stride on every one of the six arrays, so this one vectorises
+    // with nothing to gather or scatter (ROADMAP PF5).
     std::array<double, kQuarter> y_re{};
     std::array<double, kQuarter> y_im{};
-    for (int n = 0; n < kQuarter; ++n) {
-        const double c = tw.cos1[static_cast<std::size_t>(n)];
-        const double s = tw.sin1[static_cast<std::size_t>(n)];
-        y_re[static_cast<std::size_t>(n)] =
-            t_re[static_cast<std::size_t>(n)] * c - t_im[static_cast<std::size_t>(n)] * s;
-        y_im[static_cast<std::size_t>(n)] =
-            t_im[static_cast<std::size_t>(n)] * c + t_re[static_cast<std::size_t>(n)] * s;
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+        const auto c = internal::arch::f64x2::load(&tw.cos1[n]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);
+        const auto tr = internal::arch::f64x2::load(&t_re[n]);
+        const auto ti = internal::arch::f64x2::load(&t_im[n]);
+        (tr * c - ti * sn).store(&y_re[n]);
+        (ti * c + tr * sn).store(&y_im[n]);
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.
@@ -484,32 +423,21 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
         x2[static_cast<std::size_t>(k)] = coeffs[static_cast<std::size_t>(2 * k + 1)];
     }
 
-    // Step 2: pre-IFFT complex multiply.
-    // Z1[k] = (X1[N/4-2k-1] + j*X1[2k]) * (xcos2[k] + j*xsin2[k]), likewise Z2.
+    // Steps 2 and 3: the pre-IFFT complex multiply
+    // Z1[k] = (X1[N/4-2k-1] + j*X1[2k]) * (xcos2[k] + j*xsin2[k]) (likewise
+    // Z2), then two independent N/8-point complex "IFFT" sums, unscaled.
+    // Same inverse-DFT identity as the long transform's step 3 (see
+    // imdct512_windowed): the fast path runs conj(FFT(conj(Z))) through the
+    // P = 64 kernel tables the short forward folds already own
+    // (fast_mdct_tables<256>().fft), once per half-block set, and - as
+    // there - writes step 2 already conjugated and already digit-reversed
+    // so neither costs a pass of its own. The direct branch keeps the
+    // spec's own sum, behind the same src/core/reference_transform.hpp seam
+    // as the long form's.
     std::array<double, kEighth> z1_re{};
     std::array<double, kEighth> z1_im{};
     std::array<double, kEighth> z2_re{};
     std::array<double, kEighth> z2_im{};
-    for (int k = 0; k < kEighth; ++k) {
-        const double c = tw.cos2[static_cast<std::size_t>(k)];
-        const double s = tw.sin2[static_cast<std::size_t>(k)];
-        const double a1 = x1[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
-        const double b1 = x1[static_cast<std::size_t>(2 * k)];
-        z1_re[static_cast<std::size_t>(k)] = a1 * c - b1 * s;
-        z1_im[static_cast<std::size_t>(k)] = b1 * c + a1 * s;
-        const double a2 = x2[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
-        const double b2 = x2[static_cast<std::size_t>(2 * k)];
-        z2_re[static_cast<std::size_t>(k)] = a2 * c - b2 * s;
-        z2_im[static_cast<std::size_t>(k)] = b2 * c + a2 * s;
-    }
-
-    // Step 3: two independent N/8-point complex "IFFT" sums, unscaled. Same
-    // inverse-DFT identity as the long transform's step 3 (see
-    // imdct512_windowed): the fast path runs conj(FFT(conj(Z))) through the
-    // P = 64 radix-2 tables the short forward folds already own
-    // (fast_mdct_tables<256>().fft), once per half-block set; the direct
-    // branch keeps the spec's own sum and inner_sum_pair_table()'s 64 KiB
-    // matrix stays a lazily-built oracle.
     std::array<double, kEighth> t1_re{};
     std::array<double, kEighth> t1_im{};
     std::array<double, kEighth> t2_re{};
@@ -517,11 +445,20 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     if (fast) {
         const auto& fft = fast_mdct_tables<256>().fft;
         for (int k = 0; k < kEighth; ++k) {
-            z1_im[static_cast<std::size_t>(k)] = -z1_im[static_cast<std::size_t>(k)];
-            z2_im[static_cast<std::size_t>(k)] = -z2_im[static_cast<std::size_t>(k)];
+            const double c = tw.cos2[static_cast<std::size_t>(k)];
+            const double s = tw.sin2[static_cast<std::size_t>(k)];
+            const double a1 = x1[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
+            const double b1 = x1[static_cast<std::size_t>(2 * k)];
+            const double a2 = x2[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
+            const double b2 = x2[static_cast<std::size_t>(2 * k)];
+            const std::size_t d = fft.bitrev[static_cast<std::size_t>(k)];
+            z1_re[d] = a1 * c - b1 * s;
+            z1_im[d] = -(b1 * c + a1 * s);
+            z2_re[d] = a2 * c - b2 * s;
+            z2_im[d] = -(b2 * c + a2 * s);
         }
-        internal::fft_radix2_forward<static_cast<std::size_t>(kEighth)>(fft, z1_re, z1_im);
-        internal::fft_radix2_forward<static_cast<std::size_t>(kEighth)>(fft, z2_re, z2_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth)>(fft, z1_re, z1_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth)>(fft, z2_re, z2_im);
         for (int n = 0; n < kEighth; ++n) {
             t1_re[static_cast<std::size_t>(n)] = z1_re[static_cast<std::size_t>(n)];
             t1_im[static_cast<std::size_t>(n)] = -z1_im[static_cast<std::size_t>(n)];
@@ -529,49 +466,42 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
             t2_im[static_cast<std::size_t>(n)] = -z2_im[static_cast<std::size_t>(n)];
         }
     } else {
-        const auto& s3 = inner_sum_pair_table();
-        for (int n = 0; n < kEighth; ++n) {
-            double re1 = 0.0;
-            double im1 = 0.0;
-            double re2 = 0.0;
-            double im2 = 0.0;
-            const auto& row_c = s3.cos[static_cast<std::size_t>(n)];
-            const auto& row_s = s3.sin[static_cast<std::size_t>(n)];
-            for (int k = 0; k < kEighth; ++k) {
-                const double c = row_c[static_cast<std::size_t>(k)];
-                const double s = row_s[static_cast<std::size_t>(k)];
-                re1 += z1_re[static_cast<std::size_t>(k)] * c -
-                       z1_im[static_cast<std::size_t>(k)] * s;
-                im1 += z1_re[static_cast<std::size_t>(k)] * s +
-                       z1_im[static_cast<std::size_t>(k)] * c;
-                re2 += z2_re[static_cast<std::size_t>(k)] * c -
-                       z2_im[static_cast<std::size_t>(k)] * s;
-                im2 += z2_re[static_cast<std::size_t>(k)] * s +
-                       z2_im[static_cast<std::size_t>(k)] * c;
-            }
-            t1_re[static_cast<std::size_t>(n)] = re1;
-            t1_im[static_cast<std::size_t>(n)] = im1;
-            t2_re[static_cast<std::size_t>(n)] = re2;
-            t2_im[static_cast<std::size_t>(n)] = im2;
+        for (int k = 0; k < kEighth; ++k) {
+            const double c = tw.cos2[static_cast<std::size_t>(k)];
+            const double s = tw.sin2[static_cast<std::size_t>(k)];
+            const double a1 = x1[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
+            const double b1 = x1[static_cast<std::size_t>(2 * k)];
+            z1_re[static_cast<std::size_t>(k)] = a1 * c - b1 * s;
+            z1_im[static_cast<std::size_t>(k)] = b1 * c + a1 * s;
+            const double a2 = x2[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
+            const double b2 = x2[static_cast<std::size_t>(2 * k)];
+            z2_re[static_cast<std::size_t>(k)] = a2 * c - b2 * s;
+            z2_im[static_cast<std::size_t>(k)] = b2 * c + a2 * s;
         }
+        // Two passes over the one table rather than the interleaved loop
+        // this used to run: the two sums are independent and each output's
+        // accumulation order is unchanged, so every bit is.
+        internal::reference_inner_sum_64(z1_re, z1_im, t1_re, t1_im);
+        internal::reference_inner_sum_64(z2_re, z2_im, t2_re, t2_im);
     }
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
+    // Both half-block sets, two n at a time, all unit stride (ROADMAP PF5).
     std::array<double, kEighth> y1_re{};
     std::array<double, kEighth> y1_im{};
     std::array<double, kEighth> y2_re{};
     std::array<double, kEighth> y2_im{};
-    for (int n = 0; n < kEighth; ++n) {
-        const double c = tw.cos2[static_cast<std::size_t>(n)];
-        const double s = tw.sin2[static_cast<std::size_t>(n)];
-        y1_re[static_cast<std::size_t>(n)] =
-            t1_re[static_cast<std::size_t>(n)] * c - t1_im[static_cast<std::size_t>(n)] * s;
-        y1_im[static_cast<std::size_t>(n)] =
-            t1_im[static_cast<std::size_t>(n)] * c + t1_re[static_cast<std::size_t>(n)] * s;
-        y2_re[static_cast<std::size_t>(n)] =
-            t2_re[static_cast<std::size_t>(n)] * c - t2_im[static_cast<std::size_t>(n)] * s;
-        y2_im[static_cast<std::size_t>(n)] =
-            t2_im[static_cast<std::size_t>(n)] * c + t2_re[static_cast<std::size_t>(n)] * s;
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 2) {
+        const auto c = internal::arch::f64x2::load(&tw.cos2[n]);
+        const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);
+        const auto t1r = internal::arch::f64x2::load(&t1_re[n]);
+        const auto t1i = internal::arch::f64x2::load(&t1_im[n]);
+        const auto t2r = internal::arch::f64x2::load(&t2_re[n]);
+        const auto t2i = internal::arch::f64x2::load(&t2_im[n]);
+        (t1r * c - t1i * sn).store(&y1_re[n]);
+        (t1i * c + t1r * sn).store(&y1_im[n]);
+        (t2r * c - t2i * sn).store(&y2_re[n]);
+        (t2i * c + t2r * sn).store(&y2_im[n]);
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.

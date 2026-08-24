@@ -22,6 +22,7 @@ the library pages excerpt from — each page's "Full program" link lands on one 
 |---|---|---|
 | [`decode_stream`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_stream.cpp) | Scan an unknown elementary stream, then decode it with the right decoder. | [Decoding](decoding.md) |
 | [`decode_robustness`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_robustness.cpp) | Skip a damaged mid-stream frame and keep decoding. | [Decoding](decoding.md) |
+| [`stream_edit`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/stream_edit.cpp) | Where each access unit starts, a metadata rewrite that leaves the audio bit-identical, and a cut that rejoins byte for byte. | [Decoding](decoding.md) |
 | [`level_metering`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/level_metering.cpp) | Decode and meter: per-channel peak/RMS plus the speaker-ring energy vector. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`qc_report`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/qc_report.cpp) | Decode, measure BS.1770-4/Tech 3342, and check named QC delivery gates. | [Metadata](metadata.md) |
 
@@ -31,7 +32,7 @@ the library pages excerpt from — each page's "Full program" link lands on one 
 |---|---|---|
 | [`spatial_objects`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/spatial_objects.cpp) | Pan a moving mono object onto the BS.775 ring, into plain 5.1 AC-3. | [Spatial & Atmos objects](spatial-and-atmos.md) |
 | [`atmos_objects`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_objects.cpp) | Panned objects as Atmos-in-DD+, atop a legacy-playable 5.1 bed. | [Spatial & Atmos objects](spatial-and-atmos.md) |
-| [`scripted_object_motion`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/scripted_object_motion.cpp) | Objects driven by authored `OrbitPath`/`KeyframePath` motion. | [Spatial & Atmos objects](spatial-and-atmos.md) |
+| [`scripted_object_motion`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/scripted_object_motion.cpp) | Objects driven by an authored `ObjectScene` — per-segment interpolation, and the scene saved as JSON. | [Spatial & Atmos objects](spatial-and-atmos.md) |
 | [`atmos_fallback`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/atmos_fallback.cpp) | The same programme with and without the EMDF container — the either/or 5.1-fallback tradeoff. | [Spatial & Atmos objects](spatial-and-atmos.md) |
 | [`object_signing`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/object_signing.cpp) | Sign an Atmos stream's EMDF container with an operator key. | [Object signing](signing.md) |
 | [`station_broadcast`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/station_broadcast.cpp) | A fully worked 115-second diegetic Atmos scene with authored flight paths. | [A worked scene — station broadcast](station-broadcast.md) |

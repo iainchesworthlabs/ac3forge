@@ -47,45 +47,70 @@ endif()
 add_executable(ac3tests
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
+    encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
+    oba/test_dee_joc_fixture.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
     core/test_bitwriter.cpp
+    meta/test_bsi.cpp
+    encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
+    decoder/test_concealment.cpp
+    core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
+    dsp/test_dsp_qmf.cpp
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
+    encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
+    decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
+    io/test_metadata_edit.cpp
+    io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
+    encoder/test_exp_strategy.cpp
     core/test_exponents.cpp
     core/test_fft.cpp
     containers/test_fmp4.cpp
     core/test_frame.cpp
     sinks/test_iec61937.cpp
+    decoder/test_latency.cpp
+    sinks/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
+    decoder/test_output_stage.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp
+    containers/test_matroska_reader.cpp
     core/test_mdct.cpp
     core/test_mdct_fast.cpp
     meta/test_meta_qc.cpp
     meta/test_mixing.cpp
     containers/test_mp4.cpp
+    containers/test_mp4_reader.cpp
     containers/test_mpegts.cpp
+    containers/test_mpegts_reader.cpp
+    io/test_object_strip.cpp
+    quality/test_distortion.cpp
+    quality/test_perceptual.cpp
+    quality/test_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    oba/test_scene.cpp
+    verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
+    core/test_simd_kernels.cpp
     core/test_tables.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
@@ -94,6 +119,27 @@ add_executable(ac3tests
     io/test_wav_stream_reader.cpp
     io/test_wav_stream_writer.cpp)
 
+# -Wnull-dereference false positive, GNU only: "a rewrite really does
+# re-stamp the CRCs" hand-flips one bit of an already-encoded frame
+# (tampered[6] ^= std::byte{0x20}) to build its negative control, and at -O3
+# (Release; not seen at the -debug preset's lower optimization) GCC inlines
+# std::byte's operator^= straight into the Catch2 test body and misattributes
+# a "null dereference" to the subscript - the same post-inlining
+# misattribution cmake/CompilerWarnings.cmake already documents for GCC < 15
+# against libstdc++ internals (see its own comment, and gcc.gnu.org/bugzilla
+# PR 108757 and neighbours), surfacing here on the CI-pinned GCC 16 instead:
+# confirmed on a plain WSL2 GCC 15.2.0 build (config-linux-gcc, not just
+# -debug) and, for real, in CI's own build logs (CodeQL, adm-validate, and
+# the plain Linux GCC/GCC-arm64 legs all hit it). `tampered` is a full copy
+# of a real encoded AC-3 syncframe, always far more than 6 bytes, so nothing
+# here is genuinely null-unsafe. Scoped to the file rather than widening
+# that project-wide guard, the same reasoning src/ac3adm/CMakeLists.txt's
+# own GCC-15 instance of this category gives for scoping to its one target:
+# nothing else in this project has hit it, so silencing it everywhere would
+# risk hiding a genuine one elsewhere.
+set_source_files_properties(io/test_metadata_edit.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+
 # test_signing.cpp reaches ac3::signing's internal crypto headers (sha256.hpp/
 # hmac_sha256.hpp) to run the FIPS/RFC known-answer vectors directly - they are
 # not part of the target's public API, so put its private src/ dir on this
@@ -101,14 +147,73 @@ add_executable(ac3tests
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
 
-# test_selfcheck.cpp runs the encoder/decoder mirror check (ac3::verify) over the
-# committed programme-material fixtures rather than a synthetic signal - the delta bit
-# allocation state it compares only ends part-way through a frame on material that really
-# does change character mid-frame, which is what made those files the reproduction for the
-# bug this check exists to catch. Passed as a path rather than resolved from argv[0]: ctest
-# runs the binary from the build tree, which is nowhere near the fixtures.
+# test_bit_reservoir.cpp reaches the encoder's own internal bit_reservoir.hpp
+# (ABR's sliding-window accounting), which is plumbing between the encoder's
+# translation units rather than library surface - same pattern, same reason.
+# test_exp_strategy.cpp includes exp_strategy.hpp, the exponent-run planner the
+# two encoder translation units share. It is deliberately not library surface -
+# nothing outside src/forge/src/encoder/ has any business planning exponent
+# runs - but what it decides is a cost judgement, and that is worth holding to
+# account on inputs chosen to make the right answer obvious rather than only
+# through a whole encode. Same pattern as the signing headers above.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
+
+# test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
+# CMake selected in src/forge/CMakeLists.txt, so the test exercises the
+# f64x2/i32x4 the library was actually built with rather than a different
+# one - same white-box arrangement as src/signing/src just above and the ALSA
+# backend's internal header below.
+target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
+
+# core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
+# half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
+# builds under Clang with -fsanitize=fuzzer, but the header's
+# restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
+# frame-size tables, and whether it produces a crc1 the decoder accepts is
+# exactly the kind of thing that should be checked on every platform rather
+# than inferred from a coverage number on one. Same shape as the signing/src
+# include just above: a directory outside the public include tree, on this
+# target's path only.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
+
+# test_selfcheck.cpp and test_eac3_selfcheck.cpp run the encoder/decoder mirror check
+# (ac3::verify) over the committed programme-material fixtures rather than a synthetic
+# signal - the delta bit allocation state it compares only ends part-way through a frame on
+# material that really does change character mid-frame, which is what made those files the
+# reproduction for the bug this check exists to catch, and the Annex E tools it also
+# compares (AHT gains, coupling and spectral-extension coordinates) say nothing at all on
+# silence. Passed as a path rather than resolved from argv[0]: ctest runs the binary from
+# the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
+
+# The third-party Dolby fixture tests/oba/test_dee_joc_fixture.cpp reads, on the
+# same reasoning: a path, because ctest runs from the build tree.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
+
+# Where every test that writes a file writes it. Each such file's own scratch_dir()
+# helper appends its own leaf name under here, so the artefacts stay separated by
+# subject the way their old per-subject temp directories were.
+#
+# The point of routing them through a define at all is the ROOT of that path.
+# These used to sit under fs::temp_directory_path(), which depends on nothing but
+# the machine - so two ac3tests binaries built from different checkouts of this
+# repo (different worktrees, different build directories, different branches)
+# shared one directory and, because the filenames underneath are fixed, could
+# overwrite each other's intermediate files mid-test. What that produces is not an
+# obvious collision but a test failure in whichever run lost the race, in a branch
+# that has nothing to do with the change under test. CI never sees it - a runner
+# has its checkout to itself - so the whole cost lands on local development, where
+# building several worktrees of this repo at once is normal.
+#
+# Keying it to CMAKE_CURRENT_BINARY_DIR gives each build tree its own, which is
+# also the more useful place for it: the artefacts a failing test left behind end
+# up next to the binary that wrote them rather than pooled in the machine's temp
+# directory with every other build's, and `rm -rf` on a build tree takes them with
+# it. Supplied the same way AC3CLI_EXE and AC3FORGE_GOLDEN_AUDIO_DIR above are.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
 
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
@@ -178,26 +283,48 @@ endif()
 # top-level CMakeLists.txt processes apps/cli before tests/, so the target
 # already exists here whenever it is going to.
 # ---------------------------------------------------------------------------
+# cli/test_cli_live.cpp rides the same gate and the same AC3CLI_EXE: it covers
+# the device-facing commands (devices/outputs/record/live/monitor), which no
+# test touched at all until roadmap VX15 measured commands/audio_io.cpp and
+# commands/live_audio.cpp at 0.0% line coverage. Its cases assert what holds
+# with or without an endpoint present - see that file's own header - and carry
+# the [concurrency] tag, so the ThreadSanitizer leg reaches them through
+# `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli.cpp)
+    target_sources(ac3tests PRIVATE
+        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
+        cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
+    # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
+    # well as this encoder's own output - they exercise syntax ac3forge never
+    # emits (AHT, spectral extension, and frames this decoder declines
+    # outright), which is the only way to check that `probe` describes a FORMAT
+    # rather than this project's dialect of it. Passed as a path for the same
+    # reason AC3FORGE_GOLDEN_AUDIO_DIR is: ctest runs the binary from the build
+    # tree, nowhere near the fixtures.
+    target_compile_definitions(ac3tests PRIVATE
+        "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 endif()
 
-# RecordingSink (gui/test_recording_sink.cpp) is the GUI's one deliberately
-# Qt-free class - std:: and the container libraries only, exactly so its
-# streamed-equals-one-shot contract can be held here, in the plain Catch2
-# suite, without a QML engine in the room (apps/gui's Qt Quick tests cover
-# the interactive surfaces; this covers the bytes). Its source compiles
-# straight into this target the same way cli/test_cli.cpp's subject rides
-# its own binary: there is no GUI library surface to link against. Gated on
-# the ac3gui target like the CLI block above - the file lives in apps/gui,
-# which has only been add_subdirectory()'d when AC3FORGE_BUILD_GUI is ON.
-if(TARGET ac3gui)
-    target_sources(ac3tests PRIVATE
-        gui/test_recording_sink.cpp
-        "${CMAKE_SOURCE_DIR}/apps/gui/recording_sink.cpp")
-    target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/gui")
-endif()
+# RecordingSink (gui/test_recording_sink.cpp) is deliberately Qt-free - std::
+# and the container libraries only, exactly so its streamed-equals-one-shot
+# contract can be held here, in the plain Catch2 suite, without a QML engine
+# in the room (apps/gui's Qt Quick tests cover the interactive surfaces; this
+# covers the bytes). Its sources compile straight into this target the same
+# way cli/test_cli.cpp's subject rides its own binary: there is no library
+# surface to link against. The fragmented-MP4 cases exercise Fmp4FolderWriter,
+# RecordingSink's own kFmp4 backend, so its source comes along too.
+#
+# Ungated since roadmap IO9 moved both to apps/common: both front ends write
+# their takes through them now, so the bytes they produce are worth checking
+# in a CLI-only build too - and apps/common, unlike apps/gui, is present
+# whatever AC3FORGE_BUILD_GUI says. The test file itself stays under
+# tests/gui/ so its history and its "[gui]" tag are unbroken.
+target_sources(ac3tests PRIVATE
+    gui/test_recording_sink.cpp
+    "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp")
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
 # option() for why it is not on by default like matroska/mp4/mpegts) - test_adm.cpp is only
@@ -247,10 +374,32 @@ target_link_libraries(ac3tests
         mpegts::mpegts
         ac3::warnings
         ac3::coverage
+        ac3::fmt
         Catch2::Catch2WithMain)
 
 include(Catch)
-catch_discover_tests(ac3tests)
+
+# ADD_TAGS_AS_LABELS turns each case's Catch2 tags into ctest LABELS, which is
+# what lets `ctest -L concurrency` select a subset of this one binary without
+# a second discovery pass, a duplicated registration, or a name-based -R guess
+# that a renamed test would silently drop out of.
+#
+# The label that matters today is `concurrency`: tests/audio/ (the lock-free
+# SPSC ring, the silence watchdog, the clock-drift servo and the backend
+# contract) plus cli/test_cli_live.cpp (the commands that actually start the
+# capture and render threads). It is what CMakePresets.json's
+# test-linux-llvm-tsan preset runs - see .github/workflows/_build.yml's
+# ThreadSanitizer matrix entry and cmake/Sanitizers.cmake.
+#
+# The tag is on some single-threaded cases too (the resampler's own maths, the
+# watchdog's clock arithmetic), deliberately: the label marks what
+# ThreadSanitizer should be watching, and the types those cases exercise are
+# the ones that cross the audio-thread boundary in production. A new test
+# added to tests/audio/ inherits the leg by inheriting the tag.
+#
+# Every other tag in the suite becomes a label too, which costs nothing and
+# makes `ctest -L encoder` and friends work for free.
+catch_discover_tests(ac3tests ADD_TAGS_AS_LABELS)
 
 # ---------------------------------------------------------------------------
 # ac3perf - real-time throughput regression guards, deliberately a SEPARATE

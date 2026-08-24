@@ -131,9 +131,135 @@ enum class DownmixMode : std::uint8_t {
 }
 inline constexpr int kLfeMixLevelIdeal = 0;
 
+// --- the rest of Table E1.2's mixmdate -------------------------------------
+//
+// Everything above this point describes how to fold THIS programme down.
+// Everything below describes how to combine it with a SECOND one - the audio
+// description, commentary or alternate-language service a receiver mixes
+// against the main programme. §E2.3.1.17's "external program" is that second
+// stream: a separate bit stream or independent substream being decoded
+// alongside this one.
+//
+// The whole group below is carried only by an independent substream (Table
+// E1.2 gates it on strmtyp == 0x0), because a dependent substream is part of
+// someone else's programme and has no second programme of its own to talk
+// about.
+
+// §E2.3.1.19. Which of the two §7.7 words the premix compression process
+// takes its gain from.
+enum class PremixCompressionSource : std::uint8_t {
+    kDynrng = 0,
+    kCompr = 1,
+};
+
+// §E2.3.1.20. Whose dynrng/compr controls the mix of the two streams. The
+// spec recommends kExternal ('0').
+enum class DrcSource : std::uint8_t {
+    kExternal = 0,
+    kThisSubstream = 1,
+};
+
+// §E2.3.1.19-21, the three fields that always travel together - mixdef 0x1 is
+// exactly this triple and nothing else, and mixdef 0x3's mixdata2e opens with
+// the same three. §E2.3.1.21: "they should be set to the recommended values,
+// as decoders are not required to use them", which is what the defaults are.
+struct PremixCompression {
+    PremixCompressionSource premixcmpsel = PremixCompressionSource::kDynrng;
+    DrcSource drcsrc = DrcSource::kExternal;
+    int premixcmpscl = 0;  // 0..7, Table E2.7: 0% .. 100% in sixths
+};
+
+// Table E2.8, the 4-bit per-channel scale factor mixdef 0x3 uses for every one
+// of the external programme's channels. Codes 0-5 step 1 dB from -1, then the
+// steps widen; code 15 is mute. Not a uniform law, so it is a table.
+inline constexpr std::array<double, 16> kExternalScaleDb = {
+    -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -8.0, -10.0, -12.0, -14.0, -16.0, -19.0, -22.0,
+    -25.0, -28.0, level::kSilent,
+};
+
+// §E2.3.1.24-43: per-channel trims for an external programme of up to 7.1,
+// each present only when its own *scle flag is set. std::nullopt is that flag
+// clear, which §E2.3.1.25 requires whenever the external programme has no such
+// channel at all - so "absent" here means "there is no channel to scale", not
+// "scale it by 0 dB".
+struct ExternalScales {
+    PremixCompression premix{};
+    std::optional<int> left = std::nullopt;
+    std::optional<int> centre = std::nullopt;
+    std::optional<int> right = std::nullopt;
+    std::optional<int> left_surround = std::nullopt;
+    std::optional<int> right_surround = std::nullopt;
+    std::optional<int> lfe = std::nullopt;
+    // §E2.3.1.39: applied to the downmix rather than to one channel.
+    std::optional<int> dmixscl = std::nullopt;
+    // §E2.3.1.40-43's addche pair. std::nullopt clears addche outright; a set
+    // pair writes it, with either half free to be absent in its own right.
+    std::optional<std::array<std::optional<int>, 2>> auxiliary = std::nullopt;
+};
+
+// §E2.3.1.44-51: "placeholders for as yet undefined data to enhance speech
+// intelligibility", carried verbatim rather than interpreted. The nesting is
+// the spec's own - each stage exists only when the one above it says so.
+struct SpeechEnhancement {
+    int spchdat = 0;  // 5 bits
+    struct Additional {
+        int spchdat1 = 0;    // 5 bits
+        int spchan1att = 0;  // 2 bits
+        struct More {
+            int spchdat2 = 0;    // 5 bits
+            int spchan2att = 0;  // 3 bits
+        };
+        std::optional<More> more = std::nullopt;  // addspchdat1e
+    };
+    std::optional<Additional> additional = std::nullopt;  // addspchdate
+};
+
+// Table E2.6. The four mixing options, which differ in how many bits of
+// mixing control data ride along rather than in what they mean - mixdef 0x1
+// and 0x2 are fixed-size reservations, 0x3 is the flexible one.
+enum class MixDefinition : std::uint8_t {
+    kNone = 0,       // no additional bits
+    kPremix = 1,     // the 5-bit PremixCompression triple alone
+    kReserved = 2,   // 12 reserved bits, carried verbatim
+    kExtended = 3,   // mixdeflen-sized: optional external scales and speech data
+};
+
+struct MixingParameters {
+    MixDefinition mixdef = MixDefinition::kNone;
+    // mixdef 0x1 only. mixdef 0x3 carries its own copy inside `external`,
+    // because there the triple is part of mixdata2e and shares its flag.
+    PremixCompression premix{};
+    // mixdef 0x2's 12 reserved bits (§E2.3.1.23), verbatim.
+    std::uint16_t reserved = 0;
+    // mixdef 0x3. Both are independently optional (mixdata2e/mixdata3e);
+    // whatever they leave of the mixdeflen-sized field is mixdatafill, which
+    // §E2.3.1.52 requires to be zero.
+    std::optional<ExternalScales> external = std::nullopt;
+    std::optional<SpeechEnhancement> speech = std::nullopt;
+};
+
+// §E2.3.1.53-58: where a mono or dual-mono programme should be placed when it
+// is mixed into a wider one. panmean is an index of 1.5-degree steps
+// clockwise from the centre speaker, 0..239 covering 0..358.5 degrees;
+// paninfo is 6 reserved bits.
+struct PanInfo {
+    int panmean = 0;  // 0..239
+    int paninfo = 0;  // 6 reserved bits (§E2.3.1.55)
+};
+
+inline constexpr double kPanMeanDegreesPerStep = 1.5;
+inline constexpr int kPanMeanMax = 239;
+
 // The whole mixmdate group an E-AC-3 substream can carry. Which fields are
-// actually written depends on acmod and lfeon exactly as Table E1.2 says; the
-// values here are what goes out when the corresponding field exists.
+// actually written depends on acmod, lfeon and strmtyp exactly as Table E1.2
+// says; the values here are what goes out when the corresponding field exists.
+//
+// AC-3's Annex D alternate syntax (bsid 6) reuses the five level fields at the
+// top of this struct for its own xbsi1 group - the same quantities, the same
+// Tables D2.2-D2.6, in a different field order. Nothing below `lfemixlevcod`
+// exists in Annex D, and lfemixlevcod itself does not either: an AC-3 stream
+// has no way to express an LFE mix level at all. Those fields are simply not
+// read on that path.
 struct MixMetadata {
     DownmixMode dmixmod = DownmixMode::kNotIndicated;
     MixLevel ltrtcmixlev = MixLevel::kMinus3dB;
@@ -143,7 +269,42 @@ struct MixMetadata {
     // §E2.3.1.10: absent means LFE mixing is DISABLED, which is a decision in
     // its own right and not the same as sending code 31.
     std::optional<int> lfemixlevcod = std::nullopt;
+
+    // --- independent substream only (Table E1.2's strmtyp == 0x0 gate) -----
+    // §E2.3.1.12/13: 0 is mute and 1..63 are -50 dB to +12 dB in 1 dB steps.
+    // Absent means 0 dB - the same level as code 51, but stated by omission,
+    // which is one bit rather than seven.
+    std::optional<int> pgmscl = std::nullopt;
+    std::optional<int> pgmscl2 = std::nullopt;  // 1+1 only
+    // §E2.3.1.16/17: the same scale, applied to the OTHER programme instead.
+    std::optional<int> extpgmscl = std::nullopt;
+    MixingParameters mixing{};
+    // §E2.3.1.53-58. acmod < 0x2 only - a programme with two or more
+    // full-bandwidth channels of its own already has a soundfield and needs
+    // no pan position. pan2 is 1+1 only.
+    std::optional<PanInfo> pan = std::nullopt;
+    std::optional<PanInfo> pan2 = std::nullopt;
+    // §E2.3.1.59-61: one 5-bit word per block, each independently optional.
+    // std::nullopt for the whole array clears frmmixcfginfoe. Entries at or
+    // past this frame's own block count are never written; with numblkscod
+    // 0x0 (one block) §E2.3.1.60 infers the flag and entry 0 is unconditional,
+    // so it must be set there.
+    std::optional<std::array<std::optional<int>, kBlocksPerFrame>> blkmixcfginfo = std::nullopt;
 };
+
+inline constexpr int kPgmScaleMute = 0;
+inline constexpr int kPgmScaleMax = 63;
+
+// §E2.3.1.13: code 0 is mute, 1..63 run -50 dB to +12 dB in 1 dB steps.
+[[nodiscard]] constexpr double pgm_scale_db(int code) {
+    return static_cast<double>(code) - 51.0;
+}
+
+// Every value fits the bits Table E1.2 gives its field, and no surround level
+// is one of the reserved codes. Same reasoning as valid_bsi_info(): a value
+// one bit too wide does not record the wrong level, it moves every field after
+// it and the frame stops decoding as itself.
+[[nodiscard]] AC3FORGE_EXPORT bool valid_mix_metadata(const MixMetadata& value);
 
 // --- §7.8 downmixing -------------------------------------------------------
 
@@ -160,6 +321,28 @@ struct DownmixCoefficients {
 // Lo/Ro: the plain stereo fold-down, and the one a mono sum is taken from.
 [[nodiscard]] AC3FORGE_EXPORT DownmixCoefficients stereo_downmix(Acmod acmod, double clev,
                                                                  double slev);
+
+// §7.8.2's Dolby Surround compatible fold: Lt = L + clev·C − slev·S,
+// Rt = R + clev·C + slev·S, where S is the surround SUM phase shifted by 90
+// degrees. A coefficient cannot express a phase shift, so the surround path
+// is kept separate from the direct one here rather than folded into a single
+// DownmixCoefficients: `direct` holds the coefficients applied to the
+// channels as coded (its surround entries are zero), `surround` holds the
+// coefficients of the channels that form the sum, and the caller applies the
+// shift to that sum before adding it — negated into Lt, positive into Rt.
+// See ac3::OutputStage, which owns the shift itself.
+//
+// Normalisation (§7.8.1) is over the WORST CASE of the two paths together,
+// since the shifted sum is not generally in quadrature with everything at
+// once: a coefficient set whose direct and surround magnitudes could sum
+// above 1 is attenuated until it cannot.
+struct LtRtCoefficients {
+    DownmixCoefficients direct{};
+    std::array<double, 5> surround{};
+};
+
+[[nodiscard]] AC3FORGE_EXPORT LtRtCoefficients ltrt_downmix(Acmod acmod, double clev,
+                                                            double slev);
 
 // §7.8's "output_mode == 1/0" branch: left and right at −3 dB, centre at
 // clev + 3 dB, each surround at slev − 3 dB, then normalised. This is the
@@ -183,5 +366,22 @@ struct DownmixCoefficients {
 
 [[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
+
+// --- §7.7/§7.8 output-stage levels -----------------------------------------
+
+// §5.4.2.8: dialnorm says where average dialogue sits, as −dialnorm dBFS, and
+// a decoder normalising to the −31 dBFS reference attenuates by the
+// difference. dialnorm 31 is already the reference and returns exactly 1.0;
+// every legal value below it is an attenuation, never a boost, so this can
+// only ever reduce level. The reserved value 0 is treated as 31 (no change) -
+// §5.4.2.8 forbids emitting it and a decoder has no better reading of it than
+// "no information", which is what leaving the audio alone says.
+[[nodiscard]] AC3FORGE_EXPORT double dialnorm_gain(int dialnorm);
+inline constexpr int kReferenceDialnorm = 31;
+
+// The linear gain of §E2.3.1.11's LFE mix level, for the §7.8 LFE
+// contribution a decoder may fold in. lfe_mix_level_db(kLfeMixLevelIdeal) is
+// §7.8's stated ideal of +10 dB relative to left and right.
+[[nodiscard]] AC3FORGE_EXPORT double lfe_mix_gain(double level_db);
 
 }  // namespace ac3::meta

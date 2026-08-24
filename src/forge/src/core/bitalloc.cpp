@@ -14,6 +14,7 @@
 #include "ac3/core/aht_tables.hpp"
 #include "ac3/core/bitalloc_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 
 namespace ac3 {
@@ -21,6 +22,13 @@ namespace ac3 {
 namespace {
 
 using namespace tables;
+
+// A/52 §7.2.2.2: the widest allocation region the standard admits - 253
+// mantissas in one channel (the fbw bandwidth ceiling), which is exactly the
+// length of the psd array §7.2.2.2 builds. Named rather than repeated as a
+// literal because compute_bit_allocation now enforces it at run time and not
+// only in a debug assert; see its own comment for why.
+inline constexpr std::size_t kMaxMantissas = 253;
 
 // §7.2.2.3: log-addition of two banded PSD values.
 int logadd(int a, int b) {
@@ -51,29 +59,32 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
     return a;
 }
 
-// §7.2.2.3: bands psd[] (indexed from bin `start` through `end`) into a
-// 50-wide per-band array via log-addition. Factored out so the encoder-only
-// real-coefficient curve (choose_delta_segments, below) is computed with
-// arithmetic identical to the exponent-derived one compute_bit_allocation
-// uses, which is what keeps the two directly comparable in the same units.
-std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
-    std::array<int, 50> bndpsd{};
-    int j = start;
-    int k = kMaskTab[static_cast<std::size_t>(start)];
-    int lastbin = 0;
-    do {
-        lastbin = std::min(
-            kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
-        bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
-        ++j;
-        for (int i = j; i < lastbin; ++i) {
-            bndpsd[static_cast<std::size_t>(k)] =
-                logadd(bndpsd[static_cast<std::size_t>(k)], psd[static_cast<std::size_t>(j)]);
-            ++j;
-        }
-        ++k;
-    } while (end > lastbin);
-    return bndpsd;
+// §7.2.2.2: exponents -> 13-bit signed log PSD, four bins at a time through
+// the arch seam (ROADMAP PF5).
+//
+// The only loop in the allocator that vectorises at all, which is worth
+// saying explicitly so nobody goes looking for the other two: §7.2.2.4's
+// excitation function is a serial recurrence (fastleak, slowleak and lowcomp
+// each carry from one band into the next, and one of them can break the loop
+// early), and §7.2.2.5's masking curve is a per-band conditional over at
+// most 50 elements. Neither is a shape a vector unit helps.
+//
+// Exactness is not an argument here the way it is for the transforms: these
+// are the same widening, shift and subtract on the same integers, and
+// integer arithmetic does not round.
+void exponents_to_psd(std::span<const std::uint8_t> exps, int start, int end,
+                      std::span<std::int32_t> psd) {
+    const auto stop = static_cast<std::size_t>(end);
+    const auto base = internal::arch::i32x4::broadcast(3072);
+    std::size_t bin = static_cast<std::size_t>(start);
+    for (; bin + 4 <= stop; bin += 4) {
+        const auto raw = internal::arch::i32x4::load_u8_widen(exps.data() + bin);
+        (base - internal::arch::shift_left<7>(raw)).store(psd.data() + bin);
+    }
+    // end is a mantissa count (37, 61, ... 253), never a multiple of four.
+    for (; bin < stop; ++bin) {
+        psd[bin] = 3072 - (exps[bin] << 7);
+    }
 }
 
 // A run of consecutive absolute bands sharing one Table 5.17 deltba code.
@@ -116,13 +127,77 @@ int bin_to_band(int bin) {
     return kMaskTab[static_cast<std::size_t>(bin)];
 }
 
+// Factored out - and now exported - so every curve this file derives from a
+// spectrum is banded with identical arithmetic: the exponent-derived one
+// compute_bit_allocation uses, the encoder-only real-coefficient one
+// choose_delta_segments builds, and the coded-bandwidth decision in
+// ac3/encoder/bandwidth.hpp. Comparable units are the whole point.
+std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
+    std::array<int, 50> bndpsd{};
+    int j = start;
+    int k = kMaskTab[static_cast<std::size_t>(start)];
+    int lastbin = 0;
+    do {
+        // std::min<int>, not deduced: kBandStart/kBandSize hold std::int32_t,
+        // which on arm-none-eabi is `long int` rather than `int` - so the two
+        // arguments are different types there and deduction fails. Spelled out
+        // at every such site in this file.
+        lastbin = std::min<int>(
+            kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
+        bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
+        ++j;
+        for (int i = j; i < lastbin; ++i) {
+            bndpsd[static_cast<std::size_t>(k)] =
+                logadd(bndpsd[static_cast<std::size_t>(k)], psd[static_cast<std::size_t>(j)]);
+            ++j;
+        }
+        ++k;
+    } while (end > lastbin);
+    return bndpsd;
+}
+
 void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sample_rate,
                             const BitAllocCodes& codes, int csnroffst, int fsnroffst,
                             std::span<std::uint8_t> bap, const BitAllocRegion& region) {
     AC3_ZONE_SCOPED_N("compute_bit_allocation");
     assert(exps.size() == bap.size());
+    // A region outside 1..kMaxMantissas allocates nothing, and says so here
+    // rather than walking off the end of the arrays below. Both ends are
+    // real, and fuzz_signing_verify (roadmap VX3) reported both:
+    //
+    //  - Empty. §7.2.2.4's band walk runs from kMaskTab[start] to
+    //    kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing that
+    //    256-entry table at SIZE_MAX.
+    //  - Longer than kMaxMantissas. §7.2.2.2's psd array is exactly that
+    //    long (A/52 admits no more mantissas than that in one channel), so
+    //    the first bin past it is a stack write one element off the end -
+    //    which is what ASan actually reported, a 4-byte WRITE at offset
+    //    1076 of a 1012-byte frame object.
+    //
+    // No encode path produces either, and the assert below still says so for
+    // a caller's benefit. But `exps` reaches here, through both the decoder
+    // and ac3::signing's own frame walk, sized by a field value a hostile
+    // stream picks - and this project has been here before (8386c8f: a
+    // decoder shifting by an unvalidated exponent). A contract that only a
+    // debug assert enforces is not enforced in the builds that ship.
+    //
+    // bap is filled rather than left alone: it is the caller's output, and
+    // "no allocation" is what an unreadable region gets, the same answer
+    // §7.2.2.1.1's all-zero-SNR case gives just below.
+    //
+    // region.start joins the same guard rather than waiting to be reported
+    // separately: it comes from the same stream (cplstrtmant, spx_startmant),
+    // it indexes kMaskTab directly two statements after the size check, and
+    // the assert immediately below already states the range - so leaving it
+    // to that assert alone would repeat the exact mistake the two findings
+    // above were.
+    if (exps.empty() || exps.size() > kMaxMantissas || region.start < 0 ||
+        static_cast<std::size_t>(region.start) >= exps.size()) {
+        std::ranges::fill(bap, std::uint8_t{0});
+        return;
+    }
     const int end = static_cast<int>(exps.size());
-    assert(end >= 1 && end <= 253);
+    assert(end >= 1 && end <= static_cast<int>(kMaxMantissas));
     assert(region.start >= 0 && region.start < end);
 
     // §7.2.2.1.1 special case: when EVERY SNR offset in the block is zero,
@@ -145,11 +220,17 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
     const int snroffset = snr_offset(csnroffst, fsnroffst);
     const int kStart = region.start;
 
-    // §7.2.2.2: exponents -> 13-bit signed log PSD.
-    std::array<int, 253> psd{};
-    for (int bin = kStart; bin < end; ++bin) {
-        psd[static_cast<std::size_t>(bin)] = 3072 - (exps[static_cast<std::size_t>(bin)] << 7);
-    }
+    // §7.2.2.2: exponents -> 13-bit signed log PSD. exponents_to_psd's own
+    // SIMD store writes std::int32_t, which on a 32-bit target
+    // (arm-none-eabi, where the minimum-footprint decoder profile runs) is
+    // `long` rather than `int` - two different types, so a separate buffer
+    // and an explicit copy into the plain-`int` one band_psd (exported,
+    // ac3/core/bitalloc.hpp) and the rest of this function already use, is
+    // needed rather than widening that public signature for one caller.
+    std::array<std::int32_t, kMaxMantissas> psd_wide{};
+    exponents_to_psd(exps, kStart, end, psd_wide);
+    std::array<int, kMaxMantissas> psd{};
+    std::ranges::copy(psd_wide, psd.begin());
 
     // §7.2.2.3: banded integration via log-addition.
     const std::array<int, 50> bndpsd = band_psd(psd, kStart, end);
@@ -231,7 +312,8 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                 (dbknee - bndpsd[static_cast<std::size_t>(bin)]) >> 2;
         }
         mask[static_cast<std::size_t>(bin)] =
-            std::max(excite[static_cast<std::size_t>(bin)], hth[static_cast<std::size_t>(bin)]);
+            std::max<int>(excite[static_cast<std::size_t>(bin)],
+                          hth[static_cast<std::size_t>(bin)]);
     }
 
     // §7.2.2.6: delta bit allocation. mask[]/psd[] units are 128 per exponent
@@ -282,9 +364,9 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
         int j = kMaskTab[static_cast<std::size_t>(kStart)];
         int lastbin = 0;
         do {
-            lastbin = std::min(kBandStart[static_cast<std::size_t>(j)] +
-                                   kBandSize[static_cast<std::size_t>(j)],
-                               end);
+            lastbin = std::min<int>(kBandStart[static_cast<std::size_t>(j)] +
+                                        kBandSize[static_cast<std::size_t>(j)],
+                                    end);
             int m = mask[static_cast<std::size_t>(j)];
             m -= snroffset;
             m -= floor;
@@ -312,7 +394,7 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     AC3_ZONE_SCOPED_N("choose_delta_segments");
     assert(coefficients.size() == exps.size());
     const int end = static_cast<int>(exps.size());
-    assert(end >= 1 && end <= 253);
+    assert(end >= 1 && end <= static_cast<int>(kMaxMantissas));
     assert(start >= 0 && start < end);
 
     // Two psd curves in identical units: the flat one compute_bit_allocation
@@ -320,11 +402,17 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     // pre-quantization coefficient magnitude. Table 5.17's 128-units-per-6dB
     // step is exactly one exponent step (§7.2.2.2's psd = 3072 - exp<<7), so
     // exponent = -1 - log2(|c|) gives real_psd = 3200 + 128*log2(|c|).
-    std::array<int, 253> psd{};
-    std::array<int, 253> real_psd{};
+    // See compute_bit_allocation's own sibling call above for why
+    // exponents_to_psd's result needs a separate wide buffer and an explicit
+    // copy rather than landing straight in a plain `int` one on a 32-bit
+    // target.
+    std::array<std::int32_t, kMaxMantissas> psd_wide{};
+    exponents_to_psd(exps, start, end, psd_wide);
+    std::array<int, kMaxMantissas> psd{};
+    std::ranges::copy(psd_wide, psd.begin());
+    std::array<int, kMaxMantissas> real_psd{};
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
-        psd[i] = 3072 - (exps[i] << 7);
         const double magnitude = std::abs(static_cast<double>(coefficients[i]));
         real_psd[i] = magnitude > 0.0
                           ? static_cast<int>(std::lround(3200.0 + 128.0 * std::log2(magnitude)))

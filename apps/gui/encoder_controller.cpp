@@ -4,7 +4,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
-#include <QTextStream>
 #include <QTimer>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -16,7 +15,7 @@
 #include <cmath>
 #include <expected>
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -36,8 +35,10 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
 #include "matroska/matroska.hpp"
@@ -45,6 +46,7 @@
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
 #include "mpegts/mpegts.hpp"
+#include "fmp4_folder_writer.hpp"
 #include "recording_sink.hpp"
 
 namespace plan = ac3::plan;
@@ -171,8 +173,8 @@ constexpr int kContainerFmp4 = 4;
 constexpr int kContainerMpegts = 5;
 
 // The streamable subset of that combo, for a recording's frame-at-a-time
-// write path. MP4 and fMP4 map to nothing: their format needs every frame
-// at once (see RecordingSink's own header), so a recording targeting them
+// write path. Plain MP4 alone maps to nothing: moov/stco need every frame's
+// final offset (see RecordingSink's own header), so a recording targeting it
 // keeps the accumulate-then-writeOutput shape.
 std::optional<RecordingSink::Container> recording_sink_container(int container_index) {
     switch (container_index) {
@@ -184,6 +186,8 @@ std::optional<RecordingSink::Container> recording_sink_container(int container_i
             return RecordingSink::Container::kSpdif;
         case kContainerMpegts:
             return RecordingSink::Container::kMpegts;
+        case kContainerFmp4:
+            return RecordingSink::Container::kFmp4;
         default:
             return std::nullopt;
     }
@@ -199,6 +203,11 @@ std::optional<RecordingSink::Container> recording_sink_container(int container_i
 struct Mp4Scan {
     mp4::AudioTrack track;
     std::optional<int> oba_complexity_index;
+    // The DASH AudioChannelConfiguration @value for this stream on the Dolby
+    // scheme (ac3::io::dash_channel_configuration) - a plain string for the
+    // same reason as the field above: it is derived from the scan's own
+    // channel_map, which points into nothing that outlives this call.
+    std::string dolby_channel_configuration;
 };
 
 // mp4::AudioTrack::codec_config (the dec3/dac3 box, including the Atmos
@@ -225,7 +234,8 @@ std::expected<Mp4Scan, QString> scan_for_mp4(const std::vector<std::vector<std::
         .channels = scanned->channels,
         .samples_per_frame = ac3::kSamplesPerFrame,
         .codec_config = ac3::io::build_codec_config_box(*scanned)};
-    return Mp4Scan{std::move(track), scanned->oba_complexity_index};
+    return Mp4Scan{std::move(track), scanned->oba_complexity_index,
+                   ac3::io::dash_channel_configuration(*scanned)};
 }
 
 bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std::byte> bytes) {
@@ -241,32 +251,6 @@ bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std:
 bool write_text_to_path(const std::filesystem::path& path, std::string_view text) {
     return write_bytes_to_path(
         path, std::as_bytes(std::span{reinterpret_cast<const char*>(text.data()), text.size()}));
-}
-
-// A minimal but complete DASH MPD document wrapped around
-// mp4::build_dash_adaptation_set()'s <AdaptationSet> snippet, ported from
-// ac3cli's own build_dash_mpd (apps/cli/main.cpp): that helper is CLI-side
-// glue, not part of mp4:: (mp4/dash.hpp deliberately stops at the
-// <AdaptationSet> snippet - see its own header comment), so the GUI needs
-// the identical wrapper.
-QString build_dash_mpd(const mp4::AudioTrack& track, std::span<const mp4::MediaSegment> segments,
-                       std::string_view adaptation_set) {
-    std::uint64_t total_samples = 0;
-    for (const auto& segment : segments) {
-        total_samples += segment.duration_samples;
-    }
-    const double total_seconds =
-        static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-    return QString::fromStdString(std::format(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
-        "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
-        "profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">\n"
-        "  <Period>\n"
-        "{}"
-        "  </Period>\n"
-        "</MPD>\n",
-        total_seconds, adaptation_set));
 }
 
 // See kbpsPerChannelFloor()'s own Q_PROPERTY comment for the derivation.
@@ -573,17 +557,28 @@ struct EncoderController::Source {
 // separate spool for either container any more, and so nothing to fold
 // together at the end: finalize() below is the whole of what a clean stop
 // still has to do.
+//
+// Fragmented MP4/CMAF is the third incremental shape and the only one that is
+// not a file at all: `fmp4` writes a FOLDER of segments and manifests, and
+// `stream` stays closed for it entirely (see openLiveOutputWriters).
 struct EncoderController::LiveOutputWriters {
     std::ofstream stream;
     QString path;  // the real destination the user chose
     bool matroska = false;
-    // Only engaged when matroska is set - constructed once the coded channel
-    // count is known (routing/atmos bed resolved), just after this struct is
-    // opened, back on the GUI thread in runLiveSession before the worker
-    // ever starts (see there). header() is written to `stream` at that same
-    // point; every push() return value is written to `stream` as the frame
-    // loop runs, and finalize()'s tail bytes at the end - see the "failure
-    // story" comment further down for exactly where.
+    // Engaged for fragmented MP4/CMAF instead of `stream`. Unlike Matroska's
+    // writer below this needs nothing from the rendered channel count - its
+    // track comes from a scan of the first access unit - so it is fully set
+    // up by openLiveOutputWriters and starts writing on the first push.
+    std::optional<Fmp4FolderWriter> fmp4;
+    // Only engaged when matroska is set - constructed once the track's
+    // rendered channel count is known (the plan/atmos bed resolved), just
+    // after this struct is opened, back on the GUI thread in runLiveSession
+    // before the worker ever starts (see there, and its own comment on why
+    // the track states rendered rather than coded channels). header() is
+    // written to `stream` at that same point; every push() return value is
+    // written to `stream` as the frame loop runs, and finalize()'s tail
+    // bytes at the end - see the "failure story" comment further down for
+    // exactly where.
     std::optional<matroska::Writer> writer;
     std::unique_ptr<ac3::io::WavStreamWriter> wav_safety;  // null when not requested
 };
@@ -987,6 +982,62 @@ QString EncoderController::metaTokens() const {
                                        : QStringLiteral("none");
         tokens.append(QStringLiteral("dmixmod=%1").arg(name));
     }
+    // The service and production group. Each token is emitted only where the
+    // value differs from a default-constructed Metadata, so a plain encode's
+    // line stays a plain line - and each of them implies its own container
+    // token on the CLI side (infomdat on E-AC-3, annexd on AC-3) exactly as
+    // the setters above do here, so none of those has to be spelled out.
+    if (meta_.info.bsmod != defaults.info.bsmod) {
+        static constexpr std::array<const char*, 8> kBsmod = {
+            "cm", "me", "vi", "hi", "dialogue", "commentary", "emergency", "voiceover"};
+        tokens.append(QStringLiteral("bsmod=%1")
+                          .arg(QLatin1String(kBsmod[static_cast<std::size_t>(meta_.info.bsmod)])));
+    }
+    if (surroundModeAvailable() && meta_.info.dsurmod != defaults.info.dsurmod) {
+        static constexpr std::array<const char*, 3> kMode = {"none", "off", "on"};
+        tokens.append(
+            QStringLiteral("dsurmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dsurmod)])));
+    }
+    if (surroundModeAvailable() && meta_.info.dheadphonmod != defaults.info.dheadphonmod) {
+        static constexpr std::array<const char*, 3> kMode = {"none", "off", "on"};
+        tokens.append(
+            QStringLiteral("dheadphonmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dheadphonmod)])));
+    }
+    if (surroundExAvailable() && meta_.info.dsurexmod != defaults.info.dsurexmod) {
+        static constexpr std::array<const char*, 4> kMode = {"none", "off", "ex", "pliiz"};
+        tokens.append(
+            QStringLiteral("dsurexmod=%1")
+                .arg(QLatin1String(kMode[static_cast<std::size_t>(meta_.info.dsurexmod)])));
+    }
+    if (meta_.info.audprod) {
+        tokens.append(QStringLiteral("mixlevel=%1").arg(mixLevelDbSpl()));
+        if (meta_.info.audprod->roomtyp != ac3::meta::RoomType::kNotIndicated) {
+            static constexpr std::array<const char*, 3> kRoom = {"none", "large", "small"};
+            tokens.append(
+                QStringLiteral("roomtyp=%1")
+                    .arg(QLatin1String(
+                        kRoom[static_cast<std::size_t>(meta_.info.audprod->roomtyp)])));
+        }
+    }
+    if (meta_.adconvtyp != defaults.adconvtyp) {
+        tokens.append(QStringLiteral("adconvtyp=hdcd"));
+    }
+    if (meta_.info.copyrightb) {
+        tokens.append(QStringLiteral("copyright"));
+    }
+    if (!meta_.info.origbs) {
+        tokens.append(QStringLiteral("origbs=off"));
+    }
+    // Only worth spelling when nothing above already implies it: the three
+    // xbsi2 tokens and dmixmod= each turn Annex D on by themselves.
+    if (codec_ == plan::Codec::kAc3 && meta_.annexd && !tokens.contains(QStringLiteral("adconvtyp=hdcd")) &&
+        meta_.info.dsurexmod == defaults.info.dsurexmod &&
+        meta_.info.dheadphonmod == defaults.info.dheadphonmod &&
+        meta_.dmixmod == defaults.dmixmod) {
+        tokens.append(QStringLiteral("annexd"));
+    }
     return tokens.join(QLatin1Char(' '));
 }
 
@@ -1048,6 +1099,45 @@ QStringList EncoderController::surmixNames() const {
 
 QStringList EncoderController::dmixNames() const {
     return {QStringLiteral("not indicated"), QStringLiteral("Lt/Rt"), QStringLiteral("Lo/Ro")};
+}
+
+// Table 5.7's eight services. Code 7 means two different things - an
+// associated voice-over at 1/0, a main karaoke service at anything wider -
+// and there is no bit distinguishing them, so the label says both rather
+// than picking one the layout might contradict a moment later.
+QStringList EncoderController::bsmodNames() const {
+    return {QStringLiteral("complete main"),
+            QStringLiteral("music and effects"),
+            QStringLiteral("visually impaired"),
+            QStringLiteral("hearing impaired"),
+            QStringLiteral("dialogue"),
+            QStringLiteral("commentary"),
+            QStringLiteral("emergency"),
+            QStringLiteral("voice over / karaoke")};
+}
+
+QStringList EncoderController::dsurmodNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Dolby Surround"),
+            QStringLiteral("Dolby Surround")};
+}
+
+QStringList EncoderController::dheadphonNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Dolby Headphone"),
+            QStringLiteral("Dolby Headphone")};
+}
+
+QStringList EncoderController::dsurexNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("not Surround EX"),
+            QStringLiteral("Surround EX / Pro Logic IIx"), QStringLiteral("Pro Logic IIz")};
+}
+
+QStringList EncoderController::roomTypeNames() const {
+    return {QStringLiteral("not indicated"), QStringLiteral("large, X curve"),
+            QStringLiteral("small, flat")};
+}
+
+QStringList EncoderController::adConvNames() const {
+    return {QStringLiteral("standard"), QStringLiteral("HDCD")};
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,7 +1310,14 @@ void EncoderController::applyChannelPreset(const QString& name) {
     // one preset not built on the widest bed - it exists so the guided
     // setup's "a laptop / a stereo pair" card writes the same tables as
     // everything else.
-    static constexpr std::array<Preset, 7> kPresets{{
+    // No "5.2" here: a bare second LFE with no other extra is an
+    // AllocationError::kOrphanLfe2 at chanmap::allocate() - E-AC-3 requires
+    // every dependent substream to carry at least one full-bandwidth
+    // channel, and a bed's own LFE/LFE2 never count as one, so LFE2 always
+    // needs a genuine extra (rear/wide/ceiling) riding alongside it. There
+    // is no combination that means "5 main + 2 LFE, nothing else" - naming
+    // one here would be a preset the allocator can never carry.
+    static constexpr std::array<Preset, 6> kPresets{{
         {"stereo", ac3::Acmod::k2_0, false, 0},
         {"5.1", ac3::Acmod::k3_2, true, 0},
         {"7.1", ac3::Acmod::k3_2, true, ac3::eac3::chanmap::kLrsRrsBit},
@@ -1229,7 +1326,6 @@ void EncoderController::applyChannelPreset(const QString& name) {
         {"7.1.4", ac3::Acmod::k3_2, true,
          static_cast<std::uint16_t>(ac3::eac3::chanmap::kLrsRrsBit | ac3::eac3::chanmap::kVhlVhrBit |
                                     ac3::eac3::chanmap::kLtsRtsBit)},
-        {"5.2", ac3::Acmod::k3_2, true, ac3::eac3::chanmap::kLfe2Bit},
         {"7.2.4", ac3::Acmod::k3_2, true,
          static_cast<std::uint16_t>(ac3::eac3::chanmap::kLrsRrsBit | ac3::eac3::chanmap::kVhlVhrBit |
                                     ac3::eac3::chanmap::kLtsRtsBit | ac3::eac3::chanmap::kLfe2Bit)},
@@ -1498,6 +1594,140 @@ void EncoderController::setDmixIndex(int index) {
         return;
     }
     meta_.dmixmod = value;
+    emit planChanged();
+}
+
+// --- service and production metadata ---------------------------------------
+//
+// Every setter below marks the infomdat group wanted as well as setting its
+// own field: on E-AC-3 that element has to be opened before any of these can
+// be written at all, and a user who picks "commentary" has said what they
+// mean without needing to also find a checkbox for the container it rides in.
+// AC-3 ignores the flag - its bsi carries these fields unconditionally.
+
+void EncoderController::setBsmodIndex(int index) {
+    const auto value = static_cast<ac3::meta::BitstreamMode>(std::clamp(index, 0, 7));
+    if (value == meta_.info.bsmod) {
+        return;
+    }
+    meta_.info.bsmod = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setDsurmodIndex(int index) {
+    const auto value = static_cast<ac3::meta::SurroundMode>(std::clamp(index, 0, 2));
+    if (value == meta_.info.dsurmod) {
+        return;
+    }
+    meta_.info.dsurmod = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setDheadphonIndex(int index) {
+    const auto value = static_cast<ac3::meta::HeadphoneMode>(std::clamp(index, 0, 2));
+    if (value == meta_.info.dheadphonmod) {
+        return;
+    }
+    meta_.info.dheadphonmod = value;
+    meta_.infomdat = true;
+    // AC-3 has nowhere but Annex D's xbsi2 to put this one.
+    meta_.annexd = true;
+    emit planChanged();
+}
+
+void EncoderController::setDsurexIndex(int index) {
+    const auto value = static_cast<ac3::meta::SurroundExMode>(std::clamp(index, 0, 3));
+    if (value == meta_.info.dsurexmod) {
+        return;
+    }
+    meta_.info.dsurexmod = value;
+    meta_.infomdat = true;
+    meta_.annexd = true;
+    emit planChanged();
+}
+
+void EncoderController::setMixLevelDbSpl(int db_spl) {
+    // -1 is the "not stated" end of the control. §5.4.2.13 makes audprodie a
+    // flag of its own, so no production information is a real state rather
+    // than a level of zero - which the 5-bit field could not express anyway,
+    // its floor being 80 dB SPL.
+    if (db_spl < ac3::meta::kMixLevelBaseDbSpl) {
+        if (!meta_.info.audprod) {
+            return;
+        }
+        meta_.info.audprod.reset();
+        emit planChanged();
+        return;
+    }
+    const int clamped = std::clamp(db_spl, ac3::meta::kMixLevelBaseDbSpl,
+                                   ac3::meta::kMixLevelBaseDbSpl + 31);
+    if (clamped == mixLevelDbSpl()) {
+        return;
+    }
+    if (!meta_.info.audprod) {
+        meta_.info.audprod.emplace();
+    }
+    meta_.info.audprod->mixlevel = clamped - ac3::meta::kMixLevelBaseDbSpl;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setRoomTypeIndex(int index) {
+    const auto value = static_cast<ac3::meta::RoomType>(std::clamp(index, 0, 2));
+    if (meta_.info.audprod && value == meta_.info.audprod->roomtyp) {
+        return;
+    }
+    // Table 5.12's room type only exists inside audprodie, so naming one
+    // opens the group - at its own floor level, which is what an encoder
+    // that knows the room but not the level would send.
+    if (!meta_.info.audprod) {
+        meta_.info.audprod.emplace();
+    }
+    meta_.info.audprod->roomtyp = value;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setAdConvIndex(int index) {
+    const auto value = static_cast<ac3::meta::AdConverterType>(std::clamp(index, 0, 1));
+    if (value == meta_.adconvtyp) {
+        return;
+    }
+    // Stated once; eac3_config() places it inside audprodie and ac3_config()
+    // in xbsi2, so neither front end has to know where it lands. Turning
+    // both containers on is still this setter's job, since without one the
+    // choice has nowhere to be written at all.
+    meta_.adconvtyp = value;
+    meta_.annexd = true;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setCopyrightBit(bool on) {
+    if (on == meta_.info.copyrightb) {
+        return;
+    }
+    meta_.info.copyrightb = on;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setOriginalBitstream(bool on) {
+    if (on == meta_.info.origbs) {
+        return;
+    }
+    meta_.info.origbs = on;
+    meta_.infomdat = true;
+    emit planChanged();
+}
+
+void EncoderController::setAnnexD(bool on) {
+    if (on == meta_.annexd) {
+        return;
+    }
+    meta_.annexd = on;
     emit planChanged();
 }
 
@@ -1811,47 +2041,104 @@ QVariantMap EncoderController::evaluateObjectPath(int objectIndex, double timeS)
     return out;
 }
 
-bool EncoderController::exportObjectPaths(const QUrl& url) const {
+std::vector<ac3::oba::SceneObject> EncoderController::exportableSceneObjects() const {
+    const auto dynamic = dynamicObjectChannels();
+    const auto ndynamic =
+        std::max<std::size_t>(std::min<std::size_t>(dynamic.size(), 15), 1);
+    std::vector<ac3::oba::SceneObject> objects;
+    for (int i = 0; i < object_count_; ++i) {
+        // An objm group's export uses its first channel's flat index - the
+        // atmos-encode file format this feeds has no concept of a folded
+        // group (the same gap bed-pinned channels have, per exportObjectPaths'
+        // own header comment: they are not written at all; a group at least
+        // gets a representative single entry here).
+        const auto flat = static_cast<std::size_t>(i) < dynamic.size()
+                              ? dynamic[static_cast<std::size_t>(i)].front()
+                              : static_cast<std::size_t>(i);
+        if (objects.size() <= flat) {
+            objects.resize(flat + 1);
+        }
+        auto& object = objects[flat];
+        const auto object_key = keyForObjectIndex(i);
+        // A name for a human reading the file back. The motion preset's own
+        // label where the object has one, else its index - the column form
+        // has no name field and drops this either way, so nothing depends on
+        // it being unique.
+        const auto label =
+            object_key ? map_value(object_path_labels_, *object_key) : QString();
+        object.name = (label.isEmpty() ? QStringLiteral("object %1").arg(flat) : label)
+                          .toStdString();
+        const auto keyframes = sortedKeyframes(i);
+        if (keyframes.empty()) {
+            // No authored path - the object's static position is still worth
+            // writing, as a single time-0 point under exactly the gain/
+            // lfe_send law encodeObjects' own fallback applies, so the
+            // exported scene reproduces this object's actual placement rather
+            // than atmos-encode's own built-in default for it.
+            const auto config = object_key ? map_value(object_configs_, *object_key)
+                                           : ObjectConfig{};
+            const auto scale = 1.0 / std::sqrt(static_cast<double>(ndynamic));
+            object.automation.push_back(
+                {.time_s = 0.0,
+                 .position = {.x = config.x, .y = config.y, .z = config.z},
+                 .gain = 0.7 * scale,
+                 .lfe_send = config.lfe_send * scale});
+            continue;
+        }
+        for (const auto& key : keyframes) {
+            object.automation.push_back({.time_s = key.time_s,
+                                         .position = key.position,
+                                         .gain = key.gain,
+                                         .lfe_send = key.lfe_send});
+        }
+    }
+    return objects;
+}
+
+bool EncoderController::writeTextFile(const QUrl& url, const std::string& text) {
     const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
     }
-    QTextStream out(&file);
-    out.setRealNumberPrecision(9);
-    const auto dynamic = dynamicObjectChannels();
-    const auto ndynamic =
-        std::max<std::size_t>(std::min<std::size_t>(dynamic.size(), 15), 1);
-    for (int i = 0; i < object_count_; ++i) {
-        // An objm group's export uses its first channel's flat index - the
-        // atmos-encode file format this feeds has no concept of a folded
-        // group (the same gap bed-pinned channels have, per this function's
-        // own header comment: they are not written at all; a group at
-        // least gets a representative single line here).
-        const auto flat = static_cast<std::size_t>(i) < dynamic.size()
-                              ? dynamic[static_cast<std::size_t>(i)].front()
-                              : static_cast<std::size_t>(i);
-        const auto keyframes = sortedKeyframes(i);
-        if (keyframes.empty()) {
-            // No authored path - the object's static position is still
-            // worth writing, as a single time-0 keyframe under exactly the
-            // gain/lfe_send law encodeObjects' own fallback applies, so the
-            // exported file reproduces this object's actual placement
-            // rather than atmos-encode's own built-in default for it.
-            const auto object_key = keyForObjectIndex(i);
-            const auto config = object_key ? map_value(object_configs_, *object_key)
-                                           : ObjectConfig{};
-            const auto scale = 1.0 / std::sqrt(static_cast<double>(ndynamic));
-            out << flat << ' ' << 0.0 << ' ' << config.x << ' ' << config.y << ' ' << config.z
-                << ' ' << 0.7 * scale << ' ' << config.lfe_send * scale << '\n';
+    const auto bytes = QByteArray::fromStdString(text);
+    return file.write(bytes) == bytes.size() && file.flush();
+}
+
+bool EncoderController::exportObjectPaths(const QUrl& url) const {
+    // The grammar itself lives in ac3::oba now (scene.hpp), so this writes
+    // through the same function ac3cli's own reader is paired with rather
+    // than through a second, hand-rolled copy of the column layout that could
+    // drift from it. The span overload is the one that keeps a gap - a
+    // bed-pinned channel's flat index - out of the file, exactly as before.
+    return writeTextFile(url, ac3::oba::to_keyframe_text(exportableSceneObjects()));
+}
+
+bool EncoderController::exportObjectScene(const QUrl& url) const {
+    // The same objects as an ac3::oba::ObjectScene in JSON: named, with
+    // per-segment interpolation and an orientation the keyframe columns have
+    // nowhere to put. ac3cli's atmos-path and atmos-encode read this form too,
+    // so a scene saved here reloads there without going through the lossy
+    // column format.
+    //
+    // JSON has no index column, so an object is identified by its POSITION in
+    // the array. A gap in the flat indices (a bed-pinned channel) therefore
+    // cannot simply be skipped the way the column form skips it: it is written
+    // as an object holding still at room centre, so every later object keeps
+    // the index a plain atmos-encode run would address it by.
+    auto objects = exportableSceneObjects();
+    for (auto& object : objects) {
+        if (!object.automation.empty()) {
             continue;
         }
-        for (const auto& key : keyframes) {
-            out << flat << ' ' << key.time_s << ' ' << key.position.x << ' ' << key.position.y
-                << ' ' << key.position.z << ' ' << key.gain << ' ' << key.lfe_send << '\n';
-        }
+        object.name = QStringLiteral("bed-pinned channel").toStdString();
+        object.automation.push_back({.time_s = 0.0, .gain = 0.0});
     }
-    return out.status() == QTextStream::Ok;
+    const auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+    if (!scene) {
+        return false;
+    }
+    return writeTextFile(url, ac3::oba::to_json(*scene));
 }
 
 void EncoderController::startMotionPreview() {
@@ -3670,30 +3957,49 @@ std::unique_ptr<EncoderController::LiveOutputWriters> EncoderController::openLiv
     auto writers = std::make_unique<LiveOutputWriters>();
     writers->path = path;
     writers->matroska = container_index_ == kContainerMatroska;
-    // Only Matroska is special-cased for a live session: matroska::Writer is
-    // the only INCREMENTAL muxer this codebase has. mp4::mux/mp4::fragment
-    // and mpegts::mux are batch APIs - every frame has to be known up front
-    // (see mp4.hpp/mpegts.hpp's own header comments) - so there is no
-    // equivalent live writer for MP4/fMP4/MPEG-TS to build here. Selecting
-    // one of those three containers for a live session therefore falls
-    // through to the same plain elementary-stream write S/PDIF already
-    // falls through to today, rather than gaining a new failure mode.
-    // Matroska's own track/writer construction needs the CODED channel count
-    // (routing/atmos bed), which is not resolved yet at this point - see
-    // runLiveSession, which constructs `writers->writer` and writes its
+    // Two containers are special-cased for a live session, and they are
+    // exactly the two with an INCREMENTAL writer behind them:
+    // matroska::Writer and mp4::FragmentWriter. mp4::mux and mpegts::mux are
+    // batch APIs - every frame has to be known up front (see
+    // mp4.hpp/mpegts.hpp's own header comments) - so MP4, S/PDIF and MPEG-TS
+    // still fall through to the same plain elementary-stream write, rather
+    // than gaining a new failure mode.
+    //
+    // Matroska's own track/writer construction needs the RENDERED channel
+    // count (the plan/atmos bed), which is not resolved yet at this point -
+    // see runLiveSession, which constructs `writers->writer` and writes its
     // header the moment that count is known, still on the GUI thread before
-    // the worker starts. Only the file itself opens here: a bad destination
-    // path is refused now, exactly like a bad device choice already is, not
-    // discovered as a mid-take failure minutes in.
-    writers->stream.open(writers->path.toStdString(), std::ios::binary);
-    if (!writers->stream) {
-        setStatus(QStringLiteral("Could not open \"%1\" for writing.")
-                      .arg(QFileInfo(writers->path).fileName()));
-        emit encodeRefused(status_);
-        return nullptr;
+    // the worker starts. fMP4's does not: its track comes from a scan of the
+    // first access unit, so it is fully set up here. Either way only the
+    // destination itself is touched now: a bad path is refused at this point,
+    // exactly like a bad device choice already is, not discovered as a
+    // mid-take failure minutes in.
+    if (container_index_ == kContainerFmp4) {
+        // A folder rather than a file (EncoderController::outputIsFolder),
+        // so `stream` stays closed and every write goes through `fmp4`.
+        writers->fmp4.emplace();
+        if (const auto problem = writers->fmp4->open(writers->path.toStdString());
+            !problem.empty()) {
+            setStatus(QString::fromStdString(problem));
+            emit encodeRefused(status_);
+            return nullptr;
+        }
+    } else {
+        writers->stream.open(writers->path.toStdString(), std::ios::binary);
+        if (!writers->stream) {
+            setStatus(QStringLiteral("Could not open \"%1\" for writing.")
+                          .arg(QFileInfo(writers->path).fileName()));
+            emit encodeRefused(status_);
+            return nullptr;
+        }
     }
     if (live_wav_safety_copy_) {
         auto safety = std::make_unique<ac3::io::WavStreamWriter>();
+        // A sibling of the destination either way: "take.ec3" gives
+        // "take.raw.wav", and a fragmented-MP4 FOLDER named "take" gives
+        // "take.raw.wav" beside it rather than inside it - the safety copy is
+        // the raw captured PCM, not part of the CMAF asset, so it does not
+        // belong in a folder a packager or CDN origin is pointed at.
         const QString safety_path = sibling_path(path, QStringLiteral(".raw.wav"));
         const auto opened = safety->open(safety_path.toStdString(), device.sample_rate,
                                          device.channels);
@@ -3856,10 +4162,31 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
     bool monitor_ok = false;
     if (monitor) {
         auto msink = std::make_unique<ac3::audio::MonitorSink>();
-        const auto mstarted = msink->start(
-            std::string{}, device.sample_rate,
-            static_cast<std::uint16_t>(atmos_enabled_ ? 6 : plan::coded_channels(
-                                                              effectiveChannelPlan()).size()));
+        // RENDERED, not coded - the count has to be what runLiveSession's
+        // frame loop actually SUBMITS here, which is the monitor decoder's
+        // own output interleaved by plan::wav_order over the DECODED layout:
+        // one sample per speaker the stream renders, not one per channel it
+        // spent coding them. The two part company wherever a dependent
+        // substream REPLACES a bed channel of the same location instead of
+        // adding a new one, and an endpoint opened for the wrong one of them
+        // maps every speaker wrong and paces the queue wrong on top.
+        //
+        // No plan this GUI can currently build is such a plan: the Format
+        // tab's presets set custom locations, so plan::resolve() partitions
+        // them through chanmap::allocate(), which gives each dependent
+        // strictly what the bed did not carry and so never duplicates a
+        // location. (Only the legacy named-layout table duplicates - e.g.
+        // LayoutId::k71's k71Rear re-sends the bed's Ls/Rs, ten coded for
+        // eight rendered - and the GUI names that table for nothing but
+        // object mode's 5.1 bed and 1+1.) So this is which side of the
+        // distinction the call site belongs on, not a live discrepancy being
+        // corrected; the monitor leg stays right if a duplicating plan ever
+        // does reach it. Object mode (the 5.1 bed) and dual mono are already
+        // folded into renderedChannelCount()'s own answer, so this asks it
+        // rather than re-deriving those cases here.
+        const auto mstarted =
+            msink->start(std::string{}, device.sample_rate,
+                         static_cast<std::uint16_t>(renderedChannelCount()));
         if (mstarted) {
             monitor_ok = true;
             live_monitor_sink_ = std::move(msink);
@@ -4053,10 +4380,19 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     setMetering(true);
     clearClipLatches();
 
-    // Matroska needs the CODED channel count to declare a valid AudioTrack -
-    // atmos's bed is always 6 (5.1), channel mode is routing's own coded
-    // channel count, the identical formula the worker lambda below uses for
-    // its own coded_count. Both are known now, so the writer (and its header
+    // Matroska needs a channel count to declare a valid AudioTrack, and what
+    // a container track states is what the stream RENDERS - the speakers a
+    // player ends up driving - not how many channels were spent coding them.
+    // That is what ac3::io::scan reports for a finished stream (see
+    // ScannedStream::channels' own comment), and so what ac3cli's `mkv`/`ts`
+    // declare when they wrap one after the fact: a live take written here
+    // and the same bytes wrapped by the command line afterwards must not
+    // describe the same audio differently. This is deliberately NOT the
+    // worker lambda's own coded_count below, which sizes the ENCODER's input
+    // and really does want the coded channels - the same split
+    // startLiveSession's monitor sink lands on (see its own comment there,
+    // including why no plan the GUI can currently build makes the two
+    // numbers differ). Both are known now, so the writer (and its header
     // bytes) are built here, still on the GUI thread, before the worker ever
     // starts - a track EBML/Matroska genuinely cannot describe (in practice
     // unreachable: plan::validate() and the device checks in
@@ -4065,11 +4401,11 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     // mid-take failure minutes in" promise openLiveOutputWriters' own file
     // open already gives the destination path.
     if (writers && writers->matroska) {
-        const int coded_for_track = atmos ? 6 : routing->coded_channels;
+        const int channels_for_track = renderedChannelCount();
         auto created = matroska::Writer::create(
             {.codec_id = std::string{eac3 ? matroska::kCodecEac3 : matroska::kCodecAc3},
              .sample_rate = device.sample_rate,
-             .channels = coded_for_track,
+             .channels = channels_for_track,
              .samples_per_frame = ac3::kSamplesPerFrame});
         if (!created) {
             live_capture_.reset();
@@ -4133,7 +4469,11 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                 static_cast<int>(nobjects));
         }
         auto ac3_monitor_decoder = std::make_unique<ac3::FrameDecoder>();
-        ac3::Eac3Decoder eac3_monitor_decoder;
+        // Heap-allocated (PREfast's C6262, alert #90): Eac3Decoder's
+        // per-block scratch members pushed this lambda's stack frame over
+        // the threshold, same as the encoders/decoder just above - same
+        // pattern as examples/atmos_objects.cpp (PR #295).
+        auto eac3_monitor_decoder = std::make_unique<ac3::Eac3Decoder>();
         ac3::iec61937::Eac3BurstPacker eac3_packer;
         // The parallel receiver leg: an independent AC-3 5.1 encoder fed the
         // main plan's already-computed bed channels (chan_views[0..5] for a
@@ -4237,6 +4577,12 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
         // asserting, per this project's "no exceptions for stream-level
         // failure" rule, so this loop honours that instead of ignoring it.
         std::optional<matroska::MuxError> mux_error;
+        // The same for the fragmented-MP4 folder, which reports its failures
+        // as user-facing strings rather than an enum (Fmp4FolderWriter) -
+        // reachable here in a way mux_error is not, since every segment and
+        // manifest write is a real file operation that a full or vanished
+        // disk can refuse mid-take.
+        QString fmp4_error;
         // The one-shot capture->monitor latency measurement: only attempted
         // once monitoring is on and the pipeline has run for about a second
         // (past whatever startup transient the first few frames carry), and
@@ -4467,15 +4813,16 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
             if (monitor) {
                 std::optional<std::vector<float>> to_play;
                 if (eac3) {
-                    const auto decoded = eac3_monitor_decoder.decode_access_unit(unit_bytes);
+                    const auto decoded = eac3_monitor_decoder->decode_access_unit(unit_bytes);
                     // §3.7: decoded->has_value() is false exactly when this
                     // access unit is being held back pending transient
                     // pre-noise processing (decode_access_unit's own doc
                     // comment) - live monitoring just waits for the next one.
                     if (decoded && decoded->has_value()) {
                         const auto order =
-                            plan::wav_order(std::span{(*decoded)->layout.items}.first(
-                                static_cast<std::size_t>((*decoded)->layout.count)));
+                            plan::monitor_order(std::span{(*decoded)->layout.items}.first(
+                                                    static_cast<std::size_t>((*decoded)->layout.count)),
+                                                (*decoded)->channels.size());
                         to_play = interleave_reordered((*decoded)->channels, order);
                     }
                 } else {
@@ -4554,7 +4901,21 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
             }
 
             if (write_to_disk && writers) {
-                if (writers->matroska && writers->writer) {
+                if (writers->fmp4) {
+                    // A CMAF media segment leaves for disk every time a
+                    // fragment closes (about 1.5 s), with the HLS playlists
+                    // and the MPD rewritten beside it - live-shaped until the
+                    // stop below closes them. Nothing here holds the take in
+                    // RAM: mp4::FragmentWriter buffers one fragment's frames
+                    // and the segment window's bookkeeping, and no more, so
+                    // memory stays bounded for a session of any length -
+                    // exactly the property the Matroska path below gives.
+                    if (const auto problem = writers->fmp4->push(unit_bytes);
+                        !problem.empty()) {
+                        fmp4_error = QString::fromStdString(problem);
+                        break;
+                    }
+                } else if (writers->matroska && writers->writer) {
                     // Push straight into the writer's current cluster and
                     // write back whatever it hands back - empty on most
                     // calls (a cluster spans about a second), the just-closed
@@ -4590,7 +4951,12 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                 const auto flush_at = std::chrono::steady_clock::now();
                 if (flush_at - last_disk_flush_at >= kDiskFlushInterval) {
                     last_disk_flush_at = flush_at;
-                    writers->stream.flush();
+                    // fMP4 has no long-lived stream to flush - each segment
+                    // and manifest is a complete file, written and closed as
+                    // it is produced - so `stream` was never opened for it.
+                    if (!writers->fmp4) {
+                        writers->stream.flush();
+                    }
                     if (writers->wav_safety) {
                         writers->wav_safety->flush_header();
                     }
@@ -4641,8 +5007,22 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
             problem = QStringLiteral("Matroska muxing failed: %1")
                           .arg(QString::fromUtf8(why.data(), static_cast<qsizetype>(why.size())));
         }
+        if (problem.isEmpty() && !fmp4_error.isEmpty()) {
+            problem = fmp4_error;
+        }
         if (write_to_disk && writers) {
-            if (writers->matroska && writers->writer) {
+            if (writers->fmp4) {
+                // Flushes the trailing partial fragment and rewrites the
+                // playlists and MPD in their finished VOD/static form. Every
+                // segment already on disk is complete and listed by the last
+                // manifest write either way, so an interrupted session leaves
+                // a folder that still plays up to where it stopped - the same
+                // honest guarantee the Matroska path gives.
+                const auto closed = writers->fmp4->close();
+                if (!closed.empty() && fmp4_error.isEmpty()) {
+                    fmp4_error = QString::fromStdString(closed);
+                }
+            } else if (writers->matroska && writers->writer) {
                 // The trailing partial cluster - whatever the loop above
                 // never reached the time budget to close on its own. Nothing
                 // else needs closing: Segment's size was written unknown by
@@ -4663,8 +5043,10 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                                           static_cast<std::streamsize>(tail.size()));
                 }
             }
-            writers->stream.flush();
-            writers->stream.close();
+            if (!writers->fmp4) {
+                writers->stream.flush();
+                writers->stream.close();
+            }
             if (writers->wav_safety) {
                 writers->wav_safety->close();
             }
@@ -4876,7 +5258,7 @@ void EncoderController::startRecording(int deviceIndex, const QUrl& url) {
         // which is what bounds a take's memory (an hour at 448 kbps used to
         // be ~200 MB of frames held until Stop) and puts its bytes on disk
         // as they happen, so a crash mid-take no longer loses the take.
-        // mp4/fMP4 keep the accumulate shape for writeOutput below - their
+        // Plain MP4 keeps the accumulate shape for writeOutput below - its
         // format needs every frame at once (see RecordingSink's header).
         // container_index_/atmos_enabled_/codec_ are read from this worker
         // exactly the way writeOutput itself always has; taking the
@@ -5676,7 +6058,13 @@ QString EncoderController::writeOutput(const QString& path,
         if (!built) {
             return built.error();
         }
-        const auto fragmented = mp4::fragment(built->track, frames);
+        // ETSI TS 103 420 §E.5's 'ceao' compatibility brand for an
+        // object-audio track, which DASH-IF IOP Part 8 v5.0.0 §5.3.3 asks
+        // for - the same construction ac3cli's own run_fmp4 makes from the
+        // same scanned complexity index.
+        const auto fragmented = mp4::fragment(
+            built->track, frames,
+            mp4::FragmentOptions{.object_audio_brand = built->oba_complexity_index.has_value()});
         if (!fragmented) {
             return to_qstring(mp4::describe(fragmented.error()));
         }
@@ -5691,7 +6079,7 @@ QString EncoderController::writeOutput(const QString& path,
             return QStringLiteral("Could not write init.mp4 to \"%1\".").arg(path);
         }
         for (const auto& segment : fragmented->media_segments) {
-            const auto name = std::format("segment{}.m4s", segment.sequence_number);
+            const auto name = fmt::format("segment{}.m4s", segment.sequence_number);
             if (!write_bytes_to_path(dir / name, segment.bytes)) {
                 return QStringLiteral("Could not write %1 to \"%2\".")
                     .arg(QString::fromStdString(name), path);
@@ -5703,7 +6091,7 @@ QString EncoderController::writeOutput(const QString& path,
         // identical construction.
         const mp4::HlsOptions hls_options{
             .channels_attribute = built->oba_complexity_index
-                                      ? std::format("{}/JOC", *built->oba_complexity_index)
+                                      ? fmt::format("{}/JOC", *built->oba_complexity_index)
                                       : std::string{}};
         const auto media_playlist =
             mp4::build_hls_media_playlist(built->track, fragmented->media_segments, hls_options);
@@ -5713,10 +6101,18 @@ QString EncoderController::writeOutput(const QString& path,
             !write_text_to_path(dir / "master.m3u8", master_playlist)) {
             return QStringLiteral("Could not write the HLS playlists to \"%1\".").arg(path);
         }
+        // The DASH side: TS 103 420 §D.2's JOC extension type and
+        // complexity index (DASH-IF IOP Part 8 §5.3.2), plus the
+        // AudioChannelConfiguration @value TS 102 366 clause I.1.2.1
+        // defines - again the same pair ac3cli's run_fmp4 writes.
+        const mp4::DashOptions dash_options{
+            .joc_complexity_index = built->oba_complexity_index,
+            .dolby_channel_configuration = built->dolby_channel_configuration};
         const auto adaptation_set =
-            mp4::build_dash_adaptation_set(built->track, fragmented->media_segments);
-        const auto mpd = build_dash_mpd(built->track, fragmented->media_segments, adaptation_set);
-        if (!write_text_to_path(dir / "manifest.mpd", mpd.toStdString())) {
+            mp4::build_dash_adaptation_set(built->track, fragmented->media_segments, dash_options);
+        const auto mpd =
+            mp4::build_dash_mpd(built->track, fragmented->media_segments, adaptation_set);
+        if (!write_text_to_path(dir / "manifest.mpd", mpd)) {
             return QStringLiteral("Could not write manifest.mpd to \"%1\".").arg(path);
         }
         return QString();

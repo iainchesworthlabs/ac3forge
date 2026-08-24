@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -62,12 +63,12 @@ int main() {
 
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         write(stream, *encoded);  // one complete syncframe
     }
 
-    std::printf("%zu bytes of AC-3\n", stream.size());
+    fmt::printf("%zu bytes of AC-3\n", stream.size());
     return 0;
 }

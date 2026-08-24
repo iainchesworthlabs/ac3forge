@@ -6,15 +6,22 @@ diverges from reality is a place the spec tables were misread - which is
 exactly the class of bug a silent test frame cannot expose, because a stray
 bit there simply lands in zero-filled aux data and still "decodes".
 
-Usage:  python tools/references/eac3_parse.py <file.ec3> [frame_index]
+Usage:  python tools/references/eac3_parse.py <file.ec3> [frame_index] [programme]
+
+`programme` is the E2.3.1.2 substreamid of the independent substream whose
+access units to count and index - a stream carrying more than one programme
+(the multi-language / associated-service shape of broadcast DD+) interleaves
+them one frame period at a time, so without it `frame_index` walks alternating
+programmes rather than successive frames of one. It defaults to the first
+programme the stream carries, which is the only one in ordinary content.
 """
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import drc_ref  # noqa: E402  (independent section 7.7 word formats)
-from bitalloc_ref import aht_bin_bits, bit_alloc  # noqa: E402  (the spec's tables)
+import drc_ref  # independent section 7.7 word formats
+from bitalloc_ref import bit_alloc  # the spec's tables
 
 BLOCKS = 6
 LFE_ENDMANT = 7
@@ -90,7 +97,7 @@ def compr_db(word):
 
 def parse_frame(data, verbose=True):
     r = Reader(data)
-    log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+    log = print if verbose else (lambda *a: None)
 
     sync = r.bits(16)
     assert sync == 0x0B77, f'bad syncword {sync:#06x}'
@@ -146,53 +153,62 @@ def parse_frame(data, verbose=True):
         # The rest is gated on strmtyp == 0: a dependent substream carries only
         # the downmix/mix-level group above.
         if strmtyp == 0:
-            if r.bits(1):
-                mix['pgmscl'] = r.bits(6)
-            if acmod == 0:
+            def optional(name, width):
                 if r.bits(1):
-                    r.bits(6)        # pgmscl2
-            if r.bits(1):
-                mix['extpgmscl'] = r.bits(6)
+                    mix[name] = r.bits(width)
+
+            def premix(prefix):
+                mix[prefix + 'premixcmpsel'] = r.bits(1)
+                mix[prefix + 'drcsrc'] = r.bits(1)
+                mix[prefix + 'premixcmpscl'] = r.bits(3)
+
+            optional('pgmscl', 6)
+            if acmod == 0:
+                optional('pgmscl2', 6)
+            optional('extpgmscl', 6)
             mixdef = r.bits(2)
+            mix['mixdef'] = mixdef
             if mixdef == 1:
-                r.bits(1); r.bits(1); r.bits(3)  # premixcmpsel, drcsrc, premixcmpscl
+                premix('')
             elif mixdef == 2:
-                r.bits(12)           # mixdata
+                mix['mixdata'] = r.bits(12)
             elif mixdef == 3:
                 # §E2.3.1.22: mixdeflen 0-31 means a mixdata field of 2-33
                 # BYTES, and whatever the sub-structures below do not use is
-                # mixdatafill. So the length is authoritative and the parse of
-                # the contents only has to be good enough to not overrun it -
-                # skipping to the end is both simpler and more robust than
-                # trusting a field-by-field walk of a rarely used element.
+                # mixdatafill. So the length stays authoritative: the walk
+                # below reads the sub-fields for their values, and the reader
+                # is then placed from the LENGTH rather than from wherever the
+                # walk stopped - which is what keeps a stream using some
+                # sub-field this parser does not model from going adrift.
                 mixdeflen = r.bits(5)
                 mixdata_start = r.pos
                 if r.bits(1):        # mixdata2e
-                    r.bits(1); r.bits(1); r.bits(3)
-                    for _ in range(6):   # L, C, R, Ls, Rs and LFE scale factors
-                        if r.bits(1):
-                            r.bits(4)
-                    if r.bits(1):    # dmixscle
-                        r.bits(4)
+                    premix('ext')
+                    for name in ('extpgml', 'extpgmc', 'extpgmr',
+                                 'extpgmls', 'extpgmrs', 'extpgmlfe'):
+                        optional(name + 'scl', 4)
+                    optional('dmixscl', 4)
                     if r.bits(1):    # addche
-                        for _ in range(2):   # two auxiliary channels
-                            if r.bits(1):
-                                r.bits(4)
+                        optional('extpgmaux1scl', 4)
+                        optional('extpgmaux2scl', 4)
                 if r.bits(1):        # mixdata3e
-                    r.bits(5)        # spchdat
+                    mix['spchdat'] = r.bits(5)
                     if r.bits(1):    # addspchdate
-                        r.bits(5); r.bits(2)      # spchdat1, spchan1att
+                        mix['spchdat1'] = r.bits(5)
+                        mix['spchan1att'] = r.bits(2)
                         if r.bits(1):             # addspchdat1e
-                            r.bits(5); r.bits(3)  # spchdat2, spchan2att
+                            mix['spchdat2'] = r.bits(5)
+                            mix['spchan2att'] = r.bits(3)
                 used = r.pos - mixdata_start
                 r.bits(8 * (mixdeflen + 2) - used)   # mixdata remainder + fill
             if acmod < 2:
                 if r.bits(1):        # paninfoe
-                    r.bits(8)        # panmean
-                    r.bits(6)        # paninfo
+                    mix['panmean'] = r.bits(8)
+                    mix['paninfo'] = r.bits(6)
                 if acmod == 0:
                     if r.bits(1):    # paninfo2e
-                        r.bits(8); r.bits(6)
+                        mix['panmean2'] = r.bits(8)
+                        mix['paninfo2'] = r.bits(6)
             # §E2.3.1.59: the per-block mixing configuration is gated by ONE
             # frame-level bit. Reading the block flags without it costs five
             # bits or more, and everything downstream lands adrift - which is
@@ -201,25 +217,35 @@ def parse_frame(data, verbose=True):
             # failed to parse.
             if r.bits(1):            # frmmixcfginfoe
                 if numblkscod == 0:
-                    r.bits(5)        # blkmixcfginfo[0]
+                    # §E2.3.1.60: one block per syncframe infers the flag
+                    # set, so the word is unconditional and there is no flag.
+                    mix['blkmixcfginfo'] = [r.bits(5)]
                 else:
+                    blocks = []
                     for _ in range(nblks):
-                        if r.bits(1):    # blkmixcfginfoe
-                            r.bits(5)    # blkmixcfginfo[blk]
+                        blocks.append(r.bits(5) if r.bits(1) else None)
+                    mix['blkmixcfginfo'] = blocks
+    info = {}
     if r.bits(1):                    # infomdate
-        r.bits(3)                    # bsmod
-        r.bits(1); r.bits(1)         # copyrightb, origbs
+        info['bsmod'] = r.bits(3)
+        info['copyrightb'] = r.bits(1)
+        info['origbs'] = r.bits(1)
         if acmod == 2:
-            r.bits(2); r.bits(2)     # dsurmod, dheadphonmod
+            info['dsurmod'] = r.bits(2)
+            info['dheadphonmod'] = r.bits(2)
         if acmod >= 6:
-            r.bits(2)                # dsurexmod
-        if r.bits(1):                # audprodie
-            r.bits(5); r.bits(2); r.bits(1)
-        if acmod == 0:
-            if r.bits(1):
-                r.bits(5); r.bits(2); r.bits(1)
+            info['dsurexmod'] = r.bits(2)
+        # Annex E's audprodie carries a third field AC-3's §5.4.2.13 does
+        # not: adconvtyp, which AC-3 puts in Annex D's xbsi2 instead.
+        for suffix in ('', '2'):
+            if suffix and acmod != 0:
+                break
+            if r.bits(1):            # audprodie / audprodi2e
+                info['mixlevel' + suffix] = r.bits(5)
+                info['roomtyp' + suffix] = r.bits(2)
+                info['adconvtyp' + suffix] = r.bits(1)
         if fscod < 3:
-            r.bits(1)                # sourcefscod
+            info['sourcefscod'] = r.bits(1)
     if strmtyp == 0 and numblkscod != 3:
         r.bits(1)                    # convsync
     if strmtyp == 2:
@@ -249,6 +275,8 @@ def parse_frame(data, verbose=True):
         log(f'  compr: 0x{compr:02X}  {role}')
     if mix:
         log('  mixmdate: ' + '  '.join(f'{k}={v}' for k, v in mix.items()))
+    if info:
+        log('  infomdat: ' + '  '.join(f'{k}={v}' for k, v in info.items()))
 
     # --- audfrm (Table E1.3) ---
     if numblkscod == 3:
@@ -355,7 +383,7 @@ def parse_frame(data, verbose=True):
     exps = [None] * nfchans
     lfeexps = None
     cplexps = None
-    codes = dict(sdcycod=2, fdcycod=1, sgaincod=1, dbpbcod=2, floorcod=7)
+    codes = {'sdcycod': 2, 'fdcycod': 1, 'sgaincod': 1, 'dbpbcod': 2, 'floorcod': 7}
     fgaincod = [4] * (nfchans + 1)
     csnroffst = 0
     fsnroffst = [0] * (nfchans + 1)
@@ -409,7 +437,7 @@ def parse_frame(data, verbose=True):
             spxinu = r.bits(1)
             if spxinu:
                 chinspx = [1] if acmod == 1 else [r.bits(1) for _ in range(nfchans)]
-                spxstrtf = r.bits(2)
+                r.bits(2)                # spxstrtf
                 spxbegf = r.bits(3)
                 spxendf = r.bits(3)
                 spx_begin = spxbegf + 2 if spxbegf < 6 else spxbegf * 2 - 3
@@ -536,8 +564,9 @@ def parse_frame(data, verbose=True):
 
         if bamode:
             if r.bits(1):            # baie
-                codes = dict(sdcycod=r.bits(2), fdcycod=r.bits(2), sgaincod=r.bits(2),
-                             dbpbcod=r.bits(2), floorcod=r.bits(3))
+                codes = {'sdcycod': r.bits(2), 'fdcycod': r.bits(2),
+                         'sgaincod': r.bits(2), 'dbpbcod': r.bits(2),
+                         'floorcod': r.bits(3)}
         if snroffststr == 0:
             csnroffst = frmcsnroffst
             fsnroffst = [frmfsnroffst] * (nfchans + 1)
@@ -625,7 +654,7 @@ def parse_frame(data, verbose=True):
         # group's FIRST member - so a region's own cost is how much the
         # running grouped total moves while it is being walked. That is exact
         # even when a group straddles two channels.
-        def grouped_bits():
+        def grouped_bits(counts=counts):
             return (5 * ((counts[1] + 2) // 3) + 7 * ((counts[2] + 2) // 3)
                     + 7 * ((counts[4] + 1) // 2))
 
@@ -709,7 +738,8 @@ def parse_frame(data, verbose=True):
                                'numblkscod': numblkscod,
                                'acmod': acmod, 'lfeon': lfeon, 'chanmap': chanmap,
                                'dialnorm': dialnorm, 'compr': compr,
-                               'mixmdate': mix or None, 'dynrng': dynrng_blocks,
+                               'mixmdate': mix or None, 'infomdat': info or None,
+                               'dynrng': dynrng_blocks,
                                'oba': oba, 'emdf': emdf, 'aux_start': aux_start}
 
 
@@ -889,8 +919,16 @@ def chanmap_channels(m):
     return bin(m).count('1') + bin(m & CHANMAP_PAIRS).count('1')
 
 
-def split_access_units(data):
-    """Group syncframes into access units. A new one starts at each strmtyp 0."""
+def split_access_units(data, programme=None):
+    """Group syncframes into access units, optionally for one programme only.
+
+    A new access unit starts at each strmtyp 0. Which PROGRAMME it belongs to
+    is that independent substream's own substreamid (E2.3.1.2): a stream
+    carrying I0 and I1 puts one access unit of each into every frame period,
+    so successive units are successive programmes, not successive frames.
+    Passing `programme` keeps only that one's, which is what makes unit N mean
+    frame N.
+    """
     units, offset = [], 0
     while offset + 4 <= len(data):
         assert data[offset] == 0x0B and data[offset + 1] == 0x77, 'lost sync'
@@ -903,14 +941,35 @@ def split_access_units(data):
             units.append([])
         units[-1].append((offset, size, strmtyp, substreamid))
         offset += size
-    return units
+    if programme is None:
+        return units
+    # Each unit opens with its own programme's independent substream, so the
+    # selection is that first entry's substreamid.
+    return [u for u in units if u and u[0][3] == programme]
+
+
+def programme_ids(units):
+    """The substreamid of every independent substream, ascending, deduped."""
+    return sorted({u[0][3] for u in units if u})
 
 
 def main():
     path = Path(sys.argv[1])
     want = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    programme = int(sys.argv[3]) if len(sys.argv) > 3 else None
     data = path.read_bytes()
-    units = split_access_units(data)
+    every = split_access_units(data)
+    ids = programme_ids(every)
+    if programme is None:
+        programme = ids[0]
+    elif programme not in ids:
+        raise SystemExit(f'no programme {programme} in {path} '
+                         f'(it carries {", ".join(str(i) for i in ids)})')
+    units = [u for u in every if u and u[0][3] == programme]
+    if len(ids) > 1:
+        print(f'programme {programme} of {len(ids)} '
+              f'({", ".join(str(i) for i in ids)}), '
+              f'{len(units)} access units of its own')
     if want >= len(units):
         raise SystemExit(f'only {len(units)} access units in {path}')
     unit = units[want]

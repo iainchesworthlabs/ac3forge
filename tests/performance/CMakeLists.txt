@@ -13,7 +13,17 @@ target_link_libraries(ac3perf
     PRIVATE
         ac3::forge
         ac3::warnings
+        ac3::fmt
         Catch2::Catch2WithMain)
+
+target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# real_audio.hpp resolves tests/golden/audio's fixtures through this, so the
+# gate reads real programme material whatever directory ctest launches it
+# from - see that header for why a synthetic tone is not an acceptable
+# substitute for it.
+target_compile_definitions(ac3perf PRIVATE
+    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # TEST_PREFIX so `ctest -R '^Performance::'`/`-E` can target this target's
 # cases specifically without a fragile name-based guess, and
@@ -35,7 +45,15 @@ catch_discover_tests(ac3perf
 # ---------------------------------------------------------------------------
 add_executable(ac3bench bench_encoder.cpp)
 
-target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings)
+target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings ac3::fmt)
+
+target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Same real-audio fixture the kernel bench and the gate use, for the same
+# reason: a 440 Hz tone leaves the SNR search, coupling, rematrixing and the
+# block-switched transform out of the measurement entirely.
+target_compile_definitions(ac3bench PRIVATE
+    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # ---------------------------------------------------------------------------
 # ac3membench - heap-churn and footprint numbers for the same workloads as
@@ -53,7 +71,22 @@ target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings)
 # Linux's KiB) - the trend job only measures linux-gcc, so the target
 # simply does not exist there yet rather than carrying an untested port.
 # ---------------------------------------------------------------------------
-if(WIN32 OR LINUX)
+#
+# Not built on the ThreadSanitizer leg (roadmap VX16). The global operator
+# new/delete replacements above are the whole mechanism of this target, and
+# TSan's own runtime defines those same operators in
+# libclang_rt.tsan_cxx-x86_64.a - so linking it under -fsanitize=thread is a
+# hard "ld.lld: error: duplicate symbol: operator new(unsigned long)", not a
+# warning. Measured, not assumed: the ASan+UBSan leg links this target today
+# and always has, so the collision is specific to TSan's runtime rather than
+# to sanitizers in general.
+#
+# Nothing is lost by skipping it there. This target exists to count the
+# codec's own allocations for the memory trend
+# (tools/ci/append_memory_history.py), and a count taken through a
+# sanitizer's intercepting allocator would not be the codec's number anyway -
+# the same reason the sanitizer legs are exempt from performance gating.
+if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
     add_executable(ac3membench bench_memory.cpp)
 
     if(WIN32)
@@ -64,7 +97,7 @@ if(WIN32 OR LINUX)
 
     target_include_directories(ac3membench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-    target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings)
+    target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings ac3::fmt)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -81,7 +114,9 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(ac3kernelbench kernel_bench.cpp)
 
-target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac3::warnings)
+target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac3::warnings ac3::fmt)
+
+target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # So the binary can find tests/golden/audio's real-audio fixtures regardless
 # of the working directory it is launched from - kernel inputs synthesized

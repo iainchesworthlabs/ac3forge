@@ -45,10 +45,26 @@ dispatched build fetches full history (or gets the version stamped directly via
 
 ## Pre-release checklist
 
-1. CI green on `main` for the commit you're about to tag.
-2. Releases must be **cut from main** - `resolve-version` checks this with
+1. **Before opening the `develop` -> `main` promotion PR**: confirm `develop` carries no
+   unexplained open code-scanning alerts.
+
+   ```bash
+   gh api "repos/iainchesworthlabs/ac3forge/code-scanning/alerts?ref=refs/heads/develop&state=open" -q '.[] | [.number, .rule.id, .most_recent_instance.location.path] | @tsv'
+   ```
+
+   Empty output - or every remaining line individually understood and either fixed or
+   dismissed with a justification - is the bar. This step exists because the PR-time gate
+   cannot cover it: alerts are tracked per-ref and the Security tab filters to the default
+   branch (`main`), so anything that accumulates on `develop` between releases (a scheduled
+   run picking up updated query packs, an already-dismissed finding re-minted by a file
+   move - alert identity is rule + line hash + *file path*) stays invisible until the
+   promotion merge lands it all on `main` at once, which is exactly how the v0.9.0-beta.1
+   promotion surfaced alerts #83-94. `release.yml`'s `alert-review` job re-checks this
+   (advisory only, default branch) as a backstop.
+2. CI green on `main` for the commit you're about to tag.
+3. Releases must be **cut from main** - `resolve-version` checks this with
    `git merge-base --is-ancestor` and fails otherwise (dry runs are exempt).
-3. Decide the tag.
+4. Decide the tag.
 
 ## Option A: tag-based release (the normal path)
 
@@ -443,6 +459,19 @@ mode. A release keystore is a prerequisite before this could ever go through the
 which sideloading itself doesn't require. (Not to be confused with **object signing** - the EMDF
 Atmos authenticity tag, provisioned separately via the `ATMOS_SIGNING_KEY` secret and
 unrelated to APK code-signing; see "Provisioning the Android object-signing key" below.)
+
+Alongside the packages, one artifact that is not a build of anything:
+**`ac3forge-conformance-vectors-<version>.tar.gz`**, the published conformance vector set
+(roadmap VX20) - 60 AC-3 / E-AC-3 / Atmos streams covering each coding tool, layout and sample
+rate the encoder can emit, with the source PCM each was encoded from, the expected decode hashes
+and a manifest of what each exercises. `_build.yml`'s linux-gcc leg builds it, from
+`tools/generators/gen_conformance_vectors.py`; the release call additionally sets
+`publish_conformance_vectors`, which regenerates the whole bundle a second time and fails the leg
+if a single hash moved. It lands in `release-artifacts/` after the "at least one package was
+built" check - deliberately, since it is a `.tar.gz` and would otherwise satisfy that check on
+its own - and from there it is signed, checksummed, SBOM'd and attested exactly like a package.
+See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
+uses it.
 
 No leg is `experimental: true` any more (see `ci.yml`'s status table), so all five package
 for real rather than best-effort - a packaging failure on any of them blocks the release the

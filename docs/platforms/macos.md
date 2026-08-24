@@ -39,6 +39,15 @@ that format (older hardware, a non-HDMI output, an Intel Mac) the backend simply
 passthrough unavailable rather than claiming it everywhere — see `passthrough.cpp`'s own "AC-3
 and E-AC-3" section.
 
+Passthrough **capture** — an input carrying somebody else's bitstream — needs none of that
+machinery, on macOS or anywhere else: IEC 61937 bursts arrive as ordinary PCM samples, and
+recognising them is `ac3::iec61937::PassthroughDetector`, which works off whatever interleaved
+floats the backend delivers rather than off any HAL property. `ac3cli record` uses it to write
+the elementary stream instead of encoding the bursts as audio, `ac3cli live` to stop rather than
+encode a session of noise, and `ac3cli unspdif` does the same job on a capture already saved to
+disk. That part is platform-independent and shares the verification the framing has — see
+[Windows](windows.md#passthrough-capture) for what is and is not confirmed.
+
 The backend is CI-verified only: the parts that need no live device — enumeration on a machine
 with none, format matching, sample conversion — run under `ac3tests` on the hosted runner, same
 as everywhere else without real hardware, but no real Mac has ever run this code against an

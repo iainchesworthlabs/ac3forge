@@ -9,6 +9,7 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <utility>
 #include <vector>
@@ -37,7 +38,11 @@ QString preset_display_name(ac3::meta::QcPresetId id) {
     switch (id) {
         case ac3::meta::QcPresetId::kEbuR128S2: return QStringLiteral("EBU R 128 s2");
         case ac3::meta::QcPresetId::kAtscA85: return QStringLiteral("ATSC A/85");
+        case ac3::meta::QcPresetId::kAtscA85Streaming:
+            return QStringLiteral("ATSC A/85 streaming");
         case ac3::meta::QcPresetId::kNetflix: return QStringLiteral("Netflix");
+        case ac3::meta::QcPresetId::kAppleMusicAtmos:
+            return QStringLiteral("Apple Music Atmos");
     }
     return QString();
 }
@@ -156,7 +161,10 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
         error = QStringLiteral("Not a valid E-AC-3 stream.");
         return std::nullopt;
     }
-    ac3::Eac3Decoder decoder;
+    // Heap-allocated (PREfast's C6262, alert #91): Eac3Decoder's per-block
+    // scratch members pushed this stack declaration over the threshold -
+    // same pattern as examples/atmos_objects.cpp (PR #295).
+    auto decoder = std::make_unique<ac3::Eac3Decoder>();
     RawResult result;
     result.codec_label = QStringLiteral("E-AC-3");
     result.unit_label = QStringLiteral("access unit(s)");
@@ -209,7 +217,7 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
     };
 
     for (const auto& frame : *frames) {
-        const auto decoded = decoder.decode_substream(frame);
+        const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
             error = QStringLiteral("Decode failed (code %1).")
                         .arg(static_cast<int>(decoded.error()));
@@ -219,7 +227,7 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
             ingest(**decoded);
         }
     }
-    for (const auto& sub : decoder.flush()) {
+    for (const auto& sub : decoder->flush()) {
         ingest(sub);
     }
 
@@ -372,6 +380,14 @@ QVariantList QcController::programmes() const {
             preset_row[QStringLiteral("targetLkfs")] = preset.target_lkfs;
             preset_row[QStringLiteral("toleranceLu")] = preset.tolerance_lu;
             preset_row[QStringLiteral("maxTruePeakDbtp")] = preset.max_true_peak_dbtp;
+            // The document, version and date this row's numbers came out of,
+            // and whether its loudness figure is a band to sit inside or a
+            // ceiling not to exceed - a verdict against an unnamed edition,
+            // or a ceiling drawn as a band, is not a QC result anyone can act
+            // on. See ac3/meta/qc.hpp.
+            preset_row[QStringLiteral("source")] = to_qstring(preset.source);
+            preset_row[QStringLiteral("loudnessIsCeiling")] =
+                preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling;
             preset_row[QStringLiteral("loudnessDelta")] = verdict.loudness_delta_lu.value_or(0.0);
             preset_row[QStringLiteral("loudnessPass")] = verdict.loudness_pass;
             preset_row[QStringLiteral("truePeakMargin")] =

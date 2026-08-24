@@ -58,7 +58,7 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -202,6 +202,36 @@ bool probe(const std::string& name, std::uint32_t carrier) {
     return configure(handle, carrier, /*burst_frames=*/0, /*commit=*/false);
 }
 
+// How many channels the endpoint itself renders, for
+// RenderDeviceInfo::channels. ALSA answers this from the hardware parameter
+// space rather than from a mix format, so the figure is the device's own
+// maximum rather than whatever a shared mixer happens to be running at - the
+// right number for "is a decoded programme wider than this output?", which is
+// what the field is for. 0 on any failure, including a device that is simply
+// busy: the header's wording makes 0 mean "cannot say", never "no channels".
+std::uint16_t endpoint_channels(const std::string& name) {
+    const alsa::QuietErrors quiet;
+    snd_pcm_t* handle = nullptr;
+    if (snd_pcm_open(&handle, name.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
+        return 0;
+    }
+    const Pcm owned{handle};
+    const HwParams params;
+    if (!params) {
+        return 0;
+    }
+    unsigned int channels = 0;
+    if (snd_pcm_hw_params_any(handle, params.get()) < 0 ||
+        snd_pcm_hw_params_get_channels_max(params.get(), &channels) < 0) {
+        return 0;
+    }
+    // ALSA reports a plug device's maximum as something absurd (1024 or more)
+    // because the plug layer will invent any width asked of it. That is not an
+    // endpoint width, so it is reported as unknown rather than as a number no
+    // downmix decision should be made from.
+    return channels > 0 && channels <= 64 ? static_cast<std::uint16_t>(channels) : 0;
+}
+
 // Whether `base` will carry `format` at `content_rate`: the device name with
 // the right channel status for the link rate that format needs, opened and
 // offered the carrier parameters.
@@ -239,7 +269,7 @@ std::vector<Candidate> find_candidates() {
             .kind = kind,
             .name = alsa::config_device_name(kind, entry.card_id, index),
             .hw_name = alsa::hw_device_name(entry.card_id, entry.device),
-            .friendly = std::format("{}: {}", entry.card_name, entry.device_name),
+            .friendly = fmt::format("{}: {}", entry.card_name, entry.device_name),
         });
         ++index;
     });
@@ -290,6 +320,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             // neither of the above cannot bitstream; one that takes none of
             // the three is in use by something else.
             .supports_exclusive_pcm = probe(candidate.hw_name, sample_rate),
+            .channels = endpoint_channels(candidate.hw_name),
         };
 
         if (!marked_default && candidate.card == preferred_card) {

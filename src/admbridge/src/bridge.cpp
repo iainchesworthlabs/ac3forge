@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "ac3/admbridge/coordinates.hpp"
+#include "ac3/oba/oamd.hpp"
 
 namespace ac3::admbridge {
 
@@ -64,6 +65,26 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
         }
         return {adm_position_to_room(block.position), block.gain};
     };
+    // BS.2076-2 Table 15/16/17 width/height/depth are the same normalized
+    // [0, 1] extents TS 103 420 §5.6.1.2 codes, on the same three axes, so
+    // this is a rename and not a conversion. An LFE bed channel gets none of
+    // it: it has no direction, so it has no extent around one either.
+    const auto extent_of = [&](const ac3adm::AudioBlockFormat& block) -> ac3::oba::ObjectSize {
+        if (force_lfe) {
+            return {};
+        }
+        return {.width = std::clamp(block.width, 0.0, 1.0),
+                .depth = std::clamp(block.depth, 0.0, 1.0),
+                .height = std::clamp(block.height, 0.0, 1.0)};
+    };
+    // BS.2076-2 §10.2 channelLock and TS 103 420 §5.6.1.5.1 b_object_snap are
+    // the same idea under two names: render to the nearest speaker instead of
+    // panning. maxDistance has no image - OAMD b_object_snap is one bit, with
+    // no distance to condition it on - so a conditioned channelLock maps to an
+    // unconditioned snap, which is the closest thing the syntax can say.
+    const auto snap_of = [&](const ac3adm::AudioBlockFormat& block) {
+        return !force_lfe && block.has_channel_lock && block.channel_lock;
+    };
     const double lfe_send = force_lfe ? 1.0 : 0.0;
 
     std::vector<ac3::oba::Keyframe> keyframes;
@@ -75,12 +96,17 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     // same nominal time) into a valid, strictly-increasing keyframe sequence without needing a
     // separate branch for each. See kInstantJumpEpsilon's own comment for why this is inaudible
     // at the resolution that reaches the bitstream.
-    const auto push_keyframe = [&](double time_s, ac3::oba::Position position, double gain) {
+    const auto push_keyframe = [&](double time_s, ac3::oba::Position position, double gain,
+                                   ac3::oba::ObjectSize size, bool snap) {
         if (!keyframes.empty() && time_s <= keyframes.back().time_s) {
             time_s = keyframes.back().time_s + kInstantJumpEpsilon;
         }
-        keyframes.push_back(
-            {.time_s = time_s, .position = position, .gain = gain, .lfe_send = lfe_send});
+        keyframes.push_back({.time_s = time_s,
+                             .position = position,
+                             .gain = gain,
+                             .lfe_send = lfe_send,
+                             .size = size,
+                             .snap = snap});
     };
 
     if (channel.block_formats.size() == 1) {
@@ -89,7 +115,8 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
         // time" - one keyframe, which ac3::oba::KeyframePath already holds everywhere.
         const auto& block = channel.block_formats.front();
         const auto [position, gain] = placement_of(block);
-        push_keyframe(object_start_s + block.rtime_s, position, gain);
+        push_keyframe(object_start_s + block.rtime_s, position, gain, extent_of(block),
+                      snap_of(block));
     } else {
         for (std::size_t i = 0; i < channel.block_formats.size(); ++i) {
             const auto& block = channel.block_formats[i];
@@ -97,11 +124,13 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
             const bool has_end = block.has_duration;
             const double t_end = t_start + block.duration_s;
             const auto [position, gain] = placement_of(block);
+            const auto extent = extent_of(block);
+            const bool snap = snap_of(block);
 
             if (i == 0) {
                 // §10.3: "the position specified in the first block covers the entire length of
                 // the block (regardless of the jumpPosition and interpolationLength properties)".
-                push_keyframe(t_start, position, gain);
+                push_keyframe(t_start, position, gain, extent, snap);
                 // A non-final block omitting duration is legal (§5.4.1 only "should" - not
                 // "must" - pair rtime with duration once a channel has more than one block) but
                 // discouraged, and its true end is the NEXT block's own start, not "forever":
@@ -113,7 +142,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
                 const double effective_end =
                     has_end ? t_end : object_start_s + channel.block_formats[1].rtime_s;
                 if (effective_end > t_start) {
-                    push_keyframe(effective_end, position, gain);
+                    push_keyframe(effective_end, position, gain, extent, snap);
                 }
                 continue;
             }
@@ -121,7 +150,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
             if (!block.jump_position) {
                 // Ramp across the FULL block duration, continuous from whatever the previous
                 // block's own last keyframe already pinned at this same t_start.
-                push_keyframe(has_end ? t_end : t_start, position, gain);
+                push_keyframe(has_end ? t_end : t_start, position, gain, extent, snap);
                 continue;
             }
 
@@ -130,9 +159,9 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
             const double length =
                 block.has_interpolation_length ? std::max(block.interpolation_length_s, 0.0) : 0.0;
             const double ramp_end = has_end ? std::min(t_start + length, t_end) : t_start + length;
-            push_keyframe(ramp_end, position, gain);
+            push_keyframe(ramp_end, position, gain, extent, snap);
             if (has_end && t_end > ramp_end) {
-                push_keyframe(t_end, position, gain);
+                push_keyframe(t_end, position, gain, extent, snap);
             }
         }
     }

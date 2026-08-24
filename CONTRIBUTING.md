@@ -76,10 +76,25 @@ by `ci.yml` and `release.yml`; every other workflow file responds to a real GitH
 ## Code conventions
 
 **C++23, and use it.** `std::expected` for recoverable failure, `std::span` for borrowed
-sequences, `std::print`/`std::format` for output, designated initializers for configuration
-structs, `constexpr` and `consteval` for anything computable at build time. The window tables
-and several spec-table self-checks are `consteval` — a table that is wrong fails the build
-rather than a test.
+sequences, `fmt::print`/`fmt::format` for output — not the `std::print`/`std::format`
+equivalents, since NDK r26's bundled libc++ has no `<format>` at all (see
+`docs/platforms/android.md`) and {fmt} sidesteps the gap outright rather than routing around it
+file by file — designated initializers for configuration structs, `constexpr` and `consteval` for
+anything computable at build time. (A handful of older call sites already used C-style
+`%`-specifier output before this convention existed; those keep their existing format strings but
+go through `fmt::printf`/`<fmt/printf.h>`, not `std::printf`, for the same NDK reason.) The
+window tables and several spec-table self-checks are
+`consteval` — a table that is wrong fails the build rather than a test.
+
+**One exception, for reading rather than writing.** {fmt} only formats *out*; it has no
+`from_chars`-equivalent for parsing text *into* a `double`, and `<charconv>`'s own **floating-point**
+`from_chars` is unavailable both on the NDK's bundled libc++ and at the macOS wheel's deployment
+target (`'from_chars' is unavailable: introduced in macOS 26.0`) — the **integer** overloads are
+fine everywhere and are used directly. Code that has to parse a decimal from user- or
+file-supplied text therefore goes through `strtod` instead (`src/forge/src/encoder/plan.cpp`,
+`encoder/assignment.cpp`, `src/forge/src/oba/scene_text.hpp`). Neither gap shows up on a Windows,
+Linux or Homebrew-macOS build, so the CI legs that catch it are Android (Shield) and Build wheels
+(macos-latest).
 
 **Warnings are errors.** `ac3::warnings` is linked privately into every first-party target,
 including `examples/`. That includes `-Wsign-conversion` and its MSVC equivalents, which in
@@ -203,10 +218,32 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    escaped every gate above — reaching it needed an input *shape*, not an option combination.
    Bounded to two minutes per pull request; `fuzz.yml`'s `encoder-space-nightly` runs it deeper.
    Every failure prints a case seed that regenerates the exact input (`--replay <seed>`).
-3. **The Python references in `tools/`.** Independent transcriptions of the same spec text.
+3. **Somebody else's bitstreams.** Points 1 and 2 both decode something this project encoded.
+   Reading a stream *nobody here produced* is a different question, and the one that found five
+   Annex E parsing defects in a single sitting once anything actually asked it. Two tiers, both
+   automated: `tools/checks/verify_gold_reference.sh` decodes the six committed Dolby Encoding
+   Engine and FFmpeg streams in `tests/golden/external-baseline/` on every gold-reference leg,
+   and the nightly `Interop` workflow runs `tools/checks/verify_fate_interop.py` over eight
+   SHA-256-pinned commercial-encoder excerpts fetched from FFmpeg's FATE archive. Reach for this
+   one whenever you touch decoder syntax the encoder here never emits — and read
+   [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#third-party-bitstreams)
+   first, because there are no free AC-3 or E-AC-3 conformance vectors and this is the
+   substitute, not the real thing.
+4. **The Python references in `tools/`.** Independent transcriptions of the same spec text.
    Weaker than a decoder — two transcriptions can share a misreading — but they catch slips a
    self-consistent round trip cannot.
-4. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
+5. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
+
+**Object reconstruction has none of the four.** Dolby's tooling above verifies the object
+layer's *syntax*, not its audio: that decoder gates object decoding on a keyed authenticity tag
+this project ships no key for, so it renders these streams as their 5.1 bed, and FFmpeg
+implements no JOC reconstruction at all. Nothing outside this repository can produce an
+independent object decode of an ac3forge stream. What exists instead is a self-consistency
+series with real resolution — `tools/ci/quality_race.py`'s `objects` mode scores a committed
+five-object scene per object per rate on every push, trended at [Object quality
+trend](https://iainchesworthlabs.github.io/ac3forge/object-quality-trend/). If you are changing
+`ac3::joc` or `ac3::oba`, run it before and after and put both numbers in the commit message;
+it takes seconds and it is the only quality signal that layer has.
 
 Neither decoder covers everything, and the gaps do not overlap: see the [verification-gap
 table](https://iainchesworthlabs.github.io/ac3forge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
