@@ -27,6 +27,8 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
 | ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **no** — see [ADM](#adm-xml-and-bw64) |
 | Object authenticity tags | `ac3::signing::verify_atmos_frame` | no |
+| Matroska/WebM containers | `matroska::demux`, `matroska::Reader` | yes |
+| MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
@@ -41,11 +43,11 @@ caller, not an attack:
 - File paths, output destinations, and the caller-owned spans the `_into` decode forms write
   through — see [Raw-pointer boundaries](#raw-pointer-boundaries).
 
-**Not a boundary this project defends.** Containers. `matroska::`, `mp4::` and `mpegts::` are
-muxers only: they turn access units already in hand into bytes. There is no demuxer, no
-container parser, and therefore no container attack surface here today. An embedder demuxing
-MP4 or MPEG-TS is trusting *its own* demuxer, not this one. If a container reader lands, this
-table is where it goes.
+**Not a boundary this project defends.** MPEG-TS. `mpegts::Writer` is a muxer only — it turns
+access units already in hand into bytes. There is no MPEG-TS demuxer, so an embedder demuxing
+MPEG-TS is trusting *its own* demuxer, not this one. Matroska/WebM and MP4/ISOBMFF moved off this
+list once their readers landed (`matroska::demux`/`Reader`, `mp4::demux`/`Reader`, roadmap `IO2`);
+both are in the untrusted table above.
 
 ## Memory-safety posture
 
