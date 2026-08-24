@@ -64,6 +64,24 @@ endfunction()
 ac3forge_instrument_for_fuzzing(forge_objects)
 ac3forge_instrument_for_fuzzing(signing_objects)
 
+# The container libraries need the identical treatment: matroska::matroska
+# (and, as their harnesses land, mp4::mp4 and mpegts::mpegts) parse
+# self-declared lengths straight off untrusted input, which is exactly the
+# class of bug ASan catches and exactly what the harnesses below mutate. An
+# uninstrumented library would still crash on a genuine out-of-bounds read,
+# but only by luck, and the mutation engine would be walking blind - the
+# coverage counters are what steer it into the branches that matter.
+#
+# Same PUBLIC-on-the-OBJECT-library reasoning as forge_objects above: the
+# usage requirements propagate through the static/shared wrappers to
+# whatever finally links matroska::matroska - here, each harness.
+target_compile_options(matroska_objects PUBLIC
+    -fsanitize=address,undefined,fuzzer-no-link
+    -fno-sanitize-recover=undefined
+    -fno-omit-frame-pointer
+    -g)
+target_link_options(matroska_objects PUBLIC -fsanitize=address,undefined,fuzzer-no-link)
+
 add_custom_target(ac3forge_fuzzers)
 
 # One executable per untrusted-input entry point. Each adds -fsanitize=fuzzer
@@ -93,9 +111,29 @@ function(ac3forge_add_fuzzer name)
     add_dependencies(ac3forge_fuzzers ${name})
 endfunction()
 
+# Same, for a harness whose subject is a container library rather than the
+# codec: everything about the flags is identical, only the linked library
+# differs. Kept as its own function rather than a parameter on the one above
+# because every EXISTING harness takes ac3::forge and would gain a noise
+# argument for it.
+function(ac3forge_add_container_fuzzer name library)
+    add_executable(${name} "${name}.cpp")
+    target_link_libraries(${name} PRIVATE ${library} ac3::warnings)
+    target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
+    target_link_options(${name} PRIVATE -fsanitize=fuzzer)
+    set_target_properties(${name} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    add_dependencies(ac3forge_fuzzers ${name})
+endfunction()
+
 # ac3::io::scan: format-sniffing over an unidentified byte stream, before any
 # decoder commits to a layout (src/forge/src/io/elementary.cpp).
 ac3forge_add_fuzzer(fuzz_scan)
+
+# matroska::demux + matroska::Reader: the EBML walk over a container that came
+# from a disc rip, a broadcast capture or a download - every length in it
+# self-declared (src/matroska/src/reader.cpp).
+ac3forge_add_container_fuzzer(fuzz_matroska_demux matroska::matroska)
 
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
 # drives them (src/forge/src/decoder/decoder.cpp).
