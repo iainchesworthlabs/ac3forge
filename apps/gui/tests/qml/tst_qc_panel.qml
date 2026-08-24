@@ -72,12 +72,12 @@ TestCase {
         verify(p.truePeakDbtp !== 0.0);
     }
 
-    // presetIndex 0 ("All presets") reports all three named delivery gates;
-    // picking one narrows the list to it. The target/tolerance/ceiling
-    // numbers are fixed constants from ac3::meta::qc_preset() (qc.hpp), so
-    // asserting their exact values is a check against known, non-random
-    // data - proof the QML is reading the real C++ table, not inventing
-    // display numbers of its own.
+    // presetIndex 0 ("All presets") reports every named delivery gate in
+    // ac3::meta::kQcPresetIds order; picking one narrows the list to it. The
+    // target/tolerance/ceiling numbers are fixed constants from
+    // ac3::meta::qc_preset() (qc.hpp), so asserting their exact values is a
+    // check against known, non-random data - proof the QML is reading the
+    // real C++ table, not inventing display numbers of its own.
     function test_presetSelectionNarrowsToTheChosenPresetsRealNumbers() {
         const win = createTemporaryObject(mainWindowComponent, testCase);
         verify(win !== null);
@@ -87,15 +87,32 @@ TestCase {
         compare(QcController.hasResult, true);
 
         let presets = QcController.programmes[0].presets;
-        compare(presets.length, 3);
+        compare(presets.length, 5);
         compare(presets[0].id, "ebu-r128-s2");
         compare(presets[0].targetLkfs, -23.0);
         compare(presets[0].toleranceLu, 1.0);
         compare(presets[1].id, "atsc-a85");
         compare(presets[1].targetLkfs, -24.0);
-        compare(presets[2].id, "netflix");
-        compare(presets[2].targetLkfs, -27.0);
-        compare(presets[2].maxTruePeakDbtp, -2.0);
+        // A/85:2026-07's new Annex L.5 streaming band, carried as its two
+        // edges: -23 to -27 LKFS.
+        compare(presets[2].id, "atsc-a85-streaming");
+        compare(presets[2].targetLkfs, -25.0);
+        compare(presets[2].toleranceLu, 2.0);
+        compare(presets[3].id, "netflix");
+        compare(presets[3].targetLkfs, -27.0);
+        compare(presets[3].maxTruePeakDbtp, -2.0);
+        // Apple's is the one row whose loudness figure is a ceiling rather
+        // than a band, which is what the loudness meter's band-vs-ceiling
+        // drawing keys off.
+        compare(presets[4].id, "apple-music-atmos");
+        compare(presets[4].targetLkfs, -18.0);
+        compare(presets[4].maxTruePeakDbtp, -1.0);
+        compare(presets[4].loudnessIsCeiling, true);
+        compare(presets[0].loudnessIsCeiling, false);
+        // Every row names the document edition it was judged against.
+        for (let i = 0; i < presets.length; ++i) {
+            verify(presets[i].source.length > 0);
+        }
 
         QcController.presetIndex = 2;  // ATSC A/85
         presets = QcController.programmes[0].presets;
@@ -103,6 +120,11 @@ TestCase {
         compare(presets[0].id, "atsc-a85");
         compare(presets[0].targetLkfs, -24.0);
         compare(presets[0].toleranceLu, 2.0);
+
+        QcController.presetIndex = 5;  // Apple Music Atmos, the last row
+        presets = QcController.programmes[0].presets;
+        compare(presets.length, 1);
+        compare(presets[0].id, "apple-music-atmos");
 
         QcController.presetIndex = 0;
     }
