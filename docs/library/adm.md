@@ -56,10 +56,10 @@ back and prints what it found.
 ## What gets parsed
 
 - **The container** (Recommendation ITU-R BS.2088-1, Annex 1): `<fmt >`/`<data>` integer PCM
-  (8/16/24/32-bit — see "Known limitation" below for float32), the `<ds64>` 64-bit size table for
-  `RF64`/`BW64`-headed files, `<chna>` (the track-number ↔ ADM-ID join table) and `<axml>` (the
-  embedded ADM XML document itself). A plain `RIFF` header is accepted too, for the (very common)
-  case of a master that stays under the 4 GB threshold RF64 exists to lift.
+  (8/16/24/32-bit) and IEEE float (32/64-bit — see "PCM formats" below), the `<ds64>` 64-bit
+  size table for `RF64`/`BW64`-headed files, `<chna>` (the track-number ↔ ADM-ID join table) and
+  `<axml>` (the embedded ADM XML document itself). A plain `RIFF` header is accepted too, for
+  the (very common) case of a master that stays under the 4 GB threshold RF64 exists to lift.
 - **The ADM object graph** (Recommendation ITU-R BS.2076-2, Annex 1): `audioProgramme` →
   `audioContent` → `audioObject` → `audioPackFormat`/`audioChannelFormat` (with its
   `audioBlockFormat` time-divisions — position, gain, width/height/depth, `channelLock`,
