@@ -916,7 +916,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
-        const auto span = static_cast<std::size_t>(end - begin);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
