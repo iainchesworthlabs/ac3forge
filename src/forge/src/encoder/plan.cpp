@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <iterator>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -576,6 +577,16 @@ std::vector<std::size_t> wav_order(std::span<const eac3::chanmap::Location> loca
         }
     }
     return out;
+}
+
+std::vector<std::size_t> monitor_order(std::span<const eac3::chanmap::Location> locations,
+                                       std::size_t channel_count) {
+    if (locations.empty()) {
+        std::vector<std::size_t> identity(channel_count);
+        std::iota(identity.begin(), identity.end(), std::size_t{0});
+        return identity;
+    }
+    return wav_order(locations);
 }
 
 // --- tools ------------------------------------------------------------------
