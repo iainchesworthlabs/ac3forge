@@ -17,6 +17,10 @@
 #include <string_view>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
+
 #include "ac3/core/tables.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/qc.hpp"
@@ -51,11 +55,32 @@ fs::path scratch_dir() {
     return dir;
 }
 
+// std::system()'s return value is the child's own exit code on Windows
+// (cmd.exe /c ... for a plain non-shell-builtin invocation), but on POSIX
+// it is the raw wait() status word: WIFEXITED/WEXITSTATUS have to unpack it,
+// or exit code 1 arrives here as 256 (1 << 8). Without this, every run_cli*
+// helper below would be a Windows-only exit-code check wearing a portable
+// face - exactly the trap the comment at this file's frmsiz assertion tests
+// used to route around case by case rather than fix once, here.
+int child_exit_code(int system_status) {
+#ifdef _WIN32
+    return system_status;
+#else
+    if (system_status == -1) {
+        return system_status;
+    }
+    // A signal-terminated child (crash, abort()) has no exit code to report;
+    // 128 + signal is the shell convention, and distinguishable from every
+    // real ac3cli exit code (0..7 - apps/cli/exit_codes.hpp).
+    return WIFEXITED(system_status) ? WEXITSTATUS(system_status)
+                                    : 128 + WTERMSIG(system_status);
+#endif
+}
+
 // Runs `ac3cli <args>`, both streams redirected to `log` so a failing
-// assertion can print exactly what the binary said. Returns whatever
-// std::system reports - on Windows (cmd.exe /c ...) that is the child
-// process's own exit code for a plain non-shell-builtin invocation like
-// this one, which is all ac3cli ever returns (0 or 1 - see main.cpp).
+// assertion can print exactly what the binary said. Returns ac3cli's own
+// exit code (apps/cli/exit_codes.hpp), portable across std::system()'s
+// platform-specific return-value shape - see child_exit_code above.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
@@ -75,9 +100,9 @@ int run_cli(const std::string& args, const fs::path& log) {
     // read the entire command (redirections included) as one big quoted
     // word, which is exactly the "not found" this guard avoids.
     const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
+    return child_exit_code(std::system(wrapped.c_str()));
 #else
-    return std::system(command.c_str());
+    return child_exit_code(std::system(command.c_str()));
 #endif
 }
 
@@ -101,9 +126,9 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
     // Same double-quote-wrapping workaround run_cli uses above, and for the
     // same reason - see its comment.
     const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
+    return child_exit_code(std::system(wrapped.c_str()));
 #else
-    return std::system(command.c_str());
+    return child_exit_code(std::system(command.c_str()));
 #endif
 }
 
@@ -120,9 +145,9 @@ int run_cli_stdout(const std::string& args, const fs::path& out_file, const fs::
     // Same double-quote-wrapping workaround run_cli uses above, and for the
     // same reason - see its comment.
     const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
+    return child_exit_code(std::system(wrapped.c_str()));
 #else
-    return std::system(command.c_str());
+    return child_exit_code(std::system(command.c_str()));
 #endif
 }
 
