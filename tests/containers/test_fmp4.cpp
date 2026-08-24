@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <numbers>
 #include <span>
 #include <string>
@@ -445,7 +445,7 @@ TEST_CASE("HLS media playlist lists every fragment in order with EXT-X-MAP and c
     // from the SAME segments the playlist was built from, not copy-pasted
     // from hls.cpp's own formula.
     for (const auto& segment : fixture.fragmented.media_segments) {
-        const auto expected_uri = std::format("segment{}.m4s", segment.sequence_number);
+        const auto expected_uri = fmt::format("segment{}.m4s", segment.sequence_number);
         CHECK(playlist.find(expected_uri) != std::string::npos);
     }
     // TARGETDURATION must be an integer >= every #EXTINF value (RFC 8216
@@ -453,7 +453,7 @@ TEST_CASE("HLS media playlist lists every fragment in order with EXT-X-MAP and c
     const double max_seconds = 3.0 * static_cast<double>(ac3::kSamplesPerFrame) /
                                static_cast<double>(fixture.track.sample_rate);
     const auto target = static_cast<std::uint64_t>(std::ceil(max_seconds));
-    CHECK(playlist.find(std::format("#EXT-X-TARGETDURATION:{}\n", target)) != std::string::npos);
+    CHECK(playlist.find(fmt::format("#EXT-X-TARGETDURATION:{}\n", target)) != std::string::npos);
 }
 
 TEST_CASE("HLS master playlist signals CODECS and CHANNELS correctly", "[hls]") {
@@ -463,7 +463,7 @@ TEST_CASE("HLS master playlist signals CODECS and CHANNELS correctly", "[hls]") 
         const auto master = mp4::build_hls_master_playlist(
             fixture.track, fixture.fragmented.media_segments, "audio.m3u8", mp4::HlsOptions{});
         CHECK(master.find("CODECS=\"ec-3\"") != std::string::npos);
-        CHECK(master.find(std::format("CHANNELS=\"{}\"", fixture.track.channels)) !=
+        CHECK(master.find(fmt::format("CHANNELS=\"{}\"", fixture.track.channels)) !=
               std::string::npos);
         // Audio-only content self-references: the URI after EXT-X-STREAM-INF
         // is the same media playlist EXT-X-MEDIA already names (see
@@ -499,15 +499,25 @@ TEST_CASE("HLS master playlist lists several renditions in one group", "[hls]") 
     auto bed_track = fixture.track;
     bed_track.channels = 6;
 
+    // HlsRendition::segments is span<const SegmentInfo> - a manifest only
+    // ever reads a segment's bookkeeping, never its bytes (see hls.hpp's own
+    // comment) - so the fixture's MediaSegment list is converted once and
+    // shared by both renditions below, which point at the same segments.
+    std::vector<mp4::SegmentInfo> segments;
+    segments.reserve(fixture.fragmented.media_segments.size());
+    for (const auto& segment : fixture.fragmented.media_segments) {
+        segments.push_back(mp4::segment_info(segment));
+    }
+
     const std::array<mp4::HlsRendition, 2> renditions{
         mp4::HlsRendition{.track = fixture.track,
-                          .segments = fixture.fragmented.media_segments,
+                          .segments = segments,
                           .media_playlist_uri = "audio.m3u8",
                           .name = "Dolby Atmos",
                           .channels_attribute = "12/JOC",
                           .is_default = true},
         mp4::HlsRendition{.track = bed_track,
-                          .segments = fixture.fragmented.media_segments,
+                          .segments = segments,
                           .media_playlist_uri = "bed51/audio.m3u8",
                           .name = "5.1",
                           .channels_attribute = {},
@@ -541,9 +551,14 @@ TEST_CASE("the single-rendition master playlist is the one-element multi form", 
     const mp4::HlsOptions options{.channels_attribute = "12/JOC"};
     const auto one = mp4::build_hls_master_playlist(
         fixture.track, fixture.fragmented.media_segments, "audio.m3u8", options);
+    std::vector<mp4::SegmentInfo> segments;
+    segments.reserve(fixture.fragmented.media_segments.size());
+    for (const auto& segment : fixture.fragmented.media_segments) {
+        segments.push_back(mp4::segment_info(segment));
+    }
     const std::array<mp4::HlsRendition, 1> renditions{
         mp4::HlsRendition{.track = fixture.track,
-                          .segments = fixture.fragmented.media_segments,
+                          .segments = segments,
                           .media_playlist_uri = "audio.m3u8",
                           .name = "Audio",
                           .channels_attribute = "12/JOC",
@@ -563,9 +578,9 @@ TEST_CASE("DASH adaptation set snippet carries the correct codecs, timescale and
     CHECK(snippet.find("</AdaptationSet>") != std::string::npos);
     CHECK(snippet.find("mimeType=\"audio/mp4\"") != std::string::npos);
     CHECK(snippet.find("codecs=\"ec-3\"") != std::string::npos);
-    CHECK(snippet.find(std::format("audioSamplingRate=\"{}\"", fixture.track.sample_rate)) !=
+    CHECK(snippet.find(fmt::format("audioSamplingRate=\"{}\"", fixture.track.sample_rate)) !=
           std::string::npos);
-    CHECK(snippet.find(std::format("timescale=\"{}\"", fixture.track.sample_rate)) !=
+    CHECK(snippet.find(fmt::format("timescale=\"{}\"", fixture.track.sample_rate)) !=
           std::string::npos);
     CHECK(snippet.find("initialization=\"init.mp4\"") != std::string::npos);
     CHECK(snippet.find("media=\"segment$Number$.m4s\"") != std::string::npos);
@@ -579,7 +594,12 @@ TEST_CASE("DASH adaptation set snippet carries the correct codecs, timescale and
     // themselves, not copied from dash.cpp's own formula.
     CHECK(snippet.find("<SegmentTimeline>") != std::string::npos);
     CHECK(snippet.find("</SegmentTimeline>") != std::string::npos);
-    CHECK(snippet.find("<S d=\"4608\" r=\"2\"/>") != std::string::npos);
+    // The FIRST entry carries @t, the timeline's own start on the track's
+    // timeline - 0 here, since these segments are the whole track from its
+    // beginning. build_dash_adaptation_set writes it rather than relying on
+    // @t's default so that a manifest describing a rolling live WINDOW is
+    // correct too (see the rolling-window test further down).
+    CHECK(snippet.find("<S t=\"0\" d=\"4608\" r=\"2\"/>") != std::string::npos);
     CHECK(snippet.find("<S d=\"1536\"/>") != std::string::npos);
     // A flat, nominal `duration` attribute is exactly what this test's own
     // sibling regression (see the bug reintroduced further down) is about -
@@ -587,6 +607,19 @@ TEST_CASE("DASH adaptation set snippet carries the correct codecs, timescale and
     // present.
     CHECK(snippet.find("SegmentTemplate timescale=\"48000\" initialization=\"init.mp4\" "
                        "media=\"segment$Number$.m4s\" startNumber=\"1\">") != std::string::npos);
+
+    // Every Representation states its channel configuration. With no Dolby
+    // channel map supplied, that is the OTHER scheme DASH-IF IOP Part 8
+    // v5.0.0 §5.3.2 allows for E-AC-3 - ISO/IEC 23091-3's CICP
+    // ChannelConfiguration, the one TS 103 420 §D.2.3's own example MPD
+    // writes. No JOC descriptors: this fixture's stream carries no object
+    // layer, and signalling one that is not there would be worse than
+    // signalling nothing.
+    CHECK(snippet.find("<AudioChannelConfiguration "
+                       "schemeIdUri=\"urn:mpeg:mpegB:cicp:ChannelConfiguration\" "
+                       "value=\"6\"/>") != std::string::npos);
+    CHECK(snippet.find("EC3_ExtensionType") == std::string::npos);
+    CHECK(snippet.find("EC3_ExtensionComplexityIndex") == std::string::npos);
 
     // Balanced enough to be worth writing to a file: every opening tag this
     // snippet introduces has a matching close.
@@ -625,7 +658,7 @@ TEST_CASE("DASH adaptation set's SegmentTimeline exactly reproduces varied segme
             .bytes = {}, .sequence_number = 6, .sample_count = 3, .duration_samples = 4608},
     };
     const auto snippet = mp4::build_dash_adaptation_set(track, segments, mp4::DashOptions{});
-    CHECK(snippet.find("<S d=\"3072\" r=\"1\"/>") != std::string::npos);
+    CHECK(snippet.find("<S t=\"0\" d=\"3072\" r=\"1\"/>") != std::string::npos);
     CHECK(snippet.find("<S d=\"1536\"/>") != std::string::npos);
     CHECK(snippet.find("<S d=\"4608\" r=\"2\"/>") != std::string::npos);
 
@@ -637,8 +670,11 @@ TEST_CASE("DASH adaptation set's SegmentTimeline exactly reproduces varied segme
     // present.
     std::uint64_t reconstructed_total = 0;
     std::size_t pos = 0;
-    while ((pos = snippet.find("<S d=\"", pos)) != std::string::npos) {
-        const auto d_start = pos + 6;
+    while ((pos = snippet.find("<S ", pos)) != std::string::npos) {
+        // Skips whatever leads the entry (the first one's own @t) and reads
+        // the @d/@r pair, so this stays a genuinely independent re-parse
+        // rather than a match against one exact spelling.
+        const auto d_start = snippet.find(" d=\"", pos) + 4;
         const auto d_end = snippet.find('"', d_start);
         const auto d = std::stoull(snippet.substr(d_start, d_end - d_start));
         std::uint64_t repeat = 0;
@@ -657,4 +693,319 @@ TEST_CASE("DASH adaptation set's SegmentTimeline exactly reproduces varied segme
         expected_total += s.duration_samples;
     }
     CHECK(reconstructed_total == expected_total);
+}
+
+TEST_CASE("FragmentWriter's pushed segments are fragment()'s bytes exactly", "[fmp4]") {
+    // The writer's whole contract (mp4.hpp): the only state fragment()'s own
+    // loop carries across fragments is the running decode time and the
+    // sequence number, and both live on the writer instead - so pushing the
+    // same frames one at a time reproduces the batch segments byte for byte,
+    // styp brands, mfhd, tfdt, trun sizes and mdat payload alike. The shared
+    // fixture is deliberately 10 frames at 3 per fragment, so this spans
+    // three full fragments and one short trailing one.
+    const auto fixture = make_real_fixture();
+    auto writer = mp4::FragmentWriter::create(
+        fixture.track, mp4::FragmentOptions{.frames_per_fragment = kFramesPerFragment});
+    REQUIRE(writer.has_value());
+
+    std::vector<mp4::MediaSegment> streamed;
+    for (const auto& frame : fixture.frames) {
+        auto closed = writer->push(frame);
+        REQUIRE(closed.has_value());
+        if (*closed) {
+            streamed.push_back(std::move(**closed));
+        }
+    }
+    // A segment comes back on exactly every kFramesPerFragment-th push, so
+    // 10 frames at 3 apiece close three fragments before finalize().
+    CHECK(streamed.size() == 3);
+    auto tail = writer->finalize();
+    REQUIRE(tail.has_value());
+    REQUIRE(tail->has_value());
+    streamed.push_back(std::move(**tail));
+    // A second finalize() has nothing left to flush.
+    auto again = writer->finalize();
+    REQUIRE(again.has_value());
+    CHECK_FALSE(again->has_value());
+
+    CHECK(writer->frames_written() == fixture.frames.size());
+    const auto& batch = fixture.fragmented.media_segments;
+    REQUIRE(streamed.size() == batch.size());
+    for (std::size_t i = 0; i < batch.size(); ++i) {
+        CHECK(streamed[i].sequence_number == batch[i].sequence_number);
+        CHECK(streamed[i].sample_count == batch[i].sample_count);
+        CHECK(streamed[i].duration_samples == batch[i].duration_samples);
+        CHECK(streamed[i].base_media_decode_time == batch[i].base_media_decode_time);
+        REQUIRE(streamed[i].bytes.size() == batch[i].bytes.size());
+        CHECK(std::equal(streamed[i].bytes.begin(), streamed[i].bytes.end(),
+                         batch[i].bytes.begin(), batch[i].bytes.end()));
+    }
+    // And the running decode time really is the sum of what came before,
+    // recomputed here rather than read back out of the same field.
+    std::uint64_t expected_decode_time = 0;
+    for (const auto& segment : streamed) {
+        CHECK(segment.base_media_decode_time == expected_decode_time);
+        expected_decode_time += segment.duration_samples;
+    }
+}
+
+TEST_CASE("FragmentWriter's init segment is fragment()'s but for the unknown duration", "[fmp4]") {
+    // The one deliberate difference between the two initialization segments:
+    // a live session cannot know its total duration, so mvhd/tkhd/mdhd carry
+    // 0 where the batch form writes the real total. This asserts that by
+    // patching the three fields back to the batch total and then requiring
+    // FULL byte equality - so anything else that drifted apart (stsd and its
+    // dec3 payload, mvex/trex, the empty sample table, the ftyp brands) fails
+    // here rather than passing a weaker structural check.
+    const auto fixture = make_real_fixture();
+    auto writer = mp4::FragmentWriter::create(
+        fixture.track, mp4::FragmentOptions{.frames_per_fragment = kFramesPerFragment});
+    REQUIRE(writer.has_value());
+
+    Bytes patched = writer->init_segment();
+    const auto elements = parse(patched);
+    const auto* mvhd = find(elements, "mvhd");
+    const auto* tkhd = find(elements, "tkhd");
+    const auto* mdhd = find(elements, "mdhd");
+    REQUIRE(mvhd != nullptr);
+    REQUIRE(tkhd != nullptr);
+    REQUIRE(mdhd != nullptr);
+    // Payload layouts, ISO/IEC 14496-12 §8.2.2/§8.3.2/§8.4.2 (version 0):
+    // mvhd  version+flags(4) creation(4) modification(4) timescale(4) duration
+    // tkhd  version+flags(4) creation(4) modification(4) track_ID(4) reserved(4) duration
+    // mdhd  version+flags(4) creation(4) modification(4) timescale(4) duration
+    const std::array<std::size_t, 3> duration_offsets{mvhd->payload + 16, tkhd->payload + 20,
+                                                      mdhd->payload + 16};
+    for (const auto offset : duration_offsets) {
+        CHECK(u32_at(patched, offset) == 0);
+    }
+
+    const auto total_samples =
+        static_cast<std::uint32_t>(fixture.frames.size()) * fixture.track.samples_per_frame;
+    for (const auto offset : duration_offsets) {
+        CHECK(u32_at(fixture.fragmented.init_segment, offset) == total_samples);
+        for (std::size_t i = 0; i < 4; ++i) {
+            patched[offset + i] =
+                std::byte{static_cast<std::uint8_t>(total_samples >> (24 - 8 * i))};
+        }
+    }
+    REQUIRE(patched.size() == fixture.fragmented.init_segment.size());
+    CHECK(std::equal(patched.begin(), patched.end(), fixture.fragmented.init_segment.begin(),
+                     fixture.fragmented.init_segment.end()));
+}
+
+TEST_CASE("FragmentWriter refuses what fragment() refuses", "[fmp4]") {
+    const auto track = sample_track();
+    CHECK(mp4::FragmentWriter::create({.channels = 0, .codec_config = {std::byte{0}}}).error() ==
+          mp4::MuxError::kInvalidTrack);
+    CHECK(mp4::FragmentWriter::create(
+              mp4::AudioTrack{.codec_id = "mp4a", .codec_config = {std::byte{0}}})
+              .error() == mp4::MuxError::kInvalidTrack);
+    // No codec_config payload at all: the sample entry would have no
+    // dac3/dec3 child to describe the codec with.
+    CHECK(mp4::FragmentWriter::create(
+              mp4::AudioTrack{.sample_rate = 48000, .channels = 2, .codec_config = {}})
+              .error() == mp4::MuxError::kInvalidTrack);
+    CHECK(mp4::FragmentWriter::create(track, {.frames_per_fragment = 0}).error() ==
+          mp4::MuxError::kInvalidOptions);
+    // Unlike fragment(), an empty session is not an error - kNoFrames is a
+    // statement about a batch call's arguments, and a live writer that is
+    // stopped before its first frame simply has nothing to flush.
+    auto writer = mp4::FragmentWriter::create(track);
+    REQUIRE(writer.has_value());
+    auto tail = writer->finalize();
+    REQUIRE(tail.has_value());
+    CHECK_FALSE(tail->has_value());
+    CHECK(writer->frames_written() == 0);
+    CHECK(writer->window().empty());
+}
+
+TEST_CASE("FragmentWriter's playlist window rolls, and the live manifests roll with it",
+          "[fmp4][hls][dash]") {
+    // A rolling live origin: only the last two segments stay listed. The
+    // whole point of the window is that a session of any length costs a fixed
+    // amount to describe - so the manifests must state where the window now
+    // STARTS, not assume it starts at the beginning of the track.
+    const auto fixture = make_real_fixture();
+    auto writer = mp4::FragmentWriter::create(
+        fixture.track, mp4::FragmentOptions{.frames_per_fragment = kFramesPerFragment,
+                                            .playlist_window_segments = 2});
+    REQUIRE(writer.has_value());
+    for (const auto& frame : fixture.frames) {
+        REQUIRE(writer->push(frame).has_value());
+    }
+    REQUIRE(writer->finalize().has_value());
+
+    const auto window = writer->window();
+    REQUIRE(window.size() == 2);
+    CHECK(window.front().sequence_number == 3);
+    CHECK(window.back().sequence_number == 4);
+    // The window's own entries still describe the same segments the batch
+    // form produced, byte size included.
+    const auto& batch = fixture.fragmented.media_segments;
+    CHECK(window.front().base_media_decode_time == batch[2].base_media_decode_time);
+    CHECK(window.front().byte_size == batch[2].bytes.size());
+    CHECK(mp4::segment_info(batch[3]).duration_samples == window.back().duration_samples);
+
+    // RFC 8216 §6.2.2's live Media Playlist: #EXT-X-MEDIA-SEQUENCE is the
+    // FIRST listed segment's number (3, not 1), and neither
+    // #EXT-X-PLAYLIST-TYPE:VOD nor #EXT-X-ENDLIST appears while the
+    // presentation is still growing.
+    const auto live =
+        mp4::build_hls_media_playlist(fixture.track, window, mp4::HlsOptions{.vod = false});
+    CHECK(live.find("#EXT-X-MEDIA-SEQUENCE:3\n") != std::string::npos);
+    CHECK(live.find("#EXT-X-ENDLIST") == std::string::npos);
+    CHECK(live.find("#EXT-X-PLAYLIST-TYPE") == std::string::npos);
+    CHECK(live.find("segment3.m4s") != std::string::npos);
+    CHECK(live.find("segment4.m4s") != std::string::npos);
+    CHECK(live.find("segment1.m4s") == std::string::npos);
+
+    // Before the first segment closes there is nothing to list, and a
+    // manifest builder handed an empty window has to say so rather than
+    // reach past the end of it - @startNumber falls back to its own default.
+    const std::span<const mp4::SegmentInfo> nothing_yet;
+    const auto empty = mp4::build_dash_adaptation_set(fixture.track, nothing_yet);
+    CHECK(empty.find("startNumber=\"1\"") != std::string::npos);
+    CHECK(empty.find("<S ") == std::string::npos);
+    CHECK(mp4::build_hls_media_playlist(fixture.track, nothing_yet)
+              .find("#EXT-X-MEDIA-SEQUENCE") == std::string::npos);
+
+    // The DASH half of the same fact: @startNumber is the window's first
+    // segment and the timeline's first <S> states its decode time, so a
+    // player joining now lands where the audio actually is rather than at
+    // zero.
+    const auto snippet = mp4::build_dash_adaptation_set(fixture.track, window);
+    CHECK(snippet.find("startNumber=\"3\"") != std::string::npos);
+    CHECK(snippet.find(fmt::format("<S t=\"{}\" d=\"{}\"/>", window.front().base_media_decode_time,
+                                   window.front().duration_samples)) != std::string::npos);
+}
+
+TEST_CASE("fragment() adds the 'ceao' brand only for an object-audio track", "[fmp4]") {
+    // ETSI TS 103 420 §E.5: "The FileTypeBox compatibility brand shall be
+    // ceao and should be used to indicate media tracks that conform to this
+    // media profile" - DASH-IF IOP Part 8 v5.0.0 §5.3.3 repeats it for DASH.
+    // Added to the existing pair, not substituted: §E.2 requires ISO/IEC
+    // 23000-19 conformance on top of the profile.
+    const auto fixture = make_real_fixture();
+    const auto plain = parse(fixture.fragmented.init_segment);
+    const auto* plain_ftyp = find(plain, "ftyp");
+    REQUIRE(plain_ftyp != nullptr);
+    CHECK_FALSE(has_brand(read_brand_box(fixture.fragmented.init_segment, *plain_ftyp), "ceao"));
+
+    const auto object_audio =
+        mp4::fragment(fixture.track, fixture.frames,
+                      mp4::FragmentOptions{.frames_per_fragment = kFramesPerFragment,
+                                           .object_audio_brand = true});
+    REQUIRE(object_audio.has_value());
+    const auto init = parse(object_audio->init_segment);
+    const auto* ftyp = find(init, "ftyp");
+    REQUIRE(ftyp != nullptr);
+    const auto brands = read_brand_box(object_audio->init_segment, *ftyp);
+    CHECK(has_brand(brands, "ceao"));
+    CHECK(has_brand(brands, "iso6"));
+    CHECK(has_brand(brands, "cmfc"));
+    // Every media segment's styp carries it too - a segment served on its own
+    // is where a player actually reads the brand from.
+    REQUIRE_FALSE(object_audio->media_segments.empty());
+    for (const auto& segment : object_audio->media_segments) {
+        const auto boxes = parse(segment.bytes);
+        const auto* styp = find(boxes, "styp");
+        REQUIRE(styp != nullptr);
+        CHECK(has_brand(read_brand_box(segment.bytes, *styp), "ceao"));
+    }
+    // FragmentWriter honours the same option, since it shares the builder.
+    auto writer = mp4::FragmentWriter::create(
+        fixture.track, mp4::FragmentOptions{.frames_per_fragment = kFramesPerFragment,
+                                            .object_audio_brand = true});
+    REQUIRE(writer.has_value());
+    const auto streamed_init = parse(writer->init_segment());
+    const auto* streamed_ftyp = find(streamed_init, "ftyp");
+    REQUIRE(streamed_ftyp != nullptr);
+    CHECK(has_brand(read_brand_box(writer->init_segment(), *streamed_ftyp), "ceao"));
+}
+
+TEST_CASE("DASH signals JOC and the channel configuration the way TS 103 420 D.2 specifies",
+          "[dash]") {
+    // ETSI TS 103 420 §D.2.2.1: the extension-type descriptor's value "shall
+    // be the three character string JOC". §D.2.2.2: the complexity descriptor's
+    // value "shall be decimal representation of the eight-bit element
+    // complexity_index_type_a in the EC3SpecificBox". Both are named by
+    // DASH-IF IOP Part 8 v5.0.0 §5.3.2 as the E-AC-3-with-JOC signalling.
+    const auto fixture = make_real_fixture();
+    const mp4::DashOptions options{.joc_complexity_index = 12,
+                                   .dolby_channel_configuration = "F801"};
+    const auto snippet =
+        mp4::build_dash_adaptation_set(fixture.track, fixture.fragmented.media_segments, options);
+    CHECK(snippet.find("<SupplementalProperty "
+                       "schemeIdUri=\"tag:dolby.com,2018:dash:EC3_ExtensionType:2018\" "
+                       "value=\"JOC\"/>") != std::string::npos);
+    CHECK(snippet.find("<SupplementalProperty "
+                       "schemeIdUri=\"tag:dolby.com,2018:dash:EC3_ExtensionComplexityIndex:2018\" "
+                       "value=\"12\"/>") != std::string::npos);
+    // §5.3.2's other allowed AudioChannelConfiguration scheme, "as defined in
+    // TS 102 366 clause I.1.2.1": four hex digits of the 16-bit channel
+    // assignment, L/C/R/Ls/Rs/LFE being F801 - the exact value TS 103 420
+    // §D.2.3's example MPD carries as its commented alternative.
+    CHECK(snippet.find("<AudioChannelConfiguration "
+                       "schemeIdUri=\"tag:dolby.com,2014:dash:audio_channel_configuration:2011\" "
+                       "value=\"F801\"/>") != std::string::npos);
+    CHECK(snippet.find("cicp:ChannelConfiguration") == std::string::npos);
+
+    // ISO/IEC 23009-1's RepresentationBaseType is a SEQUENCE, so both
+    // descriptors have to precede the SegmentTemplate, and
+    // AudioChannelConfiguration has to precede SupplementalProperty. A
+    // manifest that gets this wrong fails schema validation even though every
+    // attribute in it is right.
+    const auto channels = snippet.find("<AudioChannelConfiguration");
+    const auto supplemental = snippet.find("<SupplementalProperty");
+    const auto segment_template = snippet.find("<SegmentTemplate");
+    REQUIRE(channels != std::string::npos);
+    REQUIRE(supplemental != std::string::npos);
+    REQUIRE(segment_template != std::string::npos);
+    CHECK(channels < supplemental);
+    CHECK(supplemental < segment_template);
+}
+
+TEST_CASE("build_dash_mpd wraps a Period, static or dynamic", "[dash]") {
+    const auto fixture = make_real_fixture();
+    const auto& segments = fixture.fragmented.media_segments;
+    const auto snippet = mp4::build_dash_adaptation_set(fixture.track, segments);
+
+    // Static: the whole asset exists, so it states its own total - 10 frames
+    // of 1536 samples at 48 kHz, recomputed here rather than read back.
+    const auto vod = mp4::build_dash_mpd(fixture.track, segments, snippet);
+    CHECK(vod.find("type=\"static\"") != std::string::npos);
+    CHECK(vod.find(fmt::format(
+              "mediaPresentationDuration=\"PT{:.3f}S\"",
+              static_cast<double>(kFrames) * ac3::kSamplesPerFrame / 48000.0)) !=
+          std::string::npos);
+    CHECK(vod.find("availabilityStartTime") == std::string::npos);
+    CHECK(vod.find(snippet) != std::string::npos);
+    CHECK(vod.find("</MPD>") != std::string::npos);
+
+    // Dynamic: segments are still appearing, so there is no total to state -
+    // stating one would tell a player the stream stops there - and
+    // @availabilityStartTime anchors the timeline to wall-clock time. The
+    // same attribute set TS 103 420 §D.2.3's own example MPD carries.
+    const auto live = mp4::build_dash_mpd(
+        fixture.track, segments, snippet,
+        mp4::MpdOptions{.is_static = false,
+                        .availability_start_time = "2026-08-23T12:30:00Z",
+                        .publish_time = "2026-08-23T12:31:00Z",
+                        .minimum_update_period_seconds = 1.5,
+                        .time_shift_buffer_depth_seconds = 30.0});
+    CHECK(live.find("type=\"dynamic\"") != std::string::npos);
+    CHECK(live.find("availabilityStartTime=\"2026-08-23T12:30:00Z\"") != std::string::npos);
+    CHECK(live.find("publishTime=\"2026-08-23T12:31:00Z\"") != std::string::npos);
+    CHECK(live.find("minimumUpdatePeriod=\"PT1.500S\"") != std::string::npos);
+    CHECK(live.find("timeShiftBufferDepth=\"PT30.000S\"") != std::string::npos);
+    CHECK(live.find("mediaPresentationDuration") == std::string::npos);
+    CHECK(live.find("<Period id=\"1\" start=\"PT0S\">") != std::string::npos);
+
+    // publishTime is optional; an empty one omits the attribute rather than
+    // writing an empty string a validator would reject.
+    const auto no_publish = mp4::build_dash_mpd(
+        fixture.track, segments, snippet,
+        mp4::MpdOptions{.is_static = false, .availability_start_time = "2026-08-23T12:30:00Z"});
+    CHECK(no_publish.find("publishTime") == std::string::npos);
 }

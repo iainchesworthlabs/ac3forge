@@ -119,6 +119,45 @@ std::optional<TagContext> compute_tag_context(std::span<const std::byte> frame,
 
 }  // namespace
 
+bool has_authenticity_tag(std::span<const std::byte> frame) {
+    // Deliberately key-free: where the tag LIVES is fixed by the container's
+    // own protection-length codes, and only whether it matches needs a key.
+    // So an inspection tool can answer "is this stream signed at all" - the
+    // question `ac3cli probe` asks - without holding anything secret, which
+    // is the whole point of keeping the key out of this tool (see
+    // docs/concepts/object-signing.md).
+    // walk_frame screens the frame's shape itself and reports no container
+    // for anything outside this signer's subset - an ordinary non-Atmos
+    // frame included - so nothing here has to pre-qualify what it is handed.
+    const FrameLayout p = emdf::walk_frame(frame);
+    if (!p.supported || !p.has_container) {
+        return false;
+    }
+    const int np = prot_bits(p.protection_primary_code);
+    if (np <= 0) {
+        // No primary protection field at all - the container declared it
+        // absent, so there is nowhere for a tag to be.
+        return false;
+    }
+    const std::size_t prim_off =
+        p.container_start + p.container_parsed_bits - std::size_t(np) -
+        std::size_t(prot_bits(p.protection_secondary_code));
+    // An all-zero field is what an unsigned container carries: §H.2.2.4 leaves
+    // the content implementation-defined, and this project's own writer emits
+    // zeros until sign_atmos_frame replaces them. A real HMAC truncation
+    // being all-zero is a 2^-np coincidence.
+    for (int i = 0; i < np; ++i) {
+        const std::size_t q = prim_off + static_cast<std::size_t>(i);
+        if ((q >> 3) >= frame.size()) {
+            return false;
+        }
+        if (bit_at(frame, q)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool sign_atmos_frame(std::span<std::byte> frame, const SigningKey& key) {
     if (key.empty()) return false;
     const auto ctx = compute_tag_context(frame, key);

@@ -43,6 +43,9 @@ constexpr std::size_t kBlocksPerFrame = 6;
 constexpr int kSupportedStrmtyp = 0;  // independent
 constexpr int kSupportedAcmod = 7;    // 3/2
 constexpr int kSupportedNumblkscod = 3;
+constexpr int kSupportedBamode = 1;   // roadmap EQ3: the encoder transmits its own
+                                      // allocation parameters rather than taking
+                                      // Table E1.4's bamode == 0 defaults
 
 ExpStrategy exp_strategy(int code) {
     switch (code) {
@@ -421,10 +424,11 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         }
     }
     // dbaflde is deliberately NOT checked here - it is a real, content-driven
-    // case the audblk loop below handles per block. The other three are fixed
-    // constants in this encoder's output (see eac3_frame.cpp), so a frame
-    // that disagrees is a frame this walker was not written against.
-    if (snroffststr != 0 || bamode != 0 || frmfgaincode != 0) {
+    // case the audblk loop below handles per block. The other two are fixed
+    // constants in this encoder's output (see eac3_frame.cpp), and bamode is
+    // pinned to kSupportedBamode above, so a frame that disagrees on any of
+    // the three is a frame this walker was not written against.
+    if (snroffststr != 0 || bamode != kSupportedBamode || frmfgaincode != 0) {
         return out_of_scope();
     }
 
@@ -432,8 +436,12 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
     std::array<std::vector<std::uint8_t>, kMaxFbwChannels> exps;  // decoded exponents per fbw ch
     std::array<int, kMaxFbwChannels> endmant{};
     std::vector<std::uint8_t> lfeexps;
-    const BitAllocCodes codes{.sdcycod = 2, .fdcycod = 1, .sgaincod = 1,
-                              .dbpbcod = 2, .floorcod = 7, .fgaincod = 4};
+    // Table E1.4's bamode == 0 defaults, the starting point before block 0's
+    // baie (bamode is pinned to 1 above, and this encoder always sends baie
+    // in block 0 - see the read below) overwrites every field the transmitted
+    // codes actually control.
+    BitAllocCodes codes{.sdcycod = 2, .fdcycod = 1, .sgaincod = 1,
+                        .dbpbcod = 2, .floorcod = 7, .fgaincod = 4};
     const SampleRate sr = SampleRate::k48000;  // fscod 0
 
     // Spectral extension state, persisting block to block exactly like
@@ -587,10 +595,27 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             lfeexps.assign(static_cast<std::size_t>(kLfeEndmant), 0);
             decode_exponents(absexp, grps, ExpStrategy::kD15, lfeexps);
         }
-        // bamode==0: default codes; snroffststr==0: frame SNR. baie/snroffste
-        // themselves are correctly absent here, not just skipped: this
-        // project's own encoder (eac3_frame.cpp) omits both flag bits
-        // entirely whenever bamode/snroffststr are 0 at the frame level.
+        // roadmap EQ3: bamode is pinned to 1 above, so every block carries its
+        // own baie flag (§7.2.1) rather than the shape omitting it entirely
+        // the way it still does for snroffste below. This encoder's own
+        // block 0 always sets it and states the codes; the remaining five
+        // blocks say "keep them" (eac3_frame.cpp). The codes themselves DO
+        // matter downstream: compute_bit_allocation() below sizes every
+        // mantissa from them (dbpbcod in particular moves off its bamode==0
+        // default - see eac3_frame.cpp's own note), so reading and keeping
+        // them, not just skipping their 11 bits, is what keeps the mantissa
+        // tally in sync with what the encoder actually sent.
+        if (r.read(1)) {  // baie
+            codes.sdcycod = static_cast<int>(r.read(2));
+            codes.fdcycod = static_cast<int>(r.read(2));
+            codes.sgaincod = static_cast<int>(r.read(2));
+            codes.dbpbcod = static_cast<int>(r.read(2));
+            codes.floorcod = static_cast<int>(r.read(3));
+        }
+        // snroffststr==0: frame SNR. snroffste itself is correctly absent
+        // here, not just skipped: this project's own encoder (eac3_frame.cpp)
+        // omits the flag bit entirely whenever snroffststr is 0 at the frame
+        // level.
         const int csnroffst = frmcsnroffst;
         const int fsnroffst = frmfsnroffst;
         // Same gate again (eac3_decoder.cpp reads convsnroffste the same
@@ -702,8 +727,26 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         int counts2 = 0;
         int counts4 = 0;
         int mant = 0;
+        bool tally_desynced = false;
         auto tally = [&](std::span<const std::uint8_t> e, int end, int cs, int fs,
                          const DeltaSegments& delta) {
+            // `end` is this block's own endmant for the channel; `e` is what
+            // the exponent walk above actually produced for it. A malformed
+            // frame can have them disagree, and subspan() below is a
+            // precondition, not a clamp: asking for more than `e` holds is
+            // undefined, and on an EMPTY `e` it manufactures a span with a
+            // null data pointer and a non-zero size, which
+            // compute_bit_allocation then dereferences (the defect
+            // ac3::signing::emdf_atmos_signer.cpp's own tally hit first -
+            // roadmap VX3, fuzz_signing_verify - before this walk existed;
+            // ported here since verify_atmos_stream now runs through it).
+            // Disagreement here means the bit walk has already lost sync, so
+            // this frame is out of scope rather than tallied against a
+            // mantissa count that was never right.
+            if (end < 0 || static_cast<std::size_t>(end) > e.size()) {
+                tally_desynced = true;
+                return;
+            }
             std::vector<std::uint8_t> bap(static_cast<std::size_t>(end), std::uint8_t{0});
             BitAllocRegion region{};
             region.snr_all_zero = (cs == 0 && fs == 0);
@@ -731,6 +774,9 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         }
         if (lfeon) {
             tally(lfeexps, kLfeEndmant, csnroffst, fsnroffst, DeltaSegments{});
+        }
+        if (tally_desynced) {
+            return out_of_scope();
         }
         mant += 5 * ((counts1 + 2) / 3);
         mant += 7 * ((counts2 + 2) / 3);

@@ -48,17 +48,21 @@ struct HlsOptions {
     // module never reads; the caller (which already read
     // oba_complexity_index off the bitstream to build the dec3 box, see
     // ac3::io::build_codec_config_box) is the one that knows.
-    std::string channels_attribute;
+    std::string channels_attribute{};
     // #EXT-X-VERSION. 7 is the first version whose #EXT-X-MAP may appear in
     // a plain (non-I-frame-only) Media Playlist, which every fMP4 media
     // playlist needs (RFC 8216 §7's compatibility table).
     std::uint32_t version = 7;
     // Whether this is the whole, final asset (RFC 8216 §4.3.3.5's VOD
     // #EXT-X-PLAYLIST-TYPE plus a closing #EXT-X-ENDLIST) rather than a live,
-    // still-growing playlist. mp4::fragment() is a batch API - every
-    // fragment is already known - so VOD is the only shape this module's
-    // caller can honestly produce; false only omits both tags for a caller
-    // building its own live playlist update loop around fragment()'s output.
+    // still-growing playlist. True is right for mp4::fragment()'s batch
+    // output, where every fragment is already known. False is the live shape
+    // (RFC 8216 §6.2.2): both tags are omitted, and #EXT-X-MEDIA-SEQUENCE -
+    // written from the FIRST listed segment's own sequence number either way -
+    // is what tells a player that segments have rolled off the front of the
+    // playlist since it last reloaded. Rewrite the playlist from
+    // mp4::FragmentWriter::window() each time a segment closes, then rewrite it
+    // once more with vod = true when the session ends.
     bool vod = true;
 };
 
@@ -88,8 +92,12 @@ struct HlsOptions {
 // re-encoding anything.
 struct HlsRendition {
     AudioTrack track{};
-    // Views the caller's own FragmentedOutput::media_segments.
-    std::span<const MediaSegment> segments{};
+    // A manifest only ever reads a segment's bookkeeping, never its bytes
+    // (mp4.hpp's SegmentInfo) - the same reason build_hls_master_playlist's
+    // single-rendition form and build_hls_media_playlist both settled on it.
+    // mp4::segment_info()/segment_infos() convert from a caller's own
+    // FragmentedOutput::media_segments or FragmentWriter::window().
+    std::span<const SegmentInfo> segments{};
     // Relative to the master playlist.
     std::string media_playlist_uri{};
     // #EXT-X-MEDIA's NAME, a human-readable label; REQUIRED by RFC 8216
@@ -119,8 +127,18 @@ struct HlsRendition {
 [[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
     std::span<const HlsRendition> renditions, const HlsOptions& options = {});
 
-// The single-rendition form, unchanged: one #EXT-X-MEDIA named "Audio",
-// DEFAULT=YES, with HlsOptions::channels_attribute as its CHANNELS.
+// The single-rendition form: one #EXT-X-MEDIA named "Audio", DEFAULT=YES,
+// with HlsOptions::channels_attribute as its CHANNELS - the one-element case
+// of the renditions form above, which it delegates to.
+[[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
+    const AudioTrack& track, std::span<const SegmentInfo> segments,
+    std::string_view media_playlist_uri, const HlsOptions& options = {});
+
+// Convenience overload for a caller holding mp4::fragment()'s batch output
+// (mp4::segment_infos() is what it forwards through). The SegmentInfo form
+// above is the one a live caller wants: mp4::FragmentWriter::window() hands
+// back exactly that, without keeping the windowed segments' bytes alive
+// purely to name them.
 [[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     std::string_view media_playlist_uri, const HlsOptions& options = {});
@@ -128,6 +146,10 @@ struct HlsRendition {
 // The media playlist itself (RFC 8216 §4.3.3): #EXTM3U, #EXT-X-MAP pointing
 // at the initialization segment, then #EXTINF/segment-URI pairs for every
 // fragment in order.
+[[nodiscard]] MP4_EXPORT std::string build_hls_media_playlist(
+    const AudioTrack& track, std::span<const SegmentInfo> segments,
+    const HlsOptions& options = {});
+
 [[nodiscard]] MP4_EXPORT std::string build_hls_media_playlist(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     const HlsOptions& options = {});

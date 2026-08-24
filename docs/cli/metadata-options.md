@@ -2,8 +2,8 @@
 
 Encoding commands in [Commands](commands.md) take these after their positional arguments, in any
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
-takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=` and (`live`
-only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
+takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=`/`fmp4-window=`
+and (`live` only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
 `cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
 — of the three Atmos commands, only `atmos-encode` measures:
@@ -50,12 +50,25 @@ metadata options (any order, after the positional arguments):
                     back to the spec's own direct evaluation. mode=performance (the default
                     state) names the fast paths. Tokens apply in order, so a later
                     fast-mdct=off / fast-imdct=off still adjusts one half on its own
+  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per channel per block from
+                    content - the same reach as fast-mdct=off (encode/sine and the
+                    atmos/record/live session builders); eac3-encode's [tools] positional can
+                    also reach this field via a bare nodither token. Real dither values are
+                    decoder-defined (the spec's own "any reasonably random sequence"), so this
+                    is for a run that needs bit-for-bit agreement between two decoders of the
+                    same stream more than it needs dither's own perceptual benefit -
+                    tools/checks/verify_gold_reference.sh is the one caller that does
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
-                    ebu-r128-s2 | atsc-a85 | netflix
+                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
   preset=all        gate against every preset above
                     omitted: measure and report only, no gate
+  layout=bed        the default - meter the independent substream's own
+                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)
+  layout=rendered   meter the whole assembled program instead, every
+                    dependent substream's height/wide/rear channels
+                    included (BS.1770-5 Annex 3's extended algorithm)
 ```
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
@@ -75,7 +88,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | all
+        nofastmdct | nodither | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -84,9 +97,10 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         atten:N pins the SPX notch depth, noatten removes it;
         ecpl only takes effect alongside cpl (e.g. cpl+ecpl);
         nofastmdct forces the direct-form forward MDCT instead of the
-        default §7.9.4 fast path — the fast MDCT is not a coding tool
-        (nothing in the bitstream's syntax changes), so 'none' and 'all'
-        both leave it alone, and the older opt-in spelling 'fastmdct'
+        default §7.9.4 fast path, nodither pins dithflag at 0 instead of
+        deciding it from content — neither is a coding tool (nothing in
+        the bitstream's syntax changes either way), so 'none' and 'all'
+        both leave them alone, and the older opt-in spelling 'fastmdct'
         still parses as a no-op
 ```
 
@@ -252,7 +266,7 @@ The GUI's own multi-source Format-tab table (**Add source…** plus a per-channe
 is a direct front end over this same grammar — see
 [GUI → Multi-source & assignment](../gui/source-assignment.md).
 
-## Record/live options (`record`, `live`): `container=mkv`
+## Record/live options (`record`, `live`): `container=`
 
 ```text
 record/live options (record, live; any order, after the positional arguments):
@@ -260,6 +274,13 @@ record/live options (record, live; any order, after the positional arguments):
                      stream this writes by default - same shape of choice as
                      the GUI's own Container setting (container=matroska is
                      an accepted alias)
+  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live
+                     HLS playlists and a dynamic DASH MPD, updated as the
+                     session runs - the output path names the folder
+                     (container=cmaf is an accepted alias)
+  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the
+                     playlist/MPD (a rolling live window); 0, the default, keeps
+                     every segment
   container=raw     the default, spelled out
 ```
 
@@ -274,9 +295,28 @@ this page follows. This is the same choice the GUI's own Container combo offers 
 session](../gui/live-session.md#take-durability) for how a live session's own take durability
 differs slightly between the two front ends.
 
+`container=fmp4` (alias `container=cmaf`) is the same choice for fragmented MP4/CMAF, with one
+shape difference the format forces: the output path names a **folder**, not a file, because the
+container is a set of files. It is written incrementally — `init.mp4` at the first frame, a
+`segment*.m4s` each time a fragment closes, and `audio.m3u8`/`master.m3u8`/`manifest.mpd`
+rewritten alongside it — so the folder is a servable live origin *while the session is still
+running*: the playlist carries no `#EXT-X-ENDLIST` and the MPD is `type="dynamic"` with an
+`availabilityStartTime` until the session stops, at which point the trailing partial fragment is
+flushed and both close to their VOD/static forms. `live` never accumulates the take in memory on
+this path at all; `record`, which encodes to a fixed length up front, pushes its frames through
+the same writer so the two leave identical folders for the same take.
+
+`fmp4-window=<n>` bounds what the manifests list to the last *n* segments — `#EXT-X-MEDIA-SEQUENCE`
+and the MPD's `@startNumber`/`SegmentTimeline` advance with the window, which is what a real
+origin deleting segments behind itself needs. The segments themselves are still written; only the
+manifests roll. RFC 8216 §6.2.2 wants a live playlist to hold at least three target durations of
+media, so an `<n>` below 3 is accepted but not something a player will enjoy. The default, 0,
+lists every segment — right for a session whose folder will be served whole afterwards.
+
 ```bash
 ac3cli record out.mkv 30 192 0 container=mkv
 ac3cli live out.mkv 0 30 448 -2 -2 atmos container=mkv
+ac3cli live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
 ```
 
 ## Live options (`live`): `capture2=`
@@ -305,14 +345,19 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
 
-## Qc options (`qc`): `preset=`
+## Qc options (`qc`): `preset=`, `layout=`
 
 ```text
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
-                    ebu-r128-s2 | atsc-a85 | netflix
+                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
   preset=all        gate against every preset above
                     omitted: measure and report only, no gate
+  layout=bed        the default - meter the independent substream's own
+                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)
+  layout=rendered   meter the whole assembled program instead, every
+                    dependent substream's height/wide/rear channels
+                    included (BS.1770-5 Annex 3's extended algorithm)
 ```
 
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
@@ -322,15 +367,132 @@ not a tolerance band). The numbers are defined in `ac3::meta::qc_preset()`
 ([`ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/forge/include/ac3/meta/qc.hpp)), each
 read directly from its own primary source rather than recalled from memory:
 
-| Preset | Target | Tolerance | Max true peak | Source |
-|---|---|---|---|---|
-| `ebu-r128-s2` | −23.0 LUFS | ±1.0 LU | −1.0 dBTP | EBU R 128 s2 "Loudness in Streaming" (Geneva, November 2023, v3) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, November 2023, v5) recommendations (h) and (m) |
-| `atsc-a85` | −24.0 LKFS | ±2.0 dB | −2.0 dBTP | ATSC A/85:2013 (with Corrigendum No. 1, 11 February 2021) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange" |
-| `netflix` | −27.0 LKFS | ±2.0 LU | −2.0 dBTP | Netflix "Sound Mix Specifications & Best Practices" v1.6, Near-field Audio Prerequisites for Mix Facilities |
+| Preset | Loudness | Max true peak | Source (version, date) |
+|---|---|---|---|
+| `ebu-r128-s2` | −23.0 LUFS ±1.0 LU | −1.0 dBTP | EBU R 128 s2 "Loudness in Streaming" (Geneva, **November 2023, v3**) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, **November 2023, v5**) recommendations (h) and (m) |
+| `atsc-a85` | −24.0 LKFS ±2.0 dB | −2.0 dBTP | ATSC **A/85:2026-07** (approved **8 July 2026**) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange" |
+| `atsc-a85-streaming` | −25.0 LKFS ±2.0 LU | −2.0 dBTP | ATSC **A/85:2026-07** (approved **8 July 2026**) Annex L.5 — "Selecting a Loudness value between −23 and −27 LKFS is recommended", restated in Annex M's Table M.1 |
+| `netflix` | −27.0 LKFS ±2.0 LU | −2.0 dBTP | Netflix "Sound Mix Specifications & Best Practices" **v1.6**, Near-field Audio Prerequisites for Mix Facilities; Netflix "Dolby Atmos Home Mix Deliverable Requirements" **v2.3** states the same numbers for an Atmos deliverable |
+| `apple-music-atmos` | **≤ −18.0 LKFS** (a ceiling, not a band) | −1.0 dBTP | Apple "Immersive Audio Source Profile" (Apple Video and Audio Asset Guide), Dolby Atmos music deliverables — "should not exceed −18 LKFS measured as per ITU-R BS. 1770-4" |
+
+Two of these need a word of explanation.
+
+`atsc-a85-streaming` carries a **band**, not a point. Annex L.5 asks a streaming service to pick "only one
+specific and consistent Target Loudness" somewhere between −23 and −27 LKFS; −25.0 ±2.0 reproduces those two
+edges exactly. The −25.0 midpoint is an artefact of how this table is shaped and is *not* a level the Annex
+asks anyone to aim for — it names −23, −24 and −27 as the values real operators actually use.
+
+`apple-music-atmos` is the one preset whose loudness figure is a **ceiling** rather than a band: Apple's clause
+is "should not exceed", so a quieter master is compliant however quiet it is. Gating that as a ±band would fail
+material the specification accepts, so `qc` prints it as `limit <= -18.0 LKFS` and passes anything at or under
+it. True peak is always a ceiling, for every preset.
+
+### Specifications deliberately not given a preset
+
+Adding these would mean shipping a second name for a verdict already on offer, so they are documented here
+instead:
+
+- **EBU R 128 s4** "Loudness Normalisation of Cinematic Content" (November 2023). Recommendation (m) normalises
+  Programme Loudness to "a Target Level of −23.0 LUFS" and (l) repeats the −1 dBTP ceiling — numerically
+  identical to `ebu-r128-s2`. What s4 adds is recommendation (j), a Loudness-to-Dialogue Ratio not exceeding
+  5 LU; that is a Programme-minus-Dialogue figure, and `LoudnessMeter` has no dialogue gate, so the single
+  clause that would distinguish an s4 preset is also the one this meter cannot evaluate.
+- **Netflix Dolby Atmos Home Mix Deliverable Requirements v2.3**. Same three numbers as `netflix`. What it adds
+  is scope rather than numbers — "Loudness and peaks should be measured via a 5.1 rerender" — which is a
+  `layout=` choice, not a gate.
+- **Amazon.** Prime Video figures are widely repeated at −24 LKFS/−2 dBTP, but every source found for them is a
+  third-party summary and Amazon's own delivery specifications sit behind a partner portal. Nothing in this
+  table is cited to a document that was not read, so the row is absent rather than guessed — and −24/±2/−2
+  would in any case restate `atsc-a85`.
+
+### `layout=bed` (default) and `layout=rendered`
+
+`layout=` chooses *which soundfield* is metered, and with it which of BS.1770's two algorithms does the
+metering:
+
+| | What is measured | Algorithm |
+|---|---|---|
+| `layout=bed` (default) | The independent substream's own Table 5.8 bed | BS.1770 Annex 1's basic algorithm — Table 3 weights, keyed on `acmod` |
+| `layout=rendered` | The whole assembled program, every dependent substream's channels laid over the bed in Table E2.5 order | BS.1770-5 (11/2023) Annex 3's extended algorithm — Table 4 weights, keyed on each channel's position |
+
+The default is `bed`, which is what `qc` has always measured. On a stream that carries dependent substreams,
+`bed` now says so explicitly rather than silently reporting the 5.1 as if it were the whole programme:
+
+```text
+qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+  note: this stream carries dependent substreams whose channels (height, wide, rear)
+        are NOT in the figures above - layout=rendered measures them as well
+```
+
+`layout=rendered` is what makes 7.1, 5.1.2, 5.1.4 and 7.1.4 measurable at all, since none of those channels is
+a member of Table 5.8. Annex 3's Table 4 weights a channel by where it sits: **1.41 (+1.5 dB)** for anything
+between 60° and 120° azimuth below 30° elevation, **1.00** everywhere else. Applied to Table E2.5's locations
+that gives:
+
+| Weight | Locations | BS.2051 label |
+|---|---|---|
+| 1.41 (+1.5 dB) | `Ls` `Rs` `Lsd` `Rsd` `Lw` `Rw` | M±110, M±090, M±060 |
+| 1.00 (0 dB) | `L` `C` `R` `Lc` `Rc` | M+000, M±030, M±SC |
+| 1.00 (0 dB) | `Lrs` `Rrs` `Cs` | M±135, M+180 |
+| 1.00 (0 dB) | `Vhl` `Vhr` `Vhc` `Lts` `Rts` `Ts` | every U/T position |
+| excluded | `LFE` `LFE2` | — |
+
+Two results there are worth reading twice, because reasoning from the channel *names* gets both wrong: a 7.1
+layout's rear pair is **not** surround-weighted (M±135 is past the 120° edge), and **no** height channel is
+either (Table 4's elevation row simply does not cover the upper layer). The wides *are*, sitting exactly on the
+inclusive 60° edge.
+
+That first one is where other meters differ. ffmpeg's `ebur128`, probed one channel at a time, weights a 7.1
+layout's back surrounds at 1.41 just like its side surrounds — it generalises Annex 1's Table 3 by channel
+*name*, so anything called a surround gets +1.5 dB. Annex 3's Table 4 and Table 5 both put M±135 at 1.00, and
+`layout=rendered` follows the standard, so expect a 1.5 dB disagreement on exactly those two channels. On 5.1
+the two agree to within 0.02 dB, which is why `ebur128` is a good cross-check for `layout=bed` and not for
+`layout=rendered`.
+
+For a plain 5.1 stream the two algorithms are the same function — `Ls`/`Rs` are M±110, inside Table 4's +1.5 dB
+sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes nothing there. The one Table 5.8
+layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
+meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
+a rear centre at M+180, at unity.
 
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the
 full report format and the exit-code convention this drives.
+
+## Probe options (`probe`): `json=`, `detail=`
+
+```text
+probe options (probe; any order, after the positional arguments):
+  json=1            emit the JSON document instead of the human table
+                    (schema ac3forge.probe/1 - docs/cli/commands.md)
+  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
+                    substream headers and each frame's object layer
+  detail=blocks     the same, plus every block's coding tools and
+                    exponent strategies - what a codec bug report needs
+```
+
+`json=1` is a value token rather than a bare word (unlike `couple` or `heavy`) because `probe` is
+the first command here whose *output form* is a choice: `json=0` is accepted and means the table,
+so a script building its command line programmatically (`json=$want`) never has to omit the token
+to turn it off. The document it emits is a versioned contract — see
+[Commands → `probe`](commands.md#json-output-json1) for the schema, the compatibility rules and
+the units each field is in.
+
+`detail=` is independent of `json=`: all four combinations work, and the two detail levels add to
+the stream summary rather than replacing it — the same summary comes out either way.
+
+| `detail=` | What it adds |
+|---|---|
+| *(omitted)* | Nothing. The stream summary alone, which is what a pipeline or a CI gate wants |
+| `frames` | One entry per access unit: byte offset, size, start time, and each syncframe's own header, CRC state, authenticity tag and object layer |
+| `blocks` | The same, plus per syncframe: Table E1.3's frame-level tool gates, and per block which coding tools were in force and what exponent strategy each coded stream carried |
+
+A dump of a long file is a lot of output, which is why neither is on by default — but it costs no
+extra memory, because each access unit is written as the walk reaches it rather than collected
+first. See [Commands → `probe`](commands.md#per-frame-and-per-block-detail) for what the block dump
+looks like and why it exists.
+
 
 ## Defaults
 

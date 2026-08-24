@@ -50,19 +50,41 @@ both encoders decide from content rather than from the bit rate.
   E-AC-3 channel in every frame with dynamics. The AC-3 §8.2.8 reuse-span planner in
   `encoder.cpp` is reusable; the decoder already reads per-block strategies (`expstre=1`). AHT
   channels keep one set (`nchregs==1`). Add a quality-race leg on transient material.
-- [ ] **EQ2 (M)** — Per-channel and per-block SNR offsets. Both encoders search one composite
-  `csnroffst`+`fsnroffst` and write the same fine offset as `cplfsnroffst` and every
-  `chfsnroffst` (`encoder.cpp`; `eac3_frame.cpp` `kSnroffststr = 0`), so a quiet centre channel
-  loses precision at the rate loud surrounds set. PR #195 found up to +5.7 dB on one channel from
-  a fine offset alone. Search the composite, then redistribute fine steps per channel; on E-AC-3
-  also exercise `snroffststr` 1/2, which nothing emits today.
-- [ ] **EQ3 (S)** — `bamode=1` for E-AC-3. The encoder sends `bamode=0`, which pins
-  `dbpbcod=2`; the AC-3 sweep in 0.7.0 measured `dbpbcod` 2→3 at up to +5.9 dB at 192 kbit/s.
-  Eleven bits per frame to write; re-running the 192–640 kbit/s measurement is most of the work.
-- [ ] **EQ4 (S)** — Adaptive `dithflag`. Both encoders write it as 0 unconditionally (the
-  E-AC-3 one sends `dithflage=1` just to force it off). §7.3.4 dither exists to fill zero-bit
-  bins in active channels; the decoder half landed as `D2`. On for channels with signal, off for
-  silence; keep the encoder's own reconstruction model and `ac3::verify` coherent with it.
+- [ ] **EQ2 (M)** — Per-channel and per-block SNR offsets. **Attempted and not adopted; read
+  this before trying again.** The redistribution was implemented for AC-3 (search the composite,
+  score each stream's real distortion against the allocation that won, move fine steps towards
+  the worse-served streams, re-search) and swept over both of its constants — a level-discount
+  exponent of 0/0.5/1 crossed with a gain of −2/−0.7/0/+0.7/+2 steps per dB — on synthesized
+  stereo, synthesized 5.1 and the committed 5.1 fixture at 192 and 448 kbit/s. No setting beat
+  leaving it off: best case ±0.1 dB SNR, typically −0.1 to −0.6, ViSQOL MOS flat throughout. The
+  mechanism does move bits; the channels receiving them (surrounds carrying broadband noise)
+  cannot convert a fraction of a bap step into anything, while the channels giving them up are
+  high in the table where each step is worth real dB. Two reference encoders agree: FFmpeg 8.0.1
+  and Dolby DEE 6.5.4 both write ONE fine offset for every stream — coupling channel and LFE
+  included — in all 79 frames of their coupled 5.1/448 streams in
+  `tests/golden/external-baseline/`. The AC-3 LFE's own measured `+4` (PR #195) stays as the one
+  per-channel departure. On E-AC-3 `snroffststr` 0x1 and 0x2 were both emitted and FFmpeg refused
+  both, with and without an explicit block-0 `snroffste`, so this project's reading of Table
+  E1.4's block-level SNR element disagrees with FFmpeg's somewhere, and no encoder in reach emits
+  either strategy to arbitrate from — the encoder stays on 0x0. Note that the emitted layout
+  matched `tools/references/eac3_parse.py`, this project's independent transcription, so the two
+  readings inside the project agree and it is FFmpeg that differs. The decoder's own 0x2 path was
+  brought into line with that transcription in passing (it read no `cplfsnroffst` at all). What
+  is left genuinely untried is the per-BLOCK dimension, which on E-AC-3 needs a bit allocation
+  per block rather than per frame — six times the work in the rate search's innermost loop — and
+  has its own measurement to justify that.
+- [x] **EQ3 (S)** — `bamode=1` for E-AC-3. Done: `baie` plus the eleven parameter bits in block
+  0 and one bit in each of the other five, 17 a frame, buying `dbpbcod` 3. Swept 0–3 at 96/128/192
+  stereo and 192/256/384/640 5.1: 3 wins every cell, +1.2 to +3.0 dB SNR over the `bamode=0`
+  value of 2, MOS up everywhere too. `floorcod` swept 0/4/7 and left at Table E1.4's 7 (inert on
+  SNR, best LSD). Both reference AC-3 encoders emit exactly this set, `{2,1,1,3,7}`.
+- [x] **EQ4 (S)** — Adaptive `dithflag`. Done, both encoders, per channel per block: dither
+  where the zero-bit bins hold at least as much energy as the dither that would replace them,
+  never over digital silence, never on a block-switched channel (Dolby's own encoder writes
+  `dithflag` as exactly `!blksw`), and — E-AC-3 only — never in a frame using spectral extension,
+  whose copy-source reconstruction the encoder cannot mirror. Free in bits: the flag is
+  transmitted either way. It trades waveform SNR for perceptual quality, which is what §7.3.4 is
+  for; see the pull request's table.
 - [ ] **EQ5 (M)** — E-AC-3 delta bit allocation under coupling and on AHT streams. Skipped for
   every channel whenever coupling is in use that frame (`eac3_frame.cpp`, gate
   `!plan.aht && !is_lfe && !cpl.in_use`); `docs/index.md` says "for now". AC-3's `D3` was worth
@@ -85,18 +107,27 @@ both encoders decide from content rather than from the bit rate.
   encoders on every metric: ours loses 2.66 dB above 10 kHz where FFmpeg loses 0.91, and `auto`
   picks AHT-only because it is SNR-optimal, while `spx`/`all` fix the envelope at a 3 dB SNR
   cost. Decide the policy with a perceptual score (VX6), not SNR alone.
-- [ ] **EQ9 (L)** — Closed-loop tool decisions. `auto` chooses cpl/spx/aht and their band edges
-  from the rate (`default_cplbegf`/`default_spxbegf`), reproducing the best fixed variant on 13
-  of 14 measured points but never from content: near-mono material at a high rate never gets
-  coupling, a sparse-HF frame never gets spx. Per-frame on/off and band edges from inter-channel
-  correlation, HF energy and transient state, including under VBR where the reference rate is a
-  nominal number.
-- [ ] **EQ10 (M)** — Enhanced coupling and transient pre-noise: make them auto-worthy or label
-  them. Both are fully implemented with their own CI legs and own-decoder oracle, never chosen by
-  `auto` (`cpl.enhanced` is masked off under `auto_tools`), and a net loss on every trend row
-  (tpn stereo/192: 18.0 dB vs 31.7 without). Gate tpn on detected transients with a measured
-  pre-echo benefit and ecpl on bands where the angle/chaos fit beats standard coupling; if
-  neither pays, say so in `docs/concepts` and keep them as reference-correctness tools.
+- [x] **EQ9 (L)** — Closed-loop tool decisions. `auto` chose cpl/spx/aht from the rate alone;
+  two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
+  region's fit against the decoder's own rank-one reconstruction, and the energy share above the
+  extension frequency. Re-measured on real programme material (six excerpts of a 5.1 theatrical
+  mix, 32–96 kbit/s per channel, ViSQOL MOS-LQO beside SNR): +0.11 MOS and +0.36 dB against the
+  rate-only policy, better in 19 of 36 cells, no (layout, rate) point regressing, and the
+  committed fixtures' own landscape numbers unchanged. The extension
+  ceiling now moves with content (110 kbit/s per channel where the top end is empty, 55 where it
+  is not) instead of sitting at a fixed 56 measured as SNR on fixtures with nothing above
+  8.1 kHz. Band edges themselves are still rate-only — `EQ6`/`EQ13`.
+- [x] **EQ10 (M)** — Enhanced coupling and transient pre-noise: measured, and labelled rather
+  than made auto-worthy — for two different reasons. Enhanced coupling is the better-sounding of
+  the two coupling reconstructions on real material at every (layout, rate) point tried, worth
+  +0.54 MOS-LQO at 96 kbit/s stereo through +0.16 at 384 kbit/s 5.1; every trend
+  row calls it a loss because every trend row is SNR. It stays out of `auto` because FFmpeg
+  misreads §E3.5's syntax as a corrupt frame, and `auto` has to stay decodable. Transient
+  pre-noise does not pay at all: over exactly the samples it touches it measures 6.5–24 dB worse
+  than leaving the audio alone, at every bitrate, and the gap widens with rate because the
+  substitution's error is a property of the material (flat at 20.7–22.5 dB) while the coder's own
+  error keeps falling. Block switching gets there first. Both documented in
+  `docs/concepts/ac3-eac3.md` and `docs/library/encoding-eac3.md`.
 - [ ] **EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. The encoder
   always writes six blocks; the decoder's `numblkscod != 3` path is spec-derived and has never
   seen a real stream. This is the 256-sample-granularity mode `live` would want. Depends on EQ1
@@ -190,28 +221,43 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
 `mux()`/`Writer` only, `ac3::iec61937` only wraps, and the CLI has no inspector, no
 machine-readable output and a single failure exit code. Users arrive with containers.
 
-- [ ] **IO1 (M)** — `ac3cli probe` with JSON output: bsid, sample rate (incl. `fscod2`), layout,
+- [x] **IO1 (M)** — `ac3cli probe` with JSON output: bsid, sample rate (incl. `fscod2`), layout,
   `bsmod`, `chanmap`, the substream map, `numblkscod`, tools in use per block, frame/AU count,
   duration, bit rate and VBR statistics, dialnorm/compr/DRC presence, EMDF payloads, OAMD
   `complexity_index`, object count and bed, whether an authenticity tag is present, CRC
   validity. `ScannedStream` already carries most of it; `tools/references/eac3_parse.py` is the
   only per-field dump today. Also the natural home for an HLS/DASH manifest check (codecs
   string, `ceao`, `dec3` against the actual substream map).
+  Shipped: `ac3::io::probe` over a promoted `ac3::io::read_frame_header` (the header tier, which
+  answers for a syncframe whose audio the decoder refuses) plus the real decoders under a new
+  `DecoderConfig::skip_reconstruction` (the parse tier). Per-block tool usage and exponent
+  strategies come from a new `ac3::FrameSyntax` trace; `detail=blocks` dumps them. The JSON
+  document is versioned `ac3forge.probe/1` and documented as a contract in
+  docs/cli/commands.md. The HLS/DASH manifest check is NOT part of it and stays open: it is
+  a consumer of this document rather than part of it, and IO5 already owns the `ceao`/JOC
+  signalling half of the same question.
 - [ ] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
   (`ac-3`/`ec-3` sample entries, `stco`/`stsz`, fragmented `moof`/`trun`), MPEG-TS (PAT/PMT,
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
   `*.ac3/*.ec3`) accept containers, plus `demux` and container-to-container remux — the
-  `dec3`-repair case the old `A1` cited. One PR per container, each an M.
-- [ ] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
+  `dec3`-repair case the old `A1` cited. One PR per container, each an M. **Matroska done**
+  (`matroska::demux`/`Reader`, plus `ac3cli demux` and a fuzz harness over the EBML walk); MP4
+  and MPEG-TS next, and the other commands widen to containers with the last of them.
+- [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
-  Also the missing round-trip test for the wrap side.
-- [ ] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
+  Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
+  `unwrap_stream`/`PassthroughDetector`, `ac3cli unspdif`, and detection in `record` (switches
+  to writing the elementary stream) and `live` (stops rather than encode a session of noise).
+  Round-trips byte-exactly against this project's own wrapper AND FFmpeg's `spdif` muxer, both
+  data types, both word orders. Fuzzed via `fuzz_iec61937_unwrap`. Not hardware-confirmed: no
+  capture device has been available, the same gap the passthrough output side has.
+- [x] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
   fragmenter would need…", `mp4.hpp`); Matroska and MPEG-TS have incremental `Writer`s since
   0.9.0, so the GUI live session can target both but not the one container whose native shape
   is streaming. Running `tfdt`, a rolling HLS playlist, a dynamic MPD.
-- [ ] **IO5 (S)** — DASH JOC signalling and the `ceao` brand. `dash.hpp` says there is no
+- [x] **IO5 (S)** — DASH JOC signalling and the `ceao` brand. `dash.hpp` says there is no
   established convention to point at; DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3 names the
   `tag:dolby.com,2018:dash:EC3_ExtensionType:2018` and `…ExtensionComplexityIndex:2018`
   supplemental properties (ETSI TS 103 420 D.2), the E-AC-3 `AudioChannelConfiguration`, and
@@ -248,17 +294,31 @@ machine-readable output and a single failure exit code. Users arrive with contai
   writes once, has no device-drop watchdog, no object add/reassign and no parallel AC-3 downmix
   leg (`docs/gui/live-session.md` records the gap); `obj`/`objm` in `src=`/`map=` parse but do
   nothing in `ac3cli`.
-- [ ] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` keys its weights on
-  `Acmod`, so `qc` measures the independent substream's bed only and never a dependent's height
-  or wide channels (the comment in `apps/cli/commands/analysis.cpp` says so). BS.1770-4's
-  positional rule and BS.1770-5's extended and object-based algorithms cover 7.1, 5.1.4 and
-  7.1.4; Apple measures Atmos loudness per BS.1770-4, Netflix via a 5.1 re-render. Meter the
-  `decode_access_unit` render with a `layout=rendered|bed` switch.
-- [ ] **IO11 (S)** — QC preset refresh. `qc.hpp` has three presets, citing A/85:2013 with the
-  2021 corrigendum and Netflix v1.6. ATSC published A/85:2026-07 (approved 2026-07-08, the first
-  full revision since 2013, with two new annexes on streaming services using metadata-based
-  codecs), EBU R 128 s4 (2023) covers cinematic content, and Apple Music Atmos, Netflix Atmos Home
-  Mix and Amazon each publish their own targets. Record version and date per preset.
+- [x] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` gained a second
+  constructor taking an `eac3::chanmap::Layout` and applying ITU-R BS.1770-5 (11/2023) Annex 3's
+  extended algorithm for advanced sound systems, whose Table 4 weights each channel by position
+  (1.41 between 60° and 120° azimuth below 30° elevation, 1.00 elsewhere, LFE excluded) instead
+  of by its slot in a Table 5.8 `acmod` — so `Lrs`/`Rrs`, `Vhl`/`Vhr`, `Lts`/`Rts`, `Cs` and
+  `Lw`/`Rw` all have a weight and 7.1, 5.1.2, 5.1.4 and 7.1.4 can be metered. `qc` takes
+  `layout=rendered|bed`; `bed` stays the default and now says out loud when a stream's dependent
+  substreams were left out. Annex 3's Table 5 gives a second check on every weight, and the
+  meter was cross-checked against ffmpeg's `ebur128` on 5.1. BS.1770-5 Annex 4's object-based
+  algorithm is not implemented — see IO12.
+- [x] **IO11 (S)** — QC preset refresh. `atsc-a85` re-cited to A/85:2026-07 (approved
+  2026-07-08), which restates −24 LKFS / ±2 dB / −2 dBTP unchanged; new `atsc-a85-streaming`
+  from that revision's Annex L.5 (a −23…−27 LKFS band) and `apple-music-atmos` from Apple's
+  Immersive Audio Source Profile (a −18 LKFS *ceiling*, which is why `QcPreset` gained a
+  band-vs-ceiling kind). Every preset now records its document version and date. EBU R 128 s4,
+  Netflix's Atmos Home Mix v2.3 and Amazon were checked and deliberately left out — the first
+  two are numerically identical to presets already present and the third has no primary source
+  that could be read; `qc.hpp` and `docs/cli/metadata-options.md` record why for each.
+- [ ] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 specifies a loudness
+  algorithm for object-based audio, and for a combination of channel- and object-based audio, in
+  which each object is weighted by its own OAMD position rather than by a fixed speaker slot.
+  IO10 implemented Annex 3 (channel-based, advanced sound systems) and left this half out.
+  `oba::DecodedProgram` already carries per-object position, and `DecodedAccessUnit` already
+  carries `object_audio` beside the rendered bed, so the inputs exist; what is missing is the
+  Annex 4 weighting itself and a `qc` mode that meters bed and objects together.
 
 ## IM. Immersive and other formats
 
@@ -325,21 +385,28 @@ machine-readable output and a single failure exit code. Users arrive with contai
 ## VX. Verification and oracles
 
 Nine required build legs, sanitizers, clang-tidy, PREfast, CodeQL, per-component coverage
-floors, a gold-reference gate on every leg, six libFuzzer harnesses and an AC-3 input-space
-fuzzer already exist. What remains is mostly what the tree names itself.
+floors, a gold-reference gate on every leg, eleven libFuzzer harnesses (one of them opt-in) and
+an AC-3 input-space fuzzer already exist. What remains is mostly what the tree names itself.
 
-- [ ] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
+- [x] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
   (`fuzz_encoder_space.py`: "Scope: AC-3 only"). Random Annex E tool tokens, `fscod2` rates, VBR,
   the wide layouts with dependents and object counts, crossed with the existing adversarial PCM;
   FFmpeg strict decode where it has a reading and the in-repo decoder where it does not (a new
   "no oracle" cell class for ecpl/tpn/fscod2); regression seeds; per-PR and nightly.
+  `tools/ci/fuzz_eac3_encoder_space.py`. The "no oracle" class turned out to have more in it than
+  the name suggests: `ffprobe` still walks the syncframes of every cell FFmpeg cannot decode, so
+  those streams are held to the access-unit count and the exact byte extent of each one rather
+  than to nothing. `--check-oracles` re-measures the gap table against the installed FFmpeg;
+  `--check-envelope` measures the per-layout rate floors and §E2.3.1.3's 11-bit `frmsiz` word
+  ceiling, which at the half rates sits inside Table 5.18's own rate list. First finding, fixed:
+  `eac3-encode` aborted on an assertion above that ceiling at every layout.
 - [ ] **VX2 (L)** — E-AC-3 mirror self-check. `DecoderConfig::trace` is "AC-3 only
   (FrameDecoder); Eac3Decoder does not write one". For ecpl, tpn, fscod2 and 7.1.4 the in-repo
   round trip is the only check, and `docs/verification.md` admits a misreading shared by both
   sides passes it. Per-substream, per-block diffs of exponents, bap, delta, AHT gains, coupling
   and spx coordinates, including dependents and the tpn hold-back — the facility that fired four
   frames before the `deltbaie` symptom on AC-3.
-- [ ] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
+- [x] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
   `oba::parse_payload`, `joc::parse_payload`, `signing::verify_atmos_stream`,
   `ac3adm::parse_bw64`), plus a CRC-re-stamping custom mutator for the decode harnesses so
   mutated skip-field bytes reach the object parsers instead of dying at the CRC check, which
@@ -354,9 +421,13 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
   already wired up (S, local). Then make the player's path configurable and run it as a
-  self-skipping job on the self-hosted Windows runner. First explain why it decodes DEE's own
-  stereo output to garbage (`gen_external_baseline.py`): every conclusion drawn through that
-  pipeline inherits the answer.
+  self-skipping job on the self-hosted Windows runner. The "decodes DEE's own stereo output to
+  garbage" blocker on this item is answered and was never a decode defect: the player applies
+  dialnorm, DEE writes a measured dialnorm of 12 on that stream, and the resulting 19 dB
+  attenuation was being charged to the decode by scoring it against an un-normalised source WAV.
+  Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
+  for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
+  through it - see `gen_external_baseline.py`'s module docstring.
 - [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
   not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
   trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the
@@ -433,15 +504,28 @@ no SIMD and no threading anywhere in the codec core.
   exported `std::round` call made about 9,100 times per frame, ~33–38 µs and the largest named
   remainder of the last profile (~7% of the fast path). Byte-identical streams on the corpus are
   the gate.
-- [ ] **PF3 (M)** — Fast IMDCT in the two places still direct: `ecpl_channel_spectrum` (three
+- [x] **PF3 (M)** — Fast IMDCT in the two places still direct: `ecpl_channel_spectrum` (three
   direct 512-point inverses per coupled channel per block, encode and decode) and JOC object
   synthesis (`joc.cpp`, one per object per block — a 16-object frame spends ~1.7 ms there, more
   than a whole 5.1 encode, and the WASM demo decodes objects in the browser). Prove
-  byte-identical encodes for the encoder-internal use or keep that side direct.
-- [ ] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
+  byte-identical encodes for the encoder-internal use or keep that side direct. Done: both
+  forward a `fast` flag, the decoder passing `DecoderConfig::fast_imdct` and the
+  encoder-internal `ecpl` use `eac3::FrameConfig::fast_mdct`; the 40-stream encode corpus is
+  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4, 6.9×
+  with it); a 180-second enhanced-coupling decode 5.84 → 3.24 s, a 30-second 15-object decode
+  6.47 → 4.83 s. `joc::reconstruct` still runs its bed
+  ANALYSIS (five forward MDCTs per block) direct, which is now the dominant cost of an object
+  decode — see PF8.
+- [x] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
   bit-reversal pass (`fft_radix2.hpp`) becomes fixed-size radix-4/split-radix codelets for
   P = 64/128/512 with trivial-twiddle elimination. Decode is transform-dominated now; encode gains
-  about 10%.
+  about 10%. Done as `fft_kernel.hpp`: compile-time-specialised radix-4 stages with a trailing
+  radix-2 stage where log2(P) is odd, the first stage's unit twiddles gone, and the
+  digit-reversal folded into each caller's own input-producing loop instead of running as a
+  pass. The kernel measured standalone is 1.6–1.75× across P = 64/128/512; at the caller level,
+  median of ten interleaved runs, 1.24–1.86× per fast transform against an 0.90–1.07× spread on
+  the unchanged ones. A 180-second 5.1 AC-3 decode 4.19 → 2.92 s. Encodes byte-identical;
+  `dft512` against its own O(N²) sum improved from 1.9e-15 to 1.7e-15.
 - [ ] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
   (`src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, the same mechanism as
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has
@@ -455,6 +539,14 @@ no SIMD and no threading anywhere in the codec core.
   decode loop, an explicit table ROM budget, a `-fno-exceptions`/no-RTTI audit, a float32 path,
   and a cross-compiled no-OS CI leg (`arm-none-eabi` under QEMU). The memory programme cut decode
   bytes per frame by more than half; this is the next step for set-top and DSP ports.
+- [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
+  `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
+  forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.
+  Measured after PF3/PF4: a 30-second 15-object decode is 4.83 s, of which about 3.5 s is those
+  transforms; the object inverses PF3 just fixed were 1.6 s of the 6.5 s before. It is one
+  argument, but it changes decoded object audio at ~1e-13 and there is no decoder-side forward
+  switch to hang it on today — `DecoderConfig::fast_imdct` names the inverse — so it wants a
+  deliberate decision, not a drive-by flip.
 
 ## AP. Library surface, bindings and v1.0
 
@@ -685,7 +777,7 @@ All merged to `develop` by v0.9.0-beta.1 unless noted; `CHANGELOG.md` has the de
 | G1 | Perceptual-quality leg | merged, column never populated in CI (VX6) |
 | G2 | Backfill thin test coverage | merged |
 | G3 | Differential decoder fuzzing against FFmpeg | merged |
-| G4 | Encoder input-space fuzzing | merged for AC-3 (VX1 is the E-AC-3 half) |
+| G4 | Encoder input-space fuzzing | merged, both codecs (AC-3 under G4, E-AC-3 under VX1) |
 
 ---
 

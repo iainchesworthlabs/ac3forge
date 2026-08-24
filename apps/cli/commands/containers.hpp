@@ -42,4 +42,15 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t f
 int run_ts(std::string_view in_path, std::string_view out_path, std::string_view profile,
            const Options& meta);
 
+// The inverse of the four above (ROADMAP.md's IO2): reads a container and writes the bare
+// AC-3/E-AC-3 elementary stream inside it, which is what every other command in this CLI takes
+// as input. The container is identified by its own magic bytes, not by the file name - a .mkv
+// that is really something else, or a rip with no extension at all, is the normal case here.
+//
+// Streams, unlike the wrapping commands: those read an elementary stream a user encoded
+// moments ago, while this one is pointed at a disc rip or a broadcast capture that can run to
+// gigabytes. The container reader is fed in fixed-size chunks and each access unit is written
+// as it comes out, so peak memory is a chunk plus a frame whatever the file's duration.
+int run_demux(std::string_view in_path, std::string_view out_path);
+
 }  // namespace ac3cli::commands
