@@ -611,7 +611,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          token);
             return false;
         }
-        if (key == "downmix") {
+        if (key == "downmix" && command != "live") {
             if (value == "loro") {
                 out.output.target = ac3::DownmixTarget::kLoRo;
             } else if (value == "ltrt") {
