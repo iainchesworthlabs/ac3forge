@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <optional>
 #include <span>
@@ -9,6 +10,7 @@
 
 #include "ac3/io/wav.hpp"
 #include "ac3/sinks/iec61937.hpp"
+#include "fmp4_folder_writer.hpp"
 #include "matroska/matroska.hpp"
 #include "mpegts/mpegts.hpp"
 
@@ -19,19 +21,20 @@
 // on disk continuously instead of only at a clean stop, so a crash an hour
 // in no longer loses the hour.
 //
-// The four containers here are exactly the streamable ones: a bare
+// The five containers here are exactly the streamable ones: a bare
 // elementary stream appends; Matroska streams via matroska::Writer (EBML's
 // own unknown-size Segment pattern - the file differs from the one-shot
 // mux()'s by exactly that, as that class's comment describes); MPEG-TS via
-// mpegts::Writer (whose bytes are contract-identical to mux()'s); the
-// IEC 61937 WAV carrier via per-frame wrapping into
+// mpegts::Writer (whose bytes are contract-identical to mux()'s); fragmented
+// MP4/CMAF into a DIRECTORY rather than a file, through the Fmp4FolderWriter
+// EncoderController's own live session shares (whose media segments are
+// likewise contract-identical to mp4::fragment()'s);
+// the IEC 61937 WAV carrier via per-frame wrapping into
 // ac3::io::WavPcm16StreamWriter, whose closed file is byte-identical to
-// write_wav_pcm16_raw over the same bursts. MP4 and fMP4 are deliberately
-// absent: moov/stco need every frame's final offset, and the dec3/dac3
-// codec-config box needs a bitstream scan - the accumulate-then-mux shape
-// in EncoderController::writeOutput IS their streaming-less design (see
-// mp4's own "deliberately no monolithic Writer" record), so the recording
-// loop keeps that shape for them.
+// write_wav_pcm16_raw over the same bursts. Plain MP4 is the one deliberately
+// absent: moov/stco need every frame's final offset, so the
+// accumulate-then-mux shape in EncoderController::writeOutput IS its design,
+// and the recording loop keeps that shape for it.
 //
 // Qt-free on purpose: everything here is std:: and the container libraries,
 // so tests/gui's plain C++ test can drive it against the one-shot writers
@@ -44,6 +47,7 @@ class RecordingSink {
         kMatroska,
         kSpdif,
         kMpegts,
+        kFmp4,
     };
 
     struct Config {
@@ -56,7 +60,10 @@ class RecordingSink {
     // Empty on success. A failure here happens before any capture is worth
     // starting - the file could not be created, or the track refused to
     // validate - so the caller can surface it immediately rather than at
-    // the end of a take.
+    // the end of a take. For kFmp4 `path` names a DIRECTORY (the same choice
+    // EncoderController::outputIsFolder already makes for that container),
+    // created here; its writer, though, cannot exist until the first frame -
+    // see push().
     [[nodiscard]] std::string open(const std::string& path, const Config& config);
 
     // Empty on success. On failure the bytes already written stay on disk -
@@ -85,4 +92,6 @@ class RecordingSink {
     std::optional<mpegts::Writer> mpegts_;
     ac3::io::WavPcm16StreamWriter wav_;
     ac3::iec61937::Eac3BurstPacker packer_;
+    // ...and kFmp4 writes a folder of its own files through this.
+    Fmp4FolderWriter fmp4_;
 };

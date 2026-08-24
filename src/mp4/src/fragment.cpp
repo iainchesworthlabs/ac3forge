@@ -2,7 +2,13 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "isobmff_detail.hpp"
 #include "mp4/mp4.hpp"
@@ -33,12 +39,31 @@ using detail::put_u64;
 // default-base-is-moof) is what this module actually writes, not aspirational.
 constexpr std::array<std::string_view, 2> kFragmentedCompatibleBrands{"iso6", "cmfc"};
 
-Bytes build_init_ftyp() {
-    return detail::build_brand_box("ftyp", "iso5", 0, kFragmentedCompatibleBrands);
+// ETSI TS 103 420 §E.5's object-based-audio CMAF profile brand, appended to
+// the pair above when FragmentOptions::object_audio_brand says this track
+// carries TS 103 420's object layer: "The FileTypeBox compatibility brand
+// shall be ceao and should be used to indicate media tracks that conform to
+// this media profile", which DASH-IF IOP Part 8 v5.0.0 §5.3.3 repeats for
+// DASH delivery. Added rather than substituted - a JOC track is still an
+// 'iso6'/'cmfc' fragmented CMAF track, and §E.2 says as much by requiring
+// conformance to ISO/IEC 23000-19 on top of the profile, not instead of it.
+constexpr std::string_view kObjectAudioBrand = "ceao";
+
+std::vector<std::string_view> compatible_brands(const FragmentOptions& options) {
+    std::vector<std::string_view> brands(kFragmentedCompatibleBrands.begin(),
+                                         kFragmentedCompatibleBrands.end());
+    if (options.object_audio_brand) {
+        brands.push_back(kObjectAudioBrand);
+    }
+    return brands;
 }
 
-Bytes build_media_styp() {
-    return detail::build_brand_box("styp", "iso5", 0, kFragmentedCompatibleBrands);
+Bytes build_init_ftyp(const FragmentOptions& options) {
+    return detail::build_brand_box("ftyp", "iso5", 0, compatible_brands(options));
+}
+
+Bytes build_media_styp(const FragmentOptions& options) {
+    return detail::build_brand_box("styp", "iso5", 0, compatible_brands(options));
 }
 
 // ISO/IEC 14496-12 §8.8.3's Track Extends Box: the per-fragment defaults a
@@ -116,8 +141,10 @@ Bytes build_init_segment(const AudioTrack& track, const FragmentOptions& options
     // A batch API knows the whole track's duration up front (every frame is
     // already in hand - see mp4.hpp's own comment on fragment() being
     // batch), so mvhd/tkhd/mdhd above carry the REAL total, the same
-    // convention mux() uses; a true live/incremental fragmenter would need
-    // 0 (unknown) here instead, which is not what this first cut is.
+    // convention mux() uses. FragmentWriter passes 0 here instead - the live
+    // session that cannot know its own total - which is the one and only
+    // difference between the two init segments (see FragmentWriter's own
+    // comment in mp4.hpp).
     Bytes moov_body;
     put_bytes(moov_body, detail::build_mvhd(track.sample_rate, total_samples));
     put_bytes(moov_body, trak);
@@ -126,7 +153,7 @@ Bytes build_init_segment(const AudioTrack& track, const FragmentOptions& options
     put_box(moov, "moov", moov_body);
 
     Bytes out;
-    put_bytes(out, build_init_ftyp());
+    put_bytes(out, build_init_ftyp(options));
     put_bytes(out, moov);
     return out;
 }
@@ -241,7 +268,78 @@ std::expected<Bytes, MuxError> build_moof(std::uint32_t sequence_number,
     return moof;
 }
 
+// One complete media segment: styp + moof + mdat, plus the bookkeeping
+// mp4/hls.hpp and mp4/dash.hpp need about it. Shared by fragment() and
+// FragmentWriter - which is exactly why the two produce byte-identical media
+// segments for the same inputs (mp4.hpp's own contract for the writer): the
+// only per-fragment state either caller carries is `sequence_number` and
+// `base_media_decode_time`, and both arrive here as arguments.
+std::expected<MediaSegment, MuxError> build_media_segment(
+    const AudioTrack& track, const FragmentOptions& options, std::uint32_t sequence_number,
+    std::uint64_t base_media_decode_time, std::span<const std::span<const std::byte>> frames) {
+    auto moof = build_moof(sequence_number, base_media_decode_time, frames);
+    if (!moof) {
+        return std::unexpected(moof.error());
+    }
+
+    std::uint64_t mdat_body_bytes = 0;
+    for (const auto& frame : frames) {
+        mdat_body_bytes += frame.size();
+    }
+    constexpr std::uint64_t kMdatHeaderBytes = 8;
+    if (kMdatHeaderBytes + mdat_body_bytes > std::numeric_limits<std::uint32_t>::max()) {
+        return std::unexpected(MuxError::kFileTooLarge);
+    }
+
+    const Bytes styp = build_media_styp(options);
+
+    Bytes segment_bytes;
+    segment_bytes.reserve(styp.size() + moof->size() +
+                          static_cast<std::size_t>(kMdatHeaderBytes + mdat_body_bytes));
+    put_bytes(segment_bytes, styp);
+    put_bytes(segment_bytes, *moof);
+    put_u32(segment_bytes, static_cast<std::uint32_t>(kMdatHeaderBytes + mdat_body_bytes));
+    put_fourcc(segment_bytes, "mdat");
+    for (const auto& frame : frames) {
+        put_bytes(segment_bytes, frame);
+    }
+
+    return MediaSegment{
+        .bytes = std::move(segment_bytes),
+        .sequence_number = sequence_number,
+        .sample_count = static_cast<std::uint32_t>(frames.size()),
+        .duration_samples = static_cast<std::uint64_t>(frames.size()) * track.samples_per_frame,
+        .base_media_decode_time = base_media_decode_time,
+    };
+}
+
+// Everything fragment() and FragmentWriter::create() both refuse, in one
+// place so the writer cannot drift into accepting a track the batch form
+// would have rejected (mp4.hpp promises they validate alike).
+std::optional<MuxError> validate(const AudioTrack& track, const FragmentOptions& options) {
+    if (track.channels <= 0 || track.sample_rate == 0 ||
+        track.sample_rate > std::numeric_limits<std::uint16_t>::max() ||
+        track.samples_per_frame == 0 || track.codec_config.empty() ||
+        (track.codec_id != kCodecAc3 && track.codec_id != kCodecEac3)) {
+        return MuxError::kInvalidTrack;
+    }
+    if (options.frames_per_fragment == 0) {
+        return MuxError::kInvalidOptions;
+    }
+    return std::nullopt;
+}
+
 }  // namespace
+
+SegmentInfo segment_info(const MediaSegment& segment) {
+    return SegmentInfo{
+        .sequence_number = segment.sequence_number,
+        .sample_count = segment.sample_count,
+        .duration_samples = segment.duration_samples,
+        .base_media_decode_time = segment.base_media_decode_time,
+        .byte_size = segment.bytes.size(),
+    };
+}
 
 std::expected<FragmentedOutput, MuxError> fragment(
     const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
@@ -249,14 +347,8 @@ std::expected<FragmentedOutput, MuxError> fragment(
     if (frames.empty()) {
         return std::unexpected(MuxError::kNoFrames);
     }
-    if (track.channels <= 0 || track.sample_rate == 0 ||
-        track.sample_rate > std::numeric_limits<std::uint16_t>::max() ||
-        track.samples_per_frame == 0 || track.codec_config.empty() ||
-        (track.codec_id != kCodecAc3 && track.codec_id != kCodecEac3)) {
-        return std::unexpected(MuxError::kInvalidTrack);
-    }
-    if (options.frames_per_fragment == 0) {
-        return std::unexpected(MuxError::kInvalidOptions);
+    if (const auto invalid = validate(track, options)) {
+        return std::unexpected(*invalid);
     }
 
     const std::uint64_t total_samples =
@@ -273,46 +365,14 @@ std::expected<FragmentedOutput, MuxError> fragment(
     std::uint32_t sequence_number = 1;
     for (std::size_t start = 0; start < frames.size(); start += step) {
         const std::size_t count = std::min(step, frames.size() - start);
-        const auto fragment_frames = frames.subspan(start, count);
-
-        auto moof = build_moof(sequence_number, samples_emitted, fragment_frames);
-        if (!moof) {
-            return std::unexpected(moof.error());
+        auto segment = build_media_segment(track, options, sequence_number, samples_emitted,
+                                           frames.subspan(start, count));
+        if (!segment) {
+            return std::unexpected(segment.error());
         }
-
-        std::uint64_t mdat_body_bytes = 0;
-        for (const auto& frame : fragment_frames) {
-            mdat_body_bytes += frame.size();
-        }
-        constexpr std::uint64_t kMdatHeaderBytes = 8;
-        if (kMdatHeaderBytes + mdat_body_bytes > std::numeric_limits<std::uint32_t>::max()) {
-            return std::unexpected(MuxError::kFileTooLarge);
-        }
-
-        const Bytes styp = build_media_styp();
-
-        Bytes segment_bytes;
-        segment_bytes.reserve(styp.size() + moof->size() +
-                              static_cast<std::size_t>(kMdatHeaderBytes + mdat_body_bytes));
-        put_bytes(segment_bytes, styp);
-        put_bytes(segment_bytes, *moof);
-        put_u32(segment_bytes, static_cast<std::uint32_t>(kMdatHeaderBytes + mdat_body_bytes));
-        put_fourcc(segment_bytes, "mdat");
-        for (const auto& frame : fragment_frames) {
-            put_bytes(segment_bytes, frame);
-        }
-
-        const std::uint64_t duration_samples =
-            static_cast<std::uint64_t>(count) * track.samples_per_frame;
-        out.media_segments.push_back(MediaSegment{
-            .bytes = std::move(segment_bytes),
-            .sequence_number = sequence_number,
-            .sample_count = static_cast<std::uint32_t>(count),
-            .duration_samples = duration_samples,
-        });
-
-        samples_emitted += duration_samples;
+        samples_emitted += segment->duration_samples;
         ++sequence_number;
+        out.media_segments.push_back(std::move(*segment));
     }
 
     return out;
@@ -323,6 +383,73 @@ std::expected<FragmentedOutput, MuxError> fragment(
     const FragmentOptions& options) {
     const std::vector<std::span<const std::byte>> views(frames.begin(), frames.end());
     return fragment(track, views, options);
+}
+
+FragmentWriter::FragmentWriter(AudioTrack track, FragmentOptions options,
+                               std::vector<std::byte> init_segment)
+    : track_(std::move(track)),
+      options_(std::move(options)),
+      init_segment_(std::move(init_segment)) {}
+
+std::expected<FragmentWriter, MuxError> FragmentWriter::create(const AudioTrack& track,
+                                                               const FragmentOptions& options) {
+    if (const auto invalid = validate(track, options)) {
+        return std::unexpected(*invalid);
+    }
+    // 0 = "duration unknown", the live session's honest answer where
+    // fragment() writes the real total - see build_init_segment's own comment
+    // and mp4.hpp's on this class.
+    return FragmentWriter{track, options, build_init_segment(track, options, 0)};
+}
+
+std::expected<MediaSegment, MuxError> FragmentWriter::close_fragment() {
+    const std::vector<std::span<const std::byte>> views(pending_.begin(), pending_.end());
+    auto segment = build_media_segment(track_, options_, sequence_number_, decode_time_, views);
+    if (!segment) {
+        return std::unexpected(segment.error());
+    }
+    pending_.clear();
+    decode_time_ += segment->duration_samples;
+    ++sequence_number_;
+
+    window_.push_back(segment_info(*segment));
+    if (options_.playlist_window_segments != 0 &&
+        window_.size() > options_.playlist_window_segments) {
+        window_.erase(window_.begin(),
+                      window_.begin() + static_cast<std::ptrdiff_t>(
+                                            window_.size() - options_.playlist_window_segments));
+    }
+    return segment;
+}
+
+std::expected<std::optional<MediaSegment>, MuxError> FragmentWriter::push(
+    std::span<const std::byte> frame) {
+    // Copied, not viewed: a fragment's frames are held until the fragment
+    // closes, and a live caller reuses its encode buffer on the very next
+    // call. Bounded at options_.frames_per_fragment frames whatever the
+    // session's length, which is the whole point of this class over
+    // fragment().
+    pending_.emplace_back(frame.begin(), frame.end());
+    ++frames_written_;
+    if (pending_.size() < options_.frames_per_fragment) {
+        return std::optional<MediaSegment>{};
+    }
+    auto segment = close_fragment();
+    if (!segment) {
+        return std::unexpected(segment.error());
+    }
+    return std::optional<MediaSegment>{std::move(*segment)};
+}
+
+std::expected<std::optional<MediaSegment>, MuxError> FragmentWriter::finalize() {
+    if (pending_.empty()) {
+        return std::optional<MediaSegment>{};
+    }
+    auto segment = close_fragment();
+    if (!segment) {
+        return std::unexpected(segment.error());
+    }
+    return std::optional<MediaSegment>{std::move(*segment)};
 }
 
 }  // namespace mp4

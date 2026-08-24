@@ -5,13 +5,14 @@
 
 #include "ac3/meta/qc.hpp"
 
-// ac3::meta::qc.hpp's own surface: the three named delivery-gate presets
-// (roadmap C2) and the pure gate-evaluation math ac3cli qc and
+// ac3::meta::qc.hpp's own surface: the named delivery-gate presets (roadmap
+// C2, refreshed by IO11) and the pure gate-evaluation math ac3cli qc and
 // examples/qc_report.cpp both call. The presets' numeric values are copied
 // here as CHECKs against the primary sources cited in qc.hpp's own
-// qc_preset() comment (EBU R 128 s2 + EBU R 128, ATSC A/85:2013 §6, Netflix
-// Sound Mix Specifications & Best Practices v1.6) - a wrong number here is
-// caught the same way a wrong DRC profile edge would be in test_drc.cpp.
+// qc_preset() comment (EBU R 128 s2 + EBU R 128, ATSC A/85:2026-07 Section 6
+// and Annex L.5, Netflix Sound Mix Specifications & Best Practices v1.6,
+// Apple's Immersive Audio Source Profile) - a wrong number here is caught the
+// same way a wrong DRC profile edge would be in test_drc.cpp.
 
 using ac3::meta::evaluate_qc_gate;
 using ac3::meta::parse_qc_preset;
@@ -28,12 +29,29 @@ TEST_CASE("qc preset numbers match their cited primary sources", "[qc]") {
         CHECK(p.max_true_peak_dbtp == Approx(-1.0));
         CHECK(qc_preset_name(QcPresetId::kEbuR128S2) == "ebu-r128-s2");
     }
-    SECTION("ATSC A/85:2013 (Corrigendum No. 1) Sec.6") {
+    SECTION("ATSC A/85:2026-07 Sec.6") {
+        // Re-cited from A/85:2013 (with Corrigendum No. 1) to the 2026-07
+        // revision approved 8 July 2026, which restates all three numbers
+        // unchanged - so this section is deliberately identical apart from
+        // the source it names, and that is the finding it records.
         const auto p = qc_preset(QcPresetId::kAtscA85);
         CHECK(p.target_lkfs == Approx(-24.0));
         CHECK(p.tolerance_lu == Approx(2.0));
         CHECK(p.max_true_peak_dbtp == Approx(-2.0));
         CHECK(qc_preset_name(QcPresetId::kAtscA85) == "atsc-a85");
+    }
+    SECTION("ATSC A/85:2026-07 Annex L.5 (streaming)") {
+        // Annex L.5 states a BAND - "a Loudness value between -23 and -27
+        // LKFS" - not a point, so what is checked here is that the
+        // target/tolerance pair reproduces that band's two edges exactly.
+        // Checking the edges rather than the midpoint is the point: -25.0 is
+        // an artefact of this table's shape, while -23 and -27 are what the
+        // document actually says.
+        const auto p = qc_preset(QcPresetId::kAtscA85Streaming);
+        CHECK(p.target_lkfs + p.tolerance_lu == Approx(-23.0));
+        CHECK(p.target_lkfs - p.tolerance_lu == Approx(-27.0));
+        CHECK(p.max_true_peak_dbtp == Approx(-2.0));
+        CHECK(qc_preset_name(QcPresetId::kAtscA85Streaming) == "atsc-a85-streaming");
     }
     SECTION("Netflix Sound Mix Specifications & Best Practices v1.6") {
         const auto p = qc_preset(QcPresetId::kNetflix);
@@ -42,6 +60,60 @@ TEST_CASE("qc preset numbers match their cited primary sources", "[qc]") {
         CHECK(p.max_true_peak_dbtp == Approx(-2.0));
         CHECK(qc_preset_name(QcPresetId::kNetflix) == "netflix");
     }
+    SECTION("Apple Immersive Audio Source Profile") {
+        // "The integrated loudness value should not exceed -18 LKFS" and
+        // "True-peak level should not exceed -1 dB TP", both per BS.1770-4.
+        // Loudness is a CEILING here, which is the whole reason
+        // QcLoudnessLimit exists - see the dedicated gate test below.
+        const auto p = qc_preset(QcPresetId::kAppleMusicAtmos);
+        CHECK(p.target_lkfs == Approx(-18.0));
+        CHECK(p.max_true_peak_dbtp == Approx(-1.0));
+        CHECK(p.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling);
+        CHECK(qc_preset_name(QcPresetId::kAppleMusicAtmos) == "apple-music-atmos");
+    }
+    SECTION("every preset names the document it was read out of") {
+        // A verdict against an unnamed edition is not auditable, and IO11's
+        // whole point was that the edition had gone stale. Every row must
+        // carry its source, and every band row must carry a real tolerance
+        // (a ceiling row deliberately does not).
+        for (const auto id : ac3::meta::kQcPresetIds) {
+            CAPTURE(qc_preset_name(id));
+            const auto p = qc_preset(id);
+            CHECK_FALSE(p.source.empty());
+            if (p.loudness_limit == ac3::meta::QcLoudnessLimit::kBand) {
+                CHECK(p.tolerance_lu > 0.0);
+            }
+        }
+    }
+}
+
+TEST_CASE("evaluate_qc_gate: a ceiling preset passes anything at or under its level",
+          "[qc]") {
+    // Apple's clause is "should not exceed -18 LKFS", so a quiet master is
+    // compliant however quiet it is. Gating that as a +/-band - which is what
+    // every other preset here uses - would fail material the source actually
+    // accepts, so this is the behaviour QcLoudnessLimit::kCeiling was added
+    // to get right.
+    const auto preset = qc_preset(QcPresetId::kAppleMusicAtmos);
+    REQUIRE(preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling);
+
+    // Exactly on the ceiling passes ("not exceed" is inclusive).
+    CHECK(evaluate_qc_gate(preset, -18.0, -2.0).loudness_pass);
+    // Far below it still passes - the case a band would wrongly fail.
+    CHECK(evaluate_qc_gate(preset, -30.0, -2.0).loudness_pass);
+    CHECK(evaluate_qc_gate(preset, -60.0, -2.0).loudness_pass);
+    // Above it fails.
+    CHECK_FALSE(evaluate_qc_gate(preset, -17.9, -2.0).loudness_pass);
+    CHECK_FALSE(evaluate_qc_gate(preset, -10.0, -2.0).loudness_pass);
+    // The reported delta still means measured - target, the same as for a
+    // band preset, so a report can print one number for both kinds.
+    const auto verdict = evaluate_qc_gate(preset, -30.0, -2.0);
+    REQUIRE(verdict.loudness_delta_lu.has_value());
+    CHECK(*verdict.loudness_delta_lu == Approx(-12.0));
+    // And true peak is still a ceiling on its own terms: -2 dBTP is under
+    // Apple's -1 dBTP limit, so the whole verdict passes.
+    CHECK(verdict.pass());
+    CHECK_FALSE(evaluate_qc_gate(preset, -30.0, -0.5).pass());
 }
 
 TEST_CASE("parse_qc_preset round-trips every name qc_preset_name emits, and rejects garbage",
