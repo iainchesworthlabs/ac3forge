@@ -212,7 +212,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | nodither | all
+        nofastmdct | nodither | numblkscod:N | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -225,7 +225,12 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         deciding it from content — neither is a coding tool (nothing in
         the bitstream's syntax changes either way), so 'none' and 'all'
         both leave them alone, and the older opt-in spelling 'fastmdct'
-        still parses as a no-op
+        still parses as a no-op;
+        numblkscod:N (0-3, default 3) shortens the syncframe to 1/2/3/6
+        blocks (5.3/10.7/16/32 ms) — every substream of the access unit
+        takes the same value, AHT is unavailable below 3 (Table E1.3 has
+        no ahte bit there — combining it with aht/auto is refused up
+        front, not silently dropped), and 'none'/'all' leave it alone too
 ```
 
 The tool set is the fourth positional argument, not an `=` option. Example:
@@ -235,6 +240,14 @@ on enhanced coupling (auto band edge) and transient pre-noise processing togethe
 `tpn` are independent tools, not alternatives to each other or to `spx`/`aht`, so any
 combination the tools argument accepts is legal here. `all` does not currently imply `ecpl` or
 `tpn`; name them explicitly to get either.
+
+`ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
+blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
+round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
+often for the same audio, which comes straight out of the mantissas at a fixed bit rate.
+`atmos-encode` does not accept this token yet — Atmos's object metadata (OAMD/JOC) is timed and
+interpolated across a full six-block frame, and extending it to a shorter one is unstarted work,
+not merely unexposed.
 
 ## The `vbr` token (`eac3-encode` only)
 

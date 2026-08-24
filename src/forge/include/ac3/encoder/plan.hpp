@@ -276,22 +276,33 @@ struct Tools {
     // real dither values are inherently decoder-specific).
     bool dither = true;
 
+    // §E2.3.1.4: how many 256-sample blocks a syncframe carries - see
+    // eac3::FrameConfig::numblkscod for what a value below the default 3
+    // (six blocks) buys and what it forces off (AHT, the hoisted exponent-
+    // strategy form). E-AC-3 only, like every other field here; unlike them,
+    // this one is not optional to honour once asked for - a decoder that
+    // ignores it decodes the wrong number of samples, so it is not folded
+    // into any() as an on/off tool but always carried through apply_tools.
+    int numblkscod = 3;
+
     // `auto` counts: it may well turn a tool on, and the caller needs E-AC-3
-    // either way for the choice to be available at all.
+    // either way for the choice to be available at all - numblkscod != 3
+    // needs E-AC-3 for the same reason, since classic AC-3 has no such field.
     [[nodiscard]] bool any() const {
-        return auto_tools || coupling || spx || aht || transient_prenoise;
+        return auto_tools || coupling || spx || aht || transient_prenoise || numblkscod != 3;
     }
 };
 
 inline constexpr std::string_view kToolsSyntax =
-    "none | auto | cpl | spx | aht | tpn | nofastmdct | nodither | all (auto picks the tool set "
-    "from the per-channel rate and ignores the on/off tokens, which is what a stream should "
-    "normally use; cpl:N / spx:N pin a band edge, aht:N the "
+    "none | auto | cpl | spx | aht | tpn | nofastmdct | nodither | numblkscod:N | all (auto picks "
+    "the tool set from the per-channel rate and ignores the on/off tokens, which is what a stream "
+    "should normally use; cpl:N / spx:N pin a band edge, aht:N the "
     "gain mode, ecpl selects enhanced coupling instead of standard, tpn selects transient "
     "pre-noise processing, nofastmdct forces the direct-form forward MDCT instead of the "
     "default §7.9.4 fast path, nodither pins dithflag at 0 instead of deciding it from content - "
     "neither is a coding tool, so 'none'/'all' leave them alone and the older opt-in spelling "
-    "'fastmdct' is accepted as a no-op)";
+    "'fastmdct' is accepted as a no-op; numblkscod:N (0-3, default 3) shortens the syncframe to "
+    "1/2/3/6 blocks and forces AHT off, and 'none'/'all' leave it alone too)";
 
 // The '+'-joined token: "none", "cpl", "cpl+spx", "all", "cpl:4+spx:5",
 // "aht:0", "spx+noatten", "atten:12". Returns false on anything unrecognised

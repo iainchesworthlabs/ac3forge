@@ -122,6 +122,7 @@ target_sources(forge_objects
         src/dsp/qmf.cpp
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
+        src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
         src/encoder/bandwidth.cpp
         src/encoder/coupling.cpp
@@ -132,6 +133,7 @@ target_sources(forge_objects
         src/encoder/transient.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/object_strip.cpp
         src/io/probe.cpp
         src/io/wav.cpp
         src/io/wav_stream_reader.cpp

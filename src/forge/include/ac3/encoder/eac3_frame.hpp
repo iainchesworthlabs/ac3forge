@@ -100,6 +100,31 @@ struct FrameConfig {
     std::optional<VbrConfig> vbr = std::nullopt;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
+    // §E2.3.1.4, Table E2.4: how many 256-sample audio blocks one syncframe
+    // carries - code 0 is one block (5.3 ms), 1 is two, 2 is three, and 3 (the
+    // default) is the usual six (32 ms). A short syncframe is a shorter
+    // FRAME, not a lower sample rate: encode_frame then wants
+    // samples_per_frame() samples per channel instead of kSamplesPerFrame,
+    // and the frame's own byte count falls with it.
+    //
+    // What it buys is granularity at the cost of repeating the whole
+    // bsi/audfrm header that much more often, which at a fixed bit rate comes
+    // straight out of the mantissas. Annex E also takes several shortcuts
+    // away below code 3 (Table E1.3): expstre is implied 1, so exponent
+    // strategies are always stated per block and never hoisted into a Table
+    // E2.10 code; ahte is implied 0, so the adaptive hybrid transform is
+    // unavailable; an independent substream carries convsync, which this
+    // encoder sets on the first frame of every group of 6 / blocks_per_frame
+    // frames - the point from which a converter to classic six-block AC-3 can
+    // start accumulating (§8.2 of Annex E's own PES-packaging text); and
+    // blkstrtinfoe disappears entirely at code 0 (there is only one block to
+    // start).
+    //
+    // Not available at the three fscod2 reduced rates: §E2.3.1.3 spends
+    // numblkscod's own bits on fscod2 there, so such a frame is implicitly
+    // always six blocks. validate() refuses the combination rather than
+    // writing a header that says one thing and a payload that says another.
+    int numblkscod = 3;
     int dialnorm = 31;
     // Annex E Table E1.2: Ch2's dialnorm, required when acmod is kDualMono
     // (1+1) — the two programmes are levelled independently.
@@ -321,10 +346,14 @@ struct FrameConfig {
 };
 
 // Words per syncframe at a given rate. E-AC-3 signals the size directly, so
-// this is just the exact bit budget rounded to whole 16-bit words.
+// this is just the exact bit budget rounded to whole 16-bit words. `blocks` is
+// blocks_per_syncframe(numblkscod): a short syncframe carries proportionally
+// fewer samples, and so proportionally fewer words at the same bit rate.
 [[nodiscard]] constexpr std::uint32_t frame_words(SampleRate sample_rate,
-                                                  std::uint32_t bitrate_kbps) {
-    const std::uint64_t bits = static_cast<std::uint64_t>(bitrate_kbps) * 1000 * kSamplesPerFrame /
+                                                  std::uint32_t bitrate_kbps,
+                                                  int blocks = kBlocksPerFrame) {
+    const std::uint64_t bits = static_cast<std::uint64_t>(bitrate_kbps) * 1000 *
+                               static_cast<std::uint64_t>(blocks) * kSamplesPerBlock /
                                sample_rate_hz(sample_rate);
     return static_cast<std::uint32_t>(bits / 16);
 }
@@ -359,9 +388,9 @@ struct FrameMetadata {
 
 // Real audio through the same container. The coding profile is deliberately
 // the one reference encoders use, because those are the paths reference
-// decoders are exercised on: frame-level exponent strategies (Table E2.10
-// code 0 - D15 in block 0, reused for the other five) and frame-level SNR
-// offsets. Long blocks only; the Annex E tools are opt-in per FrameConfig.
+// decoders are exercised on: exponent strategies and SNR offsets planned per
+// frame from content (EQ1) rather than fixed. Long blocks only; the Annex E
+// tools and FrameConfig::numblkscod are opt-in.
 class AC3FORGE_EXPORT FrameEncoder {
    public:
     explicit FrameEncoder(const FrameConfig& config);
@@ -373,7 +402,8 @@ class AC3FORGE_EXPORT FrameEncoder {
 
     // channels: the full-bandwidth channels in AC-3 order (Table 5.8),
     // followed by LFE last when config.lfe is set. Each span holds exactly
-    // kSamplesPerFrame samples, nominally in [-1, 1).
+    // samples_per_frame() samples, nominally in [-1, 1) - kSamplesPerFrame
+    // unless config.numblkscod shortens the syncframe.
     [[nodiscard]] std::expected<std::vector<std::byte>, FrameError> encode_frame(
         std::span<const std::span<const float>> channels, AuxPayload aux = {});
 
@@ -390,10 +420,19 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] int channel_count() const {
         return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
     }
+    // How many samples per channel one call to encode_frame consumes.
+    [[nodiscard]] int samples_per_frame() const {
+        return blocks_per_syncframe(config_.numblkscod) * kSamplesPerBlock;
+    }
 
    private:
     FrameConfig config_;
     std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
+    // §E2.3.1.64: which frame of every 6 / blocks_per_syncframe(numblkscod)
+    // sets convsync - see FrameConfig::numblkscod's own comment. Unused (and
+    // left at 0) at the default numblkscod, where convsync is never written
+    // at all.
+    int convsync_counter_ = 0;
     // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
     // across frames, like history_ above.
     std::vector<TransientDetector> transient_detectors_;
@@ -453,8 +492,12 @@ class AC3FORGE_EXPORT FrameEncoder {
 };
 
 // An independent substream and the dependents that extend it. Every substream
-// codes the same 1536 samples of the same program, so a dependent contributes
-// only its own channels, its chanmap and its share of the bit rate.
+// codes the same samples of the same program, so a dependent contributes only
+// its own channels, its chanmap and its share of the bit rate - and, since
+// they are the same samples, every substream must carry the same
+// numblkscod. AccessUnitEncoder's constructor refuses a mixture rather than
+// building substreams a decoder would have no way to align against each
+// other.
 struct AccessUnitConfig {
     FrameConfig independent{};
     std::vector<FrameConfig> dependents{};
