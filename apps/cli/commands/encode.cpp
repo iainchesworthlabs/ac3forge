@@ -17,6 +17,7 @@
 
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
