@@ -120,4 +120,30 @@ TestCase {
         compare(EncoderController.renderedChannelCount, 9);
         compare(EncoderController.channelShapeName, "7.2");
     }
+
+    function test_objectModeAndDualMonoCountTheirOwnFixedShapes() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+
+        // Object mode always codes a 5.1 bed regardless of what the bed/LFE/
+        // extras picker holds (JOC reconstructs from five channels and the
+        // LFE sits outside the matrix), and the objects themselves are not
+        // channels - so both counts are the bed's six. This is the branch
+        // the live monitor sink and the live Matroska track share as their
+        // "object mode is 6 either way" case.
+        EncoderController.atmosEnabled = false;
+        EncoderController.applyChannelPreset("7.1.4");
+        EncoderController.atmosEnabled = true;
+        compare(EncoderController.codedChannelCount, 6);
+        compare(EncoderController.renderedChannelCount, 6);
+
+        // 1+1 is a bed, not a location mask - the one plan the GUI still
+        // resolves through the named-layout table (see currentPlan()). Two
+        // independent programmes, two coded channels, two speakers.
+        EncoderController.atmosEnabled = false;
+        EncoderController.bedIndex = 0;  // 1+1, per kBeds' own order
+        compare(EncoderController.dualMono, true);
+        compare(EncoderController.codedChannelCount, 2);
+        compare(EncoderController.renderedChannelCount, 2);
+    }
 }

@@ -93,6 +93,7 @@ std::string frame_error_name(ac3::FrameError e) {
         case ac3::FrameError::kInvalidChannelMap: return "kInvalidChannelMap";
         case ac3::FrameError::kTooManyChannels: return "kTooManyChannels";
         case ac3::FrameError::kInvalidMixLevel: return "kInvalidMixLevel";
+        case ac3::FrameError::kInvalidBsi: return "kInvalidBsi";
         case ac3::FrameError::kInvalidObjectAudio: return "kInvalidObjectAudio";
     }
     return "unknown";
@@ -291,6 +292,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kInvalidChannelMap", ac3::FrameError::kInvalidChannelMap)
         .value("kTooManyChannels", ac3::FrameError::kTooManyChannels)
         .value("kInvalidMixLevel", ac3::FrameError::kInvalidMixLevel)
+        .value("kInvalidBsi", ac3::FrameError::kInvalidBsi)
         .value("kInvalidObjectAudio", ac3::FrameError::kInvalidObjectAudio);
 
     py::enum_<ac3::eac3::StreamType>(m, "StreamType")

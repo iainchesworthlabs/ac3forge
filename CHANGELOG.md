@@ -43,6 +43,87 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   substitution is reported on the result (`concealed`), and for E-AC-3 an access unit whose
   *dependent* substream will not decode renders its bed alone rather than failing outright.
   `ac3cli decode|monitor conceal=repeat|mute`, which report how many frames were concealed.
+- **Third-party Atmos streams decode** (roadmap `DC6`). The object layer used to recognise only
+  the shapes this project's own encoder writes and refuse everything else, which is most of what
+  real content carries. OAMD now reads any number of metadata update blocks at any sample offset
+  and ramp duration, object size, zone constraints, elevation gating, channel lock, screen
+  reference, distance, explicit priority and gain reuse, positions coded differentially against
+  the previous block, inactive objects, several bed instances (standard or non-standard), bed
+  channel distribution, programmes carrying an intermediate spatial format, alternate object
+  data, the `trim_element` and the `extended_object_element` — and an `oa_element` whose id it
+  does not know is now skipped by its own size and reported on `DecodedProgram::skipped_elements`
+  rather than costing the whole payload. JOC reads all five of Table 47's downmix configurations,
+  any clip gain, and per-object band count, quantizer, sparse-or-whole-matrix mode, interpolation
+  slope and data-point count; `joc::reconstruct` implements the whole of §6.6.5, keeping
+  `joc_mix_mtx_prev` per QMF subband as the clause does. The EMDF reader parses the whole of
+  §H.2.1.3's payload configuration onto `DecodedPayload::config` instead of insisting on TS 103
+  420 Table 56's one shape, and handles the payload-id extension escape.
+- **JOC reconstruction for bed programmes.** Object audio was only reconstructed for a
+  dynamic-object-only programme — the one shape `AtmosEncoder` writes. It now covers bed
+  programmes too, which is what channel-based-immersive third-party content is, so a 7.1.4 bed
+  carried in a 5.1 downmix exports its eleven non-LFE channels. `DecodedSubstream::object_indices`
+  says which programme object each `object_audio` entry is, `oba::bed_labels()` turns a bed
+  channel into a speaker label, and `ac3cli decode`'s report and `objects_dir` export, the GUI
+  object inspector and the WASM demo all follow.
+- **A committed third-party fixture.** `tests/golden/object-fixture/dee_joc_514.ec3` is a DD+ JOC
+  stream produced by the Dolby Encoding Engine from a synthetic 5.1.4 tone bed
+  (`tools/generators/gen_object_fixture.py`, local-only — DEE is licensed and never runs in CI).
+  It is the only Atmos stream here this project's encoder did not make. Because each source
+  channel carries a different tone, identifying each reconstructed object by which tone dominates
+  it independently confirms both the reconstruction and the order a bed's channels occupy — the
+  order TS 103 420 §5.6.1.1.4 states backwards.
+- **Object extent, channel lock and zone constraints on the encode side** (roadmap `DC7`).
+  `ac3::oba::ObjectPlacement` and `Keyframe` carry §5.6.1's `size` (width/depth/height),
+  `snap`, `zone` and `enable_elevation`; `oba::build_payload` writes all four, and `KeyframePath`
+  interpolates size between keyframes while holding the three discrete flags. The ADM bridge maps
+  BS.2076-2 `width`/`height`/`depth` onto `ObjectSize` and `channelLock` onto `snap`; `diffuse`,
+  `zoneExclusion` and `objectDivergence` remain unmapped, and `docs/library/adm-bridge.md` now
+  gives each one its own reason rather than one blanket paragraph.
+- **AC-3 Annex D alternate bit stream syntax (bsid 6)** — roadmap `DC3`. AC-3's two 14-bit
+  `timecod` fields have never been applied for their originally anticipated purpose (§D1), so
+  Annex D reuses them: `EncoderConfig::alternate_bsi` writes `bsid` 6 and spends those 28 bits on
+  `xbsi1` (a preferred-downmix indication plus separate Lt/Rt and Lo/Ro centre and surround
+  levels, Tables D2.2–D2.6) and `xbsi2` (Dolby Surround EX, Dolby Headphone, A/D converter type).
+  Until now `dmixmod=ltrt|loro` was a CLI token that on AC-3 had nowhere to go. The decoder
+  recognises `bsid` 6 and reports both groups on `DecodedFrame`. CLI: `annexd` (implied by
+  `dmixmod=`, the four level tokens and the three `xbsi2` tokens), `dsurexmod=`,
+  `dheadphonmod=`, `adconvtyp=`, `encinfo`, `ltrtcmixlev=`, `lorocmixlev=`, `ltrtsurmixlev=`,
+  `lorosurmixlev=`.
+- **The informational bit stream information fields**, both codecs — roadmap `DC3`. `bsmod`
+  (complete main through commentary and emergency, Table 5.7 — what ATSC A/53 and DVB key
+  associated-service handling off), `dsurmod`, `langcod`, `audprodie`'s mixing level and room
+  type, `copyrightb`, `origbs` and the 28-bit time code were constants on the way out and skipped
+  on the way in; they are now configurable through `ac3::meta::BsiInfo` and reported on decode.
+  E-AC-3 gathers the same set (plus `dheadphonmod`, `dsurexmod`, `adconvtyp` and `sourcefscod`)
+  into Table E1.2's `infomdat` element, which `FrameConfig::info` writes and `Eac3Decoder`
+  reports. CLI: `bsmod=`, `dsurmod=`, `mixlevel=`, `roomtyp=`, `mixlevel2=`, `roomtyp2=`,
+  `langcod`, `langcod2`, `copyright`, `origbs=`, `sourcefscod`, `timecode=`, `infomdat`.
+- **The rest of E-AC-3's `mixmdate`** — roadmap `DC4`. `MixMetadata` reached only the five
+  downmix levels and `lfemixlevcod`; it now carries Table E1.2's programme scale factors
+  (`pgmscl`, `pgmscl2`, `extpgmscl`), the `mixdef` 0x1–0x3 mixing-parameter block (premix
+  compression select/source/scale, `mixdata2e`'s per-channel external-programme scales and
+  `mixdata3e`'s speech enhancement data, sized by `mixdeflen`), pan information for 1/0 and 1+1,
+  and per-block mixing configuration. These are what a receiver uses to mix an audio-description
+  or commentary programme against the main one. Written by the independent substream and reported
+  on `DecodedSubstream`/`DecodedAccessUnit`. CLI: `pgmscl=`, `pgmscl2=`, `extpgmscl=`, `mixdef=`,
+  `premixcmp=`, `mixdata=`, `extmix=`, `auxmix=`, `speechmix=`, `paninfo=`, `paninfo2=`,
+  `blkmixcfg=`.
+- **`decode` reports what it read.** Any service, production, Surround or programme-mixing field
+  a stream actually carries is now printed under the `dynrng`/`compr` lines, along with `bsid` 6
+  where the alternate syntax is in use. A programme carrying none of them prints nothing extra.
+- **GUI: a Service & production card** on the Metadata tab — service type, mixing level and room
+  type, the Dolby Surround / Headphone / Surround EX flags where the layout carries them, A/D
+  converter type, the copyright and original-bit-stream bits, and an Annex D toggle on AC-3.
+- **Every codec path now has a throughput number and a real-time gate** (roadmap `PF1`). The
+  performance suite covered two encoder configurations; it now covers nine workloads — AC-3,
+  E-AC-3 (with the Annex E tools on `auto`, at 5.1 and stereo) and Atmos/JOC encode, plus the
+  three decode paths that read what they produce. Until now the E-AC-3 encoder, the largest
+  source file in the codec, and every decoder had no ms/frame series on
+  [the performance trend page](docs/performance-trend.md) and no real-time assertion anywhere,
+  so a regression in any of them was invisible. Both decoders gain Tracy zones (frame, block,
+  exponents, bit allocation, mantissas, decoupling, IMDCT/overlap and JOC reconstruction), so a
+  decode regression can be attributed without a bisect. `ac3kernelbench`'s own decode-side gap —
+  the fast inverse transform's kernel series — is closed just below, alongside `dft512`.
 - **Wider PCM input** (roadmap `DC8`). `read_wav` and `WavStreamReader` accepted
   `WAVE_FORMAT_PCM` at 16 bits and `WAVE_FORMAT_IEEE_FLOAT` at 32 and refused everything else,
   so 24-bit — the normal professional delivery depth — needed an FFmpeg pre-conversion before
@@ -294,6 +375,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   roadmap `VX11`/`VX12`) and the source material is synthetic (roadmap `VX7`); both are stated in
   the bundle. Nothing produced by Dolby or FFmpeg is redistributed, and no stream is signed
   unless an operator supplies a key.
+
+### Fixed
+
+- **`audblk` skipped `cplfgaincod` and `cplfsnroffst`.** A/52 Annex E reads both ahead of the
+  per-channel lists when the block couples, and the decoder read only the per-channel ones, so a
+  stream that sets `frmfgaincode` or `snroffststr` 2 alongside coupling desynchronised three bits
+  later and failed on the next block's exponents. No stream this project produces was affected —
+  its encoder writes `frmfgaincode` 0 and `snroffststr` 0 — which is why only a real Dolby stream
+  exposed it.
+
+### Added
+
 - **`ac3::oba::ObjectScene`, one object-scene timeline shared by every front end**
   (`ac3/oba/scene.hpp`, roadmap `IM7`). `AtmosEncoder` takes per-frame placements and nothing
   more, so `ac3cli atmos-path`, the GUI's timeline export and the station-broadcast example each
@@ -810,6 +903,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `ac3cli decode channels=2` runs — and needs no soft clip, because §7.8.1's normalisation means
   a fold cannot be louder than the loudest coded sample. The per-channel visualization still
   shows every coded channel.
+- `DecodedFrame` reports `bsid`, `cmixlev` and `surmixlev` instead of discarding the two mix
+  levels — the input roadmap `DC1`'s decoder output stage needs. A layout that carries neither
+  field reports §7.8's own fallbacks, so a caller can apply them unconditionally.
+- New `FrameError::kInvalidBsi` (`AC3FORGE_ERROR_ENCODE_INVALID_BSI` in the C API) refuses a bit
+  stream information value too wide for its field — a mixing level above 31 needs six bits where
+  §5.4.2.14 has five, and writing it would push every following field one bit along rather than
+  merely recording the wrong level. New `plan::PlanError::kTimecodeNeedsBsid8` refuses a plan
+  asking for Annex D and a time code, which occupy the same 28 bits.
 - **Floating-point contraction is pinned off** (`-ffp-contract=off`, `/fp:precise` on MSVC,
   `/clang:-ffp-contract=off` on clang-cl), project-wide — for the SIMD seam's bit-exactness
   argument, which needs the compiler not to silently re-fuse a vector operation into an FMA the
@@ -921,8 +1022,9 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   of every syncframe of an arbitrary stream, where an ordinary non-Atmos frame is not an error and
   a debug build must not abort on one. Release behaviour is unchanged: it already declined to sign
   these, just without saying so.
-- `DecodedFrame` and `DecodedSubstream` now report `bsid` and `bsmod`, which both decoders
-  already read past and discarded.
+- `DecodedFrame` and `DecodedSubstream` now also report the raw `bsmod` code alongside `bsid`,
+  for a caller (`ac3cli probe`'s JSON output) that wants it without unwrapping
+  `meta::BitstreamMode`.
 - **E-AC-3 `auto` chooses its Annex E tools from the frame, not just the bitrate** (`EQ9`). The
   tool set used to follow from the per-channel rate alone. Two measures taken from the MDCT
   coefficients the transform has already produced now decide with it: how much of the coupling
@@ -947,6 +1049,67 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
   `tools=auto` output stays decodable by FFmpeg, and the tool tokens (`cpl`, `spx`, `aht`,
   `cpl+ecpl`, `tpn`, …) are unchanged — a caller who names a tool set still gets exactly it.
+- **E-AC-3 transmits its bit allocation parameters** (`bamode` 1, roadmap `EQ3`) instead of
+  inheriting Table E1.4's `bamode == 0` defaults - which are not §8.2.12's basic-encoder set, and
+  in particular pinned `dbpbcod` at 2. The frame now states `{sdcycod 2, fdcycod 1, sgaincod 1,
+  dbpbcod 3, floorcod 7}`, at a cost of 17 bits a frame. `dbpbcod` 3 is the departure the AC-3
+  encoder measured its way to in 0.7.0, and it carries over: swept 0-3 across 96/128/192 kbit/s
+  stereo and 192/256/384/640 kbit/s 5.1, it wins every cell by +1.2 to +3.0 dB SNR against the
+  old value, with ViSQOL MOS up in every cell too. `floorcod` was swept as well and stays at 7 -
+  the lowest of the eight, so the floor never binds. Both reference encoders in
+  `tests/golden/external-baseline/` emit exactly this set.
+- **`dithflag` is decided from content** in both encoders (roadmap `EQ4`), per full-bandwidth
+  channel per block, where it was previously written as a fixed 0. §7.3.4's dither exists to fill
+  the bins the allocator gave no bits to; the encoders now compare the energy the decoder will
+  not receive against the energy the dither would put there instead, and set the flag only where
+  the first is at least as large as the second. Digital silence always reads clear. A
+  block-switched channel never dithers - two interleaved half transforms share one coefficient
+  set there - which is also exactly what Dolby's own encoder does in the reference stream. On
+  E-AC-3 dither is additionally held off for any frame using spectral extension, whose
+  copy-source reconstruction the encoder could not otherwise mirror. The flag is transmitted
+  either way, so none of this costs bits; it trades a little waveform SNR for perceptual quality,
+  which is what the tool is for.
+
+  Measured on `tools/ci/quality_race.py`'s own material, decoded by FFmpeg 8.0.1, ViSQOL in audio
+  mode. The E-AC-3 rows carry both changes; the AC-3 rows carry only the dither one. Full tables,
+  every rate and tool set, are in the pull request.
+
+  | leg | before | after |
+  |---|---|---|
+  | AC-3 stereo 192 | 41.82 dB / 4.246 MOS | 41.12 dB / 4.344 MOS |
+  | AC-3 5.1 448 | 21.96 dB / 3.956 MOS | 20.91 dB / 4.268 MOS |
+  | AC-3 5.1 448, committed fixture | 39.95 dB / 3.670 MOS | 38.92 dB / 3.913 MOS |
+  | E-AC-3 stereo 96, no tools | 25.79 dB / 3.799 MOS | 26.75 dB / 4.307 MOS |
+  | E-AC-3 stereo 192, `auto` | 40.42 dB / 4.395 MOS | 40.98 dB / 4.414 MOS |
+  | E-AC-3 5.1 192, no tools | 10.02 dB / 1.326 MOS | 12.14 dB / 2.340 MOS |
+  | E-AC-3 5.1 256, `cpl` | 15.44 dB / 2.364 MOS | 15.36 dB / 2.875 MOS |
+- **`std::format`/`std::print`/`std::printf` replaced with {fmt}'s `fmt::format`/`fmt::print`/
+  `fmt::printf` everywhere.** NDK r26's bundled libc++ has no `<format>` at all unless the
+  compiler is invoked with `-fexperimental-library`, which the Android build never does; {fmt}
+  (the library `std::format` was standardized from) has no such gap, so the codebase now uses it
+  uniformly instead of avoiding standard formatting file by file. The handful of pre-existing
+  `%`-specifier call sites moved to `fmt::printf` with their format strings unchanged, rather than
+  being rewritten to `{}`-style. `fmt` is a new base vcpkg dependency (falls back to
+  `FetchContent` when no local copy is found — see `cmake/Fmt.cmake`); no public API is affected,
+  since every use is confined to implementation files.
+- **The timing benches are fed real programme material** (roadmap `PF1`). `ac3bench` and
+  `ac3perf` ran a 440 Hz sine on every channel; they now read `tests/golden/audio/reference_51.wav`
+  through a shared loader, the same rule `ac3kernelbench` has always followed. A single
+  stationary tone is not a cheaper version of programme material but a different workload: its
+  one-bin spectrum leaves the SNR-offset search, coupling, rematrixing and — because the
+  transient detector never fires — the entire block-switched transform out of the measurement,
+  so a regression confined to any of them could not move the number.
+- **`to_fixed25` is inlined and fused with exponent extraction** (roadmap `PF2`). It was an
+  out-of-line exported function wrapping a libm `std::round`, called once per coefficient bin
+  from both encoders — about 9,100 times per frame — and the largest named remainder of the
+  last profile at roughly 7% of a fast-path 5.1 encode. It moves into the header as a
+  `constexpr` function with bit-identical rounding (half away from zero, expressed without the
+  libm call), and both encoders' convert-then-re-walk pair becomes a single fused pass. Encoder
+  output is byte-identical: verified over a 24-stream corpus spanning both generations, several
+  rates and layouts, every Annex E tool set, both transform paths and Atmos/JOC.
+  `ac3::to_fixed25` and `ac3::exponent_from_fixed` are no longer exported from the shared
+  library — source callers are unaffected, a binary that linked them out of the DLL/`.so` must
+  recompile.
 
 ### Documented
 

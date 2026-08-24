@@ -383,6 +383,13 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
         // The gain is inside the reconstructed essence (see step 1), so the
         // renderer must not apply it a second time.
         described[object].gain_db = 0.0;
+        // Extent and rendering constraints pass straight through to OAMD -
+        // see ObjectPlacement's own comment on why the bed render below
+        // deliberately does not also act on them.
+        described[object].size = placement[object].size;
+        described[object].snap = placement[object].snap;
+        described[object].zone = placement[object].zone;
+        described[object].enable_elevation = placement[object].enable_elevation;
     }
     // §6.3.3.3: 0 marks the first frame, after which the counter runs 1..1023
     // and wraps to 1 rather than to 0 - a decoder reads 0 as a splice and

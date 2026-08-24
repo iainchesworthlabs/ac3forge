@@ -20,7 +20,7 @@
 | `ac3/io/metadata_edit.hpp` | `read_frame_metadata`, `edit_frame_metadata`, `edit_stream_metadata`, `restamp_crc` — changing `dialnorm`/`compr`/`bsmod`/`dsurmod` on an already-encoded stream without re-encoding the audio, CRCs re-stamped (`crc1` solved, not computed). |
 | `ac3/io/dec3.hpp` | `build_codec_config_box` — the ISOBMFF `dac3`/`dec3` sample-entry payload (ETSI TS 102 366 Annex F), Dolby Atmos extension included, built from a `ScannedStream`. What `mp4::AudioTrack::codec_config` is filled in with. |
 | `ac3/io/wav.hpp` | WAV read (8/16/24/32-bit PCM, 32/64-bit float, `WAVE_FORMAT_EXTENSIBLE`, RF64/BW64) and write (float32, raw PCM16), plus the WAV↔Table 5.8 permutation. |
-| `ac3/meta/drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | `dynrng`, `compr`, BS.1770, downmix levels, named QC delivery-gate presets. |
+| `ac3/meta/bsi.hpp`, `drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | `dynrng`, `compr`, BS.1770, downmix levels and the rest of `mixmdate`, the informational bsi/`infomdat` fields and Annex D's alternate syntax, named QC delivery-gate presets. |
 | `ac3/spatial/spatial.hpp` | `BedRenderer`, `pan_azimuth`, `pan_room`. |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp` | The object layer. |
 | `ac3/oba/motion.hpp` | `Keyframe`, `KeyframePath`, `OrbitPath`, `ObjectPath` (a `std::variant` of the two), `evaluate_placements`. The per-object layer: turns authored keyframes or a closed-form orbit into the `ObjectPlacement` span `AtmosEncoder::encode_frame` already took per-frame — a placement-generation layer in front of the existing API, not a change to it. Backs `ac3cli atmos`'s built-in orbit and `live`'s `atmos` mode. |

@@ -17,6 +17,8 @@
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -238,11 +240,25 @@ struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 0;
     // §5.4.1.3/§5.4.2.1, reported rather than merely checked: an inspection
-    // tool wants both off the wire, and nothing else here carries them.
+    // tool wants both off the wire, and nothing else here carries them. bsid
+    // is 8 for the syntax in the body of A/52, 6 for Annex D's alternate one
+    // - anything else is refused, so those are the only two values this ever
+    // reports. bsmod is the same 3-bit code info.bsmod below decodes into
+    // BitstreamMode; both are populated from the one read, this one for a
+    // caller (an inspection tool's JSON output) that wants the raw code.
     int bsid = 8;
     int bsmod = 0;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
+    // §5.4.2's informational fields, whatever this frame carried. Fields the
+    // layout gives no home to keep their defaults - a 3/2 frame sends no
+    // dsurmod, so `info.dsurmod` stays "not indicated" rather than reporting
+    // a bit that was never on the wire.
+    meta::BsiInfo info{};
+    // Annex D's xbsi1/xbsi2, present exactly when bsid is 6. A bsid-8 frame
+    // carries the time code in the same 28 bits instead, and reports it as
+    // info.timecod1/timecod2 above.
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.4/§5.4.2.5, the two downmix levels bsi carries: std::nullopt for
     // any acmod whose bsi does not carry that field at all (cmixlev needs
@@ -391,13 +407,20 @@ struct DecodedSubstream {
     std::optional<std::uint8_t> compr2 = std::nullopt;
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     int numblkscod = 3;
-    // Table E1.2's mixmdate downmix levels, when the substream carried a
-    // mixing-metadata payload at all - separate Lt/Rt and Lo/Ro centre and
-    // surround levels plus the LFE mix level, none of which AC-3's bsi can
-    // express. std::nullopt when mixmdate was absent, which is a different
-    // statement from "present, and says the defaults". ac3::mix_levels()
-    // turns it into the coefficients the §7.8 output stage needs.
-    std::optional<meta::MixMetadata> mix = std::nullopt;
+    // Table E1.2's mixmdate group, std::nullopt when mixmdate was clear -
+    // separate Lt/Rt and Lo/Ro centre and surround levels plus the LFE mix
+    // level, none of which AC-3's bsi can express, through the rest of the
+    // group DC4 added (programme scale factors, the mixdef block, pan info).
+    // A DEPENDENT substream's copy stops after the levels - Table E1.2 gates
+    // everything past lfemixlevcod on strmtyp == 0x0 - so those fields keep
+    // their defaults there rather than reporting bits that were never sent.
+    // ac3::mix_levels() turns the downmix levels alone into the coefficients
+    // the §7.8 output stage needs.
+    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
+    // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
+    // and are never set here.
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // §E2.3.1.8: only a dependent substream may carry one.
     std::optional<std::uint16_t> chanmap;
     // §E3.8.5: in a dependent substream compre does not announce a compression
@@ -417,13 +440,11 @@ struct DecodedSubstream {
     // fixed (emdf::build_container's own comment), so every block's skip
     // field is a candidate; the first one that parses wins.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
-    // JOC's (§6) reconstructed per-object audio, one waveform per object,
-    // parallel to object_metadata->objects (same index means the same
-    // object) - empty when object_metadata is unset, when no JOC payload
-    // rode alongside the OAMD one, or when the program shape is one JOC's
-    // own object ordering cannot be lined up against object_metadata's for
-    // (see Eac3Decoder::decode_substream's own comment on this - a bed
-    // program AtmosEncoder itself never produces).
+    // JOC's (§6) reconstructed per-object audio, one waveform per JOC output
+    // - empty when object_metadata is unset, when no JOC payload rode
+    // alongside the OAMD one, or when the downmix JOC asks for is not the
+    // five channels this substream carries (Table 47's 7-channel
+    // configurations need a dependent substream's Lb/Rb).
     std::vector<std::vector<float>> object_audio;
     // §7.10, same convention as DecodedFrame::concealed: set only when this
     // substream was concealed rather than decoded. A concealed substream
@@ -431,6 +452,15 @@ struct DecodedSubstream {
     // did not arrive, and repeating the previous frame's positions would put
     // moving objects somewhere they demonstrably are not.
     std::optional<Concealment> concealed = std::nullopt;
+    // What each object_audio entry IS: an index into the payload's own object
+    // order (bed channels, then ISF, then dynamic objects), which is
+    // oba::joc_object_indices() for this program. For the
+    // dynamic-object-only program AtmosEncoder writes, entry i is
+    // object_metadata->objects[i] - the identity this used to assume - and
+    // for a bed program it names the bed channel instead, which
+    // oba::bed_labels() turns into a speaker label. Same length as
+    // object_audio, and empty exactly when it is.
+    std::vector<int> object_indices;
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
@@ -469,6 +499,13 @@ struct DecodedAccessUnit {
     // rather than the fixed array's unwritten tail - see
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
+    // The independent substream's own mixmdate and infomdat groups, same
+    // reasoning as compr and dynrng above: every substream carries its own,
+    // but only the bed's describes the programme. A dependent's mixmdate is
+    // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
+    // gate of its own worth surfacing at this level.
+    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // object_metadata/object_audio from whichever substream of the access
     // unit carries them, first one wins - see DecodedSubstream's own comments
     // on both. TS 103 420 §8.3.1 leaves the choice of substream to the
@@ -480,11 +517,7 @@ struct DecodedAccessUnit {
     // the question is which substream carries it, not how to merge several.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
-    // The independent substream's own mixmdate downmix levels - see
-    // DecodedSubstream::mix. A dependent carries its own copy of the group,
-    // but the program folds down as one thing, and the bed's is the set that
-    // describes it.
-    std::optional<meta::MixMetadata> mix = std::nullopt;
+    std::vector<int> object_indices;
     int substream_count = 0;
     eac3::chanmap::Layout layout;
     // Parallel to `layout`, except for dual mono - unless DecoderConfig::

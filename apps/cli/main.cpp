@@ -588,7 +588,10 @@ int run_main(int argc, char** argv) {
                                token == "verify-objects" || token == "verify" ||
                                token == "keep-partial" || token == "fast-mdct" ||
                                token == "fast-imdct" || token == "mix-lfe" ||
-                               token == "fallback-51";
+                               token == "fallback-51" || token == "annexd" ||
+                               token == "infomdat" || token == "encinfo" ||
+                               token == "langcod" || token == "langcod2" ||
+                               token == "copyright" || token == "sourcefscod";
         if (token == "couple") {
             couple_flag = true;
         }

@@ -82,11 +82,19 @@ async function decodeBytes(bytes, moduleInstance) {
     }
 
     const objectCount = decoder.objectCount();
-    const objectPositions = []; // per object: Float32Array of [x,y,z,gain_db] * frames
+    // per object: Float32Array of [x, y, z, gain_db, width, depth, height] * frames
+    const objectPositions = [];
     const objectAudio = [];     // per object: Float32Array, real isolated reconstructed audio
+    // A bed programme's objects are its speaker channels, so each carries the
+    // label of the speaker it is; a dynamic object has an index and no name.
+    const objectLabels = [];
     for (let obj = 0; obj < objectCount; obj++) {
         objectPositions.push(copyOut(decoder.objectPositions(obj)));
         objectAudio.push(copyOut(decoder.objectAudioPcm(obj)));
+        // Guarded because docs/assets/wasm-decode-demo/ carries a committed
+        // ac3forge_decode.wasm that only the docs deploy job rebuilds, so a
+        // local preview can be running an older module than this file.
+        objectLabels.push(typeof decoder.objectLabel === 'function' ? decoder.objectLabel(obj) : '');
     }
 
     // The §7.8 stereo fold the library itself produced (ac3::OutputStage,
@@ -114,6 +122,7 @@ async function decodeBytes(bytes, moduleInstance) {
         objectCount,
         objectPositions,
         objectAudio,
+        objectLabels,
         objectFrameSize: decoder.objectFrameSize(),
         objectFrameCount: decoder.objectFrameCount(),
         objectStartSeconds: decoder.objectStartSeconds(),
@@ -122,16 +131,35 @@ async function decodeBytes(bytes, moduleInstance) {
     return result;
 }
 
-// Looks up object `obj`'s [x, y, z, gain_db] at playback time `t`, clamped to
-// the decoded range - real decoded OAMD data, one entry per real decoded
-// frame, not interpolated/fabricated between frames.
+// Fields per object per frame in objectPositions. Derived from the data
+// rather than hard-coded against decoder_bindings.cpp's kPositionStride, so
+// that a local preview running the committed (older) ac3forge_decode.wasm
+// still reads its own arrays correctly - see objectLabels above.
+function objectStride(result) {
+    if (result.objectCount === 0 || result.objectFrameCount === 0) {
+        return 7;
+    }
+    return result.objectPositions[0].length / result.objectFrameCount;
+}
+
+// Looks up object `obj`'s state at playback time `t`, clamped to the decoded
+// range - real decoded OAMD data, one entry per real decoded frame, not
+// interpolated/fabricated between frames. width/depth/height are TS 103 420
+// 5.6.1.2's extent, 0/0/0 for a point source.
 function objectStateAt(result, obj, t) {
     const positions = result.objectPositions[obj];
     const frameDuration = result.objectFrameSize / result.sampleRate;
     const relative = t - result.objectStartSeconds;
     const frame = Math.max(0, Math.min(result.objectFrameCount - 1, Math.floor(relative / frameDuration)));
-    const base = frame * 4;
-    return { x: positions[base], y: positions[base + 1], z: positions[base + 2], gainDb: positions[base + 3] };
+    const stride = objectStride(result);
+    const base = frame * stride;
+    return {
+        x: positions[base], y: positions[base + 1], z: positions[base + 2],
+        gainDb: positions[base + 3],
+        width: stride > 4 ? positions[base + 4] : 0,
+        depth: stride > 5 ? positions[base + 5] : 0,
+        height: stride > 6 ? positions[base + 6] : 0,
+    };
 }
 
 // The §7.8 Lo/Ro fold the decoder produced, ready to play. The matrix, the
@@ -403,8 +431,12 @@ function drawObjects() {
                 const s = objectStateAt(decoded, obj, t);
                 const level = objectAudioLevelAt(decoded, obj, t);
                 const color = OBJECT_COLORS[obj % OBJECT_COLORS.length];
-                const radius = 5 + level * 7;
-                const label = `obj ${obj + 1}`;
+                // An object with extent draws bigger: the dot still tracks
+                // level, and the widest axis adds up to another 14 px on top,
+                // so a wall of rain reads as a wall rather than a raindrop.
+                const extent = Math.max(s.width, s.depth, s.height);
+                const radius = 5 + level * 7 + extent * 14;
+                const label = decoded.objectLabels[obj] || `obj ${obj + 1}`;
                 const highlighted = soloObject === obj;
 
                 // Plan: x -> right wall, y -> rear wall (top-down).
@@ -445,7 +477,7 @@ function setSoloObject(index) {
     if (playing) { pause(); play(); } // restart on the newly-selected source, from the same position
 }
 
-function buildSoloControls(objectCount) {
+function buildSoloControls(objectCount, labels) {
     const container = el('soloControls');
     container.innerHTML = '';
     if (objectCount === 0) {
@@ -463,7 +495,7 @@ function buildSoloControls(objectCount) {
 
     for (let obj = 0; obj < objectCount; obj++) {
         const btn = document.createElement('button');
-        btn.textContent = `Solo object ${obj + 1}`;
+        btn.textContent = labels && labels[obj] ? `Solo ${labels[obj]}` : `Solo object ${obj + 1}`;
         btn.dataset.object = String(obj);
         btn.style.setProperty('--dot-color', `rgb(${OBJECT_COLORS[obj % OBJECT_COLORS.length]})`);
         btn.classList.add('object-btn');
@@ -489,7 +521,7 @@ async function handleDecoded(bytes, label) {
         el('seek').disabled = false;
         el('seek').value = '0';
         el('scrubTime').textContent = `0.0s / ${result.durationSeconds.toFixed(1)}s`;
-        buildSoloControls(result.objectCount);
+        buildSoloControls(result.objectCount, result.objectLabels);
         setStatus(`Decoded ${label}.`, false);
     } catch (err) {
         decoded = null;

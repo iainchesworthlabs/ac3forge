@@ -212,19 +212,24 @@ depth a receiver needs to do anything beyond play one programme at the right lev
   whose dependent will not decode renders its bed alone (`kBedOnly`). `ac3cli decode|monitor
   conceal=repeat|mute`. Tests damage real encoded frames, which the differential fuzzers — they
   only compare successful decodes — never did.
-- [ ] **DC3 (M)** — AC-3 Annex D alternate syntax (bsid 6, `xbsi1`/`xbsi2`) and the
-  informational BSI fields, encode and decode. `dmixmod=ltrt|loro` is a CLI token that on AC-3
-  has nowhere to go: `timecod1e`/`timecod2e` are hard 0 and no `xbsi` is written anywhere, so
-  the Lt/Rt vs Lo/Ro levels, Surround EX and headphone flags broadcast AC-3 carries cannot be
-  expressed. `bsmod`, `dsurmod`, `langcod`, `audprodie`, `copyrightb`, `origbs` are constants on
-  the way out and skipped on the way in, so an associated service (bsmod 1–7) or a
-  Dolby-Surround-encoded stereo mix cannot be labelled or inspected.
-- [ ] **DC4 (M)** — E-AC-3 `mixmdate` depth and `infomdat`: programme scale factors, the
-  mixing-parameter block (`mixdef`/`mixdata`), pan information and per-block mix configuration.
-  The encoder writes all of them as absent, and the decoder now keeps only the downmix levels at
-  the head of the group (`dmixmod`, the four Lt/Rt and Lo/Ro levels, `lfemixlevcod` — what DC1's
-  fold needs) and still skips the rest byte for byte. These are what a receiver uses to mix an
-  audio-description or commentary programme against the main one.
+- [x] **DC3 (M)** — AC-3 Annex D alternate syntax (bsid 6, `xbsi1`/`xbsi2`) and the
+  informational BSI fields, encode and decode. `EncoderConfig::alternate_bsi` writes bsid 6 and
+  spends the two 14-bit `timecod` fields §D1 reclaims on `dmixmod` plus separate Lt/Rt and Lo/Ro
+  levels (`xbsi1`) and the Surround EX / Headphone / A-D converter flags (`xbsi2`);
+  `EncoderConfig::info` (`ac3::meta::BsiInfo`) makes `bsmod`, `dsurmod`, `langcod`, `audprodie`,
+  `copyrightb`, `origbs` and the time code configurable. `FrameDecoder` recognises bsid 6 and
+  reports both groups, the informational fields and `cmixlev`/`surmixlev` on `DecodedFrame`.
+  CLI: `annexd`, `bsmod=`, `dsurmod=`, `dsurexmod=`, `dheadphonmod=`, `adconvtyp=`, `mixlevel=`,
+  `roomtyp=`, `langcod`, `copyright`, `origbs=`, `timecode=`, the four `ltrt*`/`loro*` levels;
+  GUI: the Metadata tab's Service & production card.
+- [x] **DC4 (M)** — E-AC-3 `mixmdate` depth and `infomdat`: programme scale factors, the
+  mixing-parameter block (`mixdef` 0x1–0x3, including `mixdata2e`'s per-channel external scales
+  and `mixdata3e`'s speech enhancement data), pan information and per-block mix configuration,
+  plus the whole `infomdat` group. `MixMetadata` carries all of it, the independent substream
+  writes it, and `Eac3Decoder` reports `mixing`/`info` on `DecodedSubstream` and
+  `DecodedAccessUnit`. CLI: `pgmscl=`, `pgmscl2=`, `extpgmscl=`, `mixdef=`, `premixcmp=`,
+  `mixdata=`, `extmix=`, `auxmix=`, `speechmix=`, `paninfo=`, `paninfo2=`, `blkmixcfg=`,
+  `infomdat`, `sourcefscod`.
 - [ ] **DC5 (L)** — Multiple independent substreams (I0–I7). `ac3::io::scan` starts a new
   access unit at every independent frame without looking at `substreamid`, so a stream with I0
   and I1 decodes as alternating frames of one programme; `AccessUnitConfig` has exactly one
@@ -232,19 +237,25 @@ depth a receiver needs to do anything beyond play one programme at the right lev
   independent substream on encode — the multi-language / audio-description shape of broadcast
   DD+, with DC3/DC4 supplying `bsmod` and the mix metadata. The decoder already keys per-substream
   state by `strmtyp*8+substreamid`, which lowers its share.
-- [ ] **DC6 (L)** — Decode third-party Atmos streams. `oba::parse_payload` and
-  `joc::parse_payload` "recognise exactly the shapes this encoder ever produces" and refuse the
-  rest: one `md_update_info` block at offset 0, point-source objects with no size, zone, snap,
-  screen reference, ISF or alternate data, whole-matrix JOC with a single data point; two further
-  syntax corners are refused by design (`docs/library/decoding.md`). Real content exercises all
-  of it, so object export, the WASM demo and every IM bridge below degrade to "no objects" on
-  much retail material. Widen the parsers to return partial results, and add a Dolby-produced
-  DD+ JOC fixture (the Dolby Media Encoder is installed locally; retail streams cannot be
-  redistributed).
-- [ ] **DC7 (M)** — Object size, spread and zone constraints on the encode side, so ADM
-  `width`/`height`/`depth`/`diffuse`, `channelLock` and `zoneExclusion` stop being the silent
-  drops `docs/library/adm-bridge.md` lists (`ObjectPlacement` is a pure point source). Do the
-  parse half once with DC6.
+- [x] **DC6 (L)** — Decode third-party Atmos streams. OAMD now reads any number of
+  `md_update_info` blocks at any offset and ramp duration, object size/zone/elevation/snap/screen
+  reference/distance/explicit priority/gain reuse, differential positions, inactive objects,
+  several bed instances (standard or non-standard), ISF programmes, alternate object data, the
+  `trim_element` and the `extended_object_element`, and skips an unknown `oa_element` by its own
+  size rather than abandoning the payload. JOC reads all five Table 47 downmix configurations,
+  any clip gain, and per-object band count, quantizer, sparse mode, slope and data-point count;
+  `reconstruct()` implements the whole of §6.6.5. EMDF parses the whole of §H.2.1.3 rather than
+  Table 56's one shape. `tests/golden/object-fixture/dee_joc_514.ec3` is a committed
+  Dolby-Encoding-Engine DD+ JOC stream that exercises all of it; decoding it also found a real
+  `audblk` bug (`cplfgaincod`/`cplfsnroffst` were skipped when the block couples). JOC
+  reconstruction now covers bed programmes too, so channel-based-immersive content exports its
+  channels.
+- [x] **DC7 (M)** — Object size, spread and zone constraints on the encode side.
+  `ObjectPlacement`/`Keyframe` carry TS 103 420 §5.6.1's `size`, `snap`, `zone` and
+  `enable_elevation`, `build_payload` writes all four, and the ADM bridge maps
+  `width`/`height`/`depth` onto `ObjectSize` and `channelLock` onto `snap`. `diffuse`,
+  `zoneExclusion` and `objectDivergence` stay unmapped for reasons
+  `docs/library/adm-bridge.md` now states individually.
 - [x] **DC8 (S)** — 24-bit and 32-bit integer PCM, `WAVE_FORMAT_EXTENSIBLE` wrapping them, and
   RF64 in the plain WAV reader. `read_wav` and `WavStreamReader` accepted PCM16 and float32 only,
   so the normal professional delivery format needed an FFmpeg pre-conversion. The ADM reader had
@@ -661,12 +672,12 @@ At 2faf352 on linux-gcc: `plain_51` encodes at 0.49 ms/frame (65× real time), `
 since put 128-bit SIMD behind the transform kernels through a CMake-selected architecture
 directory; there is still no threading anywhere in the codec core.
 
-- [ ] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
+- [x] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
   ms/frame series and no real-time gate (`bench_encoder` runs `plain_51` and `atmos_4obj` on a
   440 Hz tone; `bench_memory` already has the workloads); `kernel_bench` benches the direct IMDCT
   and not the fast one that is now the default; the decoder has no Tracy zones. Switch the
   timing benches to `reference_51.wav` — the project's own real-audio rule applies to timing too.
-- [ ] **PF2 (S)** — Inline `to_fixed25` and fuse it with exponent extraction: an out-of-line
+- [x] **PF2 (S)** — Inline `to_fixed25` and fuse it with exponent extraction: an out-of-line
   exported `std::round` call made about 9,100 times per frame, ~33–38 µs and the largest named
   remainder of the last profile (~7% of the fast path). Byte-identical streams on the corpus are
   the gate.
@@ -930,7 +941,7 @@ on 2026-08-22.
 - **Enabling PipeWire `iec958Codecs` on the user's behalf** — session-manager policy; DR9
   documents the rule instead.
 - **HOA, Matrix and Binaural ADM pack types** — the clear `kUnsupportedType` refusal stays until
-  DC7 and a design exist.
+  a design exists (DC7 shipped object extent and channel lock, not these).
 - **APT/DNF repositories and Docker images** — not planned. `docs/releasing.md` names where the
   workflows could be copied from if one were ever wanted; the previous roadmap's "ruled out"
   overstated it.
