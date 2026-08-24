@@ -790,6 +790,7 @@ class AC3FORGE_EXPORT Eac3Decoder {
         //
         // Enhanced coupling (valid when cplinu && ecplinu_now):
         int firstchincpl = -1;
+        bool ecplangleintrp = false;
         int ecpl_begin_subbnd = 0;
         int ecpl_end_subbnd = 0;
         std::array<bool, eac3::kEcplSubBands> ecpl_structure{};

@@ -299,10 +299,12 @@ The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3
 pre-noise processing (§3.7) — individually or stacked together, at every channel layout including
 7.1.4. That includes Annex E's default coupling band structures: a block that transmits no band
 structure of its own falls back to Table E2.12 (standard coupling) or Table E2.13 (enhanced
-coupling) and decodes normally. Two syntax corners are still recognised and refused rather than
-mis-decoded — enhanced coupling's `ecplangleintrp` (angle interpolation), and a transient
-pre-noise correction reaching further back or forward than the one frame of history/lookahead
-this decoder buffers — because no stream this project's own encoder produces exercises either.
+coupling) and decodes normally. Enhanced coupling's `ecplangleintrp` (§3.5.5.3's linear
+interpolation between band-centre angles) decodes too — the encoder decides per frame whether it
+reconstructs closer to the real content than direct per-band application. One syntax corner is
+still recognised and refused rather than mis-decoded: a transient pre-noise correction reaching
+further back or forward than the one frame of history/lookahead this decoder buffers, because no
+stream this project's own encoder produces exercises it.
 
 Transient pre-noise processing has one API consequence worth knowing: once a stream turns it on,
 `Eac3Decoder::decode_substream` holds one frame back at a time (a correction can reach into the
@@ -337,11 +339,10 @@ two channels come back in coded order (Ch1, Ch2) instead.
 
 Delta bit allocation (§7.2.2.6) is decoded like any other transmitted parameter: both decoders
 carry per-channel state across a syncframe's blocks and apply it to the masking curve before
-computing `bap`, on the coupling channel as well as the full-bandwidth ones. The encode side
-differs by generation: the AC-3 encoder does emit coupling-channel delta (`cpldeltbae`, whenever
-the coupling channel has segments to send), while the E-AC-3 encoder skips delta entirely for
-any frame where coupling is active. How corrections are chosen, and when they are dropped, is
-covered in [Encoding AC-3](encoding-ac3.md#delta-bit-allocation).
+computing `bap`, on the coupling channel as well as the full-bandwidth ones. Both encoders emit
+coupling-channel delta (`cpldeltbae`, whenever the coupling channel has segments to send) — E-AC-3
+no longer skips it under coupling either. How corrections are chosen, and when they are dropped,
+is covered in [Encoding AC-3](encoding-ac3.md#delta-bit-allocation).
 
 Dither substitution (§7.3.4) decodes on both as well: a bin allocated zero bits (`bap` 0)
 reconstructs as a true zero when its channel's `dithflag` is clear, and as a dither sample when

@@ -15,6 +15,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/wav.hpp"
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around
@@ -887,6 +888,204 @@ TEST_CASE("E-AC-3 coupling round-trips are near-transparent", "[eac3][decoder][c
             CHECK(snr_db(rt.source[ch], rt.rendered[ch]) > 20.0);
         }
     }
+}
+
+TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decoder][coupling]") {
+    // §7.2.2.6 corrections used to be skipped for every stream in any frame
+    // where coupling was in use, which left two things unexercised at once:
+    // the encoder never emitted `cpldeltbae`, and the decoder never read it.
+    // The moment the first was fixed the second desynchronised every coupled
+    // frame carrying a correction - the two bits went out and nothing
+    // consumed them, so every field after them was read at the wrong offset.
+    //
+    // This pins both halves. dbaflde is a frame-level flag (Table E1.3),
+    // nine bits into audfrm - expstre, ahte, the two-bit snroffststr,
+    // transproce, blkswe, dithflage, bamode, frmfgaincode - which for a
+    // stereo independent substream with no compression word, mixing metadata
+    // or addbsi starts at bit 54, the same bsi length the malformed-coupling
+    // test above counts off emit_frame. Reading it directly is what makes
+    // this a test of coupled frames that REALLY carry corrections, rather
+    // than one that would keep passing if the encoder quietly stopped
+    // emitting them.
+    constexpr std::size_t kDbafldeBit = 54 + 9;
+    constexpr std::size_t kCplinuBit = 54 + 12;
+
+    // A wanted correction now pays its full segment cost again on every
+    // block it applies to, matching what `D3` already established for AC-3
+    // (see `set_run_delta`'s own comment), rather than the one-shot-per-run
+    // cost an earlier draft of this test assumed. That real, repeated cost
+    // makes the closed-loop keep/drop decision - fit with and without, keep
+    // the higher composite SNR offset - much choosier than it used to be:
+    // measured against real programme material at 96/128/192 kbit/s stereo,
+    // it keeps a correction on well under 1% of coupled frames. Synthetic
+    // content could not reproduce even that: broadband noise built from
+    // independent-phase tones computes a real, multi-segment correction
+    // every time - `choose_delta_segments` finds plenty to fix - and the
+    // closed loop rejects every single one, because independent phases
+    // average toward the flat-ish spectrum a coarse exponent already
+    // approximates tolerably. A phase-aligned harmonic series fared no
+    // better - coupling itself never activated on it, for reasons not
+    // pinned down here. Real programme material is what the closed loop
+    // actually rewards, so this drives the same golden `reference_stereo.wav`
+    // other coupling tests already trust, looped to give the low real hit
+    // rate enough tries to land at least once.
+    const auto fixture = ac3::io::read_wav(std::string{AC3FORGE_GOLDEN_AUDIO_DIR} +
+                                           "/reference_stereo.wav");
+    REQUIRE(fixture.has_value());
+    const auto& source = fixture->channels;
+    REQUIRE(source.size() == 2);
+    const auto source_samples = source[0].size();
+    REQUIRE(source_samples >= static_cast<std::size_t>(ac3::kSamplesPerFrame));
+
+    ac3::Eac3Decoder decoder;
+    int coupled_frames = 0;
+    int coupled_frames_with_delta = 0;
+
+    // Whether a correction earns its side info is a per-frame decision (see
+    // encode_frame's keep/drop comparison against the rate fit), and it goes
+    // the corrections' way most often where the budget is tight, so this
+    // sweeps the low rates coupling exists to serve rather than betting on
+    // one of them.
+    for (const std::uint32_t kbps : {96u, 128u, 192u}) {
+        CAPTURE(kbps);
+        ac3::eac3::AccessUnitEncoder encoder{
+            {.independent = {.bitrate_kbps = kbps, .acmod = ac3::Acmod::k2_0, .coupling = true}}};
+        REQUIRE(encoder.channel_count() == 2);
+
+        std::size_t cursor = 0;
+        for (int f = 0; f < 400; ++f) {
+            std::vector<std::vector<float>> pcm(
+                2, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                const auto idx = (cursor + static_cast<std::size_t>(i)) % source_samples;
+                pcm[0][static_cast<std::size_t>(i)] = source[0][idx];
+                pcm[1][static_cast<std::size_t>(i)] = source[1][idx];
+            }
+            cursor = (cursor + static_cast<std::size_t>(ac3::kSamplesPerFrame)) % source_samples;
+            std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+            const auto unit = encoder.encode_access_unit(views);
+            REQUIRE(unit.has_value());
+
+            ac3::BitReader reader{unit->bytes};
+            reader.skip(kCplinuBit);
+            const bool cplinu = reader.read(1) != 0;
+            ac3::BitReader delta_reader{unit->bytes};
+            delta_reader.skip(kDbafldeBit);
+            const bool dbaflde = delta_reader.read(1) != 0;
+            if (cplinu) {
+                ++coupled_frames;
+                coupled_frames_with_delta += dbaflde ? 1 : 0;
+            }
+            // The whole point: a coupled frame carrying corrections still
+            // decodes. Before the decoder learned to read cpldeltbae, the
+            // two bits went out unconsumed and this returned an error
+            // rather than audio.
+            CHECK(decoder.decode_access_unit(unit->bytes).has_value());
+        }
+    }
+    CAPTURE(coupled_frames, coupled_frames_with_delta);
+    REQUIRE(coupled_frames > 0);
+    // Not "every coupled frame" - a frame that would spend more on segments
+    // than it gains back legitimately sends none. What must not happen is
+    // coupling suppressing them wholesale, which is what this asserts.
+    CHECK(coupled_frames_with_delta > 0);
+}
+
+TEST_CASE("E-AC-3 enhanced coupling angle interpolation round-trips",
+          "[eac3][decoder][coupling][enhanced_coupling]") {
+    // ecplangleintrp (§E2.3.3.20) used to be legal syntax this decoder
+    // refused outright - no stream this project's own encoder produced set
+    // it, so the refusal was never exercised either. Now the encoder decides
+    // per frame whether §3.5.5.3's linear interpolation reconstructs closer
+    // to the real content than direct per-band application (see
+    // encode_frame's own decision, right after the per-band angle/chaos
+    // fit), and the decoder has to read both forms. This pins both halves on
+    // a stream engineered to set the flag, not just tolerate it.
+    //
+    // The bit offset below is pinned empirically rather than hand-derived:
+    // audfrm (Table E1.3) carries a per-channel/coupling/LFE exponent
+    // strategy block and a converter-exponent section ahead of the
+    // block-level cplstre/ecplinu fields the malformed-coupling test above
+    // counts through for standard coupling, so a hand count is one more
+    // thing to get quietly wrong. Instead: with this exact config (fixed
+    // bitrate, acmod, cplbegf, enhanced coupling) and this exact
+    // deterministic material, the encoder's own per-frame ecplangleintrp
+    // decision was captured directly (a temporary stderr trace at the
+    // decision site in eac3_frame.cpp, since removed) and the resulting
+    // byte-for-byte frames scanned for the one bit position whose value
+    // matches that decision on every one of 40 frames - only bit 135 does,
+    // uniquely. Kept as a magic constant rather than a formula because nothing
+    // about it should be recomputed from the config above: it is a property
+    // of THIS emit_frame ordering for THIS config, and a change to either
+    // is expected to move it, which is exactly what would make this test
+    // fail and worth another such capture.
+    constexpr int kCplbegf = 6;
+    constexpr std::size_t kAngleIntrpBit = 135;
+
+    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192,
+                                                          .acmod = ac3::Acmod::k2_0,
+                                                          .coupling = true,
+                                                          .cplbegf = kCplbegf,
+                                                          .enhanced = true}}};
+    REQUIRE(encoder.channel_count() == 2);
+    ac3::Eac3Decoder decoder;
+
+    // Several tones spread across the enhanced coupling region (bin 85,
+    // ~8.0 kHz, to bin 253, ~23.7 kHz at cplbegf 6) plus broadband noise
+    // (fixed LCG, deterministic run to run), each weighted oppositely per
+    // channel so adjacent bands genuinely disagree on angle - a single tone
+    // or a flat spectrum leaves nothing for interpolation to smooth over,
+    // and direct/interpolated reconstruction come out identical.
+    constexpr std::array<double, 5> kTones = {8500.0, 11000.0, 14000.0, 17500.0, 21000.0};
+    int frames_with_interp = 0;
+    int frames_total = 0;
+    std::uint32_t rng = 0x9e3779b9u;
+    std::uint64_t n = 0;
+    for (int f = 0; f < 20; ++f) {
+        std::vector<std::vector<float>> pcm(
+            2, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            rng = rng * 1664525u + 1013904223u;
+            const double noise =
+                static_cast<double>(static_cast<std::int32_t>(rng >> 8)) / 8388608.0 - 1.0;
+            const auto t = static_cast<double>(n + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+                double value = 0.05 * noise;
+                for (std::size_t k = 0; k < kTones.size(); ++k) {
+                    const double weight = ch == 0 ? 1.0 / static_cast<double>(k + 1)
+                                                  : static_cast<double>(k + 1) / 5.0;
+                    value += 0.08 * weight * std::sin(2.0 * std::numbers::pi * kTones[k] * t);
+                }
+                pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(value);
+            }
+        }
+        n += ac3::kSamplesPerFrame;
+        std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        ++frames_total;
+
+        ac3::BitReader reader{unit->bytes};
+        reader.skip(kAngleIntrpBit);
+        if (reader.read(1) != 0) {
+            ++frames_with_interp;
+        }
+        // The whole point: a frame that sets ecplangleintrp still decodes.
+        // Before the decoder implemented §3.5.5.3's interpolated form this
+        // returned DecodeError::kUnsupported instead of audio.
+        CHECK(decoder.decode_access_unit(unit->bytes).has_value());
+    }
+    CAPTURE(frames_total, frames_with_interp);
+    // Not "every frame" - it is a measured per-frame choice (see
+    // encode_frame's own comment), so material where direct application
+    // already reconstructs as well legitimately never sets it. What matters
+    // is that this material - built to disagree between bands - moves it at
+    // least once, and that the bit this test is reading really is
+    // ecplangleintrp: the capture this offset was pinned against showed it
+    // set on exactly frames 2, 4, 14 and 19 (1-indexed) of a 40-frame run
+    // with this same seed, and this test's first 20 frames are that same
+    // sequence's prefix - so frames_with_interp is expected to land at 4.
+    CHECK(frames_with_interp > 0);
 }
 
 TEST_CASE("E-AC-3 enhanced coupling round-trips are near-transparent",

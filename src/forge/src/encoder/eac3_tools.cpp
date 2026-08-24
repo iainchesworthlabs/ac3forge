@@ -10,6 +10,7 @@
 #include <numbers>
 #include <span>
 #include <utility>
+#include <vector>
 
 #include "ac3/core/aht_tables.hpp"
 #include "ac3/core/fft.hpp"
@@ -18,6 +19,19 @@
 #include "ac3/internal/profiling.hpp"
 
 namespace ac3::eac3 {
+
+namespace {
+
+// Bin-indexed angles between the band-to-bin conversion and the per-bin
+// chaos add. Function-local static rather than a per-call vector: ecpl_angles
+// runs once per coupled channel per block, and this is the only allocation on
+// that path.
+std::vector<double>& ecpl_bin_angle_scratch() {
+    thread_local std::vector<double> scratch;
+    return scratch;
+}
+
+}  // namespace
 
 namespace {
 
@@ -575,39 +589,175 @@ void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchao
     }
 }
 
+namespace {
+
+// §3.5.5.3: every emitted angle is a fraction of pi on (-1, 1].
+double wrap_angle(double angle) {
+    while (angle > 1.0) {
+        angle -= 2.0;
+    }
+    while (angle < -1.0) {
+        angle += 2.0;
+    }
+    return angle;
+}
+
+constexpr bool is_even(int value) {
+    return value % 2 == 0;
+}
+
+// §3.5.5.3's interpolated band-to-bin conversion (ecplangleintrp == 1),
+// transcribed from its pseudocode. `band_angle`/`band_bins` are per band;
+// `bin_angle` is filled from the region's first bin.
+//
+// The shape is a ramp between band CENTRES: the main loop walks pairs of
+// adjacent bands, laying down the second half of the earlier band and the
+// first half of the later one at a slope of one band-centre gap; a leading
+// pass fills the first band's own lower half by continuing that first slope
+// downward, and a trailing pass fills the last band's upper half by
+// continuing the final slope. Whether a centre falls on a bin or between two
+// is what the even/odd cases are about, and the half-slope offsets are how
+// the pseudocode places the first sample either side of it.
+void interpolate_band_angles(std::span<const double> band_angle,
+                             std::span<const int> band_bins, std::span<double> bin_angle) {
+    const auto nbands = static_cast<int>(band_angle.size());
+    if (nbands <= 0 || bin_angle.empty()) {
+        return;
+    }
+    if (nbands == 1) {
+        // No second centre to ramp towards; the band's own angle stands.
+        std::ranges::fill(bin_angle, wrap_angle(band_angle[0]));
+        return;
+    }
+
+    const auto total = static_cast<int>(bin_angle.size());
+    const auto emit = [&](int at, double value) {
+        if (at >= 0 && at < total) {
+            bin_angle[static_cast<std::size_t>(at)] = wrap_angle(value);
+        }
+    };
+
+    int bin = 0;
+    double y = 0.0;
+    double slope = 0.0;
+    int nbins_curr = band_bins[0];
+    for (int bnd = 1; bnd < nbands; ++bnd) {
+        const int nbins_prev = band_bins[static_cast<std::size_t>(bnd) - 1];
+        nbins_curr = band_bins[static_cast<std::size_t>(bnd)];
+        const double angle_prev = band_angle[static_cast<std::size_t>(bnd) - 1];
+        double angle_curr = band_angle[static_cast<std::size_t>(bnd)];
+        // Unwrap the pair before differencing: two angles either side of the
+        // wrap are adjacent in phase but a whole turn apart as numbers.
+        while (angle_curr - angle_prev > 1.0) {
+            angle_curr -= 2.0;
+        }
+        while (angle_prev - angle_curr > 1.0) {
+            angle_curr += 2.0;
+        }
+        slope = (angle_curr - angle_prev) /
+                (static_cast<double>(nbins_curr + nbins_prev) / 2.0);
+
+        if (bnd == 1 && nbins_prev > 1) {
+            // The first band's lower half, walked DOWNWARD from just below
+            // its own centre.
+            int cursor = 0;
+            if (is_even(nbins_prev)) {
+                y = angle_prev - slope / 2.0;
+                cursor = nbins_prev / 2 - 1;
+            } else {
+                y = angle_prev - slope;
+                cursor = (nbins_prev - 3) / 2;
+            }
+            const int count = cursor + 1;
+            for (int j = 0; j < count; ++j) {
+                emit(cursor--, y);
+                y -= slope;
+            }
+            bin = count;
+        }
+
+        int count = 0;
+        if (is_even(nbins_prev)) {
+            y = angle_prev + slope / 2.0;
+            count = nbins_curr / 2 + nbins_prev / 2;
+        } else {
+            y = angle_prev;
+            count = nbins_curr / 2 + (nbins_prev + 1) / 2;
+        }
+        for (int j = 0; j < count; ++j) {
+            emit(bin++, y);
+            y += slope;
+        }
+    }
+
+    // The last band's upper half, continuing the final slope - `y` and
+    // `slope` are where the loop above left them, which is what the
+    // pseudocode relies on too.
+    const int count = is_even(nbins_curr) ? nbins_curr / 2 : nbins_curr / 2 + 1;
+    for (int j = 0; j < count; ++j) {
+        emit(bin++, y);
+        y += slope;
+    }
+}
+
+}  // namespace
+
 void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
                  bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                 std::span<const bool> structure, EcplNoise& noise, std::span<double> angle_out) {
-    int band = -1;
-    std::size_t cursor = 0;
-    double band_angle = 0.0;
-    double band_chaos = 0.0;
-    double band_rand_trans = 0.0;
+                 std::span<const bool> structure, EcplNoise& noise, std::span<double> angle_out,
+                 bool interpolate) {
+    // Band-indexed state first - the angle a band carries, how many bins it
+    // covers, and the per-band chaos and rand_trans that modify it. Both
+    // band-to-bin conversions below start from exactly this.
+    std::array<double, kEcplSubBands> band_angle{};
+    std::array<double, kEcplSubBands> band_chaos{};
+    std::array<double, kEcplSubBands> band_rand{};
+    std::array<int, kEcplSubBands> band_bins{};
+    int nbands = 0;
     for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
         if (sbnd == begin_subbnd || !structure[static_cast<std::size_t>(sbnd)]) {
-            ++band;
-            const auto b = static_cast<std::size_t>(band);
-            band_angle = is_first_channel ? 0.0 : decode_ecplangle(ecplangle[b]);
-            band_chaos = is_first_channel ? 0.0 : decode_ecplchaos(ecplchaos[b]);
+            const auto b = static_cast<std::size_t>(nbands);
+            band_angle[b] = is_first_channel ? 0.0 : decode_ecplangle(ecplangle[b]);
+            band_chaos[b] = is_first_channel ? 0.0 : decode_ecplchaos(ecplchaos[b]);
             // rand_trans is per-BAND (unlike rand_notrans, which is per-bin
             // and drawn below instead) - one fresh draw per band, every
             // block, then duplicated across that band's bins same as chaos.
-            if (ecpltrans) {
-                band_rand_trans = noise.next();
-            }
+            band_rand[b] = ecpltrans ? noise.next() : 0.0;
+            ++nbands;
         }
         const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
-        const int width = kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
-        for (int i = 0; i < width; ++i) {
-            const int bin = start + i;
-            const double rand = ecpltrans ? band_rand_trans : ecpl_rand_notrans(channel, bin);
-            double angle = band_angle + band_chaos * rand;
-            if (angle < -1.0) {
-                angle += 2.0;
-            } else if (angle >= 1.0) {
-                angle -= 2.0;
+        band_bins[static_cast<std::size_t>(nbands) - 1] +=
+            kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
+    }
+
+    const auto bands = static_cast<std::size_t>(nbands);
+    auto& bin_angle = ecpl_bin_angle_scratch();
+    bin_angle.assign(angle_out.size(), 0.0);
+    if (interpolate) {
+        interpolate_band_angles(std::span{band_angle}.first(bands),
+                                std::span{band_bins}.first(bands), bin_angle);
+    } else {
+        std::size_t at = 0;
+        for (int bnd = 0; bnd < nbands; ++bnd) {
+            for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
+                bin_angle[at++] = band_angle[static_cast<std::size_t>(bnd)];
             }
-            angle_out[cursor++] = angle;
+        }
+    }
+
+    // Chaos and the de-correlating noise are per BIN and applied after the
+    // conversion either way (§3.5.5.3's last pseudocode block) - they are
+    // never interpolated, only duplicated across a band's bins.
+    const int first_bin = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd)];
+    std::size_t cursor = 0;
+    for (int bnd = 0; bnd < nbands; ++bnd) {
+        for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
+            const int bin = first_bin + static_cast<int>(cursor);
+            const double rand = ecpltrans ? band_rand[static_cast<std::size_t>(bnd)]
+                                          : ecpl_rand_notrans(channel, bin);
+            angle_out[cursor] =
+                wrap_angle(bin_angle[cursor] + band_chaos[static_cast<std::size_t>(bnd)] * rand);
+            ++cursor;
         }
     }
 }
