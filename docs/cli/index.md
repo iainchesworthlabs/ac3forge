@@ -1,8 +1,9 @@
 # ac3cli
 
-`ac3cli` is the command-line front end over `ac3::forge` — twenty-six commands covering
-synthesis, file encoding/decoding, container wrapping, inspection, and live capture/playback.
-One of the twenty-six (`atmos-adm`) only *runs* in a build configured with
+`ac3cli` is the command-line front end over `ac3::forge` — twenty-nine commands covering
+synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
+tool's own self-description (`help`, `man`, `completions`).
+One of the twenty-nine (`atmos-adm`) only *runs* in a build configured with
 `-DAC3FORGE_BUILD_ADM=ON`, but is always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
@@ -58,8 +59,9 @@ ac3forge 0.5.0-beta.1
   target:  Windows x86_64 (MSVC 1951)
 ```
 
-`--version` (or its `-v` alias) is a flag, not one of the twenty-six commands — it's handled
-before argument parsing and exits immediately.
+`--version` (or its `-v` alias) is a flag, not one of the twenty-nine commands — it's handled
+before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
+command's own help (or the full listing when no command was named).
 
 ## Conventions shared across commands
 
@@ -93,6 +95,15 @@ before argument parsing and exits immediately.
   of its status text — `dialnorm=auto`'s measurement line and the `src=`/`map=` multi-source
   paths' summary/routing/levels report included) to stderr, so it never lands in the middle of
   the piped stream.
+- **Exit codes are documented and distinct**: `0` success, `1` usage, `2` input, `3` output,
+  `4` unavailable here, `5` runtime, `6` a failed QC gate, `7` internal. `ac3cli help exit-codes`
+  prints the table; [Options & grammars](metadata-options.md#exit-codes) explains each.
+- **`quiet` and `verbose`** follow the positional arguments of any command: `quiet` silences the
+  status output (never the errors, never a reporting command's report, never a `-` payload), and
+  `verbose` turns on the stderr progress line whatever the run's length.
+- **`help <command>`, `--help` and `-h`** print one command's own row and the grammars it uses;
+  `man` and `completions <shell>` print a generated man page and shell completion script, all
+  four rendered from the same command table so none of them can drift from what dispatch accepts.
 - **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`, `play`)
   report themselves unavailable on a build with no capture/passthrough backend, rather than
   failing to link — see the per-OS Platform notes pages ([Windows](../platforms/windows.md),
@@ -102,8 +113,8 @@ before argument parsing and exits immediately.
 
 ## Next
 
-- [Commands](commands.md) — all 28 commands, grouped and with real usage text (`atmos-adm` only
-  *runs* with `-DAC3FORGE_BUILD_ADM=ON`, but is listed either way).
+- [Commands](commands.md) — all 32 commands, grouped and with real usage text (`atmos-adm` only
+  *runs* with `-DAC3FORGE_BUILD_ADM=ON`, but is listed either way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.
 - [Concepts](../concepts/index.md) — if `bsid`, `syncframe`, or `JOC` aren't already familiar.
