@@ -1,8 +1,10 @@
 #include "ac3/io/elementary.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -388,9 +390,18 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
     std::uint16_t locations = 0;
     bool first_unit = true;
 
+    // The block count of the access unit currently being assembled, taken
+    // from its INDEPENDENT substream: §E3.8.2 requires every substream of one
+    // access unit to code the same number of blocks, and it is the
+    // independent one whose numblkscod is authoritative (a dependent repeats
+    // it).
+    int unit_numblkscod = 3;
+
     const auto close_unit = [&](std::size_t end) {
         if (end > unit_start) {
             out.access_units.push_back(stream.subspan(unit_start, end - unit_start));
+            out.access_unit_samples.push_back(static_cast<std::uint32_t>(
+                eac3::blocks_per_syncframe(unit_numblkscod) * kSamplesPerBlock));
             if (first_unit) {
                 out.substreams_per_unit = substreams;
                 first_unit = false;
@@ -420,6 +431,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         if (sub->strmtyp == eac3::StreamType::kIndependent) {
             close_unit(offset);
             unit_start = offset;
+            unit_numblkscod = sub->numblkscod;
             substreams = 0;
             if (out.access_units.empty()) {
                 out.sample_rate = sub->sample_rate;
@@ -506,6 +518,13 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
     const auto close_unit = [&](std::size_t end) {
         if (end > unit_start) {
             out.access_units.push_back(stream.subspan(unit_start, end - unit_start));
+            // §5.3.1: the AC-3 core is always six blocks of 256 samples,
+            // whether or not Annex E dependents follow it - unlike scan_eac3,
+            // there is no numblkscod to read for this access unit's own
+            // length, since it belongs to the core's syncinfo, not the
+            // dependents'.
+            out.access_unit_samples.push_back(
+                static_cast<std::uint32_t>(kBlocksPerFrame * kSamplesPerBlock));
             if (first_unit) {
                 out.substreams_per_unit = substreams;
                 first_unit = false;
@@ -675,6 +694,82 @@ std::expected<ScannedStream, ScanError> scan(std::span<const std::byte> stream) 
         return scan_eac3(stream);
     }
     return std::unexpected(ScanError::kUnsupportedBsid);
+}
+
+// --- timing ----------------------------------------------------------------
+
+std::optional<AccessUnitTiming> access_unit_timing(const ScannedStream& stream,
+                                                   std::size_t index) {
+    if (index >= stream.access_unit_samples.size()) {
+        return std::nullopt;
+    }
+    AccessUnitTiming timing;
+    timing.sample_rate = sample_rate_hz(stream.sample_rate);
+    timing.duration_samples = stream.access_unit_samples[index];
+    // Summed rather than multiplied: a stream whose access units differ in
+    // length (legal E-AC-3, see ScannedStream::access_unit_samples) has no
+    // single per-unit stride to multiply by.
+    for (std::size_t i = 0; i < index; ++i) {
+        timing.start_sample += stream.access_unit_samples[i];
+    }
+    return timing;
+}
+
+std::uint64_t stream_duration_samples(const ScannedStream& stream) {
+    std::uint64_t total = 0;
+    for (const auto samples : stream.access_unit_samples) {
+        total += samples;
+    }
+    return total;
+}
+
+double stream_duration_seconds(const ScannedStream& stream) {
+    const auto rate = sample_rate_hz(stream.sample_rate);
+    return rate == 0 ? 0.0
+                     : static_cast<double>(stream_duration_samples(stream)) /
+                           static_cast<double>(rate);
+}
+
+std::optional<std::size_t> access_unit_at_sample(const ScannedStream& stream,
+                                                 std::uint64_t sample) {
+    std::uint64_t at = 0;
+    for (std::size_t i = 0; i < stream.access_unit_samples.size(); ++i) {
+        const std::uint64_t next = at + stream.access_unit_samples[i];
+        if (sample < next) {
+            return i;
+        }
+        at = next;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::size_t> access_unit_at_seconds(const ScannedStream& stream, double seconds) {
+    if (seconds < 0.0) {
+        return std::nullopt;
+    }
+    const auto rate = sample_rate_hz(stream.sample_rate);
+    if (rate == 0) {
+        return std::nullopt;
+    }
+    // std::llround rather than a cast of (x + 0.5): the latter rounds a
+    // negative value the wrong way and loses precision for large x. `seconds`
+    // is already known non-negative here, but the correct primitive is free.
+    const auto sample =
+        static_cast<std::uint64_t>(std::llround(seconds * static_cast<double>(rate)));
+    return access_unit_at_sample(stream, sample);
+}
+
+std::optional<std::uint32_t> uniform_access_unit_samples(const ScannedStream& stream) {
+    if (stream.access_unit_samples.empty()) {
+        return std::nullopt;
+    }
+    const auto first = stream.access_unit_samples.front();
+    for (const auto samples : stream.access_unit_samples) {
+        if (samples != first) {
+            return std::nullopt;
+        }
+    }
+    return first;
 }
 
 }  // namespace ac3::io

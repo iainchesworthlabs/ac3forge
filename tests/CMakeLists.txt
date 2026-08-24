@@ -66,6 +66,7 @@ add_executable(ac3tests
     encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
     io/test_elementary.cpp
+    io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
@@ -111,6 +112,27 @@ add_executable(ac3tests
     io/test_wav.cpp
     io/test_wav_stream_reader.cpp
     io/test_wav_stream_writer.cpp)
+
+# -Wnull-dereference false positive, GNU only: "a rewrite really does
+# re-stamp the CRCs" hand-flips one bit of an already-encoded frame
+# (tampered[6] ^= std::byte{0x20}) to build its negative control, and at -O3
+# (Release; not seen at the -debug preset's lower optimization) GCC inlines
+# std::byte's operator^= straight into the Catch2 test body and misattributes
+# a "null dereference" to the subscript - the same post-inlining
+# misattribution cmake/CompilerWarnings.cmake already documents for GCC < 15
+# against libstdc++ internals (see its own comment, and gcc.gnu.org/bugzilla
+# PR 108757 and neighbours), surfacing here on the CI-pinned GCC 16 instead:
+# confirmed on a plain WSL2 GCC 15.2.0 build (config-linux-gcc, not just
+# -debug) and, for real, in CI's own build logs (CodeQL, adm-validate, and
+# the plain Linux GCC/GCC-arm64 legs all hit it). `tampered` is a full copy
+# of a real encoded AC-3 syncframe, always far more than 6 bytes, so nothing
+# here is genuinely null-unsafe. Scoped to the file rather than widening
+# that project-wide guard, the same reasoning src/ac3adm/CMakeLists.txt's
+# own GCC-15 instance of this category gives for scoping to its one target:
+# nothing else in this project has hit it, so silencing it everywhere would
+# risk hiding a genuine one elsewhere.
+set_source_files_properties(io/test_metadata_edit.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
 # test_signing.cpp reaches ac3::signing's internal crypto headers (sha256.hpp/
 # hmac_sha256.hpp) to run the FIPS/RFC known-answer vectors directly - they are
@@ -259,7 +281,8 @@ endif()
 # `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp)
+        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
+        cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
     # well as this encoder's own output - they exercise syntax ac3forge never

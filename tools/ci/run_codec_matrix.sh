@@ -537,6 +537,66 @@ else
     run_ffmpeg_check atmos_adm.ec3
 fi
 
+# --- Stream tools (roadmap DC9): no re-encode except where one is the point -
+# transcode is the DD+-to-DD path and is the only one of the five that
+# re-encodes; metadata/normalize rewrite bsi in place and re-stamp the CRCs;
+# cut/cat move whole access units. Every stream any of them produces goes
+# through FFmpeg's strict decode like everything else here, which is what
+# actually proves the CRC re-stamp: -err_detect crccheck makes a wrong crc1 or
+# crc2 a failing exit code rather than a silently concealed frame.
+#
+# cut + cat is checked as a ROUND TRIP rather than by eyeballing a duration:
+# splitting a stream on an access-unit boundary and joining the halves back
+# must reproduce the input byte for byte, which is the strongest available
+# statement that a frame-aligned cut neither dropped nor duplicated anything.
+# 0.512 s is exactly 16 access units at 48 kHz, so the split needs no snapping.
+run transcode eac3enc_none.ec3 transcoded.ac3 448
+run decode transcoded.ac3 transcoded.wav
+run_ffmpeg_check transcoded.ac3
+run transcode enc_51.ac3 transcoded_up.ec3 448
+run decode transcoded_up.ec3 transcoded_up.wav
+run_ffmpeg_check transcoded_up.ec3
+# 7.1.4 has no AC-3 coding mode at all, so this is the §7.8 fold-down to 5.1
+# the command announces rather than performs quietly - the actual DD+-to-DD
+# case an immersive delivery hits. The OUTPUT is plain 5.1 AC-3, so unlike
+# eac3_714.ec3 itself (which FFmpeg refuses - see this file's header comment)
+# it does get the strict-decode check.
+run transcode eac3_714.ec3 transcoded_714.ac3 448
+run decode transcoded_714.ac3 transcoded_714.wav
+run_ffmpeg_check transcoded_714.ac3
+# Atmos in, plain AC-3 out: the object layer cannot survive (AC-3 has no EMDF
+# container), so this is the "what a legacy decoder gets" path.
+run transcode atmos_4.ec3 transcoded_atmos.ac3 448
+run decode transcoded_atmos.ac3 transcoded_atmos.wav
+run_ffmpeg_check transcoded_atmos.ac3
+
+run metadata enc_51.ac3 meta_rewritten.ac3 dialnorm=20 bsmod=2
+run decode meta_rewritten.ac3 meta_rewritten.wav
+run_ffmpeg_check meta_rewritten.ac3
+# dsurmod is 2/0's alone (§5.4.2.7), so it needs a stereo stream - asking a
+# 3/2 one for it is a refusal, by design.
+run metadata ac3_stereo.ac3 meta_dsurmod.ac3 dsurmod=2
+run_ffmpeg_check meta_dsurmod.ac3
+run metadata eac3enc_none.ec3 meta_rewritten.ec3 dialnorm=18
+run_ffmpeg_check meta_rewritten.ec3
+
+run normalize enc_51.ac3 normalized.ac3
+run decode normalized.ac3 normalized.wav
+run_ffmpeg_check normalized.ac3
+run qc normalized.ac3
+
+run cut enc_51.ac3 cut_head.ac3 0 0.512
+run cut enc_51.ac3 cut_tail.ac3 0.512
+run cat cut_rejoined.ac3 cut_head.ac3 cut_tail.ac3
+count=$((count + 1))
+echo "[$count] cut+cat round trip reproduces enc_51.ac3 byte for byte"
+cmp enc_51.ac3 cut_rejoined.ac3
+run decode cut_rejoined.ac3 cut_rejoined.wav
+run_ffmpeg_check cut_rejoined.ac3
+run cut eac3enc_none.ec3 cut_eac3.ec3 0.1 0.5
+run cat cat_eac3.ec3 cut_eac3.ec3 cut_eac3.ec3
+run_ffmpeg_check cat_eac3.ec3
+
 # --- Reporting / container passes over a representative subset -------------
 # probe (roadmap IO1): the table form, the JSON contract, and both detail
 # levels - over an AC-3 stream, a plain E-AC-3 one and an Atmos one so its

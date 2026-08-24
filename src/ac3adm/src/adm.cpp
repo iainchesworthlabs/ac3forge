@@ -21,6 +21,7 @@
 #include <bw64/bw64.hpp>
 
 #include "adm_model.hpp"
+#include "float_pcm_bw64.hpp"
 
 // Every `bw64::`/`adm::` symbol below is a vendored third-party library
 // (libbw64/libadm respectively, see src/ac3adm/CMakeLists.txt); every
@@ -160,23 +161,19 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
     return audio;
 }
 
-std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader) {
-    const auto axml_chunk = reader.axmlChunk();
-    // BS.2088-1 §9 rule 2: ADM metadata is optional - a file with no <axml>
-    // chunk at all is still a valid BW64 file, just one with an empty
-    // AdmModel (see ac3adm/model.hpp's AdmDocument comment).
-    if (!axml_chunk) {
-        return AdmModel{};
-    }
+// The XML half of read_adm_model below, factored out so the float-PCM
+// fallback reader (parse_float_pcm_path) - which never constructs a
+// bw64::Bw64Reader at all, because libbw64 refuses to open such a file - runs
+// the identical libadm parse over the identical bytes rather than a second,
+// subtly different copy of it.
+}  // namespace
 
+namespace detail {
+
+std::expected<AdmModel, AdmError> parse_axml(const std::string& xml) {
     std::shared_ptr<adm::Document> document;
     try {
-        // bw64::AxmlChunk has no data()/text() accessor of its own (its raw bytes are
-        // private) - write() to a stream is the only public way to get the XML content
-        // back out, so that is used here to build the istringstream adm::parseXml wants.
-        std::ostringstream xml_out;
-        axml_chunk->write(xml_out);
-        std::istringstream xml_stream(xml_out.str());
+        std::istringstream xml_stream(xml);
         // recursive_node_search: without it, libadm's default parser only accepts
         // <audioFormatExtended> wrapped in the full EBUCore <ebuCoreMain><coreMetadata>
         // <format> structure (BS.2076-2 Annex 2's own worked examples use exactly that
@@ -209,7 +206,27 @@ std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader)
         return std::unexpected(AdmError::kMalformedXml);
     }
 
-    return detail::build_adm_model(document);
+    return build_adm_model(document);
+}
+
+}  // namespace detail
+
+namespace {
+
+std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader) {
+    const auto axml_chunk = reader.axmlChunk();
+    // BS.2088-1 §9 rule 2: ADM metadata is optional - a file with no <axml>
+    // chunk at all is still a valid BW64 file, just one with an empty
+    // AdmModel (see ac3adm/model.hpp's AdmDocument comment).
+    if (!axml_chunk) {
+        return AdmModel{};
+    }
+    // bw64::AxmlChunk has no data()/text() accessor of its own (its raw bytes are
+    // private) - write() to a stream is the only public way to get the XML content
+    // back out, so that is used here to build the string parse_axml wants.
+    std::ostringstream xml_out;
+    axml_chunk->write(xml_out);
+    return detail::parse_axml(xml_out.str());
 }
 
 // A structural pre-check over the top-level chunk table - ids and declared
@@ -289,8 +306,23 @@ bool chunk_sizes_fit(const std::string& path) {
 }
 
 std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
+    // Ahead of everything else: an untrusted file's chunk sizes are checked
+    // before either reader below ever touches them, so a malformed size
+    // cannot exploit whichever path (libbw64's own allocator, or this
+    // module's own float_pcm_bw64 walk just below) happens to run next.
     if (!chunk_sizes_fit(path)) {
         return std::unexpected(AdmError::kNotRiff);
+    }
+    // The one shape libbw64 will not open at all: WAVE_FORMAT_IEEE_FLOAT.
+    // Asked BEFORE readFile() rather than after catching its refusal - the
+    // exception it throws for a format it dislikes is the same untyped
+    // std::runtime_error it throws for a missing file (see the catch below),
+    // so "did it fail because the samples are floats?" is not answerable
+    // from the exception at all. src/ac3adm/src/float_pcm_bw64.hpp walks the
+    // container itself for exactly this case, and routes the <axml> bytes
+    // back through the same libadm parse everything else uses.
+    if (detail::is_ieee_float_wave(path)) {
+        return detail::parse_float_pcm_bw64(path);
     }
     std::unique_ptr<bw64::Bw64Reader> reader;
     try {
@@ -298,9 +330,10 @@ std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
     } catch (const std::exception&) {
         // libbw64 reports "could not open", "malformed container" AND "unsupported <fmt >
         // formatTag" (parser.hpp's parseFormatInfoChunk rejects anything but PCM/formatTag 1 or
-        // WAVE_FORMAT_EXTENSIBLE-wrapped PCM outright, during this same readFile() call - a
-        // float32/IEEE-float source is rejected here, not silently misread as integer PCM; see
-        // ac3adm/model.hpp's own PcmAudio comment) all through the same std::runtime_error
+        // WAVE_FORMAT_EXTENSIBLE-wrapped PCM outright, during this same readFile() call - an
+        // IEEE-float source never reaches this call at all now, having been routed to
+        // detail::parse_float_pcm_bw64 above, but any OTHER unsupported formatTag still
+        // lands here) all through the same std::runtime_error
         // hierarchy (reader.hpp), with no distinguishing exception type - kCannotOpen covers the
         // whole family here since a caller's next move (check the path/format) is the same
         // either way, and libbw64 does not label a chunk it dislikes clearly enough to justify

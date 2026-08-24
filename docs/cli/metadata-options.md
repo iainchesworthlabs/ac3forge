@@ -401,6 +401,32 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
 
+## Stream-tool options (`transcode`, `metadata`)
+
+| Token | Command | Meaning |
+|---|---|---|
+| `codec=ac3` / `codec=eac3` | `transcode` | The output codec, when the output name's own suffix cannot say it — stdout (`-`), or a file named something other than `.ac3`/`.ec3`. Without it, an unrecognisable name is refused rather than guessed |
+| `compr=<dB>` | `metadata` | Stamp §7.7.2's compression word onto an existing stream, as the 8-bit wire value that gain implies |
+| `compr2=<dB>` | `metadata` | The same for Ch2 of a 1+1 dual-mono stream |
+| `bsmod=<0..7>` | `metadata` | Table 5.5's service type (0 = complete main, 1 = music and effects, 2 = visually impaired, …) |
+| `dsurmod=<0..3>` | `metadata` | Table 5.11's Dolby Surround mode. Coding mode 2/0 only — §5.4.2.7 transmits it nowhere else |
+
+`compr=`/`compr2=` round **down** to the nearest representable word, not to nearest: §7.7.2
+exists to give "an assured upper limit of instantaneous peak reproduced signal level", and a
+ceiling exceeded by half a step is not assured. That is the same rule
+`ac3::meta::encode_compr_at_most` applies on the encode side.
+
+`compr=` is a different thing from the `heavy`/`ceiling=`/`dialogue=` group above. Those ask an
+*encoder* to derive a compression word from the signal it is coding; `compr=` names the word
+outright, because a metadata rewrite has no signal to derive from — only bits to overwrite, and
+only where the stream already carries a `compr` word. Asking for one where it does not is
+refused, not invented.
+
+`dialnorm=` and `dialnorm2=` work on `metadata` too, but only with an explicit `1..31` value:
+`dialnorm=auto` needs a measurement, which is what `ac3cli normalize` is. On `transcode` they
+override the value carried from the source, and `dialnorm=auto` measures the *source* the same
+way an encode from a WAV would.
+
 ## Qc options (`qc`): `preset=`, `layout=`
 
 ```text
@@ -561,6 +587,8 @@ Optional positional arguments, when omitted:
 - `record` — 5 s at 192 kbps from device 0.
 - `live` — 10 s at 192 kbps.
 - `play`, `monitor` — device `-1`, the default output.
+- `transcode` — 448 kbps, and the source's own layout (folded to 5.1 when AC-3 cannot code it).
+- `cut` — from 0 s to the end of the stream.
 
 ## What the encoder accepts
 
@@ -574,6 +602,11 @@ Optional positional arguments, when omitted:
 
 ## Command-specific notes
 
+- **`transcode`/`metadata`/`normalize`/`cut`/`cat`** work on an already-encoded stream rather
+  than on PCM — see [Commands → Stream tools](commands.md#stream-tools--an-encoded-stream-in-an-encoded-stream-out)
+  for what each carries across and what it deliberately does not. Only `transcode` re-encodes.
+  Every metadata option above that a stream tool does not name is ignored by it, the same way
+  `mkv` ignores all of them.
 - **`mkv`** reads format, packet boundaries, sample rate and channel count from the bitstream
   itself, so it cannot be told the wrong ones. E-AC-3 dependent substreams are grouped into their
   access unit and counted as the channels they render.
