@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <charconv>
@@ -18,6 +19,7 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/qc.hpp"
 
 // apps/cli/main.cpp compiles directly into the ac3cli executable, everything
 // in an anonymous namespace - there is no library surface parse_options,
@@ -1848,16 +1850,24 @@ TEST_CASE(
     const auto text = read_log(log);
     INFO(text);
 
-    for (const std::string_view name : {"ebu-r128-s2:", "atsc-a85:", "netflix:"}) {
-        CHECK(text.find(name) != std::string::npos);
+    // Every preset in ac3::meta::kQcPresetIds, not a hand-copied subset -
+    // preset=all promising "every one" and then silently skipping a row
+    // added later is exactly the failure this loop exists to catch.
+    std::vector<bool> verdicts;
+    for (const auto id : ac3::meta::kQcPresetIds) {
+        const auto heading = std::string{ac3::meta::qc_preset_name(id)} + ":";
+        INFO("preset " << heading);
+        const auto at = text.find(heading);
+        REQUIRE(at != std::string::npos);
+        const auto verdict = gate_verdict_after(text, at);
+        REQUIRE(verdict.has_value());
+        verdicts.push_back(*verdict);
+        // Each row also names the document edition it was judged against
+        // (IO11) - a verdict against an unnamed spec is not auditable.
+        const auto source = ac3::meta::qc_preset(id).source;
+        CHECK(text.find(std::string{source}) != std::string::npos);
     }
-
-    const auto ebu_pass = gate_verdict_after(text, text.find("ebu-r128-s2:"));
-    const auto atsc_pass = gate_verdict_after(text, text.find("atsc-a85:"));
-    const auto netflix_pass = gate_verdict_after(text, text.find("netflix:"));
-    REQUIRE(ebu_pass.has_value());
-    REQUIRE(atsc_pass.has_value());
-    REQUIRE(netflix_pass.has_value());
+    REQUIRE(verdicts.size() == ac3::meta::kQcPresetIds.size());
 
     // The exit code (this project's own binary 0/1 convention - see this
     // file's own run_cli comment) must match "every requested gate passed",
@@ -1865,8 +1875,108 @@ TEST_CASE(
     // whichever way the real BS.1770 numbers actually land, a bug that ORs
     // instead of ANDs the per-preset verdicts (or ignores one preset
     // entirely) shows up here as rc disagreeing with this recomputation.
-    const bool expect_success = *ebu_pass && *atsc_pass && *netflix_pass;
+    const bool expect_success =
+        std::all_of(verdicts.begin(), verdicts.end(), [](bool v) { return v; });
     CHECK((rc == 0) == expect_success);
+}
+
+// Roadmap IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
+// independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
+// sees the two dependents' rear and height channels at all; the rendered pass
+// measures the assembled program through BS.1770-5 Annex 3's extended
+// algorithm, which has a weight for every Table E2.5 position.
+TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed does not",
+          "[cli][qc][layout]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_layout_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    // 2 s - many BS.1770 400 ms blocks and ~62 access units, well past the
+    // "3+ frames of real audio" this project's own validation rule requires
+    // before a codec measurement means anything.
+    constexpr std::size_t kFrames = 96000;
+    // 7.1.4's twelve channels: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE. A
+    // distinct tone per channel so no two can be confused for one another,
+    // and so a permuted layout would not still measure the same total.
+    std::vector<std::vector<float>> channels;
+    channels.reserve(12);
+    for (int ch = 0; ch < 12; ++ch) {
+        channels.push_back(
+            make_tone(0.2, 180.0 + 91.0 * static_cast<double>(ch), kFrames, kRate));
+    }
+    REQUIRE(write_wav(wav_path, channels, kRate));
+
+    const auto ec3_path = dir / "qc_layout.ec3";
+    REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 448 none 714 dialnorm=auto",
+                    dir / "qc_layout_encode.log") == 0);
+
+    const auto bed_log = dir / "qc_layout_bed.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=bed", bed_log) == 0);
+    const auto bed_text = read_log(bed_log);
+    INFO("bed:\n" << bed_text);
+
+    const auto rendered_log = dir / "qc_layout_rendered.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=rendered", rendered_log) == 0);
+    const auto rendered_text = read_log(rendered_log);
+    INFO("rendered:\n" << rendered_text);
+
+    // Each pass says which algorithm produced its numbers, and the bed pass
+    // says out loud that it left the dependents' channels out - staying
+    // quiet about that is what made the old behaviour a trap.
+    CHECK(bed_text.find("layout=bed") != std::string::npos);
+    CHECK(bed_text.find("BS.1770 Annex 1") != std::string::npos);
+    CHECK(bed_text.find("dependent substreams whose channels") != std::string::npos);
+    CHECK(rendered_text.find("layout=rendered") != std::string::npos);
+    CHECK(rendered_text.find("BS.1770-5 Annex 3") != std::string::npos);
+    CHECK(rendered_text.find("dependent substreams whose channels") == std::string::npos);
+
+    // The bed pass reports the Table 5.8 layout it can name (3/2 + LFE, i.e.
+    // 5.1 in the spec's own notation); the rendered pass names every Table
+    // E2.5 location it actually metered, height channels included.
+    CHECK(bed_text.find("3/2 + LFE") != std::string::npos);
+    for (const std::string_view location : {"Lrs", "Rrs", "Vhl", "Vhr", "Lts", "Rts"}) {
+        INFO("location " << location);
+        CHECK(rendered_text.find(location) != std::string::npos);
+        CHECK(bed_text.find(location) == std::string::npos);
+    }
+
+    // Six more channels of comparable-level tone are being summed, so the
+    // rendered measurement has to come out meaningfully louder. This is the
+    // substantive check: if layout=rendered were quietly still metering the
+    // bed, the two numbers would be identical.
+    const auto bed_lkfs = value_after(bed_text, "integrated loudness");
+    const auto rendered_lkfs = value_after(rendered_text, "integrated loudness");
+    REQUIRE(bed_lkfs.has_value());
+    REQUIRE(rendered_lkfs.has_value());
+    CHECK(*rendered_lkfs > *bed_lkfs + 1.0);
+
+    // True peak, by contrast, is not channel-weighted and both passes see a
+    // full-bandwidth channel at the same level, so it should barely move.
+    const auto bed_tp = value_after(bed_text, "true peak");
+    const auto rendered_tp = value_after(rendered_text, "true peak");
+    REQUIRE(bed_tp.has_value());
+    REQUIRE(rendered_tp.has_value());
+    CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
+}
+
+TEST_CASE("qc layout= rejects anything but bed or rendered", "[cli][qc][layout]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_layout_bad_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 48000;
+    REQUIRE(write_wav(wav_path, {make_tone(0.4, 440.0, kFrames, kRate),
+                                  make_tone(0.4, 660.0, kFrames, kRate)},
+                      kRate));
+    const auto ac3_path = dir / "qc_layout_bad.ac3";
+    REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() + "\" 192",
+                    dir / "qc_layout_bad_encode.log") == 0);
+
+    const auto log = dir / "qc_layout_bad.log";
+    const auto rc = run_cli("qc \"" + ac3_path.string() + "\" layout=stereo", log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc != 0);
+    CHECK(text.find("layout must be bed or rendered") != std::string::npos);
 }
 
 // silence/eac3-silence build their frames from build_silent_stereo_frame/
@@ -2221,7 +2331,6 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
                   log) != 0);
 }
 
-
 // ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
 // worth anything if it is a true inverse - the elementary stream that goes
 // into a container has to be the one that comes back out, byte for byte. A
@@ -2324,4 +2433,150 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
                           (dir / "demux_absent.out").string() + "\"",
                       log) != 0);
     }
+}
+
+// --- unspdif (roadmap IO3) ---------------------------------------------------
+
+TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif.log";
+    const auto file_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    // AC-3 and E-AC-3 both: their burst periods, their Pd units (bits vs
+    // bytes) and their carrier rates all differ, so one passing says nothing
+    // about the other.
+    const auto ac3 = dir / "unspdif_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ac3_wav = dir / "unspdif_src_ac3.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + ac3_wav.string() + "\"", log) == 0);
+    const auto ac3_back = dir / "unspdif_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + ac3_wav.string() + "\" \"" + ac3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ac3_back) == file_bytes(ac3));
+
+    const auto ec3 = dir / "unspdif_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ec3_wav = dir / "unspdif_src_ec3.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + ec3_wav.string() + "\"", log) == 0);
+    const auto ec3_back = dir / "unspdif_back.ec3";
+    REQUIRE(run_cli("unspdif \"" + ec3_wav.string() + "\" \"" + ec3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ec3_back) == file_bytes(ec3));
+
+    // What came back is a stream in its own right, not only a byte match:
+    // it decodes.
+    const auto decoded = dir / "unspdif_back.wav";
+    CHECK(run_cli("decode \"" + ec3_back.string() + "\" \"" + decoded.string() + "\"", log) == 0);
+}
+
+TEST_CASE("cli: unspdif reads a bare carrier as well as a WAV", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_raw.log";
+    const auto ac3 = dir / "unspdif_raw_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_raw.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // The same carrier with its RIFF header cut off - what a capture tool
+    // that dumps raw device bytes leaves behind. kWavHeaderBytes is 44 for
+    // every WAV this project writes (see write_wav_pcm16_raw).
+    std::ifstream in{wav, std::ios::binary};
+    REQUIRE(in.is_open());
+    const std::vector<char> whole{std::istreambuf_iterator<char>{in},
+                                  std::istreambuf_iterator<char>{}};
+    REQUIRE(whole.size() > 44);
+    const auto raw = dir / "unspdif_raw.carrier";
+    {
+        std::ofstream out{raw, std::ios::binary};
+        out.write(whole.data() + 44, static_cast<std::streamsize>(whole.size() - 44));
+    }
+    const auto back = dir / "unspdif_raw_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + raw.string() + "\" \"" + back.string() + "\"", log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{back, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+}
+
+TEST_CASE("cli: unspdif refuses ordinary PCM and leaves no output behind", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_pcm.log";
+    const auto ac3 = dir / "unspdif_pcm_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto pcm = dir / "unspdif_pcm.wav";
+    REQUIRE(run_cli("decode \"" + ac3.string() + "\" \"" + pcm.string() + "\"", log) == 0);
+
+    const auto out = dir / "unspdif_pcm_out.ac3";
+    fs::remove(out);
+    CHECK(run_cli("unspdif \"" + pcm.string() + "\" \"" + out.string() + "\"", log) != 0);
+    CHECK(read_log(log).find("no AC-3 or E-AC-3 bursts") != std::string::npos);
+    // A failed run leaves no half-written stream to be mistaken for output.
+    CHECK_FALSE(fs::exists(out));
+
+    // And a file that is not there at all is a clean error, not a crash.
+    CHECK(run_cli("unspdif \"" + (dir / "definitely_absent.wav").string() + "\" \"" +
+                      out.string() + "\"",
+                  log) != 0);
+}
+
+TEST_CASE("cli: unspdif writes a clean stream to stdout, status text to stderr", "[cli][unspdif]") {
+    // The convention encode/decode already follow (status_stream): with "-"
+    // as the output, the human-readable report must not land in the middle of
+    // the binary a pipeline is reading. Worth its own test because getting it
+    // wrong is invisible until something downstream chokes - the report is
+    // valid-looking text prepended to a valid stream.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdout.log";
+    const auto ac3 = dir / "unspdif_stdout_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdout.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    const auto piped = dir / "unspdif_stdout.ac3";
+    REQUIRE(run_cli_stdout("unspdif \"" + wav.string() + "\" -", piped, log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+    // And the report did go somewhere - to stderr, not nowhere.
+    CHECK(read_log(log).find("unwrapped") != std::string::npos);
+}
+
+TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
+    // The natural shape of this on a machine with a real S/PDIF input is a
+    // capture tool piped straight in, so "-" has to work on the input side
+    // too - and it takes a different code path from the file one, which
+    // seeks and walks the RIFF chunk list. Here the WAV header is simply
+    // scanned past, which is only safe because a header cannot contain a
+    // preamble with a syncframe behind it.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdin.log";
+    const auto ec3 = dir / "unspdif_stdin_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdin.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // Both ends piped at once, the way a shell would use it.
+    const auto piped = dir / "unspdif_stdin.ec3";
+    REQUIRE(run_cli_stdio("unspdif - -", wav, piped, log) == 0);
+
+    std::ifstream a{ec3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
 }

@@ -55,36 +55,6 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
         path, std::as_bytes(std::span{reinterpret_cast<const char*>(text.data()), text.size()}));
 }
 
-// A minimal but complete DASH MPD document wrapped around
-// mp4::build_dash_adaptation_set()'s <AdaptationSet> snippet - the library
-// stops at the snippet (mp4.hpp/dash.hpp's own scope: single-representation
-// audio, no opinion on the surrounding document), the CLI front end supplies
-// the rest, the same boundary mp4::mux() not doing file I/O already draws.
-// profiles="isoff-live" is what a SegmentTemplate-based MPD declares
-// regardless of static/live (ISO/IEC 23009-1 Annex A.3) - "isoff-on-demand"
-// instead mandates a single SegmentBase/index-range layout this module does
-// not produce.
-std::string build_dash_mpd(const mp4::AudioTrack& track,
-                           std::span<const mp4::MediaSegment> segments,
-                           std::string_view adaptation_set) {
-    std::uint64_t total_samples = 0;
-    for (const auto& segment : segments) {
-        total_samples += segment.duration_samples;
-    }
-    const double total_seconds =
-        static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-    return fmt::format(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
-        "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
-        "profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">\n"
-        "  <Period>\n"
-        "{}"
-        "  </Period>\n"
-        "</MPD>\n",
-        total_seconds, adaptation_set);
-}
-
 }  // namespace
 
 int run_mkv(std::string_view in_path, std::string_view out_path) {
@@ -220,8 +190,15 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
                                 .samples_per_frame = ac3::kSamplesPerFrame,
                                 .codec_config = ac3::io::build_codec_config_box(*scanned)};
 
+    // ETSI TS 103 420 §E.5's 'ceao' compatibility brand, which DASH-IF IOP
+    // Part 8 v5.0.0 §5.3.3 asks for on a backward-compatible object-audio
+    // E-AC-3 track: mp4:: never reads the object layer itself, so this front
+    // end - which already read oba_complexity_index to build the dec3 box
+    // above - is the one that says so.
     const auto fragmented = mp4::fragment(
-        track, units, mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment});
+        track, units,
+        mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
+                             .object_audio_brand = scanned->oba_complexity_index.has_value()});
     if (!fragmented) {
         fmt::println(stderr, "error: {}", mp4::describe(fragmented.error()));
         return 1;
@@ -264,8 +241,17 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         return 1;
     }
 
-    const auto adaptation_set = mp4::build_dash_adaptation_set(track, fragmented->media_segments);
-    const auto mpd = build_dash_mpd(track, fragmented->media_segments, adaptation_set);
+    // The DASH side of the same two facts: TS 103 420 §D.2's JOC extension
+    // type and complexity index (DASH-IF IOP Part 8 §5.3.2), and the
+    // AudioChannelConfiguration @value TS 102 366 clause I.1.2.1 defines -
+    // ac3::io::dash_channel_configuration is the one place that word is
+    // derived from the bitstream (ac3/io/dec3.hpp).
+    const mp4::DashOptions dash_options{
+        .joc_complexity_index = scanned->oba_complexity_index,
+        .dolby_channel_configuration = ac3::io::dash_channel_configuration(*scanned)};
+    const auto adaptation_set =
+        mp4::build_dash_adaptation_set(track, fragmented->media_segments, dash_options);
+    const auto mpd = mp4::build_dash_mpd(track, fragmented->media_segments, adaptation_set);
     if (!write_text_to_path(dir / "manifest.mpd", mpd)) {
         return 1;
     }

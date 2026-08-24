@@ -255,11 +255,23 @@ inline constexpr std::array<bool, kEcplSubBands> kDefaultEcplBandStructure = {
 // adjacent frame this call was not given (see the decoder's own comment on
 // that limitation). Only bins 0..255 of the resulting spectrum are ever read
 // downstream (§3.5.5.4 only uses bin < N/2), so only those are written.
+//
+// `fast` reaches the three §7.9.4.1 inverse transforms of step 1 - it is
+// imdct512_windowed's own `fast`, forwarded three times, and nothing else
+// about this function changes with it (step 4's DFT has always run the
+// shared FFT core). Those three inverses are ~54 µs of this function's
+// ~59 µs per call, so it is very nearly the whole cost. Default false
+// keeps the spec's own direct evaluation, the form every fast-path test
+// validates against; the decoder passes DecoderConfig::fast_imdct and the
+// encoder its own eac3::FrameConfig::fast_mdct (that field is the
+// encoder's fast-transform switch in both directions - encoding is the
+// only reason the encoder runs an inverse at all, and mode=reference
+// clears it, which is what keeps reference-mode encodes fully direct).
 AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
                                            std::span<const double, 256> curr_mant,
                                            std::span<const double, 256> next_mant,
                                            std::span<double, 256> real_out,
-                                           std::span<double, 256> imag_out);
+                                           std::span<double, 256> imag_out, bool fast = false);
 
 // §3.5.5.3's fixed de-correlation sequence for a channel/bin not carrying a
 // transient: deterministic and stable for the whole stream (the spec's own
