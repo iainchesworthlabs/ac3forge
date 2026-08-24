@@ -1410,17 +1410,25 @@ OBJECT_LEGS = [
 ]
 
 # joc::reconstruct is a DELAYED identity, not an instantaneous one: two
-# stacked MDCT round trips carry two stacked 256-sample algorithmic delays -
-# one from the real encode+decode of the bed, one more from reconstruct()'s
-# own forward+inverse pass over that decoded bed. tests/oba/test_atmos.cpp
-# derives the same 512 and its comment carries the full reasoning. Fixed here
-# rather than searched for by cross-correlation the way align() does for the
-# codec legs: the delay is a known property of the transform pair, and a
-# correlation search would silently absorb a real timing regression as "just
-# a different lag" instead of reporting it as the SNR collapse it is.
+# stacked algorithmic delays - 256 samples from the real encode+decode of
+# the bed itself, plus reconstruct()'s own pass over that decoded bed. That
+# second delay depends on the domain reconstruct() runs in, and these legs
+# exercise the CLI's default (AtmosConfig::joc_domain / DecoderConfig::
+# joc_domain = ac3::joc::Domain::kQmf, apps/cli/support.hpp), which is
+# ac3::dsp::kQmfDelay = kQmfTaps - kQmfHop = 576 samples (src/forge/include/
+# ac3/dsp/qmf.hpp), not the 256-sample MDCT round trip the older
+# Domain::kMdctBand path used. 256 + 576 = 832.
+# ac3::joc::reconstruction_delay(domain) is the single place either number
+# is derived (src/forge/include/ac3/oba/joc.hpp); tests/oba/test_atmos.cpp
+# calls it rather than hard-coding a figure, and its comment carries the
+# full reasoning. Fixed here rather than searched for by cross-correlation
+# the way align() does for the codec legs: the delay is a known property of
+# the transform pair, and a correlation search would silently absorb a real
+# timing regression as "just a different lag" instead of reporting it as
+# the SNR collapse it is.
 # Confirmed empirically against this exact scene before being fixed here -
-# the correlation peak lands on 512 for every object.
-OBJECT_DELAY = 512
+# the correlation peak lands on 832 for every object.
+OBJECT_DELAY = 832
 
 # Skipped at each end, in samples: one syncframe of warm-up and cool-down,
 # matching the unit test's own kSkip. The decoder's first frame has no

@@ -526,15 +526,18 @@ per-object rows sit beside it rather than instead of it.
 Four metrics, and only SNR is regression-checked:
 
 - **SNR** — the recovered object against its source channel, delay-compensated
-  by 512 samples. That figure is not a fudge factor: `joc::reconstruct` is a
-  *delayed* identity, carrying two stacked 256-sample MDCT round-trip delays
-  (one from the bed's own encode/decode, one from the reconstruction's own
-  forward/inverse pass over that decoded bed).
-  `tests/oba/test_atmos.cpp` derives the same 512 and its comment carries the
-  full reasoning. It is fixed rather than found by cross-correlation on
-  purpose — a correlation search would silently absorb a real timing
-  regression as "just a different lag" instead of reporting it as the SNR
-  collapse it is.
+  by 832 samples. That figure is not a fudge factor: `joc::reconstruct` is a
+  *delayed* identity, carrying two stacked delays — 256 samples from the
+  bed's own encode/decode, plus 576 more from reconstruction's own pass over
+  that decoded bed through §7.1's 64-band complex QMF filterbank (the
+  default `Domain::kQmf`; `ac3::dsp::kQmfDelay` in `qmf.hpp`), not the
+  older 256-sample MDCT round trip `Domain::kMdctBand` used before the
+  filterbank existed. `ac3::joc::reconstruction_delay(domain)` is the single
+  place either figure is derived, and `tests/oba/test_atmos.cpp` calls it
+  rather than hard-coding a number; its comment carries the full reasoning.
+  It is fixed rather than found by cross-correlation on purpose — a
+  correlation search would silently absorb a real timing regression as
+  "just a different lag" instead of reporting it as the SNR collapse it is.
 - **LSD** — banded log-spectral distance, restricted to the Bark bands the
   object actually occupies. Objects are individually narrow-band by nature
   (this scene's engine is 58–232 Hz and occupies 3 of the 24 bands; only the
