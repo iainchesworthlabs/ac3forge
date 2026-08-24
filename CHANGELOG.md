@@ -35,6 +35,33 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   one, which now names the file and the instant.
 - **The GUI's "Export paths…" writes either form**, chosen by the name saved under: a `.json`
   name writes the scene, anything else the keyframe columns it has always written.
+- **IEC 61937 de-framing, and passthrough capture** (roadmap `IO3`). The burst wrapper was
+  byte-exact against FFmpeg's `spdif` muxer, but nothing in the project ever read a burst back:
+  there was no round-trip test for it, and no way to recover a stream from a capture of a
+  player's S/PDIF or HDMI output. `ac3::iec61937::BurstReader` now parses the `Pa`/`Pb`/`Pc`/`Pd`
+  framing — data types 0x01 (AC-3) and 0x15 (E-AC-3), E-AC-3's 4× carrier and its multi-syncframe
+  bursts, the stuffing between bursts, `Pd`'s two different units, and both 16-bit word orders —
+  streaming, holding one burst plus the caller's chunk however long the capture runs.
+  `unwrap_stream` is the batch form. A new `ac3cli unspdif <in.wav|in.raw> <out.ac3|out.ec3>`
+  exposes it, reading the WAV `spdif` writes, a saved capture, or a bare dump of carrier bytes.
+  Bursts written by this project *and* by FFmpeg's own muxer read back byte-exactly to the
+  streams that went in, for both data types and both word orders.
+
+  On the capture side, `ac3::iec61937::PassthroughDetector` answers whether an endpoint is
+  delivering PCM or somebody else's bursts, from the same interleaved floats `ac3::audio::Capture`
+  hands over. `ac3cli record` acts on it by writing the elementary stream instead of encoding the
+  bursts as audio — nothing re-encoded, output bit-identical to what the source sent — and no
+  longer refuses a device whose sample rate AC-3 cannot encode at until it has ruled a bitstream
+  out, since 192 kHz is exactly the E-AC-3 carrier's 4×. `ac3cli live` detects the same thing and
+  stops with an error naming `record` and `unspdif`, rather than encoding a whole session of
+  noise. None of this is hardware-confirmed: no HDMI or S/PDIF capture device has been available,
+  the same gap the passthrough output side has.
+
+  The parser treats its input as hostile throughout — a burst carrier comes off a wire by
+  definition — so a `Pd` past its data type's repetition period is refused rather than allocated,
+  and a preamble not backed by a `0x0B77` syncframe is resynced past. `fuzz/fuzz_iec61937_unwrap.cpp`
+  is the new libFuzzer harness over it.
+
 - **`ac3cli probe`** (roadmap `IO1`) — what an elementary stream *declares*, without
   reconstructing its audio: `bsid`, sample rate including Annex E's `fscod2` half rates,
   `acmod`/`lfeon` and the resolved layout, `bsmod`, `chanmap`, the substream map
@@ -104,6 +131,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The external baseline's DEE stereo score is explained rather than re-measured.** The
+  33.32 dB recorded for `eac3-stereo-192`'s DEE leg reproduces exactly against the same FFmpeg
+  8.0.1 build, and is now corroborated to 0.005 dB by this project's own decoder, so the number
+  and its `"decoded_with": "ffmpeg"` label both stand. What was missing is that FFmpeg fails that
+  stream's first frame from cold and `score_fixed`'s 0.2 s skip puts that frame outside the
+  scored window - across the whole file FFmpeg's decode is 14.30 dB. A `decoder_note` on that
+  entry now records it, emitted by `gen_external_baseline.py` so a regenerated baseline keeps it.
+  Separately, the Dolby Reference Player's long-standing "decodes DEE's own stereo output to
+  garbage" note is resolved: the player applies dialnorm, DEE writes a measured dialnorm of 12,
+  and the 19 dB attenuation that follows was being charged to the decode. Compensated, the same
+  decode scores 32.19 dB, which makes the player usable as an oracle again (`VX5`).
 - `ac3::signing`'s frame walk now reports "no container" for a syncframe outside the subset it
   supports, where it previously asserted. That was sound while signing and verifying were its
   only callers — each already knew what it was handing over — but `has_authenticity_tag` is asked

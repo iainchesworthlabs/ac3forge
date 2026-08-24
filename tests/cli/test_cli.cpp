@@ -2324,3 +2324,149 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
                       "mode=fast",
                   log) != 0);
 }
+
+// --- unspdif (roadmap IO3) ---------------------------------------------------
+
+TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif.log";
+    const auto file_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    // AC-3 and E-AC-3 both: their burst periods, their Pd units (bits vs
+    // bytes) and their carrier rates all differ, so one passing says nothing
+    // about the other.
+    const auto ac3 = dir / "unspdif_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ac3_wav = dir / "unspdif_src_ac3.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + ac3_wav.string() + "\"", log) == 0);
+    const auto ac3_back = dir / "unspdif_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + ac3_wav.string() + "\" \"" + ac3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ac3_back) == file_bytes(ac3));
+
+    const auto ec3 = dir / "unspdif_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ec3_wav = dir / "unspdif_src_ec3.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + ec3_wav.string() + "\"", log) == 0);
+    const auto ec3_back = dir / "unspdif_back.ec3";
+    REQUIRE(run_cli("unspdif \"" + ec3_wav.string() + "\" \"" + ec3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ec3_back) == file_bytes(ec3));
+
+    // What came back is a stream in its own right, not only a byte match:
+    // it decodes.
+    const auto decoded = dir / "unspdif_back.wav";
+    CHECK(run_cli("decode \"" + ec3_back.string() + "\" \"" + decoded.string() + "\"", log) == 0);
+}
+
+TEST_CASE("cli: unspdif reads a bare carrier as well as a WAV", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_raw.log";
+    const auto ac3 = dir / "unspdif_raw_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_raw.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // The same carrier with its RIFF header cut off - what a capture tool
+    // that dumps raw device bytes leaves behind. kWavHeaderBytes is 44 for
+    // every WAV this project writes (see write_wav_pcm16_raw).
+    std::ifstream in{wav, std::ios::binary};
+    REQUIRE(in.is_open());
+    const std::vector<char> whole{std::istreambuf_iterator<char>{in},
+                                  std::istreambuf_iterator<char>{}};
+    REQUIRE(whole.size() > 44);
+    const auto raw = dir / "unspdif_raw.carrier";
+    {
+        std::ofstream out{raw, std::ios::binary};
+        out.write(whole.data() + 44, static_cast<std::streamsize>(whole.size() - 44));
+    }
+    const auto back = dir / "unspdif_raw_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + raw.string() + "\" \"" + back.string() + "\"", log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{back, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+}
+
+TEST_CASE("cli: unspdif refuses ordinary PCM and leaves no output behind", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_pcm.log";
+    const auto ac3 = dir / "unspdif_pcm_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto pcm = dir / "unspdif_pcm.wav";
+    REQUIRE(run_cli("decode \"" + ac3.string() + "\" \"" + pcm.string() + "\"", log) == 0);
+
+    const auto out = dir / "unspdif_pcm_out.ac3";
+    fs::remove(out);
+    CHECK(run_cli("unspdif \"" + pcm.string() + "\" \"" + out.string() + "\"", log) != 0);
+    CHECK(read_log(log).find("no AC-3 or E-AC-3 bursts") != std::string::npos);
+    // A failed run leaves no half-written stream to be mistaken for output.
+    CHECK_FALSE(fs::exists(out));
+
+    // And a file that is not there at all is a clean error, not a crash.
+    CHECK(run_cli("unspdif \"" + (dir / "definitely_absent.wav").string() + "\" \"" +
+                      out.string() + "\"",
+                  log) != 0);
+}
+
+TEST_CASE("cli: unspdif writes a clean stream to stdout, status text to stderr", "[cli][unspdif]") {
+    // The convention encode/decode already follow (status_stream): with "-"
+    // as the output, the human-readable report must not land in the middle of
+    // the binary a pipeline is reading. Worth its own test because getting it
+    // wrong is invisible until something downstream chokes - the report is
+    // valid-looking text prepended to a valid stream.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdout.log";
+    const auto ac3 = dir / "unspdif_stdout_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdout.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    const auto piped = dir / "unspdif_stdout.ac3";
+    REQUIRE(run_cli_stdout("unspdif \"" + wav.string() + "\" -", piped, log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+    // And the report did go somewhere - to stderr, not nowhere.
+    CHECK(read_log(log).find("unwrapped") != std::string::npos);
+}
+
+TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
+    // The natural shape of this on a machine with a real S/PDIF input is a
+    // capture tool piped straight in, so "-" has to work on the input side
+    // too - and it takes a different code path from the file one, which
+    // seeks and walks the RIFF chunk list. Here the WAV header is simply
+    // scanned past, which is only safe because a header cannot contain a
+    // preamble with a syncframe behind it.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdin.log";
+    const auto ec3 = dir / "unspdif_stdin_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdin.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // Both ends piped at once, the way a shell would use it.
+    const auto piped = dir / "unspdif_stdin.ec3";
+    REQUIRE(run_cli_stdio("unspdif - -", wav, piped, log) == 0);
+
+    std::ifstream a{ec3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+}
