@@ -37,7 +37,7 @@ depend on them.
 | Sample rates | 48, 44.1, 32 kHz | 48, 44.1, 32 kHz, plus the `fscod2` half rates 24, 22.05, 16 kHz (Annex E only) |
 | Bit rates | CBR only — the 19 nominal rates of Table 5.18, 32–640 kbps | CBR (the same 19, per substream) or VBR — a quality target with optional min/max kbps bounds, per substream |
 | Transform | long (512-point) or short (2x256-point) blocks, KBD window, chosen per block per channel by a §8.2.2 transient detector | same |
-| Exponents | D15 / D25 / D45, strategy chosen per block from the reuse span (§8.2.8) | frame-level, Table E2.10 code 0: D15 in block 0, reused for the other five |
+| Exponents | D15 / D25 / D45, strategy chosen per block from the reuse span (§8.2.8) | the same span rule, per channel per frame, written either as a Table E2.10 code (`expstre` 0) or as per-block strategies (`expstre` 1) — whichever the plan needs |
 | Coupling | yes (§7.4), begin and end frequencies auto or pinned | yes (§E3.3) |
 | Tool selection | coupling/rematrixing/delta always automatic, no toggle | `auto` picks coupling, spectral extension and AHT per frame from the per-channel rate **and** the frame's own spectrum — see [Encoding E-AC-3](library/encoding-eac3.md#how-auto-chooses) |
 | Bit allocation parameters | §8.2.12's basic-encoder set with one measured departure, `dbpbcod` 3 | the same set, transmitted rather than inherited (`bamode` 1, 17 bits a frame) — Table E1.4's own defaults differ from §8.2.12's |

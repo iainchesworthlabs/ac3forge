@@ -569,6 +569,33 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   56, and the only stereo leg sat at 96 per channel — above both — so every published stereo
   comparison was of an encoder that had chosen no tools at all. The new stereo legs at 96 and
   64 kbit/s bracket both crossovers, on synthetic and on programme material.
+- **E-AC-3 per-channel exponent strategies (`EQ1`).** The encoder wrote Table E2.10 code 0 for
+  every channel of every frame — D15 in block 0, reused for the other five — so a bin's exponent
+  had to accommodate its loudest block, the asymmetry PR #190 fixed for the AC-3 LFE. It now
+  plans exponent runs per stream and writes them in either of Annex E's two forms: a Table E2.10
+  code per channel (`expstre` 0), or per-block strategies (`expstre` 1) where the plan needs a
+  strategy the table cannot state. The planner weighs each set's bits against the mantissa
+  precision it buys back — bounded, per bin, by what the allocator actually gives that bin — and
+  every proposal is checked against the encoder's own allocator before it is taken. On the new
+  transient quality-race leg (192 kbit/s stereo) spectral distance falls from 1.54 to 0.95 dB at
+  equal SNR; the stationary legs move between −0.22 and +0.35 dB SNR.
+- **A transient leg in the quality race.** `tools/ci/quality_race.py eac3-transient` prints the
+  same table the stationary legs do, on material whose level moves between the blocks of a frame
+  — onsets closer together than 32 ms, hard gates, decays that leave a frame's loudest block
+  20–30 dB above its quietest. The `ci` gate carries it as a seventh row set with its own floors.
+- **E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync` (roadmap `EQ11`).**
+  `eac3::FrameConfig::numblkscod` (default 3, six blocks) shortens a syncframe to 1/2/3 blocks —
+  `eac3-encode`'s `numblkscod:N` tools token — for the 5.3/10.7/16 ms latency a live path wants
+  instead of 32 ms. Every substream of an access unit must agree on it; AHT and the hoisted
+  (Table E2.10) exponent-strategy form are unavailable below six blocks, exactly as Table E1.3
+  requires, so asking for either together with a short syncframe is refused rather than silently
+  dropped. `convsync` is written on the first frame of every group of `6 / blocks_per_syncframe`
+  frames, matching what a device converting the stream back to six-block AC-3 would need. The
+  decoder's `numblkscod != 3` path — present only because it is spec-derived, never before
+  exercised by a real stream — is now driven by real audio at every code, including with a
+  dependent substream, verified by this project's own decoder and by FFmpeg's strict decode
+  (`tools/ci/run_codec_matrix.sh`). `atmos-encode` does not take the token yet: OAMD/JOC's object
+  metadata is timed across a full six-block frame, and shortening that is unstarted work.
 
 ### Fixed
 
@@ -693,6 +720,28 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `cplfsnroffst` too. Nothing emits this strategy - not this project's encoder, not FFmpeg's, not
   Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
   note at the code and roadmap `EQ2`.
+- **A CLI-reachable configuration could crash `eac3-encode` instead of erroring.** `auto` tool
+  selection can turn AHT on, which a short `numblkscod` (`EQ11`, above) forbids outright;
+  `run_eac3_encode`/`run_eac3_encode_multi` asserted that the encoder accepted the resulting
+  config rather than checking, so `numblkscod:N` combined with `auto` at a rate that picks AHT
+  aborted the process. It now reports "the encoder cannot express this configuration", the same
+  message every other unexpressable configuration already gets.
+
+- **`deltbaie` 0 means retain, not "no delta" (E-AC-3).** Outside block 0 a clear `deltbaie`
+  tells the decoder to keep the delta bit allocation the previous block left in place (§5.4.3.47).
+  With one exponent set for the whole frame the encoder's correction never changed mid-frame and
+  the distinction could not bite; once a channel can change exponent set mid-frame it can, and it
+  did — the decoder kept applying a stale correction, its allocation diverged from the encoder's,
+  and every field after that point was read at the wrong bit offset. The E-AC-3 emitter now sends
+  an explicit `'10'` at a decoder still holding a correction nobody wants, which is the rule the
+  AC-3 emitter already carried.
+- **§E2.2.3 AHT flags are gated on the exponent-region count (E-AC-3, both ends).** `cplahtinu`,
+  `chahtinu[ch]` and `lfeahtinu` exist only where that stream's exponents are transmitted exactly
+  once in the frame, and `cplahtinu` additionally only when coupling is in use for every block.
+  Both the encoder and the decoder read and wrote them unconditionally, which was right for every
+  stream this project had ever produced and wrong for anything else — including its own output
+  once it started planning exponent runs. FFmpeg rejected those frames; this project's own
+  decoder accepted them, having the same gap.
 
 - **`eac3-sine` had the identical gap**, one command over from the fix above — the same
   unreachable `frmsiz` ceiling, met with the same `assert()` (`nchans == tone_hz.size()`) rather
