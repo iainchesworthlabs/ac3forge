@@ -239,7 +239,8 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
 
 std::vector<std::vector<float>> reconstruct(std::span<const std::span<const float>> bed,
                                             const FrameParameters& params,
-                                            ReconstructionState& state, bool fast_mdct) {
+                                            ReconstructionState& state, bool fast_mdct,
+                                            bool fast_imdct) {
     assert(bed.size() == static_cast<std::size_t>(kNumChannels5X));
     assert(params.channels == kNumChannels5X);
     assert(params.matrix.size() == params.coefficient_count());
@@ -328,7 +329,7 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
 
             // --- synthesize, same overlap-add eac3_decoder.cpp's own
             // channel reconstruction uses ---
-            imdct512_windowed(object_mdct, x);
+            imdct512_windowed(object_mdct, x, fast_imdct);
             auto& history = state.object_history[static_cast<std::size_t>(object)];
             auto& pcm = out[static_cast<std::size_t>(object)];
             for (int n = 0; n < kSamplesPerBlock; ++n) {

@@ -388,8 +388,8 @@ TEST_CASE("MPEG-TS reads every way a PMT names the codec", "[mpegts][reader]") {
         put_u8(ac3_descriptor, 1);
         put_u8(ac3_descriptor, 0x00);
         const std::array<EsSpec, 3> streams{
-            EsSpec{.stream_type = 0x1B, .pid = 0x0101},  // H.264 video
-            EsSpec{.stream_type = 0x0F, .pid = 0x0102},  // AAC
+            EsSpec{.stream_type = 0x1B, .pid = 0x0101, .descriptors = {}},  // H.264 video
+            EsSpec{.stream_type = 0x0F, .pid = 0x0102, .descriptors = {}},  // AAC
             EsSpec{.stream_type = 0x06, .pid = 0x0103, .descriptors = ac3_descriptor},
         };
         // build_stream puts the PES on streams.front()'s PID, so reorder:
