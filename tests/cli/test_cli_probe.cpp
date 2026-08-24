@@ -253,8 +253,11 @@ TEST_CASE("probe describes an E-AC-3 stream it cannot fully decode", "[cli][prob
     CHECK(status != 0);
 
     // AHT is Annex E syntax this encoder never emits, so seeing it reported at
-    // all is only possible off a foreign stream.
-    CHECK(json_field(json_section(document, "tools"), "aht_syncframes") == "79");
+    // all is only possible off a foreign stream. Not all 79: this baseline is
+    // DEE's real encoder output (tools/generators/gen_external_baseline.py),
+    // and it does not use AHT on every syncframe of this particular leg -
+    // measured directly off the committed file, not derived from the total.
+    CHECK(json_field(json_section(document, "tools"), "aht_syncframes") == "77");
 }
 
 TEST_CASE("probe reports the object layer of an Atmos stream", "[cli][probe][atmos]") {
