@@ -58,31 +58,6 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
     return a;
 }
 
-// §7.2.2.3: bands psd[] (indexed from bin `start` through `end`) into a
-// 50-wide per-band array via log-addition. Factored out so the encoder-only
-// real-coefficient curve (choose_delta_segments, below) is computed with
-// arithmetic identical to the exponent-derived one compute_bit_allocation
-// uses, which is what keeps the two directly comparable in the same units.
-std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
-    std::array<int, 50> bndpsd{};
-    int j = start;
-    int k = kMaskTab[static_cast<std::size_t>(start)];
-    int lastbin = 0;
-    do {
-        lastbin = std::min(
-            kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
-        bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
-        ++j;
-        for (int i = j; i < lastbin; ++i) {
-            bndpsd[static_cast<std::size_t>(k)] =
-                logadd(bndpsd[static_cast<std::size_t>(k)], psd[static_cast<std::size_t>(j)]);
-            ++j;
-        }
-        ++k;
-    } while (end > lastbin);
-    return bndpsd;
-}
-
 // A run of consecutive absolute bands sharing one Table 5.17 deltba code.
 struct DeltaRun {
     int band = 0;
@@ -121,6 +96,31 @@ int slow_gain(int sgaincod) {
 
 int bin_to_band(int bin) {
     return kMaskTab[static_cast<std::size_t>(bin)];
+}
+
+// Factored out - and now exported - so every curve this file derives from a
+// spectrum is banded with identical arithmetic: the exponent-derived one
+// compute_bit_allocation uses, the encoder-only real-coefficient one
+// choose_delta_segments builds, and the coded-bandwidth decision in
+// ac3/encoder/bandwidth.hpp. Comparable units are the whole point.
+std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
+    std::array<int, 50> bndpsd{};
+    int j = start;
+    int k = kMaskTab[static_cast<std::size_t>(start)];
+    int lastbin = 0;
+    do {
+        lastbin = std::min(
+            kBandStart[static_cast<std::size_t>(k)] + kBandSize[static_cast<std::size_t>(k)], end);
+        bndpsd[static_cast<std::size_t>(k)] = psd[static_cast<std::size_t>(j)];
+        ++j;
+        for (int i = j; i < lastbin; ++i) {
+            bndpsd[static_cast<std::size_t>(k)] =
+                logadd(bndpsd[static_cast<std::size_t>(k)], psd[static_cast<std::size_t>(j)]);
+            ++j;
+        }
+        ++k;
+    } while (end > lastbin);
+    return bndpsd;
 }
 
 void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sample_rate,

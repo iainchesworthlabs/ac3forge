@@ -102,7 +102,16 @@ struct FrameConfig {
     // Annex E Table E1.2: Ch2's dialnorm, required when acmod is kDualMono
     // (1+1) — the two programmes are levelled independently.
     std::optional<int> dialnorm2 = std::nullopt;
-    int chbwcod = 60;
+    // fbw bandwidth code 0..60, or -1 for the encoder's own choice: the rate
+    // ceiling AC-3 has always used, with the frame's own spectrum narrowing
+    // it under that (ac3/encoder/bandwidth.hpp). This used to default to a
+    // fixed 60 - the whole 23.7 kHz at every rate - which at 96 kbit/s per
+    // channel, where neither coupling nor spectral extension runs, spread
+    // the frame's bits across 253 mantissas that could not each afford two.
+    // Meaningful only for a channel carrying its own high band: with either
+    // tool in use the tool's start frequency IS the coded bandwidth and
+    // chbwcod is not transmitted at all (§E3.3.3).
+    int chbwcod = -1;
 
     // --- substream identity (Table E1.2) -----------------------------------
     // The defaults describe the lone independent substream this encoder has
@@ -397,6 +406,11 @@ class AC3FORGE_EXPORT FrameEncoder {
     // state only: it changes how fast the search converges, never which
     // offset it converges to. Negative until a frame has been encoded.
     int snr_search_hint_ = -1;
+    // The chbwcod last transmitted, rate-limiting how fast the content-
+    // adaptive band edge may fall. Part of the decision rather than a
+    // performance hint - the AC-3 FrameEncoder carries the same field for
+    // the same reason. Negative until a frame has been encoded.
+    int chbwcod_state_ = -1;
     // Smoothed across frames: see the AC-3 FrameEncoder for why they cannot be
     // per-frame objects.
     std::optional<meta::RangeController> range_;

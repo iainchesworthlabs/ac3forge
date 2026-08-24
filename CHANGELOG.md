@@ -313,6 +313,27 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **Coded bandwidth is decided from the content, not the bit rate alone** (`EQ7`, `EQ8`). AC-3
+  chose `chbwcod` from a per-channel-kbit/s curve; E-AC-3 never chose at all, sending a fixed 60
+  — the whole 23.7 kHz — even at 96 kbit/s per channel, where neither coupling nor spectral
+  extension runs and the frame has about two bits per mantissa to spread across 253 of them.
+  Both encoders now take that rate curve as a ceiling and put the frame's own spectrum under it,
+  testing each band's §7.2.2.3 banded PSD against Table 7.15's absolute hearing threshold — the
+  same `hth` the allocator already floors its masking curve with. Above 128 kbit/s per channel
+  the content is not consulted: reclaimed bits are only worth having while the rest of the
+  spectrum is short of them. Measured on real programme material (CC0/public-domain piano,
+  thunderstorm, church bells, speech and samba, sourced locally — `VX7` has not landed), E-AC-3
+  stereo at 192 kbit/s gains 1.2–2.7 dB SNR and up to +0.034 ViSQOL MOS, with the high-band
+  energy ratio improving alongside; AC-3 5.1 at 448 gains 0.4 dB. Nothing at or above
+  128 kbit/s per channel changes, and a pinned `chbwcod` still overrides both halves.
+
+- **AC-3's `fgaincod` is rate-dependent** (`EQ7`). §8.2.12's fixed 4 becomes a line from 7 at
+  38 kbit/s per channel to 0 at 128, measured over the whole 0–7 range on real programme
+  material and decided on ViSQOL — waveform SNR prefers 7 at every rate on every material and
+  so distinguishes nothing. Worth +0.099 MOS at 192 kbit/s 5.1 and +0.158 at 640, and the same
+  shape as the SNR-only sweep `encoder.cpp` had already recorded in the other direction. The
+  new `EncoderConfig::fgaincod` (−1 = auto, 0–7 pins) overrides it. Verified over 25 (leg, rate)
+  cells: mean +0.098 MOS and +0.54 dB SNR, worst cell −0.016 MOS.
 - **The FFT core is radix-4, specialised per size** (`PF4`). The generic iterative radix-2
   decimation-in-time core every transform in the library shared — an explicit bit-reversal pass
   followed by log2(P) stages of two-point butterflies, each loading a twiddle and doing a full
