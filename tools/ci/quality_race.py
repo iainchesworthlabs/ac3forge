@@ -32,8 +32,8 @@ Modes:
                has an external oracle at all.
   trend      - the CI-time half of the external-encoder landscape
                comparison (tools/generators/gen_external_baseline.py is the local-only
-               half that actually invokes FFmpeg/DEE): encodes the three
-               committed fixed legs with THIS build and scores everything
+               half that actually invokes FFmpeg/DEE): encodes every
+               committed fixed leg with THIS build and scores everything
                through this project's own decoder, so it needs neither
                FFmpeg's nor DEE's own encoder. Compute-only, no gate; see
                race_trend(). `--json-out PATH` writes the rows as JSON.
@@ -43,10 +43,16 @@ Modes:
                binary, only ever to decode the already-committed
                tests/golden/external-baseline/ bitstreams, never to encode.
 
+Every mode except `ci` and `trend` takes `--material synth|speech|music`,
+which swaps the synthesized source for one of the committed 30 s CC0
+programme fixtures - see MATERIALS near main() for why that matters and why
+those two modes decline it.
+
 Usage (repo root, after building):  python tools/ci/quality_race.py [mode]
 Set AC3CLI to override the ac3cli binary (see CLI below); CI always does.
 """
 
+import itertools
 import json
 import math
 import os
@@ -185,7 +191,10 @@ def read_wav_any(path):
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # check=False, then the explicit returncode test below: the raise has to
+    # carry the command line and the captured stderr, which CalledProcessError
+    # alone would not put in the CI log.
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
 
@@ -212,7 +221,7 @@ def align(original, decoded, skip=RATE, probe_len=32768, window_extra=65536):
 
 
 def aligned_snr(original, decoded):
-    o, d, lag = align(original, decoded)
+    o, d, _lag = align(original, decoded)
     noise = d - o
     return 10 * np.log10(np.sum(o**2) / max(np.sum(noise**2), 1e-30))
 
@@ -237,7 +246,7 @@ def _bark_bands():
     edges = [0]
     for step in np.linspace(bark[1], bark[-1], 25)[1:]:
         edges.append(int(np.searchsorted(bark, step)))
-    return [(a, b) for a, b in zip(edges, edges[1:]) if b > a]
+    return [(a, b) for a, b in itertools.pairwise(edges) if b > a]
 
 
 BANDS = _bark_bands()
@@ -317,12 +326,48 @@ except ImportError:
 _visqol_api = None
 _visqol_warned = False
 
+# How much audio ViSQOL is ever handed for one score, in seconds.
+#
+# ViSQOL's patch matching is super-linear in signal length. Measured on this
+# package (visqol-python 3.7.0, one machine, same synthetic pair truncated to
+# each length):
+#
+#   2 s -> 2.2 s     4 s -> 5.8 s     6 s -> 9.8 s     8 s -> 14.1 s
+#   3 s -> 3.9 s    10 s -> 20.5 s   30 s -> 127.8 s
+#
+# so a 30 s programme fixture costs 30x what a 3 s synthetic one does, and
+# `trend` mode makes 62 distinct scoring calls per run across its eight legs.
+# Uncapped, the programme legs alone would add over half an hour to a
+# pull-request job. Capped at 4 s, the whole column measured about seven
+# minutes (a full `trend` run took 10m48s with ViSQOL and 3m59s with it
+# stubbed out).
+#
+# 4 s is where the score itself has converged: the same pair reads 4.336 at
+# 2 s, 4.272 at 4 s, 4.257 at 6 s and 4.251 at 8 s, so the residual against a
+# much longer window is ~0.02 MOS - and it is a CONSTANT offset, because the
+# window is always the same deterministic span of the same fixture. Trend
+# deltas, which is what every consumer of this column actually reads, are
+# unaffected by a constant offset; only the absolute value moves, and only by
+# less than the difference between two adjacent tool sets.
+#
+# Anything shorter than this is scored whole, so the existing 2.5-3 s
+# synthetic fixtures are unaffected by this cap existing.
+MOS_WINDOW_S = 4.0
+
 
 def perceptual_score(o, d, rate=RATE):
     """MOS-LQO via ViSQOL audio mode, or None if it isn't available.
 
     o/d are aligned original/decoded arrays from align()/score_fixed, any
-    channel count. Downmixed to mono by hand (plain channel average) before
+    channel count. Trimmed to MOS_WINDOW_S (see its own comment for the
+    measured cost curve that makes the cap necessary) around the MIDDLE of
+    the overlap rather than its start - a fixture's first second is the most
+    likely place to find a fade-in, and align()'s own leading trim varies by
+    a handful of samples between calls, so a centred window is both more
+    representative and less sensitive to that. The same span is taken from
+    both arrays, so the alignment align() established is preserved.
+
+    Downmixed to mono by hand (plain channel average) before
     scoring rather than handed through as-is: measure_from_arrays() accepts
     a multi-channel array without erroring, but a real 6-channel A/B scored
     3.38 through its own internal handling against 1.60 for the identical
@@ -341,7 +386,7 @@ def perceptual_score(o, d, rate=RATE):
     same run) without being a "the tool is unavailable" condition worth
     repeating a message for.
     """
-    global _visqol_api, _visqol_warned
+    global _visqol_api, _visqol_warned  # noqa: PLW0603 - memoised handle + once-per-run flag, see the docstring
     if VisqolApi is None:
         if not _visqol_warned:
             print("  (visqol-python not installed - skipping the perceptual-quality "
@@ -351,11 +396,16 @@ def perceptual_score(o, d, rate=RATE):
     if _visqol_api is None:
         _visqol_api = VisqolApi()
         _visqol_api.create(mode="audio")
+    window = int(MOS_WINDOW_S * rate)
+    n = min(len(o), len(d))
+    if n > window:
+        start = (n - window) // 2
+        o, d = o[start:start + window], d[start:start + window]
     mono_o = np.ascontiguousarray((o.mean(axis=1) if o.ndim > 1 else o), dtype=np.float64)
     mono_d = np.ascontiguousarray((d.mean(axis=1) if d.ndim > 1 else d), dtype=np.float64)
     try:
         mos = float(_visqol_api.measure_from_arrays(mono_o, mono_d, sample_rate=rate).moslqo)
-    except Exception as exc:  # noqa: BLE001 - see graceful-degradation reasoning above
+    except Exception as exc:  # every failure mode degrades to None, see the docstring
         if not _visqol_warned:
             print(f"  (visqol scoring failed ({exc}) - skipping the perceptual-quality column)")
             _visqol_warned = True
@@ -380,7 +430,7 @@ def decode_scores(original, coded, wav_path, strict=True, perceptual=False):
         # checking. -xerror is what turns a detected error into a failing
         # process and a raised SystemExit here.
         cmd += ["-xerror", "-err_detect", "crccheck+bitstream+buffer+explode"]
-    run(cmd + ["-i", coded, "-c:a", "pcm_f32le", wav_path])
+    run([*cmd, "-i", coded, "-c:a", "pcm_f32le", wav_path])
     o, d, _ = align(original, read_wav_f32(wav_path))
     snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
     lsd, hf = spectral_scores(o, d)
@@ -417,7 +467,7 @@ def decode_scores_ours(original, coded, wav_path, perceptual=False):
 # would trim them to an empty or inverted overlap (see its docstring), so
 # external-baseline scoring (tools/generators/gen_external_baseline.py, and the `trend`
 # mode built on the same fixtures) uses this scaled-down window instead.
-FIXED_ALIGN = dict(skip=int(0.2 * RATE), probe_len=8192, window_extra=16384)
+FIXED_ALIGN = {"skip": int(0.2 * RATE), "probe_len": 8192, "window_extra": 16384}
 
 
 def score_fixed(original, decoded, perceptual=False):
@@ -483,7 +533,7 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
           f"{'HF dB':>6} | {'MOS':>4} | {'rate':>6}")
     print("-" * 62)
     for kbps in rates:
-        for label, tools in EAC3_VARIANTS + [("ffmpeg", "ffmpeg")]:
+        for label, tools in [*EAC3_VARIANTS, ("ffmpeg", "ffmpeg")]:
             coded = BUILD / f"race_e_{label}_{kbps}.ec3"
             if tools == "ffmpeg":
                 run(["ffmpeg", "-v", "error", "-y", "-i", source, "-c:a", "eac3",
@@ -684,10 +734,66 @@ def race_ci(original, source, original_51, source_51):
 # the local-only, never-in-CI script and this mode is the opposite: CI-only,
 # no external encoder ever invoked.
 AUDIO_DIR = REPO / "tests" / "golden" / "audio"
+
+
+# The programme fixtures ship as FLAC (tools/generators/gen_programme_fixtures.py's
+# own docstring says why: 3.1 MB against 5.8 MB of WAV each, under a standing
+# repo constraint on fixture bytes). Nothing else in this file, and nothing in
+# ac3cli, reads FLAC - so every fixture path goes through this one function,
+# which hands back a WAV path either way and only ever shells out for the FLAC
+# case. ffmpeg is already a hard dependency of every mode here.
+#
+# Cached under BUILD by name: `trend` alone reads the same fixture ten-plus
+# times across variants, and re-decoding 30 s of FLAC per row would be pure
+# waste. Regenerated when the FLAC is newer than the WAV, so editing a fixture
+# locally does not leave a stale decode behind.
+def materialise_fixture(path):
+    path = Path(path)
+    if path.suffix != ".flac":
+        return path
+    out = BUILD / f"fixture_{path.stem}.wav"
+    if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
+        BUILD.mkdir(parents=True, exist_ok=True)
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-c:a", "pcm_s16le", str(out)])
+    return out
+
+
+SPEECH_FIXTURE = AUDIO_DIR / "programme_speech_stereo.flac"
+MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
+
+# Kept in sync by hand with tools/generators/gen_external_baseline.py's LEGS -
+# see this section's own header for why this file must never import that one.
+#
+# Two things changed at baseline_version 2. First, real programme material:
+# the five reference_* legs are 2.5-3 s of sin()/noise/FIR (see
+# gen_programme_fixtures.py for what that costs), and the three programme_*
+# ones are 30 s CC0 recordings that roll off the way real material does. The
+# synthetic legs are NOT retired - their series go back to the first
+# baseline, and breaking that continuity to swap material would throw away
+# the history the landscape page exists to show.
+#
+# Second, rates where the Annex E tools actually run. `auto` turns coupling on
+# below 12 + 14n kbit/s per channel and spectral extension below 56 (see
+# eac3_frame.cpp's coupling_rate_ceiling/kSpxRateCeiling), and the only stereo
+# leg sat at 192 kbit/s - 96 per channel, above both - so `auto` chose no
+# tools at all there and the landscape never once compared this project's
+# Annex E work against FFmpeg's or DEE's at a rate where it exists. The two
+# stereo legs added here bracket both crossovers: 96 kbit/s is 48 per channel
+# (spectral extension on, coupling off - it isolates spx) and 64 kbit/s is 32
+# per channel (both on). The 5.1 legs already sat below both ceilings at
+# 256 kbit/s, which is why no low-rate 5.1 leg is added.
 TREND_LEGS = [
-    dict(name="ac3-51-448", codec="ac3", kbps=448, wav=AUDIO_DIR / "reference_51.wav"),
-    dict(name="eac3-stereo-192", codec="eac3", kbps=192, wav=AUDIO_DIR / "reference_stereo.wav"),
-    dict(name="eac3-51-256", codec="eac3", kbps=256, wav=AUDIO_DIR / "reference_51.wav"),
+    {"name": "ac3-51-448", "codec": "ac3", "kbps": 448, "wav": AUDIO_DIR / "reference_51.wav"},
+    {"name": "eac3-stereo-192", "codec": "eac3", "kbps": 192,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "eac3-51-256", "codec": "eac3", "kbps": 256, "wav": AUDIO_DIR / "reference_51.wav"},
+    {"name": "eac3-stereo-96", "codec": "eac3", "kbps": 96,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "eac3-stereo-64", "codec": "eac3", "kbps": 64,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "ac3-music-stereo-192", "codec": "ac3", "kbps": 192, "wav": MUSIC_FIXTURE},
+    {"name": "eac3-music-stereo-96", "codec": "eac3", "kbps": 96, "wav": MUSIC_FIXTURE},
+    {"name": "eac3-speech-stereo-64", "codec": "eac3", "kbps": 64, "wav": SPEECH_FIXTURE},
 ]
 
 
@@ -728,7 +834,8 @@ def race_trend(json_out=None):
     results = []
     ext = {"ac3": "ac3", "eac3": "ec3"}
     for leg in TREND_LEGS:
-        name, codec, kbps, wav = leg["name"], leg["codec"], leg["kbps"], leg["wav"]
+        name, codec, kbps = leg["name"], leg["codec"], leg["kbps"]
+        wav = materialise_fixture(leg["wav"])
         is_eac3 = codec == "eac3"
         original = read_wav_any(wav)
         seconds = len(original) / RATE
@@ -789,6 +896,12 @@ def race_trend(json_out=None):
 # never-runs-in-CI boundary docs/landscape.md documents for the numbers.
 
 
+# How many seconds of each leg the spectrogram images cover. See the
+# centring code in render_spectrograms() for why this is capped rather than
+# rendering whole fixtures.
+SPECTROGRAM_SPAN_S = 10.0
+
+
 def _decode_baseline(coded_path, tag):
     scratch = BUILD / f"spectrogram_{tag}.wav"
     run(["ffmpeg", "-v", "error", "-y", "-i", str(coded_path), "-c:a", "pcm_f32le", str(scratch)])
@@ -826,19 +939,20 @@ def render_spectrograms(out_dir):
     this file stays matplotlib-free; only a caller that actually asks for
     spectrograms needs it installed.
     """
-    import matplotlib
+    import matplotlib  # noqa: PLC0415 - deliberate, see the docstring above
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt  # noqa: PLC0415 - must follow the use("Agg") call
 
-    manifest = json.loads((REPO / "tests" / "golden" / "external-baseline" / "manifest.json").read_text())
+    baseline_root = REPO / "tests" / "golden" / "external-baseline"
+    manifest = json.loads((baseline_root / "manifest.json").read_text())
     ext = {"ac3": "ac3", "eac3": "ec3"}
-    baseline_dir = REPO / "tests" / "golden" / "external-baseline"
+    baseline_dir = baseline_root
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for leg in TREND_LEGS:
-        name, codec, wav = leg["name"], leg["codec"], leg["wav"]
-        original = read_wav_any(wav)
+        name, codec = leg["name"], leg["codec"]
+        original = read_wav_any(materialise_fixture(leg["wav"]))
         ours_wav = BUILD / f"trend_{name}_landscape.wav"
         if not ours_wav.exists():
             raise SystemExit(f"{ours_wav} missing - render_spectrograms must run after "
@@ -847,6 +961,13 @@ def render_spectrograms(out_dir):
         _, d_ours, _ = align(original, read_wav_f32(ours_wav), **FIXED_ALIGN)
         panels = [("original", original), ("ac3forge", d_ours)]
 
+        if name not in manifest["legs"]:
+            raise SystemExit(
+                f"leg '{name}' is in TREND_LEGS but not in the committed external baseline "
+                f"(baseline_version {manifest['baseline_version']}). Those two lists are kept in "
+                "sync by hand - see TREND_LEGS' own comment. Rerun "
+                "tools/generators/gen_external_baseline.py locally, with its LEGS updated to "
+                "match, and commit the manifest it writes.")
         leg_scores = manifest["legs"][name]["scores"]
         for tool_label in ("ffmpeg", "dee"):
             entry = leg_scores.get(tool_label, {})
@@ -860,14 +981,26 @@ def render_spectrograms(out_dir):
             panels.append((tool_label, d))
 
         # Same span for every row - align()'s own overlap trim can differ by
-        # a handful of samples between calls.
+        # a handful of samples between calls - and capped at
+        # SPECTROGRAM_SPAN_S, centred, mainly so every leg's image is drawn
+        # at a comparable time scale instead of squeezing 30 s of programme
+        # material into the width a 3 s synthetic fixture gets. It trims the
+        # PNGs too, but only somewhat - most of a programme leg's file size
+        # is spectral detail, not duration (1.78 MB whole, 1.43 MB capped,
+        # against 0.49 MB for a synthetic leg) - so this is a legibility
+        # change first and a size one second. What the image is for, showing
+        # what each encoder did to the spectrum, reads the same either way.
         n = min(p[1].shape[0] for p in panels)
+        span = int(SPECTROGRAM_SPAN_S * RATE)
+        offset = (n - span) // 2 if n > span else 0
+        n = min(n, span)
 
         fig, axes = plt.subplots(len(panels), 1, figsize=(11, 2.0 * len(panels)), sharex=True)
         if len(panels) == 1:
             axes = [axes]
-        for ax, (label, data) in zip(axes, panels):
-            mono = data[:n].mean(axis=1) if data.ndim > 1 else data[:n]
+        for ax, (label, data) in zip(axes, panels, strict=True):
+            chunk = data[offset:offset + n]
+            mono = chunk.mean(axis=1) if chunk.ndim > 1 else chunk
             _plot_spectrogram(ax, mono, f"{name} - {label}")
         axes[-1].set_xlabel("seconds")
         fig.tight_layout()
@@ -903,7 +1036,7 @@ def dolby_decode(coded, wav):
          "!", "dlbac3parse", "!", "dlbac3dec", "!", "audioconvert",
          "!", "audio/x-raw,format=F32LE", "!", "wavenc",
          "!", "filesink", f"location={Path(wav).as_posix()}"],
-        capture_output=True, text=True, env=env)
+        capture_output=True, text=True, env=env, check=False)
     if result.returncode != 0:
         print(f"  (dolby decode failed: {result.stderr.strip().splitlines()[:1]})")
         return False
@@ -1132,14 +1265,59 @@ def race_fast_mdct(source, original):
     print("verified-error comment; a large negative delta would be a regression.")
 
 
+# `--material speech|music` on the interactive modes: score against one of the
+# committed 30 s CC0 programme fixtures instead of make_material()'s
+# synthesized tones-and-noise. Opt-in, never a default, and deliberately not
+# accepted by `ci` or `trend` - `ci` is a hard gate whose floors were set
+# against the synthesized material and would all have to move, and `trend`
+# already carries the programme fixtures as their own legs (TREND_LEGS) rather
+# than as an alternative source for the existing ones.
+#
+# This is the knob for the encoder-tuning question this project has already
+# been caught by once: a bit-allocation or bandwidth policy that looks like a
+# win on the synthetic fixtures needs re-measuring on material that is not
+# band-limited like they are, and before this there was nowhere to do that
+# except by hand (see src/lib/src/encoder/encoder.cpp's chbwcod comment, and
+# tools/generators/gen_programme_fixtures.py for the measured spectra).
+MATERIALS = {"speech": SPEECH_FIXTURE, "music": MUSIC_FIXTURE}
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "ac3"
     BUILD.mkdir(exist_ok=True)
-    left, right = make_material()
-    source = BUILD / "race_src.wav"
-    write_wav_f32(source, left, right)
-    original = read_wav_f32(source)
-    seconds = len(left) / RATE
+
+    material = "synth"
+    if "--material" in sys.argv:
+        material = sys.argv[sys.argv.index("--material") + 1]
+        if material not in MATERIALS and material != "synth":
+            raise SystemExit(f"unknown material '{material}' (synth | speech | music)")
+        if material != "synth" and which in ("ci", "trend"):
+            raise SystemExit(
+                f"--material is not accepted by '{which}' mode - see MATERIALS' own comment. "
+                "`ci` gates against floors set on the synthesized material; `trend` already "
+                "carries the programme fixtures as their own legs.")
+        # Rejected rather than silently ignored: this mode replaces `source`
+        # with make_material_51() unconditionally, and both programme fixtures
+        # are stereo - there is no redistributable native 5.1 programme source
+        # (see gen_programme_fixtures.py's own docstring for why an upmix is
+        # not a substitute).
+        if material != "synth" and which == "eac3-51":
+            raise SystemExit(
+                "--material is not accepted by 'eac3-51' mode: both programme fixtures are "
+                "stereo and this mode is 5.1-only.")
+
+    if material == "synth":
+        left, right = make_material()
+        source = BUILD / "race_src.wav"
+        write_wav_f32(source, left, right)
+        original = read_wav_f32(source)
+        seconds = len(left) / RATE
+    else:
+        source = materialise_fixture(MATERIALS[material])
+        original = read_wav_any(source)
+        seconds = len(original) / RATE
+        print(f"material: {MATERIALS[material].name} ({seconds:.1f}s, "
+              f"{original.shape[1]} channels)")
     if which == "eac3":
         race_eac3(original, source, seconds)
     elif which == "eac3-51":
@@ -1174,7 +1352,8 @@ def main():
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend)")
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend)"
+            "\n[--material synth|speech|music] on every mode except ci, trend and eac3-51.")
 
 
 if __name__ == "__main__":

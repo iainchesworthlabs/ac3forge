@@ -83,10 +83,10 @@ bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint
         const auto words = ac3::eac3::frame_words(rate, bitrate);
         if (words > ac3::eac3::kMaxFrameWords) {
             fmt::println(stderr,
-                         "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
-                         "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
-                         "bitrate or raise the sample rate",
-                         bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
+                        "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
+                        "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
+                        "bitrate or raise the sample rate",
+                        bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
             return false;
         }
     }
@@ -130,6 +130,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     }
 
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (!tools_or_error(tools, p.tools)) {
         return 1;
@@ -362,6 +363,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     }
 
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (!tools_or_error(tools, p.tools)) {
         return 1;
@@ -582,6 +584,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
     }
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));
@@ -803,6 +806,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     }
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));

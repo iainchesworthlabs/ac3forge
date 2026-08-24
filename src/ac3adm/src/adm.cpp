@@ -1,7 +1,10 @@
 #include "ac3adm/ac3adm.hpp"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -34,7 +37,7 @@ namespace ac3adm {
 std::string_view describe(AdmError error) {
     switch (error) {
         case AdmError::kCannotOpen: return "cannot open file";
-        case AdmError::kNotRiff: return "not a RIFF/RF64/BW64 WAVE file";
+        case AdmError::kNotRiff: return "not a well-formed RIFF/RF64/BW64 WAVE file";
         case AdmError::kMissingFmt: return "missing fmt chunk";
         case AdmError::kMissingData: return "missing data chunk";
         case AdmError::kUnsupportedFormat: return "unsupported audio format";
@@ -109,7 +112,9 @@ std::vector<ChnaEntry> read_chna(const bw64::Bw64Reader& reader) {
     return entries;
 }
 
-PcmAudio read_pcm(bw64::Bw64Reader& reader) {
+// `file_bytes` is the size of the file `reader` was opened on - see the
+// frame-count clamp below for why the PCM read needs it.
+PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
     PcmAudio audio;
     audio.sample_rate = reader.sampleRate();
     audio.bits_per_sample = reader.bitDepth();
@@ -117,7 +122,30 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader) {
     if (channel_count == 0) {
         return audio;
     }
-    const auto frame_count = reader.numberOfFrames();
+    // The block alignment is recomputed here rather than read back through
+    // bw64::Bw64Reader::blockAlignment(), because numberOfFrames() divides by
+    // it: a <fmt > declaring fewer than 8 bits per channel makes it zero, so
+    // asking the reader for a frame count first would be the division that
+    // crashes.
+    const auto block_align = static_cast<std::uint64_t>(channel_count) * reader.bitDepth() / 8;
+    if (block_align == 0) {
+        return audio;
+    }
+    // numberOfFrames() is the <data> chunk's DECLARED size over that
+    // alignment - what the file claims, not what it holds. A sixty-byte file
+    // is free to claim four gigabytes of PCM (or, in RF64, sixteen exabytes
+    // through <ds64>), and sizing a buffer straight from that figure is an
+    // out-of-memory that any hostile - or merely truncated - file triggers at
+    // will. fuzz_adm_parse found exactly that within a minute of first being
+    // pointed at this function.
+    //
+    // The file's own size is the bound: <data> cannot hold more than the file
+    // does. It is a generous bound rather than a tight one, since the RIFF
+    // header and the fmt/chna/axml chunks all take space away from <data>,
+    // but it is finite and it comes from the same bytes the reader was handed
+    // rather than from a field inside them. A well-formed file is unaffected:
+    // its declared size is at most its real one, so the clamp never binds.
+    const auto frame_count = std::min(reader.numberOfFrames(), file_bytes / block_align);
     std::vector<float> interleaved(static_cast<std::size_t>(frame_count) * channel_count);
     reader.seek(0);
     reader.read(interleaved.data(), frame_count);
@@ -184,7 +212,86 @@ std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader)
     return detail::build_adm_model(document);
 }
 
+// A structural pre-check over the top-level chunk table - ids and declared
+// lengths only, nothing that duplicates the parsing libbw64 is vendored to
+// do.
+//
+// It exists because libbw64 materialises every chunk it reads EXCEPT <data>
+// into a std::vector sized straight from the chunk header (chunks.hpp's
+// UnknownChunk does `data_.resize(size); stream.read(...)`, and the axml and
+// chna chunks do the same), during readFile() itself - before any ac3forge
+// code gets a say. A 99-byte file whose <axml> header claims four gigabytes
+// asks for four gigabytes. fuzz_adm_parse reported exactly that, twice, at
+// two different chunk ids. On a real system the std::bad_alloc that usually
+// follows is caught by parse_bw64_path's own try/catch below and reported as
+// kCannotOpen, so this is resource exhaustion rather than memory corruption -
+// but a library API handed an untrusted file should not be relying on the
+// allocator as its bounds check.
+//
+// One rule: a chunk whose declared size runs past the end of the file is
+// refused, unless it is <data>. Nothing about RF64's 0xFFFFFFFF "resolve
+// through <ds64>" escape (BS.2088-1 §4) needs special handling under that
+// rule, which is why none is here - an escape IS a size past the end of the
+// file, so it is allowed on <data> (where RF64 actually uses it, and where
+// read_pcm's own clamp bounds the result) and refused anywhere else.
+//
+// <data> is exempt for a real reason, not to dodge the escape: a recording
+// truncated mid-<data> is an ordinary file, libbw64 reads it as far as it
+// goes, and refusing it here would break a working case.
+//
+// The residual gap, stated rather than papered over: in an RF64 file <ds64>
+// can carry a 64-bit size for a chunk whose own 32-bit header is perfectly
+// plausible, and libbw64 prefers the <ds64> value (reader.hpp's
+// getChunkSize64). Following that means parsing <ds64>'s table here, which
+// is the parsing this function is deliberately not doing. Closing it belongs
+// upstream in libbw64, where the allocation is.
+bool chunk_sizes_fit(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return true;  // libbw64 reports the open failure itself
+    }
+    in.seekg(0, std::ios::end);
+    const auto end = in.tellg();
+    if (end < 0) {
+        return true;
+    }
+    const auto file_size = static_cast<std::uint64_t>(end);
+    // "RIFF"/"RF64"/"BW64" + 32-bit size + "WAVE": anything shorter is not a
+    // chunk table at all, and libbw64's own rejection describes it better.
+    constexpr std::uint64_t kRiffHeaderBytes = 12;
+    if (file_size < kRiffHeaderBytes) {
+        return true;
+    }
+    std::uint64_t offset = kRiffHeaderBytes;
+    in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+    while (offset + 8 <= file_size) {
+        std::array<char, 4> id{};
+        std::array<unsigned char, 4> length{};
+        in.read(id.data(), 4);
+        in.read(reinterpret_cast<char*>(length.data()), 4);
+        if (!in) {
+            return true;
+        }
+        offset += 8;
+        const std::uint64_t declared = static_cast<std::uint64_t>(length[0]) |
+                                       (static_cast<std::uint64_t>(length[1]) << 8) |
+                                       (static_cast<std::uint64_t>(length[2]) << 16) |
+                                       (static_cast<std::uint64_t>(length[3]) << 24);
+        if (declared > file_size - offset) {
+            // Past the end of the file: only a trailing <data> can honestly
+            // be that, and only <data> is not buffered whole.
+            return std::string_view(id.data(), id.size()) == "data";
+        }
+        offset += declared + (declared % 2);  // §4's pad byte
+        in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+    }
+    return true;
+}
+
 std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
+    if (!chunk_sizes_fit(path)) {
+        return std::unexpected(AdmError::kNotRiff);
+    }
     std::unique_ptr<bw64::Bw64Reader> reader;
     try {
         reader = bw64::readFile(path);
@@ -202,10 +309,17 @@ std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
         return std::unexpected(AdmError::kCannotOpen);
     }
 
+    // The bound read_pcm clamps the declared frame count against. Taken from
+    // the filesystem rather than from any field in the file, which is the
+    // whole point; a stat failure leaves it at zero, which reads no PCM at
+    // all rather than trusting the declaration.
+    std::error_code size_error;
+    const auto file_bytes = std::filesystem::file_size(path, size_error);
+
     AdmDocument document;
     try {
         document.chna = read_chna(*reader);
-        document.audio = read_pcm(*reader);
+        document.audio = read_pcm(*reader, size_error ? 0 : file_bytes);
     } catch (const std::exception&) {
         return std::unexpected(AdmError::kOther);
     }
