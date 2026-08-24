@@ -39,6 +39,7 @@ depend on them.
 | Transform | long (512-point) or short (2x256-point) blocks, KBD window, chosen per block per channel by a §8.2.2 transient detector | same |
 | Exponents | D15 / D25 / D45, strategy chosen per block from the reuse span (§8.2.8) | frame-level, Table E2.10 code 0: D15 in block 0, reused for the other five |
 | Coupling | yes (§7.4), begin and end frequencies auto or pinned | yes (§E3.3) |
+| Tool selection | coupling/rematrixing/delta always automatic, no toggle | `auto` picks coupling, spectral extension and AHT per frame from the per-channel rate **and** the frame's own spectrum — see [Encoding E-AC-3](library/encoding-eac3.md#how-auto-chooses) |
 | Bit allocation parameters | §8.2.12's basic-encoder set with one measured departure, `dbpbcod` 3 | the same set, transmitted rather than inherited (`bamode` 1, 17 bits a frame) — Table E1.4's own defaults differ from §8.2.12's |
 | Delta bit allocation | automatic (§7.2.2.6), like rematrixing below — no toggle | automatic, same as AC-3 |
 | Dither substitution | `dithflag` decided per channel per block from content (§7.3.4) | the same, except in a frame using spectral extension |
@@ -110,11 +111,37 @@ not do](#what-it-does-not-do)), and that holding-back is not just a `decode_subs
 its substreams set the flag, queuing whichever substreams release early rather than losing or
 misaligning them against the one still catching up.
 
+### Inspection
+
+Decoding a stream and *describing* one are different jobs. `ac3::io::probe` (`ac3cli probe`)
+does the second: it reads the bitstream and reports what the stream declares — bsid, sample
+rate including Annex E's `fscod2` half rates, `acmod`/`lfeon` and the resolved layout, `bsmod`,
+`chanmap`, the substream map, `numblkscod`, frame and access-unit counts, duration, measured bit
+rate and VBR spread, `dialnorm`/`compr`/`dynrng` presence and ranges, EMDF payload ids, OAMD/JOC
+with `complexity_index` and the object/bed configuration, whether an authenticity tag is present,
+CRC validity per frame, and how often each coding tool was used — without reconstructing a single
+sample.
+
+It reads in two tiers. `ac3::io::read_frame_header` answers for every syncframe whether or not
+its audio is readable, so a stream this decoder refuses is still described in full; the real
+decoders then run under `DecoderConfig::skip_reconstruction`, which parses every field exactly
+as a full decode does but stops before the inverse transform, for everything only the bitstream
+body carries. An opt-in per-block dump reports which Annex E tools each block used and what
+exponent strategy each stream carried — the in-repo counterpart of
+`tools/references/eac3_parse.py`, which until now was the only field-level dump in the project
+and shipped with nothing.
+
+`json=1` emits a versioned JSON document instead of the table; its schema is a stable contract,
+documented in [Commands](cli/commands.md). Memory is flat in the length of the stream on both
+sides — the input is pulled through a fixed window and the per-frame dump is written as the walk
+produces it.
+
 ### Other
 
 | Component | What it is |
 |---|---|
-| `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told. |
+| `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told. `ac3::io::read_frame_header` is the same walk exposed per syncframe. |
+| `ac3::io::probe` | The stream description above (`ac3cli probe`), as a human table or a versioned JSON contract. |
 | `matroska::matroska` | A standalone MKV muxer. Links nothing from `ac3::forge` and knows nothing about AC-3. |
 | `mp4::mp4` | A standalone MP4/ISOBMFF muxer, same shape as `matroska::matroska`. `ac3::io::build_codec_config_box` builds a spec-correct `dac3`/`dec3` sample-entry box (ETSI TS 102 366 Annex F), Dolby Atmos extension included, straight off the bitstream. |
 | `mpegts::mpegts` | A standalone MPEG-2 Transport Stream muxer (PAT + PMT + one PES-wrapped elementary stream), identifying AC-3/E-AC-3 per DVB's ETSI EN 300 468 Annex D descriptors. Links nothing from `ac3::forge` beyond the AC-3/E-AC-3 choice it is told. |
@@ -159,7 +186,14 @@ Enhanced coupling and transient pre-noise processing have no external decode ora
 not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own
 Annex E parser has never read either tool's syntax — so `tools/ci/quality_race.py`'s CI gate scores
 both through this project's own decoder instead (see
-[Validation](verification.md#where-the-oracles-dont-reach)). Transient pre-noise processing's
+[Validation](verification.md#where-the-oracles-dont-reach)). That same gap is why neither is in
+the `auto` tool set, though only one of them earned its way out: enhanced coupling measures
+*better* than standard coupling on real programme material at every bitrate and layout tried and
+is kept out purely so `auto` produces streams FFmpeg can read, while transient pre-noise
+processing measured 6.5–24 dB worse than leaving the audio alone over exactly the samples it
+touches, at every bitrate, with no perceptual movement either way — a reference-correctness tool
+rather than a quality one. [Encoding E-AC-3](library/encoding-eac3.md#what-auto-will-not-choose)
+carries both measurements. Transient pre-noise processing's
 one-frame decoder buffering is an API characteristic, not a gap; [Decoding](library/decoding.md)
 covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
 stating a word count directly, so it has no equivalent and stays CBR.

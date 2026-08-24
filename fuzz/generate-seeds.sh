@@ -30,7 +30,7 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read"
+mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read" "$OUT/fuzz_iec61937_unwrap"
 
 run() { "$AC3CLI" "$@" >/dev/null; }
 
@@ -145,6 +145,32 @@ done
 echo "==> WAV: an IEC 61937 burst-wrapped PCM16 WAV too - a different write path"
 run spdif "$WORK/ac3-silence.ac3" "$WORK/spdif.wav"
 add_seed "fuzz_wav_read" "$WORK/spdif.wav"
+
+echo "==> IEC 61937 carriers, for the burst de-framer (roadmap IO3)"
+# Both data types and both burst periods: AC-3's 6144 bytes and E-AC-3's
+# 24576. The WAV header stays on deliberately - unspdif walks the RIFF chunk
+# list itself, and a fuzzer that only ever saw bare carrier bytes would never
+# mutate the chunk sizes that walk trusts.
+#
+# Cut to the first eight bursts, unlike every other seed here, which is a
+# whole file: a burst carrier is 6144 or 24576 bytes PER FRAME, so a second
+# of E-AC-3 already comes to 1.5 MB, and libFuzzer deprioritizes large corpus
+# entries anyway. Eight bursts exercises every part of the framing a hundred
+# would. The cut lands on a burst boundary, so the last one is whole; the
+# RIFF header left behind still declares the untruncated length, which is
+# itself worth starting from - unspdif clamps a data chunk to what the file
+# actually holds, and that clamp is exactly the kind of thing to mutate.
+# 44 is the header write_wav_pcm16_raw emits.
+run spdif "$WORK/ac3-sine-51.ac3" "$WORK/spdif-ac3-full.wav"
+head -c $((44 + 8 * 6144)) "$WORK/spdif-ac3-full.wav" > "$WORK/spdif-ac3-51.wav"
+add_seed "fuzz_iec61937_unwrap,fuzz_wav_read" "$WORK/spdif-ac3-51.wav"
+run spdif "$WORK/eac3-sine-51.ec3" "$WORK/spdif-eac3-full.wav"
+head -c $((44 + 8 * 24576)) "$WORK/spdif-eac3-full.wav" > "$WORK/spdif-eac3-51.wav"
+add_seed "fuzz_iec61937_unwrap,fuzz_wav_read" "$WORK/spdif-eac3-51.wav"
+# A plain PCM WAV too: "this is not a carrier" is a verdict the de-framer has
+# to reach as reliably as it reaches the other one.
+head -c 131072 "$WORK/roundtrip-stereo.wav" > "$WORK/carrier-not.wav"
+add_seed "fuzz_iec61937_unwrap" "$WORK/carrier-not.wav"
 
 echo "==> done:"
 for d in "$OUT"/fuzz_*; do
