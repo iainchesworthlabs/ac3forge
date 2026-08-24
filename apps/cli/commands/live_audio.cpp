@@ -31,6 +31,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/mp4.hpp"
 
 namespace ac3cli::commands {
 
@@ -410,8 +411,37 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // 2-element vector.
     std::vector<std::span<const float>> bed_views(6);
     std::vector<ac3::oba::ObjectPlacement> placement(nobjects);
+    // container=fmp4 streams each access unit out as it is produced, so it
+    // never fills `frames` at all - the fragmented-MP4 directory is written
+    // and its manifests refreshed segment by segment while the session runs
+    // (Fmp4SessionWriter, apps/cli/support.hpp). Opened BEFORE the first
+    // frame, so a bad destination directory refuses the command up front
+    // rather than after a whole take, the same order the GUI's own live
+    // recording sink opens in.
+    std::optional<Fmp4SessionWriter> fmp4;
+    if (meta.container == RecordContainer::kFmp4) {
+        fmp4.emplace();
+        if (const auto problem = fmp4->open(out_path, mp4::FragmentOptions{}.frames_per_fragment,
+                                            meta.fmp4_window_segments);
+            !problem.empty()) {
+            fmt::println(stderr, "error: {}", problem);
+            return 1;
+        }
+    }
     std::vector<std::vector<std::byte>> frames;
-    frames.reserve(static_cast<std::size_t>(target_frames));
+    if (!fmp4) {
+        frames.reserve(static_cast<std::size_t>(target_frames));
+    }
+    std::uint64_t frames_written = 0;
+
+    // Roadmap IO3's capture-side half, as it applies here. Unlike 'record',
+    // a live session has nothing useful to do with a bitstream: it mixes,
+    // resamples a second device into lockstep, meters, monitors and can pan
+    // objects, none of which mean anything applied to burst data. So this
+    // detects and stops rather than switching modes - the alternative is a
+    // whole session's output that is noise, discovered at the end of it.
+    // Costs nothing after the first quarter-second.
+    ac3::iec61937::PassthroughDetector passthrough_probe;
 
     std::uint64_t n0 = 0;
     for (std::uint64_t f = 0; f < target_frames; ++f) {
@@ -422,6 +452,25 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             filled += got;
             if (got == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+        if (!passthrough_probe.decided()) {
+            passthrough_probe.push(interleaved, static_cast<std::uint16_t>(channels));
+            if (const auto type = passthrough_probe.detected()) {
+                capture.stop();
+                fmt::println("");
+                fmt::println(stderr,
+                             "error: \"{}\" is bitstreaming {} over IEC 61937, not delivering "
+                             "PCM - a live encode of it would be noise",
+                             device.name,
+                             *type == ac3::iec61937::BurstDataType::kEac3 ? "Dolby Digital Plus"
+                                                                         : "Dolby Digital");
+                fmt::println(stderr,
+                             "  'ac3cli record <out.ec3> <seconds> 0 {}' records the elementary "
+                             "stream instead, and 'ac3cli unspdif' recovers one from a capture "
+                             "already saved as a WAV.",
+                             capture_device);
+                return 1;
             }
         }
         if (slave_resampler.has_value() && slave_drift.has_value()) {
@@ -568,8 +617,20 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
         }
 
-        frames.push_back(std::move(unit_bytes));
-        print_live_meter(meter, static_cast<double>(frames.size() * ac3::kSamplesPerFrame) /
+        if (fmp4) {
+            // container=fmp4 is the one live container with an incremental
+            // writer of its own, so its units leave for disk as they are
+            // produced rather than piling up until the session stops - the
+            // whole point of mp4::FragmentWriter (see Fmp4SessionWriter).
+            if (const auto problem = fmp4->push(unit_bytes); !problem.empty()) {
+                fmt::println(stderr, "\nerror: {}", problem);
+                return 1;
+            }
+        } else {
+            frames.push_back(std::move(unit_bytes));
+        }
+        ++frames_written;
+        print_live_meter(meter, static_cast<double>(frames_written * ac3::kSamplesPerFrame) /
                                     rate_hz);
     }
     fmt::println("");
@@ -605,12 +666,26 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         .sample_rate = rate_hz,
         .channels = atmos ? 6 : 2,
         .samples_per_frame = ac3::kSamplesPerFrame};
-    if (!write_frames_or_mux(out_path, meta.matroska_container, track, frames)) {
+    if (fmp4) {
+        // Every access unit already went out through the incremental
+        // fragmenter as it was produced (see the push beside the meter
+        // above); this only flushes the trailing partial fragment and closes
+        // the manifests.
+        if (const auto problem = fmp4->close(); !problem.empty()) {
+            fmt::println(stderr, "error: {}", problem);
+            return 1;
+        }
+        fmt::println("wrote {} {} ({} kbps) to {} ({} fMP4/CMAF segments)", frames_written,
+                     atmos ? "E-AC-3 access units" : "AC-3 frames", bitrate, out_path,
+                     fmp4->segments());
+    } else if (!write_frames_or_mux(out_path, meta.container == RecordContainer::kMatroska, track,
+                                    frames)) {
         return 1;
+    } else {
+        fmt::println("wrote {} {} ({} kbps) to {}{}", frames.size(),
+                     atmos ? "E-AC-3 access units" : "AC-3 frames", bitrate, out_path,
+                     meta.container == RecordContainer::kMatroska ? " (Matroska)" : "");
     }
-    fmt::println("wrote {} {} ({} kbps) to {}{}", frames.size(),
-                 atmos ? "E-AC-3 access units" : "AC-3 frames", bitrate, out_path,
-                 meta.matroska_container ? " (Matroska)" : "");
     fmt::println("captured {} frames, {} silence-filled, {} dropped", stats.frames_captured,
                  stats.frames_silence_filled, stats.frames_dropped);
     if (slave_drift.has_value()) {

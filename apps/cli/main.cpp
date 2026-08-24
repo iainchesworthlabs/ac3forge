@@ -149,13 +149,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 27 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 29 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 27> kCommands{{
+constexpr std::array<Command, 29> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -251,12 +251,20 @@ constexpr std::array<Command, 27> kCommands{{
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all]",
+    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate",
-     Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+     }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
+    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
+     "the inverse: recover the elementary stream from IEC 61937 bursts, as captured from "
+     "an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end",
+     Needs::kNothing,
+     [](const Args& x) { return run_unspdif(x.str(1), x.str(2), x.meta.keep_partial); }},
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
     {"mp4", 3, "<in.ac3|in.ec3> <out.mp4>",
@@ -267,6 +275,10 @@ constexpr std::array<Command, 27> kCommands{{
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
     {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+    {"demux", 3, "<in.mkv> <out.ac3|out.ec3>",
+     "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
+     "identified by its own magic bytes, not by the file name",
+     Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
     {"devices", 1, "", "input and loopback capture endpoints", Needs::kCapture,
      [](const Args&) { return run_devices(); }},
     {"outputs", 1, "", "render endpoints + AC-3/E-AC-3 passthrough support", Needs::kPassthrough,
@@ -342,6 +354,11 @@ void print_usage() {
     fmt::println("record/live container=mkv: write straight to Matroska (a single command)");
     fmt::println("       instead of the bare elementary stream both write by default; 'mkv'");
     fmt::println("       remains the way to wrap an ALREADY-encoded file after the fact.");
+    fmt::println("record/live container=fmp4: the output path names a DIRECTORY, written as it");
+    fmt::println("       goes - init.mp4, segment*.m4s, and audio.m3u8/master.m3u8/manifest.mpd");
+    fmt::println("       refreshed on every segment (live HLS + a dynamic MPD while the session");
+    fmt::println("       runs, closed to VOD/static at the end). fmp4-window=<n> keeps only the");
+    fmt::println("       last n segments listed. 'fmp4' remains the after-the-fact form.");
     fmt::println("monitor/live --monitor play the 5.1 BED of an Atmos-mode stream: the decoder");
     fmt::println("       reads TS 103 420's object layer (OAMD/JOC) and reports an object count,");
     fmt::println("       but this path does not render or export objects, so this is what a");
@@ -449,6 +466,10 @@ void print_usage() {
     fmt::println("       or preset=all checks every one; omitting preset= just measures and");
     fmt::println("       reports, with no pass/fail verdict. Exit code is 0 only when every");
     fmt::println("       requested gate passes (or none was requested and decode succeeded).");
+    fmt::println("       layout=rendered meters the whole assembled program - a dependent");
+    fmt::println("       substream's height, wide and rear channels included - through");
+    fmt::println("       BS.1770-5 Annex 3's extended algorithm, instead of the default");
+    fmt::println("       layout=bed's Table 5.8 bed through Annex 1's basic one.");
 }
 
 }  // namespace

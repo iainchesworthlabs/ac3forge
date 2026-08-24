@@ -24,12 +24,14 @@ Usage:
   ac3cli probe        <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
-  ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
+  ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
   ac3cli spdif        <in.ac3> <out.wav>                      (IEC 61937 wrap as playable PCM16 WAV)
+  ac3cli unspdif      <in.wav|in.raw|-> <out.ac3|out.ec3|->   (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
   ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
   ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
   ac3cli ts           <in.ac3|in.ec3> <out.ts>                (wrap as an MPEG-2 Transport Stream (DVB profile))
+  ac3cli demux        <in.mkv> <out.ac3|out.ec3>              (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
   ac3cli devices                                              (input and loopback capture endpoints)
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
   ac3cli play         <in.ac3|in.ec3> [device_index]          (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
@@ -161,7 +163,7 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1` |
 | `levels` | Per-channel peak/RMS report — takes a WAV or an encoded stream |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
-| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream, measures it with the real BS.1770-4/EBU Tech 3342 meter, and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
+| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream, measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, or the whole rendered program with `layout=rendered` — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
 
 ```bash
 ac3cli decode out.ec3 out.wav
@@ -352,6 +354,7 @@ ac3cli qc programme.ec3
 
 ```text
 qc: programme.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 938 access unit(s), 30.02 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
 measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):
   integrated loudness    -22.87 LKFS
   loudness range          4.31 LU
@@ -365,7 +368,20 @@ dialnorm check:
   measurement-derived dialnorm would be 23, not 24
 ```
 
-Add `preset=<name>` (or `preset=all`) to gate that same measurement against a named delivery spec instead of just reporting it — see [Options & grammars](metadata-options.md#qc-options-qc-preset) for the exact preset numbers and the primary source cited for each, and this page's own exit-code note below.
+Add `preset=<name>` (or `preset=all`) to gate that same measurement against a named delivery spec instead of just reporting it — see [Options & grammars](metadata-options.md#qc-options-qc-preset-layout) for the exact preset numbers and the primary source cited for each, and this page's own exit-code note below. The presets are `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix` and `apple-music-atmos`; each verdict prints the document version and date it was judged against.
+
+`layout=` chooses which soundfield is metered. The default, `layout=bed`, measures the independent substream's own Table 5.8 bed through BS.1770 Annex 1's basic algorithm — which is all `qc` has ever measured, and on an Atmos or 7.1.4 stream that leaves every dependent substream's height, wide and rear channel out. It now says so rather than reporting the bed as though it were the whole programme. `layout=rendered` measures the assembled program instead, through BS.1770-5 (11/2023) Annex 3's extended algorithm, which weights each channel by its position and so has a weight for every Table E2.5 location:
+
+```bash
+ac3cli qc atmos.ec3 layout=rendered preset=apple-music-atmos
+```
+
+```text
+qc: atmos.ec3 (E-AC-3, L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=rendered  (BS.1770-5 Annex 3, weighted by channel position)
+```
+
+For a plain 5.1 stream both settings give the same number, by construction — see [Options & grammars](metadata-options.md#layoutbed-default-and-layoutrendered) for the weighting table and the one Table 5.8 layout where the two algorithms genuinely disagree.
 
 `qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes — non-zero otherwise, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` exits non-zero solely on a genuine decode error.
 
@@ -374,10 +390,12 @@ Add `preset=<name>` (or `preset=all`) to gate that same measurement against a na
 | Command | What it does |
 |---|---|
 | `spdif` | Wraps AC-3 or E-AC-3 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. For feeding a receiver through an ordinary audio path |
+| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones |
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
 | `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
-| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals `CHANNELS="<N>/JOC"` in the HLS playlists automatically |
+| `demux` | The inverse of `mkv`: reads a container and writes the bare AC-3/E-AC-3 elementary stream inside it, which is what every other command here takes as input. The container is identified by its **own magic bytes**, never by the file name — a rip called `title00.mkv` that is really something else, or one with no extension at all, is the normal case. Unlike the wrapping commands it streams: the reader is fed in 64 KiB chunks and each access unit is written as it comes out, so peak memory is a chunk plus a frame whatever the file's duration. Matroska/WebM today; MP4 and MPEG-TS as the rest of roadmap `IO2` lands |
+| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals itself automatically and completely: `CHANNELS="<N>/JOC"` in the HLS playlists, the two `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors ETSI TS 103 420 clause D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments. Every representation also states its channel configuration, on the Dolby scheme TS 102 366 clause I.1.2.1 defines |
 
 ### Live & hardware
 
@@ -391,10 +409,10 @@ each OS.
 |---|---|
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
-| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead |
+| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead, `container=fmp4` a folder of CMAF segments and manifests. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file — `bsid` decides AC-3 vs. E-AC-3 |
 | `monitor` | Decodes an existing file and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
-| `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` |
+| `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` or to a live fragmented-MP4/CMAF origin via `container=fmp4` |
 
 `live`'s device arguments: `monitor_device`/`passthrough_device` take `-2` (default, leaves that
 leg off), `-1` (the default render endpoint), or an index from `outputs`. Either or both legs may
@@ -405,10 +423,47 @@ run alongside the file `live` always writes.
 same way `atmos`'s synthetic orbit does — the hook a real live position source drops into once
 one exists.
 
+`live container=fmp4`: the output path names a **folder**, written as the session runs rather than
+at the end — `init.mp4` first, then a `segment*.m4s` for each fragment as it closes, with
+`audio.m3u8`/`master.m3u8`/`manifest.mpd` rewritten each time. While the session is running those
+manifests are live-shaped (no `#EXT-X-ENDLIST`, a `type="dynamic"` MPD with an
+`availabilityStartTime`), so the folder is a servable origin mid-session; a clean stop flushes the
+trailing partial fragment and closes both to their VOD/static forms. `fmp4-window=<n>` lists only
+the last *n* segments, for an origin that deletes segments behind itself. Nothing is held in
+memory beyond one fragment, unlike `container=mkv`/`raw`, which still accumulate the take. See
+[Options & grammars](metadata-options.md#recordlive-options-record-live-container) for the full
+grammar.
+
 `live capture2=<index>`: the `capture_device` positional stays the session's clock master, paced
 exactly as it always has been; `capture2=` adds a second, independently-clocked device (see
 [Options & grammars](metadata-options.md#live-options-live-capture2) for the full grammar) whose
 stream is resampled to track the master, with the measured drift printed at session end.
+
+### Passthrough capture
+
+A capture endpoint fed IEC 61937 hands the bursts over as ordinary PCM. Nothing in any capture
+API says "this is Dolby Digital", so a recorder that takes the samples at face value encodes
+noise. `record` and `live` both look for the burst framing — a `Pa`/`Pb` preamble every
+repetition period with a `0x0B77` syncframe behind it — over roughly the first quarter-second of
+each session, and act on what they find:
+
+- **`record`** switches to writing the elementary stream. Nothing is re-encoded, the `bitrate`
+  argument stops applying, and the output is bit-identical to what the source sent. The carrier
+  already gone past is kept, so the recording starts at the first burst rather than a
+  quarter-second into it. A device running at a rate AC-3 cannot encode at — 192 kHz is exactly
+  the E-AC-3 carrier's 4× — is no longer refused outright: that rate is now checked only once
+  the bitstream question has been answered no.
+- **`live`** stops with an error naming `record` and `unspdif`. A live session mixes, resamples
+  a second device into lockstep, meters, monitors and can pan objects, none of which mean
+  anything applied to burst data; switching modes mid-session would produce a file whose first
+  quarter-second is a different thing from the rest.
+
+For a capture already saved to disk, `unspdif` does the same job offline.
+
+None of this has been confirmed against a real HDMI or S/PDIF capture device — see
+[Windows](../platforms/windows.md#audio-backend-wasapi) for exactly what is and is not verified
+against hardware. What is verified is the framing itself, both ways, against FFmpeg's `spdif`
+muxer as an independent oracle.
 
 ## Next
 

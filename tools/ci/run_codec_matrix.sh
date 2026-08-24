@@ -6,7 +6,8 @@
 # encoder/decoder logic in isolation; this script covers the combinations a
 # real user's command line would hit - every layout, every Annex E tool
 # token, both Atmos container modes, and the metadata options - round-tripped
-# through encode -> decode -> levels/loudness/spdif/mkv/mp4.
+# through encode -> decode -> levels/loudness/spdif/mkv/mp4, and back out
+# again through demux.
 #
 # Every stream this script produces also gets FFmpeg's independent strict
 # decode (CONTRIBUTING.md's "Oracles" list, #2) alongside the in-repo
@@ -434,6 +435,41 @@ count=$((count + 1))
 echo "[$count] qc bootstrap_51.ac3 preset=all (verdict not asserted - see comment above)"
 "$CLI" qc bootstrap_51.ac3 preset=all >/dev/null || true
 run spdif ac3_stereo.ac3 spdif_out.wav
+# unspdif closes the loop the wrap side never had, and does it against an
+# oracle rather than only against ourselves. Three legs:
+#
+#   1. our own bursts back to our own stream, byte for byte
+#   2. FFmpeg's spdif MUXER's bursts back to the same stream, byte for byte -
+#      the independent half. If our Pd, our word order or our burst period
+#      disagreed with FFmpeg's, this is where it would show, and no amount of
+#      being self-consistent would hide it.
+#   3. the same for E-AC-3, whose burst period (24576, the 4x carrier) and Pd
+#      unit (bytes, not bits) are both different from AC-3's - one passing
+#      says nothing about the other.
+#
+# `cmp -s` and not a decode check: a lossy round trip could pass a decode
+# while dropping or reordering a frame, and the whole claim here is that
+# nothing is re-encoded at all.
+run unspdif spdif_out.wav unspdif_ours.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ours.ac3 == ac3_stereo.ac3 (our own wrap round-trips byte-exactly)"
+cmp -s unspdif_ours.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (AC-3): FFmpeg's own burst muxer as the unwrap oracle"
+ffmpeg -hide_banner -loglevel error -y -f ac3 -i ac3_stereo.ac3 -c copy -f spdif ffmpeg_spdif.ac3.raw
+run unspdif ffmpeg_spdif.ac3.raw unspdif_ffmpeg.ac3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ac3 == ac3_stereo.ac3 (FFmpeg's bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ac3 ac3_stereo.ac3
+
+count=$((count + 1))
+echo "[$count] ffmpeg -f spdif (E-AC-3): 4x carrier, 24576-byte period, Pd in bytes"
+ffmpeg -hide_banner -loglevel error -y -f eac3 -i eac3enc_none.ec3 -c copy -f spdif ffmpeg_spdif.ec3.raw
+run unspdif ffmpeg_spdif.ec3.raw unspdif_ffmpeg.ec3
+count=$((count + 1))
+echo "[$count] cmp unspdif_ffmpeg.ec3 == eac3enc_none.ec3 (FFmpeg's E-AC-3 bursts, our unwrap)"
+cmp -s unspdif_ffmpeg.ec3 eac3enc_none.ec3
 run mkv enc_51.ac3 enc_51.mkv
 run mkv eac3enc_none.ec3 eac3enc_none.mkv
 run mkv atmos_4.ec3 atmos_4.mkv
@@ -463,5 +499,33 @@ run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+
+# demux is the inverse of the wrapping commands above, so it is checked as an
+# inverse rather than only for a clean exit: the elementary stream that went
+# into the container has to be the one that comes back out, byte for byte. A
+# reader that dropped a frame or trimmed a trailing byte would still produce
+# something FFmpeg mostly decodes, which is why cmp is the assertion here and
+# a decode is not.
+run demux enc_51.mkv demux_51.ac3
+cmp -s enc_51.ac3 demux_51.ac3 || {
+    echo "demux enc_51.mkv did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux eac3enc_none.mkv demux_eac3.ec3
+cmp -s eac3enc_none.ec3 demux_eac3.ec3 || {
+    echo "demux eac3enc_none.mkv did not reproduce eac3enc_none.ec3 byte for byte" >&2
+    exit 1
+}
+# The Atmos stream matters on its own: its access units carry dependent
+# substreams, so a reader that mistook a substream for an access-unit
+# boundary would only show up here.
+run demux atmos_4.mkv demux_atmos.ec3
+cmp -s atmos_4.ec3 demux_atmos.ec3 || {
+    echo "demux atmos_4.mkv did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+# And the recovered stream still decodes, which is the end-to-end statement:
+# container in, playable elementary stream out.
+run_ffmpeg_check demux_atmos.ec3
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

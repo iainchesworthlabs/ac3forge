@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "ac3/export.hpp"
@@ -29,5 +30,22 @@ namespace ac3::io {
 // FourCC itself is implied by `stream.kind`: kAc3 -> 'dac3', kEac3 -> 'dec3'.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_codec_config_box(
     const ScannedStream& stream);
+
+// The DASH <AudioChannelConfiguration> @value for this stream on the Dolby
+// scheme DASH-IF IOP Part 8 v5.0.0 §5.3.2 offers for E-AC-3 -
+// "tag:dolby.com,2014:dash:audio_channel_configuration:2011 as defined in
+// TS 102 366 clause I.1.2.1": four upper-case hexadecimal digits of the
+// 16-bit channel-assignment field, left channel in the most significant bit,
+// so a 5.1 stream is "F801". That field is ScannedStream::channel_map
+// verbatim (ATSC A/52-2018 Table E2.5 is the same sixteen locations in the
+// same order), which is why this is one fmt::format rather than a table.
+//
+// Beside build_codec_config_box for its own reason: which locations an AC-3
+// or E-AC-3 stream carries is acmod/lfeon/chanmap syntax, read by the scanner
+// and derived nowhere else. A container or manifest writer (mp4::, and
+// mp4::DashOptions::dolby_channel_configuration in particular) has no business
+// re-deriving AC-3 semantics to fill in one attribute, the same boundary the
+// dac3/dec3 payload above already draws.
+[[nodiscard]] AC3FORGE_EXPORT std::string dash_channel_configuration(const ScannedStream& stream);
 
 }  // namespace ac3::io

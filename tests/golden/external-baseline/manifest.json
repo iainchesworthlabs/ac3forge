@@ -62,7 +62,8 @@
           "hf_db": -0.8104806035555444,
           "mos_lqo": 4.603243802106254,
           "decoded_with": "ffmpeg",
-          "measured_kbps": 192.512
+          "measured_kbps": 192.512,
+          "decoder_note": "FFmpeg 8.0.1 reads 93 of this stream's 94 frames cleanly but fails frame 0 from cold (\"exponent 25 is out-of-range\"), concealing it by repeating block 0 across blocks 1-4. The score here is unaffected because score_fixed's FIXED_ALIGN skips the first 0.2 s, which is where that frame sits; scored across the whole file FFmpeg's decode is 14.30 dB instead. What says 33.32 dB measures DEE's encoder and not FFmpeg's concealment is that ac3forge's own decoder reads frame 0 correctly and scores this same fixture 33.3236 dB through the same window, 0.005 dB away - see tools/generators/gen_external_baseline.py's module docstring."
         },
         "ours_at_baseline_time": {
           "snr_db": 31.9773006439209,
