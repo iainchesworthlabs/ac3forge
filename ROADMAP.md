@@ -430,7 +430,7 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   `--check-envelope` measures the per-layout rate floors and §E2.3.1.3's 11-bit `frmsiz` word
   ceiling, which at the half rates sits inside Table 5.18's own rate list. First finding, fixed:
   `eac3-encode` aborted on an assertion above that ceiling at every layout.
-- [ ] **VX2 (L)** — E-AC-3 mirror self-check. `DecoderConfig::trace` is "AC-3 only
+- [x] **VX2 (L)** — E-AC-3 mirror self-check. `DecoderConfig::trace` is "AC-3 only
   (FrameDecoder); Eac3Decoder does not write one". For ecpl, tpn, fscod2 and 7.1.4 the in-repo
   round trip is the only check, and `docs/verification.md` admits a misreading shared by both
   sides passes it. Per-substream, per-block diffs of exponents, bap, delta, AHT gains, coupling
@@ -714,8 +714,8 @@ no SIMD and no threading anywhere in the codec core.
 - [ ] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
   "CRC failed at frame N" or "unknown EMDF payload skipped". Tracy is profiling, not diagnostics.
 - [ ] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
-  mask curves as CSV/JSON/Parquet from the trace (AC-3 today, E-AC-3 with VX2), reachable from
-  Python.
+  mask curves as CSV/JSON/Parquet from the trace (both codecs carry one since `VX2`),
+  reachable from Python.
 
 ## UX. Applications
 
