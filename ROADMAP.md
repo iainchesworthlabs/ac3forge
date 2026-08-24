@@ -475,15 +475,28 @@ no SIMD and no threading anywhere in the codec core.
   exported `std::round` call made about 9,100 times per frame, ~33–38 µs and the largest named
   remainder of the last profile (~7% of the fast path). Byte-identical streams on the corpus are
   the gate.
-- [ ] **PF3 (M)** — Fast IMDCT in the two places still direct: `ecpl_channel_spectrum` (three
+- [x] **PF3 (M)** — Fast IMDCT in the two places still direct: `ecpl_channel_spectrum` (three
   direct 512-point inverses per coupled channel per block, encode and decode) and JOC object
   synthesis (`joc.cpp`, one per object per block — a 16-object frame spends ~1.7 ms there, more
   than a whole 5.1 encode, and the WASM demo decodes objects in the browser). Prove
-  byte-identical encodes for the encoder-internal use or keep that side direct.
-- [ ] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
+  byte-identical encodes for the encoder-internal use or keep that side direct. Done: both
+  forward a `fast` flag, the decoder passing `DecoderConfig::fast_imdct` and the
+  encoder-internal `ecpl` use `eac3::FrameConfig::fast_mdct`; the 40-stream encode corpus is
+  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4, 6.9×
+  with it); a 180-second enhanced-coupling decode 5.84 → 3.24 s, a 30-second 15-object decode
+  6.47 → 4.83 s. `joc::reconstruct` still runs its bed
+  ANALYSIS (five forward MDCTs per block) direct, which is now the dominant cost of an object
+  decode — see PF8.
+- [x] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
   bit-reversal pass (`fft_radix2.hpp`) becomes fixed-size radix-4/split-radix codelets for
   P = 64/128/512 with trivial-twiddle elimination. Decode is transform-dominated now; encode gains
-  about 10%.
+  about 10%. Done as `fft_kernel.hpp`: compile-time-specialised radix-4 stages with a trailing
+  radix-2 stage where log2(P) is odd, the first stage's unit twiddles gone, and the
+  digit-reversal folded into each caller's own input-producing loop instead of running as a
+  pass. The kernel measured standalone is 1.6–1.75× across P = 64/128/512; at the caller level,
+  median of ten interleaved runs, 1.24–1.86× per fast transform against an 0.90–1.07× spread on
+  the unchanged ones. A 180-second 5.1 AC-3 decode 4.19 → 2.92 s. Encodes byte-identical;
+  `dft512` against its own O(N²) sum improved from 1.9e-15 to 1.7e-15.
 - [ ] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
   (`src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, the same mechanism as
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has
@@ -497,6 +510,14 @@ no SIMD and no threading anywhere in the codec core.
   decode loop, an explicit table ROM budget, a `-fno-exceptions`/no-RTTI audit, a float32 path,
   and a cross-compiled no-OS CI leg (`arm-none-eabi` under QEMU). The memory programme cut decode
   bytes per frame by more than half; this is the next step for set-top and DSP ports.
+- [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
+  `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
+  forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.
+  Measured after PF3/PF4: a 30-second 15-object decode is 4.83 s, of which about 3.5 s is those
+  transforms; the object inverses PF3 just fixed were 1.6 s of the 6.5 s before. It is one
+  argument, but it changes decoded object audio at ~1e-13 and there is no decoder-side forward
+  switch to hang it on today — `DecoderConfig::fast_imdct` names the inverse — so it wants a
+  deliberate decision, not a drive-by flip.
 
 ## AP. Library surface, bindings and v1.0
 
