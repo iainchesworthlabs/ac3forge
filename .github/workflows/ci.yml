@@ -96,6 +96,18 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  # develop's merge queue (see .github/branch-protection.md) tests each queue
+  # entry on a temporary gh-readonly-queue/... ref before it merges - GitHub
+  # only runs workflows that explicitly opt into this event on that ref, so
+  # without it "Branch Name"/"CI Status" (both required checks) would simply
+  # never report and every queue entry would sit until it times out. `changes`
+  # below already treats a non-pull_request event generically (falls back to
+  # the before/sha compare), and `branch-name` already treats any non-PR
+  # event as a pass-by-skip (see its own `if`) - both behaviours already
+  # exist for the plain `push` case above, merge_group needs no special-casing
+  # beyond receiving the trigger.
+  merge_group:
+    branches: [ develop ]
   workflow_dispatch:
 
 concurrency:

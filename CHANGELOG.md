@@ -44,6 +44,106 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   above 3.5 kHz, so both BS.1534 anchors are inaudible on both 5.1 legs and cannot scale a
   MUSHRA session there, and the items are 1.9 s against BS.1534-3's ~10 s. Roadmap `VX7` (real
   programme material) is what fixes both.
+- **Streaming fMP4/CMAF fragmenter** (ROADMAP `IO4`). `mp4::FragmentWriter` is the incremental
+  counterpart to `mp4::fragment`, the sibling `matroska::Writer` and `mpegts::Writer` already
+  had: an initialization segment up front, then one CMAF media segment handed back each time a
+  fragment closes, with `tfdt` from a running decode time. Its contract is the one
+  `mpegts::Writer` already holds itself to - for the same track, options and frames the media
+  segments are byte-identical to the batch form's - and the initialization segment differs in
+  exactly one respect, `mvhd`/`tkhd`/`mdhd` duration 0 for a session that cannot know its own
+  total, the same concession `matroska::Writer` makes with EBML's unknown-size Segment. A
+  `SegmentInfo` window (`FragmentOptions::playlist_window_segments`) keeps a rolling live HLS
+  playlist and DASH `SegmentTimeline` without keeping the audio, and `mp4::build_dash_mpd` -
+  moved into the library from the CLI - grows a dynamic form with `availabilityStartTime`,
+  `minimumUpdatePeriod` and `timeShiftBufferDepth`.
+- **fMP4/CMAF as a live container** in both front ends. `ac3cli record`/`ac3cli live` take
+  `container=fmp4`, which makes the output path a directory written as the session runs -
+  `init.mp4`, a `segment*.m4s` per closed fragment, and playlists and MPD rewritten alongside,
+  live-shaped while running and closed to VOD/static at the end - plus `fmp4-window=<n>` for a
+  rolling origin. The GUI records the same way with **fragmented MP4/CMAF** selected, in both a
+  live session and a recording, where before a live session fell back to writing the plain
+  elementary stream and a recording accumulated the whole take before writing it. fMP4 joins
+  Matroska as the second container a live session can write natively; S/PDIF, MP4 and MPEG-TS
+  still fall back there.
+- **DASH signalling for Dolby Atmos/JOC, and the `ceao` brand** (ROADMAP `IO5`).
+  `mp4/dash.hpp` said there was no established convention to point at; DASH-IF IOP Part 8
+  v5.0.0 §5.3.2 names the two supplemental descriptors ETSI TS 103 420 clause D.2 defines
+  (`tag:dolby.com,2018:dash:EC3_ExtensionType:2018` with the value `JOC`, and
+  `…EC3_ExtensionComplexityIndex:2018` with `complexity_index_type_a`), and §5.3.3 the `ceao`
+  compatibility brand that spec's Annex E requires on an object-audio CMAF track.
+  `ac3cli fmp4`, the GUI and both live paths now write all three. Every Representation also
+  states its channel configuration, on either the ISO/IEC 23091-3 CICP scheme or - via the new
+  `ac3::io::dash_channel_configuration`, from the channel-location word `ac3::io::scan` already
+  computed and used to discard - the Dolby scheme ETSI TS 102 366 clause I.1.2.1 defines.
+- **IEC 61937 de-framing, and passthrough capture** (roadmap `IO3`). The burst wrapper was
+  byte-exact against FFmpeg's `spdif` muxer, but nothing in the project ever read a burst back:
+  there was no round-trip test for it, and no way to recover a stream from a capture of a
+  player's S/PDIF or HDMI output. `ac3::iec61937::BurstReader` now parses the `Pa`/`Pb`/`Pc`/`Pd`
+  framing — data types 0x01 (AC-3) and 0x15 (E-AC-3), E-AC-3's 4× carrier and its multi-syncframe
+  bursts, the stuffing between bursts, `Pd`'s two different units, and both 16-bit word orders —
+  streaming, holding one burst plus the caller's chunk however long the capture runs.
+  `unwrap_stream` is the batch form. A new `ac3cli unspdif <in.wav|in.raw> <out.ac3|out.ec3>`
+  exposes it, reading the WAV `spdif` writes, a saved capture, or a bare dump of carrier bytes.
+  Bursts written by this project *and* by FFmpeg's own muxer read back byte-exactly to the
+  streams that went in, for both data types and both word orders.
+
+  On the capture side, `ac3::iec61937::PassthroughDetector` answers whether an endpoint is
+  delivering PCM or somebody else's bursts, from the same interleaved floats `ac3::audio::Capture`
+  hands over. `ac3cli record` acts on it by writing the elementary stream instead of encoding the
+  bursts as audio — nothing re-encoded, output bit-identical to what the source sent — and no
+  longer refuses a device whose sample rate AC-3 cannot encode at until it has ruled a bitstream
+  out, since 192 kHz is exactly the E-AC-3 carrier's 4×. `ac3cli live` detects the same thing and
+  stops with an error naming `record` and `unspdif`, rather than encoding a whole session of
+  noise. None of this is hardware-confirmed: no HDMI or S/PDIF capture device has been available,
+  the same gap the passthrough output side has.
+
+  The parser treats its input as hostile throughout — a burst carrier comes off a wire by
+  definition — so a `Pd` past its data type's repetition period is refused rather than allocated,
+  and a preamble not backed by a `0x0B77` syncframe is resynced past. `fuzz/fuzz_iec61937_unwrap.cpp`
+  is the new libFuzzer harness over it.
+
+- **`ac3cli probe`** (roadmap `IO1`) — what an elementary stream *declares*, without
+  reconstructing its audio: `bsid`, sample rate including Annex E's `fscod2` half rates,
+  `acmod`/`lfeon` and the resolved layout, `bsmod`, `chanmap`, the substream map
+  (independent/dependent, ids), `numblkscod`, frame and access-unit counts, duration, measured
+  bit rate with the VBR spread behind it, `dialnorm`/`compr`/`dynrng` presence and ranges, EMDF
+  payload ids, OAMD/JOC with `complexity_index` and the object/bed configuration, whether an
+  authenticity tag is present, CRC validity per frame, and how often each coding tool was used.
+  A human-readable table by default; `json=1` emits a versioned JSON document
+  (`ac3forge.probe/1`) whose schema is documented as a stable contract in
+  [docs/cli/commands.md](docs/cli/commands.md). `detail=frames` adds a per-access-unit dump and
+  `detail=blocks` adds every block's Annex E tools and exponent strategies — the in-repo
+  counterpart of `tools/references/eac3_parse.py`, which was the only field-level dump in the
+  project and shipped with nothing. The exit code is non-zero if any frame failed its CRC or the
+  parser refused it, so it works as a pipeline gate without its output being read. Memory is flat
+  in the length of the stream: the input is pulled through a fixed window and the per-frame dump
+  is written as the walk produces it.
+
+  It reads in two tiers, and a stream this decoder cannot decode is still described in full — the
+  committed DEE-encoded E-AC-3 baseline is exactly that case, where `decode` stops at
+  `decode failed (code 5)` and `probe` reports the layout, rate, duration, substream map and CRC
+  state, says which 76 of 79 syncframes the parser refused and why, and notes that the stream uses
+  AHT.
+
+- **`ac3::io::read_frame_header`** — one syncframe's bit stream information, read without
+  decoding it. Promotes the E-AC-3 bsi walk `scan()` already had internally to a public API and
+  gives AC-3 a matching one; `scan()` now goes through the same two functions rather than keeping
+  a private copy.
+
+- **`ac3::FrameSyntax`** (`ac3/decoder/syntax_trace.hpp`) — an opt-in per-block record of which
+  coding tools a syncframe used and what exponent strategy each stream carried, on the same terms
+  `ac3::verify::FrameTrace` already established: a null pointer in the `DecoderConfig` costs
+  nothing. Both decoders write one.
+
+- **`DecoderConfig::skip_reconstruction`** — parse every field exactly as a full decode does, but
+  stop before the inverse transform, overlap-add, JOC object reconstruction and channel
+  combination. The metadata is identical; the transform, which answers none of the questions an
+  inspection asks, is not paid for.
+
+- **`ac3::signing::has_authenticity_tag`** — whether a syncframe carries an authenticity tag,
+  answered **without a key**. Where the tag lives is fixed by the EMDF container's own
+  protection-length codes; only whether it *matches* needs the key.
+
 - **E-AC-3 encoder input-space fuzzing** (`tools/ci/fuzz_eac3_encoder_space.py`, roadmap `VX1`).
   The AC-3 encoder-space harness said outright where it stopped — "Scope: AC-3 only [...] E-AC-3's
   own space [...] is a real remaining gap" — and this is that gap. It draws random legal
@@ -71,6 +171,25 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The external baseline's DEE stereo score is explained rather than re-measured.** The
+  33.32 dB recorded for `eac3-stereo-192`'s DEE leg reproduces exactly against the same FFmpeg
+  8.0.1 build, and is now corroborated to 0.005 dB by this project's own decoder, so the number
+  and its `"decoded_with": "ffmpeg"` label both stand. What was missing is that FFmpeg fails that
+  stream's first frame from cold and `score_fixed`'s 0.2 s skip puts that frame outside the
+  scored window - across the whole file FFmpeg's decode is 14.30 dB. A `decoder_note` on that
+  entry now records it, emitted by `gen_external_baseline.py` so a regenerated baseline keeps it.
+  Separately, the Dolby Reference Player's long-standing "decodes DEE's own stereo output to
+  garbage" note is resolved: the player applies dialnorm, DEE writes a measured dialnorm of 12,
+  and the 19 dB attenuation that follows was being charged to the decode. Compensated, the same
+  decode scores 32.19 dB, which makes the player usable as an oracle again (`VX5`).
+- `ac3::signing`'s frame walk now reports "no container" for a syncframe outside the subset it
+  supports, where it previously asserted. That was sound while signing and verifying were its
+  only callers — each already knew what it was handing over — but `has_authenticity_tag` is asked
+  of every syncframe of an arbitrary stream, where an ordinary non-Atmos frame is not an error and
+  a debug build must not abort on one. Release behaviour is unchanged: it already declined to sign
+  these, just without saying so.
+- `DecodedFrame` and `DecodedSubstream` now report `bsid` and `bsmod`, which both decoders
+  already read past and discarded.
 - **E-AC-3 `auto` chooses its Annex E tools from the frame, not just the bitrate** (`EQ9`). The
   tool set used to follow from the per-channel rate alone. Two measures taken from the MDCT
   coefficients the transform has already produced now decide with it: how much of the coupling

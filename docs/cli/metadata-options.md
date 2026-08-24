@@ -2,8 +2,8 @@
 
 Encoding commands in [Commands](commands.md) take these after their positional arguments, in any
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
-takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=` and (`live`
-only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
+takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=`/`fmp4-window=`
+and (`live` only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
 `cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
 — of the three Atmos commands, only `atmos-encode` measures:
@@ -261,7 +261,7 @@ The GUI's own multi-source Format-tab table (**Add source…** plus a per-channe
 is a direct front end over this same grammar — see
 [GUI → Multi-source & assignment](../gui/source-assignment.md).
 
-## Record/live options (`record`, `live`): `container=mkv`
+## Record/live options (`record`, `live`): `container=`
 
 ```text
 record/live options (record, live; any order, after the positional arguments):
@@ -269,6 +269,13 @@ record/live options (record, live; any order, after the positional arguments):
                      stream this writes by default - same shape of choice as
                      the GUI's own Container setting (container=matroska is
                      an accepted alias)
+  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live
+                     HLS playlists and a dynamic DASH MPD, updated as the
+                     session runs - the output path names the folder
+                     (container=cmaf is an accepted alias)
+  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the
+                     playlist/MPD (a rolling live window); 0, the default, keeps
+                     every segment
   container=raw     the default, spelled out
 ```
 
@@ -283,9 +290,28 @@ this page follows. This is the same choice the GUI's own Container combo offers 
 session](../gui/live-session.md#take-durability) for how a live session's own take durability
 differs slightly between the two front ends.
 
+`container=fmp4` (alias `container=cmaf`) is the same choice for fragmented MP4/CMAF, with one
+shape difference the format forces: the output path names a **folder**, not a file, because the
+container is a set of files. It is written incrementally — `init.mp4` at the first frame, a
+`segment*.m4s` each time a fragment closes, and `audio.m3u8`/`master.m3u8`/`manifest.mpd`
+rewritten alongside it — so the folder is a servable live origin *while the session is still
+running*: the playlist carries no `#EXT-X-ENDLIST` and the MPD is `type="dynamic"` with an
+`availabilityStartTime` until the session stops, at which point the trailing partial fragment is
+flushed and both close to their VOD/static forms. `live` never accumulates the take in memory on
+this path at all; `record`, which encodes to a fixed length up front, pushes its frames through
+the same writer so the two leave identical folders for the same take.
+
+`fmp4-window=<n>` bounds what the manifests list to the last *n* segments — `#EXT-X-MEDIA-SEQUENCE`
+and the MPD's `@startNumber`/`SegmentTimeline` advance with the window, which is what a real
+origin deleting segments behind itself needs. The segments themselves are still written; only the
+manifests roll. RFC 8216 §6.2.2 wants a live playlist to hold at least three target durations of
+media, so an `<n>` below 3 is accepted but not something a player will enjoy. The default, 0,
+lists every segment — right for a session whose folder will be served whole afterwards.
+
 ```bash
 ac3cli record out.mkv 30 192 0 container=mkv
 ac3cli live out.mkv 0 30 448 -2 -2 atmos container=mkv
+ac3cli live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
 ```
 
 ## Live options (`live`): `capture2=`
@@ -340,6 +366,40 @@ read directly from its own primary source rather than recalled from memory:
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the
 full report format and the exit-code convention this drives.
+
+## Probe options (`probe`): `json=`, `detail=`
+
+```text
+probe options (probe; any order, after the positional arguments):
+  json=1            emit the JSON document instead of the human table
+                    (schema ac3forge.probe/1 - docs/cli/commands.md)
+  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
+                    substream headers and each frame's object layer
+  detail=blocks     the same, plus every block's coding tools and
+                    exponent strategies - what a codec bug report needs
+```
+
+`json=1` is a value token rather than a bare word (unlike `couple` or `heavy`) because `probe` is
+the first command here whose *output form* is a choice: `json=0` is accepted and means the table,
+so a script building its command line programmatically (`json=$want`) never has to omit the token
+to turn it off. The document it emits is a versioned contract — see
+[Commands → `probe`](commands.md#json-output-json1) for the schema, the compatibility rules and
+the units each field is in.
+
+`detail=` is independent of `json=`: all four combinations work, and the two detail levels add to
+the stream summary rather than replacing it — the same summary comes out either way.
+
+| `detail=` | What it adds |
+|---|---|
+| *(omitted)* | Nothing. The stream summary alone, which is what a pipeline or a CI gate wants |
+| `frames` | One entry per access unit: byte offset, size, start time, and each syncframe's own header, CRC state, authenticity tag and object layer |
+| `blocks` | The same, plus per syncframe: Table E1.3's frame-level tool gates, and per block which coding tools were in force and what exponent strategy each coded stream carried |
+
+A dump of a long file is a lot of output, which is why neither is on by default — but it costs no
+extra memory, because each access unit is written as the walk reaches it rather than collected
+first. See [Commands → `probe`](commands.md#per-frame-and-per-block-detail) for what the block dump
+looks like and why it exists.
+
 
 ## Defaults
 
