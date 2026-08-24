@@ -27,7 +27,10 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/internal/profiling.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -97,7 +100,89 @@ struct Bsi {
     // Ch2's own dialnorm/compr, present only when acmod is kDualMono (1+1).
     std::optional<int> dialnorm2;
     std::optional<std::uint8_t> compr2;
+    // Table E1.2's two optional metadata elements, exactly as read.
+    std::optional<meta::MixMetadata> mixing;
+    std::optional<meta::BsiInfo> info;
 };
+
+// Table E1.2's mixdef element (§E2.3.1.18-52). mixdef 0x3's mixdeflen sizes
+// the WHOLE element - sub-fields and byte-alignment fill included - so the
+// contents are walked for their values and the reader is then placed from the
+// length rather than from where the walk happened to stop. That way a stream
+// using a sub-field this build does not model still lands the reader in the
+// right place, which is the property the old skip-it-whole code had and is
+// worth keeping now that the contents are read.
+meta::MixingParameters read_mixing_parameters(BitReader& r) {
+    const auto read_premix = [&r] {
+        meta::PremixCompression premix;
+        premix.premixcmpsel = static_cast<meta::PremixCompressionSource>(r.read(1));
+        premix.drcsrc = static_cast<meta::DrcSource>(r.read(1));
+        premix.premixcmpscl = static_cast<int>(r.read(3));
+        return premix;
+    };
+    meta::MixingParameters mixing;
+    mixing.mixdef = static_cast<meta::MixDefinition>(r.read(2));
+    switch (mixing.mixdef) {
+        case meta::MixDefinition::kNone:
+            break;
+        case meta::MixDefinition::kPremix:
+            mixing.premix = read_premix();
+            break;
+        case meta::MixDefinition::kReserved:
+            mixing.reserved = static_cast<std::uint16_t>(r.read(12));
+            break;
+        case meta::MixDefinition::kExtended: {
+            const auto mixdeflen = r.read(5);
+            const auto start = r.bit_position();
+            if (r.read(1) != 0) {  // mixdata2e
+                meta::ExternalScales external;
+                external.premix = read_premix();
+                const auto read_scale = [&r]() -> std::optional<int> {
+                    if (r.read(1) == 0) {
+                        return std::nullopt;
+                    }
+                    return static_cast<int>(r.read(4));
+                };
+                external.left = read_scale();
+                external.centre = read_scale();
+                external.right = read_scale();
+                external.left_surround = read_scale();
+                external.right_surround = read_scale();
+                external.lfe = read_scale();
+                external.dmixscl = read_scale();
+                if (r.read(1) != 0) {  // addche
+                    external.auxiliary = std::array<std::optional<int>, 2>{read_scale(),
+                                                                          read_scale()};
+                }
+                mixing.external = external;
+            }
+            if (r.read(1) != 0) {  // mixdata3e
+                meta::SpeechEnhancement speech;
+                speech.spchdat = static_cast<int>(r.read(5));
+                if (r.read(1) != 0) {  // addspchdate
+                    meta::SpeechEnhancement::Additional additional;
+                    additional.spchdat1 = static_cast<int>(r.read(5));
+                    additional.spchan1att = static_cast<int>(r.read(2));
+                    if (r.read(1) != 0) {  // addspchdat1e
+                        meta::SpeechEnhancement::Additional::More more;
+                        more.spchdat2 = static_cast<int>(r.read(5));
+                        more.spchan2att = static_cast<int>(r.read(3));
+                        additional.more = more;
+                    }
+                    speech.additional = additional;
+                }
+                mixing.speech = speech;
+            }
+            // §E2.3.1.22: mixdeflen 0-31 means 2-33 bytes. Skip whatever the
+            // walk above left, mixdatafill included.
+            const auto total = (mixdeflen + 2) * 8;
+            const auto used = static_cast<std::uint32_t>(r.bit_position() - start);
+            r.skip(total > used ? total - used : 0);
+            break;
+        }
+    }
+    return mixing;
+}
 
 // Table E1.2's mixing-metadata payload. None of it changes how the audio is
 // coded, but every field still has to be walked exactly: one bit out of place
@@ -105,71 +190,123 @@ struct Bsi {
 // The two strmtyp gates here are the point - an independent substream carries
 // the program-scaling and mixing-configuration block that a dependent, which
 // is only ever part of someone else's program, does not.
-void skip_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
+meta::MixMetadata read_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
+    meta::MixMetadata mix;
     if (acmod > 0x2) {
-        r.skip(2);  // dmixmod
+        const auto mode = r.read(2);  // dmixmod
+        if (mode < 3) {               // Table D2.2's '11' reads as "not indicated"
+            mix.dmixmod = static_cast<meta::DownmixMode>(mode);
+        }
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
-        r.skip(3 + 3);  // ltrtcmixlev, lorocmixlev
+        mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
+        mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
     }
     if ((acmod & 0x4) != 0) {
-        r.skip(3 + 3);  // ltrtsurmixlev, lorosurmixlev
+        mix.ltrtsurmixlev = static_cast<meta::MixLevel>(r.read(3));
+        mix.lorosurmixlev = static_cast<meta::MixLevel>(r.read(3));
     }
-    if (bsi.lfe && r.read(1) != 0) {
-        r.skip(5);  // lfemixlevcod
+    if (bsi.lfe && r.read(1) != 0) {  // lfemixlevcode
+        mix.lfemixlevcod = static_cast<int>(r.read(5));
     }
     if (bsi.strmtyp != StreamType::kDependent) {
-        if (r.read(1) != 0) r.skip(6);  // pgmscl
-        if (acmod == 0x0 && r.read(1) != 0) r.skip(6);  // pgmscl2
-        if (r.read(1) != 0) r.skip(6);  // extpgmscl
-        switch (r.read(2)) {            // mixdef
-            case 0x1: r.skip(1 + 1 + 3); break;  // premixcmpsel, drcsrc, premixcmpscl
-            case 0x2: r.skip(12); break;         // mixdata
-            case 0x3: {
-                // mixdeflen sizes the WHOLE remaining element, sub-fields and
-                // byte-alignment padding included, so it can be skipped whole
-                // without walking mixdata2e/mixdata3e.
-                const auto mixdeflen = r.read(5);
-                r.skip((mixdeflen + 2) * 8);
-                break;
+        const auto read_scale = [&r]() -> std::optional<int> {
+            if (r.read(1) == 0) {
+                return std::nullopt;
             }
-            default: break;
+            return static_cast<int>(r.read(6));
+        };
+        mix.pgmscl = read_scale();
+        if (acmod == 0x0) {
+            mix.pgmscl2 = read_scale();
         }
+        mix.extpgmscl = read_scale();
+        mix.mixing = read_mixing_parameters(r);
         if (acmod < 0x2) {
-            if (r.read(1) != 0) r.skip(8 + 6);  // panmean, paninfo
-            if (acmod == 0x0 && r.read(1) != 0) r.skip(8 + 6);
+            const auto read_pan = [&r]() -> std::optional<meta::PanInfo> {
+                if (r.read(1) == 0) {  // paninfoe
+                    return std::nullopt;
+                }
+                meta::PanInfo pan;
+                pan.panmean = static_cast<int>(r.read(8));
+                pan.paninfo = static_cast<int>(r.read(6));
+                return pan;
+            };
+            mix.pan = read_pan();
+            if (acmod == 0x0) {
+                mix.pan2 = read_pan();
+            }
         }
         if (r.read(1) != 0) {  // frmmixcfginfoe
+            std::array<std::optional<int>, kBlocksPerFrame> words{};
+            // §E2.3.1.60: with one block per syncframe the per-block flag is
+            // INFERRED as set, so the word is unconditional and there is no
+            // flag on the wire to read.
             if (bsi.numblkscod == 0x0) {
-                r.skip(5);  // blkmixcfginfo[0]
+                words[0] = static_cast<int>(r.read(5));
             } else {
                 for (int blk = 0; blk < nblks; ++blk) {
-                    if (r.read(1) != 0) r.skip(5);  // blkmixcfginfo[blk]
+                    if (r.read(1) != 0) {  // blkmixcfginfoe
+                        words[static_cast<std::size_t>(blk)] = static_cast<int>(r.read(5));
+                    }
                 }
             }
+            mix.blkmixcfginfo = words;
         }
     }
+    return mix;
 }
 
 // Table E1.2's informational-metadata payload: bsmod and the production notes.
-void skip_informational_metadata(BitReader& r, Bsi& bsi) {
+// Writes bsi.bsmod directly (the raw code, for a caller - an inspection
+// tool's JSON output - that wants it off DecodedSubstream without unwrapping
+// BitstreamMode) as well as returning the full decode.
+meta::BsiInfo read_informational_metadata(BitReader& r, Bsi& bsi) {
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
-    bsi.bsmod = static_cast<int>(r.read(3));  // §5.4.2.1, reported on DecodedSubstream
-    r.skip(1 + 1);                            // copyrightb, origbs
+    meta::BsiInfo info;
+    const auto bsmod = r.read(3);
+    bsi.bsmod = static_cast<int>(bsmod);
+    info.bsmod = static_cast<meta::BitstreamMode>(bsmod);
+    info.copyrightb = r.read(1) != 0;
+    info.origbs = r.read(1) != 0;
     if (acmod == 0x2) {
-        r.skip(2 + 2);  // dsurmod, dheadphonmod
+        const auto surround = r.read(2);  // dsurmod
+        if (surround < 3) {
+            info.dsurmod = static_cast<meta::SurroundMode>(surround);
+        }
+        const auto headphone = r.read(2);  // dheadphonmod
+        if (headphone < 3) {               // Table D2.8's '11' reads as "not indicated"
+            info.dheadphonmod = static_cast<meta::HeadphoneMode>(headphone);
+        }
     }
     if (acmod >= 0x6) {
-        r.skip(2);  // dsurexmod
+        info.dsurexmod = static_cast<meta::SurroundExMode>(r.read(2));
     }
-    if (r.read(1) != 0) r.skip(5 + 2 + 1);  // mixlevel, roomtyp, adconvtyp
-    if (acmod == 0x0 && r.read(1) != 0) r.skip(5 + 2 + 1);
+    const auto read_audprod = [&r]() -> std::optional<meta::AudioProduction> {
+        if (r.read(1) == 0) {  // audprodie
+            return std::nullopt;
+        }
+        meta::AudioProduction production;
+        production.mixlevel = static_cast<int>(r.read(5));
+        const auto room = r.read(2);
+        if (room < 3) {  // Table 5.12's '11' reads as "not indicated"
+            production.roomtyp = static_cast<meta::RoomType>(room);
+        }
+        // Annex E's audprodie carries a third field AC-3's does not.
+        production.adconvtyp = static_cast<meta::AdConverterType>(r.read(1));
+        return production;
+    };
+    info.audprod = read_audprod();
+    if (acmod == 0x0) {
+        info.audprod2 = read_audprod();
+    }
     // §E2.3.2.6: sourcefscod is present only when fscod != 0x3 - a fscod2
     // frame never carries it at all.
     if (!is_reduced_rate(bsi.sample_rate)) {
-        r.skip(1);
+        info.sourcefscod = r.read(1) != 0;
     }
+    return info;
 }
 
 std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes) {
@@ -245,10 +382,10 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
     }
     const int nblks = eac3::blocks_per_syncframe(bsi.numblkscod);
     if (r.read(1) != 0) {  // mixmdate
-        skip_mixing_metadata(r, bsi, nblks);
+        bsi.mixing = read_mixing_metadata(r, bsi, nblks);
     }
     if (r.read(1) != 0) {  // infomdate
-        skip_informational_metadata(r, bsi);
+        bsi.info = read_informational_metadata(r, bsi);
     }
     if (bsi.strmtyp == StreamType::kIndependent && bsi.numblkscod != 0x3) {
         r.skip(1);  // convsync
@@ -559,6 +696,7 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
     std::span<const std::byte> frame) {
+    AC3_ZONE_SCOPED_N("eac3_decode_substream");
     // Before the first early return, for the same reason FrameDecoder resets
     // its own: a caller reusing one trace across a file must never read a
     // previous frame's state out of a call that decoded nothing.
@@ -688,6 +826,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     out.compr2 = bsi->compr2;
     out.dynrng2.fill(meta::kDynrngUnity);
     out.numblkscod = bsi->numblkscod;
+    out.mixing = bsi->mixing;
+    out.info = bsi->info;
     out.chanmap = bsi->chanmap;
     out.last_dependent = bsi->strmtyp == StreamType::kDependent && bsi->compre;
     out.blksw.assign(static_cast<std::size_t>(nfchans), {});
@@ -898,6 +1038,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     std::vector<std::byte> joc_bytes;
 
     for (int blk = 0; blk < nblks; ++blk) {
+        AC3_ZONE_SCOPED_N("eac3_parse_block");
         verify::Eac3BlockTrace* block_trace = nullptr;
         if (trace != nullptr) {
             block_trace = &trace->blocks[static_cast<std::size_t>(blk)];
@@ -1428,35 +1569,38 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         }
 
-        for (int ch = 0; ch < nchans; ++ch) {
-            const auto strat = strategy(ch);
-            if (strat == ExpStrategy::kReuse) {
-                if (blk == 0) {
+        {
+            AC3_ZONE_SCOPED_N("eac3_exponents");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto strat = strategy(ch);
+                if (strat == ExpStrategy::kReuse) {
+                    if (blk == 0) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                    continue;
+                }
+                const int end = ch < nfchans ? endmant[static_cast<std::size_t>(ch)] : kLfeEndmant;
+                endmant[static_cast<std::size_t>(ch)] = end;
+                const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
+                const auto absolute = static_cast<std::uint8_t>(r.read(4));
+                std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
+                for (auto& g : groups) {
+                    g = static_cast<std::uint8_t>(r.read(7));
+                    if (g > 124) {  // §7.10.2 error condition 17
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                }
+                auto& target = exps[static_cast<std::size_t>(ch)];
+                target.assign(static_cast<std::size_t>(end), 0);
+                decode_exponents(absolute, groups, strat, target);
+                // §7.2.2.2: exponents are 0..24, and the reconstruction shifts by
+                // them - out of range is undefined behaviour, not wrong audio.
+                if (std::ranges::any_of(target, [](auto e) { return e > kMaxExponent; })) {
                     return std::unexpected(DecodeError::kInvalidStream);
                 }
-                continue;
-            }
-            const int end = ch < nfchans ? endmant[static_cast<std::size_t>(ch)] : kLfeEndmant;
-            endmant[static_cast<std::size_t>(ch)] = end;
-            const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
-            const auto absolute = static_cast<std::uint8_t>(r.read(4));
-            std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
-            for (auto& g : groups) {
-                g = static_cast<std::uint8_t>(r.read(7));
-                if (g > 124) {  // §7.10.2 error condition 17
-                    return std::unexpected(DecodeError::kInvalidStream);
+                if (ch < nfchans) {
+                    r.skip(2);  // gainrng
                 }
-            }
-            auto& target = exps[static_cast<std::size_t>(ch)];
-            target.assign(static_cast<std::size_t>(end), 0);
-            decode_exponents(absolute, groups, strat, target);
-            // §7.2.2.2: exponents are 0..24, and the reconstruction shifts by
-            // them - out of range is undefined behaviour, not wrong audio.
-            if (std::ranges::any_of(target, [](auto e) { return e > kMaxExponent; })) {
-                return std::unexpected(DecodeError::kInvalidStream);
-            }
-            if (ch < nfchans) {
-                r.skip(2);  // gainrng
             }
         }
 
@@ -1529,7 +1673,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // rest of the block - invisible against this project's own
             // encoder and FFmpeg's, which both leave frmfgaincode at 0 so the
             // whole element is absent, and reached for the first time by a
-            // Dolby Encoding Engine stream (frmfgaincode == 1).
+            // Dolby Encoding Engine stream (frmfgaincode == 1,
+            // tests/oba/test_dee_joc_fixture.cpp).
             if (frm->cplinu[static_cast<std::size_t>(blk)]) {
                 fgaincod[static_cast<std::size_t>(kCplStream)] = static_cast<int>(r.read(3));
             }
@@ -1707,24 +1852,26 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                     .snr_all_zero = snr_all_zero,
                                     .high_efficiency = frm->ahtinu[s]});
         }
-        for (int ch = 0; ch < nchans; ++ch) {
-            const int end = endmant[static_cast<std::size_t>(ch)];
-            if (static_cast<int>(exps[static_cast<std::size_t>(ch)].size()) != end) {
-                return std::unexpected(DecodeError::kInvalidStream);
+        {
+            AC3_ZONE_SCOPED_N("eac3_bit_allocation");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto uch = static_cast<std::size_t>(ch);
+                const int end = endmant[uch];
+                if (static_cast<int>(exps[uch].size()) != end) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                BitAllocCodes channel_codes = codes;
+                channel_codes.fgaincod = fgaincod[uch];
+                bap[uch].assign(static_cast<std::size_t>(end), 0);
+                // delta[ch] for ch == LFE's index is always {} (never written -
+                // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so
+                // the LFE channel has no delta bit allocation field at all).
+                compute_bit_allocation(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
+                                       fsnroffst[uch], bap[uch],
+                                       {.snr_all_zero = snr_all_zero,
+                                        .high_efficiency = frm->ahtinu[uch],
+                                        .delta = delta[uch]});
             }
-            BitAllocCodes channel_codes = codes;
-            channel_codes.fgaincod = fgaincod[static_cast<std::size_t>(ch)];
-            bap[static_cast<std::size_t>(ch)].assign(static_cast<std::size_t>(end), 0);
-            // delta[ch] for ch == LFE's index is always {} (never written -
-            // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so
-            // the LFE channel has no delta bit allocation field at all).
-            compute_bit_allocation(exps[static_cast<std::size_t>(ch)], bsi->sample_rate,
-                                   channel_codes, csnroffst,
-                                   fsnroffst[static_cast<std::size_t>(ch)],
-                                   bap[static_cast<std::size_t>(ch)],
-                                   {.snr_all_zero = snr_all_zero,
-                                    .high_efficiency = frm->ahtinu[static_cast<std::size_t>(ch)],
-                                    .delta = delta[static_cast<std::size_t>(ch)]});
         }
 
         // The self-check's per-block view (ac3/verify/eac3_mirror.hpp), taken
@@ -1964,22 +2111,28 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             return {};
         };
 
-        bool read_coupling = false;
-        for (int ch = 0; ch < nfchans; ++ch) {
-            if (const auto result = read_stream_dispatch(ch, 0); !result) {
-                return std::unexpected(result.error());
-            }
-            if (frm->cplinu[static_cast<std::size_t>(blk)] &&
-                chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
-                if (const auto result = read_stream_dispatch(kCplStream, cplstrtmant); !result) {
+        // Every stream's quantized mantissas off the wire - or, for an AHT
+        // stream, its whole frame of them out of block 0 (§3.4.4).
+        {
+            AC3_ZONE_SCOPED_N("eac3_mantissas");
+            bool read_coupling = false;
+            for (int ch = 0; ch < nfchans; ++ch) {
+                if (const auto result = read_stream_dispatch(ch, 0); !result) {
                     return std::unexpected(result.error());
                 }
-                read_coupling = true;
+                if (frm->cplinu[static_cast<std::size_t>(blk)] &&
+                    chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
+                    const auto shared = read_stream_dispatch(kCplStream, cplstrtmant);
+                    if (!shared) {
+                        return std::unexpected(shared.error());
+                    }
+                    read_coupling = true;
+                }
             }
-        }
-        if (bsi->lfe) {
-            if (const auto result = read_stream_dispatch(nfchans, 0); !result) {
-                return std::unexpected(result.error());
+            if (bsi->lfe) {
+                if (const auto result = read_stream_dispatch(nfchans, 0); !result) {
+                    return std::unexpected(result.error());
+                }
             }
         }
 
@@ -2127,6 +2280,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // above; only enhanced coupling's own reconstruction happens here, right
     // before the spx/rematrix/IMDCT tail every block goes through.
     for (int blk = 0; blk < nblks; ++blk) {
+        AC3_ZONE_SCOPED_N("eac3_reconstruct_block");
         auto& tail = tails[static_cast<std::size_t>(blk)];
         auto& coeffs = tail.coeffs;
 
@@ -2290,21 +2444,27 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         }
 
-        for (int ch = 0; ch < nchans; ++ch) {
-            const auto index = static_cast<std::size_t>(ch);
-            auto& x = imdct_scratch_;
-            if (ch < nfchans && tail.blksw[static_cast<std::size_t>(ch)]) {
-                imdct256_pair_windowed(coeffs[index], x, config_.fast_imdct);
-            } else {
-                imdct512_windowed(coeffs[index], x, config_.fast_imdct);
-            }
-            auto& history = delay[index];
-            auto& pcm = out.channels[index];
-            for (int n = 0; n < kSamplesPerBlock; ++n) {
-                pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
-                    static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)] +
-                                              history[static_cast<std::size_t>(n)]));
-                history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+        // The transform pair plus the overlap-add that reconstructs PCM from it -
+        // where a decode frame spends most of its time, and the stage
+        // DecoderConfig::fast_imdct's default switched under in 0.9.0.
+        {
+            AC3_ZONE_SCOPED_N("eac3_imdct_overlap");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto index = static_cast<std::size_t>(ch);
+                auto& x = imdct_scratch_;
+                if (ch < nfchans && tail.blksw[static_cast<std::size_t>(ch)]) {
+                    imdct256_pair_windowed(coeffs[index], x, config_.fast_imdct);
+                } else {
+                    imdct512_windowed(coeffs[index], x, config_.fast_imdct);
+                }
+                auto& history = delay[index];
+                auto& pcm = out.channels[index];
+                for (int n = 0; n < kSamplesPerBlock; ++n) {
+                    pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
+                        static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)] +
+                                                  history[static_cast<std::size_t>(n)]));
+                    history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                }
             }
         }
     }
@@ -2320,34 +2480,45 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     const int key = static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid;
 
     // --- JOC audio reconstruction -----------------------------------------
-    // Only when OAMD's own object ordering and JOC's line up 1:1 - a
-    // dynamic-object-only program (no bed), where oba::parse_payload's
-    // `objects` is already exactly the objects JOC coded (see its own
-    // DecodedProgram comment). A bed program's JOC objects would not match
-    // object_metadata->objects index for index, and this project's own
-    // AtmosEncoder never produces one anyway, so reconstruction is skipped
-    // rather than risk mislabeling one object's audio as another's.
-    if (out.object_metadata && out.object_metadata->program.dynamic_only && !joc_bytes.empty()) {
-        const auto params = joc::parse_payload(joc_bytes);
-        if (params && params->objects == static_cast<int>(out.object_metadata->objects.size())) {
-            constexpr std::array<int, joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
-            // Spans, not copies: this permutation used to deep-copy five
-            // channels (~30 KB a frame) purely to reorder them.
-            std::array<std::span<const float>, joc::kNumChannels5X> bed_joc_order{};
-            bool have_bed = static_cast<std::size_t>(joc::kNumChannels5X) <= out.channels.size();
-            for (int jc = 0; have_bed && jc < joc::kNumChannels5X; ++jc) {
-                bed_joc_order[static_cast<std::size_t>(jc)] =
-                    out.channels[static_cast<std::size_t>(
-                        kAc3FromJoc[static_cast<std::size_t>(jc)])];
-            }
-            if (have_bed) {
-                auto& joc_slot = joc_state_[static_cast<std::size_t>(key)];
-                if (!joc_slot) {
-                    joc_slot = std::make_unique<joc::ReconstructionState>();
+    // JOC's outputs are the program's objects with the LFE positions removed
+    // (§6.3.2.2 bypasses them), which oba::joc_object_indices() spells out.
+    // For the dynamic-object-only program AtmosEncoder writes, that is
+    // exactly object_metadata->objects index for index; for a bed program -
+    // what channel-based-immersive third-party content is - it is the bed's
+    // own channels, and out.object_indices is what says which.
+    {
+        AC3_ZONE_SCOPED_N("eac3_joc_reconstruct");
+        if (out.object_metadata && !joc_bytes.empty()) {
+            const auto params = joc::parse_payload(joc_bytes);
+            const auto indices = oba::joc_object_indices(out.object_metadata->program);
+            // §6.3.2.2 Table 47: the JOC downmix is the five channels this
+            // substream carries, in JOC order. A 7-channel downmix needs
+            // Lb/Rb from a dependent substream, which decode_substream does
+            // not have in hand here, so those configurations parse but do
+            // not reconstruct.
+            if (params && params->objects == static_cast<int>(indices.size()) &&
+                params->channels == joc::kNumChannels5X) {
+                constexpr std::array<int, joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+                // Spans, not copies: this permutation used to deep-copy five
+                // channels (~30 KB a frame) purely to reorder them.
+                std::array<std::span<const float>, joc::kNumChannels5X> bed_joc_order{};
+                bool have_bed =
+                    static_cast<std::size_t>(joc::kNumChannels5X) <= out.channels.size();
+                for (int jc = 0; have_bed && jc < joc::kNumChannels5X; ++jc) {
+                    bed_joc_order[static_cast<std::size_t>(jc)] =
+                        out.channels[static_cast<std::size_t>(
+                            kAc3FromJoc[static_cast<std::size_t>(jc)])];
                 }
-                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
-                                                    /*fast_mdct=*/false, config_.fast_imdct,
-                                                    config_.joc_domain);
+                if (have_bed) {
+                    auto& joc_slot = joc_state_[static_cast<std::size_t>(key)];
+                    if (!joc_slot) {
+                        joc_slot = std::make_unique<joc::ReconstructionState>();
+                    }
+                    out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
+                                                        /*fast_mdct=*/false, config_.fast_imdct,
+                                                        config_.joc_domain);
+                    out.object_indices = indices;
+                }
             }
         }
     }
@@ -2440,12 +2611,32 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
     std::span<const std::byte> unit, std::span<const std::span<float>> external) {
+    AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
     const auto frames = split_frames(unit);
     if (!frames) {
         return std::unexpected(frames.error());
     }
     if (frames->empty()) {
         return std::unexpected(DecodeError::kInvalidStream);
+    }
+
+    // §E2.3.1.2 programme selection, ahead of any decoding at all: a unit
+    // belonging to another programme is skipped whole rather than decoded and
+    // discarded, so none of this decoder's per-identity state (overlap-add,
+    // JOC continuity, the §3.7 hold-back queues) ever advances for a
+    // programme the caller did not ask for. The unit's first frame is by
+    // definition its independent substream, and its substreamid IS the
+    // programme id.
+    if (config_.programme) {
+        BitReader peek{frames->front()};
+        const auto lead_bsi = parse_bsi(peek, frames->front().size());
+        if (!lead_bsi) {
+            return std::unexpected(lead_bsi.error());
+        }
+        if (lead_bsi->substreamid != *config_.programme ||
+            lead_bsi->strmtyp == eac3::StreamType::kDependent) {
+            return std::optional<DecodedAccessUnit>(std::nullopt);
+        }
     }
 
     // §3.7: each frame's substream identity is needed below regardless of
@@ -2530,6 +2721,8 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
+    out.mixing = lead.mixing;
+    out.info = lead.info;
     // TS 103 420 §8.3.1's "whichever substream carries the EMDF container":
     // this project's own AtmosEncoder always makes that the bed, but a
     // dependent is equally legal and a legacy-core delivery has no choice -
@@ -2542,9 +2735,15 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         if (sub.object_metadata) {
             out.object_metadata = sub.object_metadata;
             out.object_audio = sub.object_audio;
+            out.object_indices = sub.object_indices;
             break;
         }
     }
+    // The independent substream's own substreamid: 0 for every
+    // single-programme stream, and under a std::nullopt
+    // DecoderConfig::programme the only thing distinguishing one programme's
+    // units from another's.
+    out.programme = lead.substreamid;
     out.substream_count = static_cast<int>(substreams.size());
 
     // The PCM target for one program slot: the caller's span when

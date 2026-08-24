@@ -49,10 +49,13 @@ add_executable(ac3tests
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
+    oba/test_dee_joc_fixture.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
     core/test_bitwriter.cpp
+    meta/test_bsi.cpp
+    encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
     core/test_crc_mutator.cpp
@@ -64,7 +67,9 @@ add_executable(ac3tests
     encoder/test_eac3.cpp
     encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
+    decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
+    io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
@@ -111,6 +116,27 @@ add_executable(ac3tests
     io/test_wav_stream_reader.cpp
     io/test_wav_stream_writer.cpp)
 
+# -Wnull-dereference false positive, GNU only: "a rewrite really does
+# re-stamp the CRCs" hand-flips one bit of an already-encoded frame
+# (tampered[6] ^= std::byte{0x20}) to build its negative control, and at -O3
+# (Release; not seen at the -debug preset's lower optimization) GCC inlines
+# std::byte's operator^= straight into the Catch2 test body and misattributes
+# a "null dereference" to the subscript - the same post-inlining
+# misattribution cmake/CompilerWarnings.cmake already documents for GCC < 15
+# against libstdc++ internals (see its own comment, and gcc.gnu.org/bugzilla
+# PR 108757 and neighbours), surfacing here on the CI-pinned GCC 16 instead:
+# confirmed on a plain WSL2 GCC 15.2.0 build (config-linux-gcc, not just
+# -debug) and, for real, in CI's own build logs (CodeQL, adm-validate, and
+# the plain Linux GCC/GCC-arm64 legs all hit it). `tampered` is a full copy
+# of a real encoded AC-3 syncframe, always far more than 6 bytes, so nothing
+# here is genuinely null-unsafe. Scoped to the file rather than widening
+# that project-wide guard, the same reasoning src/ac3adm/CMakeLists.txt's
+# own GCC-15 instance of this category gives for scoping to its one target:
+# nothing else in this project has hit it, so silencing it everywhere would
+# risk hiding a genuine one elsewhere.
+set_source_files_properties(io/test_metadata_edit.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+
 # test_signing.cpp reaches ac3::signing's internal crypto headers (sha256.hpp/
 # hmac_sha256.hpp) to run the FIPS/RFC known-answer vectors directly - they are
 # not part of the target's public API, so put its private src/ dir on this
@@ -118,6 +144,9 @@ add_executable(ac3tests
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
 
+# test_bit_reservoir.cpp reaches the encoder's own internal bit_reservoir.hpp
+# (ABR's sliding-window accounting), which is plumbing between the encoder's
+# translation units rather than library surface - same pattern, same reason.
 # test_exp_strategy.cpp includes exp_strategy.hpp, the exponent-run planner the
 # two encoder translation units share. It is deliberately not library surface -
 # nothing outside src/forge/src/encoder/ has any business planning exponent
@@ -154,6 +183,11 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 # the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
+
+# The third-party Dolby fixture tests/oba/test_dee_joc_fixture.cpp reads, on the
+# same reasoning: a path, because ctest runs from the build tree.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
 
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
@@ -255,7 +289,8 @@ endif()
 # `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp)
+        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
+        cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
     # well as this encoder's own output - they exercise syntax ac3forge never

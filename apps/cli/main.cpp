@@ -12,6 +12,7 @@
 #include <system_error>
 #include <vector>
 
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/audio/audio_backend.hpp"
@@ -25,6 +26,7 @@
 #include "commands/encode.hpp"
 #include "commands/live_audio.hpp"
 #include "commands/probe.hpp"
+#include "commands/stream_tools.hpp"
 #include "commands/synth.hpp"
 #include "exit_codes.hpp"
 #include "support.hpp"
@@ -83,6 +85,16 @@ struct Args {
         int value = 0;
         const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
         return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
+    }
+    // Every positional argument from index i onward, for the one command
+    // whose argument list is variadic ('cat' joins as many inputs as it is
+    // given). Returned as string_views over argv, which outlives the call.
+    [[nodiscard]] std::vector<std::string_view> tail(std::size_t i) const {
+        std::vector<std::string_view> out;
+        for (; i < a.size(); ++i) {
+            out.emplace_back(a[i]);
+        }
+        return out;
     }
 };
 
@@ -163,13 +175,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 33 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 38 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 33> kCommands{{
+constexpr std::array<Command, 38> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -283,18 +295,53 @@ constexpr std::array<Command, 33> kCommands{{
      "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
      topic::kStdio | topic::kProbe,
      Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
-    {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report", topic::kNone,
+    {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
+     "decode and re-encode, carrying dialnorm, compr and the mix metadata across - the "
+     "DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the "
+     "output name's suffix, or from codec=",
+     topic::kLayout | topic::kStreamTools,
      Needs::kNothing,
-     [](const Args& x) { return run_levels(x.str(1)); }},
+     [](const Args& x) {
+         return run_transcode(x.str(1), x.str(2), x.u32(3, 448), x.str(4), x.meta);
+     }},
+    {"metadata", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
+     "rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the "
+     "audio is copied through untouched, not re-encoded",
+     topic::kStreamTools,
+     Needs::kNothing,
+     [](const Args& x) { return run_metadata(x.str(1), x.str(2), x.meta); }},
+    {"normalize", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
+     "measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio "
+     "untouched",
+     topic::kStreamTools,
+     Needs::kNothing,
+     [](const Args& x) { return run_normalize(x.str(1), x.str(2), x.meta); }},
+    {"cut", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds]",
+     "extract on access-unit boundaries; nothing is re-encoded", topic::kStreamTools,
+     Needs::kNothing,
+     [](const Args& x) { return run_cut(x.str(1), x.str(2), x.str(3), x.str(4)); }},
+    {"cat", 4, "<out.ac3|out.ec3> <in1> <in2> [in3...]",
+     "join streams end to end (output FIRST, since the input list is variadic); refuses "
+     "inputs whose codec, rate, layout or substream shape differ",
+     topic::kStreamTools,
+     Needs::kNothing,
+     [](const Args& x) {
+         const auto inputs = x.tail(2);
+         return run_cat(x.str(1), inputs);
+     }},
+    {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report",
+     topic::kProgramme,
+     Needs::kNothing,
+     [](const Args& x) { return run_levels(x.str(1), x.meta.programme); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
     {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate",
-     topic::kQc,
+     topic::kQc | topic::kProgramme,
      Needs::kNothing, [](const Args& x) {
-         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme);
      }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", topic::kNone,
      Needs::kNothing,
@@ -449,6 +496,10 @@ int run_main(int argc, char** argv) {
                                token == "verify-objects" || token == "verify" ||
                                token == "keep-partial" || token == "fast-mdct" ||
                                token == "fast-imdct" || token == "fallback-51" ||
+                               token == "annexd" || token == "infomdat" ||
+                               token == "encinfo" || token == "langcod" ||
+                               token == "langcod2" || token == "copyright" ||
+                               token == "sourcefscod" ||
                                token == "quiet" || token == "verbose";
         if (token == "couple") {
             couple_flag = true;

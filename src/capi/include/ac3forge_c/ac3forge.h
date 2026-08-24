@@ -60,6 +60,7 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS = 14,
     AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL = 15,
     AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO = 16,
+    AC3FORGE_ERROR_ENCODE_INVALID_BSI = 17,
 
     /* ac3::DecodeError — FrameDecoder::decode_frame(), Eac3Decoder::decode_substream()/decode_access_unit() */
     AC3FORGE_ERROR_DECODE_TRUNCATED = 30,

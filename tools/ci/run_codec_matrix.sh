@@ -181,6 +181,23 @@ run encode bootstrap_51.wav enc_cmix.ac3 224 stereo cmixlev=-4.5
 run_ffmpeg_check enc_cmix.ac3
 run encode bootstrap_51.wav enc_surmix.ac3 224 51 surmixlev=off
 run_ffmpeg_check enc_surmix.ac3
+# Annex D (bsid 6) and the informational bsi fields. Two rows because the two
+# halves are mutually exclusive on the wire: xbsi1/xbsi2 occupy the same 28
+# bits as timecod1/timecod2, so no single command can walk both writers.
+# §D3.2 is the reason the bsid-6 row still gets an FFmpeg check - a decoder
+# that does not know the alternate syntax reads those bits as a time code it
+# already ignores, so a refusal here would mean the frame length went wrong,
+# not that the syntax is exotic.
+run encode bootstrap_51.wav enc_annexd.ac3 384 51 annexd dmixmod=ltrt \
+    ltrtcmixlev=-1.5 ltrtsurmixlev=-3 lorocmixlev=-4.5 lorosurmixlev=off \
+    dsurexmod=ex dheadphonmod=on adconvtyp=hdcd encinfo \
+    bsmod=vi mixlevel=105 roomtyp=large copyright origbs=off langcod
+run decode enc_annexd.ac3 enc_annexd.wav
+run_ffmpeg_check enc_annexd.ac3
+run encode bootstrap_51.wav enc_bsi_timecode.ac3 256 stereo \
+    bsmod=commentary dsurmod=on mixlevel=82 roomtyp=small timecode=17:43:46:21.39
+run decode enc_bsi_timecode.ac3 enc_bsi_timecode.wav
+run_ffmpeg_check enc_bsi_timecode.ac3
 # fast-mdct=off: every other encode in this matrix now runs the default
 # §7.9.4 fast forward MDCT, so this is the leg that keeps the direct
 # §8.2.3.2 reference form - the validation oracle - walked under the
@@ -368,6 +385,32 @@ run eac3-encode bootstrap_51.wav eac3_meta.ec3 192 none 51 \
 run decode eac3_meta.ec3 eac3_meta.wav
 run_ffmpeg_check eac3_meta.ec3
 
+# The rest of Table E1.2: mixmdate past the five levels, and infomdat. Every
+# optional sub-element of mixdef 0x3 is on here at once, which is the case
+# whose LENGTH is easiest to get wrong - mixdeflen sizes the whole element,
+# so an error there lands audfrm at the wrong offset and the decode below
+# fails rather than merely reporting a wrong value. eac3_parse.py reads the
+# same stream independently.
+run eac3-encode bootstrap_51.wav eac3_mixdepth.ec3 448 none 51 \
+    mixmeta lfemix=3 dmixmod=loro pgmscl=-6 extpgmscl=+3 \
+    mixdef=ext premixcmp=compr:local:2 extmix=0,2,0,5,5,off,7 auxmix=1,off \
+    speechmix=9,3:1,4:5 blkmixcfg=3,-,7,-,-,31 \
+    infomdat bsmod=commentary dsurexmod=pliiz mixlevel=98 roomtyp=small \
+    copyright sourcefscod
+run decode eac3_mixdepth.ec3 eac3_mixdepth.wav
+run_ffmpeg_check eac3_mixdepth.ec3
+# The two shorter mixdef options, and 2/0's own infomdat pair (dsurmod and
+# dheadphonmod exist at no other layout).
+run eac3-encode bootstrap_51.wav eac3_mixdef_premix.ec3 192 none stereo \
+    mixmeta mixdef=premix premixcmp=dynrng:external:0 \
+    infomdat dsurmod=on dheadphonmod=on bsmod=me
+run decode eac3_mixdef_premix.ec3 eac3_mixdef_premix.wav
+run_ffmpeg_check eac3_mixdef_premix.ec3
+run eac3-encode bootstrap_51.wav eac3_mixdef_reserved.ec3 192 none mono \
+    mixmeta mixdef=reserved mixdata=2650 paninfo=200:41 pgmscl=mute
+run decode eac3_mixdef_reserved.ec3 eac3_mixdef_reserved.wav
+run_ffmpeg_check eac3_mixdef_reserved.ec3
+
 # --- E-AC-3 short syncframes (roadmap EQ11): numblkscod 0/1/2, each a real
 # stream through both decoders for the first time - the decoder's own
 # numblkscod != 3 path existed only because it is spec-derived, never because
@@ -396,7 +439,13 @@ run_ffmpeg_check eac3_numblkscod0_71.ec3
 # value rather than a placeholder. A modest quality with no max bound stays
 # well clear of the "refuses real programme material outright" warning; the
 # bounded case exercises the min:/max: syntax the unbounded one does not.
-for vbr in "q:0.3" "q:0.6,min:96,max:256"; do
+# The avg: rows are the average-rate (ABR) control, which is a DIFFERENT
+# leading token rather than another field on q: - it steers the SNR offset
+# across frames instead of reading a fixed one, so it exercises a code path
+# no q: row reaches (see eac3::AbrConfig). One plain average, one with an
+# explicit window and per-frame bounds, since those compose with the average
+# rather than replacing it.
+for vbr in "q:0.3" "q:0.6,min:96,max:256" "avg:192" "avg:192,win:8,min:96,max:448"; do
     safe=$(echo "$vbr" | tr ':,' '__')
     run eac3-encode bootstrap_51.wav "eac3_vbr_${safe}.ec3" 192 none 51 "$vbr"
     run decode "eac3_vbr_${safe}.ec3" "eac3_vbr_${safe}.wav"
@@ -434,6 +483,50 @@ run_ffmpeg_check eac3enc_11.ec3
 run eac3-encode mono_a.wav eac3enc_11_twofile.ec3 192 none 1+1 off mono_b.wav heavy
 run decode eac3enc_11_twofile.ec3 eac3enc_11_twofile.wav
 run_ffmpeg_check eac3enc_11_twofile.ec3
+
+# --- Multiple independent substreams: two PROGRAMMES, not two layers -------
+# §E2.3.1.2's I0/I1 - the multi-language / associated-service shape of
+# broadcast DD+ (roadmap DC5). Not the same thing as 1+1 above: 1+1 puts two
+# programmes in ONE substream's two coded channels, this puts them in two
+# substreams with independent layouts, rates and dialnorms.
+#
+# The two sources are genuinely different audio (bootstrap_51.wav's 440 Hz
+# against mono_b.wav's 660 Hz), so a decode that spliced the programmes shows
+# up as the wrong tone rather than as a level, and each programme is decoded,
+# levelled and QC'd on its own.
+run eac3-encode bootstrap_51.wav eac3enc_2pgm.ec3 256 none 51 off \
+    programme2=mono_b.wav programme2-layout=mono programme2-bitrate=96 \
+    programme2-dialnorm=20
+for programme in 0 1; do
+    run decode eac3enc_2pgm.ec3 "eac3enc_2pgm_p${programme}.wav" "programme=${programme}"
+    run levels eac3enc_2pgm.ec3 "programme=${programme}"
+    run qc eac3enc_2pgm.ec3 "programme=${programme}"
+done
+# Omitting programme= takes the first the stream carries, so this must agree
+# with programme=0 above rather than fold both together.
+run decode eac3enc_2pgm.ec3 eac3enc_2pgm_default.wav
+cmp eac3enc_2pgm_p0.wav eac3enc_2pgm_default.wav
+# No FFmpeg check on the RAW stream: ff_ac3_parse_header rejects
+# substreamid != 0 for an INDEPENDENT substream exactly as it does for a
+# dependent one, and the raw E-AC-3 demuxer hands it I0 and I1 as one packet -
+# so the second programme's presence makes FFmpeg refuse every packet and emit
+# nothing at all, main programme included. Measured against ffmpeg 8.0.1 and
+# recorded in docs/verification.md's own note; skipped here rather than
+# tolerated, the same way 7.1.4 is.
+#
+# Muxing IS checked against FFmpeg, and is the one place an oracle reaches
+# this feature at all. A container track carries one programme, so `mkv`/`mp4`
+# write the first programme's access units alone (with a warning) - which
+# means FFmpeg reads the result perfectly even though it refuses the raw
+# stream the units came out of. That makes this row a direct regression guard
+# on the access-unit BOUNDARIES: a programme's unit has to end at the next
+# independent substream of any programme, not at its own next frame, or each
+# span swallows the other programme's frame and FFmpeg refuses the container
+# too.
+run mkv eac3enc_2pgm.ec3 eac3enc_2pgm.mkv
+run_ffmpeg_check eac3enc_2pgm.mkv
+run mp4 eac3enc_2pgm.ec3 eac3enc_2pgm.mp4
+run_ffmpeg_check eac3enc_2pgm.mp4
 
 # --- Atmos: object counts, orbit rates, both container modes ----------------
 # Always a 5.1 bed (JOC/OAMD ride in the same independent substream's EMDF
@@ -530,6 +623,66 @@ else
     run decode atmos_adm.ec3 atmos_adm.wav
     run_ffmpeg_check atmos_adm.ec3
 fi
+
+# --- Stream tools (roadmap DC9): no re-encode except where one is the point -
+# transcode is the DD+-to-DD path and is the only one of the five that
+# re-encodes; metadata/normalize rewrite bsi in place and re-stamp the CRCs;
+# cut/cat move whole access units. Every stream any of them produces goes
+# through FFmpeg's strict decode like everything else here, which is what
+# actually proves the CRC re-stamp: -err_detect crccheck makes a wrong crc1 or
+# crc2 a failing exit code rather than a silently concealed frame.
+#
+# cut + cat is checked as a ROUND TRIP rather than by eyeballing a duration:
+# splitting a stream on an access-unit boundary and joining the halves back
+# must reproduce the input byte for byte, which is the strongest available
+# statement that a frame-aligned cut neither dropped nor duplicated anything.
+# 0.512 s is exactly 16 access units at 48 kHz, so the split needs no snapping.
+run transcode eac3enc_none.ec3 transcoded.ac3 448
+run decode transcoded.ac3 transcoded.wav
+run_ffmpeg_check transcoded.ac3
+run transcode enc_51.ac3 transcoded_up.ec3 448
+run decode transcoded_up.ec3 transcoded_up.wav
+run_ffmpeg_check transcoded_up.ec3
+# 7.1.4 has no AC-3 coding mode at all, so this is the §7.8 fold-down to 5.1
+# the command announces rather than performs quietly - the actual DD+-to-DD
+# case an immersive delivery hits. The OUTPUT is plain 5.1 AC-3, so unlike
+# eac3_714.ec3 itself (which FFmpeg refuses - see this file's header comment)
+# it does get the strict-decode check.
+run transcode eac3_714.ec3 transcoded_714.ac3 448
+run decode transcoded_714.ac3 transcoded_714.wav
+run_ffmpeg_check transcoded_714.ac3
+# Atmos in, plain AC-3 out: the object layer cannot survive (AC-3 has no EMDF
+# container), so this is the "what a legacy decoder gets" path.
+run transcode atmos_4.ec3 transcoded_atmos.ac3 448
+run decode transcoded_atmos.ac3 transcoded_atmos.wav
+run_ffmpeg_check transcoded_atmos.ac3
+
+run metadata enc_51.ac3 meta_rewritten.ac3 dialnorm=20 bsmod=2
+run decode meta_rewritten.ac3 meta_rewritten.wav
+run_ffmpeg_check meta_rewritten.ac3
+# dsurmod is 2/0's alone (§5.4.2.7), so it needs a stereo stream - asking a
+# 3/2 one for it is a refusal, by design.
+run metadata ac3_stereo.ac3 meta_dsurmod.ac3 dsurmod=2
+run_ffmpeg_check meta_dsurmod.ac3
+run metadata eac3enc_none.ec3 meta_rewritten.ec3 dialnorm=18
+run_ffmpeg_check meta_rewritten.ec3
+
+run normalize enc_51.ac3 normalized.ac3
+run decode normalized.ac3 normalized.wav
+run_ffmpeg_check normalized.ac3
+run qc normalized.ac3
+
+run cut enc_51.ac3 cut_head.ac3 0 0.512
+run cut enc_51.ac3 cut_tail.ac3 0.512
+run cat cut_rejoined.ac3 cut_head.ac3 cut_tail.ac3
+count=$((count + 1))
+echo "[$count] cut+cat round trip reproduces enc_51.ac3 byte for byte"
+cmp enc_51.ac3 cut_rejoined.ac3
+run decode cut_rejoined.ac3 cut_rejoined.wav
+run_ffmpeg_check cut_rejoined.ac3
+run cut eac3enc_none.ec3 cut_eac3.ec3 0.1 0.5
+run cat cat_eac3.ec3 cut_eac3.ec3 cut_eac3.ec3
+run_ffmpeg_check cat_eac3.ec3
 
 # --- Reporting / container passes over a representative subset -------------
 # probe (roadmap IO1): the table form, the JSON contract, and both detail

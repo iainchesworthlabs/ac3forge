@@ -65,8 +65,12 @@ inline constexpr std::uint32_t kTs = 1U << 14;
 inline constexpr std::uint32_t kObjects = 1U << 15;
 // probe's own json=/detail= option block.
 inline constexpr std::uint32_t kProbe = 1U << 16;
+// transcode/metadata/normalize/cut/cat: the five already-encoded-stream tools.
+inline constexpr std::uint32_t kStreamTools = 1U << 17;
+// decode/qc/levels: which programme of a multi-programme stream (programme=).
+inline constexpr std::uint32_t kProgramme = 1U << 18;
 
-inline constexpr std::uint32_t kAll = 0x1FFFFU;
+inline constexpr std::uint32_t kAll = 0x7FFFFU;
 
 }  // namespace topic
 

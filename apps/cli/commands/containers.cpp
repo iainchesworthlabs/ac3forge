@@ -40,6 +40,46 @@ namespace ac3cli::commands {
 
 namespace {
 
+// A container track carries one programme. ac3::io::scan hands back the FIRST
+// programme's access units for exactly that reason - two independent
+// substreams (§E2.3.1.2) are alternatives rather than layers, and splicing
+// their units into one track is not something a player can undo - so a stream
+// carrying more than one loses the rest here. Said out loud rather than left
+// for someone to notice a missing commentary later; carrying every programme,
+// a track each, is roadmap IO2/IO6.
+void warn_if_programmes_dropped(const ac3::io::ScannedStream& scanned) {
+    if (scanned.programmes.size() <= 1) {
+        return;
+    }
+    fmt::println(stderr,
+                 "warning: this stream carries {} programmes (§E2.3.1.2 independent "
+                 "substreams); only programme {} is muxed - a container track carries one",
+                 scanned.programmes.size(), scanned.programmes.front().substreamid);
+}
+
+// Every container writer here holds ONE samples_per_frame for the whole
+// track (mp4::AudioTrack, mpegts::AudioTrack, matroska::AudioTrack), so a
+// stream whose access units differ in length cannot be described to any of
+// them. That was invisible while this passed ac3::kSamplesPerFrame outright:
+// an E-AC-3 stream coding fewer than six blocks per syncframe (numblkscod
+// 0/1/2, §E2.3.1.4 - legal, and nothing this project's own encoders emit)
+// got a track claiming 1536 samples a frame when its units really carry 256,
+// 512 or 768, and every timestamp downstream was wrong by the ratio.
+//
+// ac3::io::uniform_access_unit_samples answers the question these writers
+// can actually act on. Nothing means the units genuinely differ from each
+// other, which no fixed-duration track models at all - refused with a real
+// reason rather than muxed to a silently wrong timeline.
+std::optional<std::uint32_t> track_samples_per_frame(const ac3::io::ScannedStream& scanned) {
+    const auto uniform = ac3::io::uniform_access_unit_samples(scanned);
+    if (!uniform) {
+        fmt::println(stderr,
+                     "error: this stream's access units are not all the same length, which no "
+                     "fixed-duration container track can express");
+    }
+    return uniform;
+}
+
 bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream out{path, std::ios::binary};
     if (!out) {
@@ -97,6 +137,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
+    warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "Matroska")) {
         return kExitInput;
     }
@@ -106,11 +147,16 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // - the whole-stream copy that satisfied the old parameter type is gone.
     const auto& units = scanned->access_units;
 
+    const auto samples_per_frame = track_samples_per_frame(*scanned);
+    if (!samples_per_frame) {
+        return 1;
+    }
+
     const matroska::AudioTrack track{
         .codec_id = std::string{eac3 ? matroska::kCodecEac3 : matroska::kCodecAc3},
         .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = ac3::kSamplesPerFrame};
+        .samples_per_frame = *samples_per_frame};
     const auto file = matroska::mux(track, units);
     if (!file) {
         fmt::println(stderr, "error: {}", matroska::describe(file.error()));
@@ -151,6 +197,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
+    warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "MP4")) {
         return kExitInput;
     }
@@ -160,11 +207,16 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     // - the whole-stream copy that satisfied the old parameter type is gone.
     const auto& units = scanned->access_units;
 
+    const auto samples_per_frame = track_samples_per_frame(*scanned);
+    if (!samples_per_frame) {
+        return 1;
+    }
+
     const mp4::AudioTrack track{
         .codec_id = std::string{eac3 ? mp4::kCodecEac3 : mp4::kCodecAc3},
         .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = ac3::kSamplesPerFrame,
+        .samples_per_frame = *samples_per_frame,
         .codec_config = ac3::io::build_codec_config_box(*scanned)};
     const auto file = mp4::mux(track, units);
     if (!file) {
@@ -237,10 +289,14 @@ bool write_rendition(const std::filesystem::path& dir, const RenditionFiles& ren
 std::optional<RenditionFiles> build_rendition(const ac3::io::ScannedStream& scanned,
                                               std::uint32_t frames_per_fragment) {
     const bool eac3 = scanned.kind == ac3::io::StreamKind::kEac3;
+    const auto samples_per_frame = track_samples_per_frame(scanned);
+    if (!samples_per_frame) {
+        return std::nullopt;
+    }
     mp4::AudioTrack track{.codec_id = std::string{eac3 ? mp4::kCodecEac3 : mp4::kCodecAc3},
                           .sample_rate = ac3::sample_rate_hz(scanned.sample_rate),
                           .channels = scanned.channels,
-                          .samples_per_frame = ac3::kSamplesPerFrame,
+                          .samples_per_frame = *samples_per_frame,
                           .codec_config = ac3::io::build_codec_config_box(scanned)};
     // ETSI TS 103 420 §E.5's 'ceao' compatibility brand, which DASH-IF IOP
     // Part 8 v5.0.0 §5.3.3 asks for on a backward-compatible object-audio
@@ -302,10 +358,10 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
+    warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "fragmented MP4")) {
         return kExitInput;
     }
-    const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
     const auto primary = build_rendition(*scanned, frames_per_fragment);
     if (!primary) {
         return kExitInput;
@@ -403,6 +459,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         companion ? fmt::format(", and bed51/ with the same {} channels and the objects stripped",
                                 companion->track.channels)
                   : std::string{};
+    const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
     status_println(
         status_stream(),
         "wrote {} {} access units ({}, {} channels{}) as {} fragment(s) to {} "
@@ -481,6 +538,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
+    warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "MPEG-TS")) {
         return kExitInput;
     }
@@ -490,11 +548,16 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     // - the whole-stream copy that satisfied the old parameter type is gone.
     const auto& units = scanned->access_units;
 
+    const auto samples_per_frame = track_samples_per_frame(*scanned);
+    if (!samples_per_frame) {
+        return 1;
+    }
+
     const mpegts::AudioTrack track{
         .codec = eac3 ? mpegts::AudioCodec::kEac3 : mpegts::AudioCodec::kAc3,
         .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
-        .samples_per_frame = ac3::kSamplesPerFrame,
+        .samples_per_frame = *samples_per_frame,
         .service = service_info_from(*scanned, meta)};
     const auto file = mpegts::mux(track, units, mpegts::MuxOptions{.profile = profile});
     if (!file) {

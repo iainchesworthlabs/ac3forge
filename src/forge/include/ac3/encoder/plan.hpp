@@ -15,6 +15,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 
@@ -316,13 +317,24 @@ inline constexpr std::string_view kToolsSyntax =
 
 // --- variable bit rate -------------------------------------------------------
 
-inline constexpr std::string_view kVbrSyntax = "off | q:0..1[,min:kbps][,max:kbps] - E-AC-3 only";
+inline constexpr std::string_view kVbrSyntax =
+    "off | q:0..1[,min:kbps][,max:kbps] | avg:kbps[,win:frames][,min:kbps][,max:kbps]"
+    " - E-AC-3 only";
 
-// "off" or empty clears `out` (CBR); "q:<quality>" turns VBR on, optionally
-// followed by ",min:<kbps>" and/or ",max:<kbps>" in either order. Returns
-// false on anything unrecognised, out of range, or with min above max,
-// leaving `out` partially written - the same reject-rather-than-continue
-// rule parse_tools follows, for the same reason.
+// "off" or empty clears `out` (CBR). Otherwise one of two rate controls,
+// named by the LEADING token:
+//   "q:<quality>"  - plain VBR: a fixed quality, the rate follows the content.
+//   "avg:<kbps>"   - average-rate mode (eac3::AbrConfig): the encoder steers
+//                    the SNR offset to hold that long-run average, with a
+//                    sliding-window bit reservoir underneath it. Optionally
+//                    ",win:<frames>" for the window. No quality is accepted
+//                    here and none is printed back - ABR does not read one.
+// Either may be followed by ",min:<kbps>" and/or ",max:<kbps>", which bound
+// each individual frame, in any order. Returns false on anything
+// unrecognised, out of range, naming both rate controls at once, with min
+// above max, or with a min/max bound that excludes the average, leaving `out`
+// partially written - the same reject-rather-than-continue rule parse_tools
+// follows, for the same reason.
 [[nodiscard]] AC3FORGE_EXPORT bool parse_vbr(std::string_view text,
                                              std::optional<eac3::VbrConfig>& out);
 
@@ -363,14 +375,60 @@ struct Metadata {
     std::optional<meta::Profile> drc2 = std::nullopt;
     std::optional<meta::HeavyConfig> heavy2 = std::nullopt;
     // E-AC-3 only: emit the mixmdate group. AC-3 carries cmixlev/surmixlev in
-    // bsi and has nowhere to put the rest.
+    // bsi and has nowhere to put the rest of it - bar the four Lt/Rt and
+    // Lo/Ro levels and dmixmod, which Annex D's xbsi1 does carry; `annexd`
+    // below is that path.
     bool mixmeta = false;
     std::optional<int> lfemix = meta::kLfeMixLevelIdeal;
     meta::DownmixMode dmixmod = meta::DownmixMode::kLoRo;
+    // The four Table D2.3-D2.6 levels. std::nullopt keeps the derivation
+    // mix_metadata() has always used - the Lo/Ro pair widened from
+    // cmixlev/surmixlev above, the Lt/Rt pair at -3 dB - so a plan that says
+    // nothing here produces exactly the group it produced before.
+    std::optional<meta::MixLevel> ltrtcmixlev = std::nullopt;
+    std::optional<meta::MixLevel> lorocmixlev = std::nullopt;
+    std::optional<meta::MixLevel> ltrtsurmixlev = std::nullopt;
+    std::optional<meta::MixLevel> lorosurmixlev = std::nullopt;
+    // The rest of Table E1.2's mixmdate (E-AC-3 only): programme scale
+    // factors, the mixing-parameter block, pan information and the per-block
+    // mixing configuration. Carried on a MixMetadata of its own rather than
+    // as a dozen loose fields, since that is the shape both the encoder and
+    // the decoder already speak; mix_metadata() copies it over the levels it
+    // derives. Setting anything here implies mixmeta.
+    meta::MixMetadata mixdepth{};
+
+    // --- bit stream information (§5.4.2, Annex D, Table E1.2) -------------
+    // What service this is and how it was produced. AC-3 writes these into
+    // bsi unconditionally; E-AC-3 has to open an infomdat element for them,
+    // which `infomdat` below does.
+    meta::BsiInfo info{};
+    // E-AC-3 only: emit the infomdat group. AC-3 has no such gate - every one
+    // of these fields is unconditional in its bsi.
+    bool infomdat = false;
+    // §D2.3.1.10 / Table E1.2: the A/D converter type is stated once here and
+    // each codec's config builder puts it where that codec has room for it -
+    // Annex D's xbsi2 on AC-3, inside audprodie on E-AC-3. Keeping it out of
+    // `info.audprod` is what stops naming a converter type from inventing an
+    // audprodie group on AC-3, which has no field for it there.
+    meta::AdConverterType adconvtyp = meta::AdConverterType::kStandard;
+    // §D2.3.1.12, AC-3 Annex D only: the one bit reserved for the encoder.
+    bool encinfo = false;
+    // AC-3 only: emit bsid 6 and Annex D's xbsi1/xbsi2 in place of the two
+    // timecod fields. E-AC-3 has no alternate syntax - its own mixmdate and
+    // infomdat carry the same quantities - so this is ignored there.
+    bool annexd = false;
 };
 
-// The mixmdate group these options imply.
+// The mixmdate group these options imply: the five Table D2.2-D2.6 levels
+// derived from cmixlev/surmixlev/dmixmod (or taken from the explicit
+// overrides where they are set), lfemix, and everything Metadata::mixdepth
+// carries verbatim.
 [[nodiscard]] AC3FORGE_EXPORT meta::MixMetadata mix_metadata(const Metadata& options);
+
+// Annex D's xbsi1/xbsi2 the same options imply, for the AC-3 path. xbsi1 is
+// the same five levels mix_metadata() derives, minus the LFE level Annex D
+// has no field for.
+[[nodiscard]] AC3FORGE_EXPORT meta::AlternateBsi alternate_bsi(const Metadata& options);
 
 // --- the plan ---------------------------------------------------------------
 
@@ -402,6 +460,9 @@ enum class PlanError : std::uint8_t {
     kInvalidChannels,      // custom_locations is not a channel selection allocate() can satisfy
     kSampleRateNeedsEac3,  // fscod2 (24/22.05/16 kHz) asked of AC-3, which has no such field
     kVbrNeedsEac3,         // vbr was set alongside Codec::kAc3
+    // Annex D's xbsi1/xbsi2 and the time code occupy the same 28 bits (§D1),
+    // so a plan asking for both is asking for a frame twice the size it has.
+    kTimecodeNeedsBsid8,
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(PlanError error);
@@ -426,6 +487,18 @@ enum class PlanError : std::uint8_t {
 // gets its own slice of the rate rather than a share of the independent's:
 // substreams occupy one frame period, not one frame.
 [[nodiscard]] AC3FORGE_EXPORT eac3::AccessUnitConfig eac3_config(const Plan& plan);
+
+// One programme of an access unit, built from a plan of its own: the same
+// independent-plus-dependents shape eac3_config() produces, without the
+// AccessUnitConfig wrapper. A front end authoring a second independent
+// substream (§E2.3.1.2 - a second language, an audio description, a
+// commentary) plans it exactly like the first, with its own layout, rate,
+// tools and metadata, and pushes the result onto
+// AccessUnitConfig::additional.
+//
+// substreamid is not set here: the access unit assigns it by position, so a
+// programme does not know its own id until it is placed.
+[[nodiscard]] AC3FORGE_EXPORT eac3::ProgrammeConfig eac3_programme(const Plan& plan);
 
 // The one diagnosis every front end shares: std::nullopt if this plan is one
 // the encoders can actually be built from, else the first thing wrong with

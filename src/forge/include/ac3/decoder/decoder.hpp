@@ -16,6 +16,8 @@
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -149,6 +151,24 @@ struct DecoderConfig {
     // trace. Filled incrementally and null by default, exactly as `trace`
     // above.
     verify::Eac3AccessUnitTrace* eac3_trace = nullptr;
+    // --- programme selection (§E2.3.1.2) -----------------------------------
+    // Which independent substream's programme Eac3Decoder::decode_access_unit
+    // renders. A stream may carry up to eight — a main service plus the
+    // second language, audio description or commentary a broadcaster mixes
+    // against it — and they are alternatives, not layers: only one is played
+    // at a time.
+    //
+    // std::nullopt renders whichever programme each call's access unit
+    // happens to belong to, which is what every caller got before this field
+    // existed and is exactly right for the single-programme case. Set to an
+    // id and an access unit belonging to any OTHER programme is skipped
+    // without being decoded at all — see decode_access_unit's own doc comment
+    // for what it returns then, and DecodedAccessUnit::programme for telling
+    // the results apart under std::nullopt.
+    //
+    // Ignored by decode_substream, which is deliberately below the programme
+    // layer: it decodes the frame it is handed.
+    std::optional<int> programme = std::nullopt;
     // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
     // Which coding tools each block used and what exponent strategy each
     // stream carried, recorded on the way past. Null by default, at the same
@@ -180,11 +200,32 @@ struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 0;
     // §5.4.1.3/§5.4.2.1, reported rather than merely checked: an inspection
-    // tool wants both off the wire, and nothing else here carries them.
+    // tool wants both off the wire, and nothing else here carries them. bsid
+    // is 8 for the syntax in the body of A/52, 6 for Annex D's alternate one
+    // - anything else is refused, so those are the only two values this ever
+    // reports. bsmod is the same 3-bit code info.bsmod below decodes into
+    // BitstreamMode; both are populated from the one read, this one for a
+    // caller (an inspection tool's JSON output) that wants the raw code.
     int bsid = 8;
     int bsmod = 0;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
+    // §5.4.2.4/5, Table 5.9/5.10. Transmitted only when the layout has the
+    // channels they describe; the values reported here for a layout that
+    // carries neither are the §7.8 fallbacks a decoder would use anyway
+    // (-4.5 dB centre, -6 dB surround), so a caller can apply them
+    // unconditionally.
+    meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
+    meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+    // §5.4.2's informational fields, whatever this frame carried. Fields the
+    // layout gives no home to keep their defaults - a 3/2 frame sends no
+    // dsurmod, so `info.dsurmod` stays "not indicated" rather than reporting
+    // a bit that was never on the wire.
+    meta::BsiInfo info{};
+    // Annex D's xbsi1/xbsi2, present exactly when bsid is 6. A bsid-8 frame
+    // carries the time code in the same 28 bits instead, and reports it as
+    // info.timecod1/timecod2 above.
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.9: std::nullopt when compre was clear, so "no word" and "a word
     // that happens to say unity" stay distinguishable.
@@ -278,6 +319,15 @@ struct DecodedSubstream {
     std::optional<std::uint8_t> compr2 = std::nullopt;
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     int numblkscod = 3;
+    // Table E1.2's mixmdate group, std::nullopt when mixmdate was clear.
+    // A DEPENDENT substream's copy stops after the levels - Table E1.2 gates
+    // everything past lfemixlevcod on strmtyp == 0x0 - so those fields keep
+    // their defaults there rather than reporting bits that were never sent.
+    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
+    // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
+    // and are never set here.
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // §E2.3.1.8: only a dependent substream may carry one.
     std::optional<std::uint16_t> chanmap;
     // §E3.8.5: in a dependent substream compre does not announce a compression
@@ -297,14 +347,21 @@ struct DecodedSubstream {
     // fixed (emdf::build_container's own comment), so every block's skip
     // field is a candidate; the first one that parses wins.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
-    // JOC's (§6) reconstructed per-object audio, one waveform per object,
-    // parallel to object_metadata->objects (same index means the same
-    // object) - empty when object_metadata is unset, when no JOC payload
-    // rode alongside the OAMD one, or when the program shape is one JOC's
-    // own object ordering cannot be lined up against object_metadata's for
-    // (see Eac3Decoder::decode_substream's own comment on this - a bed
-    // program AtmosEncoder itself never produces).
+    // JOC's (§6) reconstructed per-object audio, one waveform per JOC output
+    // - empty when object_metadata is unset, when no JOC payload rode
+    // alongside the OAMD one, or when the downmix JOC asks for is not the
+    // five channels this substream carries (Table 47's 7-channel
+    // configurations need a dependent substream's Lb/Rb).
     std::vector<std::vector<float>> object_audio;
+    // What each object_audio entry IS: an index into the payload's own object
+    // order (bed channels, then ISF, then dynamic objects), which is
+    // oba::joc_object_indices() for this program. For the
+    // dynamic-object-only program AtmosEncoder writes, entry i is
+    // object_metadata->objects[i] - the identity this used to assume - and
+    // for a bed program it names the bed channel instead, which
+    // oba::bed_labels() turns into a speaker label. Same length as
+    // object_audio, and empty exactly when it is.
+    std::vector<int> object_indices;
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
@@ -343,6 +400,13 @@ struct DecodedAccessUnit {
     // rather than the fixed array's unwritten tail - see
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
+    // The independent substream's own mixmdate and infomdat groups, same
+    // reasoning as compr and dynrng above: every substream carries its own,
+    // but only the bed's describes the programme. A dependent's mixmdate is
+    // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
+    // gate of its own worth surfacing at this level.
+    std::optional<meta::MixMetadata> mixing = std::nullopt;
+    std::optional<meta::BsiInfo> info = std::nullopt;
     // object_metadata/object_audio from whichever substream of the access
     // unit carries them, first one wins - see DecodedSubstream's own comments
     // on both. TS 103 420 §8.3.1 leaves the choice of substream to the
@@ -354,6 +418,12 @@ struct DecodedAccessUnit {
     // the question is which substream carries it, not how to merge several.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
+    std::vector<int> object_indices;
+    // §E2.3.1.2's substreamid of the independent substream this programme was
+    // rendered from — 0 for every single-programme stream, and the only way
+    // to tell one programme's units from another's when DecoderConfig::
+    // programme is left unset and the decoder renders whatever arrives.
+    int programme = 0;
     int substream_count = 0;
     eac3::chanmap::Layout layout;
     std::vector<std::vector<float>> channels;  // parallel to layout, except dual mono
@@ -404,6 +474,14 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // is unaffected: every substream releases every call, so the cache never
     // holds more than one call's worth at a time and every call returns a
     // populated result immediately.
+    //
+    // std::nullopt has one further cause here that decode_substream has none
+    // of: a DecoderConfig::programme was set and this unit belongs to a
+    // DIFFERENT programme (§E2.3.1.2), so there is nothing of the selected
+    // one to return. The unit is skipped before any decoding, leaving no
+    // per-substream state behind. Both causes call for the same thing from a
+    // caller — take nothing from this call and go on to the next unit — so
+    // they are one return value rather than two.
     [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError> decode_access_unit(
         std::span<const std::byte> unit);
 
@@ -603,8 +681,35 @@ split_frames(std::span<const std::byte> stream);
 // Group those syncframes into access units. A new one begins at each
 // independent substream, and the spans returned are the concatenations the
 // bitstream itself defines.
+//
+// This DELIMITS; it does not select. A stream carrying more than one
+// programme (§E2.3.1.2 allows eight independent substreams, and broadcast DD+
+// uses them for a second language or an associated service) yields the
+// programmes' units interleaved, one frame period's worth of each in turn -
+// so consecutive entries are NOT consecutive in time. Feeding them straight
+// to a decoder in that order splices two programmes together; use the
+// programme-selecting overload below, or read
+// DecodedAccessUnit::programme, to keep them apart.
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
 split_access_units(std::span<const std::byte> stream);
+
+// The access units of ONE programme, in order: those beginning with an
+// independent substream whose §E2.3.1.2 substreamid is `programme`, together
+// with the dependents that follow each. Consecutive entries here ARE
+// consecutive frame periods, which is what a decoder, a muxer or a level
+// meter needs.
+//
+// An empty result means the stream carries no such programme - not an error,
+// since asking is how a caller finds out. Use programme_ids() to enumerate
+// what is actually there.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
+split_access_units(std::span<const std::byte> stream, int programme);
+
+// The substreamid of every independent substream the stream carries, ascending
+// and without duplicates - one entry per programme. Always {0} for AC-3, which
+// has no substream layer, and for the single-programme E-AC-3 case.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<int>, DecodeError> programme_ids(
+    std::span<const std::byte> stream);
 
 // bsid at bit 40, without committing to either layout. Fails only if the span
 // is too short to hold a header.

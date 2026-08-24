@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 45> kOptionTokens{{
+constexpr std::array<OptionToken, 46> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -87,6 +87,8 @@ constexpr std::array<OptionToken, 45> kOptionTokens{{
     {"fallback-51", "fmp4: also write the object-stripped 5.1 companion rendition"},
     {"mainid=", "ts: this service's A/52 Annex A main-service number"},
     {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
+    {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
+                   "stream"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already
@@ -350,6 +352,18 @@ void print_ts_topic() {
     fmt::println("asvc= for the service associations no single elementary stream can know.");
 }
 
+void print_stream_tools_topic() {
+    fmt::println("");
+    fmt::println("transcode/metadata/normalize/cut/cat work on an ALREADY-encoded stream. Only");
+    fmt::println("transcode re-encodes - it exists because DD+ and DD are different codecs and");
+    fmt::println("nothing else bridges them; it carries dialnorm, compr and the mix metadata");
+    fmt::println("across rather than resetting them, and folds a layout AC-3 cannot code down");
+    fmt::println("to 5.1 per §7.8. The other four never touch a coded coefficient:");
+    fmt::println("metadata/normalize rewrite bsi fields in place and re-stamp the CRCs, cut/cat");
+    fmt::println("move whole access units. Convertible substreams (strmtyp 2) are out of scope");
+    fmt::println("for all five, the same way 'validate' already refuses them.");
+}
+
 void print_objects_topic() {
     fmt::println("");
     fmt::println("sign-objects/verify-objects carry a keyed signature over the EMDF object");
@@ -366,7 +380,7 @@ struct TopicSection {
     void (*print)();
 };
 
-constexpr std::array<TopicSection, 14> kTopicSections{{
+constexpr std::array<TopicSection, 15> kTopicSections{{
     {topic::kStdio, print_stdio_topic},
     {topic::kLive, print_live_topic},
     {topic::kTake, print_take_topic},
@@ -381,6 +395,7 @@ constexpr std::array<TopicSection, 14> kTopicSections{{
     {topic::kDecode, print_decode_topic},
     {topic::kQc, print_qc_topic},
     {topic::kProbe, print_probe_topic},
+    {topic::kStreamTools, print_stream_tools_topic},
 }};
 
 void print_topic_sections(std::uint32_t mask) {

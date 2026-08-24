@@ -65,23 +65,63 @@ struct Payload {
 
 // --- Decode ------------------------------------------------------------
 
+// §H.2.1.3's emdf_payload_config, as it was actually found on the wire.
+//
+// build_container() only ever writes the one shape TS 103 420 Table 56
+// mandates for object audio, but real Dolby streams do not restrict
+// themselves to it even for their own object payloads: a DD+ JOC stream from
+// the Dolby Encoding Engine sends the OAMD payload with
+// payload_frame_aligned == 0 and the JOC payload with it set, in the same
+// container, alongside two further payloads that use `duratione` and
+// `discard_unknown_payload`. So the reader parses the whole clause and
+// reports what it found rather than insisting on one configuration.
+struct PayloadConfig {
+    // §H.2.2.3.2 smploffst, in samples; -1 when smploffste is 0, which is
+    // "the payload applies from the frame's first sample".
+    int sample_offset = -1;
+    // §H.2.2.3.4 duration, in samples; -1 when duratione is 0 ("to the
+    // frame's last sample").
+    std::int64_t duration = -1;
+    // §H.2.2.3.6 groupid; -1 when groupide is 0.
+    std::int64_t group_id = -1;
+    // §H.2.2.3.7. The eight reserved bits that follow are skipped.
+    bool codec_data = false;
+    bool discard_unknown = false;
+    // §H.2.2.3.11 and the fields it gates. `frame_aligned` is false both
+    // when the flag was sent as 0 and when the syntax never reached it
+    // (discard_unknown, or a sample offset).
+    bool frame_aligned = false;
+    bool create_duplicate = false;
+    bool remove_duplicate = false;
+    // §H.2.2.3.14/.15, present only when smploffste or payload_frame_aligned
+    // is set; 0 (highest priority / discard if processed) otherwise, which is
+    // what the absent case means anyway.
+    int priority = 0;
+    int proc_allowed = 0;
+};
+
 // One payload as recovered from a container. `bytes` is freshly materialized
 // (not a view into the input), because a payload's bits are not generally
 // byte-aligned within the frame that carried them.
 struct DecodedPayload {
+    // §H.2.2.2.2. Ids at or above 0x1F arrive through the extension escape,
+    // so this is the resolved value, not the 5-bit field.
     int id = 0;
+    PayloadConfig config{};
     std::vector<std::byte> bytes;
 };
 
-// A container found and parsed, but carrying syntax this reader declines to
-// interpret rather than guess at - mirroring the rest of this codebase's
-// stance on syntax corners no stream it produces (or has been checked
-// against) exercises. `kTruncated` covers a declared length or payload size
-// that runs past `data`; `kUnsupportedConfig` covers an `emdf_payload_config`
-// that is not the one shape TS 103 420 Table 56 mandates (see
-// put_payload_config's own comment) - the only shape this encoder, or any
-// real Dolby stream checked against it, has ever produced - or a payload id
-// of 0x1F (the size-extension escape, §H.2.2.2.2, never emitted here).
+// A container found whose bits cannot be walked cleanly. `kTruncated` covers
+// a declared length or payload size that runs past `data`;
+// `kUnsupportedConfig` covers the two places where continuing would mean
+// inventing syntax rather than reading it - an `emdf_version` other than 0
+// (§H.2.2.2 defines the container's fields only for version 0, so every
+// offset after it is unknown) and a `protection_length_primary` of 0b00,
+// which Table H.2.5 reserves and therefore gives no field width to skip.
+//
+// An unfamiliar payload id, sample offset, duration, priority or alignment
+// is NOT an error: every one of those has a defined width, so the reader
+// walks past it and reports it on PayloadConfig.
 enum class ParseError : std::uint8_t {
     kTruncated,
     kUnsupportedConfig,
@@ -90,10 +130,10 @@ enum class ParseError : std::uint8_t {
 // Decode-side inverse of build_container(). Scans `data` bit by bit for
 // kSyncWord (§H.2.2.1.1 - the container's position is not fixed, so a
 // decoder locates it the same way an encoder's reader would), then walks the
-// payload list into {id, bytes} pairs, stopping at the terminating 0 payload
-// id and ignoring the trailing protection bits (§H.2.2.4: their content is
-// implementation-defined and unverifiable by any decoder that does not share
-// the algorithm that produced them).
+// payload list into {id, config, bytes} triples, stopping at the terminating
+// 0 payload id and ignoring the trailing protection bits (§H.2.2.4: their
+// content is implementation-defined and unverifiable by any decoder that
+// does not share the algorithm that produced them).
 //
 // std::nullopt means no sync word was found anywhere in `data` - the
 // ordinary shape of a skip field with no EMDF at all, not an error. A sync

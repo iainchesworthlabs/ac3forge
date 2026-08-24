@@ -63,9 +63,11 @@ enum class ScanError : std::uint8_t {
     // Every syncframe parsed, but the way they are arranged is a shape this
     // scanner does not model - an Annex E independent substream following an
     // AC-3 core (§E3.8.4's mixture of programmes), or a dependent with no
-    // independent substream ahead of it to extend. Distinct from
-    // kUnsupportedBsid, which is about one frame this reader cannot read at
-    // all rather than about how readable frames sit together.
+    // independent substream ahead of it to extend (including one belonging to
+    // a DIFFERENT programme than any seen so far - §E2.3.1.2's own numbering
+    // gives a dependent no way to name its parent except by adjacency).
+    // Distinct from kUnsupportedBsid, which is about one frame this reader
+    // cannot read at all rather than about how readable frames sit together.
     kUnsupportedStructure,
 };
 
@@ -77,11 +79,12 @@ enum class ScanError : std::uint8_t {
 // Table G.4 - and every field either table needs is read on the same walk
 // that already sizes the substream.
 //
-// The channel description here is the substream's OWN bed (acmod/lfe). A
-// non-zero independent substream that brought dependents of its own would
-// render wider than that, but working out which dependent belongs to which
-// independent is exactly the per-programme model ROADMAP.md's DC5 adds; this
-// is the honest subset available before it.
+// The channel description here is the substream's OWN bed (acmod/lfe), not
+// the wider rendered layout a full per-programme model (ScannedProgramme
+// below) can compute by unioning its dependents' chanmaps too - this stays
+// deliberately narrower because these two fields exist for the registries'
+// own fixed vocabulary, not for a general answer to "what does this
+// programme render".
 struct SubstreamService {
     bool present = false;
     int bsmod = 0;
@@ -94,6 +97,57 @@ struct SubstreamService {
     bool mix_metadata = false;
 };
 
+// One programme carried by the stream: an independent substream (§E2.3.1.2
+// numbers them I0-I7) together with the dependents that extend it, across
+// every frame period the stream covers. For kAc3CoreEac3Extension, the AC-3
+// core stands in for the independent substream - see StreamKind's own
+// comment - and there is always exactly one programme, since §E2.3.1.2 gives
+// that shape no Annex E independent substream to number a second one from.
+//
+// Broadcast DD+ uses the extra independent substreams for the services A/52
+// §5.4.2.2 names - a second language, an audio description, a commentary -
+// each of which is a self-contained programme a receiver picks ONE of. They
+// are not layers of one soundfield the way dependents are, so their access
+// units must never be concatenated into a single timeline: I0's units and
+// I1's units are two parallel sequences, each running at one unit per frame
+// period.
+//
+// Deliberately narrower than ScannedStream: no bsmod_present/dsurmod/
+// mix_metadata/channel_map/access_unit_samples of its own. Those exist for
+// the MPEG-TS registry descriptors and the VBR/ABR timing API, both scoped
+// to describing THE STREAM (registries name a service once; timing walks
+// `access_units`, which is already this programme's own list when this is
+// the lead one) - a second programme wanting the same depth is future work,
+// not a gap this struct's existing callers hit today.
+struct ScannedProgramme {
+    // §E2.3.1.2's substreamid, ascending in the order the programmes first
+    // appear. Always 0 for AC-3 and for kAc3CoreEac3Extension, neither of
+    // which has a second independent substream to number away from.
+    int substreamid = 0;
+    Acmod acmod = Acmod::k2_0;  // of this programme's independent substream
+    bool lfe = false;
+    // Channels this PROGRAMME renders, folding in every dependent's chanmap.
+    int channels = 0;
+    int bsid = 0;
+    // §5.4.2.2's service type, 0 (not indicated) unless infomdate carried
+    // one. This is what tells a receiver that a programme is a complete main
+    // service (bsmod 0-1) rather than an associated one to be mixed against
+    // it (bsmod 2-7) - the whole reason a stream carries more than one.
+    int bsmod = 0;
+    // Substreams in this programme's first access unit, its independent one
+    // included; always 1 for AC-3. The AC-3 core of a kAc3CoreEac3Extension
+    // programme counts as one of them, on §E2.3.1.2's own terms - a
+    // two-frame core-plus-dependent unit reports 2, not 1.
+    std::size_t substreams_per_unit = 0;
+    // As ScannedStream::oba_complexity_index below, for this programme alone.
+    std::optional<int> oba_complexity_index = std::nullopt;
+    // One entry per frame period: this programme's independent substream and
+    // the dependents that follow it, concatenated exactly as they sit on the
+    // wire. Spans point into the caller's buffer, and are NOT contiguous with
+    // each other once a second programme is present.
+    std::vector<std::span<const std::byte>> access_units{};
+};
+
 // One syncframe's bit stream information, read straight off the wire without
 // decoding any audio.
 //
@@ -104,7 +158,7 @@ struct SubstreamService {
 // nothing needs the frame to decode, so a frame whose audio a decoder would
 // refuse still reports its header truthfully. `ac3cli probe` is built on
 // exactly that property; scan() below is the same walk with only the first
-// access unit's answers kept.
+// programme's answers kept.
 struct FrameHeader {
     StreamKind kind = StreamKind::kAc3;
     // The whole syncframe, from its sync word: §5.4.1's frame_size_bytes for
@@ -192,11 +246,37 @@ struct ScannedStream {
     // kAc3CoreEac3Extension, the AC-3 core together with its dependents, which
     // is the same rule with the core standing in for the independent
     // substream. Spans point into the caller's buffer.
+    //
+    // THE FIRST PROGRAMME'S units only - identical to
+    // programmes.front().access_units, and for a single-programme stream
+    // (every stream this encoder produced before ScannedProgramme existed,
+    // every kAc3CoreEac3Extension stream, and effectively all consumer
+    // content) that is every access unit there is. A second independent
+    // substream's units are a parallel sequence, not later entries here:
+    // appending them would hand a muxer or a decoder two programmes spliced
+    // into one timeline. Pick a programme out of `programmes` below to get
+    // at the others.
     std::vector<std::span<const std::byte>> access_units{};
+    // Samples each of those access units codes, parallel to `access_units` -
+    // so also the FIRST PROGRAMME's alone. Always 1536 for AC-3 (§5.3.1: six
+    // blocks of 256, no other option), but E-AC-3's numblkscod lets an
+    // independent substream code 1, 2, 3 or 6 blocks (§E2.3.1.4), so an
+    // E-AC-3 access unit is 256, 512, 768 or 1536 samples long and a stream
+    // may mix lengths. Kept here rather than recomputed by every caller
+    // because the scan has already read numblkscod off the wire and nobody
+    // downstream should have to parse a syncframe again to find out how long
+    // it is - see access_unit_timing() below for what this is actually for.
+    std::vector<std::uint32_t> access_unit_samples{};
     // Substreams in the first access unit; always 1 for AC-3. The AC-3 core of
     // a kAc3CoreEac3Extension stream counts as one of them, on §E2.3.1.2's own
     // terms - a two-frame core-plus-dependent unit reports 2, not 1.
     std::size_t substreams_per_unit = 0;
+    // Every programme the stream carries, in ascending substreamid order and
+    // never empty on success. One entry is the ordinary case (always true for
+    // AC-3 and kAc3CoreEac3Extension, which have no second independent
+    // substream to carry a second one); §E2.3.1.2 allows up to eight for
+    // E-AC-3. The scalar summary fields above all describe programmes.front().
+    std::vector<ScannedProgramme> programmes{};
 
     // The raw syntax values below exist for build_codec_config_box() (see
     // ac3/io/dec3.hpp): an ISOBMFF dac3/dec3 box wants bsid/bsmod/bit-rate
@@ -272,11 +352,8 @@ struct ScannedStream {
     // in independent substream 1"). 0 for AC-3, which has no substreams;
     // 0b0000'0001 for the ordinary single-programme E-AC-3 stream.
     //
-    // This is an OBSERVATION of the substream ids present, deliberately not
-    // a change to how access units are grouped - scan() still starts a new
-    // access unit at every independent substream regardless of its id (see
-    // ROADMAP.md's DC5, which is where that grouping gets fixed and where a
-    // real per-programme model belongs).
+    // This is an OBSERVATION of the substream ids present, computed over the
+    // whole stream independently of how `programmes` above groups them.
     std::uint8_t independent_substreams = 0;
     // Independent substreams 1, 2 and 3 (index 0, 1, 2 here) - the ones both
     // MPEG-TS registries can name individually. Substream 0 is not repeated
@@ -303,6 +380,8 @@ struct ScannedStream {
     // ac3::eac3::chanmap::acmod_map() already uses for the channel count's
     // sake.
     //
+    // Describes the FIRST programme, same as every other scalar field above.
+    //
     // Written for ac3::io::dash_channel_configuration() (ac3/io/dec3.hpp),
     // whose DASH AudioChannelConfiguration @value IS this word in hex.
     std::uint16_t channel_map = 0;
@@ -310,5 +389,89 @@ struct ScannedStream {
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<ScannedStream, ScanError> scan(
     std::span<const std::byte> stream);
+
+// --- timing ------------------------------------------------------------------
+//
+// Where access unit i starts and how long it lasts. Every container writer in
+// this project computes this privately from a samples_per_frame it was handed
+// (mp4::AudioTrack, mpegts::AudioTrack, matroska::AudioTrack all take one),
+// which is correct only while every access unit is the same length - true of
+// everything this project's own encoders produce and not true in general, and
+// in any case not something a caller could ask about before this existed.
+//
+// The arithmetic is deliberately integer: a frame duration is very often not
+// a whole number of ticks in whatever timescale a container uses (1536
+// samples at 44.1 kHz is 34.83 ms), so a running sum of per-frame increments
+// drifts. Every value below is computed from the ABSOLUTE sample position, so
+// the error against the true time never exceeds one tick however long the
+// stream runs - the same rule mpegts::/matroska:: already follow internally.
+//
+// All of it works over the FIRST programme's own `access_units`/
+// `access_unit_samples` (ScannedStream's own convention), same as the scalar
+// fields above.
+
+struct AccessUnitTiming {
+    // Samples from the start of the stream to the first sample this access
+    // unit codes.
+    std::uint64_t start_sample = 0;
+    std::uint32_t duration_samples = 0;
+    std::uint32_t sample_rate = 0;
+
+    [[nodiscard]] double start_seconds() const {
+        return sample_rate == 0 ? 0.0
+                                : static_cast<double>(start_sample) /
+                                      static_cast<double>(sample_rate);
+    }
+    [[nodiscard]] double duration_seconds() const {
+        return sample_rate == 0 ? 0.0
+                                : static_cast<double>(duration_samples) /
+                                      static_cast<double>(sample_rate);
+    }
+    // The same instant in an arbitrary clock - 90000 for MPEG-2 systems, 1000
+    // for Matroska's default millisecond timecode scale, the track timescale
+    // for ISOBMFF. Rounded down, from the absolute sample position, for the
+    // no-drift reason in this section's own comment.
+    [[nodiscard]] std::uint64_t start_in_timescale(std::uint32_t timescale) const {
+        return sample_rate == 0 ? 0 : start_sample * timescale / sample_rate;
+    }
+    // The difference between this unit's start and the next one's, in the
+    // same clock - NOT duration_samples converted on its own, which would
+    // round independently and let a run of durations disagree with the
+    // start times they are supposed to add up to.
+    [[nodiscard]] std::uint64_t duration_in_timescale(std::uint32_t timescale) const {
+        if (sample_rate == 0) {
+            return 0;
+        }
+        const std::uint64_t end = (start_sample + duration_samples) * timescale / sample_rate;
+        return end - start_in_timescale(timescale);
+    }
+};
+
+// Access unit `index`, or nothing when there is no such unit.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<AccessUnitTiming> access_unit_timing(
+    const ScannedStream& stream, std::size_t index);
+
+// Total samples the stream codes, and the same figure in seconds.
+[[nodiscard]] AC3FORGE_EXPORT std::uint64_t stream_duration_samples(const ScannedStream& stream);
+[[nodiscard]] AC3FORGE_EXPORT double stream_duration_seconds(const ScannedStream& stream);
+
+// The access unit covering `sample` - i.e. the one to cut at for a given
+// position. Nothing when `sample` is past the end. A cut is only ever
+// access-unit-aligned, so a caller asking for a time inside a unit gets that
+// whole unit's index, never a split.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<std::size_t> access_unit_at_sample(
+    const ScannedStream& stream, std::uint64_t sample);
+
+// Same question in seconds, rounded to the nearest sample first.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<std::size_t> access_unit_at_seconds(
+    const ScannedStream& stream, double seconds);
+
+// The one length every access unit shares, or nothing when they differ. This
+// is exactly the question a fixed-duration container track can answer and a
+// variable one cannot: mp4::AudioTrack/mpegts::AudioTrack/matroska::AudioTrack
+// each hold a single samples_per_frame, so a stream this returns nothing for
+// cannot be described to them without per-sample durations they do not model.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
+    const ScannedStream& stream);
 
 }  // namespace ac3::io

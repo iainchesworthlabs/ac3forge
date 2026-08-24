@@ -80,12 +80,12 @@
 # gate stays SNR-based rather than a bit-exact bitstream comparison until it
 # is resolved either way.
 #
-# Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests, a real ctest
-# entry (label "gui") that Quick-Test-drives the actual EncoderController
-# singleton and Main.qml shell, registered only when AC3FORGE_BUILD_GUI is
-# ON - so it rides the existing GUI axis rather than adding a new one, and
-# the existing `ctest --preset test-<leg>` step picks it up with zero changes
-# to this file or _build.yml.
+# Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
+# ctest entry per tst_*.qml suite (label "gui") that Quick-Test-drives the
+# actual EncoderController singleton and Main.qml shell, registered only
+# when AC3FORGE_BUILD_GUI is ON - so it rides the existing GUI axis rather
+# than adding a new one, and the existing `ctest --preset test-<leg>` step
+# picks it up with zero changes to this file or _build.yml.
 #
 # ALSA-conditional tests (tests/backend/alsa/, see tests/CMakeLists.txt)
 # register only when AC3FORGE_WITH_ALSA finds libasound, which is why a

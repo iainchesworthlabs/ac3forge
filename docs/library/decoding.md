@@ -29,6 +29,89 @@ following it.
 Both formats put `bsid` at bit 40 deliberately, so a reader can tell them apart before
 committing to a layout. `ac3::stream_bsid` exposes that on its own.
 
+## Where access unit *i* starts: `ac3::io::access_unit_timing`
+
+Same header. `ScannedStream::access_unit_samples` records how many samples each access unit
+codes, parallel to `access_units`. That is always 1536 for AC-3 (§5.3.1: six blocks of 256, no
+other option), but E-AC-3's `numblkscod` lets an independent substream code 1, 2, 3 or 6 blocks
+(§E2.3.1.4), so an E-AC-3 access unit is 256, 512, 768 or 1536 samples long — and a stream may
+mix lengths.
+
+```cpp
+const auto at = ac3::io::access_unit_timing(*scanned, index);
+at->start_sample;                     // samples from the start of the stream
+at->duration_samples;
+at->start_seconds();
+at->start_in_timescale(90'000);       // MPEG-2 systems clock
+at->duration_in_timescale(90'000);
+```
+
+Every value is computed from the **absolute** sample position rather than by summing per-frame
+increments. A frame duration is very often not a whole number of ticks in whatever timescale a
+container uses (1536 samples at 44.1 kHz is 34.83 ms), so a running sum drifts; computing from
+the absolute position keeps the error under one tick however long the stream runs. `duration_in_timescale`
+is the difference between this unit's converted start and the next one's, not the duration
+converted on its own — otherwise a run of durations would not add up to the start times they
+are supposed to.
+
+Three lookups go with it:
+
+| Call | Answers |
+|---|---|
+| `stream_duration_samples` / `stream_duration_seconds` | How long the whole thing is |
+| `access_unit_at_sample` / `access_unit_at_seconds` | Which unit covers a position — i.e. where a frame-aligned cut lands. A position inside a unit names that whole unit; a cut is never a split |
+| `uniform_access_unit_samples` | The one length every unit shares, or nothing when they differ |
+
+That last one is exactly the question a fixed-duration container track can answer and a variable
+one cannot: `mp4::AudioTrack`, `mpegts::AudioTrack` and `matroska::AudioTrack` each hold a single
+`samples_per_frame`, so a stream it returns nothing for cannot be described to them without
+per-sample durations they do not model. `ac3cli`'s `mkv`/`mp4`/`fmp4`/`ts` take the figure from
+here and refuse such a stream rather than muxing it to a silently wrong timeline.
+
+## Changing metadata without re-encoding: `ac3::io::metadata_edit`
+
+`ac3/io/metadata_edit.hpp`. `dialnorm`, `compr`, `bsmod` and `dsurmod` are delivery decisions —
+what a receiver is told the dialogue level is, how hard to compress on an RF output, what kind of
+service this is, whether the surrounds were matrixed. All four live in `bsi`, ahead of the first
+`audblk`, and none of them changes a coded coefficient. Re-encoding a programme to correct one
+costs a whole generation of lossy coding for nothing.
+
+```cpp
+std::vector<std::byte> stream = /* an AC-3 or E-AC-3 elementary stream */;
+const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 24, .bsmod = 2});
+// summary->syncframes visited, summary->changed actually different afterwards
+```
+
+`read_frame_metadata` reports what one syncframe carries — including E-AC-3's whole `mixmdate`
+group and AC-3's two `bsi` downmix levels — and which of the rewritable fields it transmits at
+all.
+
+The CRCs are the part that is not obvious. `crc2` is an ordinary trailing CRC. `crc1` is not:
+A/52 §7.10.1 puts it **before** the region it protects and requires the register to read zero
+once the first 5/8 of the syncframe has been shifted through, so it has to be *solved* rather
+than computed — `ac3::solve_leading_crc` (`ac3/core/crc16.hpp`) does that with a GF(2)
+polynomial inverse, and is the same function the encoder itself uses. `restamp_crc` is public
+for a caller doing its own bsi surgery (`ac3::signing::sign_atmos_frame` is the in-project
+precedent) so nobody has to reimplement that solve.
+
+Stated as limits rather than left to be discovered:
+
+- **Only fields already on the wire can change.** `compr` lives behind `compre`, and E-AC-3's
+  `bsmod`/`dsurmod` behind `infomdate`; a frame that did not transmit one has no bits to
+  overwrite, and inserting them would move every bit after it and re-frame the syncframe — which
+  is a re-encode by another name. That is `kFieldAbsent`, and the answer is to encode (or
+  transcode) with the field enabled. This project's own E-AC-3 encoder never sets `infomdate`,
+  so its streams carry no `bsmod`/`dsurmod` to rewrite.
+- A **dependent** E-AC-3 substream reports no `compr` whatever its `compre` bit says: §E3.8.5
+  repurposes that bit to mark the last dependent of the programme. Its eight bits are still
+  skipped correctly; they are simply not a `compr` word.
+- `strmtyp 2` (a convertible substream, §E2.3.1.1) is refused outright, matching
+  `ac3::plan::validate`'s own stance.
+
+A field named in an edit that **no** syncframe in the stream carries fails before anything is
+written, so the stream is either fully rewritten or left byte-for-byte alone — a metadata option
+that silently did nothing is indistinguishable from one that does not work.
+
 `ScannedStream` also carries the raw syntax values a container writer needs but cannot
 re-derive: `bsid`, `bsmod` (with `bsmod_present`, since Annex E carries it only inside
 `infomdate`), `bit_rate_code`, `dsurmod`, `mix_metadata`, `oba_complexity_index`, and — for
@@ -128,6 +211,7 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
+| `joc_domain` | `joc::Domain::kQmf` | Which domain JOC object reconstruction (above) runs §6.6.6's matrix in: `kQmf` is §7.1's 64-band complex filterbank, what the clause describes and what a licensed decoder runs; `kMdctBand` is the cheaper 512-sample-MDCT approximation this project used before the filterbank existed, correct only against a matrix estimated the same way (`AtmosConfig::joc_domain` on the encode side). The two have different algorithmic delay — `joc::reconstruction_delay(domain)` — so a caller comparing `object_audio` against a known source has to shift by it. |
 | `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `ac3::verify` to diff against the encoder's own model. See below. |
 | `eac3_trace` | `nullptr` | The E-AC-3 counterpart (`Eac3Decoder`), one whole access unit rather than one frame. See below. |
 
@@ -190,6 +274,59 @@ the overlap-add state, so a long stream's substituted noise does not repeat ever
 `fscod2` (the Annex E half sample rates — 24, 22.05, 16 kHz) is decoded like any other rate: the
 reduced rate reuses the same bit-allocation tables as its double-rate parent (§E2.3.1.4), so
 nothing else about decoding changes.
+
+## The object layer
+
+An Atmos-in-DD+ stream carries OAMD and JOC payloads in an EMDF container tucked into a block
+skip field. `Eac3Decoder` reads it whenever it is there: `DecodedSubstream::object_metadata`
+is the decoded programme (`std::nullopt` for plain E-AC-3, and equally for a container that
+was found but could not be read — a failure there never fails the surrounding frame, which is
+the whole point of EMDF), and `object_audio` is JOC's reconstructed per-object waveforms.
+
+`object_indices` says what each `object_audio` entry *is*: an index into the payload's own
+object order (bed channels, then ISF, then dynamic objects), which is what
+`oba::joc_object_indices()` computes for the programme. For a dynamic-object-only programme —
+what this project's own encoder writes — entry *i* is `object_metadata->objects[i]`; for a bed
+programme it names the bed channel instead, which `oba::bed_labels()` turns into a speaker
+label. `ac3cli decode <in> <out.wav> <objects_dir>` writes one WAV per entry.
+
+What the parsers read is deliberately much wider than what the encoder writes, because real
+streams are wider. On the OAMD side: any number of metadata update blocks at any sample offset
+and ramp duration; object size, zone constraints, elevation gating, snap, screen reference,
+distance, explicit priority and Table 18's gain-reuse; positions coded differentially against
+the previous block; inactive objects; several bed instances, standard or non-standard;
+programmes carrying an intermediate spatial format; the `trim_element` and the
+`extended_object_element`. An `oa_element` with an id this decoder does not know is skipped by
+its own `oa_element_size` and named in `DecodedProgram::skipped_elements`, rather than costing
+the payload — which is exactly what that size field is for. On the JOC side: all five of
+Table 47's downmix configurations, any clip gain, and per-object band count, quantizer, sparse
+mode, interpolation slope and data-point count. The EMDF reader parses the whole of
+§H.2.1.3's payload configuration and reports it on `DecodedPayload::config` rather than
+insisting on the one shape TS 103 420 Table 56 mandates — real Dolby streams do not restrict
+themselves to it even for their own object payloads.
+
+What is still refused, and why each one has to be:
+
+| Refused | Reason |
+|---|---|
+| `oa_md_version_bits` other than 0 | §5.6.0.1 defines no field layout for another version, so every offset after it would be a guess. |
+| `intermediate_spatial_format_idx` 6 or 7 | Table 11b reserves them and gives them no object count, so the bed/ISF/dynamic split cannot be worked out. |
+| `joc_dmx_config_idx` 5–7 | Table 48 gives them no channel count, so `joc_data` has no loop bound. |
+| `joc_ext_config_idx` ≠ 0 | Table 49 reserves every value and §6.2.1 gives `joc_ext_data()` no syntax and no length — there is nothing to read and nothing to skip. |
+| `emdf_version` ≠ 0 | §H.2.2.2 defines the container's fields only for version 0. |
+| `protection_length_primary` = `0b00` | Table H.2.5 reserves it, so it names no width to skip. |
+
+Two values are read but deliberately not *applied*. `joc_clipgain` (§6.3.3.2) is computed onto
+`FrameParameters::clip_gain` and left there: no clause in TS 103 420 says where in the decode
+chain the gain belongs, and the published equation renders ambiguously enough that a real DEE
+stream's own value lands outside the range the same clause states. And Table 47's two "90 degree
+phase shift" downmix configurations reconstruct like their unshifted siblings — the shift is a
+property of how the downmix was *built*, §6.6.6 says nothing about undoing it before matrixing,
+and there is no Hilbert filterbank here to undo it with.
+
+Reconstruction needs the downmix JOC asks for. Table 47's 7-channel configurations want Lb/Rb
+from a dependent substream, which `decode_substream` does not have in hand, so those parse but
+leave `object_audio` empty; the metadata still decodes and is still reported.
 
 ## The mirror self-check
 
@@ -266,6 +403,45 @@ frame within it) is not recoverable the same way — `decode_access_unit` needs 
 of a unit in the one call — so a transport that can drop whole units needs its own
 redundancy/retransmission above this layer; this API only guarantees that *finding* the next
 good boundary never depends on the previous one having decoded cleanly.
+
+## Streams with more than one programme
+
+§E2.3.1.2 allows eight independent substreams (I0–I7) in one elementary stream, and broadcast
+DD+ uses them for multi-language and associated services. They are **alternatives, not layers**:
+unlike a dependent substream, a second independent one is a complete programme of its own, and a
+decoder renders one of them.
+
+That matters to the framing, because the programmes interleave one frame period at a time.
+`split_access_units(stream)` delimits but does not select, so on a two-programme stream
+consecutive entries are consecutive *programmes*, not consecutive frames — feeding them straight
+through would splice two unrelated pieces of audio together.
+
+```cpp
+const auto ids = ac3::programme_ids(stream);          // e.g. {0, 1}
+const auto units = ac3::split_access_units(stream, ids->front());
+```
+
+`split_access_units(stream, programme)` keeps only that programme's units, and an empty result
+means the stream does not carry it — asking is how you find out, so it is not an error.
+
+The decoder can do the selecting instead, which is what a caller already walking every unit
+wants:
+
+```cpp
+ac3::Eac3Decoder decoder{{.programme = 1}};
+// A unit belonging to another programme returns std::nullopt, skipped before
+// any decoding — no per-substream state advances for a programme you did not
+// ask for. (std::nullopt also means the §3.7 hold-back; both call for the
+// same thing from a caller: take nothing and go on to the next unit.)
+```
+
+Leaving `DecoderConfig::programme` unset renders whatever arrives, which is what every caller got
+before the field existed and is right for the single-programme case;
+`DecodedAccessUnit::programme` then says which programme each result came from.
+
+`ac3::io::scan` reports the same thing for a muxer: `ScannedStream::programmes` describes each
+programme's layout, channel count, `bsmod` and access units, and `ScannedStream::access_units`
+is the **first** programme's units alone rather than all of them spliced into one track.
 
 ## Decoding bytes you do not control
 

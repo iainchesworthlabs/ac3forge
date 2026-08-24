@@ -4,6 +4,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
+#include <optional>
 #include <span>
 
 #include "ac3/core/tables.hpp"
@@ -162,6 +164,98 @@ double mono_downmix_peak_dbfs(std::span<const std::array<double, 256>> history,
 double mono_downmix_peak_dbfs(std::span<const std::span<const float>> channels, Acmod acmod,
                               double clev, double slev) {
     return mono_downmix_peak_dbfs({}, channels, acmod, clev, slev);
+}
+
+namespace {
+
+bool in_range(const std::optional<int>& value, int high) {
+    return !value || (*value >= 0 && *value <= high);
+}
+
+bool valid_external_scales(const ExternalScales& value) {
+    if (value.premix.premixcmpscl < 0 || value.premix.premixcmpscl > 7) {
+        return false;
+    }
+    // Table E2.8 is a 4-bit code for every one of them, auxiliaries included.
+    for (const auto& scale : {value.left, value.centre, value.right, value.left_surround,
+                              value.right_surround, value.lfe, value.dmixscl}) {
+        if (!in_range(scale, 15)) {
+            return false;
+        }
+    }
+    if (value.auxiliary) {
+        for (const auto& scale : *value.auxiliary) {
+            if (!in_range(scale, 15)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool valid_speech_enhancement(const SpeechEnhancement& value) {
+    if (value.spchdat < 0 || value.spchdat > 31) {
+        return false;
+    }
+    if (!value.additional) {
+        return true;
+    }
+    const auto& additional = *value.additional;
+    if (additional.spchdat1 < 0 || additional.spchdat1 > 31 || additional.spchan1att < 0 ||
+        additional.spchan1att > 3) {
+        return false;
+    }
+    if (!additional.more) {
+        return true;
+    }
+    return additional.more->spchdat2 >= 0 && additional.more->spchdat2 <= 31 &&
+           additional.more->spchan2att >= 0 && additional.more->spchan2att <= 7;
+}
+
+bool valid_pan(const std::optional<PanInfo>& value) {
+    return !value || (value->panmean >= 0 && value->panmean <= kPanMeanMax &&
+                      value->paninfo >= 0 && value->paninfo <= 63);
+}
+
+}  // namespace
+
+bool valid_mix_metadata(const MixMetadata& value) {
+    if (!valid_surround_mix_level(value.ltrtsurmixlev) ||
+        !valid_surround_mix_level(value.lorosurmixlev)) {
+        return false;
+    }
+    if (!in_range(value.lfemixlevcod, 31) || !in_range(value.pgmscl, kPgmScaleMax) ||
+        !in_range(value.pgmscl2, kPgmScaleMax) || !in_range(value.extpgmscl, kPgmScaleMax)) {
+        return false;
+    }
+    const auto& mixing = value.mixing;
+    if (mixing.mixdef == MixDefinition::kPremix &&
+        (mixing.premix.premixcmpscl < 0 || mixing.premix.premixcmpscl > 7)) {
+        return false;
+    }
+    // Table E2.6: mixdef 0x2 reserves exactly twelve bits.
+    if (mixing.mixdef == MixDefinition::kReserved && mixing.reserved > 0x0FFF) {
+        return false;
+    }
+    if (mixing.mixdef == MixDefinition::kExtended) {
+        if (mixing.external && !valid_external_scales(*mixing.external)) {
+            return false;
+        }
+        if (mixing.speech && !valid_speech_enhancement(*mixing.speech)) {
+            return false;
+        }
+    }
+    if (!valid_pan(value.pan) || !valid_pan(value.pan2)) {
+        return false;
+    }
+    if (value.blkmixcfginfo) {
+        for (const auto& word : *value.blkmixcfginfo) {
+            if (!in_range(word, 31)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 }  // namespace ac3::meta

@@ -28,9 +28,11 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
 
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
+#include "bit_reservoir.hpp"
 #include "dither.hpp"
 #include "exp_strategy.hpp"
 #include "snr_search.hpp"
@@ -1153,6 +1155,95 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
     return std::clamp(static_cast<int>(std::lround((1.0 - flatness) * 32.0)), 0, 31);
 }
 
+// Table E1.2's mixdef element (§E2.3.1.18-52). The four options differ in how
+// many bits of mixing-control data ride along: none, a fixed five, a fixed
+// twelve, or a mixdeflen-sized field whose contents are optional and whose
+// remainder is zero fill.
+void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) {
+    // Takes its writer rather than capturing one: mixdef 0x3 below runs the
+    // whole contents through a throwaway writer first to measure them, and a
+    // helper bound to `w` would put those measurement bits into the real
+    // frame - ahead of the mixdeflen field that has not been written yet.
+    const auto emit_premix = [](BitWriter& out, const meta::PremixCompression& premix) {
+        out.put(static_cast<std::uint32_t>(premix.premixcmpsel), 1);
+        out.put(static_cast<std::uint32_t>(premix.drcsrc), 1);
+        out.put(static_cast<std::uint32_t>(premix.premixcmpscl), 3);
+    };
+    w.put(static_cast<std::uint32_t>(mixing.mixdef), 2);
+    switch (mixing.mixdef) {
+        case meta::MixDefinition::kNone:
+            return;
+        case meta::MixDefinition::kPremix:
+            emit_premix(w, mixing.premix);
+            return;
+        case meta::MixDefinition::kReserved:
+            w.put(mixing.reserved, 12);
+            return;
+        case meta::MixDefinition::kExtended:
+            break;
+    }
+
+    // mixdef 0x3. §E2.3.1.22 sizes the WHOLE element - sub-fields and the
+    // byte-alignment fill together - as mixdeflen + 2 bytes, so the contents
+    // have to be measured before the length can be written. A throwaway
+    // writer does that, the same shape measure_side_bits uses for the frame.
+    const auto emit_contents = [&](BitWriter& out) {
+        out.put(mixing.external ? 1 : 0, 1);  // mixdata2e
+        if (mixing.external) {
+            const auto& external = *mixing.external;
+            emit_premix(out, external.premix);
+            // §E2.3.1.25 onwards: one flag-plus-4-bit-code pair per channel,
+            // in Table E1.2's order, each absent when the external programme
+            // has no such channel.
+            for (const auto& scale :
+                 {external.left, external.centre, external.right, external.left_surround,
+                  external.right_surround, external.lfe, external.dmixscl}) {
+                out.put(scale ? 1 : 0, 1);
+                if (scale) {
+                    out.put(static_cast<std::uint32_t>(*scale), 4);
+                }
+            }
+            out.put(external.auxiliary ? 1 : 0, 1);  // addche
+            if (external.auxiliary) {
+                for (const auto& scale : *external.auxiliary) {
+                    out.put(scale ? 1 : 0, 1);
+                    if (scale) {
+                        out.put(static_cast<std::uint32_t>(*scale), 4);
+                    }
+                }
+            }
+        }
+        out.put(mixing.speech ? 1 : 0, 1);  // mixdata3e
+        if (mixing.speech) {
+            const auto& speech = *mixing.speech;
+            out.put(static_cast<std::uint32_t>(speech.spchdat), 5);
+            out.put(speech.additional ? 1 : 0, 1);  // addspchdate
+            if (speech.additional) {
+                out.put(static_cast<std::uint32_t>(speech.additional->spchdat1), 5);
+                out.put(static_cast<std::uint32_t>(speech.additional->spchan1att), 2);
+                out.put(speech.additional->more ? 1 : 0, 1);  // addspchdat1e
+                if (speech.additional->more) {
+                    out.put(static_cast<std::uint32_t>(speech.additional->more->spchdat2), 5);
+                    out.put(static_cast<std::uint32_t>(speech.additional->more->spchan2att), 3);
+                }
+            }
+        }
+    };
+
+    BitWriter counter;
+    emit_contents(counter);
+    const auto used = static_cast<std::uint32_t>(counter.bit_count());
+    // mixdeflen = {0..31} means {2..33} bytes, so the smallest legal element
+    // is two bytes however little is in it.
+    const std::uint32_t bytes = std::max<std::uint32_t>(2, (used + 7) / 8);
+    w.put(bytes - 2, 5);  // mixdeflen
+    emit_contents(w);
+    // §E2.3.1.52: mixdatafill rounds the element up, all bits zero.
+    for (std::uint32_t bit = used; bit < bytes * 8; ++bit) {
+        w.put(0, 1);
+    }
+}
+
 // Everything from the sync word to the end of the last block: the whole
 // frame bar padding and the tail. Silence and real audio go through this one
 // function, so the two can never drift apart on field placement.
@@ -1349,22 +1440,84 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         // ANOTHER one, which is an independent substream's business. A
         // dependent therefore stops after the levels above.
         if (!dependent) {
-            w.put(0, 1);  // pgmscle:    §E2.3.1.12, absent means 0 dB
+            // §E2.3.1.12/16: the *e flag clear means 0 dB, so an absent scale
+            // is a positive statement of unity gain in one bit rather than
+            // seven.
+            const auto emit_scale = [&w](const std::optional<int>& scale) {
+                w.put(scale ? 1 : 0, 1);
+                if (scale) {
+                    w.put(static_cast<std::uint32_t>(*scale), 6);
+                }
+            };
+            emit_scale(mix.pgmscl);
             if (acmod_value == 0x0) {
-                w.put(0, 1);  // pgmscl2e: mirrors pgmscle - no scale sent
+                emit_scale(mix.pgmscl2);
             }
-            w.put(0, 1);  // extpgmscle: §E2.3.1.16, absent means 0 dB
-            w.put(0, 2);  // mixdef:     no mixing-parameter data
+            emit_scale(mix.extpgmscl);
+            emit_mixing_parameters(w, mix.mixing);
             if (acmod_value < 0x2) {
-                w.put(0, 1);  // paninfoe
+                const auto emit_pan = [&w](const std::optional<meta::PanInfo>& pan) {
+                    w.put(pan ? 1 : 0, 1);  // paninfoe
+                    if (pan) {
+                        w.put(static_cast<std::uint32_t>(pan->panmean), 8);
+                        w.put(static_cast<std::uint32_t>(pan->paninfo), 6);
+                    }
+                };
+                emit_pan(mix.pan);
                 if (acmod_value == 0x0) {
-                    w.put(0, 1);  // paninfo2e: mirrors paninfoe - no pan sent
+                    emit_pan(mix.pan2);
                 }
             }
-            w.put(0, 1);  // frmmixcfginfoe
+            w.put(mix.blkmixcfginfo ? 1 : 0, 1);  // frmmixcfginfoe
+            if (mix.blkmixcfginfo) {
+                // Six blocks per syncframe, always - either numblkscod 0x3
+                // written above or the implicit six of a reduced-rate fscod2
+                // frame. §E2.3.1.60's one-block form (where the per-block flag
+                // is inferred set and the word is unconditional) cannot arise
+                // from this encoder, so it is not written; the decoder reads
+                // it, because a third-party stream may well use it.
+                for (const auto& word : *mix.blkmixcfginfo) {
+                    w.put(word ? 1 : 0, 1);  // blkmixcfginfoe
+                    if (word) {
+                        w.put(static_cast<std::uint32_t>(*word), 5);
+                    }
+                }
+            }
         }
     }
-    w.put(0, 1);  // infomdate
+    w.put(config.info ? 1 : 0, 1);  // infomdate
+    if (config.info) {
+        const auto& info = *config.info;
+        w.put(static_cast<std::uint32_t>(info.bsmod), 3);
+        w.put(info.copyrightb ? 1 : 0, 1);
+        w.put(info.origbs ? 1 : 0, 1);
+        if (acmod_value == 0x2) {
+            w.put(static_cast<std::uint32_t>(info.dsurmod), 2);
+            w.put(static_cast<std::uint32_t>(info.dheadphonmod), 2);
+        }
+        if (acmod_value >= 0x6) {
+            w.put(static_cast<std::uint32_t>(info.dsurexmod), 2);
+        }
+        // Unlike AC-3's own audprodie, Annex E's carries adconvtyp as a third
+        // field - AC-3 puts that one in Annex D's xbsi2 instead.
+        const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
+            w.put(production ? 1 : 0, 1);  // audprodie
+            if (production) {
+                w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
+                w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
+                w.put(static_cast<std::uint32_t>(production->adconvtyp), 1);
+            }
+        };
+        emit_audprod(info.audprod);
+        if (acmod_value == 0x0) {
+            emit_audprod(info.audprod2);
+        }
+        // §E2.3.2.6: a reduced-rate (fscod2) frame carries no sourcefscod at
+        // all - there is no "twice this rate" to point at when fscod is 0x3.
+        if (!is_reduced_rate(config.sample_rate)) {
+            w.put(info.sourcefscod ? 1 : 0, 1);
+        }
+    }
     // §E2.3.1.64: only an independent substream at a short syncframe carries
     // this - see FrameConfig::numblkscod's own comment for what the value
     // means and how payload.convsync is chosen.
@@ -2147,6 +2300,24 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
+        // ABR's target IS a rate the stream promises to deliver, so unlike
+        // quality it has to be expressible: a target that gives no words at
+        // all, or more than frmsiz's 11 bits can signal, is not an average
+        // any frame sequence could hold. A zero-frame window is not a window.
+        if (vbr.abr) {
+            const auto target_words = frame_words(config.sample_rate, vbr.abr->target_kbps);
+            if (target_words < 1 || target_words > kMaxFrameWords ||
+                vbr.abr->window_frames < 1) {
+                return std::unexpected(FrameError::kInvalidBitrate);
+            }
+            // Bounds that exclude the target make the average unreachable by
+            // construction - every frame would be clamped to the same side of
+            // it, so the long run could never average out to what was asked.
+            if ((vbr.min_kbps && *vbr.min_kbps > vbr.abr->target_kbps) ||
+                (vbr.max_kbps && *vbr.max_kbps < vbr.abr->target_kbps)) {
+                return std::unexpected(FrameError::kInvalidBitrate);
+            }
+        }
     } else {
         const auto words = frame_words(config.sample_rate, config.bitrate_kbps, blocks);
         if (words < 1 || words > kMaxFrameWords) {
@@ -2195,7 +2366,9 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         const auto& mix = *config.mixing;
         // Tables D2.4 / D2.6 reserve the three loudest surround codes, and a
         // decoder that receives one substitutes 0.841 - so writing one means
-        // the level applied is not the level asked for.
+        // the level applied is not the level asked for. valid_mix_metadata()
+        // makes that same check first, then every range the rest of Table
+        // E1.2's fields have to fit.
         if (!meta::valid_surround_mix_level(mix.ltrtsurmixlev) ||
             !meta::valid_surround_mix_level(mix.lorosurmixlev)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
@@ -2203,6 +2376,12 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         if (mix.lfemixlevcod && (*mix.lfemixlevcod < 0 || *mix.lfemixlevcod > 31)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
         }
+        if (!meta::valid_mix_metadata(mix)) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
+    }
+    if (config.info && !meta::valid_bsi_info(*config.info)) {
+        return std::unexpected(FrameError::kInvalidBsi);
     }
     return {};
 }
@@ -2245,6 +2424,11 @@ struct FrameEncoder::FrameState {
     std::vector<double> spx_gains;
     std::vector<double> spx_synth;
     std::vector<double> spx_band_rms;
+    // ABR's rate control - the sliding-window budget and the composite offset
+    // it steers - engaged exactly when config_.vbr->abr is. Encoder-lifetime
+    // state, NOT touched by reset_for_frame: the whole point is that what one
+    // frame did not spend is still there for the next.
+    std::optional<internal::AbrController> abr;
 };
 
 FrameEncoder::~FrameEncoder() = default;
@@ -2315,6 +2499,17 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
 
 FrameEncoder::FrameEncoder(const FrameConfig& config)
     : config_(config), state_(std::make_unique<FrameState>()) {
+    if (config_.vbr && config_.vbr->abr) {
+        // Clamped the same way every other word count here is: validate()
+        // rejects a target outside [1, kMaxFrameWords] before any frame is
+        // encoded, but a FrameEncoder can be constructed without that call
+        // having run, and a reservoir whose target is zero would hand out a
+        // zero allowance forever - and divide by it when steering the offset.
+        state_->abr.emplace(
+            std::clamp(frame_words(config_.sample_rate, config_.vbr->abr->target_kbps),
+                       std::uint32_t{1}, kMaxFrameWords),
+            std::max(config_.vbr->abr->window_frames, std::uint32_t{1}));
+    }
     if (config_.drc) {
         range_.emplace(*config_.drc, config_.sample_rate);
     }
@@ -2467,9 +2662,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // auto_spxbegf below need a rate-shaped number even under VBR, since
     // that is what tells them how much per-channel headroom the frame has -
     // vbr->nominal_kbps (or its own fallbacks) stands in for bitrate_kbps.
+    // Under ABR the average rate is the honest fallback ahead of max_kbps:
+    // that IS the rate the stream is contracted to deliver, where max_kbps is
+    // only the ceiling an individual frame may peak to.
     const std::uint32_t tool_reference_kbps =
         config_.vbr ? config_.vbr->nominal_kbps.value_or(
-                          config_.vbr->max_kbps.value_or(kVbrDefaultNominalKbps))
+                          config_.vbr->abr
+                              ? config_.vbr->abr->target_kbps
+                              : config_.vbr->max_kbps.value_or(kVbrDefaultNominalKbps))
                     : config_.bitrate_kbps;
 
     // --- 1. Frame setup -----------------------------------------------------
@@ -3859,13 +4059,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         std::uint32_t words = 0;
         std::optional<std::uint32_t> fallback_budget;
     };
+    // `cap_words` is the ceiling this frame may not pass: max_kbps's word
+    // count under plain VBR, and under ABR whatever the sliding-window
+    // reservoir has left (already the tighter of the two - see abr_cap_words
+    // below). Disengaged means no ceiling was asked for at all, which is the
+    // "fail rather than fall back" case above.
     const auto vbr_size_for = [&](std::uint32_t mantissa_bits,
-                                  const VbrConfig& vbr) -> std::optional<VbrSize> {
+                                  std::optional<std::uint32_t> cap_words)
+        -> std::optional<VbrSize> {
         const std::uint32_t content_bits = side_bits + mantissa_bits + kTailBits;
-        if (vbr.max_kbps) {
+        const std::uint32_t wanted = (content_bits + 15) / 16;
+        if (cap_words) {
             const std::uint32_t max_words =
-                std::clamp(frame_words(config_.sample_rate, *vbr.max_kbps), std::uint32_t{1},
-                          kMaxFrameWords);
+                std::clamp(*cap_words, std::uint32_t{1}, kMaxFrameWords);
             if (content_bits > max_words * 16) {
                 if (side_bits + kTailBits > max_words * 16) {
                     return std::nullopt;
@@ -3873,12 +4079,35 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 return VbrSize{.words = max_words,
                               .fallback_budget = max_words * 16 - side_bits - kTailBits};
             }
-            return VbrSize{.words = (content_bits + 15) / 16, .fallback_budget = std::nullopt};
+            return VbrSize{.words = wanted, .fallback_budget = std::nullopt};
         }
         if (content_bits > kMaxFrameWords * 16) {
             return std::nullopt;
         }
-        return VbrSize{.words = (content_bits + 15) / 16, .fallback_budget = std::nullopt};
+        return VbrSize{.words = wanted, .fallback_budget = std::nullopt};
+    };
+    const auto vbr_max_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
+        if (!vbr.max_kbps) {
+            return std::nullopt;
+        }
+        return std::clamp(frame_words(config_.sample_rate, *vbr.max_kbps), std::uint32_t{1},
+                          kMaxFrameWords);
+    };
+    // ABR's cap for THIS frame: what the reservoir has left, never above a
+    // max_kbps ceiling if one was also given, and never below the words the
+    // frame's own syntax needs whatever the reservoir says. That last floor
+    // is what keeps an exhausted reservoir from turning into a hard
+    // kInvalidBitrate - a frame cannot be smaller than the bits it must
+    // carry, so it overspends, commits the real figure, and the frames it
+    // slides past pay it back. side_bits is read fresh on every call because
+    // drop_delta_and_remeasure() can move it between them.
+    const auto abr_cap_words = [&](const VbrConfig& vbr) -> std::uint32_t {
+        std::uint32_t cap = state_->abr->allowance();
+        if (const auto bound = vbr_max_words(vbr)) {
+            cap = std::min(cap, *bound);
+        }
+        const std::uint32_t syntax_words = (side_bits + kTailBits + 15) / 16;
+        return std::clamp(std::max(cap, syntax_words), std::uint32_t{1}, kMaxFrameWords);
     };
     const auto vbr_min_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
         if (!vbr.min_kbps) {
@@ -3887,8 +4116,20 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         return std::clamp(frame_words(config_.sample_rate, *vbr.min_kbps), std::uint32_t{1},
                           kMaxFrameWords);
     };
+    // The ceiling vbr_size_for measures this frame against: max_kbps under
+    // plain VBR, the reservoir's remaining allowance under ABR. Called
+    // rather than computed once, because both inputs move underneath it -
+    // side_bits when a delta segment is dropped, and the reservoir whenever
+    // a frame is committed.
+    const auto size_cap = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
+        return vbr.abr ? std::optional{abr_cap_words(vbr)} : vbr_max_words(vbr);
+    };
 
     std::uint32_t words = 0;
+    // ABR only: whether a ceiling cut this frame short of what the steered
+    // offset asked for. Suppresses the controller's upward correction; see
+    // AbrController::commit.
+    bool clipped = false;
     int lo = 0;
     // Set exactly when `lo` was chosen by search() against a fixed budget -
     // CBR always, VBR only when a max_kbps bound was actually hit. The AHT
@@ -3907,19 +4148,46 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         lo = search(*fixed_budget);
     } else {
         const auto& vbr = *config_.vbr;
-        const int composite = std::clamp(
-            static_cast<int>(std::lround(std::clamp(vbr.quality, 0.0, 1.0) * 1023.0)), 0, 1023);
-        auto sized = vbr_size_for(bits_at(composite), vbr);
+        // Plain VBR reads the offset straight off `quality` and never moves
+        // it. ABR does not read `quality` at all: the offset is held across
+        // frames and steered by the reservoir controller (see
+        // bit_reservoir.hpp), which is what lets a quiet frame stay cheap
+        // while the long-run rate still lands where it was asked to.
+        int composite = 0;
+        if (!state_->abr) {
+            composite = std::clamp(
+                static_cast<int>(std::lround(std::clamp(vbr.quality, 0.0, 1.0) * 1023.0)), 0,
+                1023);
+        } else if (const auto steered = state_->abr->offset()) {
+            composite = *steered;
+        } else {
+            // ABR's very first frame: there is no operating point to steer
+            // from yet, so take the same budget-fitting search CBR runs -
+            // against this frame's own allowance - and seed the controller
+            // with what it finds. Cheaper and far more accurate than
+            // guessing a starting offset and converging onto it over the
+            // opening second of the stream. abr_cap_words never returns a
+            // cap too small for the frame's own syntax, so this budget is
+            // always a real one.
+            const std::uint32_t cap = abr_cap_words(vbr);
+            composite = search(cap * 16 - side_bits - kTailBits);
+            state_->abr->seed(composite);
+        }
+        auto sized = vbr_size_for(bits_at(composite), size_cap(vbr));
         if (!sized && drop_delta_and_remeasure()) {
-            sized = vbr_size_for(bits_at(composite), vbr);
+            sized = vbr_size_for(bits_at(composite), size_cap(vbr));
         }
         if (!sized) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
         lo = composite;
         words = sized->words;
+        clipped = sized->fallback_budget.has_value();
         if (sized->fallback_budget) {
-            // The quality target overshoots vbr.max_kbps: fall back to the
+            // The quality target overshoots the frame's ceiling - vbr.max_kbps
+            // under plain VBR, or under ABR whatever the reservoir has left,
+            // which is exactly how a long-run average gets held without
+            // pinning every frame to the same size: fall back to the
             // same search CBR uses, budgeted against the ceiling instead of
             // a fixed target, so a bounded VBR frame is never worse than the
             // best CBR could do at that rate.
@@ -3936,6 +4204,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // separately with this same justification instead.
             fixed_budget = sized->fallback_budget;
             lo = search(*fixed_budget); // NOLINT(bugprone-unchecked-optional-access)
+            // Under ABR the operating point is deliberately NOT pulled onto
+            // `lo` here: the ceiling that forced this is one frame's
+            // allowance, not a verdict on where the offset belongs. `clipped`
+            // above is what the controller is told instead, and it suppresses
+            // only the upward correction - see AbrController::commit.
         }
         // Only ever a floor: finish_frame's own auxbits padding already
         // covers any gap between what the content actually needs and the
@@ -3972,8 +4245,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
         if (fixed_budget) {
-            // CBR, or a VBR frame already pinned to its max_kbps ceiling:
-            // the word count cannot move, only which offset fits it can.
+            // CBR, or a VBR frame already pinned to its ceiling: the word
+            // count cannot move, only which offset fits it can.
             lo = search(*fixed_budget);
         } else {
             // Free-running VBR (or a bound it was naturally already under):
@@ -3981,17 +4254,18 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // can move the mantissa cost - down, when auto-selecting the
             // cheapest per channel; either way, when a mode was forced - so
             // the word count is re-derived exactly as it was the first time,
-            // including the same max_kbps re-check in case a forced mode
-            // pushed the cost back over a bound the quality target alone had
-            // stayed under.
-            auto sized = vbr_size_for(bits_at(lo), *config_.vbr);
+            // including the same ceiling re-check (max_kbps, or ABR's own
+            // reservoir allowance) in case a forced mode pushed the cost back
+            // over a bound the quality target alone had stayed under.
+            auto sized = vbr_size_for(bits_at(lo), size_cap(*config_.vbr));
             if (!sized && drop_delta_and_remeasure()) {
-                sized = vbr_size_for(bits_at(lo), *config_.vbr);
+                sized = vbr_size_for(bits_at(lo), size_cap(*config_.vbr));
             }
             if (!sized) {
                 return std::unexpected(FrameError::kInvalidBitrate);
             }
             words = sized->words;
+            clipped = sized->fallback_budget.has_value();
             if (sized->fallback_budget) {
                 fixed_budget = sized->fallback_budget;
                 lo = search(*fixed_budget);
@@ -4432,51 +4706,73 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
     }
 
-    return finish_frame(config_, words, payload, aux);
+    auto frame = finish_frame(config_, words, payload, aux);
+    // ABR's accounting closes on the size that actually went on the wire -
+    // after every floor, ceiling and AHT re-derivation above, and only once
+    // the frame really exists, so a finish_frame failure cannot leave the
+    // controller believing bits were spent that never were. This is also
+    // where the offset for the NEXT frame is steered; see AbrController.
+    if (frame && state_->abr) {
+        state_->abr->commit(words, clipped);
+    }
+    return frame;
 }
 
 // --- access units ----------------------------------------------------------
 
 namespace {
 
-// The substreams of one access unit in transmission order, with the identity
+// The substreams of ONE programme in transmission order, with the identity
 // fields Annex E fixes rather than leaves to the caller: the independent one
 // first, then dependents numbered from 0 in their own space, the last of which
-// carries the compre marker that closes the program.
-std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
-    const AccessUnitConfig& config) {
-    if (config.independent.strmtyp != StreamType::kIndependent) {
+// carries the compre marker that closes the programme.
+//
+// `id` is the independent substream's §E2.3.1.2 substreamid, which is the
+// programme's own position in the access unit - a dependent's id numbers
+// within its parent's space and so still starts at 0 whichever programme this
+// is. `rate` and `numblkscod` are the access unit's own: every substream of
+// every programme codes the same frame period - the same sample rate AND the
+// same block count, since numblkscod is what fixes how many samples that
+// period actually holds (AccessUnitConfig's own comment) - so a programme
+// that disagrees on either would desynchronise the whole unit, not just
+// itself.
+std::expected<std::vector<FrameConfig>, FrameError> programme_configs(
+    const ProgrammeConfig& programme, int id, SampleRate rate, int numblkscod) {
+    if (programme.independent.strmtyp != StreamType::kIndependent) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
+    if (programme.independent.sample_rate != rate ||
+        programme.independent.numblkscod != numblkscod) {
         return std::unexpected(FrameError::kInvalidSubstream);
     }
     // §E2.3.1.2: eight dependents per independent substream, no more.
-    if (config.dependents.size() > 8) {
+    if (programme.dependents.size() > 8) {
         return std::unexpected(FrameError::kInvalidSubstream);
     }
     std::vector<FrameConfig> out;
-    out.reserve(config.dependents.size() + 1);
-    out.push_back(config.independent);
-    out.back().substreamid = 0;
+    out.reserve(programme.dependents.size() + 1);
+    out.push_back(programme.independent);
+    out.back().substreamid = id;
     out.back().last_dependent = false;
 
-    for (std::size_t i = 0; i < config.dependents.size(); ++i) {
-        FrameConfig dep = config.dependents[i];
-        // Every substream codes the same samples of one program, so a
+    for (std::size_t i = 0; i < programme.dependents.size(); ++i) {
+        FrameConfig dep = programme.dependents[i];
+        // Every substream codes the same samples of one programme, so a
         // dependent cannot disagree with its parent about the sample rate or
         // how many blocks a syncframe holds - see AccessUnitConfig's own
         // comment for why a decoder has no way to align a mismatch.
-        if (dep.sample_rate != config.independent.sample_rate ||
-            dep.numblkscod != config.independent.numblkscod) {
+        if (dep.sample_rate != rate || dep.numblkscod != programme.independent.numblkscod) {
             return std::unexpected(FrameError::kInvalidSubstream);
         }
         dep.strmtyp = StreamType::kDependent;
         dep.substreamid = static_cast<int>(i);
-        dep.last_dependent = i + 1 == config.dependents.size();
+        dep.last_dependent = i + 1 == programme.dependents.size();
         // DRC is a property of the programme, not of a substream, so a
         // dependent carries the same profile whether or not the caller said
         // so - otherwise its channels would sit outside the compression its
         // siblings are inside. The words themselves come from one measurement;
         // this only settles whether the FIELDS are written.
-        dep.drc = config.independent.drc;
+        dep.drc = programme.independent.drc;
         // Heavy compression never travels on a dependent (§E3.8.5), so clear
         // it rather than let validate() reject a config the caller could not
         // reasonably have known was illegal.
@@ -4491,7 +4787,9 @@ std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
     // §E3.8.2 caps a single programme at 16 rendered channels. Each
     // substream's own chanmap-vs-acmod/lfeon agreement is checked above; this
     // is the aggregate the per-substream check cannot see, mirroring the
-    // decoder's own union-and-count at decode time (eac3_decoder.cpp).
+    // decoder's own union-and-count at decode time (eac3_decoder.cpp). Per
+    // PROGRAMME, not per access unit: a second programme is a separate
+    // rendering, so its channels do not count against the first one's cap.
     std::uint16_t occupied = 0;
     for (const auto& sub : out) {
         occupied = static_cast<std::uint16_t>(
@@ -4501,6 +4799,46 @@ std::expected<std::vector<FrameConfig>, FrameError> substream_configs(
         return std::unexpected(FrameError::kTooManyChannels);
     }
     return out;
+}
+
+// §E2.3.1.2: eight independent substreams, I0-I7, no more.
+constexpr std::size_t kMaxProgrammes = 8;
+
+// Every programme of an access unit, each as programme_configs above built it,
+// in transmission order. The outer index IS the substreamid of that
+// programme's independent substream.
+std::expected<std::vector<std::vector<FrameConfig>>, FrameError> access_unit_configs(
+    const AccessUnitConfig& config) {
+    if (config.additional.size() + 1 > kMaxProgrammes) {
+        return std::unexpected(FrameError::kInvalidSubstream);
+    }
+    const SampleRate rate = config.independent.sample_rate;
+    const int numblkscod = config.independent.numblkscod;
+    std::vector<std::vector<FrameConfig>> out;
+    out.reserve(config.additional.size() + 1);
+    auto first =
+        programme_configs({config.independent, config.dependents}, 0, rate, numblkscod);
+    if (!first) {
+        return std::unexpected(first.error());
+    }
+    out.push_back(std::move(*first));
+    for (std::size_t i = 0; i < config.additional.size(); ++i) {
+        auto next = programme_configs(config.additional[i], static_cast<int>(i + 1), rate,
+                                      numblkscod);
+        if (!next) {
+            return std::unexpected(next.error());
+        }
+        out.push_back(std::move(*next));
+    }
+    return out;
+}
+
+// The substream that carries the EMDF container: the last one of the FIRST
+// programme (TS 103 420 §8.2 - see build_silent_access_unit's declaration for
+// why a later programme's substreams are never it).
+[[nodiscard]] std::size_t aux_substream_index(
+    const std::vector<std::vector<FrameConfig>>& programmes) {
+    return programmes.front().size() - 1;
 }
 
 }  // namespace
@@ -4516,31 +4854,44 @@ std::span<const std::byte> AccessUnit::substream(std::size_t index) const {
 std::uint32_t access_unit_words(const AccessUnitConfig& config) {
     // CBR only - see the declaration's own comment. A VBR substream's word
     // count depends on content no caller of this function has offered it.
-    assert(!config.independent.vbr);
-    std::uint32_t words =
-        frame_words(config.independent.sample_rate, config.independent.bitrate_kbps);
+    const auto substream_words = [](const FrameConfig& sub) {
+        assert(!sub.vbr);
+        return frame_words(sub.sample_rate, sub.bitrate_kbps);
+    };
+    std::uint32_t words = substream_words(config.independent);
     for (const auto& dep : config.dependents) {
-        assert(!dep.vbr);
-        words += frame_words(dep.sample_rate, dep.bitrate_kbps);
+        words += substream_words(dep);
+    }
+    // Every programme occupies the SAME frame period, so a second programme
+    // adds its whole rate on top rather than dividing the first one's.
+    for (const auto& programme : config.additional) {
+        words += substream_words(programme.independent);
+        for (const auto& dep : programme.dependents) {
+            words += substream_words(dep);
+        }
     }
     return words;
 }
 
 std::expected<AccessUnit, FrameError> build_silent_access_unit(
     const AccessUnitConfig& config, AuxPayload aux) {
-    const auto subs = substream_configs(config);
-    if (!subs) {
-        return std::unexpected(subs.error());
+    const auto programmes = access_unit_configs(config);
+    if (!programmes) {
+        return std::unexpected(programmes.error());
     }
+    const std::size_t aux_at = aux_substream_index(*programmes);
     AccessUnit unit;
-    for (const auto& sub : *subs) {
-        const bool carries_aux = &sub == &subs->back();  // §8.2: the last one
-        const auto frame = build_silent_frame(sub, carries_aux ? aux : AuxPayload{});
-        if (!frame) {
-            return std::unexpected(frame.error());
+    std::size_t index = 0;
+    for (const auto& programme : *programmes) {
+        for (const auto& sub : programme) {
+            const auto frame = build_silent_frame(sub, index == aux_at ? aux : AuxPayload{});
+            if (!frame) {
+                return std::unexpected(frame.error());
+            }
+            ++index;
+            unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
+            unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
         }
-        unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
-        unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
     }
     return unit;
 }
@@ -4548,85 +4899,110 @@ std::expected<AccessUnit, FrameError> build_silent_access_unit(
 AccessUnitEncoder::AccessUnitEncoder(const AccessUnitConfig& config) : config_(config) {
     // Identity is settled once here so encode_access_unit stays a hot path and
     // so a caller cannot renumber substreams between frames.
-    if (const auto subs = substream_configs(config)) {
-        for (const auto& sub : *subs) {
-            substreams_.emplace_back(sub);
+    const auto built = access_unit_configs(config);
+    if (!built) {
+        return;  // programmes_ stays empty; encode_access_unit reports why
+    }
+    std::size_t offset = 0;
+    for (std::size_t i = 0; i < built->size(); ++i) {
+        Programme state;
+        state.channel_offset = offset;
+        for (const auto& sub : (*built)[i]) {
+            state.substreams.emplace_back(sub);
+            state.channel_count +=
+                static_cast<std::size_t>(state.substreams.back().channel_count());
         }
-    }
-    // The substreams have controllers of their own, but this class always
-    // supplies the words explicitly, so those never advance. These are the
-    // ones that run.
-    const bool dual_mono = config_.independent.acmod == Acmod::kDualMono;
-    if (config_.independent.drc) {
-        range_.emplace(*config_.independent.drc, config_.independent.sample_rate);
-    }
-    // Ch2's controller is built from drc2/heavy2, never drc/heavy - see
-    // ac3::FrameEncoder::FrameEncoder for why.
-    if (dual_mono && config_.independent.drc2) {
-        range2_.emplace(*config_.independent.drc2, config_.independent.sample_rate);
-    }
-    if (config_.independent.heavy) {
-        heavy_.emplace(*config_.independent.heavy, config_.independent.sample_rate);
-    }
-    if (dual_mono && config_.independent.heavy2) {
-        heavy2_.emplace(*config_.independent.heavy2, config_.independent.sample_rate);
+        offset += state.channel_count;
+        // The substreams have controllers of their own, but this class always
+        // supplies the words explicitly, so those never advance. These are the
+        // ones that run - one set per programme, since dialnorm and the §7.7
+        // words are what a programme IS levelled by.
+        const FrameConfig& lead =
+            i == 0 ? config.independent : config.additional[i - 1].independent;
+        const bool dual_mono = lead.acmod == Acmod::kDualMono;
+        if (lead.drc) {
+            state.range.emplace(*lead.drc, lead.sample_rate);
+        }
+        // Ch2's controller is built from drc2/heavy2, never drc/heavy - see
+        // ac3::FrameEncoder::FrameEncoder for why.
+        if (dual_mono && lead.drc2) {
+            state.range2.emplace(*lead.drc2, lead.sample_rate);
+        }
+        if (lead.heavy) {
+            state.heavy.emplace(*lead.heavy, lead.sample_rate);
+        }
+        if (dual_mono && lead.heavy2) {
+            state.heavy2.emplace(*lead.heavy2, lead.sample_rate);
+        }
+        programmes_.push_back(std::move(state));
     }
 }
 
 int AccessUnitEncoder::channel_count() const {
     int total = 0;
-    for (const auto& sub : substreams_) {
-        total += sub.channel_count();
+    for (const auto& programme : programmes_) {
+        for (const auto& sub : programme.substreams) {
+            total += sub.channel_count();
+        }
     }
     return total;
 }
 
 std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
     std::span<const std::span<const float>> channels, AuxPayload aux) {
-    if (substreams_.empty()) {
+    if (programmes_.empty()) {
         // The constructor rejected the layout; re-run it for the real reason.
-        const auto subs = substream_configs(config_);
-        return std::unexpected(subs ? FrameError::kInvalidSubstream : subs.error());
+        const auto built = access_unit_configs(config_);
+        return std::unexpected(built ? FrameError::kInvalidSubstream : built.error());
     }
     assert(static_cast<int>(channels.size()) == channel_count());
 
-    // One measurement for the whole access unit, taken on the independent
-    // substream's channels - they come first, and they are a self-sufficient
-    // rendering of the programme.
-    const auto independent_count =
-        static_cast<std::size_t>(substreams_.front().channel_count());
-    const auto independent_fbw =
-        static_cast<std::size_t>(fullbw_channel_count(config_.independent.acmod));
-    const FrameMetadata metadata =
-        derive_metadata(config_.independent, std::span{tail_}.first(independent_fbw),
-                        channels.first(independent_count), range_, heavy_, &range2_, &heavy2_);
-    // substream_configs required every substream to share one numblkscod, so
-    // the independent's own is every substream's - and hence the access
-    // unit's real sample count, kSamplesPerFrame only at the default.
-    const int frame_samples =
-        blocks_per_syncframe(config_.independent.numblkscod) * kSamplesPerBlock;
-    for (std::size_t ch = 0; ch < independent_fbw; ++ch) {
-        for (int n = 0; n < kSamplesPerBlock; ++n) {
-            tail_[ch][static_cast<std::size_t>(n)] = static_cast<double>(
-                channels[ch][static_cast<std::size_t>(frame_samples - kSamplesPerBlock + n)]);
-        }
-    }
-
+    // §8.2: the object metadata rides in the last substream of the FIRST
+    // programme, so a decoder has that whole programme in hand before it
+    // reads it - see build_silent_access_unit's declaration.
+    const std::size_t aux_at = programmes_.front().substreams.size() - 1;
     AccessUnit unit;
-    std::size_t taken = 0;
-    for (auto& sub : substreams_) {
-        const auto count = static_cast<std::size_t>(sub.channel_count());
-        // §8.2: the object metadata rides in the LAST substream of the access
-        // unit, so a decoder has the whole programme in hand before it reads it.
-        const bool carries_aux = &sub == &substreams_.back();
-        const auto frame = sub.encode_frame(channels.subspan(taken, count), metadata,
-                                            carries_aux ? aux : AuxPayload{});
-        if (!frame) {
-            return std::unexpected(frame.error());
+    std::size_t index = 0;
+    for (auto& programme : programmes_) {
+        const FrameConfig& lead = programme.substreams.front().config();
+        // One measurement per PROGRAMME, taken on its own independent
+        // substream's channels - they come first within the programme, and
+        // they are a self-sufficient rendering of it.
+        const auto independent_count =
+            static_cast<std::size_t>(programme.substreams.front().channel_count());
+        const auto independent_fbw =
+            static_cast<std::size_t>(fullbw_channel_count(lead.acmod));
+        const auto own = channels.subspan(programme.channel_offset, programme.channel_count);
+        const FrameMetadata metadata = derive_metadata(
+            lead, std::span{programme.tail}.first(independent_fbw),
+            own.first(independent_count), programme.range, programme.heavy, &programme.range2,
+            &programme.heavy2);
+        // programme_configs required every substream of THIS programme to
+        // share one numblkscod, so the independent's own is every one of its
+        // substreams' - and hence this programme's real sample count,
+        // kSamplesPerFrame only at the default.
+        const int frame_samples = blocks_per_syncframe(lead.numblkscod) * kSamplesPerBlock;
+        for (std::size_t ch = 0; ch < independent_fbw; ++ch) {
+            for (int n = 0; n < kSamplesPerBlock; ++n) {
+                programme.tail[ch][static_cast<std::size_t>(n)] =
+                    static_cast<double>(own[ch][static_cast<std::size_t>(
+                        frame_samples - kSamplesPerBlock + n)]);
+            }
         }
-        taken += count;
-        unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
-        unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
+
+        std::size_t taken = 0;
+        for (auto& sub : programme.substreams) {
+            const auto count = static_cast<std::size_t>(sub.channel_count());
+            const auto frame = sub.encode_frame(own.subspan(taken, count), metadata,
+                                                index == aux_at ? aux : AuxPayload{});
+            if (!frame) {
+                return std::unexpected(frame.error());
+            }
+            taken += count;
+            ++index;
+            unit.substream_bytes.push_back(static_cast<std::uint32_t>(frame->size()));
+            unit.bytes.insert(unit.bytes.end(), frame->begin(), frame->end());
+        }
     }
     return unit;
 }

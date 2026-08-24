@@ -229,7 +229,16 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool r
 // frame so dependent-substream frames are still decoded (consuming their own
 // overlap-add state and catching any parse error) even though this only ever
 // measures what comes back independent.
-std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream) {
+// §E2.3.1.2: one programme is measured. A second independent substream is a
+// different piece of audio - a commentary, a second language - levelled to
+// its own dialnorm, so folding it into the same BS.1770 meter would report a
+// loudness neither programme has. `current_programme` tracks the last
+// independent substream's own id seen while walking frames in order, because
+// a DEPENDENT substream's own substreamid numbers in its parent's space
+// (§E2.3.1.2) and says nothing about which programme it belongs to -
+// adjacency to the independent substream it follows is the only thing that
+// does.
+std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, int programme) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
@@ -248,12 +257,28 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream) {
     std::optional<ac3::meta::LoudnessMeter> meter;
     std::optional<ac3::meta::LoudnessMeter> meter_ch1;
     std::optional<ac3::meta::LoudnessMeter> meter_ch2;
+    // The programme the substream CURRENTLY being ingested belongs to - the
+    // last independent substream's own id, which a following dependent
+    // inherits by adjacency (its own substreamid numbers in its parent's
+    // space and says nothing on its own - see this function's own comment).
+    // -1 until the first independent substream arrives, which a legal stream
+    // always leads with.
+    int current_programme = -1;
 
     // Shared by the main decode loop below and the end-of-stream flush() -
     // both hand this a released, independent-or-dependent DecodedSubstream;
-    // only an independent one is ever measured (see this function's own
-    // comment above).
+    // only an independent one of the SELECTED programme is ever measured (see
+    // this function's own comment above).
     auto ingest = [&](const ac3::DecodedSubstream& sub) {
+        if (sub.strmtyp != ac3::eac3::StreamType::kDependent) {
+            current_programme = sub.substreamid;
+        }
+        if (current_programme != programme) {
+            // Neither this programme's own frames, nor a hint about them:
+            // a dependent belonging to another programme entirely is not
+            // "this programme's bed hiding something".
+            return;
+        }
         if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
             // Decoded (above) so its overlap-add state advances and its parse
             // errors still surface, but never measured here - and remembered,
@@ -318,7 +343,8 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream) {
     }
 
     if (!have_first) {
-        fmt::println(stderr, "error: no independent substream frames");
+        fmt::println(stderr, "error: no independent substream frames for programme {}",
+                     programme);
         return std::nullopt;
     }
     // have_first is checked just above and only ingest() sets it, in the same
@@ -371,7 +397,13 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream) {
 // so there is no rendered program to meter. run_levels_eac3 above makes the
 // same trade for the same reason, and a stream that never turns the tool on -
 // which is every stream this project encodes - never holds anything back.
-std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stream) {
+// `programme` selects the same way measure_qc_eac3_bed's own does, but the
+// work is already done: decode_access_unit skips a unit belonging to another
+// programme before any decoding at all (Eac3Decoder's own doc comment), so
+// there is no adjacency to track here the way the raw-syncframe bed pass
+// needs - one DecoderConfig::programme setting is the whole of it.
+std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stream,
+                                                 int programme) {
     const auto units = ac3::split_access_units(stream);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
@@ -379,7 +411,7 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     }
     // Heap-allocated for the same PREfast C6262 reason measure_qc_eac3_bed
     // gives above.
-    auto decoder = std::make_unique<ac3::Eac3Decoder>();
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{.programme = programme});
     QcResult result;
     result.codec_label = "E-AC-3";
     result.unit_label = "access unit(s)";
@@ -415,7 +447,7 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
                 // fields the assembled DecodedAccessUnit does not have, so
                 // measuring 1+1 from here would silently report Ch2's
                 // metadata as absent.
-                auto bed = measure_qc_eac3_bed(stream);
+                auto bed = measure_qc_eac3_bed(stream, programme);
                 if (bed) {
                     // Still what layout=rendered was asked for, and the same
                     // answer it would have produced; nothing went unmeasured,
@@ -578,13 +610,30 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
 // E-AC-3's own level report. The rendered layout is a chanmap rather than an
 // acmod, so it cannot go through LevelMeter's Table 5.8 naming; the figures
 // still come from ac3::analysis, so a level reads the same here as anywhere.
-int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path) {
-    const auto units = ac3::split_access_units(stream);
+int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
+                    std::optional<int> want_programme) {
+    const auto ids = ac3::programme_ids(stream);
+    if (!ids || ids->empty()) {
+        fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+        return 1;
+    }
+    // §E2.3.1.2: levels are per programme. Two independent substreams are two
+    // separate pieces of audio, so one set of per-channel figures across both
+    // would describe neither.
+    const auto programme = ac3cli::choose_programme(*ids, want_programme);
+    if (!programme) {
+        return 1;
+    }
+    const auto units = ac3::split_access_units(stream, *programme);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return kExitInput;
     }
-    ac3::Eac3Decoder decoder;
+    if (ids->size() > 1) {
+        fmt::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
+                     ac3cli::format_programme_ids(*ids));
+    }
+    ac3::Eac3Decoder decoder{{.programme = programme}};
     std::vector<ac3::analysis::ChannelSummary> totals;
     ac3::DecodedAccessUnit first{};
     for (const auto& unit : *units) {
@@ -699,8 +748,53 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 
 }  // namespace
 
+std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream) {
+    const auto bsid = ac3::stream_bsid(stream);
+    if (!bsid) {
+        fmt::println(stderr, "error: too short to hold a syncframe");
+        return std::nullopt;
+    }
+    // The same two measurement passes `qc layout=bed` (the default, and what
+    // this measured before that option existed) runs, which is the point: a
+    // stream's loudness must not depend on which command asked.
+    std::optional<QcResult> result;
+    if (*bsid > 8) {
+        // §E2.3.1.2: measures the first programme the stream carries, the
+        // same default `run_qc`'s own want_programme=std::nullopt case picks
+        // via choose_programme - a caller of this function has no programme
+        // to name, so there is no "which one did you mean" to ask.
+        const auto ids = ac3::programme_ids(stream);
+        if (!ids || ids->empty()) {
+            return std::nullopt;
+        }
+        result = measure_qc_eac3_bed(stream, ids->front());
+    } else {
+        result = measure_qc_ac3(stream, false);
+    }
+    if (!result) {
+        return std::nullopt;
+    }
+    StreamLoudness out;
+    for (const auto& programme : result->programmes) {
+        if (programme.label == "Ch1") {
+            out.ch1_lkfs = programme.integrated_lkfs;
+        } else if (programme.label == "Ch2") {
+            out.ch2_lkfs = programme.integrated_lkfs;
+        } else {
+            out.integrated_lkfs = programme.integrated_lkfs;
+        }
+    }
+    // Dual mono has no whole-programme figure of its own; Ch1's is what a
+    // caller wanting "the" loudness of such a stream means, and reporting it
+    // here keeps every caller from having to special-case the layout.
+    if (!out.integrated_lkfs) {
+        out.integrated_lkfs = out.ch1_lkfs;
+    }
+    return out;
+}
+
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout) {
+           bool rendered_layout, std::optional<int> want_programme) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
@@ -711,10 +805,29 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
-    const auto result = *bsid > 8
-                            ? (rendered_layout ? measure_qc_eac3_rendered(stream)
-                                               : measure_qc_eac3_bed(stream))
-                            : measure_qc_ac3(stream, rendered_layout);
+    std::optional<QcResult> result;
+    if (*bsid > 8) {
+        // §E2.3.1.2: one programme is measured - see measure_qc_eac3_bed's own
+        // ingest() for why folding two into one meter reports a loudness
+        // neither of them has.
+        const auto ids = ac3::programme_ids(stream);
+        if (!ids || ids->empty()) {
+            fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+            return 1;
+        }
+        const auto programme = ac3cli::choose_programme(*ids, want_programme);
+        if (!programme) {
+            return 1;
+        }
+        if (ids->size() > 1) {
+            fmt::println("qc: programme {} of {} ({})", *programme, ids->size(),
+                         ac3cli::format_programme_ids(*ids));
+        }
+        result = rendered_layout ? measure_qc_eac3_rendered(stream, *programme)
+                                 : measure_qc_eac3_bed(stream, *programme);
+    } else {
+        result = measure_qc_ac3(stream, rendered_layout);
+    }
     if (!result) {
         return kExitInput;
     }
@@ -744,7 +857,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
 
 // What is actually in a file, channel by channel — the answer both front ends
 // are built to show, without having to encode anything to get it.
-int run_levels(std::string_view in_path) {
+int run_levels(std::string_view in_path, std::optional<int> want_programme) {
     const auto bytes = read_all(in_path);
     if (bytes.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
@@ -760,7 +873,7 @@ int run_levels(std::string_view in_path) {
         // turn a wider syntax away at - bsid only decides which reader runs.
         const auto bsid = ac3::stream_bsid(bytes);
         if (bsid && *bsid > 8) {
-            return run_levels_eac3(bytes, in_path);
+            return run_levels_eac3(bytes, in_path, want_programme);
         }
         const auto frames = ac3::split_frames(bytes);
         if (!frames || frames->empty()) {

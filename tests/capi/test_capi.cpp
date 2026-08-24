@@ -930,6 +930,7 @@ TEST_CASE("every ac3forge status code carries its own message", "[capi]") {
                                            AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS,
                                            AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL,
                                            AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO,
+                                           AC3FORGE_ERROR_ENCODE_INVALID_BSI,
                                            AC3FORGE_ERROR_DECODE_TRUNCATED,
                                            AC3FORGE_ERROR_DECODE_BAD_SYNC_WORD,
                                            AC3FORGE_ERROR_DECODE_BAD_CRC,
