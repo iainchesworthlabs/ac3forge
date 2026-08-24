@@ -195,6 +195,27 @@ struct ScannedStream {
     // still carry one: the core cannot, but its dependents can, and that is
     // where a legacy-core Atmos delivery actually puts it.
     std::optional<int> oba_complexity_index = std::nullopt;
+
+    // The stream's rendered channel LOCATIONS as one ATSC A/52-2018 Table
+    // E2.5 custom-channel-map word: bit 0 (Left) in the most significant bit
+    // through bit 15 (LFE) in the least, six of the sixteen naming a PAIR
+    // rather than one channel (see ac3::eac3::chanmap). `channels` above is
+    // this word's channel count and nothing more - the scan already unions
+    // the independent substream's acmod/lfeon with every dependent's own
+    // chanmap to compute it (§E3.8.2), so keeping the word itself costs
+    // nothing and answers questions a bare count cannot: which locations,
+    // not how many.
+    //
+    // For AC-3 there are no dependents to union, so this is just acmod/lfeon
+    // expressed in the same vocabulary. 1+1 (dual mono) has no Table E2.5
+    // location at all - Ch1/Ch2 are independent programmes rather than
+    // directions - and stands in as Left|Right there, the same placeholder
+    // ac3::eac3::chanmap::acmod_map() already uses for the channel count's
+    // sake.
+    //
+    // Written for ac3::io::dash_channel_configuration() (ac3/io/dec3.hpp),
+    // whose DASH AudioChannelConfiguration @value IS this word in hex.
+    std::uint16_t channel_map = 0;
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<ScannedStream, ScanError> scan(

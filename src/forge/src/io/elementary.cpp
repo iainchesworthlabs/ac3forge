@@ -418,6 +418,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         return std::unexpected(ScanError::kEmpty);
     }
     out.channels = eac3::chanmap::channel_count(locations);
+    out.channel_map = locations;
     return out;
 }
 
@@ -541,6 +542,7 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
         return std::unexpected(ScanError::kEmpty);
     }
     out.channels = eac3::chanmap::channel_count(locations);
+    out.channel_map = locations;
     return out;
 }
 
