@@ -448,7 +448,7 @@ jobs:
         run: |
           "run-clang-tidy-${LLVM_VERSION}" -j "$(nproc)" -p build/config-linux-llvm-debug \
             -warnings-as-errors='*' \
-            '(src/(forge|matroska)|apps/cli)/.*\.cpp'
+            '(src/(forge|matroska|mp4|mpegts)|apps/cli)/.*\.cpp'
 
   # ac3tests coverage over every library component: src/forge plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
