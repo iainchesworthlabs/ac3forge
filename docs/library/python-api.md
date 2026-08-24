@@ -134,6 +134,16 @@ Table E2.5 channel-map machinery (`chanmap`, `location_map()`, `layout`) is like
 beyond the convenience `channel_labels` list above — deliberately unsupported for now, the same
 "say so and say why" convention `CONTRIBUTING.md` asks of the C++ side itself, not a silent gap.
 
+`ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
+export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
+here either, and that is a decision rather than an omission: the shape of the type is expected to
+move when a live position source lands (roadmap `UX4`, which is why `SceneCursor` exists), and
+this surface is a candidate for the coming API freeze, where an experimental type would be a
+lasting commitment. Exposing half of it - the serialisation without the type, say - would be
+worse than exposing none, because a caller would get a scene it could load and not evaluate.
+Read and write the JSON form from the host language and hand the resulting placements to the
+encoder entry points above until the type settles.
+
 ---
 
 See also: [Encoding AC-3](encoding-ac3.md), [Decoding](decoding.md),

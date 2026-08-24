@@ -28,6 +28,7 @@
 #include "mp4/mp4.hpp"
 #include "mp4/reader.hpp"
 #include "mpegts/mpegts.hpp"
+#include "mpegts/reader.hpp"
 #include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 
@@ -329,7 +330,7 @@ namespace {
 // as it is to have no extension at all, and the failure a wrong guess
 // produces ("no EBML header") reads like a corrupt file rather than like the
 // wrong parser - so the name is never consulted.
-enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4 };
+enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4, kMpegTs };
 
 // EBML's own magic: the four bytes of the EBML header id every Matroska and
 // WebM file opens with - the same kEbmlHeader constant
@@ -355,6 +356,42 @@ constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "
     return std::ranges::find(kIsobmffLeadingTypes, type) != kIsobmffLeadingTypes.end();
 }
 
+// A transport stream has no header at all - it is a bare repeating grid of
+// 188-byte packets, each starting with 0x47, and a capture may begin
+// anywhere in it. So the test is the grid itself: a sync byte that recurs at
+// one of the three strides in the wild (188, M2TS's 192, or 204 with parity)
+// several times over. A lone 0x47 proves nothing; five in a row exactly a
+// stride apart is not a coincidence.
+//
+// Checked LAST, after the two formats that do have magic: an MP4 or Matroska
+// file can easily contain a 0x47 pattern by chance somewhere in its audio,
+// and the grid test is the loosest of the three.
+constexpr std::array<std::size_t, 3> kTsStrides{188, 192, 204};
+constexpr int kTsSyncRuns = 5;
+
+[[nodiscard]] bool has_ts_packet_grid(std::span<const std::byte> head) {
+    for (std::size_t at = 0; at < head.size(); ++at) {
+        if (std::to_integer<std::uint8_t>(head[at]) != 0x47) {
+            continue;
+        }
+        for (const auto stride : kTsStrides) {
+            int seen = 1;
+            for (int i = 1; i < kTsSyncRuns; ++i) {
+                const std::size_t next = at + (stride * static_cast<std::size_t>(i));
+                if (next >= head.size() ||
+                    std::to_integer<std::uint8_t>(head[next]) != 0x47) {
+                    break;
+                }
+                ++seen;
+            }
+            if (seen >= kTsSyncRuns) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 ContainerKind sniff_container(std::span<const std::byte> head) {
     if (head.size() >= kEbmlMagic.size() &&
         std::equal(kEbmlMagic.begin(), kEbmlMagic.end(), head.begin())) {
@@ -362,6 +399,9 @@ ContainerKind sniff_container(std::span<const std::byte> head) {
     }
     if (has_isobmff_box_at_start(head)) {
         return ContainerKind::kMp4;
+    }
+    if (has_ts_packet_grid(head)) {
+        return ContainerKind::kMpegTs;
     }
     return ContainerKind::kUnknown;
 }
@@ -401,7 +441,8 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     if (kind == ContainerKind::kUnknown) {
         fmt::println(
             stderr,
-            "error: {} is not a container this build reads (expected Matroska/WebM or MP4)",
+            "error: {} is not a container this build reads (expected Matroska/WebM, MP4 or "
+            "MPEG-2 Transport Stream)",
             in_path);
         return 1;
     }
@@ -433,7 +474,8 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     std::uint32_t sample_rate = 0;
     int channels = 0;
     int status = 0;
-    const auto drive = [&]<typename Reader, typename Describe>(Reader reader, Describe describe) {
+    const auto drive = [&]<typename Reader, typename Describe>(Reader& reader,
+                                                               Describe describe) {
         for (auto bytes = first; !bytes.empty(); bytes = read_chunk()) {
             const auto pushed = reader.push(bytes, on_frame);
             if (!pushed) {
@@ -445,20 +487,47 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
                 return;
             }
         }
-        const auto finished = reader.finish();
+        // mpegts::Reader::finish() takes the callback and the other two do
+        // not, because only a transport stream can have a packet that ends
+        // at end-of-input (the unbounded PES length form). The difference is
+        // real, so it is dispatched on rather than papered over.
+        const auto finished = [&] {
+            if constexpr (requires { reader.finish(on_frame); }) {
+                return reader.finish(on_frame);
+            } else {
+                return reader.finish();
+            }
+        }();
         if (!finished) {
             status = fail(describe(finished.error()));
             return;
         }
-        codec_id = reader.track().codec_id;
-        sample_rate = reader.track().sample_rate;
-        channels = reader.track().channels;
+        if (write_failed) {
+            status = fail("write failed");
+            return;
+        }
     };
 
     if (kind == ContainerKind::kMatroska) {
-        drive(matroska::Reader{}, [](matroska::DemuxError e) { return matroska::describe(e); });
+        matroska::Reader reader{};
+        drive(reader, [](matroska::DemuxError e) { return matroska::describe(e); });
+        codec_id = std::string{reader.track().codec_id};
+        sample_rate = reader.track().sample_rate;
+        channels = reader.track().channels;
+    } else if (kind == ContainerKind::kMp4) {
+        mp4::Reader reader{};
+        drive(reader, [](mp4::DemuxError e) { return mp4::describe(e); });
+        codec_id = reader.track().codec_id;
+        sample_rate = reader.track().sample_rate;
+        channels = reader.track().channels;
     } else {
-        drive(mp4::Reader{}, [](mp4::DemuxError e) { return mp4::describe(e); });
+        mpegts::Reader reader{};
+        drive(reader, [](mpegts::DemuxError e) { return mpegts::describe(e); });
+        // A transport stream's PMT names the codec but carries no sample
+        // rate or channel count - those live in the bitstream, which this
+        // command deliberately never looks inside. Reported as absent
+        // rather than guessed.
+        codec_id = reader.stream().eac3 ? "E-AC-3" : "AC-3";
     }
     if (status != 0) {
         return status;
@@ -475,9 +544,17 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
 
     // The container declares the codec; this command never looks inside an
     // access unit, which is exactly why it can hand one back untouched.
-    fmt::println(status_stream(out_path),
-                 "wrote {} access units ({}, {} Hz, {} channels, {} bytes) to {}", sink.frames(),
-                 codec_id, sample_rate, channels, sink.total_bytes(), out_path);
+    if (sample_rate != 0) {
+        fmt::println(status_stream(out_path),
+                     "wrote {} access units ({}, {} Hz, {} channels, {} bytes) to {}",
+                     sink.frames(), codec_id, sample_rate, channels, sink.total_bytes(),
+                     out_path);
+    } else {
+        // MPEG-TS: the container named the codec and nothing else. 'probe'
+        // or 'levels' on the result reads the rest off the bitstream.
+        fmt::println(status_stream(out_path), "wrote {} PES payloads ({}, {} bytes) to {}",
+                     sink.frames(), codec_id, sink.total_bytes(), out_path);
+    }
     return 0;
 }
 

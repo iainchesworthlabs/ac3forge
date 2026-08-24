@@ -211,7 +211,7 @@ def cmd_extract(out_root: pathlib.Path, streams: list[pathlib.Path]) -> int:
     written = {kind: {} for kind in dirs}
     for path in streams:
         stream = path.read_bytes()
-        taken = {kind: 0 for kind in dirs}
+        taken = dict.fromkeys(dirs, 0)
         for frame in syncframes(stream):
             if all(count >= per_stream_cap for count in taken.values()):
                 break

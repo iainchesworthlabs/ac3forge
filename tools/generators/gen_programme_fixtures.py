@@ -118,41 +118,41 @@ NORMALISE_PEAK = 0.7079
 CORPUS_VERSION = 1
 
 SOURCES = [
-    dict(
-        fixture="programme_speech_stereo.flac",
-        source_file="speech_src.flac",
-        source_sha256="6397603f159f0cf9d3b24053021aa9684fb7fbc93ce098fa9c49222044abb0b4",
-        source_url="https://upload.wikimedia.org/wikipedia/commons/0/04/"
-                   "Sally_Mann_at_VMFA_2024-12-05.flac",
-        source_page="https://commons.wikimedia.org/wiki/File:Sally_Mann_at_VMFA_2024-12-05.flac",
-        title="Sally Mann at VMFA, 2024-12-05",
-        licence="CC0-1.0",
-        licence_url="https://creativecommons.org/publicdomain/zero/1.0/",
-        attribution="Not required (CC0). Recorded and dedicated to the public "
-                    "domain by the Wikimedia Commons uploader.",
-        kind="speech",
-        start_s=0.5,
-        duration_s=30.0,
-    ),
-    dict(
-        fixture="programme_music_stereo.flac",
-        source_file="music_src.m4a",
-        source_sha256="4f8142ddba00a498625bfc456d2ff027e35837e51574ee7f2b570cb44be23776",
-        source_url="https://archive.org/download/MusopenKickstarterRecordingsLossless/"
-                   "Musopen%20DVD%20%28lossless%29.zip/"
-                   "Musopen%20DVD%20%28lossless%29%2FMendelssohn%20-%20Italian%20Symphony%2F"
-                   "Symphon%20No.%204%20in%20A%20Major%2C%20Op.%2090%20%27Italian%27%20-%20"
-                   "IV.%20Saltarello%20%28Presto%29.m4a",
-        source_page="https://archive.org/details/MusopenKickstarterRecordingsLossless",
-        title="Mendelssohn, Symphony No. 4 'Italian', IV. Saltarello (Presto)",
-        licence="CC0-1.0",
-        licence_url="https://creativecommons.org/publicdomain/zero/1.0/",
-        attribution="Not required (CC0). Musopen Kickstarter recordings, "
-                    "dedicated to the public domain by Musopen.",
-        kind="music",
-        start_s=30.0,
-        duration_s=30.0,
-    ),
+    {
+        "fixture": "programme_speech_stereo.flac",
+        "source_file": "speech_src.flac",
+        "source_sha256": "6397603f159f0cf9d3b24053021aa9684fb7fbc93ce098fa9c49222044abb0b4",
+        "source_url": "https://upload.wikimedia.org/wikipedia/commons/0/04/"
+                      "Sally_Mann_at_VMFA_2024-12-05.flac",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Sally_Mann_at_VMFA_2024-12-05.flac",
+        "title": "Sally Mann at VMFA, 2024-12-05",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Not required (CC0). Recorded and dedicated to the public "
+                       "domain by the Wikimedia Commons uploader.",
+        "kind": "speech",
+        "start_s": 0.5,
+        "duration_s": 30.0,
+    },
+    {
+        "fixture": "programme_music_stereo.flac",
+        "source_file": "music_src.m4a",
+        "source_sha256": "4f8142ddba00a498625bfc456d2ff027e35837e51574ee7f2b570cb44be23776",
+        "source_url": "https://archive.org/download/MusopenKickstarterRecordingsLossless/"
+                      "Musopen%20DVD%20%28lossless%29.zip/"
+                      "Musopen%20DVD%20%28lossless%29%2FMendelssohn%20-%20Italian%20Symphony%2F"
+                      "Symphon%20No.%204%20in%20A%20Major%2C%20Op.%2090%20%27Italian%27%20-%20"
+                      "IV.%20Saltarello%20%28Presto%29.m4a",
+        "source_page": "https://archive.org/details/MusopenKickstarterRecordingsLossless",
+        "title": "Mendelssohn, Symphony No. 4 'Italian', IV. Saltarello (Presto)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Not required (CC0). Musopen Kickstarter recordings, "
+                       "dedicated to the public domain by Musopen.",
+        "kind": "music",
+        "start_s": 30.0,
+        "duration_s": 30.0,
+    },
 ]
 
 # The synthetic fixtures are listed in the manifest too. They are not produced
@@ -162,14 +162,14 @@ SOURCES = [
 # regenerated with a different RNG and quietly shifting every historical
 # trend number out from under the series it belongs to.
 SYNTHETIC = [
-    dict(fixture="reference_51.wav", kind="synthetic",
-         generator="tools/generators/gen_gold_reference_wav.py",
-         note="sin()/pseudo-random noise/boxcar FIR; flat noise plateau above "
-              "12 kHz - see this file's own module docstring."),
-    dict(fixture="reference_stereo.wav", kind="synthetic",
-         generator="tools/generators/gen_stereo_reference_wav.py",
-         note="sin()/pseudo-random noise/boxcar FIR; flat noise plateau above "
-              "12 kHz - see this file's own module docstring."),
+    {"fixture": "reference_51.wav", "kind": "synthetic",
+     "generator": "tools/generators/gen_gold_reference_wav.py",
+     "note": "sin()/pseudo-random noise/boxcar FIR; flat noise plateau above "
+             "12 kHz - see this file's own module docstring."},
+    {"fixture": "reference_stereo.wav", "kind": "synthetic",
+     "generator": "tools/generators/gen_stereo_reference_wav.py",
+     "note": "sin()/pseudo-random noise/boxcar FIR; flat noise plateau above "
+             "12 kHz - see this file's own module docstring."},
 ]
 
 
@@ -182,12 +182,12 @@ SYNTHETIC = [
 # regenerating it silently would move a published floor - so it is in the
 # manifest too, hashed but with no audio parameters to check.
 BITSTREAMS = [
-    dict(fixture="reference_51_eac3_448k_cplbndstrce0.ec3", kind="bitstream",
-         note="FFmpeg-encoded from reference_51.wav: `ffmpeg -y -i "
-              "tests/golden/audio/reference_51.wav -c:a eac3 -b:a 448k <out>` "
-              "(ffmpeg 8.0.1). Confirmed to set cplbndstrce == 0 with cplbegf == 12 "
-              "in every block - see tools/checks/verify_gold_reference.sh for why "
-              "cplbegf != 0 matters here."),
+    {"fixture": "reference_51_eac3_448k_cplbndstrce0.ec3", "kind": "bitstream",
+     "note": "FFmpeg-encoded from reference_51.wav: `ffmpeg -y -i "
+             "tests/golden/audio/reference_51.wav -c:a eac3 -b:a 448k <out>` "
+             "(ffmpeg 8.0.1). Confirmed to set cplbndstrce == 0 with cplbegf == 12 "
+             "in every block - see tools/checks/verify_gold_reference.sh for why "
+             "cplbegf != 0 matters here."},
 ]
 
 
@@ -200,7 +200,10 @@ def sha256_of(path: Path) -> str:
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # check=False, then the explicit returncode test below: the raise has to
+    # carry the command line and the captured stderr, which CalledProcessError
+    # alone would not put in the CI log.
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
 

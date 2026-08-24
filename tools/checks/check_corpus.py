@@ -105,7 +105,7 @@ def main() -> int:
             continue
         try:
             facts = flac_streaminfo(path) if path.suffix == ".flac" else wav_facts(path)
-        except Exception as exc:  # noqa: BLE001 - report, don't abort the whole sweep
+        except Exception as exc:  # report, don't abort the whole sweep
             failures.append(f"{entry['fixture']}: could not read audio parameters ({exc})")
             continue
         channels, rate, bits, frames = facts
