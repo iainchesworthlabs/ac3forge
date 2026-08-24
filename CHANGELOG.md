@@ -14,6 +14,30 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **Encoder/decoder latency budget** (`PF6`). `ac3/latency.hpp`'s `LatencyBudget` reports frame
+  granularity, MDCT/IMDCT overlap, encoder lookahead and the E-AC-3 §3.7 decoder hold-back as
+  sample counts, via `latency()`/`latency_samples()` on `ac3::FrameEncoder`,
+  `ac3::eac3::FrameEncoder`, `ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder`, and
+  `latency_samples()` on both decoders. AC-3/E-AC-3 is 1792 samples (37.33 ms at 48 kHz); an
+  Atmos object waveform costs the §7.1 QMF filterbank's own delay on top (832 samples of
+  transform delay against the bed's 256), because JOC reconstruction pulls objects back out of
+  the decoded bed in a 64-band complex QMF domain rather than the MDCT's.
+  Measured end to end in `tests/decoder/test_latency.cpp`, not merely asserted from the
+  arithmetic. Exposed through the C API (`ac3forge_encoder_latency()` /
+  `ac3forge_encoder_latency_samples()` and the decoder/Atmos/bed equivalents) and Python
+  (`FrameEncoder.latency`, `.latency_samples`). See
+  [docs/library/encoding-ac3.md](docs/library/encoding-ac3.md#latency).
+- **Minimum-footprint decoder profile** (`PF7`). `-DAC3FORGE_MINIMAL_DECODER=ON` builds a single
+  decode-only static library (`ac3::forge_minimal`) with no exceptions, no RTTI and no
+  direct-form transform tables - 1.81 MiB of `.bss` the fast-path-only build does not carry, at
+  the cost of `DecoderConfig::fast_imdct = false` returning `DecodeError::kUnsupported` in this
+  profile. `apps/baremetal`'s probe cross-compiles it for `arm-none-eabi` and runs it on QEMU's
+  `mps2-an385` (Cortex-M3, no OS): 354,060 bytes of image, 242,986 bytes of peak heap, decoding
+  real 5.1 AC-3 and E-AC-3 to the same levels as a host build. A new CI leg
+  (`build-footprint`) runs it on every push. Two requirements are not yet met and are recorded
+  as gaps rather than half-enforced: zero heap traffic in the decode loop (today's steady state
+  is 45-85 allocations/frame) and a float32-only internal path. See
+  [docs/building.md](docs/building.md#minimum-footprint-decoder-profile).
 - **A documented CLI exit-code scheme, per-command help, a man page and shell completions**
   (roadmap IO8). `ac3cli` is positioned as a pipeline tool, but every failure path returned `1`,
   so a script could not tell a usage error from a missing input file, a full disk, an absent

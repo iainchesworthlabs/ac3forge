@@ -498,4 +498,8 @@ ac3forge_status_t ac3forge_stream_bsid(const uint8_t* frame, size_t frame_size, 
     });
 }
 
+int ac3forge_eac3_decoder_latency_samples(const ac3forge_eac3_decoder_t* decoder) {
+    return decoder == nullptr ? 0 : decoder->impl.latency_samples();
+}
+
 }  // extern "C"

@@ -772,14 +772,24 @@ directory; there is still no threading anywhere in the codec core.
   reassociating them would change the reference path's numbers), a WASM `simd128` directory (no
   `emsdk` on this session's machine to verify one against, and WASM reaches `generic` — a complete
   and correct scalar implementation — until then), and AVX2/NEON-wider dispatch.
-- [ ] **PF6 (M)** — A latency budget: document end-to-end encoder latency (lookahead, transient
-  detection, tpn hold-back), expose it (`ac3forge_encoder_latency_samples()`), and make EQ11's
-  short syncframes the low-latency mode. The first question an engine or conferencing integrator
-  asks.
-- [ ] **PF7 (L)** — A minimum-footprint decoder profile: static allocation only, no heap in the
-  decode loop, an explicit table ROM budget, a `-fno-exceptions`/no-RTTI audit, a float32 path,
-  and a cross-compiled no-OS CI leg (`arm-none-eabi` under QEMU). The memory programme cut decode
-  bytes per frame by more than half; this is the next step for set-top and DSP ports.
+- [x] **PF6 (M)** — A latency budget: documented end-to-end encoder latency (frame
+  granularity, MDCT/IMDCT overlap, lookahead, the §3.7 hold-back) in `ac3/latency.hpp`, measured
+  it empirically (`tests/decoder/test_latency.cpp`: an impulse and a tone burst through a real
+  encode→decode, located by peak and by cross-correlation), and exposed it -
+  `latency()`/`latency_samples()` on every encoder, `latency_samples()` on both decoders,
+  `ac3forge_encoder_latency_samples()` in the C API, `FrameEncoder.latency` in Python. An Atmos
+  object waveform's own term is `joc::reconstruction_delay(joc_domain)` — 832 samples end to end
+  with the default QMF reconstruction, not a flat multiple of the MDCT overlap. EQ11's
+  short syncframes (the low-latency mode this was meant to document) have not landed - the
+  E-AC-3 latency section names the 512-1024-sample figures they would enable and says so.
+- [x] **PF7 (L)** — A minimum-footprint decoder profile: `AC3FORGE_MINIMAL_DECODER` builds a
+  decode-only `ac3::forge_minimal` with no exceptions, no RTTI and no direct-form transform
+  tables (an explicit 1.81 MiB ROM budget, measured on the object file), proven on a
+  cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`, `build-footprint`) that decodes
+  real AC-3/E-AC-3 to the host build's own levels in 354 KB of image and 243 KB of peak heap.
+  Two requirements are recorded as open gaps rather than half-enforced: zero heap traffic in the
+  decode loop (today: 45-85 allocations/frame) and a float32-only internal path - see
+  `docs/building.md`'s Gaps section.
 - [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
   `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
   forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.

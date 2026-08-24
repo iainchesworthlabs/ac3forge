@@ -137,6 +137,14 @@ cmake --build --preset build-linux-llvm-tsan -- -k 0
 ctest --preset test-linux-llvm-tsan
 ```
 
+There is also a `minimal-decoder` fragment and the three configure/build presets that inherit
+it — `config-arm-none-eabi-minimal`, `config-linux-gcc-minimal`, `config-linux-llvm-minimal`.
+They are not part of the table above because they do not build the project: they build roadmap
+PF7's decode-only library and its probe, and nothing else. The arm one does not inherit `core`
+either — there is no vcpkg triplet for bare-metal arm and nothing that profile builds has a
+third-party dependency, the same reasoning the Emscripten preset follows. See
+[Minimum-footprint decoder profile](#minimum-footprint-decoder-profile).
+
 There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-coverage` /
 `test-linux-gcc-coverage`, the same shape as the asan-ubsan one: an instrumented variant of
 `linux-gcc`, Debug-only, not a platform/compiler pair. It inherits a `coverage` fragment setting
@@ -245,6 +253,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_TRACY` | `OFF` | Tracy profiler instrumentation (`ac3::tracy` — see `cmake/Tracy.cmake`). Needs vcpkg's `profiling` manifest feature (`-DVCPKG_MANIFEST_FEATURES=profiling`), which supplies Tracy itself; off is a no-op. |
 | `AC3FORGE_BUILD_FUZZERS` | `OFF` | Build the libFuzzer harnesses under `fuzz/`. Clang only (GCC and MSVC ship no libFuzzer); use `fuzz/run.sh` rather than this option directly — it configures a dedicated `build/fuzz` with the right compiler. See [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md). |
+| `AC3FORGE_MINIMAL_DECODER` | `OFF` | Build **only** `ac3::forge_minimal`: one decode-only static library with no exceptions, no RTTI and no direct-form transform tables, for a target with a few hundred kilobytes of RAM and no operating system. Not a "build X too" option — it replaces what `src/forge` builds, and configure fails with a list if any component that needs the full library is still on. GCC/Clang only. See [Minimum-footprint decoder profile](#minimum-footprint-decoder-profile). |
 
 Building the library and CLI alone, with neither Qt nor vcpkg involved:
 
@@ -255,6 +264,94 @@ cmake --preset config-windows-msvc-debug -DAC3FORGE_BUILD_GUI=OFF -DAC3FORGE_BUI
 The vcpkg toolchain file is still referenced by the preset, so `VCPKG_ROOT` must still point
 at a checkout — it simply has nothing to install. To build with no vcpkg at all, configure
 without the preset and pass the generator and build type by hand.
+
+## Minimum-footprint decoder profile
+
+Roadmap PF7. The next users of the decoder are set-top boxes, receivers and DSP ports, and what
+they need is not a claim about being small but a build that is small, a target it demonstrably
+runs on, and a number that stops moving quietly.
+
+```bash
+# Cross-compile for arm-none-eabi and run on QEMU's mps2-an385 (Cortex-M3, no OS)
+tools/checks/run_baremetal_probe.sh
+
+# The same profile natively, no emulator
+tools/checks/run_baremetal_probe.sh --host
+```
+
+Both go through the presets, which you can also drive directly:
+`config-arm-none-eabi-minimal` / `build-arm-none-eabi-minimal`, and
+`config-linux-gcc-minimal` / `config-linux-llvm-minimal` for the host.
+
+### What the profile changes
+
+| | Effect |
+|---|---|
+| Decode-only sources | The encoder, the container writers, WAV I/O, the analysis/QC layers and the object *encoder* are not compiled. `src/forge/minimal.cmake` lists what is, with a line on why each file is reachable from a decode. |
+| No direct-form transform tables | `src/core/transform/stub/` replaces `.../reference/`, removing **1,900,544 bytes of `.bss`** — the four (k, n) matrices §8.2.3.2's forward MDCT and §7.9.4.2 step 3's inverse sums need. |
+| `-fno-exceptions -fno-rtti` | The codec's own error mechanism is `std::expected` throughout, so there is nothing of its own to disable. |
+| `-ffunction-sections -fdata-sections`, `--gc-sections` | An integrator linking a subset pays for a subset. |
+
+That table's second row is the profile's largest single win and its only behavioural difference.
+Measured with `dumpbin /HEADERS` over `mdct.cpp.obj`:
+
+| Table | Bytes | Used by |
+|---|---|---|
+| `ForwardCosTable<512>` | 1,048,576 | Direct-form forward MDCT, long — encode only |
+| `ForwardCosTable<256>` × 2 | 524,288 | Direct-form forward MDCT, the two short halves — encode only |
+| `InnerSumTable` | 262,144 | Direct-form inverse, long — decode |
+| `InnerSumPairTable` | 65,536 | Direct-form inverse, short — decode |
+| **Total** | **1,900,544** | |
+| *(every table the fast paths need)* | *~12,600* | |
+
+They are lazily *constructed* but statically *allocated*: the linker reserves that storage
+whether or not any of them is ever built. Leaving them out means `DecoderConfig::fast_imdct =
+false` returns `DecodeError::kUnsupported` in this profile rather than being silently served by
+the fast path — that switch exists so a caller can validate against the arithmetic the spec
+writes down, and substituting a different arithmetic would defeat its only purpose.
+
+### The probe
+
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of real 5.1 AC-3 (448
+kbit/s, coupling) and E-AC-3 (384 kbit/s, AHT + spx + coupling), compares every channel's level
+against `apps/baremetal/fixture.hpp`, and prints `key=value` lines that
+`tools/checks/run_baremetal_probe.sh` gates on. It is not a unit test — the profile requires
+`AC3FORGE_BUILD_TESTS=OFF`, since nothing under `tests/` builds against a decode-only archive —
+and it answers three questions a test could not: does the archive link with everything else
+absent, does it produce the right audio on a 32-bit soft-float target, and what did it cost.
+Regenerate its fixture with
+`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`.
+
+The measured numbers are in [the footprint table](performance-trend.md#minimum-footprint-decoder).
+CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`).
+
+### Gaps
+
+Three of PF7's requirements are not met, and are recorded here rather than half-enforced.
+
+**No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
+(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
+the probe uses) and it leaks nothing, but the steady state is **45 allocations per frame for
+AC-3 and 85 for E-AC-3**, from the per-block geometry vectors inside the decoders and the
+`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
+those becoming fixed-capacity storage, which changes the public types — a design change, not a
+build option. The runner gates the number at 100 so the distance from zero cannot grow while the
+gap is open.
+
+**A float32-only path — not met.** The decoder's *output* is already `float`, but every
+intermediate — the transform, the coefficients, the coupling coordinates — is `double`. A
+float32 internal path would change every gold-reference number in
+[the quality trend](quality-trend.md) and needs its own oracle run to establish that the change
+is acceptable, so it is a project of its own rather than a flag. What the profile does instead is
+prove the `double` path works without hardware floating point: the Cortex-M3 target has no FPU,
+so every one of those operations is software-emulated, and the decoded levels still match the
+host build.
+
+**`-fno-exceptions` removes the tables, not the throw sites.** The codec has no `throw`, `try` or
+`catch` of its own. What remains is the standard library's: `std::vector`'s `length_error` and
+`bad_alloc`, which under `-fno-exceptions` become `std::terminate`. That is the correct behaviour
+for a decoder that has run out of memory on a device with no swap, but it is termination rather
+than a return, and closing it properly is the same design change as the heap gap above.
 
 ## Building on Linux
 

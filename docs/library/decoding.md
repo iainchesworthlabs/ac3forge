@@ -537,6 +537,48 @@ units needs its own redundancy or retransmission above this layer. What this API
 that *finding* the next good boundary never depends on the previous one having decoded cleanly,
 and, with concealment on, that a unit missing only some of its substreams still renders.
 
+## Latency, from the decoder's side
+
+The chain's whole budget is on [the AC-3 encoding page](encoding-ac3.md#latency). What matters
+here is the part a decoder controls, which is smaller than it looks:
+
+| | Adds |
+|---|---|
+| `ac3::FrameDecoder::latency_samples()` | **0**, always. |
+| `ac3::Eac3Decoder::latency_samples()` | **0**, or one frame (1536) once §3.7 engages. |
+
+`FrameDecoder`'s zero is structural rather than lucky: `decode_frame` returns a frame's full
+1536 samples per channel from the same call that supplies that frame's bytes. The IMDCT overlap
+those samples came out of is real, but it is already charged as the chain's transform term — the
+samples the decoder hands back are simply 256 samples *older* than the newest input the encoder
+had consumed, not samples it is still waiting for.
+
+`Eac3Decoder`'s exception is transient pre-noise processing. A §3.7 correction reaches backwards
+across a frame boundary, so the decoder returns frame N−1 from the call that supplies frame N;
+`decode_substream`/`decode_access_unit` return `std::nullopt` on the one call where nothing is
+ready yet, and `flush()` collects whatever is still pending at end of stream. That is a *release*
+delay, not a sample-domain shift — the audio comes out in the same place in the stream, one call
+later — so a caller that honours the `std::nullopt` convention and calls `flush()` gets exactly
+the same samples in exactly the same order either way.
+
+`latency_samples()` reports what has actually happened so far, so it reads 0 until some
+substream's frame sets `transproce`. To size buffers *before* a stream starts, ask the encoder
+(`eac3::eac3_latency`), which knows from its configuration whether the tool will ever be used.
+
+### Atmos objects lag the bed
+
+One number an object-aware receiver needs and would not guess: a JOC-reconstructed object
+waveform lags its original input by **832** samples, not 256. JOC does not code objects — it
+codes a matrix that pulls them back out of the *decoded bed*, and TS 103 420 §7.1 puts that
+reconstruction in a 64-band complex QMF filterbank rather than the MDCT domain — a critically
+sampled real transform relies on time-domain alias cancellation between neighbouring blocks, an
+assumption a per-frame matrix breaks (see `ac3/dsp/qmf.hpp`). Analysis plus synthesis costs the
+filterbank's own `dsp::kQmfDelay` (576 samples) on top of the bed's 256, for 832 total. The bed
+in the same `DecodedAccessUnit` still lags by 256, so **objects and bed are not aligned with each
+other** — anything mixing the two has to delay the bed by 576 samples. `oba::AtmosEncoder::latency()`
+reports the object path's budget and `bed_latency()` the bed's; the 832 is measured end to end in
+[`tests/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/decoder/test_latency.cpp).
+
 ## Streams with more than one programme
 
 §E2.3.1.2 allows eight independent substreams (I0–I7) in one elementary stream, and broadcast
@@ -603,5 +645,7 @@ manifest of what each exercises, for checking an independent implementation.
 ---
 
 See also: [Encoding AC-3](encoding-ac3.md) and [Encoding E-AC-3](encoding-eac3.md) — what
-`decode_frame`/`decode_access_unit` are undoing; [Muxing & sinks](muxing-and-sinks.md) — pairing
-`ac3::io::scan` with `matroska::mux` is what keeps a container's track header honest.
+`decode_frame`/`decode_access_unit` are undoing, and the full latency budget;
+[Muxing & sinks](muxing-and-sinks.md) — pairing `ac3::io::scan` with `matroska::mux` is what
+keeps a container's track header honest; [Building](../building.md) — the minimum-footprint
+decoder profile for set-top and DSP targets.

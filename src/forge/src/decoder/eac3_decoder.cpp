@@ -28,6 +28,7 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/internal/profile.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -830,6 +831,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // previous frame's state out of a call that decoded nothing.
     if (config_.syntax != nullptr) {
         config_.syntax->reset();
+    }
+    // The direct-form (reference) transform is a CMake-selected translation
+    // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
+    // tables out of the build (roadmap PF7; src/core/reference_transform.hpp).
+    // Asking for it there is refused rather than silently served by the fast
+    // path: fast_imdct == false exists so a caller can validate against the
+    // arithmetic the spec writes down, and substituting a different one would
+    // defeat the only reason to set it. Constant-folded away in every ordinary
+    // build, where kReferenceTransformAvailable is true.
+    if (!config_.fast_imdct && !internal::kReferenceTransformAvailable) {
+        return std::unexpected(DecodeError::kUnsupported);
     }
     if (frame.size() < 8) {
         return std::unexpected(DecodeError::kTruncated);
@@ -2784,6 +2796,21 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         return std::optional<DecodedSubstream>(std::nullopt);
     }
     return std::optional<DecodedSubstream>(std::move(out));
+}
+
+int Eac3Decoder::latency_samples() const {
+    // A slot holds a value exactly while that substream identity is one frame
+    // behind (see decode_substream's hold-back), so "any slot pending" IS
+    // "this decoder is currently a frame late". pending_au_parts_ is not
+    // consulted: it holds results already RELEASED by decode_substream and
+    // only waiting on a sibling identity, so whatever delay it represents is
+    // the pending_ slot of that sibling, already counted here.
+    for (const auto& slot : pending_) {
+        if (slot.has_value()) {
+            return kSamplesPerFrame;
+        }
+    }
+    return 0;
 }
 
 std::vector<DecodedSubstream> Eac3Decoder::flush() {
