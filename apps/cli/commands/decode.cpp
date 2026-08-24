@@ -119,6 +119,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         {.drc_scale = meta.drc_scale,
          .fast_imdct = meta.fast_imdct,
          .heavy_compression = meta.p.heavy.has_value(),
+         .joc_domain = meta.joc_domain,
          .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly

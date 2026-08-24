@@ -2213,7 +2213,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     joc_slot = std::make_unique<joc::ReconstructionState>();
                 }
                 out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
-                                                    /*fast_mdct=*/false, config_.fast_imdct);
+                                                    /*fast_mdct=*/false, config_.fast_imdct,
+                                                    config_.joc_domain);
             }
         }
     }

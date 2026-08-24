@@ -114,6 +114,23 @@ struct DecoderConfig {
     // dynrng for any syncframe that carries no compr, so this composes with
     // drc_scale rather than replacing it.
     bool heavy_compression = false;
+    // Which domain JOC object reconstruction applies §6.6.6's matrix in.
+    // joc::Domain::kQmf is what the clause describes and what a licensed
+    // decoder runs: §7.1's 64-band complex QMF, ac3::dsp::QmfAnalysis.
+    // joc::Domain::kMdctBand is the cheaper approximation over 256 MDCT
+    // bins that predates this tree having a filterbank at all - correct
+    // only for a stream whose matrix was estimated the same way, which in
+    // practice means one this project's own encoder produced with
+    // AtmosConfig::joc_domain to match. Note the two domains do not have
+    // the same latency: object audio lags the bed by
+    // joc::reconstruction_delay(domain), 256 samples against 576.
+    //
+    // Default kQmf: it is both what the clause says and, measured, the
+    // cheaper of the two here - 0.70 ms/frame against 0.88 for four
+    // objects, because the MDCT path's inverse is deliberately pinned to
+    // §7.9.4's direct form while the filterbank has only the one
+    // evaluation.
+    joc::Domain joc_domain = joc::Domain::kQmf;
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // The decoder's half of EncoderConfig::trace: when set, decode_frame()
     // records the same per-block, per-stream state it derived from the wire,

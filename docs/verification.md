@@ -103,6 +103,11 @@ That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same go
 by commit, on every push to `develop` and `main`, so a regression shows up as a trend line
 rather than only in that run's CI log.
 
+The object layer has its own series, [Object quality trend](object-quality-trend.md): a fixed
+five-object Atmos scene encoded and decoded by each build, one delay-compensated SNR/LSD/leakage
+row per object per rate. It is a self-consistency series throughout — see "Where the oracles
+don't reach" below for why no other kind is available.
+
 ## Performance and reference modes
 
 Both transform hot spots — the forward MDCT (§8.2.3.2) and the inverse transform's step-3
@@ -127,6 +132,13 @@ runs `tools/checks/verify_gold_reference.sh` twice — once as it stands, once w
 same real streams as the fast paths, and `tools/ci/run_codec_matrix.sh` carries `fast-mdct=off`
 and `fast-imdct=off` rows through the sanitizers. Without that, a change to a fast path could
 take its own reference with it and nothing outside the transform unit tests would notice.
+
+One nearby switch is deliberately **not** part of this pair: `joc-domain=qmf|mdct`, which selects
+where JOC's reconstruction matrix is estimated and applied. The two transforms above are the same
+answer computed two ways; the two JOC domains are different answers about 5 dB apart, so folding
+them into a speed preference would make `mode=performance` quietly pick the worse one. The default
+is already the domain TS 103 420 §6.6.6 states, so `mode=reference` has nothing to add either. See
+[Atmos & JOC](concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
 
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
@@ -154,6 +166,11 @@ build with libasound present; `ctest` runs whatever the configuration registered
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
+
+The three documented library examples (`wav_roundtrip`, `read_adm`, `encode_adm`) are each their
+own `ctest` case and write scratch files under a name unique to that run, not a fixed name in the
+OS temp directory — two checkouts running `ctest` at once would otherwise read and delete each
+other's fixture.
 
 ## Third-party bitstreams
 
@@ -275,6 +292,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
 | E-AC-3 with a second *independent* substream (two programmes) | no — and it poisons the first programme too | yes |
+| E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
@@ -363,6 +381,18 @@ a normal-rate stream from this encoder without issue. `fscod2` appears to be a c
 own reference implementation does not support it. So the coded audio is verified only by this
 project's own encoder/decoder round trip and the independent Python parser
 (`tools/references/eac3_parse.py`).
+
+**Object decode has no external oracle at all, and for once that is not FFmpeg's gap alone.**
+FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
+bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
+own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+plays them as the bed too. Nothing outside this repository can currently produce an independent
+object decode of an ac3forge stream, which makes this the one layer where even the partial
+oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
+resolution: [Object quality trend](object-quality-trend.md) scores each of a fixed scene's five
+objects, per commit, at two rates. The same caveat as `ecpl`/`tpn` applies with full force — a
+defect the encoder and decoder share is invisible to it.
 
 **Containers and manifests are checked externally where a reader exists, and only there.**
 `mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode

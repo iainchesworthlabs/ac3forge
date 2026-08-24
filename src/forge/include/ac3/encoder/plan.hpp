@@ -373,6 +373,7 @@ struct Plan {
 enum class PlanError : std::uint8_t {
     kLayoutNeedsEac3,      // an immersive layout (or channel selection) asked of AC-3
     kBitrateNotLegal,      // AC-3 takes only the 19 Table 5.18 rates
+    kBitrateNotFramable,   // E-AC-3: a substream's frame size does not fit frmsiz's 11 bits
     kNoSourceLayout,       // no standard speaker layout has that many channels
     kInvalidChannels,      // custom_locations is not a channel selection allocate() can satisfy
     kSampleRateNeedsEac3,  // fscod2 (24/22.05/16 kHz) asked of AC-3, which has no such field
@@ -385,7 +386,11 @@ enum class PlanError : std::uint8_t {
 // set, else channel_plan_for(layout). Every function below that consumes a
 // Plan's channels goes through this, so a custom selection and a named
 // layout are built exactly the same way. Assumes `plan` already passed
-// validate(), the way ac3_config/eac3_config already assume a valid bitrate.
+// validate(), the way ac3_config/eac3_config already assume a valid bitrate -
+// with the one deliberate exception validate() itself makes, which calls
+// eac3_config() (and so this) to reach the per-substream rates it has to
+// check. That call is made only after the channel checks have passed, so what
+// it resolves is always a selection allocate() could satisfy.
 [[nodiscard]] AC3FORGE_EXPORT ChannelPlan resolve(const Plan& plan);
 
 // AC-3 only; the caller has already checked carries(). Coupling comes from
@@ -410,6 +415,13 @@ enum class PlanError : std::uint8_t {
 // programme does not know its own id until it is placed.
 [[nodiscard]] AC3FORGE_EXPORT eac3::ProgrammeConfig eac3_programme(const Plan& plan);
 
+// The one diagnosis every front end shares: std::nullopt if this plan is one
+// the encoders can actually be built from, else the first thing wrong with
+// it, ready for describe(). Worth asking BEFORE constructing an encoder from
+// ac3_config/eac3_config: a config either of those produces from a plan this
+// refuses is one no encoder can report on, because a constructor has nowhere
+// to return a verdict to. eac3::AccessUnitEncoder's simply builds no
+// substreams, which leaves its channel_count() at zero.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<PlanError> validate(const Plan& plan);
 
 // --- routing a source onto a plan -------------------------------------------
