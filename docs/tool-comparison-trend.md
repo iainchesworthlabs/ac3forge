@@ -23,10 +23,12 @@ choosing between, which is what makes the cost of each one legible here.
 It carries `vs_ffmpeg`/`vs_dee` columns —
 the delta against the committed baseline's numbers for the *same* leg — that
 the other rows don't, since only `landscape` has a matching external number
-to compare against. A leg whose DEE score is still marked unverified in
+to compare against. A leg whose DEE score is marked unverified in
 [`tests/golden/external-baseline/manifest.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/golden/external-baseline/manifest.json)
 (see that file's own header) shows no `vs_dee` value rather than one
-computed against a number that was never real.
+computed against a number that was never real. No leg is unverified at
+baseline version 2 — the two 5.1 legs that used to be are fixed — but rows
+recorded against an earlier baseline keep the gap they were recorded with.
 
 Same two-tier regression check as [Quality trend](quality-trend.md): a soft
 one (0.5 dB below the trailing 10-run mean for the same leg/variant/branch)
@@ -40,9 +42,17 @@ that produced it — after the numbers are still recorded here. See
 Listening Quality Objective) in audio mode, 1 (bad) to a ceiling around 4.75,
 via the `visqol-python` package (see `perceptual_score()` in
 `tools/ci/quality_race.py` for why ViSQOL over PEAQ and why that package
-specifically). It's read-only here — no regression check, unlike SNR — and
-shows `-` on any row a CI run produced without `visqol-python` installed in
-that job's environment, not a real zero score.
+specifically). It has a **soft** regression tier of its own — 0.15 below the
+trailing 10-run mean warns, and nothing about MOS ever fails a run. That
+asymmetry is deliberate: ViSQOL predicts a listening-test result rather than
+measuring the signal, it is scored on a bounded window where SNR spans the
+whole fixture, and it is bounded above at ~4.75 so it has nothing like SNR's
+dynamic range. `MOS_REGRESSION_DROP` carries the reasoning and the measured
+number behind 0.15.
+
+Rows older than 2026-08-23 show `-` for MOS, on every leg and every variant.
+That is not a zero score: CI did not install `visqol-python` until then, so
+the column was never populated. Rows from that point on carry real numbers.
 
 <div id="tool-trend-app">
   <p class="tool-trend-status">Loading trend data…</p>
@@ -92,7 +102,16 @@ that job's environment, not a real zero score.
   const REGRESSION_WINDOW = 10;
   const REGRESSION_DROP_DB = 0.5;
   const TABLE_ROWS = 40;
-  const LEGS = ["ac3-51-448", "eac3-stereo-192", "eac3-51-256"];
+  // Mirrors tools/ci/quality_race.py's TREND_LEGS, in the same order. Legs
+  // added at baseline version 2 have no history before that, so their series
+  // simply start where they start rather than being back-filled. The three
+  // programme_* legs are measured on real speech and music; the reference_*
+  // ones on the synthesized fixtures the first baseline used, which is why
+  // both kinds are here and neither replaced the other - see
+  // tools/generators/README.md.
+  const LEGS = ["ac3-51-448", "eac3-stereo-192", "eac3-51-256",
+                "eac3-stereo-96", "eac3-stereo-64",
+                "ac3-music-stereo-192", "eac3-music-stereo-96", "eac3-speech-stereo-64"];
   // Every variant tools/ci/quality_race.py's `trend` mode can emit - see
   // EAC3_VARIANTS/EAC3_SELF_VARIANTS there. AC-3's only row is "landscape"
   // (no tool tokens exist for it); the others simply never appear for that
@@ -528,12 +547,14 @@ collapsed to its latest commit by default to keep it from crowding `main`
 out, and a 🏷 badge marking a row whose commit was tagged as a release.
 
 **vs FFmpeg** / **vs DEE** are only populated on `landscape` rows — the
-delta between this build's own `all`-tools E-AC-3 encode (or AC-3's
+delta between this build's own `auto`-tools E-AC-3 encode (or AC-3's
 automatic-everything encode) and the corresponding tool's number in the
 checked-in [external baseline](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/golden/external-baseline/manifest.json)
 for that same leg, at the `baseline_version` recorded alongside it. A blank
-cell on a `landscape` row means that leg's DEE score is still marked
-unverified in the baseline manifest, not that the delta was zero.
+`vs DEE` cell on a `landscape` row means that leg's DEE score is marked
+unverified in the baseline manifest, not that the delta was zero — at
+baseline version 2 that is the two 64 kbit/s stereo legs, where DEE simply
+cannot encode: its stereo Dolby Digital Plus rate range starts at 96.
 
 ## Where the data lives
 

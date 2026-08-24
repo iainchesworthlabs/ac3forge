@@ -107,9 +107,35 @@ because it isn't a platform/compiler pair but an instrumented variant of `linux-
 which inherits `linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
 `AC3FORGE_SANITIZERS=address,undefined` (see `cmake/Sanitizers.cmake`; MSVC is rejected outright,
 so this only exists for GCC/Clang). See [Verified configuration](#verified-configuration) for what CI says
-about all seventeen. There are also eight `ci-<platform>` `workflowPresets` (Release except for the
-asan-ubsan one, which is Debug-only) that chain configure→build→test in one
-`cmake --workflow --preset ci-windows-msvc` call; that is exactly what CI itself runs.
+about all eighteen. There are also nine `ci-<platform>` `workflowPresets` (Release except for the
+two sanitizer ones and the coverage one, which are Debug-only) that chain
+configure→build→test in one `cmake --workflow --preset ci-windows-msvc` call; that is exactly
+what CI itself runs.
+
+There is an eighteenth trio, the ThreadSanitizer sibling of the pair above:
+`config-linux-llvm-tsan` / `build-linux-llvm-tsan` / `test-linux-llvm-tsan`, inheriting
+`linux-llvm` plus a `sanitize-tsan` fragment setting `AC3FORGE_SANITIZERS=thread`. It is a
+separate preset rather than more entries in the ASan/UBSan list because the two runtimes are
+mutually exclusive — Clang refuses `-fsanitize=address,thread` outright — and because they
+answer different questions: ASan/UBSan ask whether one thread's memory and arithmetic are sound,
+TSan asks whether two threads agree on who owns what. Nothing else in this repository can see a
+data race, and `src/audio` is a lock-free SPSC ring, a silence watchdog and a clock-drift servo
+shared between a real-time callback thread and the encoder thread.
+
+Its test preset runs only the `concurrency` ctest label — `tests/audio/` plus
+`tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
+times slower and the rest of the suite is single-threaded codec maths. The label comes from the
+Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)` in `tests/CMakeLists.txt`),
+so `ctest -L ring`, `-L encoder` and the rest work the same way. `tsan.supp` at the repository
+root holds the suppressions, and is meant to stay near-empty; `ac3membench` is not built under
+this preset, because its global `operator new`/`delete` replacements collide with TSan's own
+runtime at link time.
+
+```bash
+cmake --preset config-linux-llvm-tsan
+cmake --build --preset build-linux-llvm-tsan -- -k 0
+ctest --preset test-linux-llvm-tsan
+```
 
 There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-coverage` /
 `test-linux-gcc-coverage`, the same shape as the asan-ubsan one: an instrumented variant of
@@ -117,22 +143,37 @@ There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-covera
 `AC3FORGE_ENABLE_COVERAGE=ON` (see `cmake/Coverage.cmake`, GCC/Clang's `--coverage` gcov
 instrumentation; other compilers just warn and skip it), `AC3FORGE_BUILD_ADM=ON` with vcpkg's
 `adm` feature (so the opt-in ADM pair — `ac3adm` and its bridge — is measured alongside the
-always-on seven), plus `AC3FORGE_BUILD_CLI=OFF` and `AC3FORGE_BUILD_EXAMPLES=OFF` — purely a
-build-time saving: `ac3cli` and the `examples/` executables would link fine against the
-instrumented libraries (the gcov runtime propagates to consumers automatically, see
-`cmake/Coverage.cmake`), but the report is filtered to the library components, so building them
-instrumented buys nothing. After `ctest`,
-`tools/checks/coverage_report.sh` (the same script `.github/workflows/ci.yml`'s `coverage` job runs)
-makes one `gcovr` extraction pass over every `src/` library component and then gates line *and*
-branch coverage per component — see the script's own floor table for the current thresholds and
-the measured baseline each was calibrated against:
+always-on seven) and `AC3FORGE_BUILD_CLI=ON`, since `apps/cli` is gated too. Only
+`AC3FORGE_BUILD_EXAMPLES` stays off, as a build-time saving: `examples/` is documentation that
+happens to compile, over an API surface `tests/` already covers, and each one is its own `ctest`
+process.
+
+Note that `ac3cli` has to link `ac3::coverage` itself (`apps/cli/CMakeLists.txt`) and not merely
+link an instrumented library. The gcov *runtime* propagates to consumers automatically, but
+`--coverage` is target-scoped at compile time — so without that link every `.cpp` under
+`apps/cli` compiles uninstrumented and emits no `.gcno` at all, which reads as *no data* rather
+than as low coverage. The same applies to any other executable added to the report later.
+
+After `ctest`, `tools/checks/coverage_report.sh` (the same script `.github/workflows/ci.yml`'s
+`coverage` job runs) makes one `gcovr` extraction pass and then gates line *and* branch coverage
+per component — the nine `src/` library components plus `apps/cli` — and prints a per-command
+breakdown of `apps/cli` below the gate, reported but not gated, so a thin command module shows as
+thin instead of averaging away inside the aggregate. See the script's own floor table for the
+current thresholds and the measured baseline each was calibrated against:
 
 ```bash
 cmake --preset config-linux-gcc-coverage
 cmake --build --preset build-linux-gcc-coverage -- -k 0
 ctest --preset test-linux-gcc-coverage -LE Performance
-./tools/checks/coverage_report.sh -g gcov-15
+./tools/checks/coverage_report.sh -g gcov-16
 ```
+
+`apps/gui` is deliberately absent from that report: instrumenting its C++ needs a Qt kit on the
+coverage leg, and no Linux CI leg installs one today. Its interactive surfaces are covered by
+`apps/gui/tests`' own Qt Quick suite, and its one Qt-free class (`RecordingSink`) is already in
+`ac3tests`. `python/` has its own floor instead, in `.github/workflows/wheels.yml`'s
+`python-coverage` job — `pytest --cov` against the built wheel; see that job's own comment for
+what a Python percentage does and does not measure when nearly all of the binding surface is C++.
 
 There is a seventeenth trio, `config-linux-llvm-shared` / `build-linux-llvm-shared` /
 `test-linux-llvm-shared`, same shape again: an instrumented variant of `linux-llvm`, Debug-only.
@@ -535,9 +576,13 @@ also runs clean headless (`QT_QPA_PLATFORM=offscreen`), encoding real audio and 
 real QML channel meters. See [Linux audio](#linux-audio) for what the ALSA verification did,
 and did not (real hardware), prove.
 
-linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, macos-llvm,
+linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan,
+linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/audio/` and the
+headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
+script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
+all three pinned in `requirements/requirements-lint.txt`),
 static-analysis (clang-tidy), coverage (`tools/checks/coverage_report.sh` over every `src/` library
-component, via `config-linux-gcc-coverage`),
+component *and* `apps/cli`, via `config-linux-gcc-coverage`),
 adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push, as does
 build-android (the Shield app's debug APK) — the four Linux build legs install the same
 Qt6/ALSA packages and build/smoke-test the GUI too. ffmpeg-validate is a
@@ -550,11 +595,18 @@ combination produces a *structurally correct* stream at all, plus a numeric fide
 the Annex E tool combinations the one fixed gold-reference sample does not itself exercise. No
 leg remains experimental.
 
-The coverage job gates line and branch coverage per library component, not as one blended
+The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
-floor was calibrated against, and why two components (`src/audio`'s device paths, `src/capi`'s
-E-AC-3 surface) are honestly floored low all live in `tools/checks/coverage_report.sh`, with the
-calibration history in the coverage job's own comment in `ci.yml`.
+floor was calibrated against, and why three components (`src/audio`'s device paths, `src/capi`'s
+E-AC-3 surface, `apps/cli`'s device-dependent command modules) are honestly floored low all live
+in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
+comment in `ci.yml`.
+
+On `pull_request` only, a `performance-compare` job builds `ac3bench`/`ac3kernelbench` at the
+merge base and at the PR head on one runner and posts a table of per-workload deltas to the job
+summary, using the same soft/hard tiers `tools/ci/append_performance_history.py` applies on
+merge. It is informational and never fails a build — the blocking performance checks remain
+`ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
 
 No macOS host exists for this project, so `config-macos-llvm`/`config-macos-llvm-debug` are only
 ever exercised by CI (`macos-latest`, Apple Silicon) — never locally. That CI leg is green:
@@ -626,45 +678,26 @@ CMake-substituted string, so a binary cannot claim a directory it was not built 
 
 **What is vectorised.** The kernels live once, in shared code, written against the two 128-bit
 types the header defines (`f64x2`, two doubles; `i32x4`, four 32-bit integers) — the directories
-carry the types, not three copies of an FFT:
+carry the types, not a copy of each kernel:
 
 | Kernel | Where | Note |
 |---|---|---|
-| radix-2 FFT butterflies | `src/forge/src/core/fft_radix2.hpp` | The hottest kernel in the codec — every fast MDCT and fast IMDCT is one call to it. Stages with `half >= 2` run two butterflies at a time; the `len = 2` stage stays scalar (its operands interleave rather than run contiguously, and ROADMAP PF4's radix-4 codelets remove the stage rather than vectorising it). A `generic` build runs the plain loop instead — see below. |
-| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT. Their memory access is strided, so the gather and scatter ends stay scalar and only the arithmetic goes two-wide. |
+| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT/DCT-IV core (`fft_kernel.hpp`, see the boundary note below). The core wants its input digit-reversed and returns its output in natural order, so the pre-twiddle gathers at stride ±2 and scatters to `bitrev[m]`, and the post-twiddle reads at stride +1 and scatters to stride ±2. Every gather and scatter stays scalar; only the arithmetic between them goes two-wide. |
+| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Both inverses' pre- and post-transform complex multiplies, same gather/scatter-around-the-core shape as above for the pre-twiddle, unit stride for the post-twiddle. |
 | analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. |
-| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Steps 2 and 4 of both inverses. |
 | `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. |
 | §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. |
 | `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. |
 
-**The `generic` build is not just "the same code without intrinsics".** The seam exports
-`arch::kHasSimd`, and the FFT butterfly reads it: with no vector unit it runs the plain reference
-loop rather than the two-wide one. That is a measurement, not tidiness. A manual two-wide unroll
-costs something when there is no vector instruction at the end of it — the compiler's own
-vectoriser is handed an interleaved access pattern to re-derive instead of a plain loop to
-analyse. Timed in one process, alternating between the two forms so host load cannot bias it:
-
-| | P = 64 | P = 128 | P = 512 |
-|---|---|---|---|
-| GCC 15.2, generic | 1.75× | 1.59× | 1.62× |
-| GCC 15.2, x86_64 | 1.71× | 1.56× | 1.75× |
-| Clang 21.1, generic | 1.16× | **0.71×** | **0.85×** |
-| Clang 21.1, x86_64 | 1.26× | 1.18× | 1.11× |
-
-(unrolled form relative to the plain loop; above 1.00 is faster). Neither form is right for "no
-SIMD" in general — Clang's vectoriser already handles the plain loop well and GCC's does not get
-it at all — which is exactly why the choice belongs to the architecture seam rather than to the
-kernel. Where there *is* a vector unit the intrinsics settle it and both compilers gain.
-
-The conservative branch is the one taken, and its cost is on the record: a GCC `generic` build
-forfeits that 1.6×. The platform that reaches `generic` automatically is WebAssembly, whose
-toolchain is Clang — the row that *loses* 29% on the unrolled form — and no configuration should
-end up slower than it was before the vector kernels existed. WASM would be better served by an
-arch directory of its own (`simd128` via `<wasm_simd128.h>`); that is follow-up work rather than
-part of this, since the only CI job that touches WASM builds it without running it. Only the
-butterfly reads `kHasSimd`: the other kernels are elementwise with no in-place read-modify-write,
-so the two-wide form is the same work either way.
+**The FFT/DCT-IV core itself is not part of this seam.** `src/forge/src/core/fft_kernel.hpp`
+(ROADMAP PF4) is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
+`log2(P)` is odd, trivial-twiddle elimination on its first stage, and the digit-reversal
+permutation folded into each caller's own input-producing loop rather than run as a pass of its
+own. That is an *algorithmic* speedup — fewer operations, not wider lanes — and it carries its
+own correctness argument in that header's comment, independent of the seam described here. The
+kernels this seam does vectorise sit around it: they gather from and scatter to its
+digit-reversed layout rather than to sequential slots, which is why their gather/scatter ends
+stay scalar even though the arithmetic between them is two-wide.
 
 **What is not, and why.** The direct-form (`mode=reference`) MDCT and IMDCT are dot products, and
 splitting a reduction into per-lane partial sums reassociates the additions — which changes the
@@ -684,9 +717,14 @@ not nearby ones. That matters more here than in most numerical code: encoded out
 function of those doubles, and a last-place difference in an MDCT coefficient sitting on a power
 of two moves an exponent, which is 6.02 dB.
 
-Two gates hold it. `tests/core/test_simd_kernels.cpp` compares each vector kernel against a scalar
-reference in the same binary and requires bit-for-bit equality, never a tolerance — on a `generic`
-build most of it is a tautology, on every other build it is the whole argument. Above it,
+Two gates hold it. `tests/core/test_simd_kernels.cpp` compares each seam *primitive* — `f64x2`/
+`i32x4` arithmetic, `round_ties_away`, `to_fixed25_block` — against a scalar reference in the same
+binary and requires bit-for-bit equality, never a tolerance; on a `generic` build most of it is a
+tautology, on every other build it is the whole argument. The kernels built from those primitives
+are composition, not new arithmetic, so they inherit the guarantee rather than needing their own
+bit-exact unit test — their correctness end to end is instead covered by
+`tests/core/test_mdct_fast.cpp`'s existing tolerance check against the direct-form oracle and by
+the corpus check below. Above it,
 `tools/ci/run_codec_matrix.sh` run against two builds differing only in `AC3FORGE_SIMD` must
 produce byte-identical output; that one covers restructuring the unit test cannot see:
 
@@ -727,7 +765,7 @@ three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compi
 package. The most likely remaining cause is aarch64's own compiled `libm` (glibc ships an
 architecture-specific `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean
 bit-identical machine code) producing different last-bit results in the transform twiddle tables
-(`kAnalysisWindow`, `Twiddles`, `FftRadix2Tables`) that are all built from `std::cos`/`std::sin` —
+(`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) that are all built from `std::cos`/`std::sin` —
 untested as of this change, and the natural next step.
 
 The flag stays pinned regardless of that result, for an unrelated and unconditional reason: it is

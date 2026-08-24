@@ -27,15 +27,21 @@
 // not have - see docs/building.md.
 //
 // WHY IT IS THIS SMALL. Every kernel that uses the seam lives ONCE, in
-// shared code (fft_radix2.hpp, mdct.cpp, bitalloc.cpp, exponents.cpp),
-// written against these types. The per-architecture directories carry the
-// type and its operations, not three copies of an FFT. That is what makes
-// the bit-exactness argument tractable: every operation below maps to a
-// single IEEE-754 add/subtract/multiply (or a single exact integer
-// operation) per lane, so a kernel written against f64x2 performs exactly
-// the operations, in exactly the order, that the scalar loop it replaced
-// performed - and tests/core/test_simd_kernels.cpp asserts that bit-for-bit
-// against a scalar reference kept beside each kernel.
+// shared code (mdct.cpp's dct4_scaled and IMDCT twiddle stages,
+// bitalloc.cpp's exponents_to_psd, exponents.cpp's to_fixed25_block,
+// fft.cpp's dft512 normalisation), written against these types. The
+// per-architecture directories carry the type and its operations, not a
+// copy of each kernel. That is what makes the bit-exactness argument
+// tractable: every operation below maps to a single IEEE-754
+// add/subtract/multiply (or a single exact integer operation) per lane, so
+// a kernel written against f64x2 performs exactly the operations, in
+// exactly the order, that the scalar loop it replaced performed -
+// tests/core/test_simd_kernels.cpp asserts that bit-for-bit for every
+// primitive here, and the kernels built from them inherit the guarantee
+// rather than needing their own bit-exact unit test (see that file's own
+// header comment). fft_kernel.hpp's radix-4 FFT/DCT-IV core (ROADMAP PF4)
+// is NOT part of this seam - it is an algorithmic change, not a
+// wider-lane one, and carries its own correctness argument.
 //
 // FUSED MULTIPLY-ADD is the one way that argument can fail, and it is
 // disabled project-wide rather than worked around here: the top-level
@@ -54,41 +60,6 @@ namespace ac3::internal::arch {
 // three directories it was built from, and printed by
 // tests/core/test_simd_kernels.cpp so a CI log does too.
 inline constexpr const char* kSimdName = "generic";
-
-// No vector unit behind the types below - they are plain scalar arithmetic.
-//
-// One kernel reads this and takes a different route because of it (see
-// fft_radix2.hpp): a MANUAL two-wide unroll is not free when there is no
-// vector instruction at the end of it. Measured on the radix-2 butterfly, in
-// one process alternating between the two forms so host load cannot bias it,
-// unrolled relative to plain:
-//
-//              P = 64   P = 128  P = 512
-//   GCC 15.2    1.75x    1.59x    1.62x
-//   Clang 21.1  1.16x    0.71x    0.85x
-//
-// The plain loop is something Clang's own vectoriser analyses cleanly and
-// the unrolled one is something it has to re-derive an interleaved access
-// pattern from; GCC's vectoriser never gets the plain loop at all. That is
-// not a "which compiler is better" observation - it is why the choice
-// belongs to the architecture seam rather than being baked into the kernel.
-//
-// This build takes the CONSERVATIVE branch, and the cost is on the record: a
-// GCC generic build forfeits that 1.6x. The platform that actually reaches
-// `generic` automatically is WebAssembly, whose toolchain is Clang - the
-// column that loses 29% on the unrolled form - and no configuration should
-// get SLOWER than it was before the vector kernels existed. A forced
-// -DAC3FORGE_SIMD=generic is a reproducibility comparison, where speed is
-// not the point. WASM would be better served by an arch directory of its own
-// (simd128 through <wasm_simd128.h>), which is follow-up work: there is no
-// emsdk on this machine to verify one against, and shipping untested
-// intrinsics for a platform whose only CI job builds without running would
-// be worse than the honest scalar path.
-//
-// Only the butterfly reads this. The other kernels are unconditional -
-// elementwise, no in-place read-modify-write, so the two-wide form is the
-// same work either way and nothing has an interleaved pattern to re-derive.
-inline constexpr bool kHasSimd = false;
 
 // Two IEEE-754 doubles. Deliberately an aggregate of two named scalars
 // rather than an array: the generic build is the reference the other two are

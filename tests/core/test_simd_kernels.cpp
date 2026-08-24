@@ -14,8 +14,6 @@
 #include "ac3/core/exponents.hpp"
 #include "ac3/internal/arch/simd.hpp"
 
-#include "fft_radix2.hpp"
-
 // ROADMAP PF5's correctness gate.
 //
 // The vector kernels in the codec core are written once, against the two
@@ -30,16 +28,28 @@
 // doubles; a last-place difference in an MDCT coefficient sitting on a power
 // of two moves an exponent, and an exponent is 6.02 dB.
 //
-// So this file compares each vector kernel against a scalar reference IN THE
-// SAME BINARY and requires bit-for-bit equality, never a tolerance. On a
-// generic build much of it is a tautology that costs a few milliseconds; on
-// the x86_64 and aarch64 builds - which is to say on every CI leg that is
-// not deliberately forced to generic - it is the whole argument.
+// This file checks the seam's PRIMITIVES (f64x2/i32x4 arithmetic,
+// round_ties_away, to_fixed25_block) against a scalar reference in the same
+// binary, bit-for-bit, never a tolerance - on a generic build that is a
+// tautology that costs a few milliseconds, on the x86_64 and aarch64 builds
+// it is the whole argument. The KERNELS built from those primitives
+// (mdct.cpp's dct4_scaled pre/post-twiddle loops, the IMDCT twiddle stages,
+// fft.cpp's dft512 normalisation, bitalloc.cpp's exponents_to_psd) are
+// composition, not new arithmetic, so they inherit that guarantee rather
+// than needing their own bit-exact unit test; their correctness is instead
+// covered end to end by tests/core/test_mdct_fast.cpp's existing tolerance
+// check against the direct-form oracle and by the cross-build corpus check
+// below.
 //
-// This is separate from, and weaker than, the cross-build check: two builds
-// differing only in AC3FORGE_SIMD encoding the corpus to byte-identical
-// streams. That one covers restructuring this file cannot see. Both are
-// described in docs/building.md.
+// The FFT/DCT-IV kernel itself (fft_kernel.hpp, ROADMAP PF4) is NOT part of
+// this seam: its radix-4 restructuring is an algorithmic change (fewer
+// operations), not a wider-lane one, and carries its own correctness
+// argument in that header's comment.
+//
+// The cross-build check - two builds differing only in AC3FORGE_SIMD
+// encoding the corpus to byte-identical streams - is separate from, and
+// stronger than, anything in this file: it covers restructuring a unit test
+// cannot see. Both are described in docs/building.md.
 
 namespace {
 
@@ -109,45 +119,6 @@ std::vector<double> adversarial_doubles() {
         v.push_back(scaled(rng));
     }
     return v;
-}
-
-// Pseudorandom complex data for the FFT comparisons, in the magnitude range
-// the pre-twiddle stage of a real transform hands the core.
-template <std::size_t P>
-void fill_random(std::array<double, P>& re, std::array<double, P>& im, std::uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<double> dist(-4.0, 4.0);
-    for (std::size_t i = 0; i < P; ++i) {
-        re[i] = dist(rng);
-        im[i] = dist(rng);
-    }
-}
-
-template <std::size_t P>
-void check_fft_bit_exact(std::uint64_t seed) {
-    static const ac3::internal::FftRadix2Tables<P> tables;
-    std::array<double, P> re{};
-    std::array<double, P> im{};
-    fill_random<P>(re, im, seed);
-    std::array<double, P> ref_re = re;
-    std::array<double, P> ref_im = im;
-
-    // fft_radix2_forward_vector, not fft_radix2_forward: the latter is the
-    // dispatcher, and on a generic build it forwards to the reference, which
-    // would make this compare a function with itself. Naming the vector form
-    // directly checks it on EVERY build - including the generic one, where it
-    // is not what the library runs but is still code that must be right if
-    // someone forces AC3FORGE_SIMD or ports the seam to a new architecture.
-    ac3::internal::fft_radix2_forward_vector<P>(tables, re, im);
-    ac3::internal::fft_radix2_forward_reference<P>(tables, ref_re, ref_im);
-
-    std::size_t mismatches = 0;
-    for (std::size_t k = 0; k < P; ++k) {
-        if (!same_bits(re[k], ref_re[k]) || !same_bits(im[k], ref_im[k])) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
 }
 
 }  // namespace
@@ -277,20 +248,5 @@ TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]"
         for (std::size_t i = 0; i < n; ++i) {
             CHECK(tail[i] == ac3::to_fixed25(values[i]));
         }
-    }
-}
-
-TEST_CASE("radix-2 FFT vector form is bit-identical to the scalar reference", "[simd]") {
-    // The three sizes the codec instantiates: P = 64 (the block-switched
-    // short transforms' DCT-IV core and their inverse), P = 128 (the long
-    // transform's, and the long inverse's), P = 512 (dft512, the enhanced
-    // coupling spectrum).
-    check_fft_bit_exact<64>(0x1111'2222'3333'4444ULL);
-    check_fft_bit_exact<128>(0x5555'6666'7777'8888ULL);
-    check_fft_bit_exact<512>(0x9999'AAAA'BBBB'CCCCULL);
-    // Repeat at P = 128 with several seeds: the butterfly's cancellation
-    // behaviour depends on the data, and one draw is one sample.
-    for (std::uint64_t seed = 1; seed <= 8; ++seed) {
-        check_fft_bit_exact<128>(seed * 0x9E37'79B9'7F4A'7C15ULL);
     }
 }

@@ -34,10 +34,6 @@ namespace ac3::internal::arch {
 
 inline constexpr const char* kSimdName = "aarch64-neon";
 
-// Real vector instructions behind every type below - see the generic
-// header for what reads this and why.
-inline constexpr bool kHasSimd = true;
-
 struct f64x2 {
     float64x2_t v;
 

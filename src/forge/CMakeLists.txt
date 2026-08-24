@@ -122,6 +122,7 @@ target_sources(forge_objects
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
         src/encoder/assignment.cpp
+        src/encoder/bandwidth.cpp
         src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
         src/encoder/eac3_tools.cpp
@@ -142,6 +143,11 @@ target_sources(forge_objects
         src/oba/joc.cpp
         src/oba/motion.cpp
         src/oba/oamd.cpp
+        src/oba/scene.cpp
+        src/oba/scene_json.cpp
+        src/oba/scene_text.cpp
+        src/quality/distortion.cpp
+        src/quality/perceptual.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/mirror.cpp
@@ -231,14 +237,10 @@ if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
 endif()
 target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
-
-# tests/CMakeLists.txt reads both of these: the arch directory so
-# test_simd_kernels.cpp sees the same simd.hpp the library was built with,
-# and src/core so it can include the internal transform headers whose
-# kernels it checks - the same white-box arrangement src/signing/src and
-# AC3FORGE_AUDIO_BACKEND_DIR already have there.
+# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
+# simd.hpp the library was built with - the same white-box arrangement
+# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
 set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
-set(AC3FORGE_CORE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/core" PARENT_SCOPE)
 # For the configure summary at the end of the top-level CMakeLists.txt.
 set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 

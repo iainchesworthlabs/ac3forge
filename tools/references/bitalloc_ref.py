@@ -27,7 +27,8 @@ from pathlib import Path
 # reference-implementation bucket) - it just also happens to be where the
 # shared table-extraction logic these two implementations both draw from lives.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "generators"))
-from gen_bitalloc_tables import parse_tables  # noqa: E402
+# (ruff exempts an import that follows a sys.path mutation, so no noqa is needed.)
+from gen_bitalloc_tables import parse_tables
 
 REPO = Path(__file__).resolve().parent.parent.parent
 OUT = REPO / "tests" / "golden" / "bitalloc_goldens.hpp"
@@ -224,7 +225,7 @@ def bit_alloc(exps, fscod, sdcycod, fdcycod, sgaincod, dbpbcod, floorcod,
 
 
 def main():
-    import random
+    import random  # noqa: PLC0415 - only this generator entry point needs it
 
     cases = []
 
@@ -343,7 +344,8 @@ def main():
     for (name, exps, fscod, csnr, fsnr, sd, fd, sg, db, fl, fg, bap,
          start, coupling, cplfleak, cplsleak, deltnseg, deltoffst, deltlen,
          deltba) in cases:
-        parts.append(f"    {{\"{name}\", {fscod}, {csnr}, {fsnr}, {sd}, {fd}, {sg}, {db}, {fl}, {fg},")
+        parts.append(f"    {{\"{name}\", {fscod}, {csnr}, {fsnr}, "
+                     f"{sd}, {fd}, {sg}, {db}, {fl}, {fg},")
         parts.append(f"     {arr(exps)},")
         parts.append(f"     {arr(bap)},")
         parts.append(f"     {len(exps)}, {start}, {'true' if coupling else 'false'}, "
