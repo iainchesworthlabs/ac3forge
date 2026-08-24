@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <charconv>
@@ -18,6 +19,7 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/qc.hpp"
 #include "ac3/oba/scene.hpp"
 
 // apps/cli/main.cpp compiles directly into the ac3cli executable, everything
@@ -1952,16 +1954,24 @@ TEST_CASE(
     const auto text = read_log(log);
     INFO(text);
 
-    for (const std::string_view name : {"ebu-r128-s2:", "atsc-a85:", "netflix:"}) {
-        CHECK(text.find(name) != std::string::npos);
+    // Every preset in ac3::meta::kQcPresetIds, not a hand-copied subset -
+    // preset=all promising "every one" and then silently skipping a row
+    // added later is exactly the failure this loop exists to catch.
+    std::vector<bool> verdicts;
+    for (const auto id : ac3::meta::kQcPresetIds) {
+        const auto heading = std::string{ac3::meta::qc_preset_name(id)} + ":";
+        INFO("preset " << heading);
+        const auto at = text.find(heading);
+        REQUIRE(at != std::string::npos);
+        const auto verdict = gate_verdict_after(text, at);
+        REQUIRE(verdict.has_value());
+        verdicts.push_back(*verdict);
+        // Each row also names the document edition it was judged against
+        // (IO11) - a verdict against an unnamed spec is not auditable.
+        const auto source = ac3::meta::qc_preset(id).source;
+        CHECK(text.find(std::string{source}) != std::string::npos);
     }
-
-    const auto ebu_pass = gate_verdict_after(text, text.find("ebu-r128-s2:"));
-    const auto atsc_pass = gate_verdict_after(text, text.find("atsc-a85:"));
-    const auto netflix_pass = gate_verdict_after(text, text.find("netflix:"));
-    REQUIRE(ebu_pass.has_value());
-    REQUIRE(atsc_pass.has_value());
-    REQUIRE(netflix_pass.has_value());
+    REQUIRE(verdicts.size() == ac3::meta::kQcPresetIds.size());
 
     // The exit code (this project's own binary 0/1 convention - see this
     // file's own run_cli comment) must match "every requested gate passed",
@@ -1969,8 +1979,108 @@ TEST_CASE(
     // whichever way the real BS.1770 numbers actually land, a bug that ORs
     // instead of ANDs the per-preset verdicts (or ignores one preset
     // entirely) shows up here as rc disagreeing with this recomputation.
-    const bool expect_success = *ebu_pass && *atsc_pass && *netflix_pass;
+    const bool expect_success =
+        std::all_of(verdicts.begin(), verdicts.end(), [](bool v) { return v; });
     CHECK((rc == 0) == expect_success);
+}
+
+// Roadmap IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
+// independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
+// sees the two dependents' rear and height channels at all; the rendered pass
+// measures the assembled program through BS.1770-5 Annex 3's extended
+// algorithm, which has a weight for every Table E2.5 position.
+TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed does not",
+          "[cli][qc][layout]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_layout_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    // 2 s - many BS.1770 400 ms blocks and ~62 access units, well past the
+    // "3+ frames of real audio" this project's own validation rule requires
+    // before a codec measurement means anything.
+    constexpr std::size_t kFrames = 96000;
+    // 7.1.4's twelve channels: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE. A
+    // distinct tone per channel so no two can be confused for one another,
+    // and so a permuted layout would not still measure the same total.
+    std::vector<std::vector<float>> channels;
+    channels.reserve(12);
+    for (int ch = 0; ch < 12; ++ch) {
+        channels.push_back(
+            make_tone(0.2, 180.0 + 91.0 * static_cast<double>(ch), kFrames, kRate));
+    }
+    REQUIRE(write_wav(wav_path, channels, kRate));
+
+    const auto ec3_path = dir / "qc_layout.ec3";
+    REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 448 none 714 dialnorm=auto",
+                    dir / "qc_layout_encode.log") == 0);
+
+    const auto bed_log = dir / "qc_layout_bed.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=bed", bed_log) == 0);
+    const auto bed_text = read_log(bed_log);
+    INFO("bed:\n" << bed_text);
+
+    const auto rendered_log = dir / "qc_layout_rendered.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=rendered", rendered_log) == 0);
+    const auto rendered_text = read_log(rendered_log);
+    INFO("rendered:\n" << rendered_text);
+
+    // Each pass says which algorithm produced its numbers, and the bed pass
+    // says out loud that it left the dependents' channels out - staying
+    // quiet about that is what made the old behaviour a trap.
+    CHECK(bed_text.find("layout=bed") != std::string::npos);
+    CHECK(bed_text.find("BS.1770 Annex 1") != std::string::npos);
+    CHECK(bed_text.find("dependent substreams whose channels") != std::string::npos);
+    CHECK(rendered_text.find("layout=rendered") != std::string::npos);
+    CHECK(rendered_text.find("BS.1770-5 Annex 3") != std::string::npos);
+    CHECK(rendered_text.find("dependent substreams whose channels") == std::string::npos);
+
+    // The bed pass reports the Table 5.8 layout it can name (3/2 + LFE, i.e.
+    // 5.1 in the spec's own notation); the rendered pass names every Table
+    // E2.5 location it actually metered, height channels included.
+    CHECK(bed_text.find("3/2 + LFE") != std::string::npos);
+    for (const std::string_view location : {"Lrs", "Rrs", "Vhl", "Vhr", "Lts", "Rts"}) {
+        INFO("location " << location);
+        CHECK(rendered_text.find(location) != std::string::npos);
+        CHECK(bed_text.find(location) == std::string::npos);
+    }
+
+    // Six more channels of comparable-level tone are being summed, so the
+    // rendered measurement has to come out meaningfully louder. This is the
+    // substantive check: if layout=rendered were quietly still metering the
+    // bed, the two numbers would be identical.
+    const auto bed_lkfs = value_after(bed_text, "integrated loudness");
+    const auto rendered_lkfs = value_after(rendered_text, "integrated loudness");
+    REQUIRE(bed_lkfs.has_value());
+    REQUIRE(rendered_lkfs.has_value());
+    CHECK(*rendered_lkfs > *bed_lkfs + 1.0);
+
+    // True peak, by contrast, is not channel-weighted and both passes see a
+    // full-bandwidth channel at the same level, so it should barely move.
+    const auto bed_tp = value_after(bed_text, "true peak");
+    const auto rendered_tp = value_after(rendered_text, "true peak");
+    REQUIRE(bed_tp.has_value());
+    REQUIRE(rendered_tp.has_value());
+    CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
+}
+
+TEST_CASE("qc layout= rejects anything but bed or rendered", "[cli][qc][layout]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_layout_bad_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 48000;
+    REQUIRE(write_wav(wav_path, {make_tone(0.4, 440.0, kFrames, kRate),
+                                  make_tone(0.4, 660.0, kFrames, kRate)},
+                      kRate));
+    const auto ac3_path = dir / "qc_layout_bad.ac3";
+    REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() + "\" 192",
+                    dir / "qc_layout_bad_encode.log") == 0);
+
+    const auto log = dir / "qc_layout_bad.log";
+    const auto rc = run_cli("qc \"" + ac3_path.string() + "\" layout=stereo", log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc != 0);
+    CHECK(text.find("layout must be bed or rendered") != std::string::npos);
 }
 
 // silence/eac3-silence build their frames from build_silent_stereo_frame/
@@ -2323,6 +2433,95 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
     CHECK(run_cli("sine \"" + (dir / "mode_bad.ac3").string() + "\" 2 192 440 70 stereo "
                       "mode=fast",
                   log) != 0);
+}
+
+// ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
+// worth anything if it is a true inverse - the elementary stream that goes
+// into a container has to be the one that comes back out, byte for byte. A
+// container reader that dropped a frame, mis-split a block or trimmed a
+// trailing byte would still produce something a decoder mostly plays, which
+// is exactly why this is checked as bytes and not as audio.
+TEST_CASE("demux recovers the exact elementary stream 'mkv' wrapped", "[cli][demux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "demux.log";
+
+    // read_bytes is a lambda local to another test case above; this one
+    // needs the same thing and defines its own rather than reaching into it.
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary) {
+        const auto container = dir / (elementary.stem().string() + ".mkv");
+        const auto recovered = dir / (elementary.stem().string() + ".back");
+        REQUIRE(run_cli(make, log) == 0);
+        REQUIRE(run_cli("mkv \"" + elementary.string() + "\" \"" + container.string() + "\"",
+                        log) == 0);
+        REQUIRE(run_cli("demux \"" + container.string() + "\" \"" + recovered.string() + "\"",
+                        log) == 0);
+        CHECK(read_bytes(recovered) == read_bytes(elementary));
+    };
+
+    SECTION("E-AC-3") {
+        const auto es = dir / "demux_eac3.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es);
+    }
+
+    SECTION("AC-3") {
+        const auto es = dir / "demux_ac3.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es);
+    }
+}
+
+TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "demux_bad.log";
+
+    // Same local helper as the round-trip case above.
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    SECTION("a bare elementary stream is not a container") {
+        // The single most likely mistake, and the one where naming the file
+        // .mkv would have made a name-based guess say yes.
+        const auto es = dir / "demux_bare.ac3";
+        REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
+        CHECK(run_cli("demux \"" + es.string() + "\" \"" + (dir / "demux_bare.out").string() +
+                          "\"",
+                      log) != 0);
+    }
+
+    SECTION("a truncated container reports the reader's own error") {
+        const auto es = dir / "demux_trunc.ac3";
+        const auto mkv = dir / "demux_trunc.mkv";
+        const auto cut = dir / "demux_trunc_cut.mkv";
+        REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
+        REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+        // Keep only the first 20 bytes: past the EBML header id, nowhere
+        // near a track, so there is nothing to hand back.
+        const auto whole = read_bytes(mkv);
+        REQUIRE(whole.size() > 20);
+        {
+            std::ofstream out{cut, std::ios::binary};
+            out.write(reinterpret_cast<const char*>(whole.data()), 20);
+        }
+        CHECK(run_cli("demux \"" + cut.string() + "\" \"" + (dir / "demux_trunc.out").string() +
+                          "\"",
+                      log) != 0);
+    }
+
+    SECTION("a missing input file") {
+        CHECK(run_cli("demux \"" + (dir / "demux_absent.mkv").string() + "\" \"" +
+                          (dir / "demux_absent.out").string() + "\"",
+                      log) != 0);
+    }
 }
 
 // --- unspdif (roadmap IO3) ---------------------------------------------------

@@ -47,6 +47,59 @@ which real players already handle. No more than one cluster's worth of frames is
 a caller streaming the returned bytes to disk keeps memory bounded for a session of any length.
 This is what the GUI's live session records through.
 
+### Demuxing: `matroska::demux`, `matroska::Reader`
+
+`matroska/reader.hpp`, same library. The read side of the two above, and codec-blind in exactly
+the same way: it walks EBML, finds a track, and hands each frame back as opaque bytes. The one
+place it names a codec is auto-selection, which takes the first audio `TrackEntry` whose
+`CodecID` is `A_EAC3` or `A_AC3`; `ReadOptions::track_number` names any other track explicitly
+and accepts whatever `CodecID` it carries.
+
+Two shapes, mirroring the write side. `demux` is the batch one, and it is zero-copy — the frames
+it returns are spans into the buffer you passed it, the way `ac3::io::scan` already hands back
+access units:
+
+```cpp
+const auto out = matroska::demux(file_bytes);
+if (!out) {
+    std::println(stderr, "{}", matroska::describe(out.error()));
+    return 1;
+}
+// out->frames are views into file_bytes, which must outlive them.
+const auto scanned = ac3::io::scan(/* the elementary stream you write them to */);
+```
+
+`Reader` is the incremental one — `matroska::Writer`'s mirror image, for a file too big to hold.
+Frames arrive through a callback rather than a return value, so nothing accumulates: peak memory
+is one chunk plus one frame, never the file.
+
+```cpp
+matroska::Reader reader{};
+const auto on_frame = [&](std::span<const std::byte> frame) { sink.push(frame); };
+for (auto chunk = read_next_chunk(); !chunk.empty(); chunk = read_next_chunk()) {
+    if (!reader.push(chunk, on_frame)) { /* ... */ }
+}
+if (!reader.finish(on_frame)) { /* ... */ }
+```
+
+The span handed to the callback is valid for that call only — it points into the reader's own
+buffer, which the next `push` reuses. Copy it there if you need to keep it. This is what
+`ac3cli demux` runs on, which is why a multi-gigabyte rip never lands in memory.
+
+What it reads beyond what this project writes, because a file from a disc rip or another muxer
+has it: all three lacing forms (Xiph, EBML, fixed-size), `BlockGroup`-wrapped `Block`s as well
+as `SimpleBlock`, several tracks, 32-bit as well as 64-bit `SamplingFrequency`, and clusters
+left at EBML's unknown size rather than only the Segment. A file truncated mid-cluster returns
+every whole frame before the cut rather than an error — that is how a live recording ends.
+
+**Untrusted input.** Every length in an EBML file is self-declared, and a container arrives from
+a rip, a capture or a download rather than from this project's own writer. `ReadOptions` bounds
+the element size the reader will hold (16 MiB by default; anything larger that it does not need
+is skipped without ever being buffered), the frames one laced block may carry, the number of
+`TrackEntry` elements, and how deep masters may nest — the walker is iterative, so nothing an
+input declares can exhaust the call stack. `fuzz/fuzz_matroska_demux.cpp` drives both entry
+points with arbitrary bytes under ASan/UBSan.
+
 ## Muxing: `mp4::mux`
 
 `mp4/mp4.hpp`, library `mp4::mp4`. Same shape as `matroska::matroska`: it links nothing from
@@ -317,6 +370,15 @@ with its own `describe()`:
 | `matroska::MuxError` | `kNoFrames`; `kInvalidTrack` (zero/negative channels or sample rate, or an empty codec id); `kFrameTooLarge` (a single frame beyond what one SimpleBlock can carry). |
 | `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`). `mp4::FragmentWriter::create` returns the same two refusals as `fragment`, but never `kNoFrames`: a live writer stopped before its first frame simply has nothing to flush. |
 | `mpegts::MuxError` | `kNoFrames` and `kInvalidTrack` as above; `kInvalidOptions` (PID collisions); `kFrameTooLarge` — one access unit too large for a PES packet's 16-bit length field. |
+
+## Demuxer errors
+
+`matroska::demux`/`Reader` return `std::expected` against `matroska::DemuxError`, which has its
+own `describe()` overload beside `MuxError`'s:
+
+| Enum | Values |
+|---|---|
+| `matroska::DemuxError` | `kNotMatroska` (no EBML header where one has to be); `kTruncated` (the input ends before any track was described — a cut *after* one is not an error, see above); `kMalformed` (a vint, element or block layout that cannot be parsed, including a lace whose declared sizes overrun its block); `kNoAudioTrack` (Tracks held nothing selectable, or the requested `track_number` is absent); `kLimitExceeded` (an element size or nesting depth beyond `ReadOptions`). |
 
 ## Bitstream sinks (`ac3::audio`)
 

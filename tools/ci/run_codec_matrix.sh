@@ -6,7 +6,8 @@
 # encoder/decoder logic in isolation; this script covers the combinations a
 # real user's command line would hit - every layout, every Annex E tool
 # token, both Atmos container modes, and the metadata options - round-tripped
-# through encode -> decode -> levels/loudness/spdif/mkv/mp4.
+# through encode -> decode -> levels/loudness/spdif/mkv/mp4, and back out
+# again through demux.
 #
 # Every stream this script produces also gets FFmpeg's independent strict
 # decode (CONTRIBUTING.md's "Oracles" list, #2) alongside the in-repo
@@ -498,5 +499,33 @@ run_ffmpeg_check fmp4_atmos/audio.m3u8
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+
+# demux is the inverse of the wrapping commands above, so it is checked as an
+# inverse rather than only for a clean exit: the elementary stream that went
+# into the container has to be the one that comes back out, byte for byte. A
+# reader that dropped a frame or trimmed a trailing byte would still produce
+# something FFmpeg mostly decodes, which is why cmp is the assertion here and
+# a decode is not.
+run demux enc_51.mkv demux_51.ac3
+cmp -s enc_51.ac3 demux_51.ac3 || {
+    echo "demux enc_51.mkv did not reproduce enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+run demux eac3enc_none.mkv demux_eac3.ec3
+cmp -s eac3enc_none.ec3 demux_eac3.ec3 || {
+    echo "demux eac3enc_none.mkv did not reproduce eac3enc_none.ec3 byte for byte" >&2
+    exit 1
+}
+# The Atmos stream matters on its own: its access units carry dependent
+# substreams, so a reader that mistook a substream for an access-unit
+# boundary would only show up here.
+run demux atmos_4.mkv demux_atmos.ec3
+cmp -s atmos_4.ec3 demux_atmos.ec3 || {
+    echo "demux atmos_4.mkv did not reproduce atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+# And the recovered stream still decodes, which is the end-to-end statement:
+# container in, playable elementary stream out.
+run_ffmpeg_check demux_atmos.ec3
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"
