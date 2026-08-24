@@ -2337,7 +2337,8 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
 // container reader that dropped a frame, mis-split a block or trimmed a
 // trailing byte would still produce something a decoder mostly plays, which
 // is exactly why this is checked as bytes and not as audio.
-TEST_CASE("demux recovers the exact elementary stream 'mkv' wrapped", "[cli][demux]") {
+TEST_CASE("demux recovers the exact elementary stream a container wrapped",
+          "[cli][demux]") {
     const auto dir = scratch_dir();
     const auto log = dir / "demux.log";
 
@@ -2350,25 +2351,39 @@ TEST_CASE("demux recovers the exact elementary stream 'mkv' wrapped", "[cli][dem
                                  std::istreambuf_iterator<char>{}};
     };
 
-    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary) {
-        const auto container = dir / (elementary.stem().string() + ".mkv");
-        const auto recovered = dir / (elementary.stem().string() + ".back");
+    // Both containers, from the same elementary stream: whichever one wrapped
+    // it, demux has to hand back the identical bytes. `wrap` names the
+    // wrapping command, which is also the extension the container gets.
+    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary,
+                                      const std::string& wrap) {
+        const auto container = dir / (elementary.stem().string() + "." + wrap);
+        const auto recovered = dir / (elementary.stem().string() + "." + wrap + ".back");
         REQUIRE(run_cli(make, log) == 0);
-        REQUIRE(run_cli("mkv \"" + elementary.string() + "\" \"" + container.string() + "\"",
+        REQUIRE(run_cli(wrap + " \"" + elementary.string() + "\" \"" + container.string() + "\"",
                         log) == 0);
         REQUIRE(run_cli("demux \"" + container.string() + "\" \"" + recovered.string() + "\"",
                         log) == 0);
         CHECK(read_bytes(recovered) == read_bytes(elementary));
     };
 
-    SECTION("E-AC-3") {
+    SECTION("E-AC-3 through Matroska") {
         const auto es = dir / "demux_eac3.ec3";
-        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es);
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mkv");
     }
 
-    SECTION("AC-3") {
+    SECTION("AC-3 through Matroska") {
         const auto es = dir / "demux_ac3.ac3";
-        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es);
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mkv");
+    }
+
+    SECTION("E-AC-3 through MP4") {
+        const auto es = dir / "demux_eac3_mp4.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mp4");
+    }
+
+    SECTION("AC-3 through MP4") {
+        const auto es = dir / "demux_ac3_mp4.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mp4");
     }
 }
 
@@ -2386,7 +2401,7 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
 
     SECTION("a bare elementary stream is not a container") {
         // The single most likely mistake, and the one where naming the file
-        // .mkv would have made a name-based guess say yes.
+        // .mkv or .mp4 would have made a name-based guess say yes.
         const auto es = dir / "demux_bare.ac3";
         REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
         CHECK(run_cli("demux \"" + es.string() + "\" \"" + (dir / "demux_bare.out").string() +
