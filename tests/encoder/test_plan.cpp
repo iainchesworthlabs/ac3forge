@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -325,6 +326,106 @@ TEST_CASE("AC-3 takes only the Table 5.18 rates") {
     // E-AC-3 signals frmsiz directly, so the same rate is expressible there.
     plan.codec = ac3::plan::Codec::kEac3;
     CHECK_FALSE(ac3::plan::validate(plan).has_value());
+}
+
+TEST_CASE("E-AC-3 refuses a rate no substream's frmsiz can express") {
+    // frmsiz is 11 bits holding (words - 1), so a syncframe is 1 to 2048
+    // words - at 48 kHz, 1 to 1024 kbit/s. This is E-AC-3's own answer to
+    // Table 5.18 above: a free word count is still a bounded one.
+    ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                         .layout = ac3::plan::LayoutId::kStereo,
+                         .bitrate_kbps = 1026};
+    REQUIRE(ac3::plan::validate(plan).has_value());
+    CHECK(*ac3::plan::validate(plan) == ac3::plan::PlanError::kBitrateNotFramable);
+
+    // One word count either side of the ceiling, so this pins the boundary
+    // rather than merely "a big number is refused".
+    plan.bitrate_kbps = 1025;
+    CHECK(ac3::eac3::frame_words(plan.sample_rate, 1025) > ac3::eac3::kMaxFrameWords);
+    CHECK(ac3::plan::validate(plan).has_value());
+    plan.bitrate_kbps = 1024;
+    CHECK(ac3::eac3::frame_words(plan.sample_rate, 1024) == ac3::eac3::kMaxFrameWords);
+    CHECK_FALSE(ac3::plan::validate(plan).has_value());
+
+    // The floor is the same rule read the other way: 0 kbit/s is a frame of
+    // no words at all, which is not a syncframe.
+    plan.bitrate_kbps = 0;
+    REQUIRE(ac3::plan::validate(plan).has_value());
+    CHECK(*ac3::plan::validate(plan) == ac3::plan::PlanError::kBitrateNotFramable);
+    plan.bitrate_kbps = 1;
+    CHECK_FALSE(ac3::plan::validate(plan).has_value());
+}
+
+TEST_CASE("the frmsiz ceiling follows the sample rate, not a fixed kbit/s") {
+    // A frame is always 1536 samples, so a lower rate spends more of them per
+    // second and the same kbit/s buys more words - which means the largest
+    // expressible rate falls with the sample rate rather than staying at
+    // 48 kHz's 1024.
+    struct Case {
+        ac3::SampleRate rate;
+        std::uint32_t highest_legal;
+    };
+    for (const auto& c : {Case{ac3::SampleRate::k48000, 1024},
+                          Case{ac3::SampleRate::k44100, 941},
+                          Case{ac3::SampleRate::k32000, 682}}) {
+        CAPTURE(ac3::sample_rate_hz(c.rate), c.highest_legal);
+        ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                             .layout = ac3::plan::LayoutId::kStereo,
+                             .sample_rate = c.rate,
+                             .bitrate_kbps = c.highest_legal};
+        CHECK_FALSE(ac3::plan::validate(plan).has_value());
+        plan.bitrate_kbps = c.highest_legal + 1;
+        REQUIRE(ac3::plan::validate(plan).has_value());
+        CHECK(*ac3::plan::validate(plan) == ac3::plan::PlanError::kBitrateNotFramable);
+    }
+}
+
+TEST_CASE("a dependent substream's own half of the rate has to be framable too") {
+    // eac3_config() hands the independent substream the whole rate and each
+    // dependent half of it, so the plan's own bitrate_kbps is not what frmsiz
+    // has to hold - which makes the floor reachable at a rate the same plan
+    // would accept without dependents.
+    ac3::plan::Plan stereo{.codec = ac3::plan::Codec::kEac3,
+                           .layout = ac3::plan::LayoutId::kStereo,
+                           .bitrate_kbps = 1};
+    CHECK_FALSE(ac3::plan::validate(stereo).has_value());
+
+    ac3::plan::Plan immersive{.codec = ac3::plan::Codec::kEac3,
+                              .layout = ac3::plan::LayoutId::k714,
+                              .bitrate_kbps = 1};
+    REQUIRE_FALSE(ac3::plan::eac3_config(immersive).dependents.empty());
+    REQUIRE(ac3::plan::validate(immersive).has_value());
+    CHECK(*ac3::plan::validate(immersive) == ac3::plan::PlanError::kBitrateNotFramable);
+    // Two is the smallest rate that still leaves the dependents a word each
+    // once it has been halved.
+    immersive.bitrate_kbps = 2;
+    CHECK_FALSE(ac3::plan::validate(immersive).has_value());
+}
+
+TEST_CASE("VBR is exempt from the frmsiz rate check, as it is in the frame encoder") {
+    // Under VBR the content decides the word count and bitrate_kbps only
+    // steers the coupling/spx frequency defaults, so a nominal rate no CBR
+    // frame could hold says nothing about whether a frame will fit.
+    const ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                               .layout = ac3::plan::LayoutId::kStereo,
+                               .bitrate_kbps = 1026,
+                               .vbr = ac3::eac3::VbrConfig{.quality = 0.5,
+                                                           .max_kbps = 256}};
+    CHECK_FALSE(ac3::plan::validate(plan).has_value());
+}
+
+TEST_CASE("an unframable rate leaves AccessUnitEncoder with no substreams at all") {
+    // Why the check above has to exist at the plan layer rather than being
+    // left to the encoder: AccessUnitEncoder's constructor cannot report,
+    // and a config it refuses produces an encoder that silently codes
+    // nothing. A front end that sized its buffers from the plan then
+    // disagrees with channel_count() before the first frame is encoded.
+    const ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                               .layout = ac3::plan::LayoutId::kStereo,
+                               .bitrate_kbps = 1026};
+    const ac3::eac3::AccessUnitEncoder encoder{ac3::plan::eac3_config(plan)};
+    CHECK(encoder.channel_count() == 0);
+    CHECK(ac3::plan::rendered_channel_count(ac3::plan::resolve(plan)) == 2);
 }
 
 TEST_CASE("fscod2 half rates are refused to AC-3 rather than silently narrowed") {

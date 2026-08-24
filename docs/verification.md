@@ -80,13 +80,33 @@ sounds better, and no *subjective* listening test has been run. `quality_race.py
 [Tool comparison trend](tool-comparison-trend.md)/[Landscape](landscape.md)) also carry an
 objective perceptual-quality prediction alongside SNR, [ViSQOL](https://github.com/google/visqol)'s
 MOS-LQO — narrower than a real listening panel, but closer to "how it would sound" than a
-waveform-distance number, and something SNR alone cannot claim. It's an optional column
-(`visqol-python` not installed shows `-`, never a failure), so it isn't in the snapshot table
-above; see `perceptual_score()` in `tools/ci/quality_race.py`.
+waveform-distance number, and something SNR alone cannot claim. See `perceptual_score()` in
+`tools/ci/quality_race.py`.
+
+That column used to be empty everywhere it was published: CI deliberately did not install
+`visqol-python`, so every row on the `quality-history` branch carried `mos_lqo: null` and every
+MOS cell rendered `n/a`. It is installed now, hash-pinned like every other Python dependency, so
+the trend pages carry real MOS numbers. It stays optional for a *local* run — not installed
+still shows `-`, never a failure — which is why the one-off snapshot above has no MOS column.
+
+Both the table above and everything the trend pages plot come from the **fixture corpus** in
+`tests/golden/audio/`, which is versioned and hash-checked as a unit
+(`tools/checks/check_corpus.py`). Two of those fixtures are synthesized from `sin()`,
+pseudo-random noise and FIR smoothing, and two are 30 s CC0 recordings of real speech and music.
+Both kinds are kept, and the distinction matters when reading any number on this page: the
+synthetic pair carries a flat noise plateau across its whole top octave that no real material
+has, and tuning the encoder's bandwidth against it once produced a measured 2.1 dB "win" that was
+an artefact of the fixture. See [tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
+for the measured spectra, the licences, and which fixture is evidence about what.
 
 That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same gold-reference SNR
 by commit, on every push to `develop` and `main`, so a regression shows up as a trend line
 rather than only in that run's CI log.
+
+The object layer has its own series, [Object quality trend](object-quality-trend.md): a fixed
+five-object Atmos scene encoded and decoded by each build, one delay-compensated SNR/LSD/leakage
+row per object per rate. It is a self-consistency series throughout — see "Where the oracles
+don't reach" below for why no other kind is available.
 
 ## Performance and reference modes
 
@@ -139,6 +159,11 @@ build with libasound present; `ctest` runs whatever the configuration registered
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
+
+The three documented library examples (`wav_roundtrip`, `read_adm`, `encode_adm`) are each their
+own `ctest` case and write scratch files under a name unique to that run, not a fixed name in the
+OS temp directory — two checkouts running `ctest` at once would otherwise read and delete each
+other's fixture.
 
 ## Third-party bitstreams
 
@@ -258,6 +283,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
 | E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
+| E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
@@ -315,6 +341,18 @@ a normal-rate stream from this encoder without issue. `fscod2` appears to be a c
 own reference implementation does not support it. So the coded audio is verified only by this
 project's own encoder/decoder round trip and the independent Python parser
 (`tools/references/eac3_parse.py`).
+
+**Object decode has no external oracle at all, and for once that is not FFmpeg's gap alone.**
+FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
+bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
+own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+plays them as the bed too. Nothing outside this repository can currently produce an independent
+object decode of an ac3forge stream, which makes this the one layer where even the partial
+oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
+resolution: [Object quality trend](object-quality-trend.md) scores each of a fixed scene's five
+objects, per commit, at two rates. The same caveat as `ecpl`/`tpn` applies with full force — a
+defect the encoder and decoder share is invisible to it.
 
 **Containers and manifests are checked externally where a reader exists, and only there.**
 `mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
