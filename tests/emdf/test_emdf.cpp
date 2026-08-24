@@ -213,26 +213,31 @@ TEST_CASE("parse_container rejects a container truncated after the sync word", "
     }
 }
 
-TEST_CASE("parse_container refuses a payload config outside Table 56's shape", "[emdf]") {
+TEST_CASE("parse_container reads a payload config outside Table 56's shape", "[emdf]") {
     // Hand-built, not through put_payload_config (private to emdf.cpp): a
     // container whose smploffste is set, which no stream this project
-    // produces ever does and this decoder does not know how to follow past.
+    // produces ever does - and which this reader used to refuse outright.
+    // §H.2.1.3 gives every branch a defined width, so there is nothing here
+    // to refuse; what changed is that the configuration is now REPORTED.
+    // A real DD+ JOC stream from the Dolby Encoding Engine mixes
+    // configurations inside one container, so this is not a hypothetical.
     ac3::BitWriter body;
     body.put(0, 2);  // emdf_version
     body.put(0, 3);  // key_id
     body.put(ac3::emdf::kPayloadIdOamd, 5);
-    body.put(1, 1);  // smploffste: the deviation under test
+    body.put(1, 1);     // smploffste: the deviation under test
+    body.put(1234, 11); // smploffst
+    body.put(0, 1);     // reserved
     body.put(0, 1);  // duratione
     body.put(1, 1);  // groupide
-    body.put(0, 2);  // groupid value: one group, no offset
+    body.put(2, 2);  // groupid value: one group, no offset
     body.put(0, 1);  // read_more: last (only) group
     body.put(0, 1);  // codecdatae
     body.put(0, 1);  // discard_unknown_payload
-    body.put(1, 1);  // payload_frame_aligned
-    body.put(0, 1);  // create_duplicate
-    body.put(0, 1);  // remove_duplicate
-    body.put(0, 5);  // priority
-    body.put(0, 2);  // proc_allowed
+    // smploffste == 1 skips the alignment branch entirely and goes straight
+    // to priority/proc_allowed - the shape the old reader could not follow.
+    body.put(17, 5);  // priority
+    body.put(1, 2);   // proc_allowed
     body.put(1, 8);  // emdf_payload_size value: one group, size 1
     body.put(0, 1);  // read_more: last (only) group
     body.put(0x42, 8);  // the one payload byte
@@ -252,8 +257,19 @@ TEST_CASE("parse_container refuses a payload config outside Table 56's shape", "
     const auto data = out.take();
 
     const auto result = ac3::emdf::parse_container(data);
-    REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::emdf::ParseError::kUnsupportedConfig);
+    REQUIRE(result.has_value());
+    REQUIRE(result->has_value());
+    const auto& payloads = **result;
+    REQUIRE(payloads.size() == 1);
+    CHECK(payloads[0].id == ac3::emdf::kPayloadIdOamd);
+    CHECK(payloads[0].config.sample_offset == 1234);
+    CHECK(payloads[0].config.group_id == 2);
+    CHECK(payloads[0].config.duration == -1);
+    CHECK_FALSE(payloads[0].config.frame_aligned);
+    CHECK(payloads[0].config.priority == 17);
+    CHECK(payloads[0].config.proc_allowed == 1);
+    REQUIRE(payloads[0].bytes.size() == 1);
+    CHECK(payloads[0].bytes[0] == std::byte{0x42});
 }
 
 TEST_CASE("an EMDF container rides in a block skip field", "[emdf][eac3]") {

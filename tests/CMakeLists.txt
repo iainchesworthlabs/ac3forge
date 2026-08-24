@@ -49,6 +49,7 @@ add_executable(ac3tests
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
+    oba/test_dee_joc_fixture.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
@@ -181,6 +182,11 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 # the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
+
+# The third-party Dolby fixture tests/oba/test_dee_joc_fixture.cpp reads, on the
+# same reasoning: a path, because ctest runs from the build tree.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
 
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by

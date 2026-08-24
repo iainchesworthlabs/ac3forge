@@ -329,14 +329,21 @@ struct DecodedSubstream {
     // fixed (emdf::build_container's own comment), so every block's skip
     // field is a candidate; the first one that parses wins.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
-    // JOC's (§6) reconstructed per-object audio, one waveform per object,
-    // parallel to object_metadata->objects (same index means the same
-    // object) - empty when object_metadata is unset, when no JOC payload
-    // rode alongside the OAMD one, or when the program shape is one JOC's
-    // own object ordering cannot be lined up against object_metadata's for
-    // (see Eac3Decoder::decode_substream's own comment on this - a bed
-    // program AtmosEncoder itself never produces).
+    // JOC's (§6) reconstructed per-object audio, one waveform per JOC output
+    // - empty when object_metadata is unset, when no JOC payload rode
+    // alongside the OAMD one, or when the downmix JOC asks for is not the
+    // five channels this substream carries (Table 47's 7-channel
+    // configurations need a dependent substream's Lb/Rb).
     std::vector<std::vector<float>> object_audio;
+    // What each object_audio entry IS: an index into the payload's own object
+    // order (bed channels, then ISF, then dynamic objects), which is
+    // oba::joc_object_indices() for this program. For the
+    // dynamic-object-only program AtmosEncoder writes, entry i is
+    // object_metadata->objects[i] - the identity this used to assume - and
+    // for a bed program it names the bed channel instead, which
+    // oba::bed_labels() turns into a speaker label. Same length as
+    // object_audio, and empty exactly when it is.
+    std::vector<int> object_indices;
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
@@ -393,6 +400,7 @@ struct DecodedAccessUnit {
     // the question is which substream carries it, not how to merge several.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
+    std::vector<int> object_indices;
     int substream_count = 0;
     eac3::chanmap::Layout layout;
     std::vector<std::vector<float>> channels;  // parallel to layout, except dual mono

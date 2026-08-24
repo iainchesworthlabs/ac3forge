@@ -46,10 +46,49 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
     if (metadata) {
-        fmt::println(status, "  {} dynamic objects + the bed's LFE = {} objects, OAMD present{}",
-                     metadata->objects.size(), ac3::oba::object_count(metadata->program),
-                     have_object_audio ? ", JOC audio reconstructed"
-                                       : " (JOC audio not reconstructed)");
+        const auto& program = metadata->program;
+        const char* joc = have_object_audio ? ", JOC audio reconstructed"
+                                            : " (JOC audio not reconstructed)";
+        if (program.dynamic_only) {
+            fmt::println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
+                         metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
+                         ac3::oba::object_count(program), joc);
+        } else {
+            // A bed program - what channel-based-immersive third-party
+            // content is. Naming the bed's channels is the useful half here:
+            // "12 objects" says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl
+            // Tbr" says what the stream actually carries.
+            std::string labels;
+            for (const auto label : ac3::oba::bed_labels(program.bed)) {
+                if (!labels.empty()) {
+                    labels += ' ';
+                }
+                labels += ac3::oba::describe(label);
+            }
+            if (labels.empty()) {
+                labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
+            }
+            fmt::println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
+                         labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
+        }
+        if (metadata->trim) {
+            fmt::println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
+                         metadata->trim->warp_mode, metadata->trim->global_trim_mode);
+        }
+        if (!metadata->skipped_elements.empty()) {
+            std::string ids;
+            for (const int id : metadata->skipped_elements) {
+                if (!ids.empty()) {
+                    ids += ", ";
+                }
+                ids += std::to_string(id);
+            }
+            fmt::println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
+        }
+        if (metadata->blocks.size() > 1) {
+            fmt::println(status, "  {} metadata update blocks per frame",
+                         metadata->blocks.size());
+        }
     }
     if (objects_dir.empty()) {
         return 0;
