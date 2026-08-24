@@ -89,12 +89,19 @@ rather than only in that run's CI log.
 
 Both transform hot spots — the forward MDCT (§8.2.3.2) and the inverse transform's step-3
 complex sum (§7.9.4) — exist in two evaluations: the spec's own direct form, and a fast path
-through a shared radix-2 FFT core. The direct forms are the *reference*: they are what the
-standard states, and every fast path is validated against its direct counterpart by the test
-suite (max peak-normalized relative error ~3e-12 forward, 7.8e-14 inverse; end-to-end agreement
-331 dB direct-vs-fast for encode, 214.9/284.7 dB SNR for AC-3/E-AC-3 decode over 180 seconds of
-real material). The fast paths are the default, because that evidence was reviewed and accepted
-before each default flipped.
+through a shared FFT kernel. The direct forms are the *reference*: they are what the standard
+states, and every fast path is validated against its direct counterpart by the test suite (max
+peak-normalized relative error 1.3e-13 forward, 7.8e-14 inverse, 1.7e-15 for `dft512`
+against its own O(N²) summation; end-to-end agreement 331 dB direct-vs-fast for encode, and
+232.1 dB (AC-3) / 208.2 dB (E-AC-3, every Annex E tool) / 217.9 dB (E-AC-3, enhanced coupling)
+for a decode over 180 seconds of real material). The fast paths are the default, because that
+evidence was reviewed and accepted before each default flipped.
+
+The kernel itself is radix-4 with a trailing radix-2 stage where log2(P) is odd, specialised at
+compile time for the three sizes the codec uses (P = 64, 128, 512), with the first stage's
+unit twiddles eliminated and the digit-reversal permutation folded into each caller's own
+input-producing loop rather than run as a pass — 1.6–1.75× the throughput of the generic
+radix-2 core it replaced, at the same tolerances.
 
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
@@ -103,9 +110,14 @@ against an external decoder, or isolating a suspected transform defect — and `
 `fast-imdct=off` adjust one half at a time; see
 [Options & grammars](cli/metadata-options.md#command-specific-notes) for the full token
 semantics. At the library level the same pair is `EncoderConfig::fast_mdct` /
-`eac3::FrameConfig::fast_mdct` and `DecoderConfig::fast_imdct`. Encoded output never depends on
-the decode-side switch: the encoder's own internal inverse-transform uses are pinned to the
-direct form regardless of any mode.
+`eac3::FrameConfig::fast_mdct` and `DecoderConfig::fast_imdct`.
+
+Encoded output never depends on the decode-side switch. An enhanced-coupling encode does run an
+inverse transform of its own — `ecpl_channel_spectrum` reconstructs the spectrum the decoder
+will hold — and that one follows `eac3::FrameConfig::fast_mdct`, which makes that field the
+encoder's fast-transform switch in both directions and keeps `mode=reference` direct end to
+end. It is byte-identical either way on the encode corpus at the tolerances above, so it is a
+speed choice, not an output one; `DecoderConfig::fast_imdct` reaches no encoder at all.
 
 ## Test suite
 

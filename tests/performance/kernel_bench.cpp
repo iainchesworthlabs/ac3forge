@@ -34,6 +34,7 @@
 
 #include "ac3/core/bitalloc.hpp"
 #include "ac3/core/exponents.hpp"
+#include "ac3/core/fft.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
@@ -256,6 +257,43 @@ int main(int argc, char** argv) {
         g_sink += x[256];
     }));
 
+    // --- imdct512_windowed, fast path (§7.9.4.1 step 3 through the shared
+    // FFT core) - what DecoderConfig::fast_imdct, default on, actually runs
+    // in every decode; the direct row above is the reference form. Benching
+    // only the direct one left the default path unmeasured.
+    results.push_back(time_kernel("imdct512_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct512_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
+
+    // --- imdct256_pair_windowed (block-switched inverse), both forms. Its
+    // step 3 runs the FFT core twice at P = 64, the only place that size is
+    // used, so the FFT core's own numbers need this row to be complete.
+    results.push_back(time_kernel("imdct256_pair_windowed", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x);
+        g_sink += x[256];
+    }));
+    results.push_back(time_kernel("imdct256_pair_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
+
+    // --- dft512 (the FFT core at P = 512, its largest size) ------------------
+    // §E3.5.5.1 step 5's full complex spectrum, the step-4 half of
+    // ecpl_channel_spectrum below. Real input: one block's windowed PCM in
+    // the real part, zero imaginary, the shape ecpl's own step 3 hands it.
+    std::array<double, 512> dft_in_re = windowed_block;
+    std::array<double, 512> dft_in_im{};
+    results.push_back(time_kernel("dft512", [&] {
+        std::array<double, 512> out_re{};
+        std::array<double, 512> out_im{};
+        ac3::dft512(dft_in_re, dft_in_im, out_re, out_im);
+        g_sink += out_re[64];
+    }));
+
     // --- compute_bit_allocation -----------------------------------------------
     const ac3::BitAllocCodes codes{};
     const std::span<const std::uint8_t> exps4{ch0_exps[4].data(), kEndmant};
@@ -329,6 +367,17 @@ int main(int argc, char** argv) {
         std::array<double, 256> imag_out{};
         ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
                                          imag_out);
+        g_sink += real_out[64];
+    }));
+    // The same call with its three step-1 inverses on the fast path - what a
+    // decode (DecoderConfig::fast_imdct) and a default enhanced-coupling
+    // encode (eac3::FrameConfig::fast_mdct) both run; the row above is the
+    // reference form.
+    results.push_back(time_kernel("ecpl_channel_spectrum_fast", [&] {
+        std::array<double, 256> real_out{};
+        std::array<double, 256> imag_out{};
+        ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
+                                         imag_out, /*fast=*/true);
         g_sink += real_out[64];
     }));
 
