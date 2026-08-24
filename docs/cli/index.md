@@ -9,7 +9,8 @@ this page's own live-audio commands get when the platform can't run them either 
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
 library documented under [Library](../library/index.md); every codec and format decision lives in
 the library, and the CLI keeps only small local helpers of its own (the DASH MPD document wrapper
-`fmp4` writes, the keyframe-file parser behind `atmos-path`/`atmos-encode`).
+`fmp4` writes; the scene files behind `atmos-path`/`atmos-encode` are parsed by the library's
+own `ac3::oba::read_scene`).
 
 Run it with no arguments for the full usage text — the command list in [Commands](commands.md)
 is transcribed from it, and re-checked against a built binary at each release.
@@ -112,7 +113,7 @@ command's own help (or the full listing when no command was named).
 
 ## Next
 
-- [Commands](commands.md) — all 29 commands, grouped and with real usage text (`atmos-adm` only
+- [Commands](commands.md) — all 32 commands, grouped and with real usage text (`atmos-adm` only
   *runs* with `-DAC3FORGE_BUILD_ADM=ON`, but is listed either way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.

@@ -8,7 +8,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
-#include <print>
+#include <fmt/base.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -44,7 +44,7 @@ namespace plan = ac3::plan;
 int run_monitor(std::string_view in_path, int device_index, const Options& meta) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
+        fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
     if (!apply_object_verification(stream, meta)) {
@@ -52,7 +52,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
-        std::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
     const bool eac3 = *bsid > 8;
@@ -62,11 +62,11 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     if (device_index >= 0) {
         const auto devices = ac3::audio::enumerate_render_devices();
         if (!devices) {
-            std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+            fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
             return kExitUnavailable;
         }
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
-            std::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
                          device_index);
             return kExitUsage;
         }
@@ -85,7 +85,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     if (eac3) {
         const auto units = ac3::split_access_units(stream);
         if (!units || units->empty()) {
-            std::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+            fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;
         }
         // Heap-allocated (PREfast's C6262, alert #9): Eac3Decoder grew
@@ -97,7 +97,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         for (const auto& unit : *units) {
             const auto decoded = decoder->decode_access_unit(unit);
             if (!decoded) {
-                std::println(stderr, "error: decode failed (code {})",
+                fmt::println(stderr, "error: decode failed (code {})",
                              static_cast<int>(decoded.error()));
                 return kExitInput;
             }
@@ -125,11 +125,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 const auto started = sink.start(device_id, sample_rate_hz(out.sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started) {
-                    std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+                    fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
                     return kExitUnavailable;
                 }
-                status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…", in_path,
-                             order.size(), sample_rate_hz(out.sample_rate), device_name);
+                status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…",
+                               in_path, order.size(), sample_rate_hz(out.sample_rate),
+                               device_name);
                 // Same object-count line run_decode_eac3 reports (see
                 // report_decoded_objects) - this path still only plays the
                 // 5.1 bed (this function's own header comment), so it says
@@ -137,12 +138,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 if (out.object_metadata) {
                     // Guarded by the if above; clang-tidy's
                     // bugprone-unchecked-optional-access doesn't trace the
-                    // guard through into a multi-argument std::println call,
+                    // guard through into a multi-argument fmt::println call,
                     // the same false positive print_channel_summary(*meter)
                     // elsewhere in this file works around - binding once here
                     // instead of repeating out.object_metadata-> twice sidesteps it.
                     const auto& metadata = *out.object_metadata;  // NOLINT(bugprone-unchecked-optional-access)
-                    std::println(
+                    fmt::println(
                         "  {} dynamic objects + the bed's LFE = {} objects, OAMD present{}",
                         metadata.objects.size(), ac3::oba::object_count(metadata.program),
                         out.object_audio.empty()
@@ -157,7 +158,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     } else {
         const auto frames = ac3::split_frames(stream);
         if (!frames || frames->empty()) {
-            std::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
+            fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return kExitInput;
         }
         ac3::FrameDecoder decoder;
@@ -165,7 +166,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
-                std::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
                 return kExitInput;
             }
             if (order.empty()) {
@@ -173,11 +174,12 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 const auto started = sink.start(device_id, sample_rate_hz(decoded->sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started) {
-                    std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+                    fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
                     return kExitUnavailable;
                 }
-                status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…", in_path,
-                             order.size(), sample_rate_hz(decoded->sample_rate), device_name);
+                status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…",
+                               in_path, order.size(), sample_rate_hz(decoded->sample_rate),
+                               device_name);
             }
             play(interleave_reordered(decoded->channels, order));
             ++units_played;
@@ -189,9 +191,9 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     }
     const auto stats = sink.stats();
     sink.stop();
-    status_println(status_stream(), "played {} {}, {} underruns", units_played, eac3 ? "access units" : "frames",
-                 stats.underruns);
-    return 0;
+    status_println(status_stream(), "played {} {}, {} underruns", units_played,
+                   eac3 ? "access units" : "frames", stats.underruns);
+    return kExitOk;
 }
 
 // The slot budget for a live object session, allocated ONCE here so a slot
@@ -223,12 +225,12 @@ std::optional<std::vector<ObjectSlot>> resolve_object_slots(
         }
         plan::Assignment assignment;
         if (!plan::parse_assignment(*meta.map_spec, shapes, assignment)) {
-            std::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
+            fmt::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
             return std::nullopt;
         }
         slots = object_slots_from_assignment(assignment, shapes);
         if (slots.empty()) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: map= names no obj/objm destination, so this session would "
                          "carry no objects at all - use 'live mode=channels' for a plain "
                          "channel session");
@@ -251,7 +253,7 @@ std::optional<std::vector<ObjectSlot>> resolve_object_slots(
     // truncated" note), a larger one allocates the extra slots unbound.
     if (meta.live_objects) {
         if (slots.size() > *meta.live_objects) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: map= assigns {} objects but objects={} allows {} - raise the "
                          "budget or assign fewer",
                          slots.size(), *meta.live_objects, *meta.live_objects);
@@ -260,7 +262,7 @@ std::optional<std::vector<ObjectSlot>> resolve_object_slots(
         slots.resize(*meta.live_objects);
     }
     if (slots.empty() || slots.size() > 15) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: 1 to 15 object slots (the bed's LFE is the 16th, and TS 103 420 "
                      "8.3.2.2 caps the total at 16); this session resolved {}",
                      slots.size());
@@ -273,18 +275,18 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             std::uint32_t bitrate, int monitor_device, int passthrough_device,
             std::string_view mode, const Options& meta) {
     if (mode != "channels" && mode != "atmos") {
-        std::println(stderr, "error: mode is 'channels' (default) or 'atmos'");
+        fmt::println(stderr, "error: mode is 'channels' (default) or 'atmos'");
         return kExitUsage;
     }
     const bool atmos = mode == "atmos";
 
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
-        std::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
     if (capture_device < 0 || static_cast<std::size_t>(capture_device) >= devices->size()) {
-        std::println(stderr, "error: capture device index {} out of range (see 'ac3cli devices')",
+        fmt::println(stderr, "error: capture device index {} out of range (see 'ac3cli devices')",
                      capture_device);
         return kExitUsage;
     }
@@ -295,7 +297,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // rather than silently falling back to a single-device session.
     if (meta.capture2 && (*meta.capture2 < 0 ||
                           static_cast<std::size_t>(*meta.capture2) >= devices->size())) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: capture2 device index {} out of range (see 'ac3cli devices')",
                      *meta.capture2);
         return kExitUsage;
@@ -309,7 +311,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         case 44100: sr = ac3::SampleRate::k44100; break;
         case 32000: sr = ac3::SampleRate::k32000; break;
         default:
-            std::println(stderr,
+            fmt::println(stderr,
                          "error: \"{}\" runs at {} Hz; AC-3/E-AC-3 need 32, 44.1 or 48 kHz",
                          device.name, device.sample_rate);
             return kExitUnavailable;
@@ -326,7 +328,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             case 44100:
             case 32000: break;
             default:
-                std::println(stderr,
+                fmt::println(stderr,
                              "error: capture2 \"{}\" runs at {} Hz; AC-3/E-AC-3 need 32, 44.1 "
                              "or 48 kHz",
                              device2->name, device2->sample_rate);
@@ -341,7 +343,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // session. Asking for both is a contradiction worth refusing rather than
     // silently ignoring one of them.
     if (atmos && (!meta.take_layout.empty() || meta.take_codec)) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: layout=/codec= describe a channel session; mode=atmos always "
                      "encodes the TS 103 420 5.1 E-AC-3 bed plus its object layer");
         return kExitUsage;
@@ -358,7 +360,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
     if (!started) {
-        std::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+        fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
     const auto channels = capture.channels();
@@ -380,7 +382,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (device2) {
         const auto started2 = capture2.start(device2->id, device2->kind);
         if (!started2) {
-            std::println(stderr, "error: {}", ac3::audio::describe(started2.error()));
+            fmt::println(stderr, "error: {}", ac3::audio::describe(started2.error()));
             return kExitUnavailable;
         }
         capture2_channels = capture2.channels();
@@ -408,7 +410,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         slots = std::move(*resolved);
     } else if (meta.map_spec) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: map= binds capture channels to OBJECT slots, which only "
                      "'live mode=atmos' has; a channel session places its channels by "
                      "direction onto layout= instead");
@@ -420,7 +422,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (!atmos) {
         routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
         if (!routing) {
-            std::println(stderr, "error: {} capture channels - {}", channels,
+            fmt::println(stderr, "error: {} capture channels - {}", channels,
                          plan::describe(plan::PlanError::kNoSourceLayout));
             return kExitUsage;
         }
@@ -456,13 +458,13 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (monitor_device != -2) {
         const auto target = resolve_render_device(monitor_device);
         if (!target) {
-            std::println(stderr, "warning: monitor device index {} out of range; monitoring off",
+            fmt::println(stderr, "warning: monitor device index {} out of range; monitoring off",
                          monitor_device);
         } else {
             const auto mstarted = monitor_sink.start(
                 target->id, rate_hz, static_cast<std::uint16_t>(rendered_channels));
             if (!mstarted) {
-                std::println(stderr, "warning: monitor unavailable: {}",
+                fmt::println(stderr, "warning: monitor unavailable: {}",
                              ac3::audio::describe(mstarted.error()));
             } else {
                 monitoring = true;
@@ -484,7 +486,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (passthrough_device != -2) {
         const auto target = resolve_render_device(passthrough_device);
         if (!target) {
-            std::println(stderr,
+            fmt::println(stderr,
                          "warning: passthrough device index {} out of range; passthrough off",
                          passthrough_device);
         } else {
@@ -496,7 +498,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             downmix_leg = eac3 && !takes_eac3 && takes_ac3 && meta.downmix_leg;
             const bool leg_eac3 = eac3 && !downmix_leg;
             if (!(leg_eac3 ? takes_eac3 : takes_ac3)) {
-                std::println(stderr,
+                fmt::println(stderr,
                              "warning: \"{}\" does not accept {} over IEC 61937; passthrough "
                              "off{}",
                              target->name, leg_eac3 ? "E-AC-3" : "AC-3",
@@ -508,7 +510,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                                              : ac3::audio::BitstreamFormat::kAc3;
                 const auto pstarted = passthrough_sink.start(target->id, rate_hz, format);
                 if (!pstarted) {
-                    std::println(stderr, "warning: passthrough unavailable: {}",
+                    fmt::println(stderr, "warning: passthrough unavailable: {}",
                                  ac3::audio::describe(pstarted.error()));
                 } else {
                     passing_through = true;
@@ -588,7 +590,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                                           .channels = 6}
                   : take_sink_config(meta, *take, rate_hz);
         if (const auto why = sink.open(std::string{out_path}, config); !why.empty()) {
-            std::println(stderr, "error: {}: {}", out_path, why);
+            fmt::println(stderr, "error: {}: {}", out_path, why);
             return kExitOutput;
         }
     }
@@ -633,6 +635,15 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     bool lost_is_slave = false;
     bool encode_failed = false;
 
+    // Roadmap IO3's capture-side half, as it applies here. Unlike 'record',
+    // a live session has nothing useful to do with a bitstream: it mixes,
+    // resamples a second device into lockstep, meters, monitors and can pan
+    // objects, none of which mean anything applied to burst data. So this
+    // detects and stops rather than switching modes - the alternative is a
+    // whole session's output that is noise, discovered at the end of it.
+    // Costs nothing after the first quarter-second.
+    ac3::iec61937::PassthroughDetector passthrough_probe;
+
     std::uint64_t n0 = 0;
     std::uint64_t frames_written = 0;
     for (std::uint64_t f = 0; f < target_frames; ++f) {
@@ -653,6 +664,25 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         if (device_lost) {
             break;
+        }
+        if (!passthrough_probe.decided()) {
+            passthrough_probe.push(interleaved, static_cast<std::uint16_t>(channels));
+            if (const auto type = passthrough_probe.detected()) {
+                capture.stop();
+                fmt::println("");
+                fmt::println(stderr,
+                             "error: \"{}\" is bitstreaming {} over IEC 61937, not delivering "
+                             "PCM - a live encode of it would be noise",
+                             device.name,
+                             *type == ac3::iec61937::BurstDataType::kEac3 ? "Dolby Digital Plus"
+                                                                         : "Dolby Digital");
+                fmt::println(stderr,
+                             "  'ac3cli record <out.ec3> <seconds> 0 {}' records the elementary "
+                             "stream instead, and 'ac3cli unspdif' recovers one from a capture "
+                             "already saved as a WAV.",
+                             capture_device);
+                return kExitInput;
+            }
         }
         if (slave_resampler.has_value() && slave_drift.has_value()) {
             // Opportunistic, non-blocking drain: whatever capture2 has ready
@@ -757,7 +787,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
             const auto unit = atmos_encoder->encode_frame(views, placement);
             if (!unit) {
-                std::println(stderr, "error: cannot encode {} objects at {} kbps",
+                fmt::println(stderr, "error: cannot encode {} objects at {} kbps",
                              nobjects, bitrate);
                 encode_failed = true;
                 break;
@@ -779,7 +809,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             if (take->eac3) {
                 const auto unit = eac3_encoder->encode_access_unit(coded_views);
                 if (!unit) {
-                    std::println(stderr, "error: the encoder cannot express this configuration");
+                    fmt::println(stderr, "error: the encoder cannot express this configuration");
                     encode_failed = true;
                     break;
                 }
@@ -787,7 +817,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             } else {
                 auto frame = ac3_encoder->encode_frame(coded_views);
                 if (!frame) {
-                    std::println(stderr, "error: bitrate must be a legal AC-3 rate");
+                    fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
                     encode_failed = true;
                     break;
                 }
@@ -854,7 +884,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
 
         if (const auto why = sink.push(unit_bytes); !why.empty()) {
-            std::println(stderr, "error: {}: {}", out_path, why);
+            fmt::println(stderr, "error: {}: {}", out_path, why);
             std::ignore = sink.close();
             return kExitOutput;
         }
@@ -893,11 +923,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // the device vanished ends as a device failure, not as a disk one.
     const auto close_problem = sink.close();
     if (!close_problem.empty() && !device_lost) {
-        std::println(stderr, "error: {}: {}", out_path, close_problem);
+        fmt::println(stderr, "error: {}: {}", out_path, close_problem);
         return kExitOutput;
     }
     if (device_lost) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: \"{}\" stopped delivering audio for {} ms; the session was stopped "
                      "and what had already been written is kept (watchdog=0 disables this){}",
                      lost_is_slave && device2 != nullptr ? device2->name : device.name,

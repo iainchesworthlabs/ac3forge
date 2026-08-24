@@ -1,8 +1,8 @@
-# ac3forge fuzzing. Five jobs. Four of them share the libFuzzer harnesses in
-# fuzz/ and all mutate an ALREADY-ENCODED bitstream - they ask whether the
-# DECODER survives corrupt input. The fifth (encoder-space-nightly) asks the
-# opposite question, about the ENCODER, and shares none of that machinery; see
-# its own comment below.
+# ac3forge fuzzing. Six jobs. Five of them share the libFuzzer harnesses in
+# fuzz/, and all but fuzz-adm-nightly mutate an ALREADY-ENCODED bitstream -
+# they ask whether the DECODER survives corrupt input. The sixth
+# (encoder-space-nightly) asks the opposite question, about the ENCODER, and
+# shares none of that machinery; see its own comment below.
 #
 #   fuzz-regress       Replays fuzz/seeds/ and fuzz/regressions/ with -runs=0
 #                      (no mutation) - a correctness gate: every regression
@@ -10,7 +10,7 @@
 #                      minutes; runs on every push/PR to main/develop and is
 #                      NOT experimental - a regression here means a fixed bug
 #                      came back.
-#   fuzz-short         A bounded mutation budget (60s/target, ~4 minutes
+#   fuzz-short         A bounded mutation budget (60s/target, ~8 minutes
 #                      total), push only, so pull requests are not slowed by
 #                      it.
 #   fuzz-differential  Same mutation approach, over the two differential
@@ -30,10 +30,29 @@
 #                      for an on-demand deeper run with a custom budget. Does
 #                      NOT include the differential harnesses - see
 #                      fuzz-differential above.
+#   fuzz-adm-nightly   fuzz_adm_parse on its own, same daily schedule. Its own
+#                      job because it is the only harness here that is not
+#                      built by default: ac3adm needs vcpkg's "adm" feature
+#                      for libadm's Boost headers plus network access for the
+#                      FetchContent pulls of libbw64 and libadm, none of which
+#                      the four jobs above touch at all. Folding it into
+#                      fuzz-short would put a vcpkg restore and two source
+#                      fetches in front of every push's crash-only run for one
+#                      opt-in harness.
 #   encoder-space-     The ENCODER's input space rather than the decoder's:
 #   nightly            random legal encoder configurations crossed with
 #                      adversarial PCM, every resulting stream held against
 #                      both this project's decoder and FFmpeg's strict decode.
+#                      Both encoders: tools/ci/fuzz_encoder_space.py for AC-3
+#                      and tools/ci/fuzz_eac3_encoder_space.py for E-AC-3
+#                      (roadmap VX1 - Annex E tool tokens, fscod2 half rates,
+#                      VBR, the layouts needing dependent substreams, Atmos
+#                      object counts). They share a PCM generator and nothing
+#                      else; the E-AC-3 half additionally classifies each case
+#                      by what FFmpeg can read, since it cannot read a second
+#                      dependent substream, enhanced coupling, transient
+#                      pre-noise or fscod2 audio, and holds those cells
+#                      against ffprobe's syncframe walk instead.
 #                      Not a libFuzzer target and not part of fuzz/run.sh - it
 #                      drives the real ac3cli, so it builds the CLI the way
 #                      ci.yml's ffmpeg-validate job does rather than the
@@ -50,21 +69,35 @@
 # This is a bounded, time-boxed run, not continuous (OSS-Fuzz-style) fuzzing
 # infrastructure - see fuzz/README.md.
 #
-# All four run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
+# fuzz-regress, fuzz-short and fuzz-nightly cover every harness in
+# fuzz/run.sh's default list, which as of roadmap VX3 is nine: the four
+# original entry points, fuzz_iec61937_unwrap (roadmap IO3), and
+# fuzz_emdf_parse, fuzz_oamd_parse, fuzz_joc_parse, fuzz_signing_verify over
+# the object and metadata layer. They need no per-job wiring - run.sh owns
+# the list, and a new entry there is picked up by all three at once.
+#
+# All five run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
 # linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
 # set (-Werror included) as every other target - the fuzz build used to be the
 # one exception, on the assumption it carried a sign-conversion/double-promotion
 # debt, but a recount found zero such sites and the exemption was removed.
-# fuzz-short, fuzz-differential and fuzz-nightly stay marked experimental on
-# their own merits: none has multiple clean fuzzing runs behind it yet, which
-# is a question of track record rather than of anything the compiler can
-# check. Promote one by deleting its `continue-on-error: true` line.
+# fuzz-short, fuzz-differential, fuzz-nightly and fuzz-adm-nightly stay marked
+# experimental on their own merits: none has multiple clean fuzzing runs
+# behind it yet, which is a question of track record rather than of anything
+# the compiler can check. Promote one by deleting its `continue-on-error:
+# true` line.
 #
 # fuzz-differential additionally installs `ffmpeg` - the same package the
 # gold_reference/sanitizer legs of .github/workflows/_build.yml already
 # install on Linux, and for the same reason (an independent decode oracle).
-# The other three jobs have no such dependency: their harnesses only ever
-# call into ac3::forge itself.
+# fuzz-adm-nightly additionally sets up vcpkg. The other three jobs have no
+# such dependency: their harnesses only ever call into ac3::forge and
+# ac3::signing, both of which are in-tree and dependency-free.
+#
+# VCPKG_ROOT: fuzz/run.sh reads it directly to place the toolchain file (see
+# its configure_and_build), rather than going through a CMake preset the way
+# encoder-space-nightly does - setup-vcpkg exports it, so nothing extra is
+# needed here beyond that action.
 #
 # Deliberately its own workflow rather than folded into ci.yml's build-and-test
 # matrix or its ci-status gate: fuzz-regress is cheap enough to make required
@@ -88,7 +121,11 @@ on:
         type: number
         default: 600
       encoder_space_seconds:
-        description: "Encoder input-space budget, in seconds"
+        description: "AC-3 encoder input-space budget, in seconds"
+        type: number
+        default: 900
+      eac3_encoder_space_seconds:
+        description: "E-AC-3 encoder input-space budget, in seconds"
         type: number
         default: 900
 
@@ -258,6 +295,67 @@ jobs:
           path: fuzz/artifacts/
           if-no-files-found: ignore
 
+  # fuzz_adm_parse on its own - see this file's header for why it is not
+  # folded into fuzz-short/fuzz-nightly. Toolchain-wise it is those jobs plus
+  # vcpkg: the same ubuntu:26.04 + LLVM 22 + sanitizer runtime archives, with
+  # the vcpkg pin encoder-space-nightly already uses added so libadm's Boost
+  # headers resolve. AC3FORGE_FUZZ_ADM makes fuzz/run.sh turn
+  # AC3FORGE_BUILD_ADM and -DVCPKG_MANIFEST_FEATURES=adm on and append the
+  # harness to its default list; naming the harness explicitly here as well
+  # keeps this job to that one target regardless.
+  #
+  # Scheduled/dispatch only, not on push: a vcpkg restore plus the
+  # FetchContent pulls of libbw64 and libadm cost more than the mutation
+  # budget itself, and unlike the other harnesses most of what this one
+  # reaches is third-party code (see fuzz/README.md's "The ADM harness is
+  # opt-in").
+  fuzz-adm-nightly:
+    name: Fuzz ADM Nightly (BW64 container + ADM XML)
+    needs: toolchain-versions
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    continue-on-error: true  # experimental - see the header comment
+    env:
+      AC3FORGE_FUZZ_ADM: 1
+      AC3FORGE_FUZZ_SECONDS: ${{ github.event.inputs.seconds_per_target || 600 }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install LLVM 22
+        run: bash .github/toolchain/03-llvm-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      # Cheap correctness gate first, same shape as fuzz-regress: the seed and
+      # regression corpora must replay clean before any budget is spent.
+      - name: Replay ADM seeds + regression corpus (no mutation)
+        run: bash fuzz/run.sh regress fuzz_adm_parse
+
+      - name: Fuzz ADM (bounded mutation budget)
+        run: bash fuzz/run.sh run fuzz_adm_parse
+
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-adm-nightly-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
   # The deeper half of the encoder input-space search - see this file's header
   # for what it is and why it shares nothing with the four jobs above. Its
   # bounded per-PR counterpart is a step in ci.yml's ffmpeg-validate job.
@@ -280,6 +378,7 @@ jobs:
     env:
       AC3CLI: build/config-linux-llvm/bin/ac3cli
       ENCODER_SPACE_SECONDS: ${{ github.event.inputs.encoder_space_seconds || 900 }}
+      EAC3_ENCODER_SPACE_SECONDS: ${{ github.event.inputs.eac3_encoder_space_seconds || 900 }}
     steps:
       - name: Bootstrap container
         run: |
@@ -320,10 +419,28 @@ jobs:
       - name: Encoder input-space fuzz (deeper budget, both decoders)
         run: python3 tools/ci/fuzz_encoder_space.py --seconds "$ENCODER_SPACE_SECONDS"
 
+      # The E-AC-3 half (roadmap VX1). Its own envelope first, for the same
+      # reason the AC-3 one runs first, plus the oracle model: the gap table
+      # decides which cells get an FFmpeg decode and which get the framing
+      # oracle instead, so a stale entry silently narrows what the deeper run
+      # below actually checks.
+      - name: E-AC-3 encoder oracle model (what this FFmpeg can actually read)
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles
+
+      - name: E-AC-3 encoder acceptance envelope (rate floors + the frmsiz ceiling)
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope
+
+      - name: E-AC-3 encoder input-space fuzz (deeper budget, both decoders)
+        run: >
+          python3 tools/ci/fuzz_eac3_encoder_space.py
+          --seconds "$EAC3_ENCODER_SPACE_SECONDS"
+
       - name: Upload failing inputs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: encoder-space-nightly-artifacts
-          path: fuzz-encoder-artifacts/
+          path: |
+            fuzz-encoder-artifacts/
+            fuzz-eac3-encoder-artifacts/
           if-no-files-found: ignore

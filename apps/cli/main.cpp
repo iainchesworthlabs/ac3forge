@@ -4,8 +4,8 @@
 #include <exception>
 #include <cstdint>
 #include <cstdio>
-#include <format>
-#include <print>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -24,6 +24,7 @@
 #include "commands/decode.hpp"
 #include "commands/encode.hpp"
 #include "commands/live_audio.hpp"
+#include "commands/probe.hpp"
 #include "commands/synth.hpp"
 #include "exit_codes.hpp"
 #include "support.hpp"
@@ -52,9 +53,9 @@ using namespace ac3cli::commands;
 //
 // Here the convention is stated once: args[0] is the command, so args[1] is
 // the first parameter, and min_args is checked before any handler runs.
-// print_usage() is generated from the same rows, so the help cannot drift
-// from what dispatch accepts - it already had, with eac3-silence and
-// eac3-sine missing from it entirely.
+// usage.hpp's print_usage()/print_command_help() are generated from the
+// same rows, so the help cannot drift from what dispatch accepts - it
+// already had, with eac3-silence and eac3-sine missing from it entirely.
 // ---------------------------------------------------------------------------
 
 struct Args {
@@ -162,13 +163,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 29 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 32 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 29> kCommands{{
+constexpr std::array<Command, 32> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -192,7 +193,7 @@ constexpr std::array<Command, 29> kCommands{{
                           x.str(6, "objects"), x.meta);
      }},
     {"atmos-path", 3, "<out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects]",
-     "objects driven by an authored keyframe file instead of the built-in orbit",
+     "objects driven by an authored scene file instead of the built-in orbit",
      topic::kAtmos | topic::kPaths | topic::kMeta | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) {
@@ -200,8 +201,8 @@ constexpr std::array<Command, 29> kCommands{{
                                x.meta);
      }},
     {"atmos-encode", 3, "<in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt]",
-     "every source channel as an object; optional: authored per-object motion from a keyframe "
-     "file (same format as atmos-path), objects it doesn't mention keep their default placement",
+     "every source channel as an object; optional: authored per-object motion from a scene "
+     "file (same formats as atmos-path), objects it doesn't mention keep their default placement",
      topic::kStdio | topic::kAtmos | topic::kPaths | topic::kMulti | topic::kMeta | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) {
@@ -211,7 +212,7 @@ constexpr std::array<Command, 29> kCommands{{
     {"atmos-adm", 3, "<in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id]",
      "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC "
      "E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder "
-     "object, driven by the file's own authored automation - no keyframe file needed. Only in "
+     "object, driven by the file's own authored automation - no scene file needed. Only in "
      "builds with -DAC3FORGE_BUILD_ADM=ON",
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kAdm,
@@ -272,20 +273,33 @@ constexpr std::array<Command, 29> kCommands{{
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3)); }},
+    {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
+     "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
+     "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
+     topic::kStdio | topic::kProbe,
+     Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
     {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all]",
+    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate",
      topic::kQc,
-     Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
+     Needs::kNothing, [](const Args& x) {
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+     }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
+    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
+     "the inverse: recover the elementary stream from IEC 61937 bursts, as captured from "
+     "an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end",
+     topic::kStdio,
+     Needs::kNothing,
+     [](const Args& x) { return run_unspdif(x.str(1), x.str(2), x.meta.keep_partial); }},
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", topic::kMkv,
      Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
@@ -300,6 +314,11 @@ constexpr std::array<Command, 29> kCommands{{
     {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
      topic::kTs,
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
+     "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
+     "identified by its own magic bytes, not by the file name",
+     topic::kNone,
+     Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
     {"devices", 1, "", "input and loopback capture endpoints", topic::kNone,
      Needs::kCapture,
      [](const Args&) { return run_devices(); }},
@@ -327,7 +346,7 @@ constexpr std::array<Command, 29> kCommands{{
 }};
 
 // kCommands as usage.hpp sees it: no handler, no Needs, and this build's own
-// answer to "can it run here" already resolved. Rebuilt on every call - 29
+// answer to "can it run here" already resolved. Rebuilt on every call - 32
 // rows of string_view, so there is nothing worth caching and nothing that can
 // go stale between the table and what gets printed.
 std::vector<CommandInfo> command_infos() {
@@ -373,7 +392,7 @@ int run_help(const Args& x) {
             return kExitOk;
         }
     }
-    std::println(stderr, "error: unknown command '{}'", topic_name);
+    fmt::println(stderr, "error: unknown command '{}'", topic_name);
     print_command_index(infos);
     return kExitUsage;
 }
@@ -393,7 +412,7 @@ int run_main(int argc, char** argv) {
     const std::span<char*> raw{argv, static_cast<std::size_t>(argc)};
     if (raw.size() > 1 &&
         (std::string_view{raw[1]} == "--version" || std::string_view{raw[1]} == "-v")) {
-        std::println("{}", ac3::version_details());
+        fmt::println("{}", ac3::version_details());
         return kExitOk;
     }
     // Split the command line into positional arguments and metadata options. An
@@ -439,7 +458,7 @@ int run_main(int argc, char** argv) {
         return kExitOk;
     }
     Options meta;
-    if (!parse_options(options, meta)) {
+    if (!parse_options(options, meta, args.empty() ? std::string_view{} : std::string_view{args[0]})) {
         return kExitUsage;
     }
     // Before the first handler runs, so every status printer downstream sees
@@ -458,8 +477,8 @@ int run_main(int argc, char** argv) {
             // one line the operator needs is the one they typed wrong, and
             // burying it under ~130 lines of prose about every other command
             // is what made the old behaviour worth replacing.
-            std::println(stderr, "error: {} needs {}", c->name, c->spec);
-            std::println(stderr, "  see 'ac3cli help {}'", c->name);
+            fmt::println(stderr, "error: {} needs {}", c->name, c->spec);
+            fmt::println(stderr, "  see 'ac3cli help {}'", c->name);
             return kExitUsage;
         }
         // Refuse before the handler runs, so a command that cannot work here
@@ -467,12 +486,12 @@ int run_main(int argc, char** argv) {
         // partway through with whatever error code the no-backend stub
         // happened to return. Nothing silently does nothing.
         if (const auto* missing = unmet(c->needs)) {
-            std::println(stderr, "error: '{}' is unavailable on this platform: {}", c->name,
+            fmt::println(stderr, "error: '{}' is unavailable on this platform: {}", c->name,
                          missing->reason);
             if (c->needs == Needs::kPassthrough) {
                 // The one live-audio capability with a portable substitute:
                 // same bursts, written to a file instead of an endpoint.
-                std::println(stderr,
+                fmt::println(stderr,
                              "  'ac3cli spdif <in.ac3> <out.wav>' wraps the same IEC 61937 "
                              "bursts into a WAV that any player will pass through untouched.");
             }
@@ -480,29 +499,29 @@ int run_main(int argc, char** argv) {
         }
         return c->run(Args{args, meta, couple_flag});
     }
-    std::println(stderr, "error: unknown command '{}'", command);
+    fmt::println(stderr, "error: unknown command '{}'", command);
     print_command_index(command_infos());
     return kExitUsage;
 }
 
 // run_main is std::expected-clean throughout; the one realistic exception
-// source left is std::format/std::println itself (std::format_error), which
+// source left is fmt::format/fmt::println itself (fmt::format_error), which
 // nothing here catches internally. Left uncaught, that unwinds out of main
 // and terminates - a crash with no exit code a script could act on rather
 // than the ordinary "error: ..." this CLI otherwise always prints on
 // failure. This is the one place that catches it. clang-tidy still flags
 // main() itself: it cannot see past this try/catch to know the escape is
 // caught, and reports the one path it cannot fully close by construction -
-// the catch block's own std::println, whose fixed one-argument format string
+// the catch block's own fmt::println, whose fixed one-argument format string
 // has no realistic way to throw. NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv) {
     try {
         return run_main(argc, argv);
     } catch (const std::exception& e) {
-        std::println(stderr, "error: unhandled exception: {}", e.what());
+        fmt::println(stderr, "error: unhandled exception: {}", e.what());
         return kExitInternal;
     } catch (...) {
-        std::println(stderr, "error: unhandled exception of unknown type");
+        fmt::println(stderr, "error: unhandled exception of unknown type");
         return kExitInternal;
     }
 }

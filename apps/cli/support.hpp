@@ -1,13 +1,15 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <format>
 #include <expected>
+#include <filesystem>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -22,6 +24,9 @@
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
+#include "mp4/dash.hpp"
+#include "mp4/hls.hpp"
+#include "mp4/mp4.hpp"
 #include "recording_sink.hpp"
 
 // The CLI-wide support layer: option/metadata parsing, path/stdio conventions, frame and WAV I/O,
@@ -114,14 +119,24 @@ struct Options {
     // positional already reads. Unset means the classic single-device
     // session, unchanged from before this option existed.
     std::optional<int> capture2 = std::nullopt;
-    // 'record'/'live' only: which container the take is written into -
-    // raw|mkv|ts|spdif, the same four RecordingSink streams for the GUI's own
-    // Container combo (EncoderController::recording_sink_container). Defaults
-    // to the bare elementary stream, so a plain invocation writes exactly the
-    // .ac3/.ec3 it always has. Every one of the four is written incrementally
-    // as the session runs (roadmap IO9) - there is no accumulate-then-mux
-    // path left on either command.
+    // 'record'/'live' only: which container the take is written into - the
+    // same five RecordingSink streams the GUI's own Container combo offers
+    // (EncoderController::recording_sink_container). Defaults to the bare
+    // elementary stream, so a plain invocation writes exactly the .ac3/.ec3
+    // it always has. Every one of the five is written incrementally through
+    // RecordingSink itself (roadmap IO9 - there is no accumulate-then-mux
+    // path left on either command), kFmp4 included: RecordingSink's own
+    // kFmp4 backend (Fmp4FolderWriter) now takes the rolling-window option
+    // fmp4_window_segments below needs, so there is no separate writer left
+    // to maintain here the way there briefly was.
     RecordingSink::Container container = RecordingSink::Container::kElementary;
+    // container=fmp4 only: how many of the most recent media segments the
+    // HLS playlist and DASH MPD list - a rolling live window
+    // (mp4::FragmentOptions::playlist_window_segments). 0, the default,
+    // lists every segment, which is what a session whose directory will be
+    // served whole afterwards wants; a real origin deleting segments behind
+    // itself sets its own depth here.
+    std::uint32_t fmp4_window_segments = 0;
     // 'record'/'live' only: the encoded layout, and whether the codec is
     // derived from it or forced. Empty layout means stereo, which is what
     // both commands did before they could be told otherwise; codec unset
@@ -183,16 +198,55 @@ struct Options {
     // the Options it already has rather than calling back into a global.
     bool quiet = false;
     bool verbose = false;
+    // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
+    // of the human-readable table. Off by default - a bare `ac3cli probe
+    // <file>` is meant to be read by a person, and every other command here
+    // prints for one too.
+    bool json = false;
+    // 'probe' only: how much per-frame detail the report carries - unset for
+    // the stream summary alone, "frames" for one entry per access unit,
+    // "blocks" to also dump every block's coding tools and exponent
+    // strategies. A string rather than an enum for the same reason
+    // qc_preset below is one: parse_options only ever sees command-line text,
+    // and the command that consumes it is the one that knows what the values
+    // mean.
+    std::optional<std::string> detail;
+    // §7.3.4 dithflag (plan::Tools::dither), on by default like the library
+    // configs it feeds; dither=off pins it at 0 unconditionally wherever this
+    // command encodes, the same key=off shape fast-mdct=off already uses -
+    // AC-3 has no tools= string, so this is that field's equivalent. E-AC-3's
+    // own tools= string reaches the same field with "nodither". The only
+    // reason to reach for this: a caller needs bit-for-bit agreement between
+    // two decoders of the SAME encode more than it needs dither's real
+    // perceptual benefit - real dither values are decoder-defined, so two
+    // independent, spec-correct decoders diverge in the dithered bins by
+    // design (see EncoderConfig::dither's own comment), which is exactly
+    // what tools/checks/verify_gold_reference.sh needs this for.
+    bool dither = true;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain
     // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
+    // 'qc' only: which soundfield to meter. false (layout=bed, the default)
+    // measures the independent substream's own Table 5.8 bed through
+    // BS.1770 Annex 1's basic algorithm - what this command has always
+    // done. true (layout=rendered) measures the whole assembled program,
+    // every dependent substream's height/wide/rear channels included,
+    // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
+    bool qc_rendered_layout = false;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a
 // silently ignored metadata flag looks exactly like metadata that did not work.
-bool parse_options(std::span<char*> tokens, Options& out);
+//
+// `command` decides what `layout=` means: `qc`'s own is a bed/rendered switch
+// (see Options::qc_rendered_layout's comment), record/live's is a channel
+// layout name or list (Options::take_layout's). The two commands settled on
+// the same token independently - matching the GUI's own "layout" language in
+// each context - so this is the one place that has to know which command is
+// asking, everywhere else in this function stays command-agnostic.
+bool parse_options(std::span<char*> tokens, Options& out, std::string_view command);
 
 // Reads a loudness measurement someone else already pushed every sample
 // into, reports it the same way every dialnorm=auto path does, and returns
@@ -261,7 +315,7 @@ bool is_stdio_path(std::string_view path);
 //
 // What quiet does NOT silence is a REPORTING command's report - 'levels',
 // 'loudness', 'qc', 'devices' and 'outputs' print their answer with plain
-// std::println, because that answer is the command's output rather than
+// fmt::println, because that answer is the command's output rather than
 // commentary on it. Silencing those would leave the command doing nothing
 // observable at all.
 FILE* status_stream(std::string_view out_path);
@@ -270,20 +324,20 @@ FILE* status_stream(std::string_view out_path);
 // or nowhere under quiet.
 FILE* status_stream();
 
-// std::println with a "nowhere" destination: a no-op when `out` is nullptr
+// fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
 // (see status_stream above), an ordinary println otherwise. Every status line
 // in this CLI goes through this, so `quiet` is honoured in one place rather
 // than at each site.
 template <typename... Args>
-void status_println(FILE* out, std::format_string<Args...> fmt, Args&&... args) {
+void status_println(FILE* out, fmt::format_string<Args...> format, Args&&... args) {
     if (out != nullptr) {
-        std::println(out, fmt, std::forward<Args>(args)...);
+        fmt::println(out, format, std::forward<Args>(args)...);
     }
 }
 
 inline void status_println(FILE* out) {
     if (out != nullptr) {
-        std::println(out, "");
+        fmt::println(out, "");
     }
 }
 
@@ -316,19 +370,6 @@ class Progress {
 };
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames);
-
-// Writes `frames` either as a bare elementary stream (write_frames above) or,
-// when `matroska` is set, muxed into Matroska - the choice 'record'/'live's
-// own container= token (and the GUI's Container combo) offer. `track` is
-// built by the caller from what it already knows about the session (codec,
-// sample rate, coded channel count) rather than scanned off the bitstream
-// the way 'mkv' reads an arbitrary already-encoded file: record/live just
-// finished constructing the encoder themselves, so there is nothing to
-// rediscover. Kept beside write_frames rather than folded into it - most
-// callers have no AudioTrack to give it, and 'mkv' itself stays separate too,
-// since ITS track comes from ac3::io::scan(), not a caller-supplied one.
-bool write_frames_or_mux(std::string_view path, bool matroska, const matroska::AudioTrack& track,
-                         std::span<const std::vector<std::byte>> frames);
 
 // Where a failed encode's frames land when keep-partial is given: ".partial"
 // spliced in before the suffix, so "out.ec3" keeps its half-finished take as

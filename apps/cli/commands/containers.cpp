@@ -1,12 +1,16 @@
 #include "containers.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
+#include <ranges>
 #include <cstdint>
 #include <filesystem>
-#include <format>
+#include <fmt/base.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <ios>
-#include <print>
+#include <iostream>
 #include <span>
 #include <string>
 #include <string_view>
@@ -18,11 +22,15 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "matroska/matroska.hpp"
+#include "matroska/reader.hpp"
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
+#include "mp4/reader.hpp"
 #include "mpegts/mpegts.hpp"
+#include "mpegts/reader.hpp"
 #include "../exit_codes.hpp"
+#include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 
 namespace ac3cli::commands {
@@ -32,13 +40,13 @@ namespace {
 bool write_bytes_to_path(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream out{path, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {} for writing", path.string());
+        fmt::println(stderr, "error: cannot open {} for writing", path.string());
         return false;
     }
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
     if (!out) {
-        std::println(stderr, "error: write failed for {}", path.string());
+        fmt::println(stderr, "error: write failed for {}", path.string());
         return false;
     }
     return true;
@@ -49,42 +57,31 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
         path, std::as_bytes(std::span{reinterpret_cast<const char*>(text.data()), text.size()}));
 }
 
-// A minimal but complete DASH MPD document wrapped around
-// mp4::build_dash_adaptation_set()'s <AdaptationSet> snippet - the library
-// stops at the snippet (mp4.hpp/dash.hpp's own scope: single-representation
-// audio, no opinion on the surrounding document), the CLI front end supplies
-// the rest, the same boundary mp4::mux() not doing file I/O already draws.
-// profiles="isoff-live" is what a SegmentTemplate-based MPD declares
-// regardless of static/live (ISO/IEC 23009-1 Annex A.3) - "isoff-on-demand"
-// instead mandates a single SegmentBase/index-range layout this module does
-// not produce.
-std::string build_dash_mpd(const mp4::AudioTrack& track,
-                           std::span<const mp4::MediaSegment> segments,
-                           std::string_view adaptation_set) {
-    std::uint64_t total_samples = 0;
-    for (const auto& segment : segments) {
-        total_samples += segment.duration_samples;
+// §E2.3.1.2's legacy-core delivery - an AC-3 bed with Annex E dependent
+// substreams extending it - has no codec-config box defined for it in any of
+// these containers: 'dac3' cannot mention the dependents and 'dec3' would
+// have to call the AC-3 core Annex E syntax (ac3::io::build_codec_config_box
+// declines it for exactly that reason, returning an empty payload). Refused
+// here, where the message can name the file and point somewhere useful,
+// rather than written into a file whose header contradicts its own mdat.
+[[nodiscard]] bool reject_legacy_core(const ac3::io::ScannedStream& scanned,
+                                      std::string_view in_path, std::string_view container) {
+    if (scanned.kind != ac3::io::StreamKind::kAc3CoreEac3Extension) {
+        return false;
     }
-    const double total_seconds =
-        static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
-    return std::format(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
-        "mediaPresentationDuration=\"PT{:.3f}S\" minBufferTime=\"PT2S\" "
-        "profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">\n"
-        "  <Period>\n"
-        "{}"
-        "  </Period>\n"
-        "</MPD>\n",
-        total_seconds, adaptation_set);
+    fmt::println(stderr,
+                "error: {} is an AC-3 core with E-AC-3 extension substreams (A/52 §E2.3.1.2); "
+                "{} has no codec-config box that can describe that arrangement. "
+                "`ac3cli decode` reads the stream itself.",
+                in_path, container);
+    return true;
 }
-
 }  // namespace
 
 int run_mkv(std::string_view in_path, std::string_view out_path) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     // Everything the container needs to declare comes out of the bitstream:
@@ -94,7 +91,10 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // itself - and nothing could catch it.
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return kExitInput;
+    }
+    if (reject_legacy_core(*scanned, in_path, "Matroska")) {
         return kExitInput;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -110,18 +110,18 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
         .samples_per_frame = ac3::kSamplesPerFrame};
     const auto file = matroska::mux(track, units);
     if (!file) {
-        std::println(stderr, "error: {}", matroska::describe(file.error()));
+        fmt::println(stderr, "error: {}", matroska::describe(file.error()));
         return kExitInput;
     }
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot write {}", out_path);
+        fmt::println(stderr, "error: cannot write {}", out_path);
         return kExitOutput;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
               static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return kExitOutput;
     }
     // Name the layout only when one substream carries the whole thing. With
@@ -129,23 +129,26 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // rendered channel count would just contradict itself.
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     status_println(status_stream(), "wrote {} {} access units ({}, {} channels, {} bytes) to {}",
-                 units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
-                 file->size(), out_path);
-    return 0;
+                   units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
+                   file->size(), out_path);
+    return kExitOk;
 }
 
 int run_mp4(std::string_view in_path, std::string_view out_path) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return kExitInput;
+    }
+    if (reject_legacy_core(*scanned, in_path, "MP4")) {
         return kExitInput;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -162,44 +165,47 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         .codec_config = ac3::io::build_codec_config_box(*scanned)};
     const auto file = mp4::mux(track, units);
     if (!file) {
-        std::println(stderr, "error: {}", mp4::describe(file.error()));
+        fmt::println(stderr, "error: {}", mp4::describe(file.error()));
         return kExitInput;
     }
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot write {}", out_path);
+        fmt::println(stderr, "error: cannot write {}", out_path);
         return kExitOutput;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
               static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return kExitOutput;
     }
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     const std::string atmos =
         scanned->oba_complexity_index
-            ? std::format(", Atmos complexity {}", *scanned->oba_complexity_index)
+            ? fmt::format(", Atmos complexity {}", *scanned->oba_complexity_index)
             : std::string{};
     status_println(status_stream(), "wrote {} {} access units ({}, {} channels{}, {} bytes) to {}",
-                 units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels, atmos,
-                 file->size(), out_path);
-    return 0;
+                   units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels, atmos,
+                   file->size(), out_path);
+    return kExitOk;
 }
 
 int run_fmp4(std::string_view in_path, std::string_view out_dir,
              std::uint32_t frames_per_fragment) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return kExitInput;
+    }
+    if (reject_legacy_core(*scanned, in_path, "fragmented MP4")) {
         return kExitInput;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -214,10 +220,17 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
                                 .samples_per_frame = ac3::kSamplesPerFrame,
                                 .codec_config = ac3::io::build_codec_config_box(*scanned)};
 
+    // ETSI TS 103 420 §E.5's 'ceao' compatibility brand, which DASH-IF IOP
+    // Part 8 v5.0.0 §5.3.3 asks for on a backward-compatible object-audio
+    // E-AC-3 track: mp4:: never reads the object layer itself, so this front
+    // end - which already read oba_complexity_index to build the dec3 box
+    // above - is the one that says so.
     const auto fragmented = mp4::fragment(
-        track, units, mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment});
+        track, units,
+        mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
+                             .object_audio_brand = scanned->oba_complexity_index.has_value()});
     if (!fragmented) {
-        std::println(stderr, "error: {}", mp4::describe(fragmented.error()));
+        fmt::println(stderr, "error: {}", mp4::describe(fragmented.error()));
         return kExitInput;
     }
 
@@ -225,7 +238,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     const std::filesystem::path dir{std::string{out_dir}};
     std::filesystem::create_directories(dir, ec);
     if (ec) {
-        std::println(stderr, "error: cannot create directory {} ({})", out_dir, ec.message());
+        fmt::println(stderr, "error: cannot create directory {} ({})", out_dir, ec.message());
         return kExitOutput;
     }
 
@@ -233,7 +246,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         return kExitOutput;
     }
     for (const auto& segment : fragmented->media_segments) {
-        const auto name = std::format("segment{}.m4s", segment.sequence_number);
+        const auto name = fmt::format("segment{}.m4s", segment.sequence_number);
         if (!write_bytes_to_path(dir / name, segment.bytes)) {
             return kExitOutput;
         }
@@ -247,7 +260,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     // field; only this CLI front end, which already has it, does.
     const mp4::HlsOptions hls_options{
         .channels_attribute = scanned->oba_complexity_index
-                                  ? std::format("{}/JOC", *scanned->oba_complexity_index)
+                                  ? fmt::format("{}/JOC", *scanned->oba_complexity_index)
                                   : std::string{}};
     const auto media_playlist =
         mp4::build_hls_media_playlist(track, fragmented->media_segments, hls_options);
@@ -258,37 +271,50 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         return kExitOutput;
     }
 
-    const auto adaptation_set = mp4::build_dash_adaptation_set(track, fragmented->media_segments);
-    const auto mpd = build_dash_mpd(track, fragmented->media_segments, adaptation_set);
+    // The DASH side of the same two facts: TS 103 420 §D.2's JOC extension
+    // type and complexity index (DASH-IF IOP Part 8 §5.3.2), and the
+    // AudioChannelConfiguration @value TS 102 366 clause I.1.2.1 defines -
+    // ac3::io::dash_channel_configuration is the one place that word is
+    // derived from the bitstream (ac3/io/dec3.hpp).
+    const mp4::DashOptions dash_options{
+        .joc_complexity_index = scanned->oba_complexity_index,
+        .dolby_channel_configuration = ac3::io::dash_channel_configuration(*scanned)};
+    const auto adaptation_set =
+        mp4::build_dash_adaptation_set(track, fragmented->media_segments, dash_options);
+    const auto mpd = mp4::build_dash_mpd(track, fragmented->media_segments, adaptation_set);
     if (!write_text_to_path(dir / "manifest.mpd", mpd)) {
         return kExitOutput;
     }
 
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     const std::string atmos =
         scanned->oba_complexity_index
-            ? std::format(", Atmos complexity {}", *scanned->oba_complexity_index)
+            ? fmt::format(", Atmos complexity {}", *scanned->oba_complexity_index)
             : std::string{};
-    std::println(
+    status_println(
+        status_stream(),
         "wrote {} {} access units ({}, {} channels{}) as {} fragment(s) to {} "
         "(init.mp4, segment*.m4s, audio.m3u8, master.m3u8, manifest.mpd)",
         units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels, atmos,
         fragmented->media_segments.size(), out_dir);
-    return 0;
+    return kExitOk;
 }
 
 int run_ts(std::string_view in_path, std::string_view out_path) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
-        std::println(stderr, "error: cannot open {}", in_path);
+        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
-        std::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return kExitInput;
+    }
+    if (reject_legacy_core(*scanned, in_path, "MPEG-TS")) {
         return kExitInput;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -304,28 +330,265 @@ int run_ts(std::string_view in_path, std::string_view out_path) {
         .samples_per_frame = ac3::kSamplesPerFrame};
     const auto file = mpegts::mux(track, units);
     if (!file) {
-        std::println(stderr, "error: {}", mpegts::describe(file.error()));
+        fmt::println(stderr, "error: {}", mpegts::describe(file.error()));
         return kExitInput;
     }
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot write {}", out_path);
+        fmt::println(stderr, "error: cannot write {}", out_path);
         return kExitOutput;
     }
     out.write(reinterpret_cast<const char*>(file->data()),
               static_cast<std::streamsize>(file->size()));
     if (!out) {
-        std::println(stderr, "error: write failed");
+        fmt::println(stderr, "error: write failed");
         return kExitOutput;
     }
     const std::string shape =
         scanned->substreams_per_unit > 1
-            ? std::format("{} substreams", scanned->substreams_per_unit)
+            ? fmt::format("{} substreams", scanned->substreams_per_unit)
             : std::string{ac3::analysis::layout_name(scanned->acmod, scanned->lfe)};
     status_println(status_stream(), "wrote {} {} access units ({}, {} channels, {} bytes) to {}",
-                 units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
-                 file->size(), out_path);
-    return 0;
+                   units.size(), eac3 ? "E-AC-3" : "AC-3", shape, track.channels,
+                   file->size(), out_path);
+    return kExitOk;
+}
+
+// --- container input (ROADMAP.md's IO2) -------------------------------------
+
+namespace {
+
+// Which container a file actually is, decided by its first bytes rather than
+// its name. A rip is as likely to be called "title00.mkv" when it is not one
+// as it is to have no extension at all, and the failure a wrong guess
+// produces ("no EBML header") reads like a corrupt file rather than like the
+// wrong parser - so the name is never consulted.
+enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4, kMpegTs };
+
+// EBML's own magic: the four bytes of the EBML header id every Matroska and
+// WebM file opens with - the same kEbmlHeader constant
+// src/matroska/src/ebml_detail.hpp holds, written out big-endian.
+constexpr std::array<std::byte, 4> kEbmlMagic{std::byte{0x1A}, std::byte{0x45}, std::byte{0xDF},
+                                              std::byte{0xA3}};
+
+// ISOBMFF has no magic at offset 0 - it opens with a box, whose first four
+// bytes are a LENGTH. The type is what identifies it, four bytes in, and
+// 'ftyp' is what a well-formed file leads with (ISO/IEC 14496-12 4.3 says it
+// "should be placed as early as possible"). 'styp' is a bare CMAF media
+// segment, and a plain 'moov'/'mdat'/'moof' opener occurs in files written
+// by tools that skipped ftyp - all of them are what a reader is handed in
+// practice.
+constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "moov", "moof",
+                                                               "mdat"};
+
+[[nodiscard]] bool has_isobmff_box_at_start(std::span<const std::byte> head) {
+    if (head.size() < 8) {
+        return false;
+    }
+    const std::string_view type{reinterpret_cast<const char*>(head.data()) + 4, 4};
+    return std::ranges::find(kIsobmffLeadingTypes, type) != kIsobmffLeadingTypes.end();
+}
+
+// A transport stream has no header at all - it is a bare repeating grid of
+// 188-byte packets, each starting with 0x47, and a capture may begin
+// anywhere in it. So the test is the grid itself: a sync byte that recurs at
+// one of the three strides in the wild (188, M2TS's 192, or 204 with parity)
+// several times over. A lone 0x47 proves nothing; five in a row exactly a
+// stride apart is not a coincidence.
+//
+// Checked LAST, after the two formats that do have magic: an MP4 or Matroska
+// file can easily contain a 0x47 pattern by chance somewhere in its audio,
+// and the grid test is the loosest of the three.
+constexpr std::array<std::size_t, 3> kTsStrides{188, 192, 204};
+constexpr int kTsSyncRuns = 5;
+
+[[nodiscard]] bool has_ts_packet_grid(std::span<const std::byte> head) {
+    for (std::size_t at = 0; at < head.size(); ++at) {
+        if (std::to_integer<std::uint8_t>(head[at]) != 0x47) {
+            continue;
+        }
+        for (const auto stride : kTsStrides) {
+            int seen = 1;
+            for (int i = 1; i < kTsSyncRuns; ++i) {
+                const std::size_t next = at + (stride * static_cast<std::size_t>(i));
+                if (next >= head.size() ||
+                    std::to_integer<std::uint8_t>(head[next]) != 0x47) {
+                    break;
+                }
+                ++seen;
+            }
+            if (seen >= kTsSyncRuns) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+ContainerKind sniff_container(std::span<const std::byte> head) {
+    if (head.size() >= kEbmlMagic.size() &&
+        std::equal(kEbmlMagic.begin(), kEbmlMagic.end(), head.begin())) {
+        return ContainerKind::kMatroska;
+    }
+    if (has_isobmff_box_at_start(head)) {
+        return ContainerKind::kMp4;
+    }
+    if (has_ts_packet_grid(head)) {
+        return ContainerKind::kMpegTs;
+    }
+    return ContainerKind::kUnknown;
+}
+
+// How much of the file is read at a time. Big enough that a whole cluster
+// usually lands in one or two reads, small enough that this is the memory
+// figure for a two-hour rip as much as for a ten-second clip.
+constexpr std::size_t kDemuxChunkBytes = 64 * 1024;
+
+}  // namespace
+
+int run_demux(std::string_view in_path, std::string_view out_path) {
+    std::ifstream file;
+    std::istream* in = &std::cin;
+    if (is_stdio_path(in_path)) {
+        // Binary mode before the first byte, the same rule read_all and the
+        // sinks already follow - see platform/stdio_binary.hpp.
+        ac3::cli::platform::set_stdio_binary();
+    } else {
+        file.open(std::string{in_path}, std::ios::binary);
+        if (!file) {
+            fmt::println(stderr, "error: cannot open {}", in_path);
+            return kExitInput;
+        }
+        in = &file;
+    }
+
+    std::vector<std::byte> chunk(kDemuxChunkBytes);
+    const auto read_chunk = [&in, &chunk]() -> std::span<const std::byte> {
+        in->read(reinterpret_cast<char*>(chunk.data()),
+                 static_cast<std::streamsize>(chunk.size()));
+        return std::span<const std::byte>{chunk}.first(static_cast<std::size_t>(in->gcount()));
+    };
+
+    const auto first = read_chunk();
+    const auto kind = sniff_container(first);
+    if (kind == ContainerKind::kUnknown) {
+        fmt::println(
+            stderr,
+            "error: {} is not a container this build reads (expected Matroska/WebM, MP4 or "
+            "MPEG-2 Transport Stream)",
+            in_path);
+        return kExitInput;
+    }
+
+    EncodedStreamSink sink;
+    if (!sink.open(out_path, /*keep_partial=*/false)) {
+        return kExitOutput;
+    }
+    // A write failure is latched rather than thrown out of the callback: a
+    // reader cannot be told to stop mid-chunk, and unwinding through one
+    // would leave its parse state undefined.
+    bool write_failed = false;
+    const auto on_frame = [&sink, &write_failed](std::span<const std::byte> frame) {
+        if (!write_failed && !sink.push(frame)) {
+            write_failed = true;
+        }
+    };
+    const auto fail = [&sink](std::string_view message, int code) {
+        fmt::println(stderr, "error: {}", message);
+        sink.abort();
+        return code;
+    };
+
+    // The two readers have the same shape but no common base class - the
+    // modules are deliberately independent of each other, not just of
+    // ac3::forge - so the drive loop is written once against whichever one
+    // the sniff picked, as a template over the pair.
+    std::string codec_id;
+    std::uint32_t sample_rate = 0;
+    int channels = 0;
+    int status = 0;
+    const auto drive = [&]<typename Reader, typename Describe>(Reader& reader,
+                                                               Describe describe) {
+        for (auto bytes = first; !bytes.empty(); bytes = read_chunk()) {
+            const auto pushed = reader.push(bytes, on_frame);
+            if (!pushed) {
+                status = fail(describe(pushed.error()), kExitInput);
+                return;
+            }
+            if (write_failed) {
+                status = fail("write failed", kExitOutput);
+                return;
+            }
+        }
+        // mpegts::Reader::finish() takes the callback and the other two do
+        // not, because only a transport stream can have a packet that ends
+        // at end-of-input (the unbounded PES length form). The difference is
+        // real, so it is dispatched on rather than papered over.
+        const auto finished = [&] {
+            if constexpr (requires { reader.finish(on_frame); }) {
+                return reader.finish(on_frame);
+            } else {
+                return reader.finish();
+            }
+        }();
+        if (!finished) {
+            status = fail(describe(finished.error()), kExitInput);
+            return;
+        }
+        if (write_failed) {
+            status = fail("write failed", kExitOutput);
+            return;
+        }
+    };
+
+    if (kind == ContainerKind::kMatroska) {
+        matroska::Reader reader{};
+        drive(reader, [](matroska::DemuxError e) { return matroska::describe(e); });
+        codec_id = std::string{reader.track().codec_id};
+        sample_rate = reader.track().sample_rate;
+        channels = reader.track().channels;
+    } else if (kind == ContainerKind::kMp4) {
+        mp4::Reader reader{};
+        drive(reader, [](mp4::DemuxError e) { return mp4::describe(e); });
+        codec_id = reader.track().codec_id;
+        sample_rate = reader.track().sample_rate;
+        channels = reader.track().channels;
+    } else {
+        mpegts::Reader reader{};
+        drive(reader, [](mpegts::DemuxError e) { return mpegts::describe(e); });
+        // A transport stream's PMT names the codec but carries no sample
+        // rate or channel count - those live in the bitstream, which this
+        // command deliberately never looks inside. Reported as absent
+        // rather than guessed.
+        codec_id = reader.stream().eac3 ? "E-AC-3" : "AC-3";
+    }
+    if (status != kExitOk) {
+        return status;
+    }
+    if (write_failed) {
+        return fail("write failed", kExitOutput);
+    }
+    if (sink.frames() == 0) {
+        return fail("the container holds no access units on its audio track", kExitInput);
+    }
+    if (!sink.close()) {
+        return kExitOutput;
+    }
+
+    // The container declares the codec; this command never looks inside an
+    // access unit, which is exactly why it can hand one back untouched.
+    if (sample_rate != 0) {
+        status_println(status_stream(out_path),
+                       "wrote {} access units ({}, {} Hz, {} channels, {} bytes) to {}",
+                       sink.frames(), codec_id, sample_rate, channels, sink.total_bytes(),
+                       out_path);
+    } else {
+        // MPEG-TS: the container named the codec and nothing else. 'probe'
+        // or 'levels' on the result reads the rest off the bitstream.
+        status_println(status_stream(out_path), "wrote {} PES payloads ({}, {} bytes) to {}",
+                       sink.frames(), codec_id, sink.total_bytes(), out_path);
+    }
+    return kExitOk;
 }
 
 }  // namespace ac3cli::commands

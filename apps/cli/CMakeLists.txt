@@ -1,14 +1,15 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp usage.cpp multi_source.cpp ../common/recording_sink.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp)
+add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp)
 
-# ../common/recording_sink.cpp: the take writer 'record' and 'live' stream
-# their output through (roadmap IO9), shared verbatim with the GUI rather
-# than reimplemented - see apps/common/recording_sink.hpp's own comment for
-# why it sits there and not in either app. Compiled straight in; apps/common
-# has no library target, matching how tests/CMakeLists.txt already compiles
-# the same file into ac3tests.
+# ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
+# 'record' and 'live' stream their output through (roadmap IO9), shared
+# verbatim with the GUI rather than reimplemented - see
+# apps/common/recording_sink.hpp's own comment for why they sit there and not
+# in either app. Compiled straight in; apps/common has no library target,
+# matching how tests/CMakeLists.txt already compiles the same files into
+# ac3tests.
 target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # ac3cli's platform-specific code: putting stdin/stdout into binary mode for
@@ -51,6 +52,13 @@ else()
     target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp)
 endif()
 
+# ac3::coverage (roadmap VX15) instruments this target's OWN sources. Linking
+# an instrumented library is not enough and never was: --coverage is
+# target-scoped, so before this line every .cpp under apps/cli compiled
+# uninstrumented and produced no .gcno at all - a gcovr filter for apps/cli
+# came back with zero files rather than a low percentage. It is an INTERFACE
+# target that adds nothing when AC3FORGE_ENABLE_COVERAGE is off (the default),
+# so this costs every other configuration nothing.
 target_link_libraries(ac3cli
     PRIVATE
         ac3::forge
@@ -59,7 +67,9 @@ target_link_libraries(ac3cli
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
-        ac3::warnings)
+        ac3::warnings
+        ac3::fmt
+        ac3::coverage)
 
 # ac3::forge, matroska::matroska, mp4::mp4 and mpegts::mpegts are link-only here, but
 # installed and packaged in their own right elsewhere - see
