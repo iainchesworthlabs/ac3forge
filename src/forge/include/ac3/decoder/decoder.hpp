@@ -89,13 +89,16 @@ struct DecoderConfig {
     // because it exists to check what the encoder wrote, and a decoder that
     // silently rescales its output cannot be the reference for that.
     double drc_scale = 0.0;
-    // §7.9.4 step 3's complex transform evaluated via the same radix-2 FFT
-    // core the encoder's fast MDCT fold uses, instead of the pseudocode's
-    // direct O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's
-    // inverse doc comment. Applies to the PCM reconstruction paths of both
-    // decoders; the encoder-internal inverse uses (spx/ecpl copy-source
-    // reconstruction) and JOC object reconstruction deliberately stay on
-    // the direct form, so nothing about ENCODED output ever depends on this
+    // §7.9.4 step 3's complex transform evaluated via the same FFT core the
+    // encoder's fast MDCT fold uses, instead of the pseudocode's direct
+    // O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's
+    // inverse doc comment. Applies to every inverse transform a DECODE
+    // runs: both decoders' PCM reconstruction, the three per-block
+    // inverses inside eac3::ecpl_channel_spectrum's enhanced-coupling
+    // reconstruction, and joc::reconstruct's per-object synthesis. It
+    // never reaches an encoder: the encoder-internal inverse uses
+    // (spx/ecpl copy-source reconstruction) read eac3::FrameConfig's own
+    // fast_mdct instead, so nothing about ENCODED output depends on this
     // flag. Default ON since the owner accepted the quality evidence (the
     // same gate EncoderConfig::fast_mdct passed through): worst
     // transform-level relative error 7.8e-14 against the direct form, 180 s
