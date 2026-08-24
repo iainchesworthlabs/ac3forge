@@ -8,7 +8,7 @@ assignment table.
 
 ## Presets, codec, bit rate, container
 
-A row of layout **presets** (5.1, 7.1, 5.1.4, 7.1.4, 5.2, 7.2.4 — starting points, not the
+A row of layout **presets** (5.1, 7.1, 5.1.4, 7.1.4, 7.2.4 — starting points, not the
 model: they set the bed, LFE count and extras together, but the channel picker below is what the
 encode plan actually reads), then **Codec**, **Bit rate**, and **Container** (elementary stream,
 Matroska, S/PDIF, MP4, fragmented MP4/CMAF, or MPEG-TS — see below):
@@ -128,7 +128,12 @@ whole selection. Beneath it, the two tiers:
 2. **Low frequency — a count, not a flag.** Three buttons: **None**, **One · LFE**, **Two ·
    LFE + LFE2**. Two means two *independent* low-frequency channels carrying different signal —
    not one signal sent to two subwoofers — which is what makes a 7.2.4 rather than a 7.1.4 (and,
-   like everything past a bed and its LFE, needs Dolby Digital Plus).
+   like everything past a bed and its LFE, needs Dolby Digital Plus). "Two" is really a checkbox
+   for the same "lfe2" extra the row below shares its allocator check with, so it needs at least
+   one other extra already ticked — LFE2 has to share a dependent substream with a full-bandwidth
+   channel, and a bare bed's own LFE never counts as one. Unreachable on its own (bed + LFE +
+   LFE2, nothing else — the shape a bare "5.2" preset would have named), the button greys out and
+   prints why, the same as an Extras row below.
 3. **Extras — added to the bed.** Four checkbox rows — front wide, rear surround, ceiling front,
    ceiling rear — each a *pair* that toggles together (you can't add a left ceiling channel
    without its right pair), each printing the channel tokens it adds (`Lw Rw`) in the same
@@ -144,7 +149,7 @@ whole selection. Beneath it, the two tiers:
         no such location — only Vhl/Vhr and Lts/Rts pairs exist — so it is not offered rather
         than invented.
 
-The derived shape name (`5.1`, `7.1.4`, `5.2`, …) follows the selection —
+The derived shape name (`5.1`, `7.1.4`, `7.2`, …) follows the selection —
 `<ear-level count>.<LFE count>[.<ceiling count>]` — so an unnamed combination still reads
 honestly. Substreams are not a UI concept: the picker expresses a set of positions, and which
 substream carries what is the encoder's business.

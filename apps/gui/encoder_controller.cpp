@@ -1220,7 +1220,14 @@ void EncoderController::applyChannelPreset(const QString& name) {
     // one preset not built on the widest bed - it exists so the guided
     // setup's "a laptop / a stereo pair" card writes the same tables as
     // everything else.
-    static constexpr std::array<Preset, 7> kPresets{{
+    // No "5.2" here: a bare second LFE with no other extra is an
+    // AllocationError::kOrphanLfe2 at chanmap::allocate() - E-AC-3 requires
+    // every dependent substream to carry at least one full-bandwidth
+    // channel, and a bed's own LFE/LFE2 never count as one, so LFE2 always
+    // needs a genuine extra (rear/wide/ceiling) riding alongside it. There
+    // is no combination that means "5 main + 2 LFE, nothing else" - naming
+    // one here would be a preset the allocator can never carry.
+    static constexpr std::array<Preset, 6> kPresets{{
         {"stereo", ac3::Acmod::k2_0, false, 0},
         {"5.1", ac3::Acmod::k3_2, true, 0},
         {"7.1", ac3::Acmod::k3_2, true, ac3::eac3::chanmap::kLrsRrsBit},
@@ -1229,7 +1236,6 @@ void EncoderController::applyChannelPreset(const QString& name) {
         {"7.1.4", ac3::Acmod::k3_2, true,
          static_cast<std::uint16_t>(ac3::eac3::chanmap::kLrsRrsBit | ac3::eac3::chanmap::kVhlVhrBit |
                                     ac3::eac3::chanmap::kLtsRtsBit)},
-        {"5.2", ac3::Acmod::k3_2, true, ac3::eac3::chanmap::kLfe2Bit},
         {"7.2.4", ac3::Acmod::k3_2, true,
          static_cast<std::uint16_t>(ac3::eac3::chanmap::kLrsRrsBit | ac3::eac3::chanmap::kVhlVhrBit |
                                     ac3::eac3::chanmap::kLtsRtsBit | ac3::eac3::chanmap::kLfe2Bit)},
