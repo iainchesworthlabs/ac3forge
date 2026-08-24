@@ -205,7 +205,9 @@ later: `mp4::fragment` lays out the same track and frames as `mux`, but as a fra
 `mvex`/`trex` instead of a populated sample table, since a fragmented track's own `stbl`
 describes zero samples) plus one or more media segments (`styp`+`moof`+`mdat`, one per fragment).
 Same batch shape as `mux`: every frame is known up front, so real durations/timestamps are
-filled in throughout rather than the zero/unknown placeholders a true live fragmenter would need.
+filled in throughout, including the track's total duration in `mvhd`/`tkhd`/`mdhd`.
+[`mp4::FragmentWriter`](#incremental-fragmenting-mp4fragmentwriter) below is the incremental form
+for a live session, and that total duration is the one thing the two disagree about.
 
 ```cpp
 const auto fragmented =
@@ -225,6 +227,7 @@ const auto media_playlist =
 const auto master_playlist = mp4::build_hls_master_playlist(
     track, fragmented->media_segments, "audio.m3u8", mp4::HlsOptions{});
 const auto dash_snippet = mp4::build_dash_adaptation_set(track, fragmented->media_segments);
+const auto mpd = mp4::build_dash_mpd(track, fragmented->media_segments, dash_snippet);
 ```
 
 Full program: [`examples/mux_fmp4.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_fmp4.cpp).
@@ -255,10 +258,107 @@ possibly shorter final one, and a flat nominal duration is exactly what let a re
 (FFmpeg's own `dash` demuxer, while writing this module) compute one too many segments from
 `mediaPresentationDuration` and request a segment number past the end.
 
+### Atmos/JOC signalling: `ceao`, and the DASH descriptors
+
+`mp4/dash.hpp` used to say there was no established DASH convention to point at for JOC, unlike
+HLS's `CHANNELS="<N>/JOC"`. There is: DASH-IF IOP Part 8 v5.0.0 §5.3.2 names, for E-AC-3
+carrying JOC, the two SupplementalProperty descriptors
+[ETSI TS 103 420](https://www.etsi.org/deliver/etsi_ts/103400_103499/103420/01.02.01_60/ts_103420v010201p.pdf)
+clause D.2 defines — `tag:dolby.com,2018:dash:EC3_ExtensionType:2018`, whose value "shall be the
+three character string JOC" (§D.2.2.1), and
+`tag:dolby.com,2018:dash:EC3_ExtensionComplexityIndex:2018`, whose value "shall be decimal
+representation of the eight-bit element `complexity_index_type_a` in the EC3SpecificBox"
+(§D.2.2.2). §5.3.3 adds that such a track "shall be constrained according to the CMAF specific
+requirements as provided in ETSI TS 103 420 Annex E", where §E.5 requires the `ceao` compatibility
+brand. `DashOptions::joc_complexity_index` writes the first pair;
+`FragmentOptions::object_audio_brand` adds `ceao` to the `ftyp` and every `styp` alongside the
+`iso6`/`cmfc` a fragmented CMAF track already declares (added, not substituted — §E.2 requires
+ISO/IEC 23000-19 conformance on top of the profile).
+
+The same §5.3.2 offers two AudioChannelConfiguration schemes for E-AC-3. With
+`DashOptions::dolby_channel_configuration` empty, the Representation carries
+`urn:mpeg:mpegB:cicp:ChannelConfiguration` with the track's channel count — what TS 103 420
+§D.2.3's own example MPD writes. Set it to the four hex digits TS 102 366 clause I.1.2.1 defines
+(the 16-bit channel-assignment word, left channel in the most significant bit, so 5.1 is `F801`)
+and it carries the Dolby scheme instead. `ac3::io::dash_channel_configuration` is the one place
+that word is derived, beside `build_codec_config_box` and for the same reason: which locations a
+stream carries is `acmod`/`lfeon`/`chanmap` syntax, and a manifest writer has no business
+re-deriving AC-3 semantics. `ac3cli fmp4`, the GUI and the live paths all supply it.
+
+`FragmentOptions::object_audio_brand` and `DashOptions::joc_complexity_index` are caller-supplied
+for the same reason `HlsOptions::channels_attribute` is — `mp4::` never reads TS 103 420's object
+layer, and the caller that scanned `oba_complexity_index` off the bitstream to build the `dec3`
+box already has it.
+
+### Incremental fragmenting: `mp4::FragmentWriter`
+
+Same header as `fragment`. The live counterpart, and `matroska::Writer`/`mpegts::Writer`'s
+sibling: `create(track, options)` validates exactly what `fragment` validates and leaves
+`init_segment()` ready to write once; each `push(frame)` buffers into the current fragment and
+returns the media segment that just *closed* (so one comes back every
+`frames_per_fragment`-th call, `std::nullopt` otherwise); `finalize()` flushes the trailing
+partial fragment. `tfdt` comes from a running decode time held on the writer, which is the only
+per-fragment state `fragment`'s own loop carries. Nothing beyond one fragment's frames and the
+playlist window is ever held.
+
+**The contract is byte-equality with the batch form**, the same one `mpegts::Writer` holds itself
+to: for the same track, options and frames, the media segments this hands back are byte for byte
+the ones `fragment` would have built. The initialization segment differs in exactly one respect —
+`mvhd`/`tkhd`/`mdhd` carry duration 0, since a live session does not know its total (ISO/IEC
+14496-12 §8.8.2 provides `mehd` for the fragmented movie that *does*). That is the same
+concession `matroska::Writer` makes with EBML's unknown-size Segment and its omitted Duration.
+Both halves are asserted in `tests/containers/test_fmp4.cpp`, the init segment by patching the
+three duration fields back and then requiring full byte equality.
+
+```cpp
+auto writer = mp4::FragmentWriter::create(
+    track, mp4::FragmentOptions{.playlist_window_segments = 20});
+write("init.mp4", writer->init_segment());
+for (const auto& frame : frames) {
+    const auto closed = writer->push(frame);          // std::optional<MediaSegment>
+    if (*closed) {
+        write(std::format("segment{}.m4s", (*closed)->sequence_number), (*closed)->bytes);
+        // Rebuild the manifests from the rolling window each time a segment closes.
+        write("audio.m3u8", mp4::build_hls_media_playlist(track, writer->window(),
+                                                          mp4::HlsOptions{.vod = false}));
+        write("manifest.mpd",
+              mp4::build_dash_mpd(track, writer->window(),
+                                  mp4::build_dash_adaptation_set(track, writer->window()),
+                                  mp4::MpdOptions{.is_static = false,
+                                                  .availability_start_time = now_iso8601()}));
+    }
+}
+```
+
+`window()` hands back `SegmentInfo` — a `MediaSegment`'s bookkeeping without its bytes, so a
+rolling window of hundreds of segments costs nothing to keep.
+`FragmentOptions::playlist_window_segments` bounds it (0, the default, keeps every segment). All
+three manifest builders take `SegmentInfo` spans, with `MediaSegment` overloads for batch
+callers.
+
+Live manifests differ from VOD ones only in what they omit and where they start.
+`HlsOptions::vod = false` drops `#EXT-X-PLAYLIST-TYPE:VOD` and `#EXT-X-ENDLIST`, leaving
+`#EXT-X-MEDIA-SEQUENCE` — always the first *listed* segment's number — to tell a player that
+segments have rolled off the front (RFC 8216 §6.2.2). On the DASH side `MpdOptions::is_static =
+false` writes `type="dynamic"` with `availabilityStartTime`, `minimumUpdatePeriod` and
+`timeShiftBufferDepth` and no `mediaPresentationDuration` — the attribute set TS 103 420 §D.2.3's
+own example MPD carries — and the SegmentTemplate's `@startNumber` and the SegmentTimeline's
+first `<S t="…">` both come from the window rather than being assumed to be the start of the
+track. `mp4::` has no clock (no file I/O, no time), so the caller supplies the timestamp strings;
+that is also what keeps the manifests deterministic under test.
+
+This is what `ac3cli record`/`ac3cli live` with `container=fmp4` and the GUI's live session with
+**fragmented MP4/CMAF** selected write through: the directory is a servable live origin while the
+session runs, and a closed VOD one afterwards.
+
+### External validation
+
 `mp4::fragment`'s ISOBMFF output and the HLS media playlist round-trip cleanly through FFmpeg's
 own strict decode (`ffmpeg -v error -xerror -err_detect crccheck+bitstream+buffer+explode`) —
 both the fragmented file (init segment concatenated with every media segment) and `audio.m3u8`
-read back the exact original frame count and duration.
+read back the exact original frame count and duration. The same holds for what `FragmentWriter`
+streams, and for the DASH MPD: see [Validation](../verification.md#where-the-oracles-dont-reach)
+for exactly what was and was not checked externally.
 
 ## Muxer errors
 
@@ -268,7 +368,7 @@ with its own `describe()`:
 | Enum | Values |
 |---|---|
 | `matroska::MuxError` | `kNoFrames`; `kInvalidTrack` (zero/negative channels or sample rate, or an empty codec id); `kFrameTooLarge` (a single frame beyond what one SimpleBlock can carry). |
-| `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`). |
+| `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`). `mp4::FragmentWriter::create` returns the same two refusals as `fragment`, but never `kNoFrames`: a live writer stopped before its first frame simply has nothing to flush. |
 | `mpegts::MuxError` | `kNoFrames` and `kInvalidTrack` as above; `kInvalidOptions` (PID collisions); `kFrameTooLarge` — one access unit too large for a PES packet's 16-bit length field. |
 
 ## Demuxer errors

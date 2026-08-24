@@ -381,7 +381,7 @@ Add `preset=<name>` (or `preset=all`) to gate that same measurement against a na
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
 | `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
 | `demux` | The inverse of `mkv`: reads a container and writes the bare AC-3/E-AC-3 elementary stream inside it, which is what every other command here takes as input. The container is identified by its **own magic bytes**, never by the file name — a rip called `title00.mkv` that is really something else, or one with no extension at all, is the normal case. Unlike the wrapping commands it streams: the reader is fed in 64 KiB chunks and each access unit is written as it comes out, so peak memory is a chunk plus a frame whatever the file's duration. Matroska/WebM today; MP4 and MPEG-TS as the rest of roadmap `IO2` lands |
-| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals `CHANNELS="<N>/JOC"` in the HLS playlists automatically |
+| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals itself automatically and completely: `CHANNELS="<N>/JOC"` in the HLS playlists, the two `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors ETSI TS 103 420 clause D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments. Every representation also states its channel configuration, on the Dolby scheme TS 102 366 clause I.1.2.1 defines |
 
 ### Live & hardware
 
@@ -395,10 +395,10 @@ each OS.
 |---|---|
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
-| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
+| `record` | Captures from a device straight to an AC-3 file, metering live — `container=mkv` writes straight to Matroska instead, `container=fmp4` a folder of CMAF segments and manifests. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file — `bsid` decides AC-3 vs. E-AC-3 |
 | `monitor` | Decodes an existing file and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
-| `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` |
+| `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has; optionally a second, clock-conformed capture device via `capture2=`, or straight to Matroska via `container=mkv` or to a live fragmented-MP4/CMAF origin via `container=fmp4` |
 
 `live`'s device arguments: `monitor_device`/`passthrough_device` take `-2` (default, leaves that
 leg off), `-1` (the default render endpoint), or an index from `outputs`. Either or both legs may
@@ -408,6 +408,17 @@ run alongside the file `live` always writes.
 `atmos` pans every captured channel into a 5.1 bed as its own object, moving it every frame the
 same way `atmos`'s synthetic orbit does — the hook a real live position source drops into once
 one exists.
+
+`live container=fmp4`: the output path names a **folder**, written as the session runs rather than
+at the end — `init.mp4` first, then a `segment*.m4s` for each fragment as it closes, with
+`audio.m3u8`/`master.m3u8`/`manifest.mpd` rewritten each time. While the session is running those
+manifests are live-shaped (no `#EXT-X-ENDLIST`, a `type="dynamic"` MPD with an
+`availabilityStartTime`), so the folder is a servable origin mid-session; a clean stop flushes the
+trailing partial fragment and closes both to their VOD/static forms. `fmp4-window=<n>` lists only
+the last *n* segments, for an origin that deletes segments behind itself. Nothing is held in
+memory beyond one fragment, unlike `container=mkv`/`raw`, which still accumulate the take. See
+[Options & grammars](metadata-options.md#recordlive-options-record-live-container) for the full
+grammar.
 
 `live capture2=<index>`: the `capture_device` positional stays the session's clock master, paced
 exactly as it always has been; `capture2=` adds a second, independently-clocked device (see
