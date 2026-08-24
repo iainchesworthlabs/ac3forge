@@ -365,10 +365,16 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Dolby-produced streams is allowed at all — `CONTRIBUTING.md`'s clean-room rule covers published
   standards and FFmpeg-as-oracle, not that. Stays blocked until those exist; listed so the state
   is recorded rather than rediscovered.
-- [ ] **IM7 (M)** — A public object-scene timeline type. `AtmosEncoder` takes keyframes; the
+- [x] **IM7 (M)** — A public object-scene timeline type. `AtmosEncoder` takes keyframes; the
   station-broadcast example, the GUI live room, `atmos-path` and any live source (UX4) each
   re-invent a scene description. One `ObjectScene` (JSON/YAML, interpolation and ramps,
   orientation rotation as metadata — not rendering) shared by all of them.
+  *Done: `ac3/oba/scene.hpp`. JSON, not YAML — the codec target takes no third-party
+  dependencies, so the format is parsed in-tree, and RFC 8259 is small enough to implement
+  completely where YAML 1.2 is not. `atmos-path`/`atmos-encode`, the examples and the GUI's
+  export are on it, the keyframe grammar still reads byte-identically, and `SceneCursor` is the
+  live seam UX4 plugs into. The GUI's own per-frame encode loops still build `ObjectPath`s
+  directly — a follow-up, not a gap in the type.*
 
 ## VX. Verification and oracles
 
@@ -615,7 +621,8 @@ no SIMD and no threading anywhere in the codec core.
 - [ ] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
   room — OSC first, then MIDI and a desktop game controller. `apps/cli/main.cpp` still describes
   the synthetic orbit as "the hook a real live position source drops into once one exists"; the
-  Shield app is the only controller-driven path. Feeds IM7.
+  Shield app is the only controller-driven path. Lands on `ac3::oba::SceneCursor`, the live half
+  of IM7's scene type, which exists for exactly this.
 - [ ] **UX5 (L)** — WASM as a reusable streaming decoder: a push-frame API over
   `decode_access_unit_into`, an AudioWorklet, multichannel output or DC1's downmix, published as
   a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3

@@ -120,3 +120,13 @@ custom `ac3::meta::Profile` DRC curve (attack/release timing, boost ratios) is l
 tuning knob; the C API exposes only the five named presets (above). Internal kernel-level
 benchmarking entry points such as `ac3::oba::band_energy` are excluded outright — their own C++
 doc comments already say no caller outside the library should need them directly.
+
+`ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
+export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
+here either, and that is a decision rather than an omission: the shape of the type is expected to
+move when a live position source lands (roadmap `UX4`, which is why `SceneCursor` exists), and
+this surface is a candidate for the coming API freeze, where an experimental type would be a
+lasting commitment. Exposing half of it - the serialisation without the type, say - would be
+worse than exposing none, because a caller would get a scene it could load and not evaluate.
+Read and write the JSON form from the host language and hand the resulting placements to the
+encoder entry points above until the type settles.

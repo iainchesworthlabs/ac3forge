@@ -11,8 +11,8 @@ Usage:
   ac3cli sine         <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli orbit        <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
   ac3cli atmos        <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
-  ac3cli atmos-path   <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored keyframe file instead of the built-in orbit)
-  ac3cli atmos-encode <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a keyframe file (same format as atmos-path), objects it doesn't mention keep their default placement)
+  ac3cli atmos-path   <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
+  ac3cli atmos-encode <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
   ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
   ac3cli record       <out.ac3> [seconds] [bitrate_kbps] [device_index]
   ac3cli live         <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
@@ -51,13 +51,29 @@ anything first.
 | `sine` | A tone, one per speaker, AC-3. Append `c` to `[layout]` (e.g. `stereoc`) to turn on channel coupling. |
 | `orbit` | AC-3 with a synthetic panned source circling the room (exercises the [spatial layer](../library/spatial-and-atmos.md) — plain bed panning, no object metadata) |
 | `atmos` | E-AC-3 with synthetic orbiting Atmos objects — a 5.1 bed plus JOC + OAMD side data (TS 103 420) |
-| `atmos-path` | Same, but object motion comes from an authored keyframe file instead of the built-in orbit |
+| `atmos-path` | Same, but object motion comes from an authored scene file (keyframe columns or JSON) instead of the built-in orbit |
 
-The keyframe file `atmos-path` reads (and `atmos-encode`'s optional `[paths.txt]`, below) is
-plain text, one keyframe per line as whitespace-separated columns
-`object_index time_s x y z gain lfe_send`; `#` starts a comment and blank lines are skipped.
-It is the same grammar the GUI's timeline exports — see
-[GUI → Objects & motion](../gui/objects-and-motion.md).
+The scene file `atmos-path` reads (and `atmos-encode`'s optional `[paths.txt]`, below) comes in
+two forms, told apart by whether its first non-whitespace character is `{` — not by its suffix,
+so either works wherever the other does:
+
+- **Keyframe columns**, the original: plain text, one keyframe per line as whitespace-separated
+  columns `object_index time_s x y z gain lfe_send`; `#` starts a comment and blank lines are
+  skipped. Unchanged, including its diagnostics. It is still what the GUI's timeline exports by
+  default — see [GUI → Objects & motion](../gui/objects-and-motion.md).
+- **An object scene in JSON**, the `ac3::oba::ObjectScene` form: named objects, a bed
+  assignment, per-segment interpolation (`hold`, `linear`, `smooth`) and a scene orientation,
+  none of which the columns have anywhere to put. Documented in
+  [Library → Spatial & Atmos](../library/spatial-and-atmos.md#the-serialised-form); the GUI
+  writes it when you save the export under a `.json` name.
+
+Positions are room-anchored per TS 103 420 §4.2.1: `x` runs 0 at the left wall to 1 at the
+right, `y` 0 at the front wall to 1 at the back, `z` -1 at the floor to +1 at the ceiling.
+Between two cues a value is interpolated (linearly, unless the JSON form says otherwise); before
+the first and after the last it *holds*, so an object sits still rather than extrapolating or
+going silent. An object index the keyframe file never mentions keeps that command's own default
+placement — room centre for `atmos-path`, that channel's fanned-out static position for
+`atmos-encode`.
 
 ```bash
 ac3cli eac3-sine out.ec3 5 384 1000 50 714
@@ -75,7 +91,7 @@ so a misrouted channel is identifiable by ear.)
 |---|---|
 | `encode` | WAV → AC-3. Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1); a wider source is refused, since no AC-3 coding mode is wider than 3/2 + LFE. |
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
-| `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored keyframe file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
+| `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple

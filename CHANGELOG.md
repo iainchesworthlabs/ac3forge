@@ -14,6 +14,27 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **`ac3::oba::ObjectScene`, one object-scene timeline shared by every front end**
+  (`ac3/oba/scene.hpp`, roadmap `IM7`). `AtmosEncoder` takes per-frame placements and nothing
+  more, so `ac3cli atmos-path`, the GUI's timeline export and the station-broadcast example each
+  built their own scene description. `ObjectScene` is the one they now share: named objects with
+  a bed assignment, position/gain automation with per-segment interpolation (`hold`, `linear`,
+  `smooth`) and ends-hold ramp semantics stated in the type, an `Orientation` that rotates a
+  scene's positions as metadata before encode (never a render — a room-corrected render stays
+  out of scope), and a JSON serialised form. `SceneCursor` is the live half: the authored
+  timeline with per-object overrides an external source pushes in, the seam a live OSC/MIDI/
+  controller source (`UX4`) lands on. JSON rather than YAML because RFC 8259 is small enough to
+  implement completely in-tree where YAML 1.2 is not — {fmt} (below) formats a number, it does
+  not parse or write either file format.
+- **`atmos-path` and `atmos-encode` read a JSON scene as well as the keyframe columns**, told
+  apart by whether the file's first non-whitespace character is `{` rather than by its suffix, so
+  either form works wherever the other does. The keyframe grammar itself is unchanged, moved into
+  the library so the CLI, the GUI's export and the examples share one reader and one writer; a
+  file in it encodes to a byte-identical stream before and after the move, and to the same stream
+  again after a JSON save/load round trip. Its only changed diagnostic is the duplicate-timestamp
+  one, which now names the file and the instant.
+- **The GUI's "Export paths…" writes either form**, chosen by the name saved under: a `.json`
+  name writes the scene, anything else the keyframe columns it has always written.
 - **Matroska container reader** (roadmap `IO2`, first of three). `matroska::demux` and
   `matroska::Reader` (`matroska/reader.hpp`) are the read side of `matroska::mux`/`Writer`, and
   codec-blind in the same way — they walk EBML, select a track and hand each frame back as
