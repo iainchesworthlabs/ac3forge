@@ -80,6 +80,8 @@ nav:
       - Atmos & JOC: concepts/atmos-joc.md
       - Object signing: concepts/object-signing.md
   - Validation: verification.md
+  - Threat model: threat-model.md
+  - Conformance vectors: conformance-vectors.md
   - Library:
       - Conventions: library/index.md
       - Example programs: library/examples.md
@@ -94,6 +96,7 @@ nav:
       - File I/O: library/file-io.md
       - ADM / BW64 reading: library/adm.md
       - ADM → Atmos bridging: library/adm-bridge.md
+      - Measuring quality: library/quality.md
       - Object signing: library/signing.md
       - Header map: library/header-map.md
       - C API: library/c-api.md

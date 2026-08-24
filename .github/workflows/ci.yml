@@ -269,6 +269,30 @@ jobs:
         shell: bash
         run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
 
+  # Every published quality series is measured against tests/golden/audio/,
+  # and its points are only comparable to each other because the material
+  # under them never moved. A regenerated fixture is close to invisible - it
+  # still decodes, still has the right duration and channel count, still
+  # produces a plausible SNR - and simply puts a step in every series that
+  # reads as an encoder change. This hashes each fixture against
+  # tests/golden/audio/corpus.json so that becomes a failing check instead of
+  # a mystery on a trend page months later.
+  #
+  # Its own job rather than a step on ffmpeg-validate: stdlib-only, no build,
+  # no container, seconds to run, and it should still report on a
+  # docs-or-fixtures-only change where `changes.outputs.code` is false and
+  # ffmpeg-validate never starts. Same shape and same reasoning as
+  # packaging-consistency above.
+  fixture-corpus:
+    name: Fixture Corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check committed fixtures match the corpus manifest
+        run: python3 tools/checks/check_corpus.py
+
   # ruff, shellcheck and actionlint over the non-C++ half of the tree (roadmap
   # VX14). Same shape as platform-macros and packaging-consistency above:
   # cheap, fast, and deliberately ungated by `changes` so a script edit is
@@ -1097,18 +1121,36 @@ jobs:
       # lock (see its own header for how to regenerate) so this install is
       # hash-pinned.
       #
-      # Deliberately NOT installing `visqol-python` here (tools/ci/quality_race.py's
-      # perceptual_score(), see its own docstring for why ViSQOL/why that
-      # package): this job's `ci` step is a hard fidelity gate and stays exactly
-      # as fast and as free of new supply-chain surface as it was before that
-      # column existed - quality_race.py's own graceful degradation (a "-" cell
-      # and one clear message, never a failure) already lets this job run
-      # unchanged. The `trend` step below feeds the quality-history branch that
-      # docs/landscape.md and docs/tool-comparison-trend.md read, so a real MOS
-      # column there needs `visqol-python` added to requirements/requirements-ffmpeg-
-      # validate.in and this lock regenerated - a deliberate later step once
-      # that dependency's own track record justifies pinning it into every CI
-      # run, not a default of this PR.
+      # `visqol-python` (tools/ci/quality_race.py's perceptual_score(), see its
+      # own docstring for why ViSQOL/why that package) IS installed here now.
+      # It used to be held out on supply-chain grounds; what that bought was a
+      # MOS column nobody could read - every one of the ~3,758 rows on the
+      # quality-history branch carried "mos_lqo": null and every MOS cell in
+      # docs/landscape.md and docs/tool-comparison-trend.md rendered n/a, so
+      # the perceptual half of this project's own published comparison did not
+      # exist. It is pinned by hash like everything else in that lock; see the
+      # .in file's header for exactly which seven packages it added.
+      #
+      # It does NOT change what gates. The `ci` step below is still the hard
+      # fidelity gate and still scores SNR/LSD only - perceptual_score() is
+      # never called from race_ci(). Only the `trend` step (compute-only,
+      # feeds quality-history) pays for MOS.
+      #
+      # What that costs, measured rather than estimated: a full `trend` run
+      # took 10m48s with ViSQOL and 3m59s with it stubbed out, so the MOS
+      # column is about seven minutes of it across the 62 distinct scorings
+      # eight legs produce - and that is already WITH quality_race.py's
+      # MOS_WINDOW_S cap, without which it would be far worse, since ViSQOL's
+      # patch matching is super-linear (3.9 s to score 3 s of audio, 127.8 s
+      # to score 30 s). Those figures are from a Windows DEBUG build, so the
+      # encode/decode half will be faster here on config-linux-llvm; the
+      # ViSQOL half is pure Python and will not be.
+      #
+      # Roughly doubling this job (~5 min today) is affordable because it is
+      # nowhere near the critical path: the same run's longest job is Windows
+      # LLVM at ~21 min, so the wall clock of a CI run does not move. If that
+      # ever stops being true, the lever is MOS_WINDOW_S or scoring only the
+      # `landscape` rows - not dropping the column again.
       #
       # --ignore-installed: matplotlib (added for render_spectrograms()) pulls
       # in `packaging` transitively, which ubuntu:26.04's base image already
@@ -1119,7 +1161,7 @@ jobs:
       # flag tells pip to install fresh into site-packages over top of it
       # rather than trying to uninstall first - fine in a throwaway
       # container that gets discarded after the job either way.
-      - name: Install numpy
+      - name: Install numpy, matplotlib and visqol-python
         run: pip install --quiet --break-system-packages --ignore-installed --require-hashes -r requirements/requirements-ffmpeg-validate.txt
 
       - name: Report ffmpeg version
@@ -1557,7 +1599,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
     runs-on: ubuntu-latest
     steps:
       - name: Gate on required job results
@@ -1569,6 +1611,7 @@ jobs:
           R_CHANGES: ${{ needs.changes.result }}
           R_MACROS: ${{ needs.platform-macros.result }}
           R_PACKAGING: ${{ needs.packaging-consistency.result }}
+          R_CORPUS: ${{ needs.fixture-corpus.result }}
           R_SCRIPTLINT: ${{ needs.script-lint.result }}
           # 'skipped' on a docs-only change, which is a pass, not a failure.
           R_TIDY: ${{ needs.static-analysis.result }}
@@ -1587,6 +1630,7 @@ jobs:
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
                       "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
                       "packaging-consistency:$R_PACKAGING" \
+                      "fixture-corpus:$R_CORPUS" \
                       "script-lint:$R_SCRIPTLINT" \
                       "static-analysis:$R_TIDY" "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
