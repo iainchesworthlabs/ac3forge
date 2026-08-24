@@ -22,6 +22,7 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/encoder/silent_frame.hpp"
@@ -375,6 +376,11 @@ struct SpxPlan {
 struct Payload {
     int csnroffst = 0;
     int fsnroffst = 0;
+    // The coded bandwidth actually transmitted this frame, resolved from
+    // FrameConfig::chbwcod or - when that asks for auto - from the frame's
+    // own spectrum (see step 2). The block writer reads it from here rather
+    // than from the config, which no longer holds the answer.
+    int chbwcod = 60;
     bool ahte = false;  // some stream uses the adaptive hybrid transform
     // §3.7: sized to nfchans wherever set at all (transproce implies every
     // vector below is). This encoder's own heuristic - see where these are
@@ -417,6 +423,7 @@ struct Payload {
     void reset_for_frame() {
         csnroffst = 0;
         fsnroffst = 0;
+        chbwcod = 60;
         ahte = false;
         transproce = false;
         chintransproc.clear();
@@ -1546,7 +1553,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         if (first) {
             if (!cpl.in_use && !spx.in_use) {
                 for (int ch = 0; ch < nfchans; ++ch) {
-                    w.put(static_cast<std::uint32_t>(config.chbwcod), 6);
+                    w.put(static_cast<std::uint32_t>(payload.chbwcod), 6);
                 }
             }
             // Exponents: the coupling channel first, then fbw, then LFE.
@@ -1865,7 +1872,13 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     }
 
     const int nfchans = fullbw_channel_count(config.acmod);
-    const int endmant = ((config.chbwcod + 12) * 3) + 37;
+    // Silence has no spectrum for the content-adaptive edge to read, so the
+    // auto value resolves to the full band here - which is what this path
+    // has always emitted, and costs nothing: every exponent is kMaxExponent
+    // and §7.2.2.1.1's all-zero allocation means no mantissa exists at any
+    // bandwidth.
+    const int silent_chbwcod = config.chbwcod < 0 ? 60 : config.chbwcod;
+    const int endmant = encoder::endmant_for_chbwcod(silent_chbwcod);
 
     // Exponents: an all-quiet ramp, so the decoder's own allocation returns
     // zero everywhere. Both offsets stay at zero, which §7.2.2.1.1 defines as
@@ -1874,6 +1887,7 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     // Coupling stays off: a silent frame has nothing to share, and switching
     // it on would only add coordinates describing zero.
     Payload payload;
+    payload.chbwcod = silent_chbwcod;
     const std::vector<std::uint8_t> quiet(static_cast<std::size_t>(endmant), kMaxExponent);
     for (int ch = 0; ch < nfchans; ++ch) {
         ChannelPlan plan;
@@ -2372,10 +2386,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // holds when `in_use` does not, whichever branch above cleared it.
     cpl.enhanced = cpl.enhanced && cpl.in_use;
 
-    // §E3.3.3: whichever tool takes over first sets the coded bandwidth.
-    const int fbw_endmant = cpl.in_use    ? cpl.strtmant
-                            : spx.in_use  ? spx.startmant
-                                          : ((config_.chbwcod + 12) * 3) + 37;
+    // §E3.3.3's coded bandwidth - see its real assignment below, after the
+    // transient pre-noise block, for what decides it and why. Declared as a
+    // plain mutable int (not const) because the stream_start/stream_end
+    // lambdas just below need to close over it now, and coupling/spectral
+    // extension are the only two of its three cases settled at this point.
+    int fbw_endmant = 0;
     // Streams: the fbw channels, the LFE, then the coupling channel as one
     // more stream carrying the shared high band.
     const int cpl_stream = cpl.in_use ? nchans : -1;
@@ -2421,6 +2437,56 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
     }
+
+    // Coded bandwidth (§E3.3.3), for a channel not otherwise decided by
+    // coupling or spectral extension - both already chosen above, from the
+    // same MDCT coefficients this reads.
+    //
+    // This encoder used to transmit chbwcod 60 - the whole 23.7 kHz - at
+    // every rate, on the reasoning that E-AC-3's own tools take the high
+    // band over whenever it cannot be afforded. They do, but only below the
+    // rates at which `auto` turns them on: at 96 kbit/s per channel neither
+    // coupling nor spectral extension runs (their ceilings are 40 and 56),
+    // and the frame spread its ~512 bits per channel per block across all
+    // 253 mantissas. Narrowing to where the content actually is buys that
+    // back - measured on real programme material, E-AC-3 stereo at
+    // 192 kbit/s with the AHT-only tool set `auto` chose before EQ9's
+    // content-based selection landed:
+    //
+    //             chbwcod 60      chbwcod 30
+    //   samba     27.66 dB        29.18 dB     MOS 4.705 -> 4.713
+    //   bells     32.42 dB        34.29 dB     MOS 4.000 -> 4.038
+    //
+    // and the high-band energy ratio improves with it rather than against
+    // it (samba -0.40 -> -0.30 dB above 10 kHz), because the bins that
+    // survive are coded well enough to reach the decoder at all. Computed
+    // unconditionally, whether or not this frame ends up coupled or
+    // extended: it costs one pass over coefficients the transform already
+    // produced, and chbwcod_state_ has to keep tracking the content even on
+    // a frame where it is not transmitted, so the narrow-step limit has
+    // something real to glide from on the frame it is next needed.
+    int chbwcod = config_.chbwcod;
+    if (chbwcod < 0) {
+        std::array<std::uint8_t, 253> peak_exponents{};
+        peak_exponents.fill(static_cast<std::uint8_t>(kMaxExponent));
+        for (int ch = 0; ch < nfchans; ++ch) {
+            for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+                encoder::accumulate_peak_exponents(coeffs_at(ch, blk), peak_exponents);
+            }
+        }
+        chbwcod = encoder::choose_chbwcod(tool_reference_kbps, nfchans, peak_exponents,
+                                          config_.sample_rate, chbwcod_state_);
+    }
+    chbwcod_state_ = chbwcod;
+    payload.chbwcod = chbwcod;
+
+    // §E3.3.3: whichever tool takes over first sets the coded bandwidth.
+    // Assigns the forward-declared fbw_endmant above (see its own comment) -
+    // the stream_start/stream_end lambdas already close over it by reference,
+    // so this is the write that gives them a real value.
+    fbw_endmant = cpl.in_use    ? cpl.strtmant
+                 : spx.in_use   ? spx.startmant
+                                : encoder::endmant_for_chbwcod(chbwcod);
 
     // --- 3. Coupling: the shared channel and its coordinates ---------------
     const auto nbnd = static_cast<std::size_t>(std::max(cpl.bands.count, 1));
@@ -2578,7 +2644,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
                 auto& zr = ecpl_zr_scratch_;
                 auto& zi = ecpl_zi_scratch_;
-                ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                ecpl_channel_spectrum(prev, curr, next, zr, zi, config_.fast_mdct);
                 auto& baseline_a = ecpl_baseline_a_scratch_;
                 auto& baseline_b = ecpl_baseline_b_scratch_;
                 ecpl_channel_coefficients(zr, zi, unity_amp, zero_angle, cpl.strtmant,
@@ -3218,26 +3284,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (!sized) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
-        // The VBR dual of the CBR test above: quality is pinned, so the
-        // frame cannot answer with a higher offset - it answers with its
-        // size. Corrections that do not shrink the frame are not earning
-        // their side info here either.
-        if (any_delta_applied) {
-            snapshot_delta();
-            drop_delta_and_remeasure();
-            const auto bare = vbr_size_for(bits_at(composite), vbr);
-            if (bare && bare->words <= sized->words) {
-                sized = bare;
-            } else {
-                restore_delta();
-                sized = vbr_size_for(bits_at(composite), vbr);
-                if (!sized) {
-                    return std::unexpected(FrameError::kInvalidBitrate);
-                }
-            }
-        }
-        lo = composite;
-        words = sized->words;
         if (sized->fallback_budget) {
             // The quality target overshoots vbr.max_kbps: fall back to the
             // same search CBR uses, budgeted against the ceiling instead of
@@ -3254,8 +3300,79 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // builds with -Werror, so emitting it here would fail every
             // non-MSVC leg. The C26829 code-scanning alert is dismissed
             // separately with this same justification instead.
-            fixed_budget = sized->fallback_budget;
-            lo = search(*fixed_budget); // NOLINT(bugprone-unchecked-optional-access)
+            fixed_budget = sized->fallback_budget;                    // NOLINT(bugprone-unchecked-optional-access)
+            lo = search(*fixed_budget);                               // NOLINT(bugprone-unchecked-optional-access)
+            // This is now the exact same rate-constrained search CBR runs
+            // against the exact same kind of budget, so the delta decision
+            // has to be the CBR one too - two searches, with and without,
+            // keeping whichever composite offset is higher - not the
+            // word-count comparison below, which was measured at the
+            // UNCONSTRAINED composite and has nothing to say about a budget
+            // that composite never got to see. Using it here anyway is
+            // exactly what min_kbps == max_kbps == bitrate VBR's own
+            // CBR-equivalence test caught: the two paths hit the identical
+            // fallback budget but disagreed on delta because only one of
+            // them was asking the question this budget can answer.
+            //
+            // Unlike CBR, the budget itself is not fixed independent of
+            // delta: `bare_budget` has to be RECOMPUTED from
+            // drop_delta_and_remeasure()'s own (smaller) side_bits, exactly
+            // as CBR's own bare_budget is, rather than reusing
+            // `fixed_budget`'s stale with-delta value - and, a case CBR
+            // structurally cannot have (its word count never moves),
+            // dropping delta can occasionally shrink the frame back UNDER
+            // vbr.max_kbps entirely, at which point there is no fallback
+            // budget left to search and the unconstrained answer wins
+            // outright without a composite-offset comparison.
+            if (any_delta_applied) {
+                const int lo_with_delta = lo;
+                snapshot_delta();
+                drop_delta_and_remeasure();
+                const auto bare = vbr_size_for(bits_at(composite), vbr);
+                if (bare && !bare->fallback_budget) {
+                    sized = bare;
+                    lo = composite;
+                    fixed_budget = std::nullopt;
+                } else {
+                    const std::uint32_t bare_budget =
+                        bare ? *bare->fallback_budget : *fixed_budget;
+                    const int lo_without_delta = search(bare_budget);
+                    if (lo_without_delta > lo_with_delta) {
+                        fixed_budget = bare_budget;
+                        lo = lo_without_delta;
+                        if (bare) {
+                            sized = bare;
+                        }
+                    } else {
+                        restore_delta();
+                        fixed_budget = sized->fallback_budget;
+                        lo = search(*fixed_budget);
+                    }
+                }
+            }
+            words = sized->words;
+        } else {
+            // The VBR dual of the CBR test above: quality is pinned and
+            // there is no fallback search to ask a composite offset of, so
+            // the frame answers with its SIZE instead. Corrections that do
+            // not shrink the frame are not earning their side info here
+            // either.
+            if (any_delta_applied) {
+                snapshot_delta();
+                drop_delta_and_remeasure();
+                const auto bare = vbr_size_for(bits_at(composite), vbr);
+                if (bare && bare->words <= sized->words) {
+                    sized = bare;
+                } else {
+                    restore_delta();
+                    sized = vbr_size_for(bits_at(composite), vbr);
+                    if (!sized) {
+                        return std::unexpected(FrameError::kInvalidBitrate);
+                    }
+                }
+            }
+            lo = composite;
+            words = sized->words;
         }
         // Only ever a floor: finish_frame's own auxbits padding already
         // covers any gap between what the content actually needs and the
@@ -3640,7 +3757,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     const auto& next = neighbor(blk + 1, ecpl_next_scratch_);
                     auto& zr = ecpl_zr_scratch_;
                     auto& zi = ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi, config_.fast_mdct);
 
                     const int bins = cpl.endmant - cpl.strtmant;
                     std::vector<double> amp_bin(static_cast<std::size_t>(bins));
