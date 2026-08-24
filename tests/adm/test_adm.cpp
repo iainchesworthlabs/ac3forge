@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -594,6 +595,86 @@ TEST_CASE("a file with no axml chunk still parses, with an empty ADM model", "[a
     CHECK(doc->model.programmes.empty());
     CHECK(doc->model.objects.empty());
     REQUIRE(doc->audio.frame_count() == 2);
+}
+
+// Found by fuzz/fuzz_adm_parse (roadmap VX3) in its first minute: bw64's
+// numberOfFrames() is the <data> chunk's DECLARED size over the block
+// alignment, so a sixty-byte file claiming four gigabytes of PCM made
+// read_pcm allocate four gigabytes. The reproducer is committed as
+// fuzz/regressions/fuzz_adm_parse/oversized-data-chunk-oom; this is the same
+// shape as a unit test, and it fails (out of memory, or a bad_alloc) against
+// the pre-fix read_pcm.
+//
+// 0x7FFFFF00 rather than the fuzzer's own 0xF7FFFF07: the exact value does not
+// matter as long as it is far past the file, and a value with the top bit
+// clear keeps this a plain oversized 32-bit ckSize rather than something a
+// reader might read as an RF64 escape.
+TEST_CASE("an oversized declared data chunk is bounded by the real file size", "[adm]") {
+    const auto fmt = build_fmt_chunk(1, 48000, 16);
+    const auto real_data = build_pcm16_data(4);
+
+    Bytes body;
+    append_chunk(body, "fmt ", fmt);
+    append_chunk(body, "data", real_data, 0x7FFFFF00u);
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    auto doc = ac3adm::parse_bw64(stream);
+    // Whether this parses or is refused is not the point - it must not try to
+    // allocate the two gigabytes the <data> header asks for. What it does do
+    // is read no more frames than the file could possibly hold.
+    if (doc.has_value()) {
+        CHECK(doc->audio.frame_count() <= file.size());
+    }
+}
+
+// The second and third findings from fuzz/fuzz_adm_parse, both the same
+// shape and both different from the <data> case above: libbw64 materialises
+// every chunk it reads EXCEPT <data> into a std::vector sized straight from
+// the chunk header, during readFile() itself, so a 99-byte file whose <axml>
+// claims four gigabytes asked for four gigabytes before any ac3forge code
+// ran. adm.cpp's chunk_sizes_fit() now refuses any chunk but <data> whose
+// declared size runs past the end of the file; see its own comment for what
+// that covers and what it deliberately does not.
+//
+// 0xFFFFFFFF is one of the two values the fuzzer actually reached, and is
+// also RF64's <ds64> escape - so it is checked here explicitly alongside an
+// ordinary oversized value, to pin down that the escape is only honoured on
+// <data> (the "parses the same content via RF64" case above is the other
+// half of that pair).
+TEST_CASE("a non-data chunk declaring more than the file holds is refused", "[adm]") {
+    const auto declared = GENERATE(std::uint32_t{0x7FFFFF00}, std::uint32_t{0xFFFFFFFF});
+    CAPTURE(declared);
+
+    Bytes body;
+    append_chunk(body, "fmt ", build_fmt_chunk(1, 48000, 16));
+    append_chunk(body, "axml", Bytes(kCarAdmXml), declared);
+    append_chunk(body, "data", build_pcm16_data(4));
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE_FALSE(doc.has_value());
+    CHECK(doc.error() == ac3adm::AdmError::kNotRiff);
+}
+
+// The other half of that check: a recording cut off part-way through <data>
+// is an ordinary file, not an attack, and must still read. <data> is exempt
+// from chunk_sizes_fit() precisely so this keeps working.
+TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
+    Bytes file = minimal_fixture_bytes(false);
+    file.resize(file.size() - 3);  // lose the tail of <data>, keep every header
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    CHECK(doc.has_value());
 }
 
 TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "[adm][model]") {

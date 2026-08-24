@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -163,5 +165,46 @@ TEST_CASE("monotonicity: more snr offset never allocates fewer bits", "[bitalloc
         CAPTURE(composite);
         CHECK(total >= previous);
         previous = total;
+    }
+}
+
+// Found by fuzz/fuzz_signing_verify (roadmap VX3), through
+// ac3::signing's own frame walk: a frame whose fields make an allocation
+// region empty reached the §7.2.2.4 band walk, whose upper bound is
+// kMaskTab[end - 1] - and `end - 1` on end == 0 indexes that 256-entry table
+// at SIZE_MAX. UBSan reported the pointer overflow; the shipped NDEBUG build
+// had nothing between the caller and it, since the only statement of the
+// contract was a debug assert.
+//
+// The reproducer is committed as
+// fuzz/regressions/fuzz_signing_verify/empty-bitalloc-region-ub. This is the
+// same call with nothing else around it, and it is a UBSan trip (not a
+// CHECK failure) against the pre-fix function - so run it under the
+// sanitizer preset for the failing half of the evidence.
+TEST_CASE("compute_bit_allocation refuses a region outside its own contract", "[bitalloc]") {
+    const ac3::BitAllocCodes codes{};
+
+    SECTION("empty: the kMaskTab[end - 1] case") {
+        const std::vector<std::uint8_t> exps;
+        std::vector<std::uint8_t> bap;
+        ac3::compute_bit_allocation(exps, ac3::SampleRate::k48000, codes, 22, 9, bap, {});
+        CHECK(bap.empty());
+    }
+
+    SECTION("longer than the 253-mantissa psd array: the stack-write case") {
+        // One past the ceiling is enough; that is exactly the index ASan
+        // caught being written.
+        const std::vector<std::uint8_t> exps(254, std::uint8_t{10});
+        std::vector<std::uint8_t> bap(exps.size(), std::uint8_t{0xFF});
+        ac3::compute_bit_allocation(exps, ac3::SampleRate::k48000, codes, 22, 9, bap, {});
+        CHECK(std::ranges::all_of(bap, [](std::uint8_t b) { return b == 0; }));
+    }
+
+    SECTION("a start at or past the end") {
+        const std::vector<std::uint8_t> exps(64, std::uint8_t{10});
+        std::vector<std::uint8_t> bap(exps.size(), std::uint8_t{0xFF});
+        ac3::compute_bit_allocation(exps, ac3::SampleRate::k48000, codes, 22, 9, bap,
+                                    {.start = 64});
+        CHECK(std::ranges::all_of(bap, [](std::uint8_t b) { return b == 0; }));
     }
 }

@@ -296,6 +296,30 @@ units needs its own redundancy or retransmission above this layer. What this API
 that *finding* the next good boundary never depends on the previous one having decoded cleanly,
 and, with concealment on, that a unit missing only some of its substreams still renders.
 
+## Decoding bytes you do not control
+
+If the stream comes from the network or from a user, read
+[Threat model](../threat-model.md) before wiring this up. In short:
+
+- `scan`, `split_frames` and `split_access_units` take the **whole** stream as one span and
+  return one span per access unit, so peak memory is O(input) and the library imposes no upper
+  bound. Bound the input yourself, or drive `decode_frame`/`decode_substream` one unit at a time.
+- Every per-access-unit allocation is bounded by a bitstream field of fixed width — a single
+  frame cannot be made to consume an unbounded amount of memory or time — and a hostile `frmsiz`
+  is refused (`kTruncated` if it overruns the input, `kInvalidStream` if it is shorter than the
+  header it was read from) rather than becoming a short span something reads past.
+- A refused frame produces no audio, but it is not a rollback: the decoder's overlap-add, dither
+  and JOC state have advanced as far as the parse got, and an `_into` form's spans are left
+  unspecified. Construct a fresh decoder if you need a clean state after an error.
+- The `_into` forms check their span sizes with `assert`, so a release build does not check them
+  at all.
+
+## Testing a decoder of your own
+
+The [conformance vector set](../conformance-vectors.md) published with each release is the
+inverse of this page: streams this project produces, with the PCM they were encoded from and a
+manifest of what each exercises, for checking an independent implementation.
+
 ---
 
 See also: [Encoding AC-3](encoding-ac3.md) and [Encoding E-AC-3](encoding-eac3.md) — what

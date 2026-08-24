@@ -20,6 +20,18 @@ numbers are still recorded here, so a big regression is never silently
 un-recorded just because it also failed. See `REGRESSION_DROP_DB` and
 `HARD_REGRESSION_DROP_DB` in `tools/ci/append_quality_history.py`.
 
+Every point below is measured against `tests/golden/audio/reference_51.wav`,
+which is **synthesized** — `sin()`, pseudo-random noise and FIR smoothing,
+2.5 s long. That is the right choice for this page, which asks "did the
+round trip change" and needs the material to be identical across years of
+commits for the answer to mean anything. It is the wrong material for
+deciding an encoder policy: it carries a flat noise plateau across its whole
+top octave that no real programme material has, and tuning the encoder's
+bandwidth default against it once produced a measured 2.1 dB "win" that was
+purely an artefact of the fixture. Real speech and music fixtures exist for
+that question — see [Landscape](landscape.md) and
+[tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md).
+
 <div id="quality-trend-app">
   <p class="quality-trend-status">Loading trend data…</p>
 </div>

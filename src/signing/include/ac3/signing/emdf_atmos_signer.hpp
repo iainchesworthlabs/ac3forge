@@ -42,8 +42,10 @@ namespace ac3::signing {
 //
 // Scope: the ac3forge "atmos" output - a single independent 5.1 substream,
 // frame-level exponent strategy and SNR, no coupling. A frame outside that
-// subset asserts in debug and is left unsigned in release rather than signed
-// wrong.
+// subset is left unsigned rather than signed wrong - the same "nothing to
+// do here" answer every entry point in this file gives a frame it does not
+// recognise, not a caller error (see parse()'s own comment in
+// emdf_atmos_signer.cpp for why that used to be an assert and no longer is).
 [[nodiscard]] AC3SIGNING_EXPORT int sign_atmos_stream(std::span<std::byte> stream,
                                                        const SigningKey& key);
 
@@ -88,6 +90,12 @@ struct VerifySummary {
 };
 
 // Checks every syncframe in `stream` against `key`, without modifying it.
+//
+// Verifying runs on a stream the caller did not produce (`ac3cli decode
+// ... verify-objects` points it at whatever arrived), so a plain non-Atmos
+// E-AC-3 frame is an ordinary input here, answered with kNoContainer, not a
+// caller error - see sign_atmos_stream's own comment above for where that
+// tolerance actually lives.
 [[nodiscard]] AC3SIGNING_EXPORT VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
                                                                    const SigningKey& key);
 
