@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <vector>
 
@@ -60,21 +59,18 @@ struct Parsed {
     std::vector<Hole> holes;
 };
 
-// Which operation is driving parse(). The subset assertion below is a
-// SIGNING-side contract check - "you handed the signer a frame it does not
-// claim to handle" - and must not fire for verification, which by design runs
-// on streams its caller did not produce: `ac3cli decode ... verify-objects`
-// points it at whatever arrived, and an E-AC-3 stream that is not ac3forge
-// Atmos is an ordinary input there, answered with kNoContainer, not a
-// programming error. Before this distinction existed, a Debug build aborted
-// on `decode <plain stereo>.ec3 out.wav verify-objects` - found while
-// building fuzz/fuzz_signing_verify.cpp, which itself runs under NDEBUG and
-// so could never have caught it.
-enum class Operation : std::uint8_t { kSign, kVerify };
-
 // Walk one syncframe of the ac3forge atmos subset, recording the A-holes and the
 // container. Mirrors tools/references/eac3_parse.py for this configuration.
-Parsed parse(std::span<const std::byte> frame, Operation op) {
+//
+// Everything outside that subset returns an empty Parsed - has_container
+// false, so the frame is neither signed nor reported as carrying a tag. These
+// used to be assert()s, on the reasoning that sign/verify are only ever handed
+// frames whose shape their caller already knows. has_authenticity_tag broke
+// that: it is asked of every syncframe of an ARBITRARY stream (`ac3cli probe`),
+// where an ordinary non-Atmos E-AC-3 frame is not an error at all and a debug
+// build aborting on one would be. The release behaviour is unchanged - it
+// already declined to sign these, just without saying so.
+Parsed parse(std::span<const std::byte> frame) {
     Parsed out;
     // Set the moment any per-block field this parser walks turns out to be
     // structurally invalid - see the spx validity check below for why that
@@ -105,8 +101,9 @@ Parsed parse(std::span<const std::byte> frame, Operation op) {
     if (strmtyp == 1) { if (r.read(1)) (void)r.read(16); }
     const int nfchans = fullbw_channels(acmod);
     const int nblks = (numblkscod == 3) ? 6 : (numblkscod + 1);
-    if (op == Operation::kSign) {
-        assert(strmtyp == 0 && acmod == 7 && lfeon == 1 && numblkscod == 3);
+    // The bsi-level shape: one independent 3/2 + LFE substream of six blocks.
+    if (strmtyp != 0 || acmod != 7 || lfeon != 1 || numblkscod != 3) {
+        return out;
     }
 
     put_hole(0, 31);  // sync + strmtyp + substreamid + frmsiz
@@ -147,7 +144,7 @@ Parsed parse(std::span<const std::byte> frame, Operation op) {
         put_hole(p, p);  // the flag bit
         if (info) {
             // Not emitted by ac3forge; would need the whole block holed.
-            assert(false && "infomdate=1 not handled");
+            return out;
         }
     }
     if (strmtyp == 0 && numblkscod != 3) (void)r.read(1);  // convsync
@@ -165,16 +162,15 @@ Parsed parse(std::span<const std::byte> frame, Operation op) {
 
     // ---- audfrm ----
     int expstre = 1;
-    [[maybe_unused]] int ahte = 0;  // only the assert() below reads this; NDEBUG removes it
+    int ahte = 0;
     if (numblkscod == 3) { expstre = int(r.read(1)); ahte = int(r.read(1)); }
     const int snroffststr = int(r.read(2));
     const int transproce = int(r.read(1));
     const int blkswe = int(r.read(1));
     const int dithflage = int(r.read(1));
     const int bamode = int(r.read(1));
-    // only the assert() below reads this one; NDEBUG removes it
-    [[maybe_unused]] const int frmfgaincode = int(r.read(1));
-    [[maybe_unused]] const int dbaflde = int(r.read(1));
+    const int frmfgaincode = int(r.read(1));
+    const int dbaflde = int(r.read(1));
     int skipflde = 0;
     {  // skipflde flag -> a hole
         std::size_t p = r.bit_position();
@@ -182,7 +178,11 @@ Parsed parse(std::span<const std::byte> frame, Operation op) {
         put_hole(p, p);
     }
     const int spxattene = int(r.read(1));
-    assert(ahte == 0);
+    // AHT rewrites every block's mantissa layout, so a frame using it is not
+    // one this walk can follow.
+    if (ahte != 0) {
+        return out;
+    }
 
     std::vector<int> cplinu(std::size_t(nblks), 0);
     if (acmod > 1) {
@@ -192,7 +192,11 @@ Parsed parse(std::span<const std::byte> frame, Operation op) {
             else cplinu[std::size_t(b)] = cplinu[std::size_t(b - 1)];
         }
     }
-    for (int b = 0; b < nblks; ++b) assert(cplinu[std::size_t(b)] == 0);
+    for (int b = 0; b < nblks; ++b) {
+        if (cplinu[std::size_t(b)] != 0) {
+            return out;  // coupling: outside this subset, same as AHT above
+        }
+    }
 
     std::array<std::array<int, 5>, 6> chexpstr{};  // [blk][ch]
     if (expstre) {
@@ -226,12 +230,21 @@ Parsed parse(std::span<const std::byte> frame, Operation op) {
             r.skip(static_cast<std::size_t>((nblks - 1) * (4 + bl)));
         }
     }
-    // dbaflde and bamode are deliberately left out here - both are real
-    // fields this parser handles per block (see the audblk loop below), not
-    // assumptions to hold at zero. The other two are genuinely fixed
-    // constants in this encoder's output (see eac3_frame.cpp), so asserting
-    // them is a real invariant check, not a narrowed-scope guard.
-    assert(snroffststr == 0 && frmfgaincode == 0);
+    // dbaflde and bamode are deliberately left out here - both are real,
+    // content-driven fields this parser handles per block (see the audblk
+    // loop below: bamode==0's Table E1.4 defaults apply until baie first
+    // fires, generically, off whatever bamode actually says), not
+    // assumptions to hold at zero. Dropping bamode from this check was
+    // itself required once real content started putting bamode==1 on the
+    // wire (roadmap EQ3) rather than it being a merely hypothetical value.
+    // frmfgaincode is a fixed constant in this encoder's own output (see
+    // eac3_frame.cpp), and a frame that varies it lays its blocks out
+    // differently from here on - returned rather than asserted, like every
+    // other early return in this function: has_authenticity_tag hands this
+    // parser arbitrary frames, where a shape outside its subset is not a bug.
+    if (snroffststr != 0 || frmfgaincode != 0) {
+        return out;
+    }
 
     // ---- audblk x nblks ----
     std::array<std::vector<std::uint8_t>, 5> exps;  // decoded exponents per fbw channel
@@ -653,8 +666,8 @@ struct TagContext {
 };
 
 std::optional<TagContext> compute_tag_context(std::span<const std::byte> frame,
-                                               const SigningKey& key, Operation op) {
-    Parsed p = parse(frame, op);
+                                               const SigningKey& key) {
+    Parsed p = parse(frame);
     if (!p.has_container) return std::nullopt;
 
     // Reconstruct A: excise holes, pack MSB-first, round to nearest 16-bit word.
@@ -713,9 +726,48 @@ std::optional<TagContext> compute_tag_context(std::span<const std::byte> frame,
 
 }  // namespace
 
+bool has_authenticity_tag(std::span<const std::byte> frame) {
+    // Deliberately key-free: where the tag LIVES is fixed by the container's
+    // own protection-length codes, and only whether it matches needs a key.
+    // So an inspection tool can answer "is this stream signed at all" - the
+    // question `ac3cli probe` asks - without holding anything secret, which
+    // is the whole point of keeping the key out of this tool (see
+    // docs/concepts/object-signing.md).
+    // parse() screens the frame's shape itself and reports no container for
+    // anything outside this signer's subset - an ordinary non-Atmos frame
+    // included - so nothing here has to pre-qualify what it is handed.
+    const Parsed p = parse(frame);
+    if (!p.has_container) {
+        return false;
+    }
+    const int np = prot_bits(p.prot_primary_code);
+    if (np <= 0) {
+        // No primary protection field at all - the container declared it
+        // absent, so there is nowhere for a tag to be.
+        return false;
+    }
+    const std::size_t prim_off =
+        p.container_start + p.container_parsed_bits - std::size_t(np) -
+        std::size_t(prot_bits(p.prot_secondary_code));
+    // An all-zero field is what an unsigned container carries: §H.2.2.4 leaves
+    // the content implementation-defined, and this project's own writer emits
+    // zeros until sign_atmos_frame replaces them. A real HMAC truncation
+    // being all-zero is a 2^-np coincidence.
+    for (int i = 0; i < np; ++i) {
+        const std::size_t q = prim_off + static_cast<std::size_t>(i);
+        if ((q >> 3) >= frame.size()) {
+            return false;
+        }
+        if (bit_at(frame, q)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool sign_atmos_frame(std::span<std::byte> frame, const SigningKey& key) {
     if (key.empty()) return false;
-    const auto ctx = compute_tag_context(frame, key, Operation::kSign);
+    const auto ctx = compute_tag_context(frame, key);
     if (!ctx) return false;
 
     // write protection_bits_primary (np bits) at prim_off. Bounds-checked for
@@ -757,7 +809,7 @@ int sign_atmos_stream(std::span<std::byte> stream, const SigningKey& key) {
 }
 
 VerifyResult verify_atmos_frame(std::span<const std::byte> frame, const SigningKey& key) {
-    const auto ctx = compute_tag_context(frame, key, Operation::kVerify);
+    const auto ctx = compute_tag_context(frame, key);
     if (!ctx) return VerifyResult::kNoContainer;
 
     // Compare the digest just computed against whatever tag bits the frame
