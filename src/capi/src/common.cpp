@@ -16,6 +16,7 @@ const char* ac3forge_status_message(ac3forge_status_t status) {
         case AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP: return "invalid channel map";
         case AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS: return "too many channels";
         case AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL: return "invalid mix level";
+        case AC3FORGE_ERROR_ENCODE_INVALID_BSI: return "invalid bit stream information";
         case AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO: return "invalid object audio";
         case AC3FORGE_ERROR_DECODE_TRUNCATED: return "truncated frame";
         case AC3FORGE_ERROR_DECODE_BAD_SYNC_WORD: return "bad sync word";
