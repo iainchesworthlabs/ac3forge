@@ -20,6 +20,8 @@
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/io/elementary.hpp"
+#include "ac3/io/object_strip.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/motion.hpp"
@@ -683,6 +685,61 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
                  "JOC over a 5.1 downmix",
                  bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
     print_channel_summary(meter, status);
+    return 0;
+}
+
+int run_strip_objects(std::string_view in_path, std::string_view out_path,
+                      const ac3cli::Options& meta) {
+    const auto raw = read_all(in_path);
+    if (raw.empty()) {
+        fmt::println(stderr, "error: cannot open {}", in_path);
+        return 1;
+    }
+    const auto stripped = ac3::io::strip_objects(raw);
+    if (!stripped) {
+        fmt::println(stderr, "error: {}", ac3::io::describe(stripped.error()));
+        return 1;
+    }
+    // Re-scan before writing: it costs one cheap walk and it is the check
+    // that matters here - a rewrite that re-derives frmsiz and re-stamps crc2
+    // either still frames as an elementary stream or the whole exercise
+    // failed, and finding that out from the file afterwards is worse.
+    const auto rescanned = ac3::io::scan(stripped->bytes);
+    if (!rescanned) {
+        fmt::println(stderr, "error: the stripped stream no longer scans: {}",
+                     ac3::io::describe(rescanned.error()));
+        return 1;
+    }
+    if (rescanned->oba_complexity_index) {
+        fmt::println(stderr,
+                     "error: the stripped stream still declares an object layer (complexity {})",
+                     *rescanned->oba_complexity_index);
+        return 1;
+    }
+
+    EncodedStreamSink out_sink;
+    if (!out_sink.open(out_path, meta.keep_partial)) {
+        return 1;
+    }
+    for (const auto& unit : rescanned->access_units) {
+        if (!out_sink.push(unit)) {
+            out_sink.abort();
+            return 1;
+        }
+    }
+    if (!out_sink.close()) {
+        return 1;
+    }
+
+    // See run_encode's identical status_stream() comment: out_path == "-" means the E-AC-3 bytes
+    // just written own stdout, so this report goes to stderr instead.
+    const auto status = status_stream(out_path);
+    fmt::println(status, "stripped {} of {} frame(s) in {} -> {} ({} bytes removed, {} left)",
+                 stripped->frames_stripped, stripped->frames_total, in_path, out_path,
+                 stripped->bytes_removed, stripped->bytes.size());
+    fmt::println(status, "  {} at {} Hz, no object metadata remains",
+                 ac3::analysis::layout_name(rescanned->acmod, rescanned->lfe),
+                 ac3::sample_rate_hz(rescanned->sample_rate));
     return 0;
 }
 

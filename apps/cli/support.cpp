@@ -95,6 +95,11 @@ std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback) {
     return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
 }
 
+double parse_seconds_or(std::string_view text, double fallback) {
+    double value = 0.0;
+    return parse_double(text, value) ? value : fallback;
+}
+
 void print_meta_usage() {
     fmt::println("metadata options (any order, after the positional arguments):");
     fmt::println("  drc=<profile>     §7.7.1 dynamic range control per block");
@@ -115,6 +120,13 @@ void print_meta_usage() {
     fmt::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
     fmt::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
     fmt::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
+    fmt::println("  compr=<dB>        metadata only: stamp §7.7.2's compression word onto an");
+    fmt::println("                    existing stream (compr2=<dB> for Ch2). Rounded down, so");
+    fmt::println("                    the ceiling it promises stays a ceiling");
+    fmt::println("  bsmod=<0..7>      metadata only: Table 5.5's service type");
+    fmt::println("  dsurmod=<0..3>    metadata only: Table 5.11's Dolby Surround mode (2/0 only)");
+    fmt::println("  codec=ac3|eac3    transcode only: the output codec, when out_path's own");
+    fmt::println("                    suffix cannot say it (stdout, or an unusual name)");
     fmt::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
     fmt::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
     fmt::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
@@ -216,6 +228,16 @@ void print_meta_usage() {
     fmt::println("  capture2=<index>  a second capture device, clock-conformed to the first "
                  "(see 'devices')");
     fmt::println("");
+    fmt::println("container options (fmp4, ts; any order, after the positional arguments):");
+    fmt::println("  fallback-51       fmp4: also write the object-stripped 5.1 companion");
+    fmt::println("                    rendition into the same #EXT-X-MEDIA group, per Apple's");
+    fmt::println("                    HLS Authoring Specification. Ignored for a stream with");
+    fmt::println("                    no object layer, which has no companion to write");
+    fmt::println("  mainid=<0-7>      ts: the main-service number this service is, or that an");
+    fmt::println("                    associated service points at. Omitted by default");
+    fmt::println("  asvc=<mask>       ts: which main services an ASSOCIATED service may be");
+    fmt::println("                    reproduced with, one bit each (decimal or 0xNN)");
+    fmt::println("");
     fmt::println("qc options (qc; any order, after the positional arguments):");
     fmt::println("  preset=<name>     gate the measurement against a named delivery spec");
     fmt::println("                    {}", ac3::meta::kQcPresetNames);
@@ -244,6 +266,10 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         const std::string_view value =
             eq == std::string_view::npos ? std::string_view{} : token.substr(eq + 1);
 
+        if (token == "fallback-51") {
+            out.hls_fallback_51 = true;
+            continue;
+        }
         if (token == "couple" || token == "heavy" || token == "heavy2" || token == "mixmeta" ||
             token == "keep-partial" || token == "fast-mdct") {
             if (token == "heavy") {
@@ -261,6 +287,36 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         }
         if (token == "fast-imdct") {
             out.fast_imdct = true;
+            continue;
+        }
+        if (key == "mainid") {
+            // A/52 Table A4.6 / EN 300 468 D.3: a number 0-7 naming a main
+            // audio service, which associated services then point at.
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 7) {
+                fmt::println(stderr, "error: mainid must be 0-7 (got '{}')", token);
+                return false;
+            }
+            out.mainid = static_cast<int>(parsed);
+            continue;
+        }
+        if (key == "asvc") {
+            // Eight bits, one per main service this associated service may be
+            // reproduced with; bit 7 is main service 7. Accepts decimal or
+            // 0x-prefixed hex, since it reads as a mask far more often than
+            // as a number.
+            const bool hex = value.starts_with("0x") || value.starts_with("0X");
+            const std::string_view digits = hex ? value.substr(2) : value;
+            unsigned parsed = 0;
+            const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(),
+                                                   parsed, hex ? 16 : 10);
+            if (ec != std::errc{} || ptr != digits.data() + digits.size() || parsed > 255) {
+                fmt::println(stderr, "error: asvc must be 0-255 or 0x00-0xFF (got '{}')", token);
+                return false;
+            }
+            out.asvc = static_cast<int>(parsed);
             continue;
         }
         if (token == "sign-objects") {
@@ -547,6 +603,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "dialnorm") {
             if (value == "auto") {
                 out.p.measure_dialnorm = true;
+                out.dialnorm_given = true;
                 continue;
             }
             const auto n = parse_u32_or(value, 0);
@@ -555,11 +612,13 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 return false;
             }
             out.p.dialnorm = static_cast<int>(n);
+            out.dialnorm_given = true;
             continue;
         }
         if (key == "dialnorm2") {
             if (value == "auto") {
                 out.p.measure_dialnorm2 = true;
+                out.dialnorm2_given = true;
                 continue;
             }
             const auto n = parse_u32_or(value, 0);
@@ -568,6 +627,37 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 return false;
             }
             out.p.dialnorm2 = static_cast<int>(n);
+            out.dialnorm2_given = true;
+            continue;
+        }
+        if (key == "compr" || key == "compr2") {
+            // A dB gain, converted to §7.7.2's own 8-bit word. Rounded DOWN
+            // (encode_compr_at_most) rather than to nearest, for the reason
+            // ac3/meta/drc.hpp gives: §7.7.2 exists to give "an assured upper
+            // limit", and a ceiling exceeded by half a step is not assured.
+            double db = 0.0;
+            if (!parse_double(value, db)) {
+                fmt::println(stderr, "error: {} takes a gain in dB (got '{}')", key, value);
+                return false;
+            }
+            const auto word = ac3::meta::encode_compr_at_most(db);
+            if (key == "compr") {
+                out.compr_word = word;
+            } else {
+                out.compr2_word = word;
+            }
+            continue;
+        }
+        if (key == "bsmod" || key == "dsurmod") {
+            const auto limit = key == "bsmod" ? 7u : 3u;
+            const auto n = parse_u32_or(value, limit + 1);
+            if (n > limit) {
+                fmt::println(stderr, "error: {} must be 0..{} ({})", key, limit,
+                             key == "bsmod" ? "Table 5.5's service type"
+                                            : "Table 5.11's Dolby Surround mode");
+                return false;
+            }
+            (key == "bsmod" ? out.bsmod : out.dsurmod) = static_cast<int>(n);
             continue;
         }
         if (key == "cmixlev") {
@@ -620,6 +710,19 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 out.p.dmixmod = ac3::meta::DownmixMode::kNotIndicated;
             } else {
                 fmt::println(stderr, "error: dmixmod must be ltrt, loro or none (Table D2.2)");
+                return false;
+            }
+            continue;
+        }
+        if (key == "codec") {
+            // 'transcode' only. Named rather than inferred when out_path is
+            // "-" or has no .ac3/.ec3 suffix to read - see Options::codec.
+            if (value == "ac3") {
+                out.codec = ac3::plan::Codec::kAc3;
+            } else if (value == "eac3" || value == "ec3") {
+                out.codec = ac3::plan::Codec::kEac3;
+            } else {
+                fmt::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", value);
                 return false;
             }
             continue;

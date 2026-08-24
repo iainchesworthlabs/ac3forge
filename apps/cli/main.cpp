@@ -12,6 +12,7 @@
 #include <system_error>
 #include <vector>
 
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/audio/audio_backend.hpp"
@@ -25,6 +26,7 @@
 #include "commands/encode.hpp"
 #include "commands/live_audio.hpp"
 #include "commands/probe.hpp"
+#include "commands/stream_tools.hpp"
 #include "commands/synth.hpp"
 #include "support.hpp"
 
@@ -84,6 +86,16 @@ struct Args {
         int value = 0;
         const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
         return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
+    }
+    // Every positional argument from index i onward, for the one command
+    // whose argument list is variadic ('cat' joins as many inputs as it is
+    // given). Returned as string_views over argv, which outlives the call.
+    [[nodiscard]] std::vector<std::string_view> tail(std::size_t i) const {
+        std::vector<std::string_view> out;
+        for (; i < a.size(); ++i) {
+            out.emplace_back(a[i]);
+        }
+        return out;
     }
 };
 
@@ -149,13 +161,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 29 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 35 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 29> kCommands{{
+constexpr std::array<Command, 35> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -198,6 +210,10 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) {
          return run_atmos_adm(x.str(1), x.str(2), x.u32(3, 448), x.meta, x.str(4));
      }},
+    {"strip-objects", 3, "<in.ec3> <out.ec3>",
+     "remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed",
+     Needs::kNothing,
+     [](const Args& x) { return run_strip_objects(x.str(1), x.str(2), x.meta); }},
     {"record", 2, "<out.ac3> [seconds] [bitrate_kbps] [device_index]", "", Needs::kCapture,
      [](const Args& x) {
          return run_record(x.str(1), x.u32(2, 5), x.u32(3, 192), x.i32(4, 0), x.meta);
@@ -247,6 +263,35 @@ constexpr std::array<Command, 29> kCommands{{
      "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
      "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
      Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
+    {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
+     "decode and re-encode, carrying dialnorm, compr and the mix metadata across - the "
+     "DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the "
+     "output name's suffix, or from codec=",
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_transcode(x.str(1), x.str(2), x.u32(3, 448), x.str(4), x.meta);
+     }},
+    {"metadata", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
+     "rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the "
+     "audio is copied through untouched, not re-encoded",
+     Needs::kNothing,
+     [](const Args& x) { return run_metadata(x.str(1), x.str(2), x.meta); }},
+    {"normalize", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
+     "measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio "
+     "untouched",
+     Needs::kNothing,
+     [](const Args& x) { return run_normalize(x.str(1), x.str(2), x.meta); }},
+    {"cut", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds]",
+     "extract on access-unit boundaries; nothing is re-encoded", Needs::kNothing,
+     [](const Args& x) { return run_cut(x.str(1), x.str(2), x.str(3), x.str(4)); }},
+    {"cat", 4, "<out.ac3|out.ec3> <in1> <in2> [in3...]",
+     "join streams end to end (output FIRST, since the input list is variadic); refuses "
+     "inputs whose codec, rate, layout or substream shape differ",
+     Needs::kNothing,
+     [](const Args& x) {
+         const auto inputs = x.tail(2);
+         return run_cat(x.str(1), inputs);
+     }},
     {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report", Needs::kNothing,
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
@@ -272,9 +317,10 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
     {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
      "fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager", Needs::kNothing,
-     [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
-    {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
-     Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+     [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
+    {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
+     "wrap as an MPEG-2 Transport Stream (DVB profile by default)", Needs::kNothing,
+     [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
@@ -299,7 +345,10 @@ void print_usage() {
     fmt::println("Usage:");
     fmt::println("  ac3cli --version    print version and git provenance, then exit");
     for (const auto& c : kCommands) {
-        std::string line = fmt::format("  ac3cli {:<13}{}", c.name, c.spec);
+        // Wide enough that the LONGEST command name still gets a separating
+        // space: 'strip-objects' is 13 characters, so a 13-wide field padded
+        // nothing at all and ran the name straight into its own spec.
+        std::string line = fmt::format("  ac3cli {:<14}{}", c.name, c.spec);
         // A command the platform cannot run is listed, not hidden: hiding it
         // makes 'ac3cli play' answer "unknown command", which is a lie about
         // a command that exists and would work elsewhere. The note slot says
@@ -337,8 +386,11 @@ void print_usage() {
     fmt::println("");
     fmt::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
     fmt::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    fmt::println("       eac3-encode, atmos-encode, decode and probe only. e.g.:");
+    fmt::println("       eac3-encode, atmos-encode, decode, probe and the five stream tools");
+    fmt::println("       (transcode, metadata, normalize, cut, cat). e.g.:");
     fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
+    fmt::println("       transcode to '-' cannot read the codec off the name, so pair it");
+    fmt::println("       with codec=ac3|eac3.");
     fmt::println("");
     fmt::println("live monitor_device/passthrough_device: -2 (default) leaves that leg off,");
     fmt::println("       -1 is the default render endpoint, N picks one from 'outputs'.");
@@ -377,6 +429,14 @@ void print_usage() {
     fmt::println("        max bound will often refuse real programme material outright;");
     fmt::println("        bitrate_kbps still matters in vbr mode — it feeds the same");
     fmt::println("        coupling/spx frequency defaults it always has, not a target rate");
+    fmt::println("        avg:kbps instead of q: is average-rate (ABR) mode: the encoder");
+    fmt::println("        steers the SNR offset to hold that long-run average, with a");
+    fmt::println("        sliding-window bit reservoir underneath it, so a quiet frame");
+    fmt::println("        stays cheap and a busy one may cost more. It takes no quality —");
+    fmt::println("        that is the knob it exists to move — so q: and avg: are refused");
+    fmt::println("        together. win:frames sets the window ({} frames by default,",
+                 ac3::eac3::kAbrDefaultWindowFrames);
+    fmt::println("        about a second at 48 kHz); min:/max: still bound each frame.");
     fmt::println("atmos: objects orbit the room at different heights and rates,");
     fmt::println("       encoded as a 5.1 E-AC-3 bed with JOC + OAMD side data");
     fmt::println("       (TS 103 420). FFmpeg reports \"Dolby Digital Plus + Dolby Atmos\".");
@@ -441,9 +501,23 @@ void print_usage() {
     fmt::println("the HLS playlists automatically, per Apple's HLS Authoring Specification.");
     fmt::println("");
     fmt::println("ts wraps the same elementary stream as an MPEG-2 Transport Stream (PAT + PMT");
-    fmt::println("+ one PES-wrapped audio PID), identified per the DVB profile — stream_type");
-    fmt::println("0x06 plus the AC3_descriptor or Enhanced_AC3_descriptor ETSI EN 300 468 Annex D");
-    fmt::println("defines, not ATSC's — with PCR stamped on the audio PID every access unit.");
+    fmt::println("+ one PES-wrapped audio PID), with PCR stamped on the audio PID every access");
+    fmt::println("unit. Two broadcast profiles identify it, and a stream satisfies one or the");
+    fmt::println("other: dvb (the default) writes stream_type 0x06 plus the AC3_descriptor or");
+    fmt::println("enhanced_AC-3_descriptor ETSI EN 300 468 Annex D defines; atsc writes");
+    fmt::println("stream_type 0x81 (AC-3) or 0x87 (E-AC-3) plus A/52 Annex A's own");
+    fmt::println("AC-3_audio_stream_descriptor (0x81) or Annex G's E-AC-3_audio_descriptor");
+    fmt::println("(0xCC). Either way the descriptor's identification fields come off the");
+    fmt::println("bitstream itself — service type, channel mode, surround mode, bsid, the");
+    fmt::println("substreams in use — with mainid=/asvc= for the service associations no");
+    fmt::println("single elementary stream can know.");
+    fmt::println("");
+    fmt::println("strip-objects removes the JOC/OAMD object layer from a Dolby Digital Plus");
+    fmt::println("stream without decoding it: the EMDF container and the addbsi object marker");
+    fmt::println("come out, frmsiz and crc2 are re-derived, and every exponent and mantissa is");
+    fmt::println("copied bit for bit — so the result is a plain DD+ 5.1 stream whose bed audio");
+    fmt::println("decodes sample-identically. That is the rendition Apple's HLS authoring");
+    fmt::println("requirements want beside an Atmos one; 'fmp4 ... fallback-51' writes both.");
     fmt::println("");
     fmt::println("Without a layout, encode and eac3-encode both follow the source: 1 -> mono,");
     fmt::println("2 -> stereo, 3 to 6 -> 5.1; eac3-encode alone extends that to 8 -> 7.1,");
@@ -467,6 +541,16 @@ void print_usage() {
     fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
     fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
     fmt::println("       failed its CRC or the parser refused it, so this works as a gate.");
+    fmt::println("");
+    fmt::println("transcode/metadata/normalize/cut/cat work on an ALREADY-encoded stream.");
+    fmt::println("       Only transcode re-encodes - it exists because DD+ and DD are different");
+    fmt::println("       codecs and nothing else bridges them; it carries dialnorm, compr and");
+    fmt::println("       the mix metadata across rather than resetting them, and folds a");
+    fmt::println("       layout AC-3 cannot code down to 5.1 per §7.8. The other four never");
+    fmt::println("       touch a coded coefficient: metadata/normalize rewrite bsi fields in");
+    fmt::println("       place and re-stamp the CRCs, cut/cat move whole access units.");
+    fmt::println("       Convertible substreams (strmtyp 2) are out of scope for all five,");
+    fmt::println("       the same way 'validate' already refuses them.");
     fmt::println("");
     fmt::println("qc measures a stream's real BS.1770-4/EBU Tech 3342 loudness and compares it");
     fmt::println("       against the dialnorm/compr it embeds - preset=<name> also gates that");
@@ -503,7 +587,8 @@ int run_main(int argc, char** argv) {
                                token == "mixmeta" || token == "sign-objects" ||
                                token == "verify-objects" || token == "verify" ||
                                token == "keep-partial" || token == "fast-mdct" ||
-                               token == "fast-imdct" || token == "mix-lfe";
+                               token == "fast-imdct" || token == "mix-lfe" ||
+                               token == "fallback-51";
         if (token == "couple") {
             couple_flag = true;
         }

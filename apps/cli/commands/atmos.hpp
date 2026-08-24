@@ -7,7 +7,8 @@
 
 // The Atmos/object-layer commands: two synthetic generators (a built-in orbit, and one driven by
 // a hand-authored keyframe file), one real-material encoder (every source channel becomes an
-// object), and one ADM BWF reader (roadmap B1 phase 3, the ac3adm/admbridge integration). Split
+// object), one ADM BWF reader (roadmap B1 phase 3, the ac3adm/admbridge integration), and the
+// one that goes the other way - taking an object layer back out of a finished stream. Split
 // out of main.cpp as part of the repo-structure review's H4 monolith split.
 namespace ac3cli::commands {
 
@@ -36,6 +37,14 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
 int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const ac3cli::Options& meta, std::string_view paths_path = {});
+
+// The inverse of the four encoders above (roadmap IO7): takes the object layer OUT of a finished
+// DD+ JOC stream, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical - not decoded,
+// not re-encoded, just the EMDF container and its addbsi marker removed and the framing
+// re-derived around what is left. See ac3/io/object_strip.hpp for why that is lossless and why
+// the container is removed rather than emptied.
+int run_strip_objects(std::string_view in_path, std::string_view out_path,
+                      const ac3cli::Options& meta);
 
 // Roadmap B1 phase 3 of 3 - a real ADM BWF master (BS.2076-2 ADM XML embedded in a BS.2088-1
 // BW64/RF64 container) straight to DD+ JOC E-AC-3, no WAV plus a hand-authored keyframe file the

@@ -156,11 +156,13 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             if (order.empty()) {
                 // Dual mono has no Table E2.5 location to order by - `layout`
                 // is left empty for exactly that case - so Ch1/Ch2 monitor in
-                // coded order, same as everywhere else this comes up.
-                // A fold has already put its own channels in their own order
-                // (L then R, or the one mono channel), so like dual mono it
-                // plays in coded order rather than through the rendered
-                // layout's permutation.
+                // coded order, same as everywhere else this comes up (see
+                // plan::monitor_order's own comment). A fold has already put
+                // its own channels in their own order (L then R, or the one
+                // mono channel) with `layout` left at the rendered BED's full
+                // layout - monitor_order alone would size the permutation off
+                // that unfolded layout rather than the folded channel count,
+                // so the fold case stays identity here too.
                 if (out.acmod == ac3::Acmod::kDualMono ||
                     output.target != ac3::DownmixTarget::kAsCoded) {
                     order.resize(out.channels.size());
@@ -168,8 +170,9 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                         order[i] = i;
                     }
                 } else {
-                    order = plan::wav_order(std::span{out.layout.items}.first(
-                        static_cast<std::size_t>(out.layout.count)));
+                    order = plan::monitor_order(std::span{out.layout.items}.first(
+                                                    static_cast<std::size_t>(out.layout.count)),
+                                                out.channels.size());
                 }
                 const auto started = sink.start(device_id, sample_rate_hz(out.sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
@@ -647,9 +650,10 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 // pre-noise processing (decode_access_unit's own doc
                 // comment) - live monitoring just waits for the next one.
                 if (decoded && decoded->has_value()) {
-                    const auto order = plan::wav_order(
-                        std::span{(*decoded)->layout.items}.first(
-                        static_cast<std::size_t>((*decoded)->layout.count)));
+                    const auto order =
+                        plan::monitor_order(std::span{(*decoded)->layout.items}.first(
+                                                static_cast<std::size_t>((*decoded)->layout.count)),
+                                            (*decoded)->channels.size());
                     to_play = interleave_reordered((*decoded)->channels, order);
                 }
             } else {
