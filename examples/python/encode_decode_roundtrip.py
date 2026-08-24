@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import math
 
-import numpy as np
-
 import ac3forge as ac3
+import numpy as np
 
 TONES_HZ = [1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0]  # L, C, R, Ls, Rs, LFE
 SAMPLE_RATE = 48000

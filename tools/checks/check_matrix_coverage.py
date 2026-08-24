@@ -101,7 +101,9 @@ ATMOS_MODES = {"objects", "bed51"}
 
 
 def run(cli: str, *args: str) -> tuple[int, str, str]:
-    result = subprocess.run([cli, *args], capture_output=True, text=True)
+    # check=False: every caller here reads the exit code as data - a usage or
+    # "unknown layout" error IS the answer this probe is after.
+    result = subprocess.run([cli, *args], capture_output=True, text=True, check=False)
     return result.returncode, result.stdout, result.stderr
 
 
@@ -231,8 +233,8 @@ def matrix_tool_tokens(matrix_text: str) -> set[str]:
         fields.append(m.group(1))
 
     tokens = set()
-    for field in fields:
-        field = field.strip("\"'")
+    for raw_field in fields:
+        field = raw_field.strip("\"'")
         if "$" in field or not field:
             continue
         for part in field.split("+"):

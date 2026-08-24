@@ -30,7 +30,8 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read" "$OUT/fuzz_iec61937_unwrap"
+mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read" \
+         "$OUT/fuzz_signing_verify" "$OUT/fuzz_iec61937_unwrap"
 
 run() { "$AC3CLI" "$@" >/dev/null; }
 
@@ -108,9 +109,95 @@ add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-bed51.ec3"
 run atmos-encode "$WORK/roundtrip-51.wav" "$WORK/atmos-encode.ec3" 448 0
 add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-encode.ec3"
 
+echo "==> Third-party structure: the committed external-baseline bitstreams"
+echo "    (Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - roadmap VX4)"
+# Everything above this point is ac3forge's own output, so every seed shares
+# ac3forge's own encoder choices: frame-hoisted exponent strategies, coupling
+# either on for all six blocks or off, snroffststr 0, frmfgaincode 0, geometry
+# sent once in block 0 and never resent. A mutation starting from one of those
+# explores the neighbourhood of THIS encoder's syntax, and no amount of it
+# reaches syntax the encoder never emits in the first place. The external
+# baseline is real third-party structure - a Dolby encoder resending coupling
+# geometry mid-frame, bringing channels into coupling part-way through, and
+# transmitting the per-channel fast-gain and fine-SNR elements this one leaves
+# out - which is exactly the shape that carried five real decoder defects
+# found while wiring up tools/checks/verify_gold_reference.sh's interop
+# checks. Seeding from these puts the fuzzers' mutations in that neighbourhood
+# too.
+EXTERNAL_BASELINE="$REPO_ROOT/tests/golden/external-baseline"
+for leg in ac3-51-448 eac3-51-256 eac3-stereo-192; do
+    case "$leg" in
+        ac3-*) ext=ac3; targets="fuzz_scan,fuzz_ac3_decode" ;;
+        *)     ext=ec3; targets="fuzz_scan,fuzz_eac3_decode" ;;
+    esac
+    for tool in dee ffmpeg; do
+        src="$EXTERNAL_BASELINE/$leg/$tool.$ext"
+        if [ ! -f "$src" ]; then
+            echo "error: external-baseline fixture missing: $src" >&2
+            exit 1
+        fi
+        # Renamed on the way in: every fixture is called dee.ac3/ffmpeg.ec3
+        # inside its own leg directory, and the corpus directories are flat.
+        cp "$src" "$WORK/external-${leg}-${tool}.${ext}"
+        add_seed "$targets" "$WORK/external-${leg}-${tool}.${ext}"
+    done
+done
+
 echo "==> WAV: an IEC 61937 burst-wrapped PCM16 WAV too - a different write path"
 run spdif "$WORK/ac3-silence.ac3" "$WORK/spdif.wav"
 add_seed "fuzz_wav_read" "$WORK/spdif.wav"
+
+echo "==> Object signing: the same Atmos streams, signed and unsigned, each"
+echo "    prefixed with the key fuzz_signing_verify's input format expects"
+# fuzz_signing_verify reads a length byte, that many key bytes, then the
+# stream (see the harness's own header). A seed therefore has to be built,
+# not just copied - and it needs to cover both verification outcomes, so one
+# copy is signed with the key the seed carries (kValid) and one is not
+# (kMismatch on every frame that has a container to check). The key itself is
+# arbitrary throwaway bytes generated here: nothing in this project ships,
+# needs or derives a real Dolby key, and verification works against whatever
+# key it is handed.
+KEY_FILE="$WORK/seed-signing.key"
+head -c 16 /dev/urandom > "$KEY_FILE"
+# Truncated to the first few syncframes rather than carrying the whole
+# second of audio: libFuzzer takes its -max_len from the largest seed, and
+# verify_atmos_frame's message-A reconstruction is linear in frame size (it
+# walks every bit of the frame once per call), so a 33 KB seed would set the
+# mutation length for the whole run and cost exec/s for no extra syntax. Four
+# kilobytes is three complete 448 kbit/s frames plus a partial fourth - which
+# is itself worth having, since a stream ending mid-frame is exactly what the
+# framing walk's `off + size > stream.size()` break exists for.
+signing_seed() {
+    local name="$1" stream="$2"
+    # `out` on its own line, not folded into the `local` above: every word of
+    # a `local` is expanded before the builtin assigns any of them, so a
+    # "$name" there would still read the caller's (here add_seed's leftover
+    # loop variable), not this function's parameter.
+    local out="$OUT/fuzz_signing_verify/$name"
+    printf '\020' > "$out"       # key length: 16
+    cat "$KEY_FILE" >> "$out"
+    head -c 4096 "$stream" >> "$out"
+}
+run atmos "$WORK/atmos-signed.ec3" 1 448 4 3 objects sign-objects "signing-key=$KEY_FILE"
+run atmos-encode "$WORK/roundtrip-51.wav" "$WORK/atmos-encode-signed.ec3" 448 0 \
+    sign-objects "signing-key=$KEY_FILE"
+signing_seed "atmos-objects-signed.bin" "$WORK/atmos-signed.ec3"
+signing_seed "atmos-encode-signed.bin" "$WORK/atmos-encode-signed.ec3"
+signing_seed "atmos-objects-unsigned.bin" "$WORK/atmos-objects.ec3"
+signing_seed "atmos-encode-unsigned.bin" "$WORK/atmos-encode.ec3"
+# The bed51 fallback carries no object container at all, so every frame
+# reports kNoContainer - the third of verify_atmos_frame's three outcomes,
+# and the one a plain non-Atmos stream takes.
+signing_seed "atmos-bed51.bin" "$WORK/atmos-bed51.ec3"
+
+echo "==> Metadata payloads: the EMDF containers, and the OAMD and JOC payloads"
+echo "    inside them, extracted from the Atmos streams above (roadmap VX3)"
+python3 "$SCRIPT_DIR/metadata-seeds.py" extract "$OUT" \
+    "$WORK/atmos-objects.ec3" "$WORK/atmos-encode.ec3" "$WORK/atmos-bed51.ec3"
+
+echo "==> ADM: BW64/RF64 fixtures for fuzz_adm_parse - synthesised rather than"
+echo "    encoded, since nothing ac3cli produces is an ADM file"
+python3 "$SCRIPT_DIR/metadata-seeds.py" adm "$OUT"
 
 echo "==> IEC 61937 carriers, for the burst de-framer (roadmap IO3)"
 # Both data types and both burst periods: AC-3's 6144 bytes and E-AC-3's

@@ -1,0 +1,105 @@
+# Third-party decode interop against a corpus this project did not produce.
+#
+# Every other gate in this repository decodes something ac3forge (or, in the
+# gold-reference gate's newer checks, FFmpeg and Dolby's Encoding Engine driven
+# BY ac3forge) encoded. tools/checks/verify_fate_interop.py decodes streams
+# nobody here commissioned: pinned excerpts of commercially mastered programme
+# material from FFmpeg's FATE sample archive, encoded years ago by whatever
+# encoder the mastering house used. See that file's own header for what each
+# sample exercises, why FATE stands in for a conformance suite that does not
+# publicly exist, and why the samples are fetched rather than vendored.
+#
+# Scheduled rather than per-commit because it is the widest, slowest and least
+# self-contained of the interop checks: it reaches the network, and the
+# per-commit half of the same question - the six committed
+# tests/golden/external-baseline bitstreams - already runs on every
+# gold-reference leg of _build.yml, on every push and pull request, with no
+# network access at all.
+#
+# The pull_request trigger is scoped to the harness's own files, so a change to
+# the pinned corpus, the floors, or the comparison tool is proved before it
+# lands rather than discovered by the next night's run. A decoder change does
+# not trigger it - that is what the schedule and the per-commit
+# external-baseline checks are for.
+#
+# Toolchain is ffmpeg-validate's, not a fuzzing job's: LLVM plus vcpkg plus the
+# exact pinned ubuntu:26.04 ffmpeg build, building the plain linux-llvm preset.
+# The ffmpeg pin matters as much here as anywhere else in this repo - an oracle
+# whose behaviour drifts under the gate it backs is not an oracle - and more
+# than usual, since several of this corpus's floors were calibrated against
+# that exact build.
+name: Interop
+
+on:
+  schedule:
+    # 04:43 UTC. Off the hour, and away from fuzz.yml's 03:17, so two scheduled
+    # workflows do not contend for the same runner-queue instant.
+    - cron: '43 4 * * *'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'tools/checks/verify_fate_interop.py'
+      - 'tools/checks/compare_wav.py'
+      - '.github/workflows/interop.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Single source of truth for the vcpkg pin below - see
+  # docs/ci-self-hosted-runners.md and _toolchain-versions.yml's own header.
+  toolchain-versions:
+    uses: ./.github/workflows/_toolchain-versions.yml
+    permissions:
+      contents: read
+
+  fate-interop:
+    name: FATE Interop (pinned third-party bitstreams)
+    needs: toolchain-versions
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3 software-properties-common \
+            tar unzip wget zip \
+            ffmpeg=7:8.0.1-3ubuntu2
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install LLVM 21
+        run: bash .github/toolchain/03-llvm-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Report ffmpeg version
+        run: ffmpeg -version | head -1
+
+      - name: Configure
+        run: cmake --preset config-linux-llvm
+
+      - name: Build ac3cli
+        run: cmake --build --preset build-linux-llvm --target ac3cli -- -k 0
+
+      # The corpus lands under RUNNER_TEMP, never in the workspace: these are
+      # excerpts of copyrighted films, and nothing should be able to sweep them
+      # into a commit or an artifact by accident.
+      - name: Decode the pinned FATE corpus and hold it against FFmpeg
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+          FATE_CACHE_DIR: ${{ runner.temp }}/fate-samples
+        run: python3 tools/checks/verify_fate_interop.py

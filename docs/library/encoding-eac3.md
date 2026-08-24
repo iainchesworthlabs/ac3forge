@@ -29,10 +29,17 @@ for (int frame = 0; frame < 31; ++frame) {
 }
 ```
 
-`FrameConfig` carries nearly everything `EncoderConfig` does, plus the Annex E tools. Two AC-3
-fields do not carry over as-is: there is no `cplendf` — the coupling end frequency is derived
-(the top of the coded spectrum, or from `spxbegf` when spectral extension is on, §E3.3.1) —
-and `chbwcod` defaults to a fixed 60 rather than AC-3's auto-from-bitrate −1.
+`FrameConfig` carries nearly everything `EncoderConfig` does, plus the Annex E tools. One AC-3
+field does not carry over: there is no `cplendf` — the coupling end frequency is derived (the
+top of the coded spectrum, or from `spxbegf` when spectral extension is on, §E3.3.1).
+
+`chbwcod` now behaves exactly as AC-3's does: −1, the default, asks the encoder to choose. It
+used to default to a fixed 60 — the whole 23.7 kHz at every rate — on the reasoning that Annex
+E's own tools take the high band over whenever the frame cannot afford it. They do, but only
+below the per-channel rates at which `auto` turns them on (40 kbit/s for coupling in stereo,
+56 for spectral extension), so a 192 kbit/s stereo stream ran neither and still coded every one
+of the 253 mantissas. See [Coded bandwidth](encoding-ac3.md#coded-bandwidth) for what the
+shared decision does.
 
 One field widens instead: `FrameConfig::sample_rate` also accepts the three Annex E half rates —
 `k24000`, `k22050`, `k16000` (24/22.05/16 kHz). For those the encoder writes `fscod2` in place
