@@ -3,13 +3,17 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <span>
+#include <string_view>
 #include <vector>
 
+#include "ac3/decoder/decoder.hpp"  // split_frames, to lift a dependent out of an access unit
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/silent_frame.hpp"
+#include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/oba/atmos.hpp"
 
@@ -92,14 +96,29 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
                                          .acmod = ac3::Acmod::k2_2,
                                          .chanmap = cm::kTopQuad});
 
+    // The DASH AudioChannelConfiguration @value each of these renders as on
+    // the Dolby scheme (TS 102 366 clause I.1.2.1): four hex digits of the
+    // same Table E2.5 word, left channel in the MOST significant bit. 5.1 is
+    // the value the spec itself works through - "for a stream with L, C, R,
+    // Ls, Rs, LFE, the value shall be 'F801'" - and the rest follow from the
+    // bit positions: +Lrs/Rrs (bit 6, 0x0200) for 7.1, +Vhl/Vhr (bit 11,
+    // 0x0010) and Lts/Rts (bit 13, 0x0004) for the ceiling quad.
     struct Case {
         AccessUnitConfig config;
         int channels;
         std::size_t substreams;
+        std::uint16_t map;
+        std::string_view dash_value;
     };
-    for (const auto& [config, channels, substreams] :
-         {Case{bed, 6, 1}, Case{seven_one, 8, 2}, Case{five_one_four, 10, 2},
-          Case{seven_one_four, 12, 3}}) {
+    using namespace ac3::eac3::chanmap;
+    constexpr std::uint16_t k51 =
+        kLeftBit | kCentreBit | kRightBit | kLeftSurroundBit | kRightSurroundBit | kLfeBit;
+    for (const auto& [config, channels, substreams, map, dash_value] :
+         {Case{bed, 6, 1, k51, "F801"},
+          Case{seven_one, 8, 2, static_cast<std::uint16_t>(k51 | cm::k71Rear), "FA01"},
+          Case{five_one_four, 10, 2, static_cast<std::uint16_t>(k51 | cm::kTopQuad), "F815"},
+          Case{seven_one_four, 12, 3,
+               static_cast<std::uint16_t>(k51 | cm::k71Rear | cm::kTopQuad), "FA15"}}) {
         const auto unit = ac3::eac3::build_silent_access_unit(config);
         REQUIRE(unit.has_value());
         std::vector<std::byte> stream;
@@ -112,6 +131,12 @@ TEST_CASE("scan reads E-AC-3 substream layouts", "[elementary]") {
         CHECK(scanned->kind == ac3::io::StreamKind::kEac3);
         CHECK(scanned->channels == channels);
         CHECK(scanned->substreams_per_unit == substreams);
+        // The location word `channels` is the count OF - kept rather than
+        // discarded, since which locations is a different question from how
+        // many (ScannedStream::channel_map).
+        CHECK(scanned->channel_map == map);
+        CHECK(ac3::eac3::chanmap::channel_count(scanned->channel_map) == channels);
+        CHECK(ac3::io::dash_channel_configuration(*scanned) == dash_value);
         // Substreams group into access units, not one frame each.
         CHECK(scanned->access_units.size() == 3);
         CHECK(scanned->access_units.front().size() == unit->bytes.size());
@@ -231,4 +256,94 @@ TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
     // §8.3.2.2: object_count is bed-first (the LFE, always present in this
     // encoder's dynamic-only program) then the dynamic objects.
     CHECK(*scanned->oba_complexity_index == kObjects + 1);
+}
+
+// A/52 §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
+// then the AC-3 bit stream shall be processed as an independent substream
+// assigned substream ID 0." Built the way the real ones are - an AC-3
+// syncframe carrying the 5.1 bed, with the DEPENDENT substream of an ordinary
+// E-AC-3 7.1 access unit placed immediately behind it. The dependent is
+// lifted out of a real access unit rather than hand-rolled so that its syntax
+// is exactly what the encoder emits; only its company changes.
+namespace {
+
+std::vector<std::byte> legacy_core_stream(int access_units) {
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    auto pcm = tone(6);
+    std::vector<std::span<const float>> views;
+    for (const auto& channel : pcm) {
+        views.emplace_back(channel);
+    }
+
+    ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    config.dependents.push_back({.bitrate_kbps = 224,
+                                 .acmod = ac3::Acmod::k2_2,
+                                 .chanmap = ac3::eac3::chanmap::k71Rear});
+    const auto unit = ac3::eac3::build_silent_access_unit(config);
+    REQUIRE(unit.has_value());
+    const auto frames = ac3::split_frames(unit->bytes);
+    REQUIRE(frames.has_value());
+    REQUIRE(frames->size() == 2);
+    const auto dependent = (*frames)[1];
+
+    std::vector<std::byte> stream;
+    for (int f = 0; f < access_units; ++f) {
+        const auto frame = core.encode_frame(views);
+        REQUIRE(frame.has_value());
+        append(stream, *frame);
+        append(stream, dependent);
+    }
+    return stream;
+}
+
+}  // namespace
+
+TEST_CASE("scan reads an AC-3 core with E-AC-3 extension substreams", "[elementary]") {
+    const auto stream = legacy_core_stream(3);
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    // Neither of the two plain kinds: the first syncframe is AC-3, so a reader
+    // dispatching on bsid alone calls it AC-3 and then chokes on the
+    // dependent - which is exactly the failure this kind exists to prevent.
+    CHECK(scanned->kind == ac3::io::StreamKind::kAc3CoreEac3Extension);
+    CHECK(scanned->sample_rate == ac3::SampleRate::k48000);
+    // acmod/lfe describe the CORE, which is the independent substream.
+    CHECK(scanned->acmod == ac3::Acmod::k3_2);
+    CHECK(scanned->lfe);
+    // §E3.8.2: the dependent's Ls/Rs overwrite the core's and its Lrs/Rrs
+    // extend the layout, so a 5.1 core plus four coded channels renders 8.
+    CHECK(scanned->channels == 8);
+    // The core and its dependent are ONE access unit, not two frames.
+    CHECK(scanned->access_units.size() == 3);
+    CHECK(scanned->substreams_per_unit == 2);
+    // bsid comes off the core: 6 is what real legacy-core deliveries carry and
+    // 8 is what this project's own encoder writes - either way it is the AC-3
+    // frame's, not the dependent's 16.
+    CHECK(scanned->bsid == 8);
+}
+
+TEST_CASE("scan refuses substream arrangements it does not model", "[elementary]") {
+    using ac3::io::ScanError;
+
+    // An Annex E INDEPENDENT substream behind an AC-3 core is a second
+    // programme (§E3.8.4's mixture), not an extension of the first. Folding it
+    // into the core's access unit would union its channels into a layout they
+    // have nothing to do with, so it is refused instead.
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    auto pcm = tone(6);
+    std::vector<std::span<const float>> views;
+    for (const auto& channel : pcm) {
+        views.emplace_back(channel);
+    }
+    const auto frame = core.encode_frame(views);
+    REQUIRE(frame.has_value());
+    const auto independent = ac3::eac3::build_silent_frame({.bitrate_kbps = 192});
+    REQUIRE(independent.has_value());
+
+    std::vector<std::byte> mixture;
+    append(mixture, *frame);
+    append(mixture, *independent);
+    CHECK(ac3::io::scan(mixture).error() == ScanError::kUnsupportedStructure);
 }

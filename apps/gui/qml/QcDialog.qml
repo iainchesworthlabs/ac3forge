@@ -188,12 +188,21 @@ Dialog {
                             maxValue: 0
                             hasValue: programmeCard.modelData.hasLoudness
                             value: programmeCard.modelData.integratedLkfs
-                            bandLow: programmeCard.soloPreset
+                            // A band preset draws its tolerance band; a ceiling preset
+                            // (loudnessIsCeiling - see ac3::meta::QcLoudnessLimit) states
+                            // only a level not to exceed, so it draws the same ceiling
+                            // line the true peak meter below uses. Drawing its zero-width
+                            // tolerance as a band would read as "hit this exactly", which
+                            // is the opposite of what the source says.
+                            bandLow: programmeCard.soloPreset && !programmeCard.soloPreset.loudnessIsCeiling
                                      ? programmeCard.soloPreset.targetLkfs - programmeCard.soloPreset.toleranceLu
                                      : NaN
-                            bandHigh: programmeCard.soloPreset
+                            bandHigh: programmeCard.soloPreset && !programmeCard.soloPreset.loudnessIsCeiling
                                       ? programmeCard.soloPreset.targetLkfs + programmeCard.soloPreset.toleranceLu
                                       : NaN
+                            ceilingValue: programmeCard.soloPreset && programmeCard.soloPreset.loudnessIsCeiling
+                                          ? programmeCard.soloPreset.targetLkfs
+                                          : NaN
                             pass: programmeCard.soloPreset ? programmeCard.soloPreset.loudnessPass : true
                         }
                         QcGateMeter {
@@ -305,7 +314,17 @@ Dialog {
                                             font.weight: Font.Bold
                                         }
                                     }
-                                    Item { Layout.fillWidth: true }
+                                    // Which edition each verdict was judged against.
+                                    // Doubles as the row's trailing stretch, so the
+                                    // layout is unchanged when it elides away.
+                                    Text {
+                                        objectName: "qcPresetSource-" + presetRow.modelData.id
+                                        Layout.fillWidth: true
+                                        text: presetRow.modelData.source
+                                        elide: Text.ElideRight
+                                        color: Theme.textMuted
+                                        font.pixelSize: 10
+                                    }
                                 }
                             }
                         }

@@ -12,6 +12,7 @@ namespace mp4 {
 namespace {
 
 using manifest_detail::estimate_bandwidth_bps;
+using manifest_detail::segment_infos;
 using manifest_detail::segment_seconds;
 
 // Substitutes the FIRST "{}" in `pattern` with `number` - HlsOptions'
@@ -35,7 +36,7 @@ std::string_view hls_codec_string(const AudioTrack& track) {
 }
 
 std::string build_hls_media_playlist(const AudioTrack& track,
-                                     std::span<const MediaSegment> segments,
+                                     std::span<const SegmentInfo> segments,
                                      const HlsOptions& options) {
     double max_seconds = 0.0;
     for (const auto& segment : segments) {
@@ -70,7 +71,7 @@ std::string build_hls_media_playlist(const AudioTrack& track,
 }
 
 std::string build_hls_master_playlist(const AudioTrack& track,
-                                      std::span<const MediaSegment> segments,
+                                      std::span<const SegmentInfo> segments,
                                       std::string_view media_playlist_uri,
                                       const HlsOptions& options) {
     const auto bandwidth = estimate_bandwidth_bps(segments, track.sample_rate);
@@ -97,6 +98,19 @@ std::string build_hls_master_playlist(const AudioTrack& track,
                        hls_codec_string(track));
     out += fmt::format("{}\n", media_playlist_uri);
     return out;
+}
+
+std::string build_hls_media_playlist(const AudioTrack& track,
+                                     std::span<const MediaSegment> segments,
+                                     const HlsOptions& options) {
+    return build_hls_media_playlist(track, segment_infos(segments), options);
+}
+
+std::string build_hls_master_playlist(const AudioTrack& track,
+                                      std::span<const MediaSegment> segments,
+                                      std::string_view media_playlist_uri,
+                                      const HlsOptions& options) {
+    return build_hls_master_playlist(track, segment_infos(segments), media_playlist_uri, options);
 }
 
 }  // namespace mp4
