@@ -38,6 +38,37 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   roadmap `VX11`/`VX12`) and the source material is synthetic (roadmap `VX7`); both are stated in
   the bundle. Nothing produced by Dolby or FFmpeg is redistributed, and no stream is signed
   unless an operator supplies a key.
+- **Streaming fMP4/CMAF fragmenter** (ROADMAP `IO4`). `mp4::FragmentWriter` is the incremental
+  counterpart to `mp4::fragment`, the sibling `matroska::Writer` and `mpegts::Writer` already
+  had: an initialization segment up front, then one CMAF media segment handed back each time a
+  fragment closes, with `tfdt` from a running decode time. Its contract is the one
+  `mpegts::Writer` already holds itself to - for the same track, options and frames the media
+  segments are byte-identical to the batch form's - and the initialization segment differs in
+  exactly one respect, `mvhd`/`tkhd`/`mdhd` duration 0 for a session that cannot know its own
+  total, the same concession `matroska::Writer` makes with EBML's unknown-size Segment. A
+  `SegmentInfo` window (`FragmentOptions::playlist_window_segments`) keeps a rolling live HLS
+  playlist and DASH `SegmentTimeline` without keeping the audio, and `mp4::build_dash_mpd` -
+  moved into the library from the CLI - grows a dynamic form with `availabilityStartTime`,
+  `minimumUpdatePeriod` and `timeShiftBufferDepth`.
+- **fMP4/CMAF as a live container** in both front ends. `ac3cli record`/`ac3cli live` take
+  `container=fmp4`, which makes the output path a directory written as the session runs -
+  `init.mp4`, a `segment*.m4s` per closed fragment, and playlists and MPD rewritten alongside,
+  live-shaped while running and closed to VOD/static at the end - plus `fmp4-window=<n>` for a
+  rolling origin. The GUI records the same way with **fragmented MP4/CMAF** selected, in both a
+  live session and a recording, where before a live session fell back to writing the plain
+  elementary stream and a recording accumulated the whole take before writing it. fMP4 joins
+  Matroska as the second container a live session can write natively; S/PDIF, MP4 and MPEG-TS
+  still fall back there.
+- **DASH signalling for Dolby Atmos/JOC, and the `ceao` brand** (ROADMAP `IO5`).
+  `mp4/dash.hpp` said there was no established convention to point at; DASH-IF IOP Part 8
+  v5.0.0 §5.3.2 names the two supplemental descriptors ETSI TS 103 420 clause D.2 defines
+  (`tag:dolby.com,2018:dash:EC3_ExtensionType:2018` with the value `JOC`, and
+  `…EC3_ExtensionComplexityIndex:2018` with `complexity_index_type_a`), and §5.3.3 the `ceao`
+  compatibility brand that spec's Annex E requires on an object-audio CMAF track.
+  `ac3cli fmp4`, the GUI and both live paths now write all three. Every Representation also
+  states its channel configuration, on either the ISO/IEC 23091-3 CICP scheme or - via the new
+  `ac3::io::dash_channel_configuration`, from the channel-location word `ac3::io::scan` already
+  computed and used to discard - the Dolby scheme ETSI TS 102 366 clause I.1.2.1 defines.
 - **IEC 61937 de-framing, and passthrough capture** (roadmap `IO3`). The burst wrapper was
   byte-exact against FFmpeg's `spdif` muxer, but nothing in the project ever read a burst back:
   there was no round-trip test for it, and no way to recover a stream from a capture of a
@@ -120,6 +151,27 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
   and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
   on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
+- **Fuzzing for the object and metadata layer** (roadmap `VX3`). Five new libFuzzer harnesses
+  over the parsers that read attacker-controlled bytes out of the skip field in every Atmos
+  frame, which until now were reached only indirectly through `fuzz_eac3_decode`:
+  `fuzz_emdf_parse` (`emdf::parse_container`), `fuzz_oamd_parse` (`oba::parse_payload`),
+  `fuzz_joc_parse` (`joc::parse_payload`), `fuzz_signing_verify`
+  (`signing::verify_atmos_stream`/`verify_atmos_frame`, the one signing operation that runs on a
+  stream its caller did not produce — key and stream both fuzzed), and, behind
+  `-DAC3FORGE_BUILD_ADM=ON`, `fuzz_adm_parse` (`ac3adm::parse_bw64`). Each is seeded from the
+  real containers and payloads inside the Atmos streams `fuzz/generate-seeds.sh` already
+  encodes, extracted by a new `fuzz/metadata-seeds.py`. The first four join `fuzz/run.sh`'s
+  default list and so the existing `Fuzz Regress`/`Fuzz Short`/`Fuzz Nightly` jobs; the ADM one
+  is opt-in (`AC3FORGE_FUZZ_ADM=1`) and gets its own nightly job, because `ac3adm` is the one
+  library here with a third-party dependency footprint.
+- **A CRC-repairing custom mutator** for `fuzz_ac3_decode` and `fuzz_eac3_decode`
+  (`fuzz/crc_mutator.hpp`). Both decoders check their CRC words before reading a single bit of
+  the frame behind them, so a mutation landing in a skip field — where the EMDF container, and
+  therefore all object metadata, lives — was rejected two orders of magnitude before the parser
+  it was aimed at. The mutator re-stamps crc1 and crc2 after mutating, crc1 through the same
+  GF(2) polynomial inverse the encoder uses (it precedes the region it protects, so it is solved
+  for rather than recomputed), and deliberately leaves one mutation in four unrepaired so the
+  bad-CRC rejection path stays reachable.
 
 ### Fixed
 
@@ -130,6 +182,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   it as a span bounds violation; a release build did not. `WavStreamReader::open`, written later
   against the same field layout, already carried the guard — this is the whole-file parser's
   missing half, using the same bounds and the same refusal. Found while writing the threat model.
+- **Seven reports at three sites, all turned up by the new harnesses**, each with a reproducer
+  under `fuzz/regressions/`. `compute_bit_allocation` walked off its own arrays on regions whose
+  shape only a debug `assert` had ever constrained — an empty region indexed its 256-entry band
+  table at `SIZE_MAX`, a region longer than the 253-mantissa ceiling wrote one element past the
+  `psd` array, and `ac3::signing`'s per-channel tally handed it a span built by violating
+  `subspan`'s precondition (a null data pointer with a non-zero size). `ac3adm::parse_bw64`
+  allocated from declared chunk sizes rather than from what the file holds, so a 104-byte file
+  claiming 4 GB of audio allocated 4 GB, and any other over-claiming chunk did the same one
+  layer down inside libbw64. And `signing::verify_atmos_frame` inherited the *signer's* debug
+  assertion that the frame is in the ac3forge Atmos subset, so a Debug build aborted on
+  `ac3cli decode <plain stereo>.ec3 out.wav verify-objects`; verification runs on streams its
+  caller did not produce, so that assertion is now signing-only.
 - **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
   §E2.3.1.3's 11-bit `frmsiz` word count can signal at the chosen sample rate — every layout,
   reachable by typing two ordinary numbers, since both a nominal Table 5.18 bitrate and an Annex E

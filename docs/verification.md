@@ -32,6 +32,16 @@ In rough order of strength:
    the checked-in seed and regression corpora on every push and PR, and the `Fuzz Differential`
    job adds a bounded mutation budget on pushes.
 
+   The object and metadata layer is driven directly rather than through the decoder: separate
+   harnesses over `emdf::parse_container`, `oba::parse_payload`, `joc::parse_payload`,
+   `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
+   seeded from the real payloads inside this project's own Atmos streams. That matters because
+   the indirect route was mostly closed: both decoders check their CRC words before reading the
+   frame behind them, so a mutation landing in a skip field died at the checksum. The two decode
+   harnesses now carry a custom mutator that re-stamps crc1 and crc2 after mutating — crc1
+   through the GF(2) polynomial inverse it has to be solved with — while leaving one mutation in
+   four unrepaired so the rejection path itself stays reachable.
+
    Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
    `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
    configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one
@@ -185,6 +195,33 @@ a normal-rate stream from this encoder without issue. `fscod2` appears to be a c
 own reference implementation does not support it. So the coded audio is verified only by this
 project's own encoder/decoder round trip and the independent Python parser
 (`tools/references/eac3_parse.py`).
+
+**Containers and manifests are checked externally where a reader exists, and only there.**
+`mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
+(`ffmpeg -v error -xerror -err_detect crccheck+bitstream+buffer+explode`) over the init segment
+concatenated with every media segment, and both the HLS media playlist and the DASH MPD read back
+through FFmpeg's own `hls` and `dash` demuxers at the exact original access-unit count —
+confirmed on a session written segment-by-segment by the streaming writer, not only on the batch
+form. The `ceao` compatibility brand is present in the `ftyp` and every `styp` of an
+object-audio track and does not disturb that decode.
+
+What has **not** been checked against anything external is the *meaning* of the DASH signalling.
+`EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` and the Dolby
+`audio_channel_configuration:2011` `@value` are transcribed from ETSI TS 103 420 clause D.2 and
+TS 102 366 clause I.1.2.1 (via DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3) and asserted against those
+clause texts in `tests/containers/test_fmp4.cpp`, including the element order ISO/IEC 23009-1's
+`RepresentationBaseType` sequence requires — but FFmpeg's DASH demuxer ignores supplemental
+descriptors entirely, so it confirms only that the manifest still parses and plays, not that a
+JOC-aware player would read the right complexity index from it. No MPD schema validator and no
+real DASH player has been run against these manifests. The same gap applies to the HLS
+`CHANNELS="<N>/JOC"` attribute, which predates this work.
+
+The incremental writers are held to a stronger in-repo standard instead: `mp4::FragmentWriter`'s
+media segments are asserted byte-identical to `mp4::fragment`'s over the same frames, and its
+initialization segment byte-identical once the three duration fields a live session cannot know
+are patched back — the same equality contract `mpegts::Writer` has against `mpegts::mux`. That
+makes the batch form's own external validation carry over to the streamed one by construction
+rather than by re-measuring it.
 
 **`compr` in E-AC-3 has no external oracle.** FFmpeg's Annex E header parser reads `compre` and
 then skips the word, so `-heavy_compr` changes nothing on an E-AC-3 stream however good the

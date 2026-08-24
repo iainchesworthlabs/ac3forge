@@ -251,11 +251,11 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Round-trips byte-exactly against this project's own wrapper AND FFmpeg's `spdif` muxer, both
   data types, both word orders. Fuzzed via `fuzz_iec61937_unwrap`. Not hardware-confirmed: no
   capture device has been available, the same gap the passthrough output side has.
-- [ ] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
+- [x] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
   fragmenter would need…", `mp4.hpp`); Matroska and MPEG-TS have incremental `Writer`s since
   0.9.0, so the GUI live session can target both but not the one container whose native shape
   is streaming. Running `tfdt`, a rolling HLS playlist, a dynamic MPD.
-- [ ] **IO5 (S)** — DASH JOC signalling and the `ceao` brand. `dash.hpp` says there is no
+- [x] **IO5 (S)** — DASH JOC signalling and the `ceao` brand. `dash.hpp` says there is no
   established convention to point at; DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3 names the
   `tag:dolby.com,2018:dash:EC3_ExtensionType:2018` and `…ExtensionComplexityIndex:2018`
   supplemental properties (ETSI TS 103 420 D.2), the E-AC-3 `AudioChannelConfiguration`, and
@@ -356,8 +356,8 @@ machine-readable output and a single failure exit code. Users arrive with contai
 ## VX. Verification and oracles
 
 Nine required build legs, sanitizers, clang-tidy, PREfast, CodeQL, per-component coverage
-floors, a gold-reference gate on every leg, six libFuzzer harnesses and an AC-3 input-space
-fuzzer already exist. What remains is mostly what the tree names itself.
+floors, a gold-reference gate on every leg, eleven libFuzzer harnesses (one of them opt-in) and
+an AC-3 input-space fuzzer already exist. What remains is mostly what the tree names itself.
 
 - [x] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
   (`fuzz_encoder_space.py`: "Scope: AC-3 only"). Random Annex E tool tokens, `fscod2` rates, VBR,
@@ -377,7 +377,7 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   sides passes it. Per-substream, per-block diffs of exponents, bap, delta, AHT gains, coupling
   and spx coordinates, including dependents and the tpn hold-back — the facility that fired four
   frames before the `deltbaie` symptom on AC-3.
-- [ ] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
+- [x] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
   `oba::parse_payload`, `joc::parse_payload`, `signing::verify_atmos_stream`,
   `ac3adm::parse_bw64`), plus a CRC-re-stamping custom mutator for the decode harnesses so
   mutated skip-field bytes reach the object parsers instead of dying at the CRC check, which
