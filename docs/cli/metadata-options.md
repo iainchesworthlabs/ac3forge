@@ -563,7 +563,10 @@ Optional positional arguments, when omitted:
   index, so an object index the file doesn't mention keeps its default placement unchanged.
 - **`atmos` mode**: `objects` (default) writes the JOC+OAMD container; `bed51` omits it so the
   5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
-  validate, instead of falling back to the bed on its own. See
+  validate, instead of falling back to the bed on its own. `bed51` drops the TS 103 420 §8.3.1
+  `addbsi` object marker with it, so a `bed51` stream reads as ordinary 5.1 E-AC-3 all the way
+  out: no `Atmos complexity` line from `scan`, no Atmos extension in the `dec3` box `fmp4`
+  builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
   [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all
