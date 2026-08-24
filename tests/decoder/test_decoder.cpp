@@ -22,7 +22,7 @@ namespace {
 // hand-patched frame stays a legal syncframe and only the flipped bit's own
 // meaning changes.
 //
-// [[gnu::noinline]]: GCC's -O3 VRP mis-derives, only once this is inlined
+// PATCH_BITS_NOINLINE: GCC's -O3 VRP mis-derives, only once this is inlined
 // into one specific one-bit call site (count == 1), that `frame`'s backing
 // store is null ("source object is likely at address zero") and fails the
 // build under -Werror=array-bounds. `frame` is always a real, previously
@@ -30,9 +30,18 @@ namespace {
 // this is GCC's own known false-positive class for std::vector subscripting
 // after aggressive inlining, not a real bounds issue; blocking inlining
 // removes the interprocedural constant-propagation path that triggers it.
-// Ignored by non-GNU compilers, so no #if guard is needed.
-[[gnu::noinline]] void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
-                                  std::uint32_t value) {
+// GCC-only, not GCC-and-clang: clang does not warn here, and [[gnu::noinline]]
+// itself is not the portable choice it looks like - MSVC's own /W4 /WX
+// treats an unrecognized attribute (C5030) as a hard error rather than
+// silently ignoring it, confirmed for real in CI, so the attribute needs an
+// explicit guard rather than relying on "unknown attributes are ignored".
+#if defined(__GNUC__) && !defined(__clang__)
+#define PATCH_BITS_NOINLINE [[gnu::noinline]]
+#else
+#define PATCH_BITS_NOINLINE
+#endif
+PATCH_BITS_NOINLINE void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
+                                    std::uint32_t value) {
     for (int i = 0; i < count; ++i) {
         const std::size_t bit = offset + static_cast<std::size_t>(i);
         const auto mask = static_cast<std::uint8_t>(0x80u >> (bit & 7));
@@ -52,6 +61,7 @@ namespace {
     frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
+#undef PATCH_BITS_NOINLINE
 
 // Multi-frame encode -> decode of per-channel tones; returns concatenated
 // decoded PCM per channel (AC-3 order).
