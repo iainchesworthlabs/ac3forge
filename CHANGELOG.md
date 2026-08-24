@@ -44,6 +44,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   above 3.5 kHz, so both BS.1534 anchors are inaudible on both 5.1 legs and cannot scale a
   MUSHRA session there, and the items are 1.9 s against BS.1534-3's ~10 s. Roadmap `VX7` (real
   programme material) is what fixes both.
+- **`ac3kernelbench` covers the fast transform paths and `dft512`.** The kernel series benched
+  the direct IMDCT and not the fast one that has been the decode default since 0.9.0, and never
+  benched `dft512` or the block-switched inverse at all. Four rows added
+  (`imdct512_windowed_fast`, `imdct256_pair_windowed` and its fast form — the only user of the
+  FFT kernel at P = 64 — and `dft512`) plus `ecpl_channel_spectrum_fast`, so each accelerated
+  kernel is recorded beside its own reference form. Part of `PF1`'s decode-side gap, added here
+  because `PF3`/`PF4` needed the numbers.
+- **`dft512` is checked against its own O(N²) summation.** `tests/core/test_fft.cpp` had
+  impulse, DC, bin-aligned-cosine and linearity properties but never compared the transform to
+  the sum `fft.hpp` states it computes. Two cases now do, on six consecutive real-audio-shaped
+  blocks and on genuinely complex input (what §E3.5.5.1 step 5 actually hands it), at the same
+  1e-10 bound the rest of the library's fast paths are held to.
 - **Streaming fMP4/CMAF fragmenter** (ROADMAP `IO4`). `mp4::FragmentWriter` is the incremental
   counterpart to `mp4::fragment`, the sibling `matroska::Writer` and `mpegts::Writer` already
   had: an initialization segment up front, then one CMAF media segment handed back each time a
@@ -157,9 +169,42 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
   and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
   on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
+- **Fuzzing for the object and metadata layer** (roadmap `VX3`). Five new libFuzzer harnesses
+  over the parsers that read attacker-controlled bytes out of the skip field in every Atmos
+  frame, which until now were reached only indirectly through `fuzz_eac3_decode`:
+  `fuzz_emdf_parse` (`emdf::parse_container`), `fuzz_oamd_parse` (`oba::parse_payload`),
+  `fuzz_joc_parse` (`joc::parse_payload`), `fuzz_signing_verify`
+  (`signing::verify_atmos_stream`/`verify_atmos_frame`, the one signing operation that runs on a
+  stream its caller did not produce — key and stream both fuzzed), and, behind
+  `-DAC3FORGE_BUILD_ADM=ON`, `fuzz_adm_parse` (`ac3adm::parse_bw64`). Each is seeded from the
+  real containers and payloads inside the Atmos streams `fuzz/generate-seeds.sh` already
+  encodes, extracted by a new `fuzz/metadata-seeds.py`. The first four join `fuzz/run.sh`'s
+  default list and so the existing `Fuzz Regress`/`Fuzz Short`/`Fuzz Nightly` jobs; the ADM one
+  is opt-in (`AC3FORGE_FUZZ_ADM=1`) and gets its own nightly job, because `ac3adm` is the one
+  library here with a third-party dependency footprint.
+- **A CRC-repairing custom mutator** for `fuzz_ac3_decode` and `fuzz_eac3_decode`
+  (`fuzz/crc_mutator.hpp`). Both decoders check their CRC words before reading a single bit of
+  the frame behind them, so a mutation landing in a skip field — where the EMDF container, and
+  therefore all object metadata, lives — was rejected two orders of magnitude before the parser
+  it was aimed at. The mutator re-stamps crc1 and crc2 after mutating, crc1 through the same
+  GF(2) polynomial inverse the encoder uses (it precedes the region it protects, so it is solved
+  for rather than recomputed), and deliberately leaves one mutation in four unrepaired so the
+  bad-CRC rejection path stays reachable.
 
 ### Fixed
 
+- **Seven reports at three sites, all turned up by the new harnesses**, each with a reproducer
+  under `fuzz/regressions/`. `compute_bit_allocation` walked off its own arrays on regions whose
+  shape only a debug `assert` had ever constrained — an empty region indexed its 256-entry band
+  table at `SIZE_MAX`, a region longer than the 253-mantissa ceiling wrote one element past the
+  `psd` array, and `ac3::signing`'s per-channel tally handed it a span built by violating
+  `subspan`'s precondition (a null data pointer with a non-zero size). `ac3adm::parse_bw64`
+  allocated from declared chunk sizes rather than from what the file holds, so a 104-byte file
+  claiming 4 GB of audio allocated 4 GB, and any other over-claiming chunk did the same one
+  layer down inside libbw64. And `signing::verify_atmos_frame` inherited the *signer's* debug
+  assertion that the frame is in the ac3forge Atmos subset, so a Debug build aborted on
+  `ac3cli decode <plain stereo>.ec3 out.wav verify-objects`; verification runs on streams its
+  caller did not produce, so that assertion is now signing-only.
 - **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
   §E2.3.1.3's 11-bit `frmsiz` word count can signal at the chosen sample rate — every layout,
   reachable by typing two ordinary numbers, since both a nominal Table 5.18 bitrate and an Annex E
@@ -171,6 +216,36 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The FFT core is radix-4, specialised per size** (`PF4`). The generic iterative radix-2
+  decimation-in-time core every transform in the library shared — an explicit bit-reversal pass
+  followed by log2(P) stages of two-point butterflies, each loading a twiddle and doing a full
+  complex multiply against it — is replaced by compile-time-specialised kernels for the three
+  sizes the codec actually uses (P = 64, 128, 512): radix-4 stages with a trailing radix-2 stage
+  where log2(P) is odd, the first stage's unit twiddles eliminated (a quarter of the butterflies
+  at P = 512 were multiplying by a tabulated 1.0), and the digit-reversal permutation folded
+  into each caller's own input-producing loop — the DCT-IV quarter-split, the §7.9.4.1 step-2
+  pre-twiddle, `dft512`'s input copy — rather than run as a pass of its own. Measured on
+  linux-gcc, median of ten interleaved base/branch runs: `mdct512_forward_fast` 2535 → 1415
+  ns/call (1.81×), `dft512` 8036 → 4361 (1.86×), `imdct512_windowed_fast` 2889 → 1842 (1.56×),
+  `mdct256_pair_fast` 2510 → 1698 (1.56×), `imdct256_pair_windowed_fast` 3147 → 2262 (1.34×),
+  `band_energy_fast` 27.9 → 21.9 µs (1.24×), against a 0.90–1.07× spread on the kernels this
+  did not touch. End to end over 180 seconds of real 5.1: a 5.1 AC-3 decode 4.19 → 2.92 s and
+  an E-AC-3 enhanced-coupling decode 5.84 → 3.24 s. Every stream in the 40-encode corpus is byte-identical to before, and the direct-form
+  evaluations the fast paths are validated against are untouched — `mode=reference` still runs
+  the spec's own arithmetic end to end. Accuracy is unchanged to three significant figures on
+  every transform and slightly better for `dft512` against its own O(N²) summation (1.9e-15 →
+  1.7e-15).
+- **The fast IMDCT reaches enhanced coupling and JOC object reconstruction** (`PF3`). The two
+  §7.9.4.1 call sites the 0.9.0 fast-inverse work fenced out were still evaluating step 3 as the
+  pseudocode's direct O(N²) sum: `eac3::ecpl_channel_spectrum` (three 512-point inverses per
+  coupled channel per block, on both the encode and the decode side) and `joc::reconstruct` (one
+  per object per block — 90 in a 15-object frame). Both now forward a `fast` flag; a decoder
+  passes `DecoderConfig::fast_imdct` for both, and the encoder-internal `ecpl` use passes
+  `eac3::FrameConfig::fast_mdct`, which makes that field the encoder's fast-transform switch in
+  both directions and keeps `mode=reference` direct end to end. `ecpl_channel_spectrum` is 4.4×
+  faster on its own (74.8 → 17.1 µs, before `PF4` compounds it to 6.9× — 73.4 → 10.6 µs), and a
+  30-second 15-object decode drops from 6.47 s to 4.83 s. Encoder output is byte-identical across the
+  corpus, so this is a speed choice and not an output one.
 - **The external baseline's DEE stereo score is explained rather than re-measured.** The
   33.32 dB recorded for `eac3-stereo-192`'s DEE leg reproduces exactly against the same FFmpeg
   8.0.1 build, and is now corroborated to 0.005 dB by this project's own decoder, so the number
@@ -214,49 +289,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
   `tools=auto` output stays decodable by FFmpeg, and the tool tokens (`cpl`, `spx`, `aht`,
   `cpl+ecpl`, `tpn`, …) are unchanged — a caller who names a tool set still gets exactly it.
-- **E-AC-3 transmits its bit allocation parameters** (`bamode` 1, roadmap `EQ3`) instead of
-  inheriting Table E1.4's `bamode == 0` defaults - which are not §8.2.12's basic-encoder set, and
-  in particular pinned `dbpbcod` at 2. The frame now states `{sdcycod 2, fdcycod 1, sgaincod 1,
-  dbpbcod 3, floorcod 7}`, at a cost of 17 bits a frame. `dbpbcod` 3 is the departure the AC-3
-  encoder measured its way to in 0.7.0, and it carries over: swept 0-3 across 96/128/192 kbit/s
-  stereo and 192/256/384/640 kbit/s 5.1, it wins every cell by +1.2 to +3.0 dB SNR against the
-  old value, with ViSQOL MOS up in every cell too. `floorcod` was swept as well and stays at 7 -
-  the lowest of the eight, so the floor never binds. Both reference encoders in
-  `tests/golden/external-baseline/` emit exactly this set.
-- **`dithflag` is decided from content** in both encoders (roadmap `EQ4`), per full-bandwidth
-  channel per block, where it was previously written as a fixed 0. §7.3.4's dither exists to fill
-  the bins the allocator gave no bits to; the encoders now compare the energy the decoder will
-  not receive against the energy the dither would put there instead, and set the flag only where
-  the first is at least as large as the second. Digital silence always reads clear. A
-  block-switched channel never dithers - two interleaved half transforms share one coefficient
-  set there - which is also exactly what Dolby's own encoder does in the reference stream. On
-  E-AC-3 dither is additionally held off for any frame using spectral extension, whose
-  copy-source reconstruction the encoder could not otherwise mirror. The flag is transmitted
-  either way, so none of this costs bits; it trades a little waveform SNR for perceptual quality,
-  which is what the tool is for.
-
-  Measured on `tools/ci/quality_race.py`'s own material, decoded by FFmpeg 8.0.1, ViSQOL in audio
-  mode. The E-AC-3 rows carry both changes; the AC-3 rows carry only the dither one. Full tables,
-  every rate and tool set, are in the pull request.
-
-  | leg | before | after |
-  |---|---|---|
-  | AC-3 stereo 192 | 41.82 dB / 4.246 MOS | 41.12 dB / 4.344 MOS |
-  | AC-3 5.1 448 | 21.96 dB / 3.956 MOS | 20.91 dB / 4.268 MOS |
-  | AC-3 5.1 448, committed fixture | 39.95 dB / 3.670 MOS | 38.92 dB / 3.913 MOS |
-  | E-AC-3 stereo 96, no tools | 25.79 dB / 3.799 MOS | 26.75 dB / 4.307 MOS |
-  | E-AC-3 stereo 192, `auto` | 40.42 dB / 4.395 MOS | 40.98 dB / 4.414 MOS |
-  | E-AC-3 5.1 192, no tools | 10.02 dB / 1.326 MOS | 12.14 dB / 2.340 MOS |
-  | E-AC-3 5.1 256, `cpl` | 15.44 dB / 2.364 MOS | 15.36 dB / 2.875 MOS |
-- **`std::format`/`std::print`/`std::printf` replaced with {fmt}'s `fmt::format`/`fmt::print`/
-  `fmt::printf` everywhere.** NDK r26's bundled libc++ has no `<format>` at all unless the
-  compiler is invoked with `-fexperimental-library`, which the Android build never does; {fmt}
-  (the library `std::format` was standardized from) has no such gap, so the codebase now uses it
-  uniformly instead of avoiding standard formatting file by file. The handful of pre-existing
-  `%`-specifier call sites moved to `fmt::printf` with their format strings unchanged, rather than
-  being rewritten to `{}`-style. `fmt` is a new base vcpkg dependency (falls back to
-  `FetchContent` when no local copy is found — see `cmake/Fmt.cmake`); no public API is affected,
-  since every use is confined to implementation files.
 
 ### Documented
 
@@ -326,7 +358,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   being rewritten to `{}`-style. `fmt` is a new base vcpkg dependency (falls back to
   `FetchContent` when no local copy is found — see `cmake/Fmt.cmake`); no public API is affected,
   since every use is confined to implementation files.
-
 - **ROADMAP.md rebuilt** at v0.9.0-beta.1. The 2026-08-15 list was 25/32 checked off; the seven
   open items (`B2`, `B3`, `D1`, `D4`, `E3`, `F4`, `F5`) are carried into a new nine-theme list
   (`EQ`/`DC`/`IO`/`IM`/`VX`/`PF`/`AP`/`UX`/`DR`, 99 items) with their real current state - `E3`
