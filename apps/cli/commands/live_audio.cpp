@@ -434,6 +434,15 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     }
     std::uint64_t frames_written = 0;
 
+    // Roadmap IO3's capture-side half, as it applies here. Unlike 'record',
+    // a live session has nothing useful to do with a bitstream: it mixes,
+    // resamples a second device into lockstep, meters, monitors and can pan
+    // objects, none of which mean anything applied to burst data. So this
+    // detects and stops rather than switching modes - the alternative is a
+    // whole session's output that is noise, discovered at the end of it.
+    // Costs nothing after the first quarter-second.
+    ac3::iec61937::PassthroughDetector passthrough_probe;
+
     std::uint64_t n0 = 0;
     for (std::uint64_t f = 0; f < target_frames; ++f) {
         std::size_t filled = 0;
@@ -443,6 +452,25 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             filled += got;
             if (got == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+        if (!passthrough_probe.decided()) {
+            passthrough_probe.push(interleaved, static_cast<std::uint16_t>(channels));
+            if (const auto type = passthrough_probe.detected()) {
+                capture.stop();
+                fmt::println("");
+                fmt::println(stderr,
+                             "error: \"{}\" is bitstreaming {} over IEC 61937, not delivering "
+                             "PCM - a live encode of it would be noise",
+                             device.name,
+                             *type == ac3::iec61937::BurstDataType::kEac3 ? "Dolby Digital Plus"
+                                                                         : "Dolby Digital");
+                fmt::println(stderr,
+                             "  'ac3cli record <out.ec3> <seconds> 0 {}' records the elementary "
+                             "stream instead, and 'ac3cli unspdif' recovers one from a capture "
+                             "already saved as a WAV.",
+                             capture_device);
+                return 1;
             }
         }
         if (slave_resampler.has_value() && slave_drift.has_value()) {

@@ -107,18 +107,27 @@ both encoders decide from content rather than from the bit rate.
   encoders on every metric: ours loses 2.66 dB above 10 kHz where FFmpeg loses 0.91, and `auto`
   picks AHT-only because it is SNR-optimal, while `spx`/`all` fix the envelope at a 3 dB SNR
   cost. Decide the policy with a perceptual score (VX6), not SNR alone.
-- [ ] **EQ9 (L)** — Closed-loop tool decisions. `auto` chooses cpl/spx/aht and their band edges
-  from the rate (`default_cplbegf`/`default_spxbegf`), reproducing the best fixed variant on 13
-  of 14 measured points but never from content: near-mono material at a high rate never gets
-  coupling, a sparse-HF frame never gets spx. Per-frame on/off and band edges from inter-channel
-  correlation, HF energy and transient state, including under VBR where the reference rate is a
-  nominal number.
-- [ ] **EQ10 (M)** — Enhanced coupling and transient pre-noise: make them auto-worthy or label
-  them. Both are fully implemented with their own CI legs and own-decoder oracle, never chosen by
-  `auto` (`cpl.enhanced` is masked off under `auto_tools`), and a net loss on every trend row
-  (tpn stereo/192: 18.0 dB vs 31.7 without). Gate tpn on detected transients with a measured
-  pre-echo benefit and ecpl on bands where the angle/chaos fit beats standard coupling; if
-  neither pays, say so in `docs/concepts` and keep them as reference-correctness tools.
+- [x] **EQ9 (L)** — Closed-loop tool decisions. `auto` chose cpl/spx/aht from the rate alone;
+  two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
+  region's fit against the decoder's own rank-one reconstruction, and the energy share above the
+  extension frequency. Re-measured on real programme material (six excerpts of a 5.1 theatrical
+  mix, 32–96 kbit/s per channel, ViSQOL MOS-LQO beside SNR): +0.11 MOS and +0.36 dB against the
+  rate-only policy, better in 19 of 36 cells, no (layout, rate) point regressing, and the
+  committed fixtures' own landscape numbers unchanged. The extension
+  ceiling now moves with content (110 kbit/s per channel where the top end is empty, 55 where it
+  is not) instead of sitting at a fixed 56 measured as SNR on fixtures with nothing above
+  8.1 kHz. Band edges themselves are still rate-only — `EQ6`/`EQ13`.
+- [x] **EQ10 (M)** — Enhanced coupling and transient pre-noise: measured, and labelled rather
+  than made auto-worthy — for two different reasons. Enhanced coupling is the better-sounding of
+  the two coupling reconstructions on real material at every (layout, rate) point tried, worth
+  +0.54 MOS-LQO at 96 kbit/s stereo through +0.16 at 384 kbit/s 5.1; every trend
+  row calls it a loss because every trend row is SNR. It stays out of `auto` because FFmpeg
+  misreads §E3.5's syntax as a corrupt frame, and `auto` has to stay decodable. Transient
+  pre-noise does not pay at all: over exactly the samples it touches it measures 6.5–24 dB worse
+  than leaving the audio alone, at every bitrate, and the gap widens with rate because the
+  substitution's error is a property of the material (flat at 20.7–22.5 dB) while the coder's own
+  error keeps falling. Block switching gets there first. Both documented in
+  `docs/concepts/ac3-eac3.md` and `docs/library/encoding-eac3.md`.
 - [ ] **EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. The encoder
   always writes six blocks; the decoder's `numblkscod != 3` path is spec-derived and has never
   seen a real stream. This is the 256-sample-granularity mode `live` would want. Depends on EQ1
@@ -212,23 +221,36 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
 `mux()`/`Writer` only, `ac3::iec61937` only wraps, and the CLI has no inspector, no
 machine-readable output and a single failure exit code. Users arrive with containers.
 
-- [ ] **IO1 (M)** — `ac3cli probe` with JSON output: bsid, sample rate (incl. `fscod2`), layout,
+- [x] **IO1 (M)** — `ac3cli probe` with JSON output: bsid, sample rate (incl. `fscod2`), layout,
   `bsmod`, `chanmap`, the substream map, `numblkscod`, tools in use per block, frame/AU count,
   duration, bit rate and VBR statistics, dialnorm/compr/DRC presence, EMDF payloads, OAMD
   `complexity_index`, object count and bed, whether an authenticity tag is present, CRC
   validity. `ScannedStream` already carries most of it; `tools/references/eac3_parse.py` is the
   only per-field dump today. Also the natural home for an HLS/DASH manifest check (codecs
   string, `ceao`, `dec3` against the actual substream map).
+  Shipped: `ac3::io::probe` over a promoted `ac3::io::read_frame_header` (the header tier, which
+  answers for a syncframe whose audio the decoder refuses) plus the real decoders under a new
+  `DecoderConfig::skip_reconstruction` (the parse tier). Per-block tool usage and exponent
+  strategies come from a new `ac3::FrameSyntax` trace; `detail=blocks` dumps them. The JSON
+  document is versioned `ac3forge.probe/1` and documented as a contract in
+  docs/cli/commands.md. The HLS/DASH manifest check is NOT part of it and stays open: it is
+  a consumer of this document rather than part of it, and IO5 already owns the `ceao`/JOC
+  signalling half of the same question.
 - [ ] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
   (`ac-3`/`ec-3` sample entries, `stco`/`stsz`, fragmented `moof`/`trun`), MPEG-TS (PAT/PMT,
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
   `*.ac3/*.ec3`) accept containers, plus `demux` and container-to-container remux — the
   `dec3`-repair case the old `A1` cited. One PR per container, each an M.
-- [ ] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
+- [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
-  Also the missing round-trip test for the wrap side.
+  Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
+  `unwrap_stream`/`PassthroughDetector`, `ac3cli unspdif`, and detection in `record` (switches
+  to writing the elementary stream) and `live` (stops rather than encode a session of noise).
+  Round-trips byte-exactly against this project's own wrapper AND FFmpeg's `spdif` muxer, both
+  data types, both word orders. Fuzzed via `fuzz_iec61937_unwrap`. Not hardware-confirmed: no
+  capture device has been available, the same gap the passthrough output side has.
 - [x] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
   fragmenter would need…", `mp4.hpp`); Matroska and MPEG-TS have incremental `Writer`s since
   0.9.0, so the GUI live session can target both but not the one container whose native shape
@@ -370,9 +392,13 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
   already wired up (S, local). Then make the player's path configurable and run it as a
-  self-skipping job on the self-hosted Windows runner. First explain why it decodes DEE's own
-  stereo output to garbage (`gen_external_baseline.py`): every conclusion drawn through that
-  pipeline inherits the answer.
+  self-skipping job on the self-hosted Windows runner. The "decodes DEE's own stereo output to
+  garbage" blocker on this item is answered and was never a decode defect: the player applies
+  dialnorm, DEE writes a measured dialnorm of 12 on that stream, and the resulting 19 dB
+  attenuation was being charged to the decode by scoring it against an un-normalised source WAV.
+  Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
+  for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
+  through it - see `gen_external_baseline.py`'s module docstring.
 - [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
   not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
   trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the
