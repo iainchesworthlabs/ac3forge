@@ -249,6 +249,35 @@ E-AC-3 keeps everything AC-3 can do and adds more on top:
 Together, these are why E-AC-3 fits more channels and better quality into a given bitrate than
 plain AC-3 can.
 
+### Choosing which tools to use
+
+Every one of these tools trades something away. Coupling gives up per-channel detail above the
+coupling frequency; spectral extension gives up the high band's fine structure entirely and paints
+a described one back in its place. Each is a gain below some bitrate and a loss above it, so an
+encoder has to choose — and this one will choose for you if you ask it to (`tools=auto`).
+
+It used to choose from the bitrate alone. It now also measures the frame: how well the channels'
+high band would survive being replaced by one shared copy, and how much of the signal is up in the
+band synthesis would take over. That matters because the same bitrate can afford a nearly empty
+top end and not a busy one, and because two channels that are already nearly the same thing above
+8 kHz can be coupled almost for free while two genuinely different ones cannot.
+
+Two of the tools are not in that automatic set, and the reasons are worth stating plainly:
+
+- **Enhanced coupling** sounds *better* than ordinary coupling wherever the bitrate can carry its
+  extra side information — measured on real film material, at every bitrate and layout tried. It
+  is left out because FFmpeg cannot read it, and the automatic set has to produce streams that
+  ordinary decoders can play. Ask for it by name (`cpl+ecpl`) if you control the decoder.
+- **Transient pre-noise processing** does not pay. It replaces the audio just before a sharp
+  attack with a copy of slightly earlier audio, to cover up noise the coder can smear backwards
+  into the quiet run-up. Measured over exactly the samples it touches, the copy is 6.5 to 24 dB
+  further from the original than the coder's own output was — at every bitrate, with the gap
+  widening as the bitrate rises — and listeners' predicted scores do not move at all. The reason
+  is that block switching already handles the problem: the encoder shortens its transform around
+  a transient, which confines the noise, and the correction then substitutes for audio that was
+  not damaged in the first place. It remains implemented and correct, as a demonstration of the
+  syntax rather than as a quality tool.
+
 !!! example "See it in code"
     - [Encoding AC-3](../library/encoding-ac3.md)
     - [Encoding E-AC-3](../library/encoding-eac3.md)
