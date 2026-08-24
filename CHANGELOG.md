@@ -54,6 +54,41 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   while every access unit codes six blocks, which `numblkscod` does not guarantee.
 - New options: `codec=ac3|eac3` (`transcode`), and `compr=<dB>`, `compr2=<dB>`, `bsmod=<0..7>`,
   `dsurmod=<0..3>` (`metadata`).
+- **`ac3::quality`: decoded-domain distortion measurement and a psychoacoustic model** (`EQ13`).
+  `encoder.cpp` has recorded, since the dbpbcod/exponent-strategy work, that a per-frame search
+  over the transmitted bit allocation parameters was tried twice and rejected both times: the
+  only in-loop criterion available was the composite SNR offset, and that number is not
+  comparable between two candidates that produce different masking curves. `ac3::quality`
+  supplies the missing criterion - the error a decoder will actually reconstruct, computed
+  without decoding by evaluating §7.3's quantizers in closed form on the encoder's own
+  coefficients, decoded exponents and bit allocation (pinned bit-exact against the real
+  quantize/dequantize pair over the whole mantissa range) - plus a tonality/masking model
+  (Johnston's perceptual entropy, MPEG-1 model 2's unpredictability-based tonality, Schroeder/
+  Zwicker-Terhardt spreading, a measured-and-capped absolute threshold) that prices what the
+  first measure finds against what the signal can actually hide.
+  See [docs/library/quality.md](docs/library/quality.md).
+- **`EncoderConfig::search`**: a per-frame search over `dbpbcod`/`fgaincod` (six candidates,
+  including the no-search defaults), judged by the measure above and gated by real hysteresis
+  (the incumbent is the previous frame's winner, not a fixed baseline, so two near-equal
+  candidates don't retrigger every frame). `kNone` by default; `kDistortion` and `kPerceptual`
+  turn it on (`ac3cli encode ... search=distortion|perceptual`). AC-3 only - E-AC-3's `bamode=0`
+  pins the same parameters and needs `EQ3`'s syntax work first.
+  Validated on CC0/CC-BY programme material (not the checked-in band-limited fixtures) against
+  FFmpeg's decode, scored by SNR/log-spectral distance/ViSQOL MOS-LQO, against the no-search
+  baseline as it stood before `fgaincod_for`'s rate-adaptive curve landed alongside this
+  (re-measuring against that curve is a follow-up): `kDistortion` is a real,
+  repeatable win from 448 kbit/s up (SNR +0.4 to +0.8 dB, LSD and MOS improved on every material
+  tested); at 192 kbit/s its own criterion still improves but trades SNR against per-band spectral
+  shape, and that trade currently costs LSD and MOS more than it buys back. `kPerceptual`
+  currently loses at every rate tested - real evidence that its psychoacoustic model, though
+  validated in isolation (discriminates tone/noise/transient correctly, calibrated to this
+  project's own transform), is not yet calibrated well enough to beat a well-tuned fixed default
+  on real stereo material with rematrixing active. Both stay off by default. Validated in stereo
+  only - the search's mechanism is proven correct at 3/2+LFE by the mirror self-check, but
+  external-metric validation on real 5.1 material hit a measurement-harness alignment problem this
+  round ran out of time to resolve; left for a follow-up. See
+  [docs/library/encoding-ac3.md § Decision search](docs/library/encoding-ac3.md#decision-search)
+  for the full table and the reproduction command.
 - **A threat model for untrusted input** (`docs/threat-model.md`, roadmap `VX19`). What is
   treated as adversary-controlled and what is not, the memory-safety posture of the C++23 core,
   the three raw-pointer boundaries (the C API, the WASM bindings, the JNI bridge) and the
@@ -360,8 +395,52 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   for rather than recomputed), and deliberately leaves one mutation in four unrepaired so the
   bad-CRC rejection path stays reachable.
 
+- **Real programme material in the fixture corpus** (`VX7`). Every landscape and trend number
+  this project has published rested on 2.5–3 s of `sin()`, pseudo-random noise and FIR
+  smoothing. Both synthetic fixtures carry a flat noise plateau from 12 kHz to Nyquist at
+  roughly the level of the content below it — a shape no real programme material has, and the
+  one that made narrowing the encoder's bandwidth to 14.7 kHz look like a 2.1 dB win when it
+  would have made a 448 kbit/s encoder plainly worse to listen to. Two 30 s CC0 fixtures now sit
+  beside them: unscripted connected speech and orchestral music, both natively 48 kHz and
+  losslessly sourced, both rolling off monotonically instead of plateauing. The synthetic
+  fixtures are kept — the published series are only comparable because the material under them
+  never moved — so the programme material runs as its own legs rather than replacing anything.
+  `quality_race.py` also takes `--material speech|music` on every mode except `ci`, `trend` and
+  `eac3-51`, so an encoder policy can be re-measured on material that is not band-limited.
+- **The fixture corpus is versioned and hash-enforced.** `tests/golden/audio/corpus.json`
+  records every fixture's format, duration, SHA-256 and — for the programme ones — its upstream
+  source, that source's own SHA-256, its licence and the exact excerpt window;
+  `tools/checks/check_corpus.py` fails if any committed fixture stops matching. A regenerated
+  fixture is otherwise close to invisible: it still decodes, still has the right duration, still
+  produces a plausible SNR, and simply puts a step in every published series that reads as an
+  encoder change. `tools/generators/README.md` documents the corpus, the licences and the
+  measured spectra.
+- **Five new landscape/trend legs.** Four of them sit at rates where the Annex E tools actually
+  run. `auto` enables coupling below 12 + 14n kbit/s per channel and spectral extension below
+  56, and the only stereo leg sat at 96 per channel — above both — so every published stereo
+  comparison was of an encoder that had chosen no tools at all. The new stereo legs at 96 and
+  64 kbit/s bracket both crossovers, on synthetic and on programme material.
+
 ### Fixed
 
+- **The MOS column carries real numbers** (`VX6`). `visqol-python` was deliberately not
+  installed in CI, so all ~3,758 rows on the `quality-history` branch carried `mos_lqo: null`
+  and every MOS cell on the landscape and tool-comparison pages rendered `n/a` — the perceptual
+  half of this project's own published comparison did not exist. It is now hash-pinned in
+  `requirements-ffmpeg-validate` like every other Python dependency (seven added packages,
+  nothing already pinned moved) and installed on the `ffmpeg-validate` leg. Scoring is capped to
+  a fixed 4 s window because ViSQOL's patch matching is super-linear — measured 3.9 s of compute
+  for 3 s of audio and 127.8 s for 30 s — which keeps the whole column at about seven minutes on
+  a job ~15 minutes off the critical path. The history appender gained a soft MOS regression
+  tier (warning only, never fails a run).
+- **Both 5.1 legs have a DEE number again.** The installed DEE build drops the surround-left
+  channel when 5.1 arrives as one discrete 6-channel file, which is why `ac3-51-448` and
+  `eac3-51-256` were marked unverified and their `vs DEE` cells read `n/a`. DEE's other
+  documented input path — one mono WAV per channel, `--input-format wav_list` — does not,
+  confirmed by per-channel RMS through a full encode and decode. That path's channel order is
+  also this project's own WAV order, so the SMPTE permutation the single-file path needed (and
+  which had already cost ~15 dB on both legs once when it was missing) is gone. No leg is
+  unverified at baseline version 2.
 - **`dialnorm=auto` and `ac3cli loudness` mis-assigned channel weights on any layout wider than
   stereo.** `measured_dialnorm()` pushed a WAV's channels into `LoudnessMeter` in *WAV* order
   (FL, FR, FC, LFE, BL, BR) when the meter expects AC-3 *coded* order (L, C, R, Ls, Rs, LFE). For

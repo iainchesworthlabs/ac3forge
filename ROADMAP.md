@@ -150,13 +150,20 @@ both encoders decide from content rather than from the bit rate.
   per-frame quality knob (`VbrConfig`) with no race leg, no trend row and no measured
   rate-distortion curve; add a sweep mode to `quality_race.py`, then a long-run average-rate
   (ABR) mode with a bit reservoir, which is what a streaming ladder or a mux actually asks for.
-- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model.
-  `encoder.cpp` records that the only in-loop quality criterion is the composite SNR offset, and
-  that both earlier attempts to search per-frame bit-allocation codes and exponent strategies
-  failed for exactly that reason. `ac3::verify` already models the decoder's reconstruction; a
-  per-candidate distortion measure on top of it lets the transmitted knobs (EQ2, EQ5, EQ7, delta
-  segments) be chosen on real error, and a tonality/masking estimate can drive them. Last in the
-  theme; needs VX6 and VX7 to validate on anything other than fixture SNR.
+- [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
+  measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
+  against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
+  model), wired into a per-frame `dbpbcod`/`fgaincod` search (`EncoderConfig::search`) with real
+  hysteresis, and validated on real CC0/CC-BY material (not fixture SNR - VX6/VX7's own gap,
+  closed locally for this) against FFmpeg's decode by SNR/LSD/ViSQOL. The distortion criterion is
+  a real win from 448 kbit/s up; at 192 it trades SNR against per-band shape and currently
+  costs more than it buys. The perceptual criterion currently loses at every rate tested - its
+  model is validated in isolation but not yet calibrated well enough to beat the fixed defaults
+  on real material with rematrixing active. Both stay off by default. What's NOT done: neither
+  criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet (only the two `BitAllocCodes` fields
+  the encoder's own dead-end comment named), E-AC-3 isn't wired (needs EQ3), and the perceptual
+  model needs further calibration before it is worth turning on. See
+  `docs/library/quality.md` and `docs/library/encoding-ac3.md`'s Decision search section.
 
 ## DC. Decoder and consumer output
 
@@ -459,17 +466,20 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
   for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
   through it - see `gen_external_baseline.py`'s module docstring.
-- [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
-  not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
-  trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the
-  dependency and lock (S); then baseline v2: MOS on the external side, the DEE 5.1 legs re-scored
-  around the Ls-channel drop (`UNVERIFIED_DEE_LEGS`), and low-rate legs where spectral extension
-  and coupling actually run (the only stereo leg sits at 96 kbit/s per channel, above every
-  measured tool crossover).
-- [ ] **VX7 (M)** — Real programme material. Every landscape and trend number rests on 2.5 s of
-  `sin()`/FIR-noise fixtures, and `encoder.cpp` records a fake 2.1 dB win from tuning against
-  them. Redistributable (CC0/public-domain) speech and music legs beside the synthetic ones, and
-  `tools/generators` packaged as a versioned corpus.
+- [x] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is hash-pinned in
+  `requirements-ffmpeg-validate` and installed on the `ffmpeg-validate` leg, so `mos_lqo` is a
+  real number rather than null in every row from 2026-08-23 on; `MOS_WINDOW_S` caps ViSQOL's
+  super-linear cost, and the history appender has a soft MOS regression tier. Baseline v2 carries
+  MOS on the external side, re-scores both DEE 5.1 legs (the Ls-channel drop is an artefact of
+  DEE's discrete-multichannel input path; `--input-format wav_list` does not have it, so
+  `UNVERIFIED_DEE_LEGS` is empty), and adds five legs, four of them at rates where spectral
+  extension and coupling actually run.
+- [x] **VX7 (M)** — Real programme material. Two 30 s CC0 fixtures — full-band speech and music,
+  both natively 48 kHz and losslessly sourced — run as their own landscape and trend legs beside
+  the synthetic ones, which stay for series continuity, and are available to the other
+  `quality_race.py` modes through `--material`. `tools/generators` is documented and the fixture
+  corpus is versioned (`corpus.json`, `CORPUS_VERSION`) and hash-enforced
+  (`tools/checks/check_corpus.py`).
 - [ ] **VX8 (M)** — An object-reconstruction quality leg. Per-object SNR is measured exactly
   once, in a unit test with a 10 dB floor against 18–35 dB measured (`tests/oba/test_atmos.cpp`);
   a 15 dB JOC regression passes CI and no trend page sees it.
@@ -848,7 +858,7 @@ All merged to `develop` by v0.9.0-beta.1 unless noted; `CHANGELOG.md` has the de
 | F3 | WASM build plus browser demo | merged (UX5 extends it) |
 | F4 | Package-manager presence | carried → DR1–DR5 (PyPI and the tap are live) |
 | F5 | API freeze → v1.0.0 | carried → AP1 |
-| G1 | Perceptual-quality leg | merged, column never populated in CI (VX6) |
+| G1 | Perceptual-quality leg | merged; column populated in CI as of VX6 |
 | G2 | Backfill thin test coverage | merged |
 | G3 | Differential decoder fuzzing against FFmpeg | merged |
 | G4 | Encoder input-space fuzzing | merged, both codecs (AC-3 under G4, E-AC-3 under VX1) |

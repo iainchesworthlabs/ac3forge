@@ -8,14 +8,18 @@
 // once on the way out.
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fmt/printf.h>
 #include <memory>
 #include <numbers>
+#include <random>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -37,11 +41,26 @@ bool fail(const char* what, std::string_view detail) {
     return false;
 }
 
+// Scratch files get a per-run suffix rather than a fixed name. Every checkout
+// of this repo runs the examples under its own `ctest` (examples/CMakeLists.txt
+// registers each one as a test case), several checkouts commonly run at once on
+// one machine, and they all share a temp directory - on a fixed name, two runs
+// read and then delete each other's file. src/ac3adm/src/adm.cpp's
+// make_temp_path builds its temp path from the same ingredients, for the same
+// reason: unique across concurrent processes without a platform-specific call.
+std::string scratch_path(std::string_view name) {
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
+}
+
 }  // namespace
 
 int main() {
-    const auto source_path = (std::filesystem::temp_directory_path() / "ac3forge_source.wav").string();
-    const auto result_path = (std::filesystem::temp_directory_path() / "ac3forge_result.wav").string();
+    const auto source_path = scratch_path("source.wav");
+    const auto result_path = scratch_path("result.wav");
 
     // Synthesize 5.1 in AC-3 order (L, C, R, SL, SR, LFE) and write it out in
     // WAV order - wav_channel_order says where each AC-3 channel belongs in

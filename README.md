@@ -122,7 +122,12 @@ FFmpeg as a neutral referee, aligns by cross-correlation, and reports SNR agains
 
 Measured with FFmpeg 8.0.1 on 2026-08-09; reproduce with `python tools/ci/quality_race.py ac3`.
 SNR on synthetic material is a narrow metric — it says the waveform is closer, not that it
-sounds better, and no listening test has been run.
+sounds better, and no listening test has been run. Alongside it, every published comparison
+also carries a ViSQOL MOS-LQO prediction, and the fixture corpus includes 30 s CC0 recordings
+of real speech and music beside the synthesized material — `--material speech|music` swaps
+them in. Both matter more than they sound like they should: on one leg FFmpeg leads on SNR by
+2.35 dB and trails on MOS by 1.28, and tuning the encoder's bandwidth against the synthesized
+fixtures once produced a 2.1 dB "win" that was an artefact of the fixture.
 
 That's one number from a larger picture — which streams FFmpeg can check independently and
 which only the in-repo decoder can, what Dolby's own tooling did and didn't confirm, and the

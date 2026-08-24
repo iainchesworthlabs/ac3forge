@@ -273,6 +273,30 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                          token);
             return false;
         }
+        if (key == "search") {
+            // The per-frame bit-allocation-parameter search (EQ13). Off by
+            // default; the two values name what it minimises rather than an
+            // effort level, because they are different questions and not
+            // two points on one scale - one is waveform error, the other is
+            // that error weighted by what the signal can hide.
+            if (value == "off") {
+                out.search = ac3::quality::Criterion::kNone;
+                continue;
+            }
+            if (value == "distortion") {
+                out.search = ac3::quality::Criterion::kDistortion;
+                continue;
+            }
+            if (value == "perceptual") {
+                out.search = ac3::quality::Criterion::kPerceptual;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: search is 'off' (the default), 'distortion' or 'perceptual' "
+                         "(got '{}')",
+                         token);
+            return false;
+        }
         if (key == "dither") {
             // No bare-word form: unlike fast-mdct, dither has no prior
             // opt-in spelling to keep parsing, so only the value form -

@@ -18,11 +18,13 @@
 // is adapted from Recommendation ITU-R BS.2076-2 (10/2019) Annex 2 §2's own
 // "Object-based example" ("Car" object), the standard's own worked example.
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fmt/printf.h>
 #include <fstream>
+#include <random>
 #include <string>
 #include <string_view>
 
@@ -31,6 +33,19 @@
 namespace {
 
 using Bytes = std::string;
+
+// A per-run name rather than a fixed one: every checkout of this repo runs the
+// examples under its own `ctest` (examples/CMakeLists.txt registers each as a
+// test case), several checkouts commonly run at once, and they share a temp
+// directory - two runs on one fixed name read and delete each other's fixture.
+// Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
+std::string scratch_path(std::string_view name) {
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
+}
 
 void put_u16le(Bytes& out, std::uint16_t value) {
     out.push_back(static_cast<char>(value & 0xFFu));
@@ -137,7 +152,7 @@ bool write_fixture(const std::string& path) {
 }  // namespace
 
 int main() {
-    const auto fixture_path = (std::filesystem::temp_directory_path() / "ac3forge_adm_fixture.wav").string();
+    const auto fixture_path = scratch_path("adm_fixture.wav");
     if (!write_fixture(fixture_path)) {
         fmt::printf("could not write fixture file\n");
         return 1;
