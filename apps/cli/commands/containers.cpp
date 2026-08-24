@@ -438,6 +438,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         companion ? fmt::format(", and bed51/ with the same {} channels and the objects stripped",
                                 companion->track.channels)
                   : std::string{};
+    const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
     fmt::println(
         "wrote {} {} access units ({}, {} channels{}) as {} fragment(s) to {} "
         "(init.mp4, segment*.m4s, audio.m3u8, master.m3u8, manifest.mpd{})",
