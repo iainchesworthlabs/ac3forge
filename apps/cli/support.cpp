@@ -37,6 +37,7 @@
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -235,6 +236,45 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             fmt::println(stderr,
                          "error: the fast IMDCT is the default; 'fast-imdct=off' forces the "
                          "direct §7.9.4 step-3 evaluation (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "joc-domain") {
+            if (value == "qmf") {
+                out.joc_domain = ac3::joc::Domain::kQmf;
+                continue;
+            }
+            if (value == "mdct") {
+                out.joc_domain = ac3::joc::Domain::kMdctBand;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: joc-domain is 'qmf' (the default, §7.1's complex filterbank) "
+                         "or 'mdct' (the 256-bin approximation) (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "search") {
+            // The per-frame bit-allocation-parameter search (EQ13). Off by
+            // default; the two values name what it minimises rather than an
+            // effort level, because they are different questions and not
+            // two points on one scale - one is waveform error, the other is
+            // that error weighted by what the signal can hide.
+            if (value == "off") {
+                out.search = ac3::quality::Criterion::kNone;
+                continue;
+            }
+            if (value == "distortion") {
+                out.search = ac3::quality::Criterion::kDistortion;
+                continue;
+            }
+            if (value == "perceptual") {
+                out.search = ac3::quality::Criterion::kPerceptual;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: search is 'off' (the default), 'distortion' or 'perceptual' "
+                         "(got '{}')",
                          token);
             return false;
         }

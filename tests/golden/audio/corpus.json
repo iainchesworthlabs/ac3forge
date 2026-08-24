@@ -1,0 +1,84 @@
+{
+  "corpus_version": 1,
+  "fixtures": [
+    {
+      "fixture": "programme_music_stereo.flac",
+      "kind": "music",
+      "channels": 2,
+      "sample_rate": 48000,
+      "bits": 16,
+      "duration_s": 30.0,
+      "sha256": "da89bdef435762c6b591ae130236574f1912c0bbb67772922d351ae62f996982",
+      "bytes": 1960620,
+      "source": {
+        "title": "Mendelssohn, Symphony No. 4 'Italian', IV. Saltarello (Presto)",
+        "url": "https://archive.org/download/MusopenKickstarterRecordingsLossless/Musopen%20DVD%20%28lossless%29.zip/Musopen%20DVD%20%28lossless%29%2FMendelssohn%20-%20Italian%20Symphony%2FSymphon%20No.%204%20in%20A%20Major%2C%20Op.%2090%20%27Italian%27%20-%20IV.%20Saltarello%20%28Presto%29.m4a",
+        "page": "https://archive.org/details/MusopenKickstarterRecordingsLossless",
+        "sha256": "4f8142ddba00a498625bfc456d2ff027e35837e51574ee7f2b570cb44be23776",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Not required (CC0). Musopen Kickstarter recordings, dedicated to the public domain by Musopen."
+      },
+      "excerpt": {
+        "start_s": 30.0,
+        "duration_s": 30.0,
+        "normalised_peak": 0.7079
+      }
+    },
+    {
+      "fixture": "programme_speech_stereo.flac",
+      "kind": "speech",
+      "channels": 2,
+      "sample_rate": 48000,
+      "bits": 16,
+      "duration_s": 30.0,
+      "sha256": "e6dff1a1d8d2c8ecf8474d066c7742e68c0619570c0062006088ba2c04c2268e",
+      "bytes": 1157201,
+      "source": {
+        "title": "Sally Mann at VMFA, 2024-12-05",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/04/Sally_Mann_at_VMFA_2024-12-05.flac",
+        "page": "https://commons.wikimedia.org/wiki/File:Sally_Mann_at_VMFA_2024-12-05.flac",
+        "sha256": "6397603f159f0cf9d3b24053021aa9684fb7fbc93ce098fa9c49222044abb0b4",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Not required (CC0). Recorded and dedicated to the public domain by the Wikimedia Commons uploader."
+      },
+      "excerpt": {
+        "start_s": 0.5,
+        "duration_s": 30.0,
+        "normalised_peak": 0.7079
+      }
+    },
+    {
+      "fixture": "reference_51.wav",
+      "kind": "synthetic",
+      "channels": 6,
+      "sample_rate": 48000,
+      "bits": 16,
+      "duration_s": 2.5,
+      "sha256": "ba7394c943c9f6bd73d5c5fc7a9fdac2d8c7b25a8cfda67d14126888ae026ea6",
+      "bytes": 1440044,
+      "generator": "tools/generators/gen_gold_reference_wav.py",
+      "note": "sin()/pseudo-random noise/boxcar FIR; flat noise plateau above 12 kHz - see this file's own module docstring."
+    },
+    {
+      "fixture": "reference_51_eac3_448k_cplbndstrce0.ec3",
+      "kind": "bitstream",
+      "sha256": "b51ae0859ff59bc2f5940e7322e7babe57ae7aa94f5bc5b3c6a2b3928307554b",
+      "bytes": 141568,
+      "note": "FFmpeg-encoded from reference_51.wav: `ffmpeg -y -i tests/golden/audio/reference_51.wav -c:a eac3 -b:a 448k <out>` (ffmpeg 8.0.1). Confirmed to set cplbndstrce == 0 with cplbegf == 12 in every block - see tools/checks/verify_gold_reference.sh for why cplbegf != 0 matters here."
+    },
+    {
+      "fixture": "reference_stereo.wav",
+      "kind": "synthetic",
+      "channels": 2,
+      "sample_rate": 48000,
+      "bits": 16,
+      "duration_s": 3.0,
+      "sha256": "8ebd531364d21963173b1f367f95d82cb4698fca980ec38ade527b6604246333",
+      "bytes": 576044,
+      "generator": "tools/generators/gen_stereo_reference_wav.py",
+      "note": "sin()/pseudo-random noise/boxcar FIR; flat noise plateau above 12 kHz - see this file's own module docstring."
+    }
+  ]
+}

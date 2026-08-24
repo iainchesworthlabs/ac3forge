@@ -234,6 +234,17 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    self-consistent round trip cannot.
 5. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
 
+**Object reconstruction has none of the four.** Dolby's tooling above verifies the object
+layer's *syntax*, not its audio: that decoder gates object decoding on a keyed authenticity tag
+this project ships no key for, so it renders these streams as their 5.1 bed, and FFmpeg
+implements no JOC reconstruction at all. Nothing outside this repository can produce an
+independent object decode of an ac3forge stream. What exists instead is a self-consistency
+series with real resolution — `tools/ci/quality_race.py`'s `objects` mode scores a committed
+five-object scene per object per rate on every push, trended at [Object quality
+trend](https://iainchesworthlabs.github.io/ac3forge/object-quality-trend/). If you are changing
+`ac3::joc` or `ac3::oba`, run it before and after and put both numbers in the commit message;
+it takes seconds and it is the only quality signal that layer has.
+
 Neither decoder covers everything, and the gaps do not overlap: see the [verification-gap
 table](https://iainchesworthlabs.github.io/ac3forge/verification/#where-the-oracles-dont-reach). If your change lands in a cell with no oracle, say so in
 the commit message and cover it bit-by-bit instead.

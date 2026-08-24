@@ -12,6 +12,7 @@
 
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/silent_frame.hpp"
@@ -144,6 +145,28 @@ void band_energy(std::span<const float> signal, std::span<const std::uint8_t, 64
     }
 }
 
+void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t, 64> mapping,
+                     std::span<double> out, dsp::QmfAnalysis& analysis) {
+    AC3_ZONE_SCOPED_N("qmf_band_energy");
+    std::ranges::fill(out, 0.0);
+    std::array<double, dsp::kQmfSubbands> real{};
+    std::array<double, dsp::kQmfSubbands> imag{};
+    for (int slot = 0; slot < dsp::kQmfSlotsPerFrame; ++slot) {
+        const std::span<const float, dsp::kQmfHop> hop{
+            signal.data() + slot * dsp::kQmfHop, static_cast<std::size_t>(dsp::kQmfHop)};
+        analysis.push(hop, real, imag);
+        for (int k = 0; k < dsp::kQmfSubbands; ++k) {
+            // Complex magnitude squared: the subband is oversampled, so this
+            // is the band's short-time power directly, with none of the
+            // MDCT's sign-and-phase dependence on where the block boundary
+            // happened to fall.
+            out[mapping[static_cast<std::size_t>(k)]] +=
+                real[static_cast<std::size_t>(k)] * real[static_cast<std::size_t>(k)] +
+                imag[static_cast<std::size_t>(k)] * imag[static_cast<std::size_t>(k)];
+        }
+    }
+}
+
 AtmosEncoder::AtmosEncoder(const AtmosConfig& config, int objects)
     : config_(config),
       objects_(objects),
@@ -169,6 +192,9 @@ AtmosEncoder::AtmosEncoder(const AtmosConfig& config, int objects)
     params_.num_bands_idx = config.num_bands_idx;
     params_.fine_quant = config.fine_quant;
     params_.matrix.assign(params_.coefficient_count(), 0.0);
+    if (config.joc_domain == joc::Domain::kQmf) {
+        object_qmf_.resize(static_cast<std::size_t>(objects));
+    }
 }
 
 std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
@@ -260,7 +286,11 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     for (std::size_t object = 0; object < count; ++object) {
         const auto slot = std::span{power}.subspan(
             object * static_cast<std::size_t>(bands), static_cast<std::size_t>(bands));
-        band_energy(objects[object], mapping, slot, config_.fast_mdct);
+        if (config_.joc_domain == joc::Domain::kQmf) {
+            qmf_band_energy(objects[object], mapping, slot, object_qmf_[object]);
+        } else {
+            band_energy(objects[object], mapping, slot, config_.fast_mdct);
+        }
         // The signal being reconstructed is the object AT ITS GAIN, so its
         // power carries the gain squared and the geometry stays in `pan`.
         const double squared = scale[object] * scale[object];

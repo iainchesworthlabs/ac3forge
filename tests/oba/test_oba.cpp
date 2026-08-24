@@ -158,46 +158,52 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
     CHECK(payload.size() * 8 - r.bit_position() < 8);
 }
 
-TEST_CASE("reconstruct is a 256-sample-delayed identity when the matrix is a pure passthrough",
+TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrough",
          "[oba][joc]") {
     // A degenerate but exact check on the transform pair itself, decoupled
     // from any panning/mixing math: M[0][0][*] = 1, every other entry 0,
-    // should hand channel 0 straight back through - modulo the 256-sample
-    // algorithmic delay every MDCT-based encode+decode round trip in this
-    // codebase carries (see tests/decoder/test_eac3_decoder.cpp's own snr_db helper
-    // and its "256-sample encode+decode delay" comment; reconstruct() runs
-    // its own independent forward+inverse MDCT pass, so it carries that same
-    // one block of delay relative to whatever bed it was handed).
-    ac3::joc::FrameParameters params{.objects = 1, .num_bands_idx = 4};
-    params.matrix.assign(params.coefficient_count(), 0.0);
-    for (int band = 0; band < params.bands(); ++band) {
-        params.at(0, 0, band) = 1.0;
-    }
+    // should hand channel 0 straight back through - modulo the algorithmic
+    // delay of whichever pair the domain runs. Both are checked, because
+    // both ship: the MDCT pair's own 256 samples (the same one-block delay
+    // tests/decoder/test_eac3_decoder.cpp's snr_db helper documents), and
+    // the filterbank's 576 (its 640-tap window less one 64-sample hop).
+    // joc::reconstruction_delay() is the single place either number is
+    // written down, so a test that used the wrong one could not silently
+    // pass by measuring a shifted signal against itself.
+    for (const auto domain : {ac3::joc::Domain::kMdctBand, ac3::joc::Domain::kQmf}) {
+        CAPTURE(domain == ac3::joc::Domain::kQmf);
+        ac3::joc::FrameParameters params{.objects = 1, .num_bands_idx = 4};
+        params.matrix.assign(params.coefficient_count(), 0.0);
+        for (int band = 0; band < params.bands(); ++band) {
+            params.at(0, 0, band) = 1.0;
+        }
 
-    std::vector<std::vector<float>> bed(5, std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
-    for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
-        bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
-            0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
-    }
+        std::vector<std::vector<float>> bed(5, std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
+        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
+                0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
+        }
 
-    ac3::joc::ReconstructionState state;
-    const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
-    std::vector<std::vector<float>> out;
-    for (int frame = 0; frame < 3; ++frame) {
-        out = ac3::joc::reconstruct(bed_views, params, state);
-    }
-    REQUIRE(out.size() == 1);
+        ac3::joc::ReconstructionState state;
+        const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
+        std::vector<std::vector<float>> out;
+        for (int frame = 0; frame < 3; ++frame) {
+            out = ac3::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
+                                       /*fast_imdct=*/false, domain);
+        }
+        REQUIRE(out.size() == 1);
 
-    constexpr int kDelay = 256;
-    double signal = 0.0;
-    double error = 0.0;
-    for (int n = kDelay; n < ac3::kSamplesPerFrame; ++n) {
-        const double s = static_cast<double>(bed[0][static_cast<std::size_t>(n - kDelay)]);
-        const double r = static_cast<double>(out[0][static_cast<std::size_t>(n)]);
-        signal += s * s;
-        error += (s - r) * (s - r);
+        const int delay = ac3::joc::reconstruction_delay(domain);
+        double signal = 0.0;
+        double error = 0.0;
+        for (int n = delay; n < ac3::kSamplesPerFrame; ++n) {
+            const double s = static_cast<double>(bed[0][static_cast<std::size_t>(n - delay)]);
+            const double r = static_cast<double>(out[0][static_cast<std::size_t>(n)]);
+            signal += s * s;
+            error += (s - r) * (s - r);
+        }
+        CHECK(10.0 * std::log10(signal / std::max(error, 1e-30)) > 100.0);
     }
-    CHECK(10.0 * std::log10(signal / std::max(error, 1e-30)) > 100.0);
 }
 
 TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][joc]") {

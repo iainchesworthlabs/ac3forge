@@ -16,11 +16,13 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/quality/distortion.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -198,6 +200,29 @@ struct Options {
     // the Options it already has rather than calling back into a global.
     bool quiet = false;
     bool verbose = false;
+    // Which domain JOC estimates and applies its reconstruction matrix in
+    // (AtmosConfig::joc_domain / DecoderConfig::joc_domain). QMF - §7.1's
+    // 64-band complex filterbank, what §6.6.6 describes and what a licensed
+    // decoder runs - is the default; joc-domain=mdct selects the cheaper
+    // 256-bin MDCT approximation this project used before it had a
+    // filterbank.
+    //
+    // Deliberately outside mode= in both directions. The two transform
+    // switches mode= drives are the same answer computed two ways, agreeing
+    // to ~1e-12, so naming the fast one costs nothing; these two domains
+    // are different answers about 5 dB apart, and a speed preference should
+    // not silently pick the worse one. mode=reference has nothing to add
+    // either - the default is already §6.6.6's own domain - so mode= stays
+    // exactly the two transform switches it has always been.
+    ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
+    // The per-frame search over §7.2.2's transmitted bit allocation
+    // parameters, judged on the reconstruction error the decoder will
+    // produce (EncoderConfig::search, ac3/quality/distortion.hpp).
+    // search=distortion minimises that error; search=perceptual weights it
+    // by a tonality/masking model first. Off by default, like the library
+    // config it feeds - it costs encode time, and this project does not turn
+    // a decision knob on without the numbers. AC-3 encodes only.
+    ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
     // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
     // of the human-readable table. Off by default - a bare `ac3cli probe
     // <file>` is meant to be read by a person, and every other command here

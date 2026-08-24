@@ -537,7 +537,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         atmos_encoder = std::make_unique<ac3::oba::AtmosEncoder>(
             ac3::oba::AtmosConfig{.sample_rate = sr, .bitrate_kbps = bitrate,
                                   .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
-                                  .fast_mdct = meta.fast_mdct},
+                                  .fast_mdct = meta.fast_mdct, .joc_domain = meta.joc_domain},
             static_cast<int>(nobjects));
     } else if (take->eac3) {
         eac3_encoder =
