@@ -14,6 +14,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **QMF-domain JOC** (roadmap DC10). TS 103 420 puts the object reconstruction in a 64-subband
+  complex QMF; this tree had no filterbank, and estimated and applied the matrix over 256 MDCT
+  bins instead. `ac3::dsp::QmfAnalysis` / `QmfSynthesis` (`ac3/dsp/qmf.hpp`) is that filterbank
+  — 640-tap prototype designed in-tree for exact perfect reconstruction, a 128-point FFT on the
+  same radix-2 core the fast MDCT already uses. `joc::Domain` selects where the matrix is
+  estimated (`AtmosConfig::joc_domain`) and applied (`DecoderConfig::joc_domain`), and the CLI
+  spells it `joc-domain=qmf|mdct` on the `atmos*` commands and `decode`.
 - **An object-reconstruction quality series** (`VX8`). Object reconstruction — the object layer
   that every other codec layer here has a per-commit trend for — was measured exactly once
   anywhere in the tree: a single `snr_db > 10.0` assertion in `tests/oba/test_atmos.cpp` against
@@ -508,6 +515,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   steers the tool frequency defaults.
 
 ### Changed
+
+- **JOC now runs in the QMF domain by default**, encoder and decoder. Mean per-object SNR over
+  four placements goes from 22.8 dB to 28.6 dB; against a decoder reconstructing in the QMF
+  domain — which is what every licensed decoder does, and which the old encoder had no way to
+  target — from 23.5 dB to 28.6 dB. On moving objects, 20.2 dB to 26.5 dB. Encoding costs
+  0.62 → 0.74 ms/frame of a 32 ms budget; decoding gets cheaper, 0.88 → 0.70 ms/frame. Memory is
+  a one-off setup cost (encoder +20 KB, decoder +44 KB on the first JOC frame) with per-frame
+  churn unchanged. `joc-domain=mdct` restores the previous behaviour on both sides.
+- **Reconstructed object audio now lags the bed by 576 samples rather than 256.** That is the
+  QMF pair's own algorithmic delay and cannot be shortened. Code comparing `object_audio`
+  against a known source must shift by `joc::reconstruction_delay(domain)` rather than a
+  hard-coded 256 — including anything reading `decode`'s `objects_dir=` output.
 
 - **`atsc-a85` re-cited to ATSC A/85:2026-07** (`IO11`), approved 8 July 2026 — the first full
   revision of A/85 since 2013. Its §6 restates the target loudness, tolerance and true-peak

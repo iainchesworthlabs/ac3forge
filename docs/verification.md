@@ -133,6 +133,13 @@ same real streams as the fast paths, and `tools/ci/run_codec_matrix.sh` carries 
 and `fast-imdct=off` rows through the sanitizers. Without that, a change to a fast path could
 take its own reference with it and nothing outside the transform unit tests would notice.
 
+One nearby switch is deliberately **not** part of this pair: `joc-domain=qmf|mdct`, which selects
+where JOC's reconstruction matrix is estimated and applied. The two transforms above are the same
+answer computed two ways; the two JOC domains are different answers about 5 dB apart, so folding
+them into a speed preference would make `mode=performance` quietly pick the worse one. The default
+is already the domain TS 103 420 §6.6.6 states, so `mode=reference` has nothing to add either. See
+[Atmos & JOC](concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
+
 `ac3cli` exposes the pair as one intent-level switch: `mode=reference` runs every transform in
 the command on the direct evaluations — for regenerating fixtures, comparing sample-for-sample
 against an external decoder, or isolating a suspected transform defect — and `mode=performance`

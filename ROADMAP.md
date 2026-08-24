@@ -230,11 +230,24 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   helper (every container writer computes timing privately today). `strmtyp 2` convertible
   streams — the spec's own no-re-encode path, refused by `validate()` today — stay out until
   someone needs them.
-- [ ] **DC10 (XL)** — QMF-domain JOC. The matrix is estimated and applied in the MDCT domain
-  (`joc.hpp`: the tree has no filterbank) while §6.6.6 and every licensed decoder run the
-  64-band complex QMF, so the encoder optimises for a reconstruction Dolby's decoder never
-  performs, and object quality on real hardware is confirmed audible rather than measured.
-  Research-grade; UX8 or the Shield path gives it a measurement.
+- [x] **DC10 (XL)** — QMF-domain JOC. `ac3::dsp::QmfAnalysis`/`QmfSynthesis` is the 64-band
+  complex filterbank §7.1 calls for — 640-tap prototype designed in-tree for exact perfect
+  reconstruction (`tools/generators/gen_qmf_prototype.py`), 128-point FFT on the shared radix-2
+  core. `joc::Domain` selects where the matrix is estimated (`AtmosConfig::joc_domain`) and
+  applied (`DecoderConfig::joc_domain`); `kQmf` is the default on both sides and the MDCT-band
+  path stays as `joc-domain=mdct`. Mean per-object SNR, four placements: 22.8 dB
+  MDCT-estimated/MDCT-reconstructed, 23.5 dB MDCT-estimated/QMF-reconstructed (what a licensed
+  decoder was getting), 28.6 dB QMF/QMF; 20.2 → 26.5 dB on moving objects. Encode
+  0.62 → 0.74 ms/frame of a 32 ms budget, decode 0.88 → 0.70 (cheaper: the MDCT path's inverse
+  is pinned to the direct form). Object audio now lags the bed by 576 samples rather than 256 —
+  `joc::reconstruction_delay(domain)`. **Still unmeasured:** how these streams reconstruct
+  through a real licensed decoder. Every number above is this decoder measuring this encoder,
+  and a domain fix is precisely the kind of change that cannot self-validate. The Shield/AVR
+  path is the route, and it needs two things this branch could not supply: the hardware, and a
+  valid signing key — a licensed decoder will not engage object decoding at all without the
+  EMDF authenticity tag, so an unsigned stream tests the 5.1 bed and nothing else. UX8 does not
+  substitute: it renders *this* decoder's reconstructed objects through Dolby's renderer, which
+  says nothing about how Dolby's own reconstruction reads this matrix.
 
 ## IO. Streams in and out
 
@@ -480,6 +493,9 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   (objects are narrow-band, so the codec legs' banded measure reads 10–38 dB for a healthy
   reconstruction); the out-of-band half became a leakage figure, which is the object-specific
   failure mode. Self-consistency only — there is no external oracle for object decode at all.
+  DC10's own head-to-head MDCT-vs-QMF domain comparison
+  (`tests/oba/test_atmos.cpp`) predates this trend leg and stays as a permanent regression test
+  alongside it.
 - [ ] **VX9 (M)** — A listening test. README and `docs/verification.md` have carried "no
   listening test has been run" through nine releases. One documented MUSHRA or ABX session over
   the landscape legs on VX7's material, with the protocol and results on `docs/landscape.md`.
