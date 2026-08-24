@@ -21,6 +21,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
+#include "ac3/internal/profiling.hpp"
 #include "ac3/meta/drc.hpp"
 #include "gain.hpp"
 
@@ -206,6 +207,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_into(
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     std::span<const std::byte> frame, std::span<const std::span<float>> external) {
+    AC3_ZONE_SCOPED_N("ac3_decode_frame");
     // Before the first early return, for the same reason FrameEncoder resets
     // its own: a caller reusing one trace across a file must never read a
     // previous frame's state out of a call that decoded nothing.
@@ -414,6 +416,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     std::array<double, 512> x;
 
     for (int block = 0; block < kBlocksPerFrame; ++block) {
+        AC3_ZONE_SCOPED_N("ac3_decode_block");
         if (config_.trace != nullptr) {
             auto& trace = config_.trace->blocks[static_cast<std::size_t>(block)];
             trace.entered = true;
@@ -639,32 +642,35 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 }
             }
         }
-        for (int ch = 0; ch < nchans; ++ch) {
-            const auto strat = strategy[static_cast<std::size_t>(ch)];
-            if (strat == ExpStrategy::kReuse) {
-                continue;
-            }
-            const int end = endmant[static_cast<std::size_t>(ch)];
-            const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
-            const auto absolute = static_cast<std::uint8_t>(r.read(4));
-            groups.assign(static_cast<std::size_t>(ngrps), 0);
-            for (auto& g : groups) {
-                g = static_cast<std::uint8_t>(r.read(7));
-                if (g > 124) {  // §7.10.2 error condition 17
-                    return std::unexpected(DecodeError::kInvalidStream);
+        {
+            AC3_ZONE_SCOPED_N("ac3_exponents");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto strat = strategy[static_cast<std::size_t>(ch)];
+                if (strat == ExpStrategy::kReuse) {
+                    continue;
                 }
-            }
-            exps[static_cast<std::size_t>(ch)].assign(static_cast<std::size_t>(end), 0);
-            decode_exponents(absolute, groups, strat, exps[static_cast<std::size_t>(ch)]);
-            // §7.2.2.2: exponents must stay within 0..24; the mantissa
-            // reconstruction shifts by them.
-            for (const auto exp : exps[static_cast<std::size_t>(ch)]) {
-                if (exp > kMaxExponent) {
-                    return std::unexpected(DecodeError::kInvalidStream);
+                const int end = endmant[static_cast<std::size_t>(ch)];
+                const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
+                const auto absolute = static_cast<std::uint8_t>(r.read(4));
+                groups.assign(static_cast<std::size_t>(ngrps), 0);
+                for (auto& g : groups) {
+                    g = static_cast<std::uint8_t>(r.read(7));
+                    if (g > 124) {  // §7.10.2 error condition 17
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
                 }
-            }
-            if (ch < nfchans) {
-                (void)r.read(2);  // gainrng
+                exps[static_cast<std::size_t>(ch)].assign(static_cast<std::size_t>(end), 0);
+                decode_exponents(absolute, groups, strat, exps[static_cast<std::size_t>(ch)]);
+                // §7.2.2.2: exponents must stay within 0..24; the mantissa
+                // reconstruction shifts by them.
+                for (const auto exp : exps[static_cast<std::size_t>(ch)]) {
+                    if (exp > kMaxExponent) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                }
+                if (ch < nfchans) {
+                    (void)r.read(2);  // gainrng
+                }
             }
         }
 
@@ -810,24 +816,27 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         for (int s = 0; s < streams && snr_all_zero; ++s) {
             snr_all_zero = fsnroffst[static_cast<std::size_t>(s)] == 0;
         }
-        for (int s = 0; s < streams; ++s) {
-            const bool is_cpl = s == cpl_stream;
-            const int end = endmant[static_cast<std::size_t>(s)];
-            if (static_cast<int>(exps[static_cast<std::size_t>(s)].size()) != end) {
-                return std::unexpected(DecodeError::kInvalidStream);
+        {
+            AC3_ZONE_SCOPED_N("ac3_bit_allocation");
+            for (int s = 0; s < streams; ++s) {
+                const bool is_cpl = s == cpl_stream;
+                const int end = endmant[static_cast<std::size_t>(s)];
+                if (static_cast<int>(exps[static_cast<std::size_t>(s)].size()) != end) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                BitAllocCodes codes = base_codes;
+                codes.fgaincod = fgaincod[static_cast<std::size_t>(s)];
+                const BitAllocRegion region{.start = is_cpl ? cplstrtmant : 0,
+                                            .coupling = is_cpl,
+                                            .cplfleak = cplfleak,
+                                            .cplsleak = cplsleak,
+                                            .snr_all_zero = snr_all_zero,
+                                            .delta = delta[static_cast<std::size_t>(s)]};
+                bap[static_cast<std::size_t>(s)].assign(static_cast<std::size_t>(end), 0);
+                compute_bit_allocation(exps[static_cast<std::size_t>(s)], sample_rate, codes,
+                                       csnroffst, fsnroffst[static_cast<std::size_t>(s)],
+                                       bap[static_cast<std::size_t>(s)], region);
             }
-            BitAllocCodes codes = base_codes;
-            codes.fgaincod = fgaincod[static_cast<std::size_t>(s)];
-            const BitAllocRegion region{.start = is_cpl ? cplstrtmant : 0,
-                                        .coupling = is_cpl,
-                                        .cplfleak = cplfleak,
-                                        .cplsleak = cplsleak,
-                                        .snr_all_zero = snr_all_zero,
-                                        .delta = delta[static_cast<std::size_t>(s)]};
-            bap[static_cast<std::size_t>(s)].assign(static_cast<std::size_t>(end), 0);
-            compute_bit_allocation(exps[static_cast<std::size_t>(s)], sample_rate, codes,
-                                   csnroffst, fsnroffst[static_cast<std::size_t>(s)],
-                                   bap[static_cast<std::size_t>(s)], region);
         }
 
         // The other half of the self-check's per-block record: everything the
@@ -893,62 +902,70 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     dequantize_mantissa(code, bap_value) / static_cast<double>(1u << exp);
             }
         };
-        bool read_coupling = false;
-        for (int ch = 0; ch < nfchans; ++ch) {
-            read_stream(ch);
-            if (cplinu && chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
-                read_stream(cpl_stream);
-                read_coupling = true;
+        // Every stream's quantized mantissas off the wire, in the order
+        // §5.4.3.28 packs them.
+        {
+            AC3_ZONE_SCOPED_N("ac3_mantissas");
+            bool read_coupling = false;
+            for (int ch = 0; ch < nfchans; ++ch) {
+                read_stream(ch);
+                if (cplinu && chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
+                    read_stream(cpl_stream);
+                    read_coupling = true;
+                }
             }
-        }
-        if (lfe) {
-            read_stream(nfchans);
+            if (lfe) {
+                read_stream(nfchans);
+            }
         }
 
         // §7.4.3 decoupling: each coupled channel's high band is the shared
         // channel scaled by that channel's coordinate, times 8 - undoing the
         // encoder's /8 headroom scaling.
-        if (cplinu) {
-            const auto& shared = coeffs[static_cast<std::size_t>(cpl_stream)];
-            const auto& cpl_bap = bap[static_cast<std::size_t>(cpl_stream)];
-            const auto& cpl_exps = exps[static_cast<std::size_t>(cpl_stream)];
-            const int cplendmant = endmant[static_cast<std::size_t>(cpl_stream)];
-            for (int ch = 0; ch < nfchans; ++ch) {
-                if (!chincpl[static_cast<std::size_t>(ch)]) {
-                    continue;
-                }
-                auto& target = coeffs[static_cast<std::size_t>(ch)];
-                const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
-                for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
-                    const double coordinate =
-                        cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
-                    // §7.4.1: a set phase flag negates the right channel of a
-                    // 2/0 pair across that band, restoring the phase the
-                    // coupling sum discarded.
-                    const double sign =
-                        (phsflginu && ch == 1 &&
-                         phsflg[static_cast<std::size_t>(
-                             subband_band[static_cast<std::size_t>(bnd)])])
-                            ? -1.0
-                            : 1.0;
-                    const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
-                    const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
-                    for (int bin = low; bin < high; ++bin) {
-                        const std::size_t ubin = static_cast<std::size_t>(bin);
-                        // §7.3.4: a zero-bap shared bin is dither-substituted
-                        // per RECEIVING channel, independently - reusing one
-                        // dithered coupling-domain sample for every coupled
-                        // channel would make their noise correlated (just
-                        // scaled differently), which is exactly what "applied
-                        // after the individual channels are extracted ...
-                        // uncorrelated" rules out. Each channel draws its own
-                        // sample and runs it through the same extraction
-                        // formula a real coupling coefficient would use.
-                        const double coeff =
-                            (cpl_bap[ubin] == 0 && ch_dither)
-                                ? dither_.next() / static_cast<double>(1u << cpl_exps[ubin])
-                                : shared[ubin];
-                        target[ubin] = coeff * coordinate * 8.0 * sign;
+        {
+            AC3_ZONE_SCOPED_N("ac3_decoupling");
+            if (cplinu) {
+                const auto& shared = coeffs[static_cast<std::size_t>(cpl_stream)];
+                const auto& cpl_bap = bap[static_cast<std::size_t>(cpl_stream)];
+                const auto& cpl_exps = exps[static_cast<std::size_t>(cpl_stream)];
+                const int cplendmant = endmant[static_cast<std::size_t>(cpl_stream)];
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    if (!chincpl[static_cast<std::size_t>(ch)]) {
+                        continue;
+                    }
+                    auto& target = coeffs[static_cast<std::size_t>(ch)];
+                    const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
+                    for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
+                        const double coordinate =
+                            cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
+                        // §7.4.1: a set phase flag negates the right channel of a
+                        // 2/0 pair across that band, restoring the phase the
+                        // coupling sum discarded.
+                        const double sign =
+                            (phsflginu && ch == 1 &&
+                             phsflg[static_cast<std::size_t>(
+                                 subband_band[static_cast<std::size_t>(bnd)])])
+                                ? -1.0
+                                : 1.0;
+                        const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
+                        const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
+                        for (int bin = low; bin < high; ++bin) {
+                            const std::size_t ubin = static_cast<std::size_t>(bin);
+                            // §7.3.4: a zero-bap shared bin is dither-substituted
+                            // per RECEIVING channel, independently - reusing one
+                            // dithered coupling-domain sample for every coupled
+                            // channel would make their noise correlated (just
+                            // scaled differently), which is exactly what "applied
+                            // after the individual channels are extracted ...
+                            // uncorrelated" rules out. Each channel draws its own
+                            // sample and runs it through the same extraction
+                            // formula a real coupling coefficient would use.
+                            const double coeff =
+                                (cpl_bap[ubin] == 0 && ch_dither)
+                                    ? dither_.next() / static_cast<double>(1u << cpl_exps[ubin])
+                                    : shared[ubin];
+                            target[ubin] = coeff * coordinate * 8.0 * sign;
+                        }
                     }
                 }
             }
@@ -998,22 +1015,27 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // cut, and note that it is the LAST thing in the block: no field this
         // frame still has to read depends on it, so a parse that stops here
         // reads the identical bits a full decode does.
+        //
+        // The transform pair plus the overlap-add that reconstructs PCM from it -
+        // where a decode frame spends most of its time, and the stage
+        // DecoderConfig::fast_imdct's default switched under in 0.9.0. Skipped
+        // (zone included) whenever the reconstruction itself is.
         if (!config_.skip_reconstruction) {
+            AC3_ZONE_SCOPED_N("ac3_imdct_overlap");
             for (int ch = 0; ch < nchans; ++ch) {
                 if (ch < nfchans && blksw[static_cast<std::size_t>(ch)]) {
                     imdct256_pair_windowed(coeffs[static_cast<std::size_t>(ch)], x,
                                            config_.fast_imdct);
                 } else {
-                    imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x,
-                                      config_.fast_imdct);
+                    imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x, config_.fast_imdct);
                 }
                 auto& delay = delay_[static_cast<std::size_t>(ch)];
                 const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
                 for (int n = 0; n < 256; ++n) {
+                    const auto sample = static_cast<std::size_t>(n);
                     pcm[static_cast<std::size_t>(block * 256 + n)] =
-                        static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)] +
-                                                  delay[static_cast<std::size_t>(n)]));
-                    delay[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                        static_cast<float>(2.0 * (x[sample] + delay[sample]));
+                    delay[sample] = x[static_cast<std::size_t>(256 + n)];
                 }
             }
         }
