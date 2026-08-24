@@ -505,6 +505,57 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
 
 }  // namespace
 
+// §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream, then
+// the AC-3 bit stream shall be processed as an independent substream assigned
+// substream ID 0." FrameDecoder does the reading, since the frame is AC-3
+// syntax throughout; this is the presentation layer that lets §E3.8.2's
+// combining treat the result as the bed with no special case downstream of
+// here.
+std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
+    std::span<const std::byte> frame) {
+    if (!core_) {
+        core_ = std::make_unique<FrameDecoder>(config_);
+    }
+    auto decoded = core_->decode_frame(frame);
+    if (!decoded) {
+        return std::unexpected(decoded.error());
+    }
+    DecodedSubstream out;
+    out.strmtyp = StreamType::kIndependent;
+    out.substreamid = 0;
+    out.sample_rate = decoded->sample_rate;
+    out.acmod = decoded->acmod;
+    out.lfe = decoded->lfe;
+    out.dialnorm = decoded->dialnorm;
+    out.compr = decoded->compr;
+    out.dynrng = decoded->dynrng;
+    out.dialnorm2 = decoded->dialnorm2;
+    out.compr2 = decoded->compr2;
+    out.dynrng2 = decoded->dynrng2;
+    // An AC-3 syncframe is always six audblks (§5.3.1), which Annex E spells
+    // numblkscod 3. That is also what every dependent riding alongside a core
+    // must carry - §E2.3.1.2 requires a dependent to have "the same number of
+    // blocks per syncframe" as its independent substream - so leaving it at
+    // the DecodedSubstream default would make decode_access_unit_core's own
+    // agreement check pass by luck rather than by matching.
+    out.numblkscod = 3;
+    // §E2.3.1.8: only a dependent substream may carry a custom channel map, so
+    // the core's locations come from acmod/lfeon. Left std::nullopt to say so -
+    // location_map() falls back to acmod_map() on exactly that.
+    out.chanmap = std::nullopt;
+    // §E3.8.5's last-dependent marker is a dependent's repurposed compre bit;
+    // an AC-3 frame's compre means what it always meant, and is reported as
+    // `compr` above.
+    out.last_dependent = false;
+    out.blksw = std::move(decoded->blksw);
+    out.channels = std::move(decoded->channels);
+    // Object audio never rides in an AC-3 core: TS 103 420 puts the marker in
+    // addbsi and the container in a block skip field, both Annex E syntax. A
+    // legacy-core Atmos delivery carries them in a dependent instead, which
+    // decode_access_unit_core picks up from whichever substream has them.
+    return out;
+}
+
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
     std::span<const std::byte> frame) {
     // Before the first early return, for the same reason FrameDecoder resets
@@ -515,6 +566,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     }
     if (frame.size() < 8) {
         return std::unexpected(DecodeError::kTruncated);
+    }
+    // §E2.3.1.2's legacy core, before anything below reads a field that means
+    // something different in AC-3. In particular the crc2 check: AC-3 has no
+    // crc2: bytes 2-3 are crc1, and its error check is that word plus the 5/8
+    // checkpoint, which FrameDecoder does itself.
+    if (const auto bsid = stream_bsid(frame); bsid && *bsid <= 8) {
+        auto core = decode_ac3_core(frame);
+        if (!core) {
+            return std::unexpected(core.error());
+        }
+        return std::optional<DecodedSubstream>(std::move(*core));
     }
     // There is no crc1 in E-AC-3 and no 5/8 checkpoint to protect, so crc2 is
     // the whole error check: the register reads zero over the frame past the
@@ -2261,12 +2323,24 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     std::vector<int> keys;
     keys.reserve(frames->size());
     for (const auto& frame : *frames) {
-        BitReader peek{frame};
-        const auto bsi = parse_bsi(peek, frame.size());
-        if (!bsi) {
-            return std::unexpected(bsi.error());
+        // §E2.3.1.2 assigns an AC-3 bit stream present in an E-AC-3 bit stream
+        // the identity (independent, 0) without it carrying either field -
+        // parse_bsi would read strmtyp out of crc1 and substreamid out of the
+        // rest of it, so the key is asserted here rather than parsed.
+        const auto frame_bsid = stream_bsid(frame);
+        if (!frame_bsid) {
+            return std::unexpected(frame_bsid.error());
         }
-        keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
+        if (*frame_bsid <= 8) {
+            keys.push_back(static_cast<int>(StreamType::kIndependent) * 8);
+        } else {
+            BitReader peek{frame};
+            const auto bsi = parse_bsi(peek, frame.size());
+            if (!bsi) {
+                return std::unexpected(bsi.error());
+            }
+            keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
+        }
 
         auto decoded = decode_substream(frame);
         if (!decoded) {
@@ -2321,8 +2395,21 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
-    out.object_metadata = lead.object_metadata;
-    out.object_audio = lead.object_audio;
+    // TS 103 420 §8.3.1's "whichever substream carries the EMDF container":
+    // this project's own AtmosEncoder always makes that the bed, but a
+    // dependent is equally legal and a legacy-core delivery has no choice -
+    // §E2.3.1.2's AC-3 core cannot carry object audio at all (addbsi and the
+    // block skip fields it rides in are Annex E syntax), so its objects are
+    // in a dependent. Taking the first substream that has any keeps the bed's
+    // own the winner wherever there is one, which is every stream this
+    // project produces, so nothing about those changes.
+    for (const auto& sub : substreams) {
+        if (sub.object_metadata) {
+            out.object_metadata = sub.object_metadata;
+            out.object_audio = sub.object_audio;
+            break;
+        }
+    }
     out.substream_count = static_cast<int>(substreams.size());
 
     // The PCM target for one program slot: the caller's span when

@@ -48,6 +48,26 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
         path, std::as_bytes(std::span{reinterpret_cast<const char*>(text.data()), text.size()}));
 }
 
+// §E2.3.1.2's legacy-core delivery - an AC-3 bed with Annex E dependent
+// substreams extending it - has no codec-config box defined for it in any of
+// these containers: 'dac3' cannot mention the dependents and 'dec3' would
+// have to call the AC-3 core Annex E syntax (ac3::io::build_codec_config_box
+// declines it for exactly that reason, returning an empty payload). Refused
+// here, where the message can name the file and point somewhere useful,
+// rather than written into a file whose header contradicts its own mdat.
+[[nodiscard]] bool reject_legacy_core(const ac3::io::ScannedStream& scanned,
+                                      std::string_view in_path, std::string_view container) {
+    if (scanned.kind != ac3::io::StreamKind::kAc3CoreEac3Extension) {
+        return false;
+    }
+    fmt::println(stderr,
+                "error: {} is an AC-3 core with E-AC-3 extension substreams (A/52 §E2.3.1.2); "
+                "{} has no codec-config box that can describe that arrangement. "
+                "`ac3cli decode` reads the stream itself.",
+                in_path, container);
+    return true;
+}
+
 // A minimal but complete DASH MPD document wrapped around
 // mp4::build_dash_adaptation_set()'s <AdaptationSet> snippet - the library
 // stops at the snippet (mp4.hpp/dash.hpp's own scope: single-representation
@@ -94,6 +114,9 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return 1;
+    }
+    if (reject_legacy_core(*scanned, in_path, "Matroska")) {
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -145,6 +168,9 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return 1;
+    }
+    if (reject_legacy_core(*scanned, in_path, "MP4")) {
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -199,6 +225,9 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return 1;
+    }
+    if (reject_legacy_core(*scanned, in_path, "fragmented MP4")) {
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -288,6 +317,9 @@ int run_ts(std::string_view in_path, std::string_view out_path) {
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
+        return 1;
+    }
+    if (reject_legacy_core(*scanned, in_path, "MPEG-TS")) {
         return 1;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;

@@ -96,19 +96,29 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   framing (syncword, `strmtyp`, `substreamid`, `frmsiz`), which shares nothing with the encoder
   and works at every layout, and by `ffprobe` wherever FFmpeg can be trusted to walk one. Bounded
   on every pull request in the ffmpeg-validate job, deeper in the nightly encoder-space job.
-
-
 - **Third-party decode interop gates** (roadmap `VX4`). The gold-reference gate now decodes all
   six committed external-baseline bitstreams with `ac3cli` on every leg and diffs each against
   FFmpeg's own decode, with per-fixture floors quoted beside their measured numbers; the one
   fixture FFmpeg cannot decode cleanly is scored against the source WAV instead. The same six streams seed
   the decoder fuzzers, so mutation starts from real third-party structure rather than only from
-  this project's own encoder output. A new nightly `Interop` workflow widens the corpus to seven
+  this project's own encoder output. A new nightly `Interop` workflow widens the corpus to eight
   SHA-256-pinned FFmpeg FATE samples — commercially mastered material exercising spectral
-  extension, 1536 kbit/s, a commentary track, dither, and the 3/1 acmod nothing in this tree can
-  encode — fetched at run time rather than committed. `compare_wav.py` gains `--max-diff-dbfs`
-  for near-silent material, where an SNR ratio cannot distinguish an inaudible disagreement from
-  a defect.
+  extension, 1536 kbit/s, a commentary track, dither, the 3/1 acmod nothing in this tree can
+  encode, and (see below) an A/52 Annex E §E2.3.1.2 legacy-core delivery — fetched at run time
+  rather than committed. `compare_wav.py` gains `--max-diff-dbfs` for near-silent material,
+  where an SNR ratio cannot distinguish an inaudible disagreement from a defect.
+- **AC-3 core plus E-AC-3 dependent decode support** (A/52 Annex E §E2.3.1.2). One of the
+  fetched FATE samples, `the_great_wall_7.1.eac3`, turned out not to be a gap in `decode` but a
+  real arrangement the standard sanctions: "If an AC-3 bit stream is present in the E-AC-3 bit
+  stream, then the AC-3 bit stream shall be processed as an independent substream assigned
+  substream ID 0." `ac3::io::scan` recognises the alternating AC-3-core/E-AC-3-dependent pattern
+  as one access unit (a new `StreamKind::kAc3CoreEac3Extension`), and `ac3cli decode` routes such
+  a stream to `Eac3Decoder`, which reads the core through a private `FrameDecoder` and combines
+  it with its dependent exactly as §E3.8.2 combines an ordinary independent-plus-dependent pair.
+  Verified against FFmpeg's own decode of the real FATE sample: 41.69 dB on the worst of the
+  eight rendered channels. No ISOBMFF codec-config box is defined for the arrangement, so
+  `dac3`/`dec3` muxing refuses it explicitly rather than emit a header that contradicts its own
+  `mdat`.
 - **A reference-mode end-to-end gate** (roadmap `VX10`). Since 0.9.0 flipped both transform
   defaults to the fast paths, every CI gate that touched a real stream ran in performance mode
   and the normative direct forms — the oracle each fast path is validated against — were covered
@@ -116,6 +126,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `TRANSFORM_MODE=reference` and the `linux-gcc` leg runs it a second time that way, and the
   codec matrix gains `fast-imdct=off` decode rows beside its existing `fast-mdct=off` encode
   row.
+- **`dither=off` / `nodither`** (`EncoderConfig::dither`, `eac3::FrameConfig::dither`,
+  `plan::Tools::dither`) pins §7.3.4 `dithflag` at 0 unconditionally, the deterministic behaviour
+  from before content-decided dither existed. Real dither values are decoder-defined - two
+  independent, spec-correct decoders given the same dithered stream diverge in the dithered bins
+  by design - so this exists for the one caller that needs bit-for-bit agreement between two
+  decodes of the same bitstream more than it needs dither's own perceptual benefit:
+  `tools/checks/verify_gold_reference.sh`, whose 55 dB decoder-agreement gate content-decided
+  dither would otherwise fail on legitimate, spec-permitted divergence rather than a real bug.
+  AC-3 has no `tools=` string, so `dither=off` is the CLI option surface `fast-mdct=off` already
+  established there; E-AC-3's `tools=` string takes the equivalent bare `nodither` token.
 
 ### Fixed
 
@@ -137,8 +157,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   8.0.1 fails frame 0 from cold (`exponent 25 is out-of-range`) and conceals it by repeating
   block 0 — the in-repo decoder scores 33.72 dB against the source, where FFmpeg's own decode
   scores 14.30 dB.
-
-
 - **`eac3-encode` aborted instead of reporting an error** when the bitrate was above what
   §E2.3.1.3's 11-bit `frmsiz` word count can signal at the chosen sample rate — every layout,
   reachable by typing two ordinary numbers, since both a nominal Table 5.18 bitrate and an Annex E
@@ -147,6 +165,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   refused it without naming a cause; any build with assertions live aborted. It now reports the
   limit, the word count needed and the way out. `atmos-encode` was never affected. Found by the
   new E-AC-3 encoder-space harness above.
+- **E-AC-3 `snroffststr` 0x2 read the wrong fields.** The per-channel fine-offset strategy's
+  parse consumed one value per coded channel and none for the coupling channel, so a conforming
+  stream using it would have desynced whenever coupling was on, and the shared channel would have
+  allocated against an offset nobody sent. §7.2.2.1.1's all-zero test now includes
+  `cplfsnroffst` too. Nothing emits this strategy - not this project's encoder, not FFmpeg's, not
+  Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
+  note at the code and roadmap `EQ2`.
 
 ### Changed
 
@@ -314,32 +339,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   in a ledger so older references still resolve. The DAMF reader (`B2`) moves to "Deliberately
   not on the list" (no public specification); an IAB (SMPTE ST 2098-2) reader replaces it now
   that SMPTE's catalogue is free.
-
-### Added
-
-- **`dither=off` / `nodither`** (`EncoderConfig::dither`, `eac3::FrameConfig::dither`,
-  `plan::Tools::dither`) pins §7.3.4 `dithflag` at 0 unconditionally, the deterministic behaviour
-  from before content-decided dither existed. Real dither values are decoder-defined - two
-  independent, spec-correct decoders given the same dithered stream diverge in the dithered bins
-  by design - so this exists for the one caller that needs bit-for-bit agreement between two
-  decodes of the same bitstream more than it needs dither's own perceptual benefit:
-  `tools/checks/verify_gold_reference.sh`, whose 55 dB decoder-agreement gate content-decided
-  dither would otherwise fail on legitimate, spec-permitted divergence rather than a real bug.
-  AC-3 has no `tools=` string, so `dither=off` is the CLI option surface `fast-mdct=off` already
-  established there; E-AC-3's `tools=` string takes the equivalent bare `nodither` token.
-
-### Fixed
-
-- **E-AC-3 `snroffststr` 0x2 read the wrong fields.** The per-channel fine-offset strategy's
-  parse consumed one value per coded channel and none for the coupling channel, so a conforming
-  stream using it would have desynced whenever coupling was on, and the shared channel would have
-  allocated against an offset nobody sent. §7.2.2.1.1's all-zero test now includes
-  `cplfsnroffst` too. Nothing emits this strategy - not this project's encoder, not FFmpeg's, not
-  Dolby's - so the correction is spec-derived rather than measured against a real stream; see the
-  note at the code and roadmap `EQ2`.
-
-
-
 
 ## [0.9.0-beta.1] - 2026-08-22
 

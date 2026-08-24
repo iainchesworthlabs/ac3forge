@@ -387,14 +387,18 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   leg, five against FFmpeg's own decode and the sixth against its source WAV (FFmpeg fails frame
   0 of DEE's stereo E-AC-3 stream and conceals it, so it is no oracle there), and the six seed
   the decoder fuzzers. The nightly `Interop`
-  workflow runs `tools/checks/verify_fate_interop.py` over seven SHA-256-pinned FATE samples,
+  workflow runs `tools/checks/verify_fate_interop.py` over eight SHA-256-pinned FATE samples,
   fetched rather than committed. Running the first step found **five** real Annex E decoder
   defects — the AHT-in-use flags, `cplfgaincod`/`cplfsnroffst`, the three band-structure default
   tables, the `first*` per-frame states, and the coupling-state reset — none of which any stream
-  this project can encode could reach. Two things are recorded rather than fixed: `wav_channel_
-  order` writes acmods 2/1 and 3/1 in bitstream order where FFmpeg uses WAV's FL/FR/FC/BC, and
-  `the_great_wall_7.1.eac3` is an AC-3 core plus an E-AC-3 dependent substream, an arrangement
-  `decode` does not model.
+  this project can encode could reach. `the_great_wall_7.1.eac3` turned out to be a real Annex E
+  arrangement rather than a gap: an AC-3 core standing in as independent substream 0 per
+  §E2.3.1.2, with an E-AC-3 dependent extending it to 7.1 per §E3.8.2 — `ac3::io::scan` and
+  `ac3cli decode` both recognise it now, verified to 41.69 dB against FFmpeg's own decode. Two
+  things are recorded rather than fixed: `wav_channel_order` writes acmods 2/1 and 3/1 in
+  bitstream order where FFmpeg uses WAV's FL/FR/FC/BC, and that same sample's OAMD payload does
+  not decode (`oba::parse_payload`'s pre-existing scope is this project's own encoder shape, not
+  Dolby's).
 - [ ] **VX5 (M)** — Dolby Reference Player, wider and in CI. The crosscheck loop runs
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
