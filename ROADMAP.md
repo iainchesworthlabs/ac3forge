@@ -281,17 +281,31 @@ machine-readable output and a single failure exit code. Users arrive with contai
   writes once, has no device-drop watchdog, no object add/reassign and no parallel AC-3 downmix
   leg (`docs/gui/live-session.md` records the gap); `obj`/`objm` in `src=`/`map=` parse but do
   nothing in `ac3cli`.
-- [ ] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` keys its weights on
-  `Acmod`, so `qc` measures the independent substream's bed only and never a dependent's height
-  or wide channels (the comment in `apps/cli/commands/analysis.cpp` says so). BS.1770-4's
-  positional rule and BS.1770-5's extended and object-based algorithms cover 7.1, 5.1.4 and
-  7.1.4; Apple measures Atmos loudness per BS.1770-4, Netflix via a 5.1 re-render. Meter the
-  `decode_access_unit` render with a `layout=rendered|bed` switch.
-- [ ] **IO11 (S)** — QC preset refresh. `qc.hpp` has three presets, citing A/85:2013 with the
-  2021 corrigendum and Netflix v1.6. ATSC published A/85:2026-07 (approved 2026-07-08, the first
-  full revision since 2013, with two new annexes on streaming services using metadata-based
-  codecs), EBU R 128 s4 (2023) covers cinematic content, and Apple Music Atmos, Netflix Atmos Home
-  Mix and Amazon each publish their own targets. Record version and date per preset.
+- [x] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` gained a second
+  constructor taking an `eac3::chanmap::Layout` and applying ITU-R BS.1770-5 (11/2023) Annex 3's
+  extended algorithm for advanced sound systems, whose Table 4 weights each channel by position
+  (1.41 between 60° and 120° azimuth below 30° elevation, 1.00 elsewhere, LFE excluded) instead
+  of by its slot in a Table 5.8 `acmod` — so `Lrs`/`Rrs`, `Vhl`/`Vhr`, `Lts`/`Rts`, `Cs` and
+  `Lw`/`Rw` all have a weight and 7.1, 5.1.2, 5.1.4 and 7.1.4 can be metered. `qc` takes
+  `layout=rendered|bed`; `bed` stays the default and now says out loud when a stream's dependent
+  substreams were left out. Annex 3's Table 5 gives a second check on every weight, and the
+  meter was cross-checked against ffmpeg's `ebur128` on 5.1. BS.1770-5 Annex 4's object-based
+  algorithm is not implemented — see IO12.
+- [x] **IO11 (S)** — QC preset refresh. `atsc-a85` re-cited to A/85:2026-07 (approved
+  2026-07-08), which restates −24 LKFS / ±2 dB / −2 dBTP unchanged; new `atsc-a85-streaming`
+  from that revision's Annex L.5 (a −23…−27 LKFS band) and `apple-music-atmos` from Apple's
+  Immersive Audio Source Profile (a −18 LKFS *ceiling*, which is why `QcPreset` gained a
+  band-vs-ceiling kind). Every preset now records its document version and date. EBU R 128 s4,
+  Netflix's Atmos Home Mix v2.3 and Amazon were checked and deliberately left out — the first
+  two are numerically identical to presets already present and the third has no primary source
+  that could be read; `qc.hpp` and `docs/cli/metadata-options.md` record why for each.
+- [ ] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 specifies a loudness
+  algorithm for object-based audio, and for a combination of channel- and object-based audio, in
+  which each object is weighted by its own OAMD position rather than by a fixed speaker slot.
+  IO10 implemented Annex 3 (channel-based, advanced sound systems) and left this half out.
+  `oba::DecodedProgram` already carries per-object position, and `DecodedAccessUnit` already
+  carries `object_audio` beside the rendered bed, so the inputs exist; what is missing is the
+  Annex 4 weighting itself and a `qc` mode that meters bed and objects together.
 
 ## IM. Immersive and other formats
 

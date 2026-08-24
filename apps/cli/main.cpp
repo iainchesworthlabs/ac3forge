@@ -251,10 +251,13 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all]",
+    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate",
-     Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout);
+     }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
     {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
@@ -463,6 +466,10 @@ void print_usage() {
     fmt::println("       or preset=all checks every one; omitting preset= just measures and");
     fmt::println("       reports, with no pass/fail verdict. Exit code is 0 only when every");
     fmt::println("       requested gate passes (or none was requested and decode succeeded).");
+    fmt::println("       layout=rendered meters the whole assembled program - a dependent");
+    fmt::println("       substream's height, wide and rear channels included - through");
+    fmt::println("       BS.1770-5 Annex 3's extended algorithm, instead of the default");
+    fmt::println("       layout=bed's Table 5.8 bed through Annex 1's basic one.");
 }
 
 }  // namespace
