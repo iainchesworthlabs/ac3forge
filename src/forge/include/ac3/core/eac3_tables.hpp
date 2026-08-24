@@ -6,10 +6,12 @@
 #include <expected>
 #include <iterator>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "ac3/core/exponents.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
 
@@ -96,6 +98,59 @@ static_assert([] {
     for (const auto& row : kFrameExpStrategies) {
         if (row[0] == 0) {
             return false;
+        }
+    }
+    return true;
+}());
+
+// The inverse: the code whose row makes exactly `fresh` fresh, where
+// fresh[blk] says block blk carries a new exponent set (block 0 always does,
+// and its entry is not read).
+//
+// Table E2.10 turns out to be a COMPLETE enumeration. Its 32 rows are exactly
+// the 32 ways five later blocks can each either start a new exponent set or
+// reuse the running one, and every row's per-run strategy is §8.2.8's own
+// span rule - so the code is just the fresh-block set read as a bit pattern,
+// block 1 in the most significant position. The static_assert below is what
+// establishes that rather than the reader having to take it on trust; it is
+// also what makes an AC-3-style run plan expressible as a frame code with
+// nothing lost and no strategy left to choose.
+[[nodiscard]] constexpr int frame_exp_strategy_code(std::span<const bool> fresh) {
+    int code = 0;
+    for (int blk = 1; blk < kBlocksPerFrame; ++blk) {
+        if (fresh[static_cast<std::size_t>(blk)]) {
+            code |= 1 << (kBlocksPerFrame - 1 - blk);
+        }
+    }
+    return code;
+}
+
+// Both halves of the claim above, over all 32 rows: the bit pattern of a
+// row's fresh blocks IS its code, and each run's strategy is the one
+// §8.2.8 gives that run's length.
+static_assert([] {
+    for (int code = 0; code < 32; ++code) {
+        const auto& row = kFrameExpStrategies[static_cast<std::size_t>(code)];
+        std::array<bool, kBlocksPerFrame> fresh{};
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            fresh[static_cast<std::size_t>(blk)] = row[static_cast<std::size_t>(blk)] != 0;
+        }
+        if (frame_exp_strategy_code(fresh) != code) {
+            return false;
+        }
+        for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+            if (!fresh[static_cast<std::size_t>(blk)]) {
+                continue;
+            }
+            int span = 1;
+            while (blk + span < kBlocksPerFrame &&
+                   !fresh[static_cast<std::size_t>(blk + span)]) {
+                ++span;
+            }
+            if (static_cast<ExpStrategy>(row[static_cast<std::size_t>(blk)]) !=
+                strategy_for_span(span)) {
+                return false;
+            }
         }
     }
     return true;

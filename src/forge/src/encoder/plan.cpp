@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <iterator>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -578,6 +579,16 @@ std::vector<std::size_t> wav_order(std::span<const eac3::chanmap::Location> loca
     return out;
 }
 
+std::vector<std::size_t> monitor_order(std::span<const eac3::chanmap::Location> locations,
+                                       std::size_t channel_count) {
+    if (locations.empty()) {
+        std::vector<std::size_t> identity(channel_count);
+        std::iota(identity.begin(), identity.end(), std::size_t{0});
+        return identity;
+    }
+    return wav_order(locations);
+}
+
 // --- tools ------------------------------------------------------------------
 
 namespace {
@@ -657,6 +668,11 @@ bool parse_tools(std::string_view text, Tools& out) {
             out.fast_mdct = false;  // the direct §8.2.3.2 reference form
         } else if (token == "nodither") {
             out.dither = false;  // dithflag pinned at 0, not content-decided
+        } else if (token.starts_with("numblkscod:")) {
+            out.numblkscod = parse_index(token.substr(11), 3);
+            if (out.numblkscod < 0) {
+                return false;
+            }
         } else if (token == "all") {
             out.coupling = true;
             out.spx = true;
@@ -691,6 +707,9 @@ std::string format_tools(const Tools& tools) {
         if (tools.gaqmod >= 0) {
             add("aht:" + std::to_string(tools.gaqmod));
         }
+        if (tools.numblkscod != 3) {
+            add("numblkscod:" + std::to_string(tools.numblkscod));
+        }
         if (!tools.fast_mdct) {
             add("nofastmdct");
         }
@@ -721,7 +740,12 @@ std::string format_tools(const Tools& tools) {
     }
     // Like noatten above, only the non-default state is worth a token: the
     // fast MDCT is what every stream does now, so formatting it would put
-    // "fastmdct" on every command line while saying nothing.
+    // "fastmdct" on every command line while saying nothing. Same reasoning
+    // for numblkscod's default of 3 (six blocks, this encoder's original and
+    // still ordinary profile).
+    if (tools.numblkscod != 3) {
+        add("numblkscod:" + std::to_string(tools.numblkscod));
+    }
     if (!tools.fast_mdct) {
         add("nofastmdct");
     }
@@ -1019,6 +1043,7 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.transient_prenoise = tools.transient_prenoise;
     config.fast_mdct = tools.fast_mdct;
     config.dither = tools.dither;
+    config.numblkscod = tools.numblkscod;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its

@@ -18,6 +18,7 @@
 #include "ac3/export.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
 
 // The in-repo AC-3 / E-AC-3 decoder — the validation pyramid's strongest
@@ -138,8 +139,16 @@ struct DecoderConfig {
     // the encoder's - one branch per block. Filled INCREMENTALLY, so a frame
     // the decoder ends up refusing still leaves behind everything it read
     // before the refusal, which is the case the comparison is most useful in.
-    // AC-3 only (FrameDecoder); Eac3Decoder does not write one.
+    // AC-3 only (FrameDecoder) - see eac3_trace below for Eac3Decoder's own.
     verify::FrameTrace* trace = nullptr;
+    // The Annex E counterpart (ac3/verify/eac3_mirror.hpp), and a whole
+    // ACCESS UNIT rather than one frame: decode_substream appends one
+    // substream's view per call, starting a fresh unit at each independent
+    // substream, so a caller stepping through syncframes by hand and one
+    // calling decode_access_unit both end up with the same accumulated
+    // trace. Filled incrementally and null by default, exactly as `trace`
+    // above.
+    verify::Eac3AccessUnitTrace* eac3_trace = nullptr;
     // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
     // Which coding tools each block used and what exponent strategy each
     // stream carried, recorded on the way past. Null by default, at the same

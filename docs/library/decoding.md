@@ -29,6 +29,70 @@ following it.
 Both formats put `bsid` at bit 40 deliberately, so a reader can tell them apart before
 committing to a layout. `ac3::stream_bsid` exposes that on its own.
 
+`ScannedStream` also carries the raw syntax values a container writer needs but cannot
+re-derive: `bsid`, `bsmod` (with `bsmod_present`, since Annex E carries it only inside
+`infomdate`), `bit_rate_code`, `dsurmod`, `mix_metadata`, `oba_complexity_index`, and — for
+E-AC-3 — `independent_substreams` plus a `SubstreamService` for substreams 1–3. Those feed
+`ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
+both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
+`independent_substreams` is an *observation* of which substream ids appear; it deliberately does
+not change how `scan` groups access units, which stays one-programme (ROADMAP.md's DC5).
+
+## Object-layer strip
+
+`ac3/io/object_strip.hpp`. The inverse of the object encoder, at the bitstream level: it takes
+the EMDF/JOC object layer out of a Dolby Digital Plus stream without decoding anything.
+
+```cpp
+const auto stripped = ac3::io::strip_objects(joc_stream);
+if (!stripped) {
+    // describe(stripped.error()) says why
+}
+// stripped->bytes is a plain DD+ 5.1 stream; the bed decodes identically.
+```
+
+A DD+ JOC stream is an ordinary 5.1 E-AC-3 stream that happens to carry an EMDF container —
+OAMD positions plus JOC side information — inside the per-block skip fields the standard already
+requires a decoder to step over. The bed underneath is the **full mix**, every object already
+panned into it, which is exactly why an Atmos-unaware decoder can play the stream at all. So the
+5.1 rendition of a JOC stream does not need re-encoding; it needs the container taken out:
+
+- every exponent and mantissa is copied bit for bit, so the result decodes to sample-identical
+  PCM (the tests assert exactly that, and FFmpeg's own decode of both streams agrees);
+- the skip fields go entirely, along with TS 103 420 §8.3.1's `addbsi` object-audio marker, so
+  nothing downstream — a `dec3` box's Atmos extension, an HLS `CHANNELS="<N>/JOC"` attribute —
+  still claims an object layer;
+- `frmsiz` is re-derived for the shorter frame, the auxdata padding is re-laid, and `crc2` is
+  re-stamped. Unlike an AC-3 syncframe an E-AC-3 one has no `crc1` (Annex E dropped it, leaving
+  `syncinfo` as the syncword alone), and `crc2` is the frame's last field covering everything
+  before it, so re-stamping is a plain forward recompute.
+
+A rewritten frame is sized to the content it actually holds — §E2.3.1.3 makes `frmsiz` an
+arbitrary per-frame word count, unlike AC-3's index into Table 5.18. So the output is smaller
+than the input, which is the point for a delivery rendition, but a constant-rate input does not
+stay constant-rate: alongside the container, whatever auxdata padding the encoder used to hit
+its target rate goes too. A frame with nothing to remove is copied byte for byte.
+
+The container is **removed, not emptied**: an EMDF container with no payloads would still signal
+an object layer for a stream that no longer has one, and this project's rule is that a stream
+carries objects or omits the container entirely (see [Atmos & JOC](../concepts/atmos-joc.md)).
+
+Frames with no object layer pass through byte for byte — including frames of a bitstream shape
+this build cannot rewrite, since a frame with neither the `addbsi` marker nor a skip field has
+nothing to strip whatever its shape. A frame that *does* carry an object layer in a shape the
+frame walker (`ac3/emdf/frame_layout.hpp`) does not map is refused with `kUnsupportedFrame`
+rather than passed through, because passing it through would hand back a stream still carrying
+the objects this function promises to remove. An AC-3 stream is refused outright
+(`kNotEac3`): Annex E is where substreams and skip fields live.
+
+This is the inverse of `ac3::signing`'s in-place EMDF rewrite and, like it, needs no key —
+taking a container out is not authenticating one. Both share one bit-accurate frame walk
+(`ac3::emdf::walk_frame`) so the two cannot drift apart.
+
+`ac3cli strip-objects in.ec3 out.ec3` is the command-line front end, and `ac3cli fmp4 …
+fallback-51` uses it to write the paired 5.1 HLS rendition Apple's authoring requirements ask
+for beside an Atmos one.
+
 ## Decoding
 
 `ac3/decoder/decoder.hpp`. Two classes, one per generation.
@@ -64,6 +128,8 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
+| `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `ac3::verify` to diff against the encoder's own model. See below. |
+| `eac3_trace` | `nullptr` | The E-AC-3 counterpart (`Eac3Decoder`), one whole access unit rather than one frame. See below. |
 
 The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3), enhanced coupling
 (§E3.5), spectral extension (§E3.6), the adaptive hybrid transform with GAQ (§E3.4), and transient
@@ -124,6 +190,43 @@ the overlap-add state, so a long stream's substituted noise does not repeat ever
 `fscod2` (the Annex E half sample rates — 24, 22.05, 16 kHz) is decoded like any other rate: the
 reduced rate reuses the same bit-allocation tables as its double-rate parent (§E2.3.1.4), so
 nothing else about decoding changes.
+
+## The mirror self-check
+
+`ac3/verify/mirror.hpp` and `ac3/verify/eac3_mirror.hpp`. Both decoders can record what they
+derived from the wire, so it can be diffed against the encoder's own model of the same frame —
+per block, per coded stream, and for E-AC-3 per substream. It exists because a desync is
+invisible at the field that causes it: every mantissa's *width* comes out of that model, so the
+moment the two sides disagree each goes on reading confidently at its own idea of where it is,
+and the failure surfaces some blocks later as whatever §7.10.2 guard the misaligned bits happen
+to trip first.
+
+```cpp
+// The driver most callers want: a drop-in for eac3::AccessUnitEncoder that also
+// decodes every access unit it emits and diffs the two models.
+ac3::verify::Eac3MirrorEncoder encoder{config};
+const auto checked = encoder.encode_access_unit(channels);
+if (checked && !checked->ok()) {
+    std::puts(encoder.last_report().c_str());
+    // "frame 12 substream 1 block 3 channel 1: bap[87] encoder=5 decoder=4"
+}
+```
+
+`ac3::verify::MirrorEncoder` is the AC-3 sibling, over `FrameEncoder`. What each compares is in
+its own header; the E-AC-3 side adds what Annex E adds — per-substream and per-block bit offsets
+across an independent substream and its dependents, AHT gain mode and per-bin gains, and the
+coupling, enhanced-coupling and spectral-extension coordinates. `ac3cli eac3-encode … verify`
+is the same check over a whole file.
+
+Both trace pointers are null by default and cost one branch per block when they are: attaching
+one never changes what the encoder emits, which is what makes a checked build the same encoder
+as the shipped one. The decoder fills its side **incrementally**, so a frame it ends up refusing
+still leaves behind everything it read before the refusal — the case the comparison is most
+useful in, since the mismatch typically names an earlier block than the refusal does.
+
+Transient pre-noise processing's hold-back (above) is invisible to the check: the trace is
+written while a frame is *parsed*, not when its audio is released, so a held-back frame is
+compared in the call that decoded it like any other.
 
 ## Recovering from a damaged frame
 

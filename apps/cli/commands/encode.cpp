@@ -19,11 +19,13 @@
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
+#include "ac3/verify/eac3_selfcheck.hpp"
 #include "../multi_source.hpp"
 
 namespace ac3cli::commands {
@@ -60,7 +62,9 @@ bool vbr_or_error(std::string_view text, std::optional<ac3::eac3::VbrConfig>& ou
 // encode_access_unit() call returns an error whose text ("the encoder cannot
 // express this configuration") names no cause. Zero is unambiguous - a built
 // encoder always codes at least the independent substream - so it is checked
-// here, before a frame is attempted, and diagnosed.
+// here, before a frame is attempted, and diagnosed. Takes the count rather
+// than the encoder itself so the same check covers Eac3Units below, whose
+// verify=true path wraps a MirrorEncoder instead of a bare AccessUnitEncoder.
 //
 // The reachable cause is the rate/sample-rate pair. §E2.3.1.3's frmsiz is an
 // 11-bit word count, so a syncframe can never exceed kMaxFrameWords words
@@ -73,9 +77,9 @@ bool vbr_or_error(std::string_view text, std::optional<ac3::eac3::VbrConfig>& ou
 // through to encode_access_unit's causeless message while any build with
 // assertions live aborted outright. atmos-encode, which never took this path,
 // refused cleanly throughout. Found by tools/ci/fuzz_eac3_encoder_space.py.
-bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint32_t bitrate,
-                          ac3::SampleRate rate, bool vbr) {
-    if (encoder.channel_count() != 0) {
+bool eac3_config_accepted(int channel_count, std::uint32_t bitrate, ac3::SampleRate rate,
+                          bool vbr) {
+    if (channel_count != 0) {
         return true;
     }
     // VBR sizes each syncframe from the content, so frame_words() does not
@@ -84,16 +88,81 @@ bool eac3_config_accepted(const ac3::eac3::AccessUnitEncoder& encoder, std::uint
         const auto words = ac3::eac3::frame_words(rate, bitrate);
         if (words > ac3::eac3::kMaxFrameWords) {
             fmt::println(stderr,
-                        "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
-                        "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
-                        "bitrate or raise the sample rate",
-                        bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
+                         "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
+                         "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
+                         "bitrate or raise the sample rate",
+                         bitrate, ac3::sample_rate_hz(rate), words, ac3::eac3::kMaxFrameWords);
             return false;
         }
     }
     fmt::println(stderr, "error: the encoder cannot express this configuration");
     return false;
 }
+
+// eac3-encode's access-unit source: the plain encoder, or - when the operator
+// passed `verify` - ac3::verify's mirror self-check wrapped around the same
+// encoder, which decodes every access unit it emits and diffs the decoder's
+// model against the encoder's own (ac3/verify/eac3_mirror.hpp).
+//
+// One type for both so the two encode loops below stay one loop each. The
+// mirror is non-movable (its configs hold pointers into its own trace
+// members), hence the unique_ptr rather than an optional.
+class Eac3Units {
+   public:
+    Eac3Units(const ac3::eac3::AccessUnitConfig& config, bool verify)
+        : plain_(verify ? nullptr : std::make_unique<ac3::eac3::AccessUnitEncoder>(config)),
+          checked_(verify ? std::make_unique<ac3::verify::Eac3MirrorEncoder>(config)
+                          : nullptr) {}
+
+    [[nodiscard]] int channel_count() const {
+        return plain_ ? plain_->channel_count() : checked_->channel_count();
+    }
+
+    // One access unit, or std::nullopt with the error already printed. A
+    // self-check disagreement refuses the run rather than warning about it:
+    // the two sides having parted company means the stream this command is
+    // writing is not the stream it thinks it is.
+    [[nodiscard]] std::optional<std::vector<std::byte>> next(
+        std::span<const std::span<const float>> channels) {
+        if (plain_) {
+            auto unit = plain_->encode_access_unit(channels);
+            if (!unit) {
+                fmt::println(stderr, "error: the encoder cannot express this configuration");
+                return std::nullopt;
+            }
+            return std::move(unit->bytes);
+        }
+        auto unit = checked_->encode_access_unit(channels);
+        if (!unit) {
+            fmt::println(stderr, "error: the encoder cannot express this configuration");
+            return std::nullopt;
+        }
+        if (!unit->ok()) {
+            fmt::println(stderr,
+                         "error: verify: the encoder and decoder disagree about access unit {}",
+                         checked_->frames_encoded() - 1);
+            const auto report = checked_->last_report();
+            if (!report.empty()) {
+                fmt::println(stderr, "{}", report);
+            }
+            if (unit->decode_error) {
+                fmt::println(stderr, "  the decoder also refused a substream outright ({})",
+                             ac3::describe(*unit->decode_error));
+            }
+            return std::nullopt;
+        }
+        return std::move(unit->unit.bytes);
+    }
+
+    [[nodiscard]] std::uint64_t checked_units() const {
+        return checked_ ? checked_->frames_encoded() : 0;
+    }
+    [[nodiscard]] bool verifying() const { return checked_ != nullptr; }
+
+   private:
+    std::unique_ptr<ac3::eac3::AccessUnitEncoder> plain_;
+    std::unique_ptr<ac3::verify::Eac3MirrorEncoder> checked_;
+};
 
 }  // namespace
 
@@ -148,10 +217,14 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     const std::size_t total = sources->total_frames;
     const auto source_channels = static_cast<std::size_t>(routing->source_channels);
+    // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
+    // (the "numblkscod:N" tools token) to something below its default 3.
+    const auto samples_per_frame = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * ac3::kSamplesPerBlock);
 
     std::vector<std::vector<float>> source(source_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+                                           std::vector<float>(samples_per_frame));
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(samples_per_frame));
     std::vector<std::span<const float>> in(source_channels);
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -164,11 +237,11 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     // and the real encode loop after it, so the two can never render this
     // programme two different ways.
     auto route_frame = [&](std::size_t start) {
-        gather_frame(*sources, start, source);
+        gather_frame(*sources, start, source, static_cast<int>(samples_per_frame));
         for (std::size_t c = 0; c < source_channels; ++c) {
             in[c] = source[c];
         }
-        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+        plan::render(*routing, in, out, samples_per_frame);
     };
 
     const auto cp = plan::resolve(p);
@@ -206,8 +279,8 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
             whole.emplace(*sr, cp.bed_acmod, cp.bed_lfe);
         }
         Progress progress;
-        progress.start("measuring", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-        for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+        progress.start("measuring", (total + samples_per_frame - 1) / samples_per_frame);
+        for (std::size_t start = 0; start < total; start += samples_per_frame) {
             route_frame(start);
             if (whole) {
                 whole->push(views);
@@ -220,7 +293,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                 const std::array<std::span<const float>, 1> v{views[1]};
                 ch2->push(v);
             }
-            progress.tick(start / ac3::kSamplesPerFrame + 1);
+            progress.tick(start / samples_per_frame + 1);
         }
         progress.finish();
         if (want_dialnorm) {
@@ -245,8 +318,8 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         }
     }
 
-    ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
-    if (!eac3_config_accepted(encoder, bitrate, *sr, p.vbr.has_value())) {
+    Eac3Units encoder{plan::eac3_config(p), meta.verify};
+    if (!eac3_config_accepted(encoder.channel_count(), bitrate, *sr, p.vbr.has_value())) {
         return kExitUsage;
     }
     assert(static_cast<int>(nchans) == encoder.channel_count());
@@ -258,20 +331,21 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         return kExitOutput;
     }
     Progress progress;
-    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    progress.start("encoding", (total + samples_per_frame - 1) / samples_per_frame);
+    for (std::size_t start = 0; start < total; start += samples_per_frame) {
         route_frame(start);
-        auto unit = encoder.encode_access_unit(views);
+        auto unit = encoder.next(views);
         if (!unit) {
-            fmt::println(stderr, "error: the encoder cannot express this configuration");
+            // Eac3Units::next() already printed the specific error - a self-
+            // check disagreement's report, or the encoder's own refusal.
             out_sink.abort();
             return kExitUsage;
         }
-        if (!out_sink.push(std::move(unit->bytes))) {
+        if (!out_sink.push(std::move(*unit))) {
             out_sink.abort();
             return kExitOutput;
         }
-        progress.tick(start / ac3::kSamplesPerFrame + 1);
+        progress.tick(start / samples_per_frame + 1);
     }
     progress.finish();
     if (!out_sink.close()) {
@@ -286,7 +360,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                                       : static_cast<double>(out_sink.total_bytes()) /
                                             static_cast<double>(out_sink.frames());
         const double mean_kbps = mean_bytes * 8.0 * static_cast<double>(sources->sample_rate) /
-                                 (1000.0 * ac3::kSamplesPerFrame);
+                                 (1000.0 * static_cast<double>(samples_per_frame));
         status_println(status,
                        "encoded {} E-AC-3 access units (vbr {}, {} Hz, {}, {} coded channels, "
                        "tools: {}) to {}",
@@ -301,6 +375,12 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                        "tools: {}) to {}",
                        out_sink.frames(), bitrate, sources->sample_rate, label, nchans,
                        plan::format_tools(p.tools), out_path);
+    }
+    if (encoder.verifying()) {
+        // Only ever printed on success: the check refuses the run at the
+        // first disagreement, so reaching here means every unit agreed.
+        status_println(status, "  verify: encoder and decoder agree on all {} access units",
+                       encoder.checked_units());
     }
     print_routing(p, *routing, label, status);
     return kExitOk;
@@ -420,12 +500,16 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         return kExitUsage;
     }
 
-    ac3::eac3::AccessUnitEncoder encoder{plan::eac3_config(p)};
-    if (!eac3_config_accepted(encoder, bitrate, *sr, p.vbr.has_value())) {
+    Eac3Units encoder{plan::eac3_config(p), meta.verify};
+    if (!eac3_config_accepted(encoder.channel_count(), bitrate, *sr, p.vbr.has_value())) {
         return kExitUsage;
     }
     const auto nchans = static_cast<std::size_t>(routing->coded_channels);
     assert(static_cast<int>(nchans) == encoder.channel_count());
+    // Usually kSamplesPerFrame - shorter when the caller pinned numblkscod
+    // (the "numblkscod:N" tools token) to something below its default 3.
+    const auto samples_per_frame = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(p.tools.numblkscod) * ac3::kSamplesPerBlock);
     // The classic path has exactly one source, always index 0 in offset='s
     // numbering - see LoadedSources::offset_samples for the multi-source
     // equivalent of this same leading silence.
@@ -434,9 +518,8 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         streaming ? static_cast<std::size_t>(stream_in.frame_count()) : wav->frame_count();
     const std::size_t total = offset + frame_count;
 
-    std::vector<std::vector<float>> source(src_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> source(src_channels, std::vector<float>(samples_per_frame));
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(samples_per_frame));
     std::vector<std::span<const float>> in(source.size());
     std::vector<std::span<float>> out(nchans);
     std::vector<std::span<const float>> views(nchans);
@@ -458,8 +541,8 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     std::vector<std::span<float>> stream_dst(src_channels);
     std::size_t consumed = 0;
     Progress progress;
-    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    progress.start("encoding", (total + samples_per_frame - 1) / samples_per_frame);
+    for (std::size_t start = 0; start < total; start += samples_per_frame) {
         // Hold the last real sample past end-of-file rather than dropping to
         // hard zero - see run_encode's identical padding for why: a sudden
         // drop to silence is itself a transient the encoder would (correctly)
@@ -468,12 +551,11 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         // samples, offset= silence is real silence, not padding.
         if (streaming) {
             const std::size_t lead =
-                start < offset ? std::min<std::size_t>(offset - start, ac3::kSamplesPerFrame)
-                               : 0;
+                start < offset ? std::min<std::size_t>(offset - start, samples_per_frame) : 0;
             std::size_t want = 0;
-            if (lead < ac3::kSamplesPerFrame) {
+            if (lead < samples_per_frame) {
                 const std::size_t remaining = frame_count - std::min(frame_count, consumed);
-                want = std::min<std::size_t>(ac3::kSamplesPerFrame - lead, remaining);
+                want = std::min<std::size_t>(samples_per_frame - lead, remaining);
             }
             for (std::size_t c = 0; c < src_channels; ++c) {
                 std::fill_n(source[c].begin(), lead, 0.0f);
@@ -501,31 +583,31 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         } else {
             for (std::size_t c = 0; c < source.size(); ++c) {
                 const float hold = frame_count > 0 ? wav->channels[c][frame_count - 1] : 0.0f;
-                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-                    const std::size_t at = start + static_cast<std::size_t>(i);
+                for (std::size_t i = 0; i < samples_per_frame; ++i) {
+                    const std::size_t at = start + i;
                     if (at < offset) {
-                        source[c][static_cast<std::size_t>(i)] = 0.0f;
+                        source[c][i] = 0.0f;
                         continue;
                     }
                     const std::size_t shifted = at - offset;
-                    source[c][static_cast<std::size_t>(i)] =
-                        shifted < frame_count ? wav->channels[c][shifted] : hold;
+                    source[c][i] = shifted < frame_count ? wav->channels[c][shifted] : hold;
                 }
                 in[c] = source[c];
             }
         }
-        plan::render(*routing, in, out, ac3::kSamplesPerFrame);
-        auto unit = encoder.encode_access_unit(views);
+        plan::render(*routing, in, out, samples_per_frame);
+        auto unit = encoder.next(views);
         if (!unit) {
-            fmt::println(stderr, "error: the encoder cannot express this configuration");
+            // Eac3Units::next() already printed the specific error - a self-
+            // check disagreement's report, or the encoder's own refusal.
             out_sink.abort();
             return kExitUsage;
         }
-        if (!out_sink.push(unit->bytes)) {
+        if (!out_sink.push(std::move(*unit))) {
             out_sink.abort();
             return kExitOutput;
         }
-        progress.tick(start / ac3::kSamplesPerFrame + 1);
+        progress.tick(start / samples_per_frame + 1);
     }
     progress.finish();
     if (!out_sink.close()) {
@@ -541,7 +623,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                                       : static_cast<double>(out_sink.total_bytes()) /
                                             static_cast<double>(out_sink.frames());
         const double mean_kbps = mean_bytes * 8.0 * static_cast<double>(src_rate) /
-                                 (1000.0 * ac3::kSamplesPerFrame);
+                                 (1000.0 * static_cast<double>(samples_per_frame));
         status_println(status,
                        "encoded {} E-AC-3 access units (vbr {}, {} Hz, {}, {} coded channels, "
                        "tools: {}) to {}",
@@ -556,6 +638,12 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                        "tools: {}) to {}",
                        out_sink.frames(), bitrate, src_rate, label, nchans,
                        plan::format_tools(p.tools), out_path);
+    }
+    if (encoder.verifying()) {
+        // Only ever printed on success: the check refuses the run at the
+        // first disagreement, so reaching here means every unit agreed.
+        status_println(status, "  verify: encoder and decoder agree on all {} access units",
+                       encoder.checked_units());
     }
     print_routing(p, *routing, label, status);
     return kExitOk;

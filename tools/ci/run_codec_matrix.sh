@@ -66,6 +66,14 @@ command -v ffmpeg >/dev/null 2>&1 || {
     echo "ffmpeg not found on PATH; it is required as the independent oracle this script checks against" >&2
     exit 1
 }
+# ffprobe ships alongside ffmpeg, but it is a separate binary and some distro
+# packagings split it out - and run_atmos_profile_check below is the only
+# oracle for the TS 103 420 object marker, so a missing ffprobe would silently
+# drop that check rather than fail.
+command -v ffprobe >/dev/null 2>&1 || {
+    echo "ffprobe not found on PATH; it reports the Atmos object marker this script asserts on" >&2
+    exit 1
+}
 
 count=0
 run() {
@@ -307,10 +315,79 @@ for layout in 71 512 714; do
     fi
 done
 
+# --- E-AC-3 encoder/decoder mirror self-check (roadmap VX2) -----------------
+# `verify` decodes every access unit as it is encoded and diffs the decoder's
+# model against the encoder's own - per-substream, per-block bit offsets,
+# exponents, bit allocation, delta, AHT gains and the coupling/spectral-
+# extension coordinates - refusing the run at the first disagreement. It is
+# the only check here that can see a defect BOTH sides share, which is the gap
+# docs/verification.md names for ecpl, tpn, fscod2 and 7.1.4: those have no
+# external oracle at all, so a round trip and an SNR gate agree with
+# themselves however the spec was read.
+#
+# Real programme material, not bootstrap_51.wav: a stationary tone puts
+# near-identical exponents in every block, and the whole reason the AC-3 half
+# of this facility exists is a defect only real material reaches (see the
+# "AC-3: real programme material" note above). One second of it is ~31 access
+# units - well past the frame-0 false pass the same history records, and short
+# enough to run the full tool matrix twice over under the sanitizers.
+ffmpeg -v error -y -i "$FIXTURES/reference_51.wav" -t 1 mirror_51.wav
+for tools in none cpl spx aht "spx+aht" "cpl:4+spx:5" "cpl+ecpl" tpn "cpl+ecpl+tpn" all auto "all+nofastmdct"; do
+    safe=$(echo "$tools" | tr ':+' '__')
+    run eac3-encode mirror_51.wav "mirror_${safe}.ec3" 192 "$tools" 51 verify
+done
+# Every layout, with the tools and without. 7.1.4 is the one FFmpeg cannot
+# read at all, so its two dependent substreams' own traces are compared here
+# and nowhere else.
+for layout in mono stereo 51 71 512 514 714; do
+    for tools in none all; do
+        run eac3-encode mirror_51.wav "mirror_${layout}_${tools}.ec3" 256 "$tools" "$layout" verify
+    done
+done
+# 1+1 needs its own source: its routing is a strict identity on exactly two
+# source channels, never a fold-down, so a six-channel file is refused there
+# rather than downmixed.
+ffmpeg -v error -y -i "$FIXTURES/reference_stereo.wav" -t 1 mirror_stereo.wav
+run eac3-encode mirror_stereo.wav mirror_11.ec3 192 none 1+1 verify dialnorm2=24
+# fscod2, the one case Dolby's own Reference Player refuses alongside FFmpeg.
+# Resampled rather than merely re-labelled, so the encoder sees material with
+# the bandwidth the rate implies.
+for rate in 24000 22050 16000; do
+    ffmpeg -v error -y -i "$FIXTURES/reference_51.wav" -t 1 -ar "$rate" "mirror_${rate}.wav"
+    for tools in none all; do
+        run eac3-encode "mirror_${rate}.wav" "mirror_${rate}_${tools}.ec3" 96 "$tools" 51 verify
+    done
+done
+# VBR sizes the frame from the content rather than the other way round, so the
+# side-info measurement and the allocation the trace compares are reached by a
+# different path than any CBR run above.
+run eac3-encode mirror_51.wav mirror_vbr.ec3 192 all 51 "q:0.6,min:96,max:256" verify
+
 run eac3-encode bootstrap_51.wav eac3_meta.ec3 192 none 51 \
     mixmeta lfemix=10 dmixmod=ltrt drc=music-light dialnorm=auto
 run decode eac3_meta.ec3 eac3_meta.wav
 run_ffmpeg_check eac3_meta.ec3
+
+# --- E-AC-3 short syncframes (roadmap EQ11): numblkscod 0/1/2, each a real
+# stream through both decoders for the first time - the decoder's own
+# numblkscod != 3 path existed only because it is spec-derived, never because
+# a real stream had driven it. "cpl+numblkscod:1" covers an explicit tool
+# stacked on a short frame - AHT is the one tool a short syncframe cannot
+# carry at all (Table E1.3 has no ahte bit below six blocks; validate()
+# refuses aht/auto_tools together with numblkscod != 3, since auto may turn
+# AHT on), which is why this row pins coupling explicitly rather than asking
+# for "auto". numblkscod:0 also runs at 71 so a dependent substream (§E3.8.2's
+# overwrite, and the multi-substream access-unit assembly) is exercised at the
+# shortest frame too, not just the bed alone. ------------------------------
+for tools in "numblkscod:0" "numblkscod:1" "numblkscod:2" "cpl+numblkscod:1"; do
+    safe=$(echo "$tools" | tr ':+' '__')
+    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
+    run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
+    run_ffmpeg_check "eac3enc_${safe}.ec3"
+done
+run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 256 "numblkscod:0" 71
+run decode eac3_numblkscod0_71.ec3 eac3_numblkscod0_71_decoded.wav
+run_ffmpeg_check eac3_numblkscod0_71.ec3
 
 # --- E-AC-3 VBR: quality-targeted rate control (eac3-encode's [vbr] arg,
 # default "off" - everything above this point never touched it) -------------
@@ -363,14 +440,51 @@ run_ffmpeg_check eac3enc_11_twofile.ec3
 # container, never a dependent one), so FFmpeg reads all of these - it is how
 # README.md's "FFmpeg reports Dolby Digital Plus + Dolby Atmos" claim is
 # checked at all.
+#
+# The two container modes need more than run_ffmpeg_check to tell apart. This
+# is CBR and the bed is the same programme either way, so `objects` and
+# `bed51` produce the same frame count at the same frame size and BOTH decode
+# cleanly - a strict decode cannot distinguish them. What distinguishes them
+# is TS 103 420 §8.3.1's addbsi object marker, which rides with the container
+# and is the only thing any reader has to go on; FFmpeg reports it as the
+# stream's profile, so ffprobe is the oracle for it. `objects` must show the
+# Atmos profile (that is README.md's claim, now actually asserted rather than
+# only implied by a successful decode); `bed51` must show no object layer at
+# all, or it would be advertising objects it deliberately did not encode -
+# the same empty promise an empty EMDF container would be.
+run_atmos_profile_check() {
+    count=$((count + 1))
+    echo "[$count] ffprobe atmos profile $1 (expect: $2)"
+    profile="$(ffprobe -v error -select_streams a:0 -show_entries stream=profile \
+        -of default=nw=1:nk=1 "$1")"
+    case "$2" in
+        atmos)
+            [ "$profile" = "Dolby Digital Plus + Dolby Atmos" ] || {
+                echo "$1: expected the Dolby Atmos profile, got '$profile'" >&2
+                exit 1
+            }
+            ;;
+        none)
+            case "$profile" in
+                *Atmos*)
+                    echo "$1: advertises an object layer it does not carry ('$profile')" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 for objects in 1 2 4 8; do
     run atmos "atmos_${objects}.ec3" 2 256 "$objects" 4 objects
     run decode "atmos_${objects}.ec3" "atmos_${objects}.wav"
     run_ffmpeg_check "atmos_${objects}.ec3"
+    run_atmos_profile_check "atmos_${objects}.ec3" atmos
 done
 run atmos atmos_bed51.ec3 2 256 4 4 bed51
 run decode atmos_bed51.ec3 atmos_bed51.wav
 run_ffmpeg_check atmos_bed51.ec3
+run_atmos_profile_check atmos_bed51.ec3 none
 run atmos-encode bootstrap_51.wav atmos_enc.ec3 256 6
 run decode atmos_enc.ec3 atmos_enc.wav
 run_ffmpeg_check atmos_enc.ec3
@@ -553,6 +667,53 @@ rc=0
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
+# Both broadcast profiles (roadmap IO6). ATSC and DVB identify the same
+# elementary stream with different stream_type values AND different
+# descriptors, so each combination of profile and codec is its own PMT layout
+# - four in total, all of which a demuxer has to accept. mainid=/asvc= carry
+# the two identification values no single elementary stream can supply, so
+# they get a pass too.
+run ts enc_51.ac3 enc_51_atsc.ts atsc
+run ts eac3enc_none.ec3 eac3enc_none_atsc.ts atsc
+run ts atmos_4.ec3 atmos_4_atsc.ts atsc mainid=0
+run ts enc_51.ac3 enc_51_dvb_assoc.ts dvb asvc=0x05
+run_ffmpeg_check enc_51_atsc.ts
+run_ffmpeg_check eac3enc_none_atsc.ts
+run_ffmpeg_check atmos_4_atsc.ts
+
+# --- Object-layer strip (roadmap IO7) --------------------------------------
+# The claim is that the bed audio does not change at all, so this checks it
+# the only way that settles it: decode both streams and compare the PCM byte
+# for byte. FFmpeg then decodes the stripped stream independently, and reports
+# it as plain E-AC-3 rather than "Dolby Digital Plus + Dolby Atmos" - the same
+# probe README.md's own Atmos claim rests on, read the other way round.
+run strip-objects atmos_4.ec3 atmos_4_bed51.ec3
+run decode atmos_4_bed51.ec3 atmos_4_bed51.wav
+run_ffmpeg_check atmos_4_bed51.ec3
+count=$((count + 1))
+echo "[$count] bed audio is bit-identical after strip-objects"
+cmp atmos_4.wav atmos_4_bed51.wav
+count=$((count + 1))
+echo "[$count] ffprobe no longer reports an object layer on the stripped stream"
+probe_profile="$(ffprobe -v error -show_entries stream=profile \
+    -of default=noprint_wrappers=1:nokey=1 -f eac3 atmos_4_bed51.ec3 2>/dev/null || true)"
+if printf '%s' "$probe_profile" | grep -qi atmos; then
+    echo "    FAIL: atmos_4_bed51.ec3 still probes as Dolby Atmos"
+    exit 1
+fi
+# The paired HLS rendition Apple's authoring requirements ask for: the Atmos
+# one where it always was, the stripped 5.1 companion under bed51/, both in
+# one #EXT-X-MEDIA group.
+run fmp4 atmos_4.ec3 fmp4_atmos_fallback 4 fallback-51
+count=$((count + 1))
+echo "[$count] fmp4 fallback-51 wrote both renditions into one group"
+grep -q 'CHANNELS="6"' fmp4_atmos_fallback/master.m3u8
+grep -q '/JOC"' fmp4_atmos_fallback/master.m3u8
+grep -q 'URI="bed51/audio.m3u8"' fmp4_atmos_fallback/master.m3u8
+cat fmp4_atmos_fallback/bed51/init.mp4 $(ls -v fmp4_atmos_fallback/bed51/segment*.m4s) \
+    > fmp4_bed51_combined.mp4
+run_ffmpeg_check fmp4_bed51_combined.mp4
+run_ffmpeg_check fmp4_atmos_fallback/bed51/audio.m3u8
 
 # demux is the inverse of the wrapping commands above, so it is checked as an
 # inverse rather than only for a clean exit: the elementary stream that went

@@ -163,13 +163,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 32 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 33 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 32> kCommands{{
+constexpr std::array<Command, 33> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -219,6 +219,11 @@ constexpr std::array<Command, 32> kCommands{{
      [](const Args& x) {
          return run_atmos_adm(x.str(1), x.str(2), x.u32(3, 448), x.meta, x.str(4));
      }},
+    {"strip-objects", 3, "<in.ec3> <out.ec3>",
+     "remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed",
+     topic::kStdio | topic::kMeta,
+     Needs::kNothing,
+     [](const Args& x) { return run_strip_objects(x.str(1), x.str(2), x.meta); }},
     {"record", 2, "<out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index]",
      "capture straight to a file; layout=/codec=/container= decide its shape",
      topic::kTake | topic::kLayout | topic::kMeta,
@@ -308,12 +313,15 @@ constexpr std::array<Command, 32> kCommands{{
      Needs::kNothing,
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
     {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
-     "fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager", topic::kFmp4,
+     "fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager; fallback-51 also writes "
+     "an object-stripped 5.1 companion rendition",
+     topic::kFmp4 | topic::kMeta,
      Needs::kNothing,
-     [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
-    {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
-     topic::kTs,
-     Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+     [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
+    {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
+     "wrap as an MPEG-2 Transport Stream, DVB profile by default",
+     topic::kTs | topic::kMeta,
+     Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
@@ -346,7 +354,7 @@ constexpr std::array<Command, 32> kCommands{{
 }};
 
 // kCommands as usage.hpp sees it: no handler, no Needs, and this build's own
-// answer to "can it run here" already resolved. Rebuilt on every call - 32
+// answer to "can it run here" already resolved. Rebuilt on every call - 33
 // rows of string_view, so there is nothing worth caching and nothing that can
 // go stale between the table and what gets printed.
 std::vector<CommandInfo> command_infos() {
@@ -438,8 +446,9 @@ int run_main(int argc, char** argv) {
         const bool is_option = token.find('=') != std::string_view::npos ||
                                token == "couple" || token == "heavy" || token == "heavy2" ||
                                token == "mixmeta" || token == "sign-objects" ||
-                               token == "verify-objects" || token == "keep-partial" ||
-                               token == "fast-mdct" || token == "fast-imdct" ||
+                               token == "verify-objects" || token == "verify" ||
+                               token == "keep-partial" || token == "fast-mdct" ||
+                               token == "fast-imdct" || token == "fallback-51" ||
                                token == "quiet" || token == "verbose";
         if (token == "couple") {
             couple_flag = true;

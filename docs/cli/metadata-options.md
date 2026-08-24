@@ -76,6 +76,9 @@ metadata options (any order, after the positional arguments):
                     is for a run that needs bit-for-bit agreement between two decoders of the
                     same stream more than it needs dither's own perceptual benefit -
                     tools/checks/verify_gold_reference.sh is the one caller that does
+  verify            eac3-encode: decode every access unit as it is encoded and diff the
+                    decoder's model against the encoder's own, refusing the run at the first
+                    disagreement - off by default, since it roughly doubles the work
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -106,7 +109,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | nodither | all
+        nofastmdct | nodither | numblkscod:N | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -119,7 +122,12 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         deciding it from content — neither is a coding tool (nothing in
         the bitstream's syntax changes either way), so 'none' and 'all'
         both leave them alone, and the older opt-in spelling 'fastmdct'
-        still parses as a no-op
+        still parses as a no-op;
+        numblkscod:N (0-3, default 3) shortens the syncframe to 1/2/3/6
+        blocks (5.3/10.7/16/32 ms) — every substream of the access unit
+        takes the same value, AHT is unavailable below 3 (Table E1.3 has
+        no ahte bit there — combining it with aht/auto is refused up
+        front, not silently dropped), and 'none'/'all' leave it alone too
 ```
 
 The tool set is the fourth positional argument, not an `=` option. Example:
@@ -129,6 +137,14 @@ on enhanced coupling (auto band edge) and transient pre-noise processing togethe
 `tpn` are independent tools, not alternatives to each other or to `spx`/`aht`, so any
 combination the tools argument accepts is legal here. `all` does not currently imply `ecpl` or
 `tpn`; name them explicitly to get either.
+
+`ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
+blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
+round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
+often for the same audio, which comes straight out of the mantissas at a fixed bit rate.
+`atmos-encode` does not accept this token yet — Atmos's object metadata (OAMD/JOC) is timed and
+interpolated across a full six-block frame, and extending it to a shorter one is unstarted work,
+not merely unexposed.
 
 ## The `vbr` token (`eac3-encode` only)
 
@@ -741,7 +757,10 @@ Optional positional arguments, when omitted:
   index, so an object index the file doesn't mention keeps its default placement unchanged.
 - **`atmos` mode**: `objects` (default) writes the JOC+OAMD container; `bed51` omits it so the
   5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
-  validate, instead of falling back to the bed on its own. See
+  validate, instead of falling back to the bed on its own. `bed51` drops the TS 103 420 §8.3.1
+  `addbsi` object marker with it, so a `bed51` stream reads as ordinary 5.1 E-AC-3 all the way
+  out: no `Atmos complexity` line from `scan`, no Atmos extension in the `dec3` box `fmp4`
+  builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
   [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all
@@ -801,6 +820,29 @@ Optional positional arguments, when omitted:
   [Atmos & JOC](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
   domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
   them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
+- **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`ac3::verify`,
+  see [Validation](../verification.md#six-independent-checks)) over every access unit the command
+  emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
+  decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
+  correction, AHT gain mode and gains, and the coupling, enhanced-coupling and
+  spectral-extension coordinates — is diffed against the encoder's own. The first disagreement
+  refuses the run (exit 1) and names where the two sides parted company, down to the substream,
+  block, coded stream and bin:
+
+  ```
+  error: verify: the encoder and decoder disagree about access unit 0
+  frame 0 substream 0 block 2 channel 1: bap[10] encoder=8 decoder=9
+  ```
+
+  A clean run prints one extra line beside the usual summary and writes exactly the stream it
+  would have written anyway — the check reads state the encoder already has and never steers a
+  decision. Off by default because it decodes everything it encodes, which roughly doubles the
+  work. What it buys is the class of defect a round trip cannot see: the two sides differing in
+  a way the audio survives. That matters most for `ecpl`, `tpn`, `fscod2` and `714`, which have
+  no external decoder to check against at all — see
+  [Validation → where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+  `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
+  (`ac3::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
   configuration mid-run just as they always have, but with `keep-partial` given, whatever frames
   were already encoded before that point are written to `<name>.partial.<ext>` (`out.ec3` →

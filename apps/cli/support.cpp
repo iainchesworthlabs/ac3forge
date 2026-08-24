@@ -183,6 +183,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             (token == "quiet" ? out.quiet : out.verbose) = true;
             continue;
         }
+        if (token == "fallback-51") {
+            out.hls_fallback_51 = true;
+            continue;
+        }
         if (token == "couple" || token == "heavy" || token == "heavy2" || token == "mixmeta" ||
             token == "keep-partial" || token == "fast-mdct") {
             if (token == "heavy") {
@@ -202,12 +206,46 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.fast_imdct = true;
             continue;
         }
+        if (key == "mainid") {
+            // A/52 Table A4.6 / EN 300 468 D.3: a number 0-7 naming a main
+            // audio service, which associated services then point at.
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 7) {
+                fmt::println(stderr, "error: mainid must be 0-7 (got '{}')", token);
+                return false;
+            }
+            out.mainid = static_cast<int>(parsed);
+            continue;
+        }
+        if (key == "asvc") {
+            // Eight bits, one per main service this associated service may be
+            // reproduced with; bit 7 is main service 7. Accepts decimal or
+            // 0x-prefixed hex, since it reads as a mask far more often than
+            // as a number.
+            const bool hex = value.starts_with("0x") || value.starts_with("0X");
+            const std::string_view digits = hex ? value.substr(2) : value;
+            unsigned parsed = 0;
+            const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(),
+                                                   parsed, hex ? 16 : 10);
+            if (ec != std::errc{} || ptr != digits.data() + digits.size() || parsed > 255) {
+                fmt::println(stderr, "error: asvc must be 0-255 or 0x00-0xFF (got '{}')", token);
+                return false;
+            }
+            out.asvc = static_cast<int>(parsed);
+            continue;
+        }
         if (token == "sign-objects") {
             out.sign_objects = true;
             continue;
         }
         if (token == "verify-objects") {
             out.verify_objects = true;
+            continue;
+        }
+        if (token == "verify") {
+            out.verify = true;
             continue;
         }
         if (key == "fast-mdct") {

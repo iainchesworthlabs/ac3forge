@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 41> kOptionTokens{{
+constexpr std::array<OptionToken, 45> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -69,6 +69,7 @@ constexpr std::array<OptionToken, 41> kOptionTokens{{
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
     {"search=", "AC-3 encode: distortion or perceptual bit-allocation search, off (default)"},
+    {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
     {"src=", "an additional input source; repeat for more than one"},
     {"map=", "where each source channel goes"},
     {"offset=", "<sourceIndex>:<seconds> leading silence for that source"},
@@ -83,6 +84,9 @@ constexpr std::array<OptionToken, 41> kOptionTokens{{
     {"preset=", "qc: gate the measurement against a named delivery spec"},
     {"json=", "probe: emit the JSON document instead of the human table"},
     {"detail=", "probe: frames or blocks - add per-access-unit/per-block detail"},
+    {"fallback-51", "fmp4: also write the object-stripped 5.1 companion rendition"},
+    {"mainid=", "ts: this service's A/52 Annex A main-service number"},
+    {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already
@@ -90,7 +94,10 @@ constexpr std::array<OptionToken, 41> kOptionTokens{{
 constexpr std::size_t kNoteColumn = 62;
 
 void print_row(const CommandInfo& c) {
-    std::string line = fmt::format("  ac3cli {:<13}{}", c.name, c.spec);
+    // Wide enough that the LONGEST command name still gets a separating
+    // space: 'strip-objects' is 13 characters, so a 13-wide field padded
+    // nothing at all and ran the name straight into its own spec.
+    std::string line = fmt::format("  ac3cli {:<14}{}", c.name, c.spec);
     // A command the platform cannot run is listed, not hidden: hiding it
     // makes 'ac3cli play' answer "unknown command", which is a lie about a
     // command that exists and would work elsewhere. The note slot says so
@@ -326,14 +333,21 @@ void print_fmp4_topic() {
     fmt::println("pointing at the same segments (CMAF's whole point) — ready for a real HLS/");
     fmt::println("DASH origin or packager. Dolby Atmos content signals CHANNELS=\"<N>/JOC\" in");
     fmt::println("the HLS playlists automatically, per Apple's HLS Authoring Specification.");
+    fmt::println("fallback-51 also writes an object-stripped 5.1 companion rendition beside");
+    fmt::println("the Atmos one (see 'strip-objects'), which is what Apple's HLS authoring");
+    fmt::println("requirements want as the non-Atmos alternative in the same group.");
 }
 
 void print_ts_topic() {
     fmt::println("");
     fmt::println("ts wraps the same elementary stream as an MPEG-2 Transport Stream (PAT + PMT");
-    fmt::println("+ one PES-wrapped audio PID), identified per the DVB profile — stream_type");
-    fmt::println("0x06 plus the AC3_descriptor or Enhanced_AC3_descriptor ETSI EN 300 468 Annex D");
-    fmt::println("defines, not ATSC's — with PCR stamped on the audio PID every access unit.");
+    fmt::println("+ one PES-wrapped audio PID), with PCR stamped on the audio PID every access");
+    fmt::println("unit. [dvb|atsc] picks the broadcast profile: dvb (the default) writes");
+    fmt::println("stream_type 0x06 plus the AC3_descriptor/Enhanced_AC3_descriptor ETSI EN 300");
+    fmt::println("468 Annex D defines; atsc writes stream_type 0x81/0x87 plus A/52 Annex A's");
+    fmt::println("AC-3_audio_stream_descriptor or Annex G's E-AC-3_audio_descriptor. Either");
+    fmt::println("way the descriptor's fields come off the bitstream itself, except mainid=/");
+    fmt::println("asvc= for the service associations no single elementary stream can know.");
 }
 
 void print_objects_topic() {
