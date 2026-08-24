@@ -388,6 +388,12 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         if (!sub) {
             return std::unexpected(sub.error());
         }
+        // §E3.8.2: a dependent substream extends the independent one it
+        // follows. One that opens the stream has no independent to extend -
+        // matches ac3::split_access_units' identical guard in decoder.cpp.
+        if (offset == 0 && sub->strmtyp == eac3::StreamType::kDependent) {
+            return std::unexpected(ScanError::kUnsupportedStructure);
+        }
         if (offset + sub->bytes > stream.size()) {
             return std::unexpected(ScanError::kTruncated);
         }

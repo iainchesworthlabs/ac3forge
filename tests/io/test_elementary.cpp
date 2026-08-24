@@ -201,6 +201,24 @@ TEST_CASE("scan refuses what it cannot read", "[elementary]") {
     std::vector<std::byte> trailing{frame->begin(), frame->end()};
     trailing.insert(trailing.end(), 8, std::byte{0xAB});
     CHECK(ac3::io::scan(trailing).error() == ScanError::kLostSync);
+
+    // A dependent substream with no independent parent ahead of it must be
+    // refused rather than scanned as though it were the bed - the same
+    // guard ac3::split_access_units applies on the decode side
+    // (decoder.cpp), for the same reason: its channels have nothing to
+    // extend, and its bsi fields (acmod, bsid, ...) describe an extension,
+    // not a complete programme.
+    using ac3::eac3::AccessUnitConfig;
+    namespace cm = ac3::eac3::chanmap;
+    const AccessUnitConfig seven_one{
+        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+        .dependents = {{.bitrate_kbps = 224, .acmod = ac3::Acmod::k2_2, .chanmap = cm::k71Rear}}};
+    const auto unit = ac3::eac3::build_silent_access_unit(seven_one);
+    REQUIRE(unit.has_value());
+    REQUIRE(unit->substream_count() == 2);
+    const auto dependent_bytes = unit->substream(1);
+    const std::vector<std::byte> lone_dependent{dependent_bytes.begin(), dependent_bytes.end()};
+    CHECK(ac3::io::scan(lone_dependent).error() == ScanError::kUnsupportedStructure);
 }
 
 // bsid/bsmod/bit_rate_code and the TS 103 420 addbsi Atmos marker exist

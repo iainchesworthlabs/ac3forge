@@ -64,13 +64,22 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
         return std::unexpected(WavError::kCannotOpen);
     }
 
+    // Every early return past this point must release im.file: leaving it
+    // open would keep the OS handle held (a Windows sharing violation on any
+    // caller that reacts to the rejection by deleting/rewriting the file)
+    // even though is_open() reports false.
+    auto fail = [this](WavError err) -> std::expected<void, WavError> {
+        close();
+        return std::unexpected(err);
+    };
+
     // File size first: the data chunk's declared size is clamped to what the
     // file actually holds, exactly as read_wav does, so a truncated capture
     // still yields its real frames rather than a kTruncated refusal.
     im.file.seekg(0, std::ios::end);
     const auto end_pos = im.file.tellg();
     if (end_pos < 0) {
-        return std::unexpected(WavError::kCannotOpen);
+        return fail(WavError::kCannotOpen);
     }
     const auto file_size = static_cast<std::uint64_t>(end_pos);
     im.file.seekg(0);
@@ -78,7 +87,7 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
     im.raw.resize(static_cast<std::size_t>(std::min<std::uint64_t>(kHeaderWindow, file_size)));
     im.file.read(im.raw.data(), static_cast<std::streamsize>(im.raw.size()));
     if (im.file.gcount() != static_cast<std::streamsize>(im.raw.size())) {
-        return std::unexpected(WavError::kCannotOpen);
+        return fail(WavError::kCannotOpen);
     }
 
     // The same walk and the same format table wav.cpp's parse_wav uses
@@ -86,16 +95,16 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
     // file.
     const std::span<const char> bytes{im.raw};
     if (im.raw.size() < 44 || !detail::is_riff_wave(bytes)) {
-        return std::unexpected(WavError::kNotRiffWave);
+        return fail(WavError::kNotRiffWave);
     }
     const auto fmt_chunk = detail::find_chunk(bytes, "fmt ");
     const auto data_chunk = detail::find_chunk(bytes, "data");
     if (!fmt_chunk || !data_chunk) {
-        return std::unexpected(WavError::kNotRiffWave);
+        return fail(WavError::kNotRiffWave);
     }
     const auto format = detail::parse_format(bytes, *fmt_chunk);
     if (!format) {
-        return std::unexpected(format.error());
+        return fail(format.error());
     }
     im.sample_rate = format->sample_rate;
     im.channels = format->channels;
@@ -110,7 +119,7 @@ std::expected<void, WavError> WavStreamReader::open(const std::string& path) {
     im.frames_read = 0;
     im.file.seekg(static_cast<std::streamoff>(payload_at));
     if (!im.file) {
-        return std::unexpected(WavError::kCannotOpen);
+        return fail(WavError::kCannotOpen);
     }
     im.open = true;
     return {};

@@ -247,6 +247,11 @@ TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
         const auto result = reader.open(bogus.path);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+
+        // A rejected open() must not leave the OS file handle held: on
+        // Windows a lingering handle turns this delete into a sharing
+        // violation instead of a clean removal.
+        CHECK(std::remove(bogus.path.c_str()) == 0);
     }
 
     SECTION("reading while closed") {
