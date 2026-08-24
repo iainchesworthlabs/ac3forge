@@ -188,6 +188,13 @@ struct Options {
     // Unset (measure-only, no gate) is the default - a plain
     // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
+    // 'qc' only: which soundfield to meter. false (layout=bed, the default)
+    // measures the independent substream's own Table 5.8 bed through
+    // BS.1770 Annex 1's basic algorithm - what this command has always
+    // done. true (layout=rendered) measures the whole assembled program,
+    // every dependent substream's height/wide/rear channels included,
+    // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
+    bool qc_rendered_layout = false;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a

@@ -70,13 +70,39 @@ struct QcResult {
     std::uint32_t sample_rate_hz = 0;
     std::size_t unit_count = 0;
     double seconds = 0.0;
+    // Which of the two BS.1770 algorithms produced the figures below - Annex
+    // 3's extended one over the whole rendered program (layout=rendered), or
+    // Annex 1's basic one over the Table 5.8 bed (layout=bed). Reported, not
+    // just chosen: the same stream can legitimately measure differently
+    // through the two, and a QC figure without its algorithm is ambiguous.
+    bool rendered = false;
+    // layout=bed only: the stream carried at least one dependent substream,
+    // whose channels this measurement therefore never saw. Drives run_qc's
+    // hint that layout=rendered has more to measure - silence about it would
+    // read as "5.1 is all there is".
+    bool bed_hid_dependents = false;
     std::vector<QcProgrammeResult> programmes;
 };
+
+// A rendered layout's own name. Table E2.5 has no short label the way Table
+// 5.8's acmods do (there is no "5.1.4" in the bitstream, only a bit mask), so
+// the locations are listed in coded order - the same naming run_levels_eac3
+// gives each of its channel rows.
+std::string rendered_layout_label(const ac3::eac3::chanmap::Layout& layout) {
+    std::string out;
+    for (int ch = 0; ch < layout.count; ++ch) {
+        if (!out.empty()) {
+            out += ' ';
+        }
+        out += ac3::eac3::chanmap::name(layout[ch]);
+    }
+    return out;
+}
 
 // AC-3 (bsid <= 8): straightforward per-frame decode, same loop shape as
 // run_decode above, feeding ac3::meta::LoudnessMeter instead of accumulating
 // PCM - qc never writes audio out, so there is nothing to buffer.
-std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
+std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool rendered) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid AC-3 stream");
@@ -87,6 +113,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
     result.codec_label = "AC-3";
     result.unit_label = "frame(s)";
     result.unit_count = frames->size();
+    result.rendered = rendered;
 
     bool have_first = false;
     bool dual_mono = false;
@@ -114,6 +141,22 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
                 result.programmes.push_back(QcProgrammeResult{
                     .label = "Ch2", .dialnorm = decoded->dialnorm2.value_or(31),
                     .compr = decoded->compr2});
+            } else if (rendered) {
+                // AC-3 has no dependent substreams, so its rendered layout is
+                // its bed - the same channels either way. What changes is the
+                // algorithm: Annex 3 weights by position, which for every
+                // Table 5.8 layout with a discrete surround PAIR agrees with
+                // Annex 1 channel for channel. The one place the two really
+                // differ is the lone surround of 2/1 and 3/1: Annex 1 reads
+                // it as the surround field (+1.5 dB), Annex 3 as Table E2.5's
+                // Cs at 180 degrees (unity). See LoudnessMeter's own
+                // constructor comments.
+                const auto layout = ac3::eac3::chanmap::expand(
+                    ac3::eac3::chanmap::acmod_map(decoded->acmod, decoded->lfe));
+                result.layout_label = rendered_layout_label(layout);
+                meter.emplace(decoded->sample_rate, layout);
+                result.programmes.push_back(
+                    QcProgrammeResult{.dialnorm = decoded->dialnorm, .compr = decoded->compr});
             } else {
                 result.layout_label =
                     std::string{ac3::analysis::layout_name(decoded->acmod, decoded->lfe)};
@@ -185,7 +228,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
 // frame so dependent-substream frames are still decoded (consuming their own
 // overlap-add state and catching any parse error) even though this only ever
 // measures what comes back independent.
-std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
+std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
@@ -211,6 +254,11 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
     // comment above).
     auto ingest = [&](const ac3::DecodedSubstream& sub) {
         if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
+            // Decoded (above) so its overlap-add state advances and its parse
+            // errors still surface, but never measured here - and remembered,
+            // so the report can say that layout=rendered would have more to
+            // measure than this pass just did.
+            result.bed_hid_dependents = true;
             return;
         }
         if (!have_first) {
@@ -302,6 +350,124 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
     return result;
 }
 
+// layout=rendered's E-AC-3 counterpart (roadmap IO10): measures the whole
+// assembled program - the independent substream's bed with every dependent's
+// height, wide and rear channels laid over it, in Table E2.5 location order -
+// through BS.1770-5 Annex 3's extended algorithm, which weights each channel
+// by its position rather than by its slot in a Table 5.8 acmod. That is what
+// lets 7.1, 5.1.2, 5.1.4 and 7.1.4 be metered at all: those channels are not
+// members of Table 5.8, so the bed pass above has no weight to give them and
+// simply never sees them.
+//
+// Walked with ac3::split_access_units and Eac3Decoder::decode_access_unit
+// (NOT split_frames/decode_substream, which is exactly the difference from
+// measure_qc_eac3_bed above) - the assembled unit is the only place a
+// dependent's channels exist as speaker feeds rather than as a substream.
+//
+// A unit still held back at end-of-stream by §3.7 transient pre-noise
+// processing is lost to this measurement: decoder.flush() releases raw
+// per-substream results, and by definition their assembly never completed,
+// so there is no rendered program to meter. run_levels_eac3 above makes the
+// same trade for the same reason, and a stream that never turns the tool on -
+// which is every stream this project encodes - never holds anything back.
+std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stream) {
+    const auto units = ac3::split_access_units(stream);
+    if (!units || units->empty()) {
+        fmt::println(stderr, "error: not a valid E-AC-3 stream");
+        return std::nullopt;
+    }
+    // Heap-allocated for the same PREfast C6262 reason measure_qc_eac3_bed
+    // gives above.
+    auto decoder = std::make_unique<ac3::Eac3Decoder>();
+    QcResult result;
+    result.codec_label = "E-AC-3";
+    result.unit_label = "access unit(s)";
+    result.rendered = true;
+
+    bool have_first = false;
+    std::optional<ac3::meta::LoudnessMeter> meter;
+
+    for (const auto& unit : *units) {
+        const auto decoded = decoder->decode_access_unit(unit);
+        if (!decoded) {
+            fmt::println(stderr, "error: decode failed (code {})",
+                         static_cast<int>(decoded.error()));
+            return std::nullopt;
+        }
+        if (!decoded->has_value()) {
+            continue;  // §3.7 hold-back, see this function's own comment
+        }
+        const auto& out = **decoded;
+        if (!have_first) {
+            have_first = true;
+            if (out.acmod == ac3::Acmod::kDualMono) {
+                // §E1.3: 1+1 is two unrelated programmes sharing a syncframe,
+                // not one soundfield - it has no Table E2.5 layout at all
+                // (decode_access_unit leaves `layout` empty for exactly this
+                // case), so there is no position for Annex 3 to weight. It is
+                // also always a lone independent substream with no
+                // dependents, so its rendered program IS its bed and the two
+                // passes have to agree by construction. Hand the whole stream
+                // to the bed pass rather than restate its two-programme
+                // handling here: that pass reads DecodedSubstream, which
+                // carries the second programme's own dialnorm2/compr2 -
+                // fields the assembled DecodedAccessUnit does not have, so
+                // measuring 1+1 from here would silently report Ch2's
+                // metadata as absent.
+                auto bed = measure_qc_eac3_bed(stream);
+                if (bed) {
+                    // Still what layout=rendered was asked for, and the same
+                    // answer it would have produced; nothing went unmeasured,
+                    // so there is no wider layout to hint about either.
+                    bed->rendered = true;
+                    bed->bed_hid_dependents = false;
+                }
+                return bed;
+            }
+            result.sample_rate_hz = sample_rate_hz(out.sample_rate);
+            result.layout_label = rendered_layout_label(out.layout);
+            meter.emplace(out.sample_rate, out.layout);
+            result.programmes.push_back(
+                QcProgrammeResult{.dialnorm = out.dialnorm, .compr = out.compr});
+        }
+        ++result.unit_count;
+        std::vector<std::span<const float>> views;
+        views.reserve(out.channels.size());
+        for (const auto& channel : out.channels) {
+            views.emplace_back(channel);
+        }
+        // meter is engaged on every path that reaches here: either this very
+        // iteration's !have_first block just emplaced it (the dual-mono arm
+        // above returns instead of falling through), or a PRIOR iteration's
+        // !have_first block did and have_first now skips straight past it.
+        // clang-tidy's checker does not carry that across the loop's back
+        // edge - the same reasoning the sibling meter->push() calls in
+        // measure_qc_ac3/measure_qc_eac3_bed rely on, where a same-iteration
+        // dual_mono guard happens to keep it within the checker's reach.
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        meter->push(views);
+    }
+
+    if (!have_first) {
+        fmt::println(stderr, "error: no decodable access units");
+        return std::nullopt;
+    }
+    // have_first is only ever set in the branch that emplaces meter - the
+    // dual-mono branch beside it returns instead of falling through - so it
+    // is engaged by this point, the same reasoning measure_qc_eac3_bed states
+    // for its own pair.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.programmes[0].integrated_lkfs = meter->integrated_lkfs();
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.programmes[0].lra_lu = meter->loudness_range();
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
+    result.seconds = static_cast<double>(result.unit_count) *
+                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(result.sample_rate_hz);
+    return result;
+}
+
 // Prints one programme's measurement (the empty-label whole-programme case,
 // or "Ch1"/"Ch2" for 1+1 dual mono) and, if `preset_arg` names one (or
 // "all"), checks it against the requested preset(s). Returns true iff every
@@ -357,15 +523,21 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
         const auto preset = ac3::meta::qc_preset(id);
         const auto name = ac3::meta::qc_preset_name(id);
         const auto verdict = ac3::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
-        fmt::println("  {}:", name);
+        fmt::println("  {}:  [{}]", name, preset.source);
+        // A band preset prints its tolerance; a ceiling preset has none to
+        // print, and showing "+/-0.0" would read as an impossibly tight band
+        // rather than as the one-sided limit the source actually states.
+        const std::string loudness_limit =
+            preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling
+                ? fmt::format("limit  <= {:+.1f} LKFS", preset.target_lkfs)
+                : fmt::format("target {:+.1f} +/-{:.1f} LKFS", preset.target_lkfs,
+                              preset.tolerance_lu);
         if (p.integrated_lkfs) {
-            fmt::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured {:+.2f} LKFS   "
-                         "delta {:+.2f} LU   {}",
-                         preset.target_lkfs, preset.tolerance_lu, *p.integrated_lkfs,
-                         *verdict.loudness_delta_lu, verdict.loudness_pass ? "PASS" : "FAIL");
+            fmt::println("    loudness   {}   measured {:+.2f} LKFS   delta {:+.2f} LU   {}",
+                         loudness_limit, *p.integrated_lkfs, *verdict.loudness_delta_lu,
+                         verdict.loudness_pass ? "PASS" : "FAIL");
         } else {
-            fmt::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured n/a   FAIL",
-                         preset.target_lkfs, preset.tolerance_lu);
+            fmt::println("    loudness   {}   measured n/a   FAIL", loudness_limit);
         }
         if (p.true_peak_dbtp) {
             fmt::println("    true peak  limit  <= {:+.1f} dBTP        measured {:+.2f} dBTP        "
@@ -526,7 +698,8 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 
 }  // namespace
 
-int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg) {
+int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
+           bool rendered_layout) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
@@ -537,13 +710,28 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
-    const auto result = *bsid > 8 ? measure_qc_eac3(stream) : measure_qc_ac3(stream);
+    const auto result = *bsid > 8
+                            ? (rendered_layout ? measure_qc_eac3_rendered(stream)
+                                               : measure_qc_eac3_bed(stream))
+                            : measure_qc_ac3(stream, rendered_layout);
     if (!result) {
         return 1;
     }
     fmt::println("qc: {} ({}, {}, {} Hz, {} {}, {:.2f} s)", in_path, result->codec_label,
                  result->layout_label, result->sample_rate_hz, result->unit_count,
                  result->unit_label, result->seconds);
+    // Which algorithm the figures below came out of. Two different BS.1770
+    // algorithms over the same stream are both correct and need not agree, so
+    // a loudness figure that does not say which one produced it is ambiguous.
+    fmt::println("  layout={}  ({})", result->rendered ? "rendered" : "bed",
+                 result->rendered ? "BS.1770-5 Annex 3, weighted by channel position"
+                                  : "BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed");
+    if (result->bed_hid_dependents) {
+        fmt::println("  note: this stream carries dependent substreams whose channels "
+                     "(height, wide, rear)");
+        fmt::println("        are NOT in the figures above - layout=rendered measures them "
+                     "as well");
+    }
     bool all_pass = true;
     for (const auto& programme : result->programmes) {
         if (!report_qc_programme(programme, preset_arg)) {
