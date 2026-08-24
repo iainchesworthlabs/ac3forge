@@ -7,40 +7,41 @@ ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
 
 Usage:
   ac3cli --version    print version and git provenance, then exit
-  ac3cli silence      <out.ac3> [seconds] [bitrate_kbps]
-  ac3cli sine         <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli orbit        <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
-  ac3cli atmos        <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
-  ac3cli atmos-path   <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
-  ac3cli atmos-encode <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
-  ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
-  ac3cli record       <out.ac3> [seconds] [bitrate_kbps] [device_index]
-  ac3cli live         <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
-  ac3cli encode       <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
-  ac3cli eac3-silence <out.ec3> [seconds] [bitrate_kbps] [layout]
-  ac3cli eac3-sine    <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
-  ac3cli decode       <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
-  ac3cli probe        <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
-  ac3cli transcode    <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
-  ac3cli metadata     <in.ac3|in.ec3> <out.ac3|out.ec3>       (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
-  ac3cli normalize    <in.ac3|in.ec3> <out.ac3|out.ec3>       (measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio untouched)
-  ac3cli cut          <in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds] (extract on access-unit boundaries; nothing is re-encoded)
-  ac3cli cat          <out.ac3|out.ec3> <in1> <in2> [in3...]  (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
-  ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
-  ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
-  ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
-  ac3cli spdif        <in.ac3> <out.wav>                      (IEC 61937 wrap as playable PCM16 WAV)
-  ac3cli unspdif      <in.wav|in.raw|-> <out.ac3|out.ec3|->   (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
-  ac3cli mkv          <in.ac3|in.ec3> <out.mkv>               (wrap as a playable Matroska file)
-  ac3cli mp4          <in.ac3|in.ec3> <out.mp4>               (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
-  ac3cli fmp4         <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
-  ac3cli ts           <in.ac3|in.ec3> <out.ts>                (wrap as an MPEG-2 Transport Stream (DVB profile))
-  ac3cli demux        <in.mkv|in.mp4|in.ts> <out.ac3|out.ec3> (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
+  ac3cli silence       <out.ac3> [seconds] [bitrate_kbps]
+  ac3cli sine          <out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
+  ac3cli orbit         <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
+  ac3cli atmos         <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
+  ac3cli atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
+  ac3cli atmos-encode  <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
+  ac3cli atmos-adm     <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
+  ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
+  ac3cli record        <out.ac3> [seconds] [bitrate_kbps] [device_index]
+  ac3cli live          <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
+  ac3cli encode        <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
+  ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
+  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
+  ac3cli decode        <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
+  ac3cli probe         <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
+  ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
+  ac3cli metadata      <in.ac3|in.ec3> <out.ac3|out.ec3> (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
+  ac3cli normalize     <in.ac3|in.ec3> <out.ac3|out.ec3> (measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio untouched)
+  ac3cli cut           <in.ac3|in.ec3> <out.ac3|out.ec3> [start_seconds] [duration_seconds] (extract on access-unit boundaries; nothing is re-encoded)
+  ac3cli cat           <out.ac3|out.ec3> <in1> <in2> [in3...] (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
+  ac3cli levels        <in.wav|in.ac3|in.ec3>                 (per-channel peak/RMS report)
+  ac3cli loudness      <in.wav>                               (BS.1770-4 loudness -> dialnorm)
+  ac3cli qc            <in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
+  ac3cli spdif         <in.ac3> <out.wav>                     (IEC 61937 wrap as playable PCM16 WAV)
+  ac3cli unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|->  (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
+  ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file)
+  ac3cli mp4           <in.ac3|in.ec3> <out.mp4>              (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
+  ac3cli fmp4          <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
+  ac3cli ts            <in.ac3|in.ec3> <out.ts> [dvb|atsc]    (wrap as an MPEG-2 Transport Stream (DVB profile by default))
+  ac3cli demux         <in.mkv|in.mp4|in.ts> <out.ac3|out.ec3> (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
   ac3cli devices                                              (input and loopback capture endpoints)
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
-  ac3cli play         <in.ac3|in.ec3> [device_index]          (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
-  ac3cli monitor      <in.ac3|in.ec3> [device_index]          (decode and play on an ordinary (non-bitstreamed) output)
+  ac3cli play          <in.ac3|in.ec3> [device_index]         (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
+  ac3cli monitor       <in.ac3|in.ec3> [device_index]         (decode and play on an ordinary (non-bitstreamed) output)
 ```
 
 ## By category
@@ -175,6 +176,43 @@ See [ADM / BW64 reading](../library/adm.md) and [ADM → Atmos bridging](../libr
 for the parser and the mapping layer this command drives, and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
+
+### Object-layer strip
+
+| Command | What it does |
+|---|---|
+| `strip-objects` | Takes the JOC/OAMD object layer **out** of a Dolby Digital Plus stream without decoding it, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical |
+
+```bash
+ac3cli strip-objects atmos.ec3 bed51.ec3
+```
+
+```text
+stripped 63 of 63 frame(s) in atmos.ec3 -> bed51.ec3 (7032 bytes removed, 105864 left)
+  3/2 + LFE at 48000 Hz, no object metadata remains
+```
+
+JOC's bed is the full mix — every object is already panned into it, which is what makes an
+Atmos DD+ stream play on an Atmos-unaware decoder at all. So the 5.1 rendition of a JOC stream
+needs no re-encode, only the object layer removed: the EMDF container in the per-block skip
+fields and TS 103 420 §8.3.1's `addbsi` marker come out, `frmsiz` and `crc2` are re-derived
+around what is left, and every exponent and mantissa is copied bit for bit. Decoding the result
+gives sample-identical PCM. See [Object-layer strip](../library/decoding.md#object-layer-strip)
+for what it does and does not touch.
+
+The container is removed, not emptied — an empty container would still tell every downstream
+signalling path (`dec3`'s Atmos extension, an HLS `CHANNELS="<N>/JOC"` attribute) that objects
+are present. The same goes for the `addbsi` marker on its own: a stream that signals objects it
+does not carry gets that signalling removed too. A stream with no object layer at all is copied
+through unchanged; an AC-3 stream is refused, since Annex E is where skip fields and substreams
+live.
+
+Rewritten frames are sized to their real content, so the output is smaller than the input and a
+constant-rate input does not stay constant-rate — the encoder's rate-filling auxdata padding
+goes along with the container. The reported byte count says how much.
+
+This is what `fmp4 … fallback-51` uses to write the paired 5.1 rendition Apple's HLS authoring
+requirements ask for beside an Atmos one.
 
 ### Decoding & inspection
 
@@ -486,9 +524,40 @@ practice; `dsurmod` additionally exists only for coding mode 2/0 (§5.4.2.7).
 | `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones |
 | `mp4` | Wraps AC-3 or E-AC-3 as a single-file MP4/ISOBMFF, writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream |
-| `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per the DVB profile — `stream_type` 0x06 plus the `AC3_descriptor`/`Enhanced_AC3_descriptor` ETSI EN 300 468 Annex D defines, not ATSC's |
+| `ts` | Wraps AC-3 or E-AC-3 as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per whichever broadcast profile the optional third argument names — `dvb` (the default) or `atsc`. See below |
 | `demux` | The inverse of `mkv`: reads a container and writes the bare AC-3/E-AC-3 elementary stream inside it, which is what every other command here takes as input. The container is identified by its **own magic bytes**, never by the file name — a rip called `title00.mkv` that is really something else, or one with no extension at all, is the normal case. Unlike the wrapping commands it streams: the reader is fed in 64 KiB chunks and each access unit is written as it comes out, so peak memory is a chunk plus a frame whatever the file's duration. Matroska/WebM, MP4 (plain and fragmented) and MPEG-2 Transport Stream (188/192/204-byte packet grids; DVB, ATSC and registration-descriptor codec signalling all read). An MP4 whose `moov` follows its `mdat` is refused with an explanation rather than read wrong — that layout cannot be streamed. For MPEG-TS the destination gets the concatenated PES payloads rather than a guaranteed one-access-unit-per-payload split, since PES makes no such promise — the status line omits sample rate/channels for it, since a transport stream's PMT names the codec but not those |
-| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals itself automatically and completely: `CHANNELS="<N>/JOC"` in the HLS playlists, the two `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors ETSI TS 103 420 clause D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments. Every representation also states its channel configuration, on the Dolby scheme TS 102 366 clause I.1.2.1 defines |
+| `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals itself automatically and completely: `CHANNELS="<N>/JOC"` in the HLS playlists, the two `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors ETSI TS 103 420 clause D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments. Every representation also states its channel configuration, on the Dolby scheme TS 102 366 clause I.1.2.1 defines. `fallback-51` additionally writes the paired 5.1 rendition |
+
+#### `ts` broadcast profiles
+
+ATSC and DVB both register AC-3/E-AC-3 for MPEG-TS carriage, with different, non-interoperable
+signalling — so a stream satisfies one of them, never a bit of each:
+
+```bash
+ac3cli ts programme.ec3 programme.ts atsc
+```
+
+| | `dvb` (default) | `atsc` |
+|---|---|---|
+| AC-3 `stream_type` | `0x06` (PES private data) | `0x81` (A/52 Annex A §A4.1) |
+| E-AC-3 `stream_type` | `0x06` | `0x87` (A/52 Annex G §G3.1) |
+| AC-3 descriptor | `AC3_descriptor`, tag `0x6A` (ETSI EN 300 468 Table D.6) | `AC-3_audio_stream_descriptor`, tag `0x81` (A/52 Table A4.1) |
+| E-AC-3 descriptor | `enhanced_AC-3_descriptor`, tag `0x7A` (Table D.7) | `E-AC-3_audio_descriptor`, tag `0xCC` (A/52 Table G.1) |
+
+Either way the descriptor's identification fields are read off the bitstream, not guessed: the
+service type (`bsmod`), the channel mode and rendered channel count, the surround mode
+(`dsurmod`), `bsid`, whether mixing metadata is present, and which independent substreams the
+stream uses. Two values are not in any bitstream, because they describe how services in a
+multiplex *relate* rather than what one stream contains, so they are omitted unless given:
+
+| Option | What it says |
+|---|---|
+| `mainid=<0-7>` | The main-service number this service is, or that an associated service points at |
+| `asvc=<mask>` | Which main services an **associated** service may be reproduced with, one bit each — decimal or `0xNN` |
+
+```bash
+ac3cli ts commentary.ac3 commentary.ts atsc asvc=0x05
+```
 
 ### Live & hardware
 

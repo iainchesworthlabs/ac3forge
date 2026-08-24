@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "../support.hpp"
+
 // The container-wrapping commands: mkv/mp4/fmp4/ts each take an already-encoded AC-3 or E-AC-3
 // elementary stream and wrap it for a specific downstream consumption method, reading everything
 // the container needs to declare (format, access-unit boundaries, sample rate, channel count)
@@ -24,11 +26,21 @@ int run_mp4(std::string_view in_path, std::string_view out_path);
 // fMP4/CMAF segmenting plus HLS/DASH signaling (ROADMAP.md's A2) - writes a DIRECTORY of files
 // (an init segment, one media segment per fragment, an HLS media+master playlist pair, and a
 // DASH MPD) rather than one file, so a packager or CDN origin can be pointed at out_dir directly.
-int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t frames_per_fragment);
+// meta.hls_fallback_51 additionally writes the object-stripped 5.1 companion rendition into a
+// bed51/ subdirectory and lists it in the same #EXT-X-MEDIA group as the JOC one, which is what
+// Apple's HLS Authoring Specification asks for alongside CHANNELS="<N>/JOC" - see
+// ac3::io::strip_objects. Ignored for a stream with no object layer.
+int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t frames_per_fragment,
+             const Options& meta);
 
-// Same shape as run_mkv: wraps as an MPEG-2 Transport Stream (DVB profile - ETSI EN 300 468
-// Annex D's AC3_descriptor/Enhanced_AC3_descriptor), everything read off the bitstream.
-int run_ts(std::string_view in_path, std::string_view out_path);
+// Same shape as run_mkv: wraps as an MPEG-2 Transport Stream. `profile` selects which registry
+// identifies the stream in the PMT - "dvb" (the default: stream_type 0x06 plus ETSI EN 300 468
+// Annex D's AC3_descriptor/enhanced_AC-3_descriptor) or "atsc" (stream_type 0x81/0x87 plus
+// A/52:2018 Annex A/Annex G's own descriptors). Everything either descriptor says about the
+// service is read off the bitstream by ac3::io::scan, except the service associations meta
+// carries (mainid=, asvc=).
+int run_ts(std::string_view in_path, std::string_view out_path, std::string_view profile,
+           const Options& meta);
 
 // The inverse of the four above (ROADMAP.md's IO2): reads a container and writes the bare
 // AC-3/E-AC-3 elementary stream inside it, which is what every other command in this CLI takes

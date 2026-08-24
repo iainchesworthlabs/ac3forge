@@ -44,8 +44,8 @@ namespace ac3::signing {
 // frame-level exponent strategy and SNR, no coupling. A frame outside that
 // subset is left unsigned rather than signed wrong - the same "nothing to
 // do here" answer every entry point in this file gives a frame it does not
-// recognise, not a caller error (see parse()'s own comment in
-// emdf_atmos_signer.cpp for why that used to be an assert and no longer is).
+// recognise, not a caller error - ac3::emdf::walk_frame's own `supported`
+// field (ac3/emdf/frame_layout.hpp) is what draws that scope.
 [[nodiscard]] AC3SIGNING_EXPORT int sign_atmos_stream(std::span<std::byte> stream,
                                                        const SigningKey& key);
 

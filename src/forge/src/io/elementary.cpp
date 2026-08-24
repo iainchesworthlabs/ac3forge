@@ -72,10 +72,15 @@ constexpr int kBsidBitOffset = 40;
 // this reader surfaces, and AC-3 has no counterpart to Annex E's object-audio
 // addbsi marker (TS 103 420 §8.3.1 is E-AC-3 only).
 //
-// bsid/bsmod are captured rather than skipped because two separate consumers
-// need them off the wire: build_codec_config_box() (ac3/io/dec3.hpp) fills in
-// AC3SpecificBox's own bsid/bsmod fields from them (ETSI TS 102 366 Annex F
-// §F.4), and `ac3cli probe` reports them directly.
+// bsid/bsmod are captured rather than skipped because multiple separate
+// consumers need them off the wire: build_codec_config_box()
+// (ac3/io/dec3.hpp) fills in AC3SpecificBox's own bsid/bsmod fields from them
+// (ETSI TS 102 366 Annex F §F.4), `ac3cli probe` reports them directly, and
+// the MPEG-TS PMT descriptors (mpegts::ServiceInfo) need bsmod/dsurmod for
+// their own service-type/surround-mode fields. bsmod_present is always true
+// here - §5.4.2.2 puts bsmod in every AC-3 syncframe unconditionally, unlike
+// Annex E, which moved it into infomdate (see skip_informational_metadata's
+// FrameHeader::bsmod_present below).
 std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte> at) {
     if (at.size() < 5) {
         return std::unexpected(ScanError::kTruncated);
@@ -101,6 +106,7 @@ std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte>
 
     h.bsid = static_cast<int>(r.read(5));
     h.bsmod = static_cast<int>(r.read(3));
+    h.bsmod_present = true;
     const auto raw = r.read(3);
     h.acmod = static_cast<Acmod>(raw);
     if ((raw & 0x1) && raw != 0x1) {
@@ -110,7 +116,7 @@ std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte>
         r.skip(2);  // surmixlev
     }
     if (raw == 0x2) {
-        r.skip(2);  // dsurmod
+        h.dsurmod = static_cast<int>(r.read(2));  // dsurmod
     }
     h.lfe = r.read(1) != 0;
     h.dialnorm = static_cast<int>(r.read(5));
@@ -171,7 +177,10 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 // Table E1.2's fields land straight in the public FrameHeader (see
 // elementary.hpp) rather than in a scan-private struct: `ac3cli probe` reports
 // every one of them per frame, and scan() below keeps only the first access
-// unit's - two consumers of one walk, not two walks.
+// unit's - two consumers of one walk, not two walks. bsmod_present, dsurmod
+// and mix_metadata ride along the same way, for the MPEG-TS PMT descriptors
+// (mpegts::ServiceInfo) that need them one level further out still.
+//
 // Table E1.2's mixing-metadata payload, walked (not interpreted) purely to
 // reach addbsi at the right bit offset - every field here mirrors
 // decoder/eac3_decoder.cpp's function of the same name field for field
@@ -180,7 +189,7 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 // read_eac3_header above already re-derives everything up through
 // chanmap on its own. A scan is a much smaller job than a decode and has no
 // business depending on the decoder's private Bsi/parse_bsi.
-void skip_mixing_metadata(BitReader& r, const FrameHeader& s, int nblks) {
+void skip_mixing_metadata(BitReader& r, FrameHeader& s, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     if (acmod > 0x2) {
         r.skip(2);  // dmixmod
@@ -195,10 +204,25 @@ void skip_mixing_metadata(BitReader& r, const FrameHeader& s, int nblks) {
         r.skip(5);  // lfemixlevcod
     }
     if (s.strmtyp != eac3::StreamType::kDependent) {
-        if (r.read(1) != 0) r.skip(6);  // pgmscl
+        // pgmscle, extpgmscle, mixdef > 0 and paninfoe are exactly the four
+        // conditions A/52 Annex G §3.5 lists for mixinfoexists (and ETSI
+        // EN 300 468 D.5 words as "contains metadata ... to control mixing
+        // with another AC-3 or Enhanced AC-3 stream"), so each is recorded
+        // as it is walked rather than only skipped.
+        if (r.read(1) != 0) {  // pgmscle
+            r.skip(6);         // pgmscl
+            s.mix_metadata = true;
+        }
         if (acmod == 0x0 && r.read(1) != 0) r.skip(6);  // pgmscl2
-        if (r.read(1) != 0) r.skip(6);  // extpgmscl
-        switch (r.read(2)) {            // mixdef
+        if (r.read(1) != 0) {  // extpgmscle
+            r.skip(6);         // extpgmscl
+            s.mix_metadata = true;
+        }
+        const auto mixdef = r.read(2);
+        if (mixdef != 0) {
+            s.mix_metadata = true;
+        }
+        switch (mixdef) {
             case 0x1: r.skip(1 + 1 + 3); break;  // premixcmpsel, drcsrc, premixcmpscl
             case 0x2: r.skip(12); break;         // mixdata
             case 0x3: {
@@ -212,7 +236,10 @@ void skip_mixing_metadata(BitReader& r, const FrameHeader& s, int nblks) {
             default: break;
         }
         if (acmod < 0x2) {
-            if (r.read(1) != 0) r.skip(8 + 6);  // panmean, paninfo
+            if (r.read(1) != 0) {  // paninfoe
+                r.skip(8 + 6);     // panmean, paninfo
+                s.mix_metadata = true;
+            }
             if (acmod == 0x0 && r.read(1) != 0) r.skip(8 + 6);
         }
         if (r.read(1) != 0) {  // frmmixcfginfoe
@@ -232,9 +259,11 @@ void skip_mixing_metadata(BitReader& r, const FrameHeader& s, int nblks) {
 void skip_informational_metadata(BitReader& r, FrameHeader& s) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     s.bsmod = static_cast<int>(r.read(3));
+    s.bsmod_present = true;
     r.skip(1 + 1);  // copyrightb, origbs
     if (acmod == 0x2) {
-        r.skip(2 + 2);  // dsurmod, dheadphonmod
+        s.dsurmod = static_cast<int>(r.read(2));  // dsurmod
+        r.skip(2);                                // dheadphonmod
     }
     if (acmod >= 0x6) {
         r.skip(2);  // dsurexmod
@@ -410,7 +439,33 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
                 out.lfe = sub->lfe;
                 out.bsid = sub->bsid;
                 out.bsmod = sub->bsmod;
+                out.bsmod_present = sub->bsmod_present;
+                out.dsurmod = sub->dsurmod;
+                out.mix_metadata = sub->mix_metadata;
                 locations = bed_locations(sub->acmod, sub->lfe);
+            }
+            // §E2.3.1.2: which independent substream ids the stream actually
+            // uses, over the WHOLE stream rather than the first access unit -
+            // a second programme's substream need not start at byte zero. See
+            // ScannedStream::independent_substreams on why this is only an
+            // observation of the ids present.
+            out.independent_substreams = static_cast<std::uint8_t>(
+                out.independent_substreams | (1u << (sub->substreamid & 0x7)));
+            // Substreams 1-3 are the ones a PMT descriptor can describe
+            // individually (EN 300 468 Table D.8, A/52 Table G.4); the first
+            // occurrence of each wins, the same "first access unit decides"
+            // rule the main service's own fields follow above.
+            if (sub->substreamid >= 1 && sub->substreamid <= 3) {
+                auto& slot = out.associated_substreams[static_cast<std::size_t>(
+                    sub->substreamid - 1)];
+                if (!slot.present) {
+                    slot = SubstreamService{.present = true,
+                                            .bsmod = sub->bsmod,
+                                            .bsmod_present = sub->bsmod_present,
+                                            .acmod = sub->acmod,
+                                            .lfe = sub->lfe,
+                                            .mix_metadata = sub->mix_metadata};
+                }
             }
         } else if (first_unit) {
             // §E3.8.2: a dependent's channels overwrite the bed's where they
@@ -511,6 +566,10 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
                 out.lfe = header->lfe;
                 out.bsid = header->bsid;
                 out.bsmod = header->bsmod;
+                // §5.4.2.2 puts bsmod in every AC-3 syncframe unconditionally,
+                // unlike Annex E - so it is always "present" here.
+                out.bsmod_present = header->bsmod_present;
+                out.dsurmod = header->dsurmod;
                 out.bit_rate_code = header->bit_rate_code;
                 locations = bed_locations(header->acmod, header->lfe);
             }
