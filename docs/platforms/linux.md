@@ -29,7 +29,17 @@ On Linux, live capture (`ac3cli devices`/`record`), monitor playback (`ac3cli mo
 61937 bitstream passthrough (`ac3cli outputs`/`play`) are implemented over **ALSA** when its
 headers are present, and over **PipeWire**'s native `pw_stream` API (not its ALSA-compatibility
 shim) when they are not but PipeWire's are. Everything else is file I/O and needs no audio stack
-at all — `ac3cli spdif` in particular reaches an AV receiver by writing a WAV, on any machine.
+at all — `ac3cli spdif` in particular reaches an AV receiver by writing a WAV, on any machine,
+and `ac3cli unspdif` reads one back the same way.
+
+Capture in the other direction — an S/PDIF or HDMI **input** carrying somebody else's bitstream
+— is ordinary PCM as far as ALSA and PipeWire are concerned, exactly as passthrough output is
+(see [Why ALSA still comes first](#why-alsa-still-comes-first) for why that is the shape of the
+problem on Linux). Nothing in either API says "this is Dolby Digital", so `ac3cli record`
+recognises the IEC 61937 burst framing itself and writes the elementary stream rather than
+encoding the bursts as audio; `ac3cli live` detects the same thing and stops. Neither is
+hardware-confirmed — see [What has and has not been verified](#what-has-and-has-not-been-verified)
+below — but the burst framing they rely on is verified both ways against FFmpeg's `spdif` muxer.
 
 Both dependencies are optional, detected packages:
 

@@ -69,10 +69,12 @@ choice. Exactly what `ac3cli fmp4` produces — an initialization segment (`init
 media segment per fragment (`segment1.m4s`, `segment2.m4s`, …, 1.536 s each at 48 kHz), an HLS
 media and master playlist pair (`audio.m3u8`/`master.m3u8`, RFC 8216), and a DASH MPD
 (`manifest.mpd`, ISO/IEC 23009-1) — ready for a packager or CDN origin to point at directly. An
-Atmos stream's HLS playlist carries `CHANNELS="<N>/JOC"` rather than a bare channel count
-automatically, the same object-count TS 103 420 already gives the dec3 box above. Still honestly
-two commands (`ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3 out_dir`), for the same reason as
-every other container here.
+Atmos stream signals itself throughout automatically, from the same object count TS 103 420
+already gives the dec3 box above: `CHANNELS="<N>/JOC"` on the HLS rendition, the
+`EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors that spec's clause
+D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments
+themselves. Still honestly two commands (`ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3
+out_dir`), for the same reason as every other container here.
 
 **Container**'s sixth option, **MPEG-TS (.ts)**, wraps the stream as a DVB-profile MPEG-2
 Transport Stream — exactly what `ac3cli ts` produces — stream_type 0x06 plus the
@@ -81,11 +83,12 @@ codecs; there is no Atmos-specific signaling on this path — DVB's descriptors 
 marker, unlike MP4's dec3 box or fMP4's HLS playlist above. Honestly two commands here too
 (`ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts`).
 
-None of the last three containers carry over to a **live session** the way Matroska does — see
-[Live capture & session → Take durability](live-session.md#take-durability) for why (in short:
-`mp4::mux`/`mp4::fragment`/`mpegts::mux` are batch APIs with no incremental writer, unlike
-`matroska::Writer`). Selecting one and starting a live session still writes the plain elementary
-stream, the same file Elementary stream itself would produce live.
+Of the four containers above, only **fragmented MP4/CMAF** carries over to a **live session** the
+way Matroska does — it gained an incremental writer (`mp4::FragmentWriter`) in this release, and
+`ac3cli live` a `container=fmp4` token to match. S/PDIF, MP4 and MPEG-TS still fall back to
+writing the plain elementary stream when a live session starts, the same file Elementary stream
+itself would produce live; see [Live capture & session → Take
+durability](live-session.md#take-durability) for what separates the three.
 
 ## Rate mode: Constant or Variable
 

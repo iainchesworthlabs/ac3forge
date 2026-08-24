@@ -35,6 +35,12 @@ on:
   schedule:
     # Weekly scan catches new CodeQL query packs even without code changes.
     - cron: "17 3 * * 1"
+  # develop's merge queue (see .github/branch-protection.md) needs "Analyze
+  # (C++)" to actually report on its temporary gh-readonly-queue/... ref -
+  # see ci.yml's own merge_group comment for why the trigger alone is
+  # sufficient here (no pull_request-only context is read below).
+  merge_group:
+    branches: [ develop ]
   workflow_dispatch:
 
 concurrency:

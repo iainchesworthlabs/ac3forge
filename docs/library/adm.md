@@ -31,7 +31,7 @@ unconditionally. See "Why opt-in" below for the reasoning.
 ```cpp
 const auto document = ac3adm::parse_bw64(fixture_path);
 if (!document) {
-    std::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
+    fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
                 ac3adm::describe(document.error()).data());
     return 1;
 }
@@ -39,11 +39,11 @@ if (!document) {
 
 ```cpp
 for (const auto& programme : document->model.programmes) {
-    std::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
+    fmt::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
                 programme.content_refs.size());
 }
 for (const auto& object : document->model.objects) {
-    std::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
+    fmt::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
                 object.start_s, object.track_uid_refs.size());
 }
 ```

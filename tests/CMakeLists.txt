@@ -54,6 +54,7 @@ add_executable(ac3tests
     core/test_bitwriter.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
+    core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
@@ -61,6 +62,7 @@ add_executable(ac3tests
     encoder/test_eac3.cpp
     decoder/test_eac3_decoder.cpp
     io/test_elementary.cpp
+    io/test_probe.cpp
     emdf/test_emdf.cpp
     encoder/test_encoder.cpp
     encoder/test_enhanced_coupling.cpp
@@ -69,10 +71,12 @@ add_executable(ac3tests
     containers/test_fmp4.cpp
     core/test_frame.cpp
     sinks/test_iec61937.cpp
+    sinks/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp
+    containers/test_matroska_reader.cpp
     core/test_mdct.cpp
     core/test_mdct_fast.cpp
     meta/test_meta_qc.cpp
@@ -101,6 +105,17 @@ add_executable(ac3tests
 # target's include path only, the same pattern the alsa backend's internal
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
+
+# core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
+# half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
+# builds under Clang with -fsanitize=fuzzer, but the header's
+# restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
+# frame-size tables, and whether it produces a crc1 the decoder accepts is
+# exactly the kind of thing that should be checked on every platform rather
+# than inferred from a coverage number on one. Same shape as the signing/src
+# include just above: a directory outside the public include tree, on this
+# target's path only.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 
 # test_selfcheck.cpp and test_eac3_selfcheck.cpp run the encoder/decoder mirror check
 # (ac3::verify) over the committed programme-material fixtures rather than a synthetic
@@ -182,8 +197,17 @@ endif()
 # already exists here whenever it is going to.
 # ---------------------------------------------------------------------------
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli.cpp cli/test_cli_probe.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
+    # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
+    # well as this encoder's own output - they exercise syntax ac3forge never
+    # emits (AHT, spectral extension, and frames this decoder declines
+    # outright), which is the only way to check that `probe` describes a FORMAT
+    # rather than this project's dialect of it. Passed as a path for the same
+    # reason AC3FORGE_GOLDEN_AUDIO_DIR is: ctest runs the binary from the build
+    # tree, nowhere near the fixtures.
+    target_compile_definitions(ac3tests PRIVATE
+        "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 endif()
 
 # RecordingSink (gui/test_recording_sink.cpp) is the GUI's one deliberately
@@ -198,6 +222,7 @@ endif()
 if(TARGET ac3gui)
     target_sources(ac3tests PRIVATE
         gui/test_recording_sink.cpp
+        "${CMAKE_SOURCE_DIR}/apps/gui/fmp4_folder_writer.cpp"
         "${CMAKE_SOURCE_DIR}/apps/gui/recording_sink.cpp")
     target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/gui")
 endif()
@@ -250,6 +275,7 @@ target_link_libraries(ac3tests
         mpegts::mpegts
         ac3::warnings
         ac3::coverage
+        ac3::fmt
         Catch2::Catch2WithMain)
 
 include(Catch)

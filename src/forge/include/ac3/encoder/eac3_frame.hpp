@@ -245,10 +245,30 @@ struct FrameConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp). It also selects the form of the three
+    // inverse transforms an ENHANCED-COUPLING encode runs per block inside
+    // eac3::ecpl_channel_spectrum, reconstructing the spectrum the decoder
+    // will hold: encoding is the only reason an encoder runs an inverse at
+    // all, so this one field is the encoder's fast-transform switch in both
+    // directions, and ac3cli's mode=reference (which clears it) keeps a
+    // reference-mode encode direct end to end.
     bool fast_mdct = true;
+
+    // §7.3.4 dithflag, decided per channel per block from content (see
+    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // config field here, except a frame using spectral extension, which
+    // always dithers off (see the note where step 8a decides it). false pins
+    // dithflag at 0 unconditionally in every frame, the deterministic
+    // behaviour from before this existed: real dither values are
+    // decoder-defined (the spec's own "any reasonably random sequence"), so
+    // two independent, spec-correct decoders given the same dithered stream
+    // diverge in the dithered bins by design - which is exactly what breaks
+    // a bit-for-bit comparison between this project's own decoder and an
+    // external one (tools/checks/verify_gold_reference.sh). That gate sets
+    // this false; nothing else needs to.
+    bool dither = true;
 
     // TS 103 420 §8.3. An object-audio stream sets flag_ec3_extension_type_a in
     // the addbsi field of whichever substream carries the EMDF container, and

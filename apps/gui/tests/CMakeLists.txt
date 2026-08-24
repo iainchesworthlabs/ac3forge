@@ -28,6 +28,8 @@ qt_add_executable(ac3gui_qmltests
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
+    fmp4_folder_writer.cpp
+    fmp4_folder_writer.hpp
     recording_sink.cpp
     recording_sink.hpp
     system_theme.cpp
@@ -83,6 +85,7 @@ target_link_libraries(ac3gui_qmltests
         mp4::mp4
         mpegts::mpegts
         ac3::warnings
+        ac3::fmt
         Qt6::Core
         Qt6::Gui
         Qt6::Quick

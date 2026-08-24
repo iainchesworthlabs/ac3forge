@@ -1,4 +1,5 @@
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/decoder/decoder.hpp"
 
 #include <algorithm>
@@ -77,6 +78,10 @@ constexpr BitAllocCodes kBamode0Codes{.sdcycod = 2,
 struct Bsi {
     StreamType strmtyp = StreamType::kIndependent;
     int substreamid = 0;
+    int bsid = eac3::kBsid;
+    // 0 ("not indicated") unless infomdate carried one - the same convention
+    // io::ScannedStream::bsmod keeps.
+    int bsmod = 0;
     std::uint32_t words = 0;  // frmsiz + 1
     SampleRate sample_rate = SampleRate::k48000;
     int numblkscod = 3;
@@ -148,9 +153,10 @@ void skip_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) {
 }
 
 // Table E1.2's informational-metadata payload: bsmod and the production notes.
-void skip_informational_metadata(BitReader& r, const Bsi& bsi) {
+void skip_informational_metadata(BitReader& r, Bsi& bsi) {
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
-    r.skip(3 + 1 + 1);  // bsmod, copyrightb, origbs
+    bsi.bsmod = static_cast<int>(r.read(3));  // §5.4.2.1, reported on DecodedSubstream
+    r.skip(1 + 1);                            // copyrightb, origbs
     if (acmod == 0x2) {
         r.skip(2 + 2);  // dsurmod, dheadphonmod
     }
@@ -211,6 +217,7 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
     if (bsid < eac3::kMinDecodableBsid || bsid > eac3::kBsid) {
         return std::unexpected(DecodeError::kUnsupported);
     }
+    bsi.bsid = bsid;
     bsi.dialnorm = static_cast<int>(r.read(5));
     // §E3.8.5: in a DEPENDENT substream compre marks the last dependent of the
     // program rather than announcing a compression word - though it still
@@ -260,6 +267,11 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
 }
 
 struct AudFrm {
+    // §E2.3.2.7: the per-block exponent strategies were transmitted
+    // individually rather than hoisted into Table E2.10's frame codes.
+    // Resolved into chexpstr either way below, so it is not recoverable from
+    // the strategies themselves - kept because a syntax dump reports it.
+    bool expstre = true;
     bool ahte = false;
     int snroffststr = 0;
     bool transproce = false;
@@ -312,6 +324,7 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
         expstre = r.read(1) != 0;
         frm.ahte = r.read(1) != 0;
     }
+    frm.expstre = expstre;
     frm.snroffststr = static_cast<int>(r.read(2));
     if (frm.snroffststr == 0x3) {
         return std::unexpected(DecodeError::kReservedValue);
@@ -451,6 +464,12 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
     std::span<const std::byte> frame) {
+    // Before the first early return, for the same reason FrameDecoder resets
+    // its own: a caller reusing one trace across a file must never read a
+    // previous frame's state out of a call that decoded nothing.
+    if (config_.syntax != nullptr) {
+        config_.syntax->reset();
+    }
     if (frame.size() < 8) {
         return std::unexpected(DecodeError::kTruncated);
     }
@@ -473,6 +492,44 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     const auto frm = parse_audfrm(r, *bsi, nblks);
     if (!frm) {
         return std::unexpected(frm.error());
+    }
+    // The syntax trace's frame-wide half (ac3/decoder/syntax_trace.hpp).
+    // Everything here comes straight off Table E1.3's audfrm section, which
+    // is exactly why an Annex E dump is worth having at all: the frame
+    // decides most of what the blocks are allowed to say, so "no delta bit
+    // allocation in this frame" means something different depending on
+    // whether dbaflde was clear or every block simply declined.
+    if (config_.syntax != nullptr) {
+        auto& syn = *config_.syntax;
+        syn.valid = true;
+        syn.fbw_channels = nfchans;
+        syn.lfe = bsi->lfe;
+        syn.block_count = nblks;
+        syn.transient_prenoise = frm->transproce;
+        syn.block_switch_enabled = frm->blkswe;
+        syn.dither_enabled = frm->dithflage;
+        syn.bamode = frm->bamode;
+        syn.delta_bit_alloc_enabled = frm->dbaflde;
+        syn.skip_enabled = frm->skipflde;
+        // §E3.6.4.2.3: spxattene itself only matters through the per-channel
+        // codes it gates, and parse_audfrm leaves those at -1 for a channel
+        // that does not attenuate - so "some channel attenuates" is both what
+        // the flag was for and what a reader wants to know.
+        syn.spx_attenuation_enabled =
+            std::ranges::any_of(frm->spxattencod, [](int code) { return code >= 0; });
+        syn.snroffststr = frm->snroffststr;
+        syn.per_block_exp_strategy = frm->expstre;
+        for (int stream = 0; stream < kMaxSubstreamStreams; ++stream) {
+            const int slot =
+                stream == kCplStream ? kCouplingSyntaxStream : stream;
+            syn.aht_stream[static_cast<std::size_t>(slot)] =
+                frm->ahtinu[static_cast<std::size_t>(stream)];
+        }
+        for (int ch = 0; ch < nfchans; ++ch) {
+            if (frm->chintransproc[static_cast<std::size_t>(ch)]) {
+                syn.transient_prenoise_channels |= static_cast<std::uint8_t>(1U << ch);
+            }
+        }
     }
     // §E2.3.1.8: a chanmap that does not account for exactly the channels
     // acmod and lfeon code would put audio in the wrong speakers rather than
@@ -513,6 +570,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     DecodedSubstream out;
     out.strmtyp = bsi->strmtyp;
     out.substreamid = bsi->substreamid;
+    out.bsid = bsi->bsid;
+    out.bsmod = bsi->bsmod;
     out.sample_rate = bsi->sample_rate;
     out.acmod = bsi->acmod;
     out.lfe = bsi->lfe;
@@ -526,9 +585,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     out.chanmap = bsi->chanmap;
     out.last_dependent = bsi->strmtyp == StreamType::kDependent && bsi->compre;
     out.blksw.assign(static_cast<std::size_t>(nfchans), {});
-    out.channels.assign(static_cast<std::size_t>(nchans),
-                        std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
-                                           0.0f));
+    // config_.skip_reconstruction stops before the second pass below, so
+    // nothing ever writes these - see that option's own comment.
+    if (!config_.skip_reconstruction) {
+        out.channels.assign(static_cast<std::size_t>(nchans),
+                            std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
+                                               0.0f));
+    }
 
     // §E2.3.1.2: a dependent's substreamid starts again at 0 in its own space,
     // so identity - and hence which overlap-add history belongs to this frame
@@ -699,6 +762,23 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                        ? frm->chexpstr[static_cast<std::size_t>(blk)][static_cast<std::size_t>(ch)]
                        : frm->lfeexpstr[static_cast<std::size_t>(blk)];
         };
+        // The syntax trace's per-block half. Unlike AC-3's, most of what goes
+        // in it was settled in audfrm before this loop began, so the strategies
+        // and cplinu can be recorded on entry rather than as they are read.
+        BlockSyntax* syntax =
+            config_.syntax != nullptr ? &config_.syntax->blocks[static_cast<std::size_t>(blk)]
+                                      : nullptr;
+        if (syntax != nullptr) {
+            syntax->entered = true;
+            syntax->coupling = frm->cplinu[static_cast<std::size_t>(blk)];
+            for (int ch = 0; ch < nchans; ++ch) {
+                syntax->exp_strategy[static_cast<std::size_t>(ch)] = strategy(ch);
+            }
+            if (syntax->coupling) {
+                syntax->exp_strategy[kCouplingSyntaxStream] =
+                    frm->cplexpstr[static_cast<std::size_t>(blk)];
+            }
+        }
 
         std::array<bool, eac3::chanmap::kMaxSubstreamFullbw> blksw{};
         if (frm->blkswe) {
@@ -709,6 +789,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         for (int ch = 0; ch < nfchans; ++ch) {
             out.blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)] =
                 blksw[static_cast<std::size_t>(ch)];
+            if (syntax != nullptr && blksw[static_cast<std::size_t>(ch)]) {
+                syntax->block_switch |= static_cast<std::uint8_t>(1U << ch);
+            }
         }
         // Annex E Table E1.4's own audblk() syntax: full per-channel
         // dithflag[ch] syntax when dithflage is set, else every channel
@@ -723,6 +806,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         } else {
             for (int ch = 0; ch < nfchans; ++ch) {
                 dithflag[static_cast<std::size_t>(ch)] = true;
+            }
+        }
+        if (syntax != nullptr) {
+            for (int ch = 0; ch < nfchans; ++ch) {
+                if (dithflag[static_cast<std::size_t>(ch)]) {
+                    syntax->dither |= static_cast<std::uint8_t>(1U << ch);
+                }
             }
         }
         if (r.read(1) != 0) {  // dynrnge
@@ -1179,6 +1269,35 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             if (frm->snroffststr == 0x1) {
                 fsnroffst.fill(static_cast<int>(r.read(4)));
             } else {
+                // Strategy 0x2: a fine offset per stream, in the order AC-3's
+                // own snroffste group uses - cplfsnroffst first and only
+                // where this block couples, then one per full-bandwidth
+                // channel, then lfefsnroffst. The coupling channel's slot is
+                // kCplStream, not part of the 0..nchans run; reading nchans
+                // values into that run instead, as this did, both consumes
+                // the wrong number of bits whenever coupling is on and leaves
+                // the shared channel allocating against an offset nobody
+                // sent.
+                //
+                // This is what tools/references/eac3_parse.py - the
+                // independent transcription this project checks itself
+                // against - has always read here, so the two now agree.
+                //
+                // Still unverified against a real stream, deliberately
+                // flagged as such: nothing in reach emits snroffststr != 0 at
+                // all. Neither FFmpeg 8.0.1's encoder nor Dolby's DEE 6.5.4
+                // ever does (checked over tests/golden/external-baseline/,
+                // every frame of both E-AC-3 legs), and when this project's
+                // own encoder was made to emit strategies 0x1 and 0x2 to the
+                // reading above, FFmpeg's decoder refused both - with and
+                // without an explicit block-0 snroffste - so the block-level
+                // element's shape is an open question no oracle can settle.
+                // What is certain either way is that reading nchans values
+                // and no coupling one, as this did, cannot be right.
+                if (frm->cplinu[static_cast<std::size_t>(blk)]) {
+                    fsnroffst[static_cast<std::size_t>(kCplStream)] =
+                        static_cast<int>(r.read(4));
+                }
                 for (int ch = 0; ch < nchans; ++ch) {
                     fsnroffst[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(4));
                 }
@@ -1268,8 +1387,19 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 delta[static_cast<std::size_t>(ch)] = {};
             }
         }
+        // What is in FORCE, not what this block transmitted - a clear
+        // deltbaie retains the previous block's segments (§5.4.3.47).
+        if (syntax != nullptr) {
+            for (int ch = 0; ch < nfchans && !syntax->delta_bit_alloc; ++ch) {
+                syntax->delta_bit_alloc = delta[static_cast<std::size_t>(ch)].deltnseg > 0;
+            }
+        }
         if (frm->skipflde && r.read(1) != 0) {  // skiple
             const auto skipl = r.read(9);
+            if (syntax != nullptr) {
+                syntax->skip_field = true;
+                syntax->skip_bytes = static_cast<std::uint16_t>(skipl);
+            }
             // Materialized rather than left as a view into `frame`: skipfld
             // starts wherever the bits before it happened to end, not
             // necessarily on a byte boundary, so its bytes have to be read
@@ -1293,6 +1423,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 const auto container = emdf::parse_container(skip_bytes);
                 if (container.has_value() && container->has_value()) {
                     for (const auto& payload : **container) {
+                        if (config_.syntax != nullptr) {
+                            config_.syntax->add_emdf_payload(payload.id);
+                        }
                         if (payload.id == emdf::kPayloadIdOamd) {
                             out.object_metadata = oba::parse_payload(payload.bytes);
                         } else if (payload.id == emdf::kPayloadIdJoc && joc_bytes.empty()) {
@@ -1310,6 +1443,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         bool snr_all_zero = csnroffst == 0;
         for (int ch = 0; ch < nchans && snr_all_zero; ++ch) {
             snr_all_zero = fsnroffst[static_cast<std::size_t>(ch)] == 0;
+        }
+        // cplfsnroffst counts too, and it is a separate slot rather than part
+        // of the run above. It could only ever be non-zero once strategy 0x2
+        // was actually read (nothing else fills that slot), which is why this
+        // arrives with it.
+        if (snr_all_zero && frm->cplinu[static_cast<std::size_t>(blk)]) {
+            snr_all_zero = fsnroffst[static_cast<std::size_t>(kCplStream)] == 0;
         }
         if (frm->cplinu[static_cast<std::size_t>(blk)]) {
             const auto s = static_cast<std::size_t>(kCplStream);
@@ -1711,9 +1851,37 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         tail.blksw = blksw;
         tail.endmant = endmant;
 
+        // The three remaining per-block tool answers, taken from the same
+        // snapshot the second pass reads rather than from where each was
+        // parsed: spxinu and the coupling flags persist across blocks, so
+        // "was it in use for THIS block" is only settled here.
+        if (syntax != nullptr) {
+            syntax->spectral_extension = tail.spxinu;
+            syntax->enhanced_coupling = tail.cplinu && tail.ecplinu_now;
+            syntax->rematrixing = bsi->acmod == Acmod::k2_0 &&
+                                  std::ranges::any_of(rematflg, [](bool on) { return on; });
+        }
+
         if (r.overflowed()) {
             return std::unexpected(DecodeError::kTruncated);
         }
+    }
+
+    // config_.skip_reconstruction stops here. Everything above read the wire
+    // - bsi, audfrm, every block's side information and its mantissas - and
+    // everything below turns what it read into audio: enhanced coupling's
+    // reconstruction, spectral extension, rematrixing, the §7.7 gain, the
+    // IMDCT, JOC's object reconstruction and the transient pre-noise
+    // holdback. `out` is already complete as metadata, so it goes back as
+    // it stands, with no channels and no object audio.
+    //
+    // Returning here also bypasses the pre-noise holdback deliberately: that
+    // exists so a correction reaching back into the previous frame can be
+    // applied before that frame is handed over, which is a statement about
+    // audio. A parse has no such dependency and a caller walking a file
+    // wants one report per syncframe, in order.
+    if (config_.skip_reconstruction) {
+        return std::optional<DecodedSubstream>(std::move(out));
     }
 
     // Second pass: finish every block in order. Standard-coupled, plain and
@@ -1742,8 +1910,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     : kZero;
             auto& zr = ecpl_spectrum_real_;
             auto& zi = ecpl_spectrum_imag_;
-            eac3::ecpl_channel_spectrum(
-                prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)], next, zr, zi);
+            eac3::ecpl_channel_spectrum(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)],
+                                        next, zr, zi, config_.fast_imdct);
 
             const int bins = tail.cplendmant - tail.cplstrtmant;
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -1939,7 +2107,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 if (!joc_slot) {
                     joc_slot = std::make_unique<joc::ReconstructionState>();
                 }
-                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot);
+                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
+                                                    /*fast_mdct=*/false, config_.fast_imdct);
             }
         }
     }
@@ -2159,6 +2328,15 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // §E3.8.2 caps a single program at 16 rendered channels.
     if (out.layout.count > 16) {
         return std::unexpected(DecodeError::kInvalidStream);
+    }
+    // Everything above settled what the program IS - its layout, its
+    // metadata, its object description. Everything below moves PCM into that
+    // layout, and there is none to move when only the parse was asked for.
+    // Returning here rather than letting the loop below run is not an
+    // optimisation: that loop checks each substream's channel count against
+    // its own location map, which an empty `channels` would fail.
+    if (config_.skip_reconstruction) {
+        return std::optional<DecodedAccessUnit>(std::move(out));
     }
     const std::size_t samples = lead.channels.empty() ? 0 : lead.channels.front().size();
     if (external.empty()) {

@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <fstream>
 #include <string>
 #include <string_view>
@@ -138,21 +139,21 @@ bool write_fixture(const std::string& path) {
 int main() {
     const auto fixture_path = (std::filesystem::temp_directory_path() / "ac3forge_adm_fixture.wav").string();
     if (!write_fixture(fixture_path)) {
-        std::printf("could not write fixture file\n");
+        fmt::printf("could not write fixture file\n");
         return 1;
     }
 
     const auto document = ac3adm::parse_bw64(fixture_path);
     if (!document) {
-        std::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
+        fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
                     ac3adm::describe(document.error()).data());
         return 1;
     }
 
-    std::printf("PCM: %u Hz, %u-bit, %zu channel(s), %zu frame(s)\n", document->audio.sample_rate,
+    fmt::printf("PCM: %u Hz, %u-bit, %zu channel(s), %zu frame(s)\n", document->audio.sample_rate,
                 document->audio.bits_per_sample, document->audio.channels.size(), document->audio.frame_count());
-    std::printf("chna rows: %zu\n", document->chna.size());
-    std::printf("ADM graph: %zu programme(s), %zu content(s), %zu object(s), %zu pack format(s), "
+    fmt::printf("chna rows: %zu\n", document->chna.size());
+    fmt::printf("ADM graph: %zu programme(s), %zu content(s), %zu object(s), %zu pack format(s), "
                 "%zu channel format(s), %zu stream format(s), %zu track format(s), %zu track UID(s)\n",
                 document->model.programmes.size(), document->model.contents.size(), document->model.objects.size(),
                 document->model.pack_formats.size(), document->model.channel_formats.size(),
@@ -160,11 +161,11 @@ int main() {
                 document->model.track_uids.size());
 
     for (const auto& programme : document->model.programmes) {
-        std::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
+        fmt::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
                     programme.content_refs.size());
     }
     for (const auto& object : document->model.objects) {
-        std::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
+        fmt::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
                     object.start_s, object.track_uid_refs.size());
     }
 
