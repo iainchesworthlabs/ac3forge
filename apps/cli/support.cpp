@@ -93,6 +93,11 @@ std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback) {
     return ec == std::errc{} && ptr == text.data() + text.size() ? value : fallback;
 }
 
+double parse_seconds_or(std::string_view text, double fallback) {
+    double value = 0.0;
+    return parse_double(text, value) ? value : fallback;
+}
+
 void print_meta_usage() {
     fmt::println("metadata options (any order, after the positional arguments):");
     fmt::println("  drc=<profile>     §7.7.1 dynamic range control per block");
@@ -113,6 +118,13 @@ void print_meta_usage() {
     fmt::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
     fmt::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
     fmt::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
+    fmt::println("  compr=<dB>        metadata only: stamp §7.7.2's compression word onto an");
+    fmt::println("                    existing stream (compr2=<dB> for Ch2). Rounded down, so");
+    fmt::println("                    the ceiling it promises stays a ceiling");
+    fmt::println("  bsmod=<0..7>      metadata only: Table 5.5's service type");
+    fmt::println("  dsurmod=<0..3>    metadata only: Table 5.11's Dolby Surround mode (2/0 only)");
+    fmt::println("  codec=ac3|eac3    transcode only: the output codec, when out_path's own");
+    fmt::println("                    suffix cannot say it (stdout, or an unusual name)");
     fmt::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
     fmt::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
     fmt::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
@@ -485,6 +497,7 @@ bool parse_options(std::span<char*> tokens, Options& out) {
         if (key == "dialnorm") {
             if (value == "auto") {
                 out.p.measure_dialnorm = true;
+                out.dialnorm_given = true;
                 continue;
             }
             const auto n = parse_u32_or(value, 0);
@@ -493,11 +506,13 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 return false;
             }
             out.p.dialnorm = static_cast<int>(n);
+            out.dialnorm_given = true;
             continue;
         }
         if (key == "dialnorm2") {
             if (value == "auto") {
                 out.p.measure_dialnorm2 = true;
+                out.dialnorm2_given = true;
                 continue;
             }
             const auto n = parse_u32_or(value, 0);
@@ -506,6 +521,37 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 return false;
             }
             out.p.dialnorm2 = static_cast<int>(n);
+            out.dialnorm2_given = true;
+            continue;
+        }
+        if (key == "compr" || key == "compr2") {
+            // A dB gain, converted to §7.7.2's own 8-bit word. Rounded DOWN
+            // (encode_compr_at_most) rather than to nearest, for the reason
+            // ac3/meta/drc.hpp gives: §7.7.2 exists to give "an assured upper
+            // limit", and a ceiling exceeded by half a step is not assured.
+            double db = 0.0;
+            if (!parse_double(value, db)) {
+                fmt::println(stderr, "error: {} takes a gain in dB (got '{}')", key, value);
+                return false;
+            }
+            const auto word = ac3::meta::encode_compr_at_most(db);
+            if (key == "compr") {
+                out.compr_word = word;
+            } else {
+                out.compr2_word = word;
+            }
+            continue;
+        }
+        if (key == "bsmod" || key == "dsurmod") {
+            const auto limit = key == "bsmod" ? 7u : 3u;
+            const auto n = parse_u32_or(value, limit + 1);
+            if (n > limit) {
+                fmt::println(stderr, "error: {} must be 0..{} ({})", key, limit,
+                             key == "bsmod" ? "Table 5.5's service type"
+                                            : "Table 5.11's Dolby Surround mode");
+                return false;
+            }
+            (key == "bsmod" ? out.bsmod : out.dsurmod) = static_cast<int>(n);
             continue;
         }
         if (key == "cmixlev") {
@@ -558,6 +604,19 @@ bool parse_options(std::span<char*> tokens, Options& out) {
                 out.p.dmixmod = ac3::meta::DownmixMode::kNotIndicated;
             } else {
                 fmt::println(stderr, "error: dmixmod must be ltrt, loro or none (Table D2.2)");
+                return false;
+            }
+            continue;
+        }
+        if (key == "codec") {
+            // 'transcode' only. Named rather than inferred when out_path is
+            // "-" or has no .ac3/.ec3 suffix to read - see Options::codec.
+            if (value == "ac3") {
+                out.codec = ac3::plan::Codec::kAc3;
+            } else if (value == "eac3" || value == "ec3") {
+                out.codec = ac3::plan::Codec::kEac3;
+            } else {
+                fmt::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", value);
                 return false;
             }
             continue;

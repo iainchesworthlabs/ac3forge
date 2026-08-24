@@ -27,6 +27,7 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/internal/profiling.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
@@ -559,6 +560,7 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
     std::span<const std::byte> frame) {
+    AC3_ZONE_SCOPED_N("eac3_decode_substream");
     // Before the first early return, for the same reason FrameDecoder resets
     // its own: a caller reusing one trace across a file must never read a
     // previous frame's state out of a call that decoded nothing.
@@ -898,6 +900,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     std::vector<std::byte> joc_bytes;
 
     for (int blk = 0; blk < nblks; ++blk) {
+        AC3_ZONE_SCOPED_N("eac3_parse_block");
         verify::Eac3BlockTrace* block_trace = nullptr;
         if (trace != nullptr) {
             block_trace = &trace->blocks[static_cast<std::size_t>(blk)];
@@ -1428,35 +1431,38 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         }
 
-        for (int ch = 0; ch < nchans; ++ch) {
-            const auto strat = strategy(ch);
-            if (strat == ExpStrategy::kReuse) {
-                if (blk == 0) {
+        {
+            AC3_ZONE_SCOPED_N("eac3_exponents");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto strat = strategy(ch);
+                if (strat == ExpStrategy::kReuse) {
+                    if (blk == 0) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                    continue;
+                }
+                const int end = ch < nfchans ? endmant[static_cast<std::size_t>(ch)] : kLfeEndmant;
+                endmant[static_cast<std::size_t>(ch)] = end;
+                const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
+                const auto absolute = static_cast<std::uint8_t>(r.read(4));
+                std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
+                for (auto& g : groups) {
+                    g = static_cast<std::uint8_t>(r.read(7));
+                    if (g > 124) {  // §7.10.2 error condition 17
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                }
+                auto& target = exps[static_cast<std::size_t>(ch)];
+                target.assign(static_cast<std::size_t>(end), 0);
+                decode_exponents(absolute, groups, strat, target);
+                // §7.2.2.2: exponents are 0..24, and the reconstruction shifts by
+                // them - out of range is undefined behaviour, not wrong audio.
+                if (std::ranges::any_of(target, [](auto e) { return e > kMaxExponent; })) {
                     return std::unexpected(DecodeError::kInvalidStream);
                 }
-                continue;
-            }
-            const int end = ch < nfchans ? endmant[static_cast<std::size_t>(ch)] : kLfeEndmant;
-            endmant[static_cast<std::size_t>(ch)] = end;
-            const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
-            const auto absolute = static_cast<std::uint8_t>(r.read(4));
-            std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
-            for (auto& g : groups) {
-                g = static_cast<std::uint8_t>(r.read(7));
-                if (g > 124) {  // §7.10.2 error condition 17
-                    return std::unexpected(DecodeError::kInvalidStream);
+                if (ch < nfchans) {
+                    r.skip(2);  // gainrng
                 }
-            }
-            auto& target = exps[static_cast<std::size_t>(ch)];
-            target.assign(static_cast<std::size_t>(end), 0);
-            decode_exponents(absolute, groups, strat, target);
-            // §7.2.2.2: exponents are 0..24, and the reconstruction shifts by
-            // them - out of range is undefined behaviour, not wrong audio.
-            if (std::ranges::any_of(target, [](auto e) { return e > kMaxExponent; })) {
-                return std::unexpected(DecodeError::kInvalidStream);
-            }
-            if (ch < nfchans) {
-                r.skip(2);  // gainrng
             }
         }
 
@@ -1707,24 +1713,26 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                     .snr_all_zero = snr_all_zero,
                                     .high_efficiency = frm->ahtinu[s]});
         }
-        for (int ch = 0; ch < nchans; ++ch) {
-            const int end = endmant[static_cast<std::size_t>(ch)];
-            if (static_cast<int>(exps[static_cast<std::size_t>(ch)].size()) != end) {
-                return std::unexpected(DecodeError::kInvalidStream);
+        {
+            AC3_ZONE_SCOPED_N("eac3_bit_allocation");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto uch = static_cast<std::size_t>(ch);
+                const int end = endmant[uch];
+                if (static_cast<int>(exps[uch].size()) != end) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                BitAllocCodes channel_codes = codes;
+                channel_codes.fgaincod = fgaincod[uch];
+                bap[uch].assign(static_cast<std::size_t>(end), 0);
+                // delta[ch] for ch == LFE's index is always {} (never written -
+                // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so
+                // the LFE channel has no delta bit allocation field at all).
+                compute_bit_allocation(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
+                                       fsnroffst[uch], bap[uch],
+                                       {.snr_all_zero = snr_all_zero,
+                                        .high_efficiency = frm->ahtinu[uch],
+                                        .delta = delta[uch]});
             }
-            BitAllocCodes channel_codes = codes;
-            channel_codes.fgaincod = fgaincod[static_cast<std::size_t>(ch)];
-            bap[static_cast<std::size_t>(ch)].assign(static_cast<std::size_t>(end), 0);
-            // delta[ch] for ch == LFE's index is always {} (never written -
-            // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so
-            // the LFE channel has no delta bit allocation field at all).
-            compute_bit_allocation(exps[static_cast<std::size_t>(ch)], bsi->sample_rate,
-                                   channel_codes, csnroffst,
-                                   fsnroffst[static_cast<std::size_t>(ch)],
-                                   bap[static_cast<std::size_t>(ch)],
-                                   {.snr_all_zero = snr_all_zero,
-                                    .high_efficiency = frm->ahtinu[static_cast<std::size_t>(ch)],
-                                    .delta = delta[static_cast<std::size_t>(ch)]});
         }
 
         // The self-check's per-block view (ac3/verify/eac3_mirror.hpp), taken
@@ -1964,22 +1972,28 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             return {};
         };
 
-        bool read_coupling = false;
-        for (int ch = 0; ch < nfchans; ++ch) {
-            if (const auto result = read_stream_dispatch(ch, 0); !result) {
-                return std::unexpected(result.error());
-            }
-            if (frm->cplinu[static_cast<std::size_t>(blk)] &&
-                chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
-                if (const auto result = read_stream_dispatch(kCplStream, cplstrtmant); !result) {
+        // Every stream's quantized mantissas off the wire - or, for an AHT
+        // stream, its whole frame of them out of block 0 (§3.4.4).
+        {
+            AC3_ZONE_SCOPED_N("eac3_mantissas");
+            bool read_coupling = false;
+            for (int ch = 0; ch < nfchans; ++ch) {
+                if (const auto result = read_stream_dispatch(ch, 0); !result) {
                     return std::unexpected(result.error());
                 }
-                read_coupling = true;
+                if (frm->cplinu[static_cast<std::size_t>(blk)] &&
+                    chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
+                    const auto shared = read_stream_dispatch(kCplStream, cplstrtmant);
+                    if (!shared) {
+                        return std::unexpected(shared.error());
+                    }
+                    read_coupling = true;
+                }
             }
-        }
-        if (bsi->lfe) {
-            if (const auto result = read_stream_dispatch(nfchans, 0); !result) {
-                return std::unexpected(result.error());
+            if (bsi->lfe) {
+                if (const auto result = read_stream_dispatch(nfchans, 0); !result) {
+                    return std::unexpected(result.error());
+                }
             }
         }
 
@@ -2127,6 +2141,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // above; only enhanced coupling's own reconstruction happens here, right
     // before the spx/rematrix/IMDCT tail every block goes through.
     for (int blk = 0; blk < nblks; ++blk) {
+        AC3_ZONE_SCOPED_N("eac3_reconstruct_block");
         auto& tail = tails[static_cast<std::size_t>(blk)];
         auto& coeffs = tail.coeffs;
 
@@ -2290,21 +2305,27 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         }
 
-        for (int ch = 0; ch < nchans; ++ch) {
-            const auto index = static_cast<std::size_t>(ch);
-            auto& x = imdct_scratch_;
-            if (ch < nfchans && tail.blksw[static_cast<std::size_t>(ch)]) {
-                imdct256_pair_windowed(coeffs[index], x, config_.fast_imdct);
-            } else {
-                imdct512_windowed(coeffs[index], x, config_.fast_imdct);
-            }
-            auto& history = delay[index];
-            auto& pcm = out.channels[index];
-            for (int n = 0; n < kSamplesPerBlock; ++n) {
-                pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
-                    static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)] +
-                                              history[static_cast<std::size_t>(n)]));
-                history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+        // The transform pair plus the overlap-add that reconstructs PCM from it -
+        // where a decode frame spends most of its time, and the stage
+        // DecoderConfig::fast_imdct's default switched under in 0.9.0.
+        {
+            AC3_ZONE_SCOPED_N("eac3_imdct_overlap");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto index = static_cast<std::size_t>(ch);
+                auto& x = imdct_scratch_;
+                if (ch < nfchans && tail.blksw[static_cast<std::size_t>(ch)]) {
+                    imdct256_pair_windowed(coeffs[index], x, config_.fast_imdct);
+                } else {
+                    imdct512_windowed(coeffs[index], x, config_.fast_imdct);
+                }
+                auto& history = delay[index];
+                auto& pcm = out.channels[index];
+                for (int n = 0; n < kSamplesPerBlock; ++n) {
+                    pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
+                        static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)] +
+                                                  history[static_cast<std::size_t>(n)]));
+                    history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                }
             }
         }
     }
@@ -2327,27 +2348,34 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // object_metadata->objects index for index, and this project's own
     // AtmosEncoder never produces one anyway, so reconstruction is skipped
     // rather than risk mislabeling one object's audio as another's.
-    if (out.object_metadata && out.object_metadata->program.dynamic_only && !joc_bytes.empty()) {
-        const auto params = joc::parse_payload(joc_bytes);
-        if (params && params->objects == static_cast<int>(out.object_metadata->objects.size())) {
-            constexpr std::array<int, joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
-            // Spans, not copies: this permutation used to deep-copy five
-            // channels (~30 KB a frame) purely to reorder them.
-            std::array<std::span<const float>, joc::kNumChannels5X> bed_joc_order{};
-            bool have_bed = static_cast<std::size_t>(joc::kNumChannels5X) <= out.channels.size();
-            for (int jc = 0; have_bed && jc < joc::kNumChannels5X; ++jc) {
-                bed_joc_order[static_cast<std::size_t>(jc)] =
-                    out.channels[static_cast<std::size_t>(
-                        kAc3FromJoc[static_cast<std::size_t>(jc)])];
-            }
-            if (have_bed) {
-                auto& joc_slot = joc_state_[static_cast<std::size_t>(key)];
-                if (!joc_slot) {
-                    joc_slot = std::make_unique<joc::ReconstructionState>();
+    {
+        AC3_ZONE_SCOPED_N("eac3_joc_reconstruct");
+        const bool dynamic_only =
+            out.object_metadata && out.object_metadata->program.dynamic_only;
+        if (dynamic_only && !joc_bytes.empty()) {
+            const auto params = joc::parse_payload(joc_bytes);
+            const auto object_count = static_cast<int>(out.object_metadata->objects.size());
+            if (params && params->objects == object_count) {
+                constexpr std::array<int, joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+                // Spans, not copies: this permutation used to deep-copy five
+                // channels (~30 KB a frame) purely to reorder them.
+                std::array<std::span<const float>, joc::kNumChannels5X> bed_joc_order{};
+                bool have_bed =
+                    static_cast<std::size_t>(joc::kNumChannels5X) <= out.channels.size();
+                for (int jc = 0; have_bed && jc < joc::kNumChannels5X; ++jc) {
+                    bed_joc_order[static_cast<std::size_t>(jc)] =
+                        out.channels[static_cast<std::size_t>(
+                            kAc3FromJoc[static_cast<std::size_t>(jc)])];
                 }
-                out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
-                                                    /*fast_mdct=*/false, config_.fast_imdct,
-                                                    config_.joc_domain);
+                if (have_bed) {
+                    auto& joc_slot = joc_state_[static_cast<std::size_t>(key)];
+                    if (!joc_slot) {
+                        joc_slot = std::make_unique<joc::ReconstructionState>();
+                    }
+                    out.object_audio = joc::reconstruct(bed_joc_order, *params, *joc_slot,
+                                                        /*fast_mdct=*/false, config_.fast_imdct,
+                                                        config_.joc_domain);
+                }
             }
         }
     }
@@ -2440,6 +2468,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
     std::span<const std::byte> unit, std::span<const std::span<float>> external) {
+    AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
     const auto frames = split_frames(unit);
     if (!frames) {
         return std::unexpected(frames.error());

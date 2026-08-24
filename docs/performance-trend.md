@@ -10,7 +10,7 @@ Four separate mechanisms, not one, and it matters which is which:
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
-  runs the same encoder configurations for longer (200 frames) and records the actual
+  runs the same configurations for longer (200 frames) and records the actual
   ms/frame number, not just a pass/fail, on every push to `develop`/`main`. It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
   over time even while it keeps passing.
@@ -34,6 +34,46 @@ forward MDCT should have cached) once shipped with no coverage to catch it: the 
 gate blocks a repeat outright, and the trend tables catch the gradual drift a
 pass/fail gate cannot see.
 
+## What is measured, and on what
+
+Both timing producers and the gate cover the same nine workloads: three encoders
+(`plain_51` and `plain_51_fast_mdct`, `eac3_51_auto` and `eac3_stereo_auto`,
+`atmos_4obj` and `atmos_4obj_fast_mdct`) and the three decoders that read what they
+produce (`ac3_51_decode`, `eac3_51_decode`, `atmos_4obj_decode`). Until roadmap PF1
+the E-AC-3 encoder — the largest source file in the codec — and every decode path had
+no ms/frame number and no real-time gate anywhere, so a regression in any of them was
+invisible here. The decode series are timed against streams the encode series in the
+same run just produced: a decode number only means something against a stream whose
+rate and tool set are known.
+
+Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
+through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and
+`ac3perf` ran on before PF1. A single stationary tone is not a cheaper version of
+programme material, it is a different workload: its spectrum is one bin wide, so the
+SNR-offset search converges against an allocation almost nothing competes for,
+coupling has near-nothing to share between channels, rematrixing sees a pair that is
+already identical, and the transient detector never fires — so the block-switched
+transform never runs at all. A regression confined to any of those could not move the
+number. `ac3kernelbench` had this rule from the start; PF1 applied it to the other
+two. The fixture is 78 frames long and the benches run 200, so frame indices wrap;
+the seam that creates lands in the same place on every run.
+
+Only `linux-gcc` is measured, not the full CI matrix — see the note below the append
+scripts for why. Every number on this page is that one runner's; nothing here is a
+cross-platform comparison, and a number from a developer machine is not comparable
+to one of these rows.
+
+Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
+show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
+targeted is smaller than this page's own run-to-run variance on a shared runner, so
+the effect is real but not visible against that noise floor in a 200-frame series.
+Isolated from the rest of the frame - the exact per-bin loop, `~9,100` conversions
+sized like one real 5.1 frame's worth, minimum of several runs - it measured
+~50 µs before and ~30 µs after per frame's worth of calls (a 1.5-1.8× speedup on that
+slice), consistent with the ~33-38 µs the change targeted. The gate that actually
+matters for this change is byte-identical output, not a timing number: see the PF2
+commit message for the corpus that was checked.
+
 `tools/ci/append_performance_history.py` appends every `develop`/`main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
@@ -43,6 +83,13 @@ check: a soft one (20% slower than the trailing 10-run mean, `::warning::` only)
 a hard one (100% slower - i.e. at least doubled - `::error::`, fails the
 `persist-performance-trend` CI job *after* the numbers are still recorded, so a big
 regression is never silently un-recorded just because it also failed the run).
+
+Both append scripts key every series by its own name end to end, so a workload or
+kernel added to a bench simply starts its own series: its first run has no trailing
+mean to be compared against and cannot trip its own regression gate, and it never
+perturbs an existing series' baseline. That is also why an existing series' name is
+not reused for a differently-shaped measurement — a trailing mean over two different
+workloads is a number with no owner.
 
 `tools/ci/append_kernel_history.py` does the same for `ac3kernelbench`'s per-kernel
 numbers (`kernels-develop.jsonl` / `kernels-main.jsonl`, same branch), with the same
@@ -317,7 +364,12 @@ of per-commit numbers.
 ## Per-kernel trend
 
 Same commits, one level finer: each kernel's ns/call from `ac3kernelbench`, one
-series per kernel. The Δ column is each run against its own series' trailing
+series per kernel. Both directions of both block sizes are covered in both their
+direct and fast forms — `mdct512_forward`/`_fast`, `mdct256_pair`/`_fast`,
+`imdct512_windowed`/`_fast`, `imdct256_pair`/`_fast` — so the ratio between a pair
+is what `mode=reference` costs, and the fast inverse that became the decoder's
+default in 0.9.0 has a series of its own rather than being tracked through the
+direct form no decoder runs any more. The Δ column is each run against its own series' trailing
 10-run mean - the same window and thresholds `append_kernel_history.py` annotates
 with: ≥ +20% is flagged as a soft drift, ≥ +100% as a hard one. Neither ever fails
 CI (see above); a flagged row here is an invitation to look, not a broken build.
@@ -494,7 +546,8 @@ the table: the direct evaluation's 320 KiB of step-3 matrices are lazily
 built *static* storage, so switching the default to the FFT path removes
 them from the process (a 3-minute CLI decode's peak working set drops
 ~0.2-0.3 MiB) without moving an allocation count. Its real payoff is time,
-which the timing series on this page do not cover (they time encode only):
+which the timing series on this page did not cover when it landed (they timed
+encode only; roadmap PF1 added the three decode series after the fact):
 measured 180-second decodes went from 3.53 s to 0.79 s (AC-3) and 3.49 s to
 0.75 s (E-AC-3) when the fast path became the default - `mode=reference`
 runs the old numbers on purpose.

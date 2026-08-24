@@ -42,6 +42,56 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   nothing — main programme included. Measured against ffmpeg 8.0.1 and recorded in
   [docs/verification.md](docs/verification.md#where-the-oracles-dont-reach).
 
+- **Every codec path now has a throughput number and a real-time gate** (roadmap `PF1`). The
+  performance suite covered two encoder configurations; it now covers nine workloads — AC-3,
+  E-AC-3 (with the Annex E tools on `auto`, at 5.1 and stereo) and Atmos/JOC encode, plus the
+  three decode paths that read what they produce. Until now the E-AC-3 encoder, the largest
+  source file in the codec, and every decoder had no ms/frame series on
+  [the performance trend page](docs/performance-trend.md) and no real-time assertion anywhere,
+  so a regression in any of them was invisible. Both decoders gain Tracy zones (frame, block,
+  exponents, bit allocation, mantissas, decoupling, IMDCT/overlap and JOC reconstruction), so a
+  decode regression can be attributed without a bisect. `ac3kernelbench`'s own decode-side gap —
+  the fast inverse transform's kernel series — is closed just below, alongside `dft512`.
+- **Wider PCM input** (roadmap `DC8`). `read_wav` and `WavStreamReader` accepted
+  `WAVE_FORMAT_PCM` at 16 bits and `WAVE_FORMAT_IEEE_FLOAT` at 32 and refused everything else,
+  so 24-bit — the normal professional delivery depth — needed an FFmpeg pre-conversion before
+  this encoder could touch it. Both now read 8/16/24/32-bit integer PCM and 32/64-bit IEEE
+  float, either wrapped in `WAVE_FORMAT_EXTENSIBLE`, and take the `data` chunk's length from a
+  `ds64` chunk for RF64 (EBU Tech 3306) and BW64 (BS.2088-1) files past RIFF's 4 GB ceiling.
+  Chunk lookup is a real RIFF walk rather than a search for the four-character code anywhere in
+  the file, so a `bext`/`iXML` payload containing the bytes `data` can no longer be mistaken for
+  the audio. The ADM reader had the mirror-image hole — integer only, IEEE float refused by the
+  vendored libbw64 at open time — and now detects a float master up front and reads it with its
+  own container walk, routing the `axml` bytes through the identical libadm parse.
+- **Stream tools** (roadmap `DC9`): five `ac3cli` commands over an already-encoded elementary
+  stream, four of which never touch a coded coefficient.
+  - `transcode in.ec3 out.ac3` decodes and re-encodes — the DD+-to-DD route to an optical link
+    or an AC-3-only HDMI sink, which had no route at all before. It carries the source's
+    `dialnorm` verbatim (§5.4.2.8 makes it a reproduction-level decision), stamps the source's
+    own `compr` word back onto each encoded frame rather than re-deriving a ceiling that
+    describes the programme and not this generation's coding, converts the mix metadata between
+    AC-3's two `bsi` levels and E-AC-3's `mixmdate` group, and folds a layout AC-3 cannot code
+    down to 5.1 per §7.8 — announced on stderr, since it changes what the listener hears.
+  - `metadata` rewrites `dialnorm`, `compr`, `bsmod` and `dsurmod` on an existing stream and
+    re-stamps its CRCs, copying the audio bytes through untouched; `normalize` is the
+    measurement-driven case, writing the `dialnorm` a BS.1770-4 measurement implies (ATSC A/85
+    §8) and nothing else.
+  - `cut` and `cat` move whole access units — an E-AC-3 access unit being an independent
+    substream plus its dependents — so a cut followed by a cat reproduces its input byte for
+    byte. `cat` refuses inputs whose codec, rate, layout or substream shape differ.
+- **`ac3::io::metadata_edit`**, the library surface behind those two: `read_frame_metadata`,
+  `edit_frame_metadata`, `edit_stream_metadata` and a public `restamp_crc`. `crc1` precedes the
+  region it covers, so it is solved through `ac3::solve_leading_crc`'s GF(2) polynomial inverse
+  rather than recomputed. Only fields already on the wire can change — `compr` behind `compre`,
+  E-AC-3's `bsmod`/`dsurmod` behind `infomdate` — and a field no syncframe carries is refused
+  before anything is written.
+- **`ac3::io::access_unit_timing`** and `ScannedStream::access_unit_samples`: where access unit
+  *i* starts and how long it lasts, in samples, seconds or an arbitrary timescale, computed from
+  the absolute sample position so nothing drifts. Every container writer computed this privately
+  from a `samples_per_frame` it was handed, and `ac3cli` passed 1536 regardless — correct only
+  while every access unit codes six blocks, which `numblkscod` does not guarantee.
+- New options: `codec=ac3|eac3` (`transcode`), and `compr=<dB>`, `compr2=<dB>`, `bsmod=<0..7>`,
+  `dsurmod=<0..3>` (`metadata`).
 - **E-AC-3 average-rate (ABR) encoding** — `ROADMAP` EQ12. `eac3::VbrConfig::abr` (a new
   `eac3::AbrConfig`: `target_kbps`, `window_frames`) asks the encoder for a long-run average
   bitrate while each frame's size still follows the content, which is what a streaming ladder
@@ -351,6 +401,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- `ac3cli mkv`/`mp4`/`fmp4`/`ts` declared 1536 samples per frame for every stream. An E-AC-3
+  stream coding fewer than six blocks per syncframe (`numblkscod` 0/1/2, §E2.3.1.4 — legal, and
+  nothing this project's own encoders emit) got a track whose whole timeline was wrong by the
+  ratio. All four now take the figure from the bitstream, and refuse a stream whose access units
+  genuinely differ in length rather than muxing it to a silently wrong timeline.
 - **`ac3cli atmos ... bed51` no longer advertises an object layer it deliberately did not
   encode.** `AtmosConfig::emit_object_metadata` decided whether the EMDF container (OAMD + JOC)
   was written, but `AtmosEncoder` set TS 103 420 §8.3.1's `addbsi` object marker
@@ -903,6 +958,67 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
   `tools=auto` output stays decodable by FFmpeg, and the tool tokens (`cpl`, `spx`, `aht`,
   `cpl+ecpl`, `tpn`, …) are unchanged — a caller who names a tool set still gets exactly it.
+- **E-AC-3 transmits its bit allocation parameters** (`bamode` 1, roadmap `EQ3`) instead of
+  inheriting Table E1.4's `bamode == 0` defaults - which are not §8.2.12's basic-encoder set, and
+  in particular pinned `dbpbcod` at 2. The frame now states `{sdcycod 2, fdcycod 1, sgaincod 1,
+  dbpbcod 3, floorcod 7}`, at a cost of 17 bits a frame. `dbpbcod` 3 is the departure the AC-3
+  encoder measured its way to in 0.7.0, and it carries over: swept 0-3 across 96/128/192 kbit/s
+  stereo and 192/256/384/640 kbit/s 5.1, it wins every cell by +1.2 to +3.0 dB SNR against the
+  old value, with ViSQOL MOS up in every cell too. `floorcod` was swept as well and stays at 7 -
+  the lowest of the eight, so the floor never binds. Both reference encoders in
+  `tests/golden/external-baseline/` emit exactly this set.
+- **`dithflag` is decided from content** in both encoders (roadmap `EQ4`), per full-bandwidth
+  channel per block, where it was previously written as a fixed 0. §7.3.4's dither exists to fill
+  the bins the allocator gave no bits to; the encoders now compare the energy the decoder will
+  not receive against the energy the dither would put there instead, and set the flag only where
+  the first is at least as large as the second. Digital silence always reads clear. A
+  block-switched channel never dithers - two interleaved half transforms share one coefficient
+  set there - which is also exactly what Dolby's own encoder does in the reference stream. On
+  E-AC-3 dither is additionally held off for any frame using spectral extension, whose
+  copy-source reconstruction the encoder could not otherwise mirror. The flag is transmitted
+  either way, so none of this costs bits; it trades a little waveform SNR for perceptual quality,
+  which is what the tool is for.
+
+  Measured on `tools/ci/quality_race.py`'s own material, decoded by FFmpeg 8.0.1, ViSQOL in audio
+  mode. The E-AC-3 rows carry both changes; the AC-3 rows carry only the dither one. Full tables,
+  every rate and tool set, are in the pull request.
+
+  | leg | before | after |
+  |---|---|---|
+  | AC-3 stereo 192 | 41.82 dB / 4.246 MOS | 41.12 dB / 4.344 MOS |
+  | AC-3 5.1 448 | 21.96 dB / 3.956 MOS | 20.91 dB / 4.268 MOS |
+  | AC-3 5.1 448, committed fixture | 39.95 dB / 3.670 MOS | 38.92 dB / 3.913 MOS |
+  | E-AC-3 stereo 96, no tools | 25.79 dB / 3.799 MOS | 26.75 dB / 4.307 MOS |
+  | E-AC-3 stereo 192, `auto` | 40.42 dB / 4.395 MOS | 40.98 dB / 4.414 MOS |
+  | E-AC-3 5.1 192, no tools | 10.02 dB / 1.326 MOS | 12.14 dB / 2.340 MOS |
+  | E-AC-3 5.1 256, `cpl` | 15.44 dB / 2.364 MOS | 15.36 dB / 2.875 MOS |
+- **`std::format`/`std::print`/`std::printf` replaced with {fmt}'s `fmt::format`/`fmt::print`/
+  `fmt::printf` everywhere.** NDK r26's bundled libc++ has no `<format>` at all unless the
+  compiler is invoked with `-fexperimental-library`, which the Android build never does; {fmt}
+  (the library `std::format` was standardized from) has no such gap, so the codebase now uses it
+  uniformly instead of avoiding standard formatting file by file. The handful of pre-existing
+  `%`-specifier call sites moved to `fmt::printf` with their format strings unchanged, rather than
+  being rewritten to `{}`-style. `fmt` is a new base vcpkg dependency (falls back to
+  `FetchContent` when no local copy is found — see `cmake/Fmt.cmake`); no public API is affected,
+  since every use is confined to implementation files.
+- **The timing benches are fed real programme material** (roadmap `PF1`). `ac3bench` and
+  `ac3perf` ran a 440 Hz sine on every channel; they now read `tests/golden/audio/reference_51.wav`
+  through a shared loader, the same rule `ac3kernelbench` has always followed. A single
+  stationary tone is not a cheaper version of programme material but a different workload: its
+  one-bin spectrum leaves the SNR-offset search, coupling, rematrixing and — because the
+  transient detector never fires — the entire block-switched transform out of the measurement,
+  so a regression confined to any of them could not move the number.
+- **`to_fixed25` is inlined and fused with exponent extraction** (roadmap `PF2`). It was an
+  out-of-line exported function wrapping a libm `std::round`, called once per coefficient bin
+  from both encoders — about 9,100 times per frame — and the largest named remainder of the
+  last profile at roughly 7% of a fast-path 5.1 encode. It moves into the header as a
+  `constexpr` function with bit-identical rounding (half away from zero, expressed without the
+  libm call), and both encoders' convert-then-re-walk pair becomes a single fused pass. Encoder
+  output is byte-identical: verified over a 24-stream corpus spanning both generations, several
+  rates and layouts, every Annex E tool set, both transform paths and Atmos/JOC.
+  `ac3::to_fixed25` and `ac3::exponent_from_fixed` are no longer exported from the shared
+  library — source callers are unaffected, a binary that linked them out of the DLL/`.so` must
+  recompile.
 
 ### Documented
 

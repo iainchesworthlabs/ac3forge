@@ -243,19 +243,29 @@ labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at al
   `width`/`height`/`depth`/`diffuse`, `channelLock` and `zoneExclusion` stop being the silent
   drops `docs/library/adm-bridge.md` lists (`ObjectPlacement` is a pure point source). Do the
   parse half once with DC6.
-- [ ] **DC8 (S)** — 24-bit and 32-bit integer PCM, `WAVE_FORMAT_EXTENSIBLE` wrapping them, and
-  RF64 in the plain WAV reader. `read_wav` and `WavStreamReader` accept PCM16 and float32 only,
-  so the normal professional delivery format needs an FFmpeg pre-conversion. The ADM reader has
-  the mirror-image hole (integer only, float32 refused).
-- [ ] **DC9 (M)** — Stream tools that do not re-encode the audio. (a) `ac3cli transcode in.ec3
+- [x] **DC8 (S)** — 24-bit and 32-bit integer PCM, `WAVE_FORMAT_EXTENSIBLE` wrapping them, and
+  RF64 in the plain WAV reader. `read_wav` and `WavStreamReader` accepted PCM16 and float32 only,
+  so the normal professional delivery format needed an FFmpeg pre-conversion. The ADM reader had
+  the mirror-image hole (integer only, float32 refused). Both readers now take 8/16/24/32-bit
+  integer PCM and 32/64-bit float, either wrapped in `WAVE_FORMAT_EXTENSIBLE`, with RF64/BW64
+  `ds64` sizes for files past 4 GB; the header walk and the sample conversion moved into one
+  shared translation unit so the two cannot disagree. The ADM side detects an IEEE-float master
+  up front and reads it with this module's own container walk, since the vendored libbw64
+  refuses to open one at all.
+- [x] **DC9 (M)** — Stream tools that do not re-encode the audio. (a) `ac3cli transcode in.ec3
   out.ac3`: decode and re-encode preserving dialnorm, DRC and mix metadata — the DD+-to-DD path
   for optical and AC-3-only HDMI sinks. (b) Metadata rewrite in place (dialnorm, `compr`, `bsmod`,
-  `dsurmod`) with the CRCs re-stamped, reusing the in-place rewrite plumbing `ac3::signing`
-  already has; with `LoudnessMeter` this is also a metadata-only `normalize` (A/85 §8). (c)
-  Frame-aligned `cut`/`cat` with access-unit-aware boundaries, and a public per-AU timestamp
-  helper (every container writer computes timing privately today). `strmtyp 2` convertible
-  streams — the spec's own no-re-encode path, refused by `validate()` today — stay out until
-  someone needs them.
+  `dsurmod`) with the CRCs re-stamped; with `LoudnessMeter` this is also a metadata-only
+  `normalize` (A/85 §8). (c) Frame-aligned `cut`/`cat` with access-unit-aware boundaries, and a
+  public per-AU timestamp helper. Shipped as `ac3::io::metadata_edit` (crc1 solved through
+  `ac3::solve_leading_crc`'s GF(2) inverse, only fields already on the wire rewritable) and
+  `ac3::io::access_unit_timing` over a new `ScannedStream::access_unit_samples`, which the four
+  container commands now take their `samples_per_frame` from instead of assuming 1536.
+  `transcode` carries dialnorm and the source's own `compr` word across verbatim and converts
+  the mix metadata between AC-3's two `bsi` levels and E-AC-3's `mixmdate` group; per-block
+  `dynrng` has no `bsi` field to stamp into and is regenerated from `drc=`, reported rather than
+  silently dropped. `strmtyp 2` convertible streams — the spec's own no-re-encode path, refused
+  by `validate()` — stayed out.
 - [x] **DC10 (XL)** — QMF-domain JOC. `ac3::dsp::QmfAnalysis`/`QmfSynthesis` is the 64-band
   complex filterbank §7.1 calls for — 640-tap prototype designed in-tree for exact perfect
   reconstruction (`tools/generators/gen_qmf_prototype.py`), 128-point FFT on the shared radix-2
@@ -649,12 +659,12 @@ At 2faf352 on linux-gcc: `plain_51` encodes at 0.49 ms/frame (65× real time), `
 since put 128-bit SIMD behind the transform kernels through a CMake-selected architecture
 directory; there is still no threading anywhere in the codec core.
 
-- [ ] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
+- [x] **PF1 (M)** — Bench what is not benched. E-AC-3 encode and every decode path have no
   ms/frame series and no real-time gate (`bench_encoder` runs `plain_51` and `atmos_4obj` on a
   440 Hz tone; `bench_memory` already has the workloads); `kernel_bench` benches the direct IMDCT
   and not the fast one that is now the default; the decoder has no Tracy zones. Switch the
   timing benches to `reference_51.wav` — the project's own real-audio rule applies to timing too.
-- [ ] **PF2 (S)** — Inline `to_fixed25` and fuse it with exponent extraction: an out-of-line
+- [x] **PF2 (S)** — Inline `to_fixed25` and fuse it with exponent extraction: an out-of-line
   exported `std::round` call made about 9,100 times per frame, ~33–38 µs and the largest named
   remainder of the last profile (~7% of the fast path). Byte-identical streams on the corpus are
   the gate.
