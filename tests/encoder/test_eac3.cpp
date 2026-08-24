@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
+#include <numeric>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -983,6 +985,175 @@ TEST_CASE("E-AC-3 VBR size is monotonic in quality", "[eac3][vbr]") {
     const auto high = vbr_frame_sizes(
         {.bitrate_kbps = 192, .vbr = ac3::eac3::VbrConfig{.quality = 0.5}}, pattern);
     CHECK(high.back() >= low.back());
+}
+
+TEST_CASE("E-AC-3 ABR holds a long-run average across mixed content", "[eac3][vbr][abr]") {
+    // The deliverable ABR exists for: a stream whose content swings between
+    // busy and quiet still averages what was asked for. Nothing but the
+    // controller decides the rate here - VbrConfig::quality is not read under
+    // ABR, so there is no cheap quality target the average could be
+    // accidentally satisfied by.
+    constexpr std::uint32_t kAvgKbps = 192;
+    const std::array<bool, 24> pattern{true,  true,  true,  false, false, false,
+                                       true,  true,  false, true,  false, false,
+                                       true,  true,  true,  true,  false, false,
+                                       false, true,  false, true,  true,  false};
+    const auto sizes = vbr_frame_sizes(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{
+             .abr = ac3::eac3::AbrConfig{.target_kbps = kAvgKbps, .window_frames = 8}}},
+        pattern);
+    const auto target_bytes = ac3::eac3::frame_words(ac3::SampleRate::k48000, kAvgKbps) * 2;
+    const auto total = std::accumulate(sizes.begin(), sizes.end(), std::size_t{0});
+    // At or under target on average - the reservoir caps the window's pooled
+    // budget, so it can undershoot (quiet content simply does not need the
+    // bits, and the offset scale is coarse enough at low rates that the last
+    // few per cent of a frame would have been padding) but must never run
+    // over. That direction is the one a mux's buffer model cares about.
+    CHECK(total <= target_bytes * sizes.size());
+    // ...and not by hiding: the average has to be genuinely tracked rather
+    // than trivially satisfied by every frame coming out tiny. The bar is
+    // loose because this is a 24-frame run - the first frame seeds the
+    // controller and the next few converge, which is a real share of a run
+    // this short. Measured on real material over 300 frames, the delivered
+    // rate lands within 0.2% of target at 192 kbit/s and above; see
+    // `quality_race.py vbr`.
+    CHECK(total > target_bytes * sizes.size() * 4 / 5);
+    // The frames really do vary - an ABR that quietly became CBR would pass
+    // both bounds above.
+    CHECK(*std::ranges::max_element(sizes) > *std::ranges::min_element(sizes));
+}
+
+TEST_CASE("E-AC-3 ABR honours the sliding window over every window", "[eac3][vbr][abr]") {
+    // Not just the whole-run average: no window of window_frames consecutive
+    // frames may exceed that window's pooled budget either. That is the
+    // property a mux's own buffer model cares about, and the one a naive
+    // "average it all out at the end" controller would miss.
+    constexpr std::uint32_t kAvgKbps = 160;
+    constexpr std::size_t kWindow = 6;
+    const std::array<bool, 20> pattern{true,  true, true,  true,  false, false, true,
+                                       false, true, true,  true,  false, false, true,
+                                       true,  true, false, false, true,  true};
+    const auto sizes = vbr_frame_sizes(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{
+             .abr = ac3::eac3::AbrConfig{.target_kbps = kAvgKbps,
+                                         .window_frames = static_cast<std::uint32_t>(kWindow)}}},
+        pattern);
+    const auto target_bytes = ac3::eac3::frame_words(ac3::SampleRate::k48000, kAvgKbps) * 2;
+    for (std::size_t at = 0; at + kWindow <= sizes.size(); ++at) {
+        const auto window =
+            std::accumulate(sizes.begin() + static_cast<std::ptrdiff_t>(at),
+                            sizes.begin() + static_cast<std::ptrdiff_t>(at + kWindow),
+                            std::size_t{0});
+        CHECK(window <= target_bytes * kWindow);
+    }
+}
+
+TEST_CASE("E-AC-3 ABR spends where the content is, unlike CBR", "[eac3][vbr][abr]") {
+    // The property that separates ABR from CBR at the same rate: a quiet
+    // frame must come out SMALLER than one frame's share and a busy frame
+    // BIGGER, rather than every frame being pinned to the same size. That is
+    // only possible because the offset is held across frames instead of being
+    // searched against each frame's own budget - see AbrController.
+    constexpr std::uint32_t kAvgKbps = 192;
+    const std::array<bool, 16> pattern{true,  true,  false, false, true, true, false, false,
+                                       true,  true,  false, false, true, true, false, false};
+    const auto sizes = vbr_frame_sizes(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{
+             .abr = ac3::eac3::AbrConfig{.target_kbps = kAvgKbps, .window_frames = 8}}},
+        pattern);
+    const auto target_bytes = ac3::eac3::frame_words(ac3::SampleRate::k48000, kAvgKbps) * 2;
+    // Skip the opening frames: the first seeds the controller from its own
+    // budget search and the next few are still converging onto the content.
+    bool over = false;
+    bool under = false;
+    for (std::size_t at = 4; at < sizes.size(); ++at) {
+        over = over || sizes[at] > target_bytes;
+        under = under || sizes[at] < target_bytes;
+    }
+    CHECK(over);
+    CHECK(under);
+}
+
+TEST_CASE("E-AC-3 ABR still honours a per-frame min/max bound", "[eac3][vbr][abr]") {
+    // The long-run average and the per-frame bounds compose: the reservoir
+    // decides how much of the pool a frame may draw, min_kbps/max_kbps decide
+    // how far any single frame may stray whatever the pool says.
+    constexpr std::uint32_t kAvgKbps = 192;
+    constexpr std::uint32_t kMinKbps = 128;
+    constexpr std::uint32_t kMaxKbps = 256;
+    const std::array<bool, 12> pattern{true,  true, false, false, true, true,
+                                       false, true, true,  false, true, false};
+    const auto sizes = vbr_frame_sizes(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{.min_kbps = kMinKbps,
+                                     .max_kbps = kMaxKbps,
+                                     .abr = ac3::eac3::AbrConfig{.target_kbps = kAvgKbps,
+                                                                 .window_frames = 4}}},
+        pattern);
+    const auto floor_bytes = ac3::eac3::frame_words(ac3::SampleRate::k48000, kMinKbps) * 2;
+    const auto ceiling_bytes = ac3::eac3::frame_words(ac3::SampleRate::k48000, kMaxKbps) * 2;
+    for (const auto size : sizes) {
+        CHECK(size >= floor_bytes);
+        CHECK(size <= ceiling_bytes);
+    }
+}
+
+TEST_CASE("E-AC-3 ABR rejects an unreachable average", "[eac3][vbr][abr]") {
+    // Bounds that exclude the target make the average unreachable by
+    // construction - every frame would be clamped to the same side of it -
+    // so it is refused up front rather than silently missed for the whole
+    // stream. A zero-frame window is not a window at all.
+    const auto encode_one = [](const ac3::eac3::FrameConfig& config) {
+        ac3::eac3::FrameEncoder encoder{config};
+        auto pcm = wideband_frame(2, 0);
+        std::vector<std::span<const float>> views;
+        for (const auto& channel : pcm) {
+            views.emplace_back(channel);
+        }
+        return encoder.encode_frame(views);
+    };
+    const auto too_high_a_floor = encode_one(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{.min_kbps = 256,
+                                     .abr = ac3::eac3::AbrConfig{.target_kbps = 192}}});
+    REQUIRE_FALSE(too_high_a_floor.has_value());
+    CHECK(too_high_a_floor.error() == ac3::FrameError::kInvalidBitrate);
+
+    const auto too_low_a_ceiling = encode_one(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{.max_kbps = 96,
+                                     .abr = ac3::eac3::AbrConfig{.target_kbps = 192}}});
+    REQUIRE_FALSE(too_low_a_ceiling.has_value());
+    CHECK(too_low_a_ceiling.error() == ac3::FrameError::kInvalidBitrate);
+
+    const auto no_window = encode_one(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{
+             .abr = ac3::eac3::AbrConfig{.target_kbps = 192, .window_frames = 0}}});
+    REQUIRE_FALSE(no_window.has_value());
+    CHECK(no_window.error() == ac3::FrameError::kInvalidBitrate);
+}
+
+TEST_CASE("E-AC-3 ABR with a one-frame window never exceeds one frame's share",
+          "[eac3][vbr][abr]") {
+    // window_frames == 1 pools nothing, so no frame can draw on any other:
+    // every frame is capped at exactly one frame's share, the same ceiling
+    // plain CBR sizes to. The cheapest proof the degenerate window is handled
+    // rather than divided by.
+    constexpr std::uint32_t kAvgKbps = 192;
+    const std::array<bool, 6> pattern{true, true, false, true, false, true};
+    const auto sizes = vbr_frame_sizes(
+        {.bitrate_kbps = 192,
+         .vbr = ac3::eac3::VbrConfig{
+             .abr = ac3::eac3::AbrConfig{.target_kbps = kAvgKbps, .window_frames = 1}}},
+        pattern);
+    const auto target_bytes = ac3::eac3::frame_words(ac3::SampleRate::k48000, kAvgKbps) * 2;
+    for (const auto size : sizes) {
+        CHECK(size <= target_bytes);
+    }
 }
 
 TEST_CASE("E-AC-3 VBR pinned to CBR bounds reproduces CBR output exactly", "[eac3][vbr]") {

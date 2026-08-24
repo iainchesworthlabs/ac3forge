@@ -2610,6 +2610,135 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
                   log) != 0);
 }
 
+// --- roadmap IO7: the object-layer strip ----------------------------------
+
+TEST_CASE("strip-objects leaves a decodable 5.1 stream with no object metadata",
+          "[cli][strip-objects]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "strip.log";
+    const auto atmos = dir / "strip_atmos.ec3";
+    const auto bed = dir / "strip_bed51.ec3";
+    const auto atmos_wav = dir / "strip_atmos.wav";
+    const auto bed_wav = dir / "strip_bed51.wav";
+
+    REQUIRE(run_cli("atmos \"" + atmos.string() + "\" 1 448 2 4 objects", log) == 0);
+    REQUIRE(run_cli("strip-objects \"" + atmos.string() + "\" \"" + bed.string() + "\"", log) == 0);
+    const auto report = read_log(log);
+    CHECK(report.find("no object metadata remains") != std::string::npos);
+    CHECK(fs::file_size(bed) < fs::file_size(atmos));
+
+    // The claim the command makes about the audio, checked through the
+    // decoder rather than taken on trust: the bed is bit-identical.
+    REQUIRE(run_cli("decode \"" + atmos.string() + "\" \"" + atmos_wav.string() + "\"", log) == 0);
+    REQUIRE(run_cli("decode \"" + bed.string() + "\" \"" + bed_wav.string() + "\"", log) == 0);
+    const auto read_all_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::string{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    };
+    CHECK(read_all_bytes(atmos_wav) == read_all_bytes(bed_wav));
+
+    // Nothing left to strip the second time round.
+    const auto again = dir / "strip_bed51_again.ec3";
+    REQUIRE(run_cli("strip-objects \"" + bed.string() + "\" \"" + again.string() + "\"", log) == 0);
+    CHECK(read_all_bytes(again) == read_all_bytes(bed));
+}
+
+TEST_CASE("strip-objects refuses an AC-3 stream", "[cli][strip-objects]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "strip_ac3.log";
+    const auto ac3 = dir / "strip_input.ac3";
+    REQUIRE(run_cli("silence \"" + ac3.string() + "\" 1 192", log) == 0);
+    CHECK(run_cli("strip-objects \"" + ac3.string() + "\" \"" + (dir / "strip_out.ec3").string() +
+                      "\"",
+                  log) != 0);
+    CHECK(read_log(log).find("E-AC-3") != std::string::npos);
+}
+
+// --- roadmap IO6: the MPEG-TS broadcast profiles ---------------------------
+
+TEST_CASE("ts writes the profile it is asked for", "[cli][ts]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ts_profile.log";
+    const auto source = dir / "ts_profile.ac3";
+    REQUIRE(run_cli("sine \"" + source.string() + "\" 1 448 440 60 51", log) == 0);
+
+    const auto read_all_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::string{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    };
+    const auto ts_of = [&](std::string_view profile, const fs::path& out) {
+        const std::string tail = profile.empty() ? std::string{} : " " + std::string{profile};
+        REQUIRE(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\"" + tail, log) ==
+                0);
+        return read_all_bytes(out);
+    };
+
+    const auto implicit = ts_of("", dir / "ts_implicit.ts");
+    const auto dvb = ts_of("dvb", dir / "ts_dvb.ts");
+    const auto atsc = ts_of("atsc", dir / "ts_atsc.ts");
+    // DVB is the default, so an unqualified invocation is unchanged.
+    CHECK(implicit == dvb);
+    // ATSC differs only in the PMT, so the files are the same length but not
+    // the same bytes - a stream_type and a descriptor apart.
+    CHECK(atsc.size() == dvb.size());
+    CHECK(atsc != dvb);
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + (dir / "ts_bad.ts").string() + "\" pal",
+                  log) != 0);
+    CHECK(read_log(log).find("dvb or atsc") != std::string::npos);
+}
+
+TEST_CASE("mainid= and asvc= are range-checked", "[cli][ts]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ts_service.log";
+    const auto source = dir / "ts_service.ac3";
+    const auto out = dir / "ts_service.ts";
+    REQUIRE(run_cli("sine \"" + source.string() + "\" 1 192 440 60 stereo", log) == 0);
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=7", log) ==
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0xFF", log) ==
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=8", log) !=
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=256", log) !=
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb mainid=x", log) !=
+          0);
+}
+
+TEST_CASE("fmp4 fallback-51 writes the paired rendition into one EXT-X-MEDIA group",
+          "[cli][fmp4][strip-objects]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "fmp4_fallback.log";
+    const auto atmos = dir / "fallback_atmos.ec3";
+    const auto out_dir = dir / "fallback_out";
+    fs::remove_all(out_dir);
+    REQUIRE(run_cli("atmos \"" + atmos.string() + "\" 1 448 2 4 objects", log) == 0);
+    REQUIRE(run_cli("fmp4 \"" + atmos.string() + "\" \"" + out_dir.string() + "\" 4 fallback-51",
+                    log) == 0);
+
+    CHECK(fs::exists(out_dir / "bed51" / "init.mp4"));
+    CHECK(fs::exists(out_dir / "bed51" / "audio.m3u8"));
+    std::ifstream master_in{out_dir / "master.m3u8", std::ios::binary};
+    const std::string master{std::istreambuf_iterator<char>{master_in},
+                             std::istreambuf_iterator<char>{}};
+    CHECK(master.find("/JOC\"") != std::string::npos);
+    CHECK(master.find("CHANNELS=\"6\"") != std::string::npos);
+    CHECK(master.find("URI=\"bed51/audio.m3u8\"") != std::string::npos);
+
+    // A stream with no object layer has no companion to write, and says so
+    // rather than writing an empty directory.
+    const auto plain = dir / "fallback_plain.ec3";
+    const auto plain_dir = dir / "fallback_plain_out";
+    fs::remove_all(plain_dir);
+    REQUIRE(run_cli("eac3-sine \"" + plain.string() + "\" 1 192 440 50 stereo", log) == 0);
+    REQUIRE(run_cli("fmp4 \"" + plain.string() + "\" \"" + plain_dir.string() + "\" 4 fallback-51",
+                    log) == 0);
+    CHECK(read_log(log).find("carries no object layer") != std::string::npos);
+    CHECK_FALSE(fs::exists(plain_dir / "bed51"));
+}
+
 // ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
 // worth anything if it is a true inverse - the elementary stream that goes
 // into a container has to be the one that comes back out, byte for byte. A

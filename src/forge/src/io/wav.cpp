@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <expected>
 #include <fstream>
 #include <ios>
@@ -17,19 +16,11 @@
 #include <string_view>
 #include <vector>
 
+#include "wav_format.hpp"
+
 namespace ac3::io {
 
 namespace {
-
-std::uint16_t read_u16(std::span<const char> data, std::size_t at) {
-    return static_cast<std::uint16_t>(static_cast<std::uint8_t>(data[at]) |
-                                      (static_cast<std::uint8_t>(data[at + 1]) << 8));
-}
-
-std::uint32_t read_u32(std::span<const char> data, std::size_t at) {
-    return static_cast<std::uint32_t>(read_u16(data, at)) |
-           (static_cast<std::uint32_t>(read_u16(data, at + 2)) << 16);
-}
 
 // std::ostream rather than std::ofstream specifically: the same header-
 // writing code below now runs against either a real file or an in-memory/
@@ -42,78 +33,48 @@ void put_u32(std::ostream& out, std::uint32_t value) {
     out.write(reinterpret_cast<const char*>(&value), 4);
 }
 
-std::size_t find_chunk(std::string_view view, std::string_view tag) {
-    return view.find(tag);
-}
-
 // The parse itself, shared by the path and istream overloads below - both
 // read their whole source into memory first (see either overload's own
 // comment for why), so this is the one place that actually walks the bytes.
+// The header walk and the per-sample conversion are detail::'s
+// (src/io/wav_format.hpp), shared with WavStreamReader so the two readers
+// cannot disagree about what a file says.
 std::expected<WavData, WavError> parse_wav(const std::vector<char>& raw) {
-    const std::string_view view{raw.data(), raw.size()};
-    if (raw.size() < 44 || view.substr(0, 4) != "RIFF" || view.substr(8, 4) != "WAVE") {
-        return std::unexpected(WavError::kNotRiffWave);
-    }
-    const auto fmt_at = find_chunk(view, "fmt ");
-    const auto data_at = find_chunk(view, "data");
-    // Both tags are found by searching the whole buffer, so either can sit
-    // arbitrarily close to the end - a 44-byte file whose last four bytes
-    // happen to read "fmt " passes the size check above and still has none
-    // of the fields below. Every read that follows is at a fixed offset from
-    // one of the two tags, so the two windows they need are checked once
-    // here: 24 bytes covers the fmt chunk through `bits` (a 16-byte PCM fmt
-    // chunk exactly), 8 covers the data chunk's tag and declared size. This
-    // is the same guard WavStreamReader::open already applies to the same
-    // field layout (wav_stream_reader.cpp); without it a hostile or merely
-    // truncated file indexes past the buffer.
-    if (fmt_at == std::string_view::npos || data_at == std::string_view::npos ||
-        fmt_at + 24 > raw.size() || data_at + 8 > raw.size()) {
-        return std::unexpected(WavError::kNotRiffWave);
-    }
-
     const std::span<const char> bytes{raw};
-    auto format = read_u16(bytes, fmt_at + 8);
-    const auto channel_count = read_u16(bytes, fmt_at + 10);
-    const auto sample_rate = read_u32(bytes, fmt_at + 12);
-    const auto bits = read_u16(bytes, fmt_at + 22);
-    if (format == 0xFFFE && fmt_at + 34 <= raw.size()) {
-        // WAVE_FORMAT_EXTENSIBLE: the real tag is the first two bytes of the
-        // SubFormat GUID in the extension. The extension is 10 bytes past the
-        // 24 checked above, and a file that claims the tag without carrying
-        // them keeps 0xFFFE - which no branch below accepts, so it falls out
-        // as kUnsupportedFormat rather than reading past the end.
-        format = read_u16(bytes, fmt_at + 32);
+    // 44 is the smallest useful RIFF/WAVE: 12 header + a 24-byte fmt chunk +
+    // an 8-byte data chunk header.
+    if (raw.size() < 44 || !detail::is_riff_wave(bytes)) {
+        return std::unexpected(WavError::kNotRiffWave);
     }
-    const bool is_float = format == 3 && bits == 32;
-    const bool is_pcm16 = format == 1 && bits == 16;
-    if (channel_count == 0 || (!is_float && !is_pcm16)) {
-        return std::unexpected(WavError::kUnsupportedFormat);
+    const auto fmt_chunk = detail::find_chunk(bytes, "fmt ");
+    const auto data_chunk = detail::find_chunk(bytes, "data");
+    if (!fmt_chunk || !data_chunk) {
+        return std::unexpected(WavError::kNotRiffWave);
+    }
+    const auto format = detail::parse_format(bytes, *fmt_chunk);
+    if (!format) {
+        return std::unexpected(format.error());
     }
 
-    const auto declared = read_u32(bytes, data_at + 4);
-    const std::size_t payload_at = data_at + 8;
-    const std::size_t available = raw.size() > payload_at ? raw.size() - payload_at : 0;
-    const std::size_t payload = std::min<std::size_t>(declared, available);
-    const std::size_t stride = static_cast<std::size_t>(channel_count) * bits / 8;
-    if (stride == 0) {
-        return std::unexpected(WavError::kUnsupportedFormat);
-    }
+    // The declared length, clamped to what the file actually holds - a
+    // truncated capture yields its real frames rather than a refusal. For an
+    // RF64/BW64 file the declared length comes from ds64 rather than from the
+    // data chunk's own (placeholder) 32-bit field.
+    const std::uint64_t declared = detail::data_chunk_size(bytes, *data_chunk);
+    const std::size_t payload_at = data_chunk->payload_at;
+    const std::uint64_t available = raw.size() > payload_at ? raw.size() - payload_at : 0;
+    const auto payload = static_cast<std::size_t>(std::min<std::uint64_t>(declared, available));
 
     WavData result;
-    result.sample_rate = sample_rate;
-    const std::size_t frames = payload / stride;
-    result.channels.assign(channel_count, std::vector<float>(frames));
+    result.sample_rate = format->sample_rate;
+    const std::size_t frames = payload / format->stride;
+    const std::size_t width = detail::sample_bytes(format->format);
+    result.channels.assign(format->channels, std::vector<float>(frames));
     for (std::size_t frame = 0; frame < frames; ++frame) {
-        for (std::uint16_t ch = 0; ch < channel_count; ++ch) {
-            const std::size_t at = payload_at + frame * stride + static_cast<std::size_t>(ch) * bits / 8;
-            if (is_float) {
-                float value = 0.0f;
-                std::memcpy(&value, raw.data() + at, sizeof(value));
-                result.channels[ch][frame] = value;
-            } else {
-                const auto sample = static_cast<std::int16_t>(read_u16(bytes, at));
-                result.channels[ch][frame] = static_cast<float>(sample) / 32768.0f;
-            }
+        for (std::uint16_t ch = 0; ch < format->channels; ++ch) {
+            const std::size_t at =
+                payload_at + frame * format->stride + static_cast<std::size_t>(ch) * width;
+            result.channels[ch][frame] = detail::convert_sample(bytes, at, format->format);
         }
     }
     return result;
@@ -124,8 +85,8 @@ std::expected<WavData, WavError> parse_wav(const std::vector<char>& raw) {
 std::string_view describe(WavError error) {
     switch (error) {
         case WavError::kCannotOpen: return "cannot open file";
-        case WavError::kNotRiffWave: return "not a RIFF/WAVE file";
-        case WavError::kUnsupportedFormat: return "unsupported WAV format (need PCM16 or float32)";
+        case WavError::kNotRiffWave: return "not a RIFF/RF64/BW64 WAVE file";
+        case WavError::kUnsupportedFormat: return "unsupported WAV format (need 8/16/24/32-bit PCM or 32/64-bit float)";
         case WavError::kTruncated: return "truncated WAV data";
     }
     return "unknown error";

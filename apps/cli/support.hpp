@@ -46,6 +46,12 @@ namespace ac3cli {
 
 std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback);
 
+// A positional argument in seconds, which several stream tools take and the
+// command table's own u32()/i32() accessors cannot express - `cut` in
+// particular needs sub-second precision to name an access unit at all
+// (1536 samples at 48 kHz is 32 ms).
+double parse_seconds_or(std::string_view text, double fallback);
+
 // --- metadata options -------------------------------------------------------
 // Bare words and key=value tokens, appended after the positional arguments in
 // any order, the same way 'couple' already works. Everything defaults off, so
@@ -107,6 +113,20 @@ struct Options {
     // an unsigned one unless the operator opts in here - see
     // docs/concepts/object-signing.md.
     bool verify_objects = false;
+    // 'fmp4' only: also write the object-stripped 5.1 companion rendition
+    // into the same #EXT-X-MEDIA group, which is what Apple's HLS Authoring
+    // Specification asks for alongside a CHANNELS="<N>/JOC" Atmos rendition.
+    // Off by default, matching every bare token here: a plain invocation
+    // writes exactly the single-rendition directory it always has, and a
+    // stream with no object layer has no companion to write anyway.
+    bool hls_fallback_51 = false;
+    // 'ts' only, both broadcast profiles: the identification values neither
+    // registry's descriptor can read off the bitstream because they describe
+    // how services in a multiplex RELATE, not what one elementary stream
+    // contains. Unset omits the field rather than inventing a number - see
+    // mpegts::ServiceInfo::mainid.
+    std::optional<int> mainid = std::nullopt;
+    std::optional<int> asvc = std::nullopt;
     // 'eac3-encode' only: run ac3::verify's E-AC-3 encoder/decoder mirror
     // self-check (ac3/verify/eac3_selfcheck.hpp) over every access unit this
     // command emits, and refuse the run on the first disagreement. Off by
@@ -218,6 +238,32 @@ struct Options {
     // design (see EncoderConfig::dither's own comment), which is exactly
     // what tools/checks/verify_gold_reference.sh needs this for.
     bool dither = true;
+    // 'transcode' only: the OUTPUT codec, when out_path's own suffix cannot
+    // say (stdout, or a file named something other than .ac3/.ec3). Unset
+    // means "take it from the suffix", which is what every ordinary
+    // invocation does.
+    std::optional<ac3::plan::Codec> codec = std::nullopt;
+    // Whether dialnorm=/dialnorm2= appeared on the command line at all, as
+    // opposed to `p.dialnorm` merely holding its default of 31. Only
+    // 'transcode' reads these, and only because its default is to PRESERVE
+    // the source stream's own value: without this it could not tell an
+    // explicit `dialnorm=31` from silence on the subject, and would quietly
+    // preserve 27 for an operator who asked for 31.
+    bool dialnorm_given = false;
+    bool dialnorm2_given = false;
+    // 'metadata' only: the §7.7.2 compr word (and Ch2's own) to STAMP onto
+    // an existing stream, as the 8-bit wire value the requested dB gain
+    // implies. Distinct from `p.heavy`, which asks an ENCODER to derive one
+    // from the signal - there is no signal to derive from here, only bits to
+    // overwrite, and only where the stream already carries a compr word.
+    std::optional<std::uint8_t> compr_word = std::nullopt;
+    std::optional<std::uint8_t> compr2_word = std::nullopt;
+    // 'metadata' only: Table 5.5's service type and Table 5.11's Dolby
+    // Surround mode. Neither has an encode-side equivalent in plan::Metadata
+    // - this project's encoders write bsmod 0 and dsurmod 0 unconditionally -
+    // so these exist for the rewrite path alone.
+    std::optional<int> bsmod = std::nullopt;
+    std::optional<int> dsurmod = std::nullopt;
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain

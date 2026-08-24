@@ -130,23 +130,56 @@ if(APPLE)
     list(APPEND AC3_GUI_QMLTESTS_ENV "QSG_RENDER_LOOP=basic")
 endif()
 
-add_test(NAME ac3gui_qml_tests
-    COMMAND ac3gui_qmltests -input "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml" -platform offscreen)
-set_tests_properties(ac3gui_qml_tests PROPERTIES
-    ENVIRONMENT "${AC3_GUI_QMLTESTS_ENV}"
-    # A safety net independent of whatever actually caused the macOS hangs
-    # above: 600s is generous headroom over the ~15s the full suite takes on
-    # Windows today (see docs/building.md's Verified configuration) - macOS
-    # CI has never completed this test yet, so that baseline isn't proven to
-    # transfer, hence more slack than a bare "15s plus margin" would give -
-    # but it still bounds a future hang to minutes of CI time instead of the
-    # 6-hour GitHub Actions job ceiling a hang otherwise silently consumes. A
-    # CTest TIMEOUT still counts as a captured failure, so outputOnFailure
-    # (CMakePresets.json's test presets) prints whatever the process wrote
-    # before it was killed - unlike an external job-level cancellation,
-    # which discards it entirely, exactly how this hang was first found.
-    TIMEOUT 600
-    LABELS "gui")
+# One ctest entry per tst_*.qml suite rather than a single ac3gui_qml_tests
+# entry driving all ~160 test cases in one process: that monolithic entry
+# measured ~580s on an idle Windows MSVC debug build (real encoder work, not
+# overhead - the "~15s" figure a previous version of this comment quoted was
+# stale, left over from when the suite was much smaller), a bare 3% under
+# its own 600s TIMEOUT. Under CPU contention from another build/test job on
+# the same machine - unremarkable on a shared dev box - that margin
+# disappears and ctest kills the process mid-suite: no FAIL: line, no
+# Totals: line, and no way to tell from the output alone which of the ~18
+# QML suites was running when it died. -input accepts a single .qml file as
+# well as a directory (Qt Quick Test's own suffix check on the argument
+# handles both), so each suite becomes its own ctest entry below instead.
+# This gets back the same failure-isolation a killed entry name already
+# gives every other ctest case, and - since each entry is a fresh process -
+# each suite now gets its OWN EncoderController singleton rather than the
+# eighteen suites sharing one for the whole run, tightening isolation rather
+# than loosening it. Measured per-suite split (JUnit XML `-o file,junitxml`
+# timings from a real run, not a guess): heaviest is GuidedWizard at ~65s in
+# that run, roughly a quarter of the whole suite's total - scaled to the
+# ~580s idle baseline that puts its own worst case around two minutes, so a
+# flat 300s TIMEOUT per entry leaves every suite, including the heaviest,
+# comfortable headroom even under contention, while no single entry needs
+# anywhere near the old 600s ceiling. Splitting also means these entries are
+# independent by construction, so `ctest -L gui -j N` runs them concurrently
+# without disturbing the rest of the suite's default serial execution
+# (`ctest --preset test-<leg>` is unaffected - confirmed on a real 18-entry
+# run: ~277s serial, 77s at -j4).
+file(GLOB AC3_GUI_QML_TEST_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml/tst_*.qml")
+
+foreach(AC3_GUI_QML_TEST_FILE IN LISTS AC3_GUI_QML_TEST_FILES)
+    get_filename_component(AC3_GUI_QML_TEST_NAME "${AC3_GUI_QML_TEST_FILE}" NAME_WE)
+    string(REGEX REPLACE "^tst_" "" AC3_GUI_QML_TEST_SUITE "${AC3_GUI_QML_TEST_NAME}")
+    set(AC3_GUI_QML_TEST_CASE "ac3gui_qml_tests_${AC3_GUI_QML_TEST_SUITE}")
+
+    add_test(NAME ${AC3_GUI_QML_TEST_CASE}
+        COMMAND ac3gui_qmltests -input "${AC3_GUI_QML_TEST_FILE}" -platform offscreen)
+    set_tests_properties(${AC3_GUI_QML_TEST_CASE} PROPERTIES
+        ENVIRONMENT "${AC3_GUI_QMLTESTS_ENV}"
+        # A safety net independent of whatever actually caused the macOS
+        # hangs above, sized per-suite rather than for the whole harness -
+        # see the comment above this loop for the measurement behind 300s.
+        # A CTest TIMEOUT still counts as a captured failure, so
+        # outputOnFailure (CMakePresets.json's test presets) prints
+        # whatever the process wrote before it was killed - unlike an
+        # external job-level cancellation, which discards it entirely,
+        # exactly how the original macOS hang was first found.
+        TIMEOUT 300
+        LABELS "gui")
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Windows-only Qt runtime deployment, identical in spirit to ../CMakeLists.txt's

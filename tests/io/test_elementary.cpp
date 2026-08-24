@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
@@ -14,6 +15,7 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/oba/atmos.hpp"
 
 namespace {
@@ -33,6 +35,19 @@ std::vector<std::vector<float>> tone(int channels) {
 
 void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
     out.insert(out.end(), bytes.begin(), bytes.end());
+}
+
+// numblkscod sits at bits 34-35 of an E-AC-3 syncframe whose fscod is not
+// 0x3 (16 syncword + 2 strmtyp + 3 substreamid + 11 frmsiz + 2 fscod), which
+// is byte 4, bits 2-3 counting from the MSB. Rewriting it and re-stamping
+// crc2 is how the short-access-unit fixtures below exist at all - see their
+// own comments for why a header-only fixture is the right shape there.
+void set_numblkscod(std::span<std::byte> frame, int numblkscod) {
+    auto byte = std::to_integer<std::uint8_t>(frame[4]);
+    byte = static_cast<std::uint8_t>((byte & 0xCF) |
+                                     ((static_cast<unsigned>(numblkscod) & 0x3u) << 4));
+    frame[4] = std::byte{byte};
+    REQUIRE(ac3::io::restamp_crc(frame).has_value());
 }
 
 // `frames` access units of real, multi-frame object audio - not
@@ -283,6 +298,151 @@ TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
     CHECK(*scanned->oba_complexity_index == kObjects + 1);
 }
 
+TEST_CASE("access-unit timing is the absolute sample position, not a running sum",
+          "[elementary]") {
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    std::vector<std::byte> stream;
+    auto pcm = tone(6);
+    std::vector<std::span<const float>> views;
+    for (const auto& channel : pcm) {
+        views.emplace_back(channel);
+    }
+    for (int f = 0; f < 5; ++f) {
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        append(stream, *frame);
+    }
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->access_unit_samples.size() == 5);
+
+    // §5.3.1: every AC-3 syncframe is six blocks of 256.
+    for (const auto samples : scanned->access_unit_samples) {
+        CHECK(samples == 1536);
+    }
+    CHECK(ac3::io::stream_duration_samples(*scanned) == 5 * 1536);
+    CHECK(ac3::io::stream_duration_seconds(*scanned) == Catch::Approx(5 * 1536 / 48000.0));
+    CHECK(ac3::io::uniform_access_unit_samples(*scanned) == 1536);
+
+    const auto third = ac3::io::access_unit_timing(*scanned, 2);
+    REQUIRE(third.has_value());
+    CHECK(third->start_sample == 2 * 1536);
+    CHECK(third->duration_samples == 1536);
+    CHECK(third->sample_rate == 48000);
+    CHECK(third->start_seconds() == Catch::Approx(2 * 1536 / 48000.0));
+    // 1536 samples at 48 kHz is exactly 2880 ticks of a 90 kHz clock, so this
+    // one is checkable by hand.
+    CHECK(third->start_in_timescale(90'000) == 2 * 2880);
+    CHECK(third->duration_in_timescale(90'000) == 2880);
+
+    CHECK_FALSE(ac3::io::access_unit_timing(*scanned, 5).has_value());
+
+    // The lookup a cut uses: a position anywhere inside a unit names that
+    // whole unit, never a split.
+    CHECK(ac3::io::access_unit_at_sample(*scanned, 0) == 0u);
+    CHECK(ac3::io::access_unit_at_sample(*scanned, 1535) == 0u);
+    CHECK(ac3::io::access_unit_at_sample(*scanned, 1536) == 1u);
+    CHECK(ac3::io::access_unit_at_seconds(*scanned, 0.1) == 3u);  // 4800 samples
+    CHECK_FALSE(ac3::io::access_unit_at_sample(*scanned, 5 * 1536).has_value());
+    CHECK_FALSE(ac3::io::access_unit_at_seconds(*scanned, -1.0).has_value());
+}
+
+TEST_CASE("a short-syncframe E-AC-3 stream reports its real access-unit length",
+          "[elementary]") {
+    // numblkscod 0/1/2 (§E2.3.1.4) - 1, 2 or 3 blocks instead of six - is
+    // legal Annex E that this project's own encoder never emits (it writes
+    // numblkscod 3 unconditionally), so the fixture is a real encoded
+    // syncframe with those two header bits rewritten and its crc2 re-stamped.
+    // That is enough for the question under test: scan() reads the header and
+    // never decodes an audblk, and the frame's own frmsiz - which is what
+    // delimits it - is untouched. Its audio would not decode, and nothing
+    // here asks it to.
+    using ac3::eac3::AccessUnitConfig;
+    AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+
+    const auto unit = ac3::eac3::build_silent_access_unit(config);
+    REQUIRE(unit.has_value());
+    std::vector<std::byte> stream;
+    for (int i = 0; i < 4; ++i) {
+        append(stream, unit->bytes);
+    }
+    const auto frame_bytes = unit->bytes.size();
+    for (std::size_t i = 0; i < 4; ++i) {
+        set_numblkscod(std::span{stream}.subspan(i * frame_bytes, frame_bytes), 2);
+    }
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->access_unit_samples.size() == 4);
+    for (const auto samples : scanned->access_unit_samples) {
+        CHECK(samples == 3 * 256);
+    }
+    CHECK(ac3::io::uniform_access_unit_samples(*scanned) == 768u);
+    CHECK(ac3::io::stream_duration_samples(*scanned) == 4 * 768);
+    const auto second = ac3::io::access_unit_timing(*scanned, 1);
+    REQUIRE(second.has_value());
+    CHECK(second->start_sample == 768);
+    CHECK(second->duration_samples == 768);
+}
+
+TEST_CASE("a stream whose access units differ in length has no uniform figure",
+          "[elementary]") {
+    // Same header-level fixture as above: one six-block unit, one three-block
+    // unit, one six-block unit.
+    using ac3::eac3::AccessUnitConfig;
+    AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+    const auto unit = ac3::eac3::build_silent_access_unit(config);
+    REQUIRE(unit.has_value());
+    const auto frame_bytes = unit->bytes.size();
+
+    std::vector<std::byte> stream;
+    for (int i = 0; i < 3; ++i) {
+        append(stream, unit->bytes);
+    }
+    set_numblkscod(std::span{stream}.subspan(frame_bytes, frame_bytes), 2);
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->access_unit_samples.size() == 3);
+    CHECK(scanned->access_unit_samples[0] == 1536);
+    CHECK(scanned->access_unit_samples[1] == 768);
+    CHECK(scanned->access_unit_samples[2] == 1536);
+    // No single samples_per_frame describes this, and saying otherwise is
+    // what would put every timestamp after the second unit in the wrong place.
+    CHECK_FALSE(ac3::io::uniform_access_unit_samples(*scanned).has_value());
+    CHECK(ac3::io::stream_duration_samples(*scanned) == 1536 + 768 + 1536);
+
+    const auto third = ac3::io::access_unit_timing(*scanned, 2);
+    REQUIRE(third.has_value());
+    CHECK(third->start_sample == 1536 + 768);
+}
+
+TEST_CASE("access-unit timing counts a whole access unit, dependents included",
+          "[elementary]") {
+    using ac3::eac3::AccessUnitConfig;
+    namespace cm = ac3::eac3::chanmap;
+    AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
+    config.dependents.push_back(
+        {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .chanmap = cm::k512Height});
+    const auto unit = ac3::eac3::build_silent_access_unit(config);
+    REQUIRE(unit.has_value());
+
+    std::vector<std::byte> stream;
+    append(stream, unit->bytes);
+    append(stream, unit->bytes);
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    // Two access units of two syncframes each - the dependent does not add
+    // its own 1536 samples, it codes the same ones.
+    REQUIRE(scanned->access_units.size() == 2);
+    REQUIRE(scanned->access_unit_samples.size() == 2);
+    CHECK(ac3::io::stream_duration_samples(*scanned) == 2 * 1536);
+}
+
 // The other half of the objects-or-nothing fallback rule (docs/concepts/
 // atmos-joc.md, "The fallback rule: objects, or nothing"; AtmosConfig::
 // emit_object_metadata's own comment). bed51 omits the EMDF container so the
@@ -322,7 +482,6 @@ std::vector<std::byte> legacy_core_stream(int access_units) {
     for (const auto& channel : pcm) {
         views.emplace_back(channel);
     }
-
     ac3::eac3::AccessUnitConfig config{
         .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
     config.dependents.push_back({.bitrate_kbps = 224,
