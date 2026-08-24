@@ -151,6 +151,7 @@ std::expected<ScannedStream, ScanError> scan_ac3(std::span<const std::byte> stre
             out.acmod = header->acmod;
             out.lfe = header->lfe;
             out.channels = header->coded_channels();
+            out.channel_map = bed_locations(header->acmod, header->lfe);
             out.bsid = header->bsid;
             out.bsmod = header->bsmod;
             out.bit_rate_code = header->bit_rate_code;
@@ -416,6 +417,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         return std::unexpected(ScanError::kEmpty);
     }
     out.channels = eac3::chanmap::channel_count(locations);
+    out.channel_map = locations;
     return out;
 }
 

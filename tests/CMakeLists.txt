@@ -206,6 +206,7 @@ endif()
 if(TARGET ac3gui)
     target_sources(ac3tests PRIVATE
         gui/test_recording_sink.cpp
+        "${CMAKE_SOURCE_DIR}/apps/gui/fmp4_folder_writer.cpp"
         "${CMAKE_SOURCE_DIR}/apps/gui/recording_sink.cpp")
     target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/gui")
 endif()
