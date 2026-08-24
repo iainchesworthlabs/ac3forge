@@ -735,6 +735,30 @@ jobs:
           fi
           bash tools/checks/verify_gold_reference.sh "$bin"
 
+      # The same gate a second time, on the spec's own direct transform
+      # evaluations instead of the fast paths (roadmap VX10). 0.9.0 flipped
+      # both transform defaults, and from then until this step existed every
+      # CI gate that touched a real stream ran in performance mode: the
+      # normative §8.2.3.2 forward MDCT and §7.9.4 step-3 inverse - the oracle
+      # every fast path is validated against - were covered only by
+      # transform-level unit tests. A change to either fast path could take
+      # its own reference with it and no end-to-end gate would notice.
+      #
+      # One leg, not all seven: mode=reference changes the arithmetic inside
+      # the transforms, not anything platform-specific, so paying for it on
+      # every leg would buy nothing. linux-gcc is the leg with the broadest
+      # coverage elsewhere (GUI, the ALSA fallback) and is a required check.
+      # Its labels are suffixed (see the script's own TRANSFORM_MODE comment),
+      # so its per-check JSON results sit beside the performance-mode run's in
+      # the same artifact rather than overwriting them.
+      - name: Gold reference gate (mode=reference)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          TRANSFORM_MODE: reference
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
       # own header comment for why it is a separate job rather than each leg

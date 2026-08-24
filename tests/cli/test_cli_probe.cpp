@@ -218,12 +218,21 @@ TEST_CASE("probe's JSON document carries the schema docs/cli/commands.md publish
     CHECK(json_field(tools, "aht_syncframes") == "0");
 }
 
-TEST_CASE("probe describes an E-AC-3 stream it cannot fully decode", "[cli][probe]") {
-    // The DEE leg. Most of its syncframes are refused by this decoder (a real,
-    // pre-existing limitation - 'ac3cli decode' fails outright on this file),
-    // which makes it the fixture that proves the header tier stands on its own:
-    // the layout, rate, duration and substream map below all come off the wire
-    // whatever the parse tier makes of the audio.
+TEST_CASE("probe reads a foreign E-AC-3 stream at both tiers", "[cli][probe]") {
+    // The DEE leg, and the fixture this test was written around: until the
+    // Annex E parsing fixes in decoder/eac3_decoder.cpp (the AHT-in-use flags'
+    // conditionality, cplfgaincod/cplfsnroffst, the band-structure reuse rule,
+    // the first* per-frame states and the coupling-state reset), most of its
+    // syncframes were refused outright and this test asserted exactly that -
+    // non-zero parse_failures, a first_parse_error, a non-zero exit - to prove
+    // the header tier stood on its own when the parse tier did not.
+    //
+    // It parses cleanly now, and so does every other committed third-party
+    // fixture, so the non-zero side of those counters has no committed stream
+    // left to reach it; tests/io/test_probe.cpp owns the synthetic side. What
+    // this fixture still proves is worth keeping: the layout, rate, duration
+    // and substream map below all come off the wire, and the parse tier agrees
+    // with them on a stream no encoder here produced.
     const auto input = baseline("eac3-51-256", "dee.ec3");
     REQUIRE(fs::exists(input));
     const auto log = scratch_dir() / "dee.json";
@@ -242,15 +251,17 @@ TEST_CASE("probe describes an E-AC-3 stream it cannot fully decode", "[cli][prob
     CHECK(json_field(document, "bitrate_kbps") == "256.000");       // == ffprobe's
     // E-AC-3 has no declared-rate field at all, unlike AC-3's frmsizecod.
     CHECK(json_field(document, "nominal_bitrate_kbps") == "null");
-    // Every frame's CRC is good; what fails is this decoder's own parse. The
-    // two counters exist separately precisely so this stream can say so.
+    // Every frame's CRC is good and every frame parses. The two counters stay
+    // separate because they answer different questions - a stream can be
+    // bit-intact and still be syntax this decoder cannot read, which is what
+    // this fixture was before the Annex E fixes.
     const auto integrity = json_section(document, "integrity");
     CHECK(json_field(integrity, "crc_failures") == "0");
-    CHECK(json_field(integrity, "parse_failures") != "0");
-    CHECK(json_field(integrity, "first_parse_error") != "null");
-    // ...and the exit code reports it, which is what makes probe usable as a
-    // gate without parsing its output.
-    CHECK(status != 0);
+    CHECK(json_field(integrity, "parse_failures") == "0");
+    CHECK(json_field(integrity, "first_parse_error") == "null");
+    // ...and the exit code says so, which is what makes probe usable as a gate
+    // without parsing its output.
+    CHECK(status == 0);
 
     // AHT is Annex E syntax this encoder never emits, so seeing it reported at
     // all is only possible off a foreign stream. Not all 79: this baseline is
