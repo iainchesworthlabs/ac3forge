@@ -122,6 +122,7 @@ target_sources(forge_objects
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
         src/encoder/assignment.cpp
+        src/encoder/bandwidth.cpp
         src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
         src/encoder/eac3_tools.cpp

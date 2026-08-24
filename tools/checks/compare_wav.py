@@ -19,6 +19,15 @@ threshold, pass/fail) for a caller that wants to persist the numbers rather
 than just gate on them - see docs/quality-trend.md. --codec-label and
 --bitrate-kbps are pure passthrough metadata for that file; this script does
 not care what codec produced its inputs.
+
+--max-diff-dbfs is the other way of asking the same question, for material
+where the SNR form cannot answer it. SNR is a RATIO, so on a passage that is
+itself near the noise floor - which several of the FFmpeg FATE excerpts
+tools/checks/verify_fate_interop.py fetches are, at -93 to -100 dBFS - a
+completely inaudible disagreement still scores a couple of dB and no floor
+can tell that apart from a real defect. The absolute form asserts on the
+difference signal directly instead: every channel's RMS difference must sit
+below the given dBFS. Both may be given, and both are then enforced.
 """
 
 import argparse
@@ -121,6 +130,18 @@ def align(a: list[float], b: list[float], lag: int) -> tuple[list[float], list[f
     return a[:n], b[:n]
 
 
+def diff_rms_dbfs(reference: list[float], actual: list[float]) -> float:
+    """RMS of the difference signal, in dBFS - an absolute error, unlike
+    snr_db's ratio. -inf (a bit-exact match) is reported as-is and clamped
+    only on the way into JSON, same as snr_db's +inf."""
+    if not reference:
+        return -math.inf
+    power = sum((r - a) ** 2 for r, a in zip(reference, actual)) / len(reference)
+    if power <= 1e-30:
+        return -math.inf
+    return 10.0 * math.log10(power)
+
+
 def snr_db(reference: list[float], actual: list[float]) -> float:
     signal_power = sum(v * v for v in reference)
     noise_power = sum((r - a) ** 2 for r, a in zip(reference, actual, strict=True))
@@ -150,6 +171,10 @@ def main() -> int:
     parser.add_argument("reference", type=Path)
     parser.add_argument("actual", type=Path)
     parser.add_argument("--min-snr-db", type=float, default=20.0)
+    parser.add_argument("--max-diff-dbfs", type=float, default=None,
+                         help="Also require every channel's RMS difference to sit below "
+                              "this absolute level, in dBFS. See the module docstring for "
+                              "when this answers a question --min-snr-db cannot.")
     parser.add_argument("--max-lag-samples", type=int, default=512)
     parser.add_argument("--probe-samples", type=int, default=20000)
     parser.add_argument("--json-out", type=Path, default=None,
@@ -177,19 +202,31 @@ def main() -> int:
     lag = best_lag(ref_mono, act_mono, args.max_lag_samples, args.probe_samples)
 
     worst = math.inf
+    worst_diff = -math.inf
     failed = False
     channels_db = []
+    diffs_dbfs = []
     for idx, (ref_ch, act_ch) in enumerate(zip(ref_channels, act_channels, strict=True)):
         r, a = align(ref_ch, act_ch, lag)
         result = snr_db(r, a)
+        diff = diff_rms_dbfs(r, a)
         channels_db.append(result)
+        diffs_dbfs.append(diff)
         worst = min(worst, result)
-        status = "ok" if result >= args.min_snr_db else "FAIL"
-        if status == "FAIL":
+        worst_diff = max(worst_diff, diff)
+        ok = result >= args.min_snr_db
+        if args.max_diff_dbfs is not None:
+            ok = ok and diff <= args.max_diff_dbfs
+        status = "ok" if ok else "FAIL"
+        if not ok:
             failed = True
-        print(f"channel {idx}: {result:.2f} dB [{status}]")
+        suffix = "" if args.max_diff_dbfs is None else f", diff {diff:.2f} dBFS"
+        print(f"channel {idx}: {result:.2f} dB{suffix} [{status}]")
 
     print(f"lag: {lag} samples, worst channel: {worst:.2f} dB, threshold: {args.min_snr_db} dB")
+    if args.max_diff_dbfs is not None:
+        print(f"loudest channel difference: {worst_diff:.2f} dBFS, "
+              f"threshold: {args.max_diff_dbfs} dBFS")
 
     if args.json_out is not None:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
@@ -201,11 +238,17 @@ def main() -> int:
             "threshold_db": args.min_snr_db,
             "channels_db": [json_safe_db(v) for v in channels_db],
             "worst_db": json_safe_db(worst),
+            "diffs_dbfs": [json_safe_db(v) for v in diffs_dbfs],
+            "worst_diff_dbfs": json_safe_db(worst_diff),
             "pass": not failed,
         }, indent=2))
 
     if failed:
-        print("FAIL: at least one channel is below the SNR threshold")
+        if args.max_diff_dbfs is None:
+            print("FAIL: at least one channel is below the SNR threshold")
+        else:
+            print("FAIL: at least one channel is below the SNR threshold or above the "
+                  "difference threshold")
         return 1
     print("PASS")
     return 0
