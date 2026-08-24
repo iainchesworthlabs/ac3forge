@@ -756,7 +756,20 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
     // The same two measurement passes `qc layout=bed` (the default, and what
     // this measured before that option existed) runs, which is the point: a
     // stream's loudness must not depend on which command asked.
-    const auto result = *bsid > 8 ? measure_qc_eac3_bed(stream) : measure_qc_ac3(stream, false);
+    std::optional<QcResult> result;
+    if (*bsid > 8) {
+        // §E2.3.1.2: measures the first programme the stream carries, the
+        // same default `run_qc`'s own want_programme=std::nullopt case picks
+        // via choose_programme - a caller of this function has no programme
+        // to name, so there is no "which one did you mean" to ask.
+        const auto ids = ac3::programme_ids(stream);
+        if (!ids || ids->empty()) {
+            return std::nullopt;
+        }
+        result = measure_qc_eac3_bed(stream, ids->front());
+    } else {
+        result = measure_qc_ac3(stream, false);
+    }
     if (!result) {
         return std::nullopt;
     }
