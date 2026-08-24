@@ -133,6 +133,7 @@ target_sources(forge_objects
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
         src/encoder/assignment.cpp
+        src/encoder/bandwidth.cpp
         src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
         src/encoder/eac3_tools.cpp
@@ -141,6 +142,7 @@ target_sources(forge_objects
         src/encoder/transient.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/probe.cpp
         src/io/wav.cpp
         src/io/wav_stream_reader.cpp
         src/io/wav_stream_writer.cpp
@@ -152,6 +154,9 @@ target_sources(forge_objects
         src/oba/joc.cpp
         src/oba/motion.cpp
         src/oba/oamd.cpp
+        src/oba/scene.cpp
+        src/oba/scene_json.cpp
+        src/oba/scene_text.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/mirror.cpp
