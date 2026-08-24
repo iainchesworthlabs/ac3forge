@@ -2,8 +2,8 @@
 
 Encoding commands in [Commands](commands.md) take these after their positional arguments, in any
 order. Not every command honors every option, though the parser accepts them anywhere: `silence`
-takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=` and (`live`
-only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
+takes none at all; `record` and `live` honor only `fast-mdct=off`, `container=`/`fmp4-window=`
+and (`live` only) `capture2=`, and accept but ignore the metadata options (`drc=`, `dialnorm=`, `heavy`,
 `cmixlev=`, …); `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
 — of the three Atmos commands, only `atmos-encode` measures:
@@ -266,7 +266,7 @@ The GUI's own multi-source Format-tab table (**Add source…** plus a per-channe
 is a direct front end over this same grammar — see
 [GUI → Multi-source & assignment](../gui/source-assignment.md).
 
-## Record/live options (`record`, `live`): `container=mkv`
+## Record/live options (`record`, `live`): `container=`
 
 ```text
 record/live options (record, live; any order, after the positional arguments):
@@ -274,6 +274,13 @@ record/live options (record, live; any order, after the positional arguments):
                      stream this writes by default - same shape of choice as
                      the GUI's own Container setting (container=matroska is
                      an accepted alias)
+  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live
+                     HLS playlists and a dynamic DASH MPD, updated as the
+                     session runs - the output path names the folder
+                     (container=cmaf is an accepted alias)
+  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the
+                     playlist/MPD (a rolling live window); 0, the default, keeps
+                     every segment
   container=raw     the default, spelled out
 ```
 
@@ -288,9 +295,28 @@ this page follows. This is the same choice the GUI's own Container combo offers 
 session](../gui/live-session.md#take-durability) for how a live session's own take durability
 differs slightly between the two front ends.
 
+`container=fmp4` (alias `container=cmaf`) is the same choice for fragmented MP4/CMAF, with one
+shape difference the format forces: the output path names a **folder**, not a file, because the
+container is a set of files. It is written incrementally — `init.mp4` at the first frame, a
+`segment*.m4s` each time a fragment closes, and `audio.m3u8`/`master.m3u8`/`manifest.mpd`
+rewritten alongside it — so the folder is a servable live origin *while the session is still
+running*: the playlist carries no `#EXT-X-ENDLIST` and the MPD is `type="dynamic"` with an
+`availabilityStartTime` until the session stops, at which point the trailing partial fragment is
+flushed and both close to their VOD/static forms. `live` never accumulates the take in memory on
+this path at all; `record`, which encodes to a fixed length up front, pushes its frames through
+the same writer so the two leave identical folders for the same take.
+
+`fmp4-window=<n>` bounds what the manifests list to the last *n* segments — `#EXT-X-MEDIA-SEQUENCE`
+and the MPD's `@startNumber`/`SegmentTimeline` advance with the window, which is what a real
+origin deleting segments behind itself needs. The segments themselves are still written; only the
+manifests roll. RFC 8216 §6.2.2 wants a live playlist to hold at least three target durations of
+media, so an `<n>` below 3 is accepted but not something a player will enjoy. The default, 0,
+lists every segment — right for a session whose folder will be served whole afterwards.
+
 ```bash
 ac3cli record out.mkv 30 192 0 container=mkv
 ac3cli live out.mkv 0 30 448 -2 -2 atmos container=mkv
+ac3cli live out_dir 0 30 448 -2 -2 atmos container=fmp4 fmp4-window=20
 ```
 
 ## Live options (`live`): `capture2=`

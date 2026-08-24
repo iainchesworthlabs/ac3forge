@@ -58,9 +58,9 @@ struct EncoderConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp).
     bool fast_mdct = true;
 
     // §7.3.4 dithflag, decided per channel per block from content (see
