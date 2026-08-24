@@ -15,6 +15,7 @@
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/emdf/frame_layout.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/object_strip.hpp"
 #include "ac3/oba/atmos.hpp"
 
@@ -187,15 +188,32 @@ TEST_CASE("strip_objects re-derives frmsiz and re-stamps crc2", "[io][strip]") {
     }
 }
 
-// 'bed51' mode emits no EMDF container but still writes TS 103 420 §8.3.1's
-// addbsi object-audio marker - src/forge/src/oba/atmos.cpp sets
-// oba_complexity_index on the encoder config unconditionally - so scan reports
-// an object layer for a stream that has none, and anything reading that
-// (a dec3 box's Atmos extension, an HLS CHANNELS="<N>/JOC" attribute) claims
-// objects that were never encoded. Taking the marker out is the same rule the
-// container itself follows: objects, or no signalling at all.
+// AtmosEncoder itself cannot produce this shape any more - the addbsi marker
+// only ever accompanies a real container now (docs/concepts/atmos-joc.md,
+// "the fallback rule: objects, or nothing"; AtmosConfig::emit_object_metadata's
+// own comment) - so the fixture corrupts a real container's own EMDF sync
+// word in place: the 16 bits at FrameLayout::container_start, flipped, and
+// crc2 re-stamped over the result. Everything else, including the addbsi
+// marker itself - which sits in bsi(), well before any per-block skip field -
+// is left exactly where the encoder put it. That is the shape a foreign tool
+// or a transmission bit error could produce too, and it is what strip_objects
+// has to notice and clean up regardless of how it arose.
 TEST_CASE("strip_objects removes an object marker left without a container", "[io][strip]") {
-    const Bytes bed51 = encode_atmos_stream(3, /*emit_objects=*/false);
+    Bytes bed51 = encode_atmos_stream(3, /*emit_objects=*/true);
+    std::size_t offset = 0;
+    while (offset < bed51.size()) {
+        const std::span<const std::byte> remaining{bed51};
+        const std::size_t size = ac3::emdf::syncframe_size(remaining.subspan(offset));
+        const auto layout = ac3::emdf::walk_frame(remaining.subspan(offset, size));
+        REQUIRE(layout.has_container);
+        for (std::size_t bit = layout.container_start; bit < layout.container_start + 16; ++bit) {
+            bed51[offset + (bit >> 3)] ^=
+                std::byte{static_cast<std::uint8_t>(1u << (7 - (bit & 7)))};
+        }
+        REQUIRE(ac3::io::restamp_crc(std::span{bed51}.subspan(offset, size)).has_value());
+        offset += size;
+    }
+
     const auto before = ac3::io::scan(bed51);
     REQUIRE(before.has_value());
     REQUIRE(before->oba_complexity_index.has_value());
