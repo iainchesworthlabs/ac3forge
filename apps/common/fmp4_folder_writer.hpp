@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -17,17 +18,18 @@
 // type="dynamic" MPD with an availabilityStartTime, so the folder is a
 // servable origin mid-take - and closed to the VOD/static forms by close().
 //
-// Shared by both of the GUI's write-as-you-go paths, which are otherwise
-// separate: RecordingSink (the Record button's take) and
-// EncoderController's own live session (LiveOutputWriters). fMP4 is the one
-// container both reach for the same code here rather than each growing its
-// own copy - and there is a third copy's worth of the same wiring in ac3cli
-// (apps/cli/support.hpp's Fmp4SessionWriter), which cannot share this one
-// only because the two applications have no common library to put it in.
+// Shared by every write-as-you-go path in BOTH front ends: RecordingSink
+// (apps/cli's record/live and the GUI's Record button take, both via
+// RecordingSink::Container::kFmp4) and the GUI's own live session
+// (EncoderController's LiveOutputWriters). fMP4 is the one container all
+// three reach for the same code here rather than each growing its own copy -
+// which a fourth, near-identical copy in ac3cli (apps/cli/support.hpp's
+// Fmp4SessionWriter) used to be, before moving this class to apps/common
+// gave it the same shared home RecordingSink already has.
 //
 // Qt-free on purpose, matching RecordingSink: everything here is std:: and
-// mp4::, so tests/gui's plain C++ test drives it without a QML engine.
-// Errors come back as user-facing strings - empty means fine.
+// mp4::, so tests' plain C++ test drives it without a QML engine. Errors
+// come back as user-facing strings - empty means fine.
 class Fmp4FolderWriter {
    public:
     // Creates the folder. Deliberately does NOT write anything into it yet:
@@ -35,7 +37,14 @@ class Fmp4FolderWriter {
     // fragmenter cannot exist until the first access unit does (see push()).
     // Creating the folder here still means an unwritable destination refuses
     // the take before capture starts.
-    [[nodiscard]] std::string open(const std::string& directory);
+    //
+    // `window_segments`: how many of the most recent media segments the HLS
+    // playlist and DASH MPD list - a rolling live window
+    // (mp4::FragmentOptions::playlist_window_segments). 0, the default,
+    // lists every segment, which is what every existing caller except
+    // ac3cli's own `fmp4-window=` token wants.
+    [[nodiscard]] std::string open(const std::string& directory,
+                                   std::uint32_t window_segments = 0);
 
     // Scans the first frame to build the track (once), then buffers into the
     // current fragment; writes a segment and refreshes the manifests whenever
@@ -57,6 +66,7 @@ class Fmp4FolderWriter {
     [[nodiscard]] std::string write_manifests(const mp4::FragmentWriter& writer, bool finished);
 
     std::filesystem::path dir_;
+    std::uint32_t window_segments_ = 0;
     std::size_t segments_ = 0;
     mp4::AudioTrack track_;
     mp4::HlsOptions hls_;

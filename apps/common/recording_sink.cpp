@@ -57,7 +57,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
         // first frame (see Fmp4FolderWriter). Creating the folder here still
         // means an unwritable destination refuses the take before capture
         // starts, which is what open()'s contract above promises.
-        if (auto problem = fmp4_.open(path); !problem.empty()) {
+        if (auto problem = fmp4_.open(path, config.fmp4_window_segments); !problem.empty()) {
             return problem;
         }
         open_ = true;

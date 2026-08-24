@@ -64,6 +64,11 @@ class RecordingSink {
         bool eac3 = false;
         std::uint32_t sample_rate = 48000;
         int channels = 2;
+        // kFmp4 only: how many of the most recent media segments the HLS
+        // playlist and DASH MPD list - a rolling live window
+        // (Fmp4FolderWriter::open's own parameter). 0, the default, lists
+        // every segment.
+        std::uint32_t fmp4_window_segments = 0;
     };
 
     // Empty on success. A failure here happens before any capture is worth

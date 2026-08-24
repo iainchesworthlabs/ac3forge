@@ -63,8 +63,10 @@ inline constexpr std::uint32_t kFmp4 = 1U << 13;
 inline constexpr std::uint32_t kTs = 1U << 14;
 // EMDF object signing/verification.
 inline constexpr std::uint32_t kObjects = 1U << 15;
+// probe's own json=/detail= option block.
+inline constexpr std::uint32_t kProbe = 1U << 16;
 
-inline constexpr std::uint32_t kAll = 0xFFFFU;
+inline constexpr std::uint32_t kAll = 0x1FFFFU;
 
 }  // namespace topic
 

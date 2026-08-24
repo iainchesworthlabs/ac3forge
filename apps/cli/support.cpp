@@ -1437,6 +1437,7 @@ std::string_view container_note(RecordingSink::Container container) {
         case RecordingSink::Container::kMatroska: return " (Matroska)";
         case RecordingSink::Container::kMpegts: return " (MPEG-TS)";
         case RecordingSink::Container::kSpdif: return " (IEC 61937 WAV carrier)";
+        case RecordingSink::Container::kFmp4: return " (fragmented MP4/CMAF)";
     }
     return {};
 }
