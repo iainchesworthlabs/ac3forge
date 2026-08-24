@@ -4,7 +4,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
-#include <QTextStream>
 #include <QTimer>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -38,6 +37,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
 #include "matroska/matroska.hpp"
@@ -1803,47 +1803,104 @@ QVariantMap EncoderController::evaluateObjectPath(int objectIndex, double timeS)
     return out;
 }
 
-bool EncoderController::exportObjectPaths(const QUrl& url) const {
+std::vector<ac3::oba::SceneObject> EncoderController::exportableSceneObjects() const {
+    const auto dynamic = dynamicObjectChannels();
+    const auto ndynamic =
+        std::max<std::size_t>(std::min<std::size_t>(dynamic.size(), 15), 1);
+    std::vector<ac3::oba::SceneObject> objects;
+    for (int i = 0; i < object_count_; ++i) {
+        // An objm group's export uses its first channel's flat index - the
+        // atmos-encode file format this feeds has no concept of a folded
+        // group (the same gap bed-pinned channels have, per exportObjectPaths'
+        // own header comment: they are not written at all; a group at least
+        // gets a representative single entry here).
+        const auto flat = static_cast<std::size_t>(i) < dynamic.size()
+                              ? dynamic[static_cast<std::size_t>(i)].front()
+                              : static_cast<std::size_t>(i);
+        if (objects.size() <= flat) {
+            objects.resize(flat + 1);
+        }
+        auto& object = objects[flat];
+        const auto object_key = keyForObjectIndex(i);
+        // A name for a human reading the file back. The motion preset's own
+        // label where the object has one, else its index - the column form
+        // has no name field and drops this either way, so nothing depends on
+        // it being unique.
+        const auto label =
+            object_key ? map_value(object_path_labels_, *object_key) : QString();
+        object.name = (label.isEmpty() ? QStringLiteral("object %1").arg(flat) : label)
+                          .toStdString();
+        const auto keyframes = sortedKeyframes(i);
+        if (keyframes.empty()) {
+            // No authored path - the object's static position is still worth
+            // writing, as a single time-0 point under exactly the gain/
+            // lfe_send law encodeObjects' own fallback applies, so the
+            // exported scene reproduces this object's actual placement rather
+            // than atmos-encode's own built-in default for it.
+            const auto config = object_key ? map_value(object_configs_, *object_key)
+                                           : ObjectConfig{};
+            const auto scale = 1.0 / std::sqrt(static_cast<double>(ndynamic));
+            object.automation.push_back(
+                {.time_s = 0.0,
+                 .position = {.x = config.x, .y = config.y, .z = config.z},
+                 .gain = 0.7 * scale,
+                 .lfe_send = config.lfe_send * scale});
+            continue;
+        }
+        for (const auto& key : keyframes) {
+            object.automation.push_back({.time_s = key.time_s,
+                                         .position = key.position,
+                                         .gain = key.gain,
+                                         .lfe_send = key.lfe_send});
+        }
+    }
+    return objects;
+}
+
+bool EncoderController::writeTextFile(const QUrl& url, const std::string& text) {
     const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
     }
-    QTextStream out(&file);
-    out.setRealNumberPrecision(9);
-    const auto dynamic = dynamicObjectChannels();
-    const auto ndynamic =
-        std::max<std::size_t>(std::min<std::size_t>(dynamic.size(), 15), 1);
-    for (int i = 0; i < object_count_; ++i) {
-        // An objm group's export uses its first channel's flat index - the
-        // atmos-encode file format this feeds has no concept of a folded
-        // group (the same gap bed-pinned channels have, per this function's
-        // own header comment: they are not written at all; a group at
-        // least gets a representative single line here).
-        const auto flat = static_cast<std::size_t>(i) < dynamic.size()
-                              ? dynamic[static_cast<std::size_t>(i)].front()
-                              : static_cast<std::size_t>(i);
-        const auto keyframes = sortedKeyframes(i);
-        if (keyframes.empty()) {
-            // No authored path - the object's static position is still
-            // worth writing, as a single time-0 keyframe under exactly the
-            // gain/lfe_send law encodeObjects' own fallback applies, so the
-            // exported file reproduces this object's actual placement
-            // rather than atmos-encode's own built-in default for it.
-            const auto object_key = keyForObjectIndex(i);
-            const auto config = object_key ? map_value(object_configs_, *object_key)
-                                           : ObjectConfig{};
-            const auto scale = 1.0 / std::sqrt(static_cast<double>(ndynamic));
-            out << flat << ' ' << 0.0 << ' ' << config.x << ' ' << config.y << ' ' << config.z
-                << ' ' << 0.7 * scale << ' ' << config.lfe_send * scale << '\n';
+    const auto bytes = QByteArray::fromStdString(text);
+    return file.write(bytes) == bytes.size() && file.flush();
+}
+
+bool EncoderController::exportObjectPaths(const QUrl& url) const {
+    // The grammar itself lives in ac3::oba now (scene.hpp), so this writes
+    // through the same function ac3cli's own reader is paired with rather
+    // than through a second, hand-rolled copy of the column layout that could
+    // drift from it. The span overload is the one that keeps a gap - a
+    // bed-pinned channel's flat index - out of the file, exactly as before.
+    return writeTextFile(url, ac3::oba::to_keyframe_text(exportableSceneObjects()));
+}
+
+bool EncoderController::exportObjectScene(const QUrl& url) const {
+    // The same objects as an ac3::oba::ObjectScene in JSON: named, with
+    // per-segment interpolation and an orientation the keyframe columns have
+    // nowhere to put. ac3cli's atmos-path and atmos-encode read this form too,
+    // so a scene saved here reloads there without going through the lossy
+    // column format.
+    //
+    // JSON has no index column, so an object is identified by its POSITION in
+    // the array. A gap in the flat indices (a bed-pinned channel) therefore
+    // cannot simply be skipped the way the column form skips it: it is written
+    // as an object holding still at room centre, so every later object keeps
+    // the index a plain atmos-encode run would address it by.
+    auto objects = exportableSceneObjects();
+    for (auto& object : objects) {
+        if (!object.automation.empty()) {
             continue;
         }
-        for (const auto& key : keyframes) {
-            out << flat << ' ' << key.time_s << ' ' << key.position.x << ' ' << key.position.y
-                << ' ' << key.position.z << ' ' << key.gain << ' ' << key.lfe_send << '\n';
-        }
+        object.name = QStringLiteral("bed-pinned channel").toStdString();
+        object.automation.push_back({.time_s = 0.0, .gain = 0.0});
     }
-    return out.status() == QTextStream::Ok;
+    const auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+    if (!scene) {
+        return false;
+    }
+    return writeTextFile(url, ac3::oba::to_json(*scene));
 }
 
 void EncoderController::startMotionPreview() {
