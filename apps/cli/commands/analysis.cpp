@@ -7,6 +7,10 @@
 #include <cstdint>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <fstream>
+#include <ios>
+#include <iostream>
+#include <istream>
 #include <memory>
 #include <optional>
 #include <span>
@@ -14,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
@@ -65,13 +70,39 @@ struct QcResult {
     std::uint32_t sample_rate_hz = 0;
     std::size_t unit_count = 0;
     double seconds = 0.0;
+    // Which of the two BS.1770 algorithms produced the figures below - Annex
+    // 3's extended one over the whole rendered program (layout=rendered), or
+    // Annex 1's basic one over the Table 5.8 bed (layout=bed). Reported, not
+    // just chosen: the same stream can legitimately measure differently
+    // through the two, and a QC figure without its algorithm is ambiguous.
+    bool rendered = false;
+    // layout=bed only: the stream carried at least one dependent substream,
+    // whose channels this measurement therefore never saw. Drives run_qc's
+    // hint that layout=rendered has more to measure - silence about it would
+    // read as "5.1 is all there is".
+    bool bed_hid_dependents = false;
     std::vector<QcProgrammeResult> programmes;
 };
+
+// A rendered layout's own name. Table E2.5 has no short label the way Table
+// 5.8's acmods do (there is no "5.1.4" in the bitstream, only a bit mask), so
+// the locations are listed in coded order - the same naming run_levels_eac3
+// gives each of its channel rows.
+std::string rendered_layout_label(const ac3::eac3::chanmap::Layout& layout) {
+    std::string out;
+    for (int ch = 0; ch < layout.count; ++ch) {
+        if (!out.empty()) {
+            out += ' ';
+        }
+        out += ac3::eac3::chanmap::name(layout[ch]);
+    }
+    return out;
+}
 
 // AC-3 (bsid <= 8): straightforward per-frame decode, same loop shape as
 // run_decode above, feeding ac3::meta::LoudnessMeter instead of accumulating
 // PCM - qc never writes audio out, so there is nothing to buffer.
-std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
+std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool rendered) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid AC-3 stream");
@@ -82,6 +113,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
     result.codec_label = "AC-3";
     result.unit_label = "frame(s)";
     result.unit_count = frames->size();
+    result.rendered = rendered;
 
     bool have_first = false;
     bool dual_mono = false;
@@ -109,6 +141,22 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
                 result.programmes.push_back(QcProgrammeResult{
                     .label = "Ch2", .dialnorm = decoded->dialnorm2.value_or(31),
                     .compr = decoded->compr2});
+            } else if (rendered) {
+                // AC-3 has no dependent substreams, so its rendered layout is
+                // its bed - the same channels either way. What changes is the
+                // algorithm: Annex 3 weights by position, which for every
+                // Table 5.8 layout with a discrete surround PAIR agrees with
+                // Annex 1 channel for channel. The one place the two really
+                // differ is the lone surround of 2/1 and 3/1: Annex 1 reads
+                // it as the surround field (+1.5 dB), Annex 3 as Table E2.5's
+                // Cs at 180 degrees (unity). See LoudnessMeter's own
+                // constructor comments.
+                const auto layout = ac3::eac3::chanmap::expand(
+                    ac3::eac3::chanmap::acmod_map(decoded->acmod, decoded->lfe));
+                result.layout_label = rendered_layout_label(layout);
+                meter.emplace(decoded->sample_rate, layout);
+                result.programmes.push_back(
+                    QcProgrammeResult{.dialnorm = decoded->dialnorm, .compr = decoded->compr});
             } else {
                 result.layout_label =
                     std::string{ac3::analysis::layout_name(decoded->acmod, decoded->lfe)};
@@ -180,7 +228,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream) {
 // frame so dependent-substream frames are still decoded (consuming their own
 // overlap-add state and catching any parse error) even though this only ever
 // measures what comes back independent.
-std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
+std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream) {
     const auto frames = ac3::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
@@ -206,6 +254,11 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
     // comment above).
     auto ingest = [&](const ac3::DecodedSubstream& sub) {
         if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
+            // Decoded (above) so its overlap-add state advances and its parse
+            // errors still surface, but never measured here - and remembered,
+            // so the report can say that layout=rendered would have more to
+            // measure than this pass just did.
+            result.bed_hid_dependents = true;
             return;
         }
         if (!have_first) {
@@ -297,6 +350,124 @@ std::optional<QcResult> measure_qc_eac3(std::span<const std::byte> stream) {
     return result;
 }
 
+// layout=rendered's E-AC-3 counterpart (roadmap IO10): measures the whole
+// assembled program - the independent substream's bed with every dependent's
+// height, wide and rear channels laid over it, in Table E2.5 location order -
+// through BS.1770-5 Annex 3's extended algorithm, which weights each channel
+// by its position rather than by its slot in a Table 5.8 acmod. That is what
+// lets 7.1, 5.1.2, 5.1.4 and 7.1.4 be metered at all: those channels are not
+// members of Table 5.8, so the bed pass above has no weight to give them and
+// simply never sees them.
+//
+// Walked with ac3::split_access_units and Eac3Decoder::decode_access_unit
+// (NOT split_frames/decode_substream, which is exactly the difference from
+// measure_qc_eac3_bed above) - the assembled unit is the only place a
+// dependent's channels exist as speaker feeds rather than as a substream.
+//
+// A unit still held back at end-of-stream by §3.7 transient pre-noise
+// processing is lost to this measurement: decoder.flush() releases raw
+// per-substream results, and by definition their assembly never completed,
+// so there is no rendered program to meter. run_levels_eac3 above makes the
+// same trade for the same reason, and a stream that never turns the tool on -
+// which is every stream this project encodes - never holds anything back.
+std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stream) {
+    const auto units = ac3::split_access_units(stream);
+    if (!units || units->empty()) {
+        fmt::println(stderr, "error: not a valid E-AC-3 stream");
+        return std::nullopt;
+    }
+    // Heap-allocated for the same PREfast C6262 reason measure_qc_eac3_bed
+    // gives above.
+    auto decoder = std::make_unique<ac3::Eac3Decoder>();
+    QcResult result;
+    result.codec_label = "E-AC-3";
+    result.unit_label = "access unit(s)";
+    result.rendered = true;
+
+    bool have_first = false;
+    std::optional<ac3::meta::LoudnessMeter> meter;
+
+    for (const auto& unit : *units) {
+        const auto decoded = decoder->decode_access_unit(unit);
+        if (!decoded) {
+            fmt::println(stderr, "error: decode failed (code {})",
+                         static_cast<int>(decoded.error()));
+            return std::nullopt;
+        }
+        if (!decoded->has_value()) {
+            continue;  // §3.7 hold-back, see this function's own comment
+        }
+        const auto& out = **decoded;
+        if (!have_first) {
+            have_first = true;
+            if (out.acmod == ac3::Acmod::kDualMono) {
+                // §E1.3: 1+1 is two unrelated programmes sharing a syncframe,
+                // not one soundfield - it has no Table E2.5 layout at all
+                // (decode_access_unit leaves `layout` empty for exactly this
+                // case), so there is no position for Annex 3 to weight. It is
+                // also always a lone independent substream with no
+                // dependents, so its rendered program IS its bed and the two
+                // passes have to agree by construction. Hand the whole stream
+                // to the bed pass rather than restate its two-programme
+                // handling here: that pass reads DecodedSubstream, which
+                // carries the second programme's own dialnorm2/compr2 -
+                // fields the assembled DecodedAccessUnit does not have, so
+                // measuring 1+1 from here would silently report Ch2's
+                // metadata as absent.
+                auto bed = measure_qc_eac3_bed(stream);
+                if (bed) {
+                    // Still what layout=rendered was asked for, and the same
+                    // answer it would have produced; nothing went unmeasured,
+                    // so there is no wider layout to hint about either.
+                    bed->rendered = true;
+                    bed->bed_hid_dependents = false;
+                }
+                return bed;
+            }
+            result.sample_rate_hz = sample_rate_hz(out.sample_rate);
+            result.layout_label = rendered_layout_label(out.layout);
+            meter.emplace(out.sample_rate, out.layout);
+            result.programmes.push_back(
+                QcProgrammeResult{.dialnorm = out.dialnorm, .compr = out.compr});
+        }
+        ++result.unit_count;
+        std::vector<std::span<const float>> views;
+        views.reserve(out.channels.size());
+        for (const auto& channel : out.channels) {
+            views.emplace_back(channel);
+        }
+        // meter is engaged on every path that reaches here: either this very
+        // iteration's !have_first block just emplaced it (the dual-mono arm
+        // above returns instead of falling through), or a PRIOR iteration's
+        // !have_first block did and have_first now skips straight past it.
+        // clang-tidy's checker does not carry that across the loop's back
+        // edge - the same reasoning the sibling meter->push() calls in
+        // measure_qc_ac3/measure_qc_eac3_bed rely on, where a same-iteration
+        // dual_mono guard happens to keep it within the checker's reach.
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        meter->push(views);
+    }
+
+    if (!have_first) {
+        fmt::println(stderr, "error: no decodable access units");
+        return std::nullopt;
+    }
+    // have_first is only ever set in the branch that emplaces meter - the
+    // dual-mono branch beside it returns instead of falling through - so it
+    // is engaged by this point, the same reasoning measure_qc_eac3_bed states
+    // for its own pair.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.programmes[0].integrated_lkfs = meter->integrated_lkfs();
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.programmes[0].lra_lu = meter->loudness_range();
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
+    result.seconds = static_cast<double>(result.unit_count) *
+                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(result.sample_rate_hz);
+    return result;
+}
+
 // Prints one programme's measurement (the empty-label whole-programme case,
 // or "Ch1"/"Ch2" for 1+1 dual mono) and, if `preset_arg` names one (or
 // "all"), checks it against the requested preset(s). Returns true iff every
@@ -352,15 +523,21 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
         const auto preset = ac3::meta::qc_preset(id);
         const auto name = ac3::meta::qc_preset_name(id);
         const auto verdict = ac3::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
-        fmt::println("  {}:", name);
+        fmt::println("  {}:  [{}]", name, preset.source);
+        // A band preset prints its tolerance; a ceiling preset has none to
+        // print, and showing "+/-0.0" would read as an impossibly tight band
+        // rather than as the one-sided limit the source actually states.
+        const std::string loudness_limit =
+            preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling
+                ? fmt::format("limit  <= {:+.1f} LKFS", preset.target_lkfs)
+                : fmt::format("target {:+.1f} +/-{:.1f} LKFS", preset.target_lkfs,
+                              preset.tolerance_lu);
         if (p.integrated_lkfs) {
-            fmt::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured {:+.2f} LKFS   "
-                         "delta {:+.2f} LU   {}",
-                         preset.target_lkfs, preset.tolerance_lu, *p.integrated_lkfs,
-                         *verdict.loudness_delta_lu, verdict.loudness_pass ? "PASS" : "FAIL");
+            fmt::println("    loudness   {}   measured {:+.2f} LKFS   delta {:+.2f} LU   {}",
+                         loudness_limit, *p.integrated_lkfs, *verdict.loudness_delta_lu,
+                         verdict.loudness_pass ? "PASS" : "FAIL");
         } else {
-            fmt::println("    loudness   target {:+.1f} +/-{:.1f} LKFS   measured n/a   FAIL",
-                         preset.target_lkfs, preset.tolerance_lu);
+            fmt::println("    loudness   {}   measured n/a   FAIL", loudness_limit);
         }
         if (p.true_peak_dbtp) {
             fmt::println("    true peak  limit  <= {:+.1f} dBTP        measured {:+.2f} dBTP        "
@@ -521,7 +698,8 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 
 }  // namespace
 
-int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg) {
+int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
+           bool rendered_layout) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
@@ -532,13 +710,28 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return 1;
     }
-    const auto result = *bsid > 8 ? measure_qc_eac3(stream) : measure_qc_ac3(stream);
+    const auto result = *bsid > 8
+                            ? (rendered_layout ? measure_qc_eac3_rendered(stream)
+                                               : measure_qc_eac3_bed(stream))
+                            : measure_qc_ac3(stream, rendered_layout);
     if (!result) {
         return 1;
     }
     fmt::println("qc: {} ({}, {}, {} Hz, {} {}, {:.2f} s)", in_path, result->codec_label,
                  result->layout_label, result->sample_rate_hz, result->unit_count,
                  result->unit_label, result->seconds);
+    // Which algorithm the figures below came out of. Two different BS.1770
+    // algorithms over the same stream are both correct and need not agree, so
+    // a loudness figure that does not say which one produced it is ambiguous.
+    fmt::println("  layout={}  ({})", result->rendered ? "rendered" : "bed",
+                 result->rendered ? "BS.1770-5 Annex 3, weighted by channel position"
+                                  : "BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed");
+    if (result->bed_hid_dependents) {
+        fmt::println("  note: this stream carries dependent substreams whose channels "
+                     "(height, wide, rear)");
+        fmt::println("        are NOT in the figures above - layout=rendered measures them "
+                     "as well");
+    }
     bool all_pass = true;
     for (const auto& programme : result->programmes) {
         if (!report_qc_programme(programme, preset_arg)) {
@@ -740,6 +933,216 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
                  eac3 ? "E-AC-3 access units" : "AC-3 frames", out_path, carrier_rate);
     fmt::println("play bit-exactly (100% volume, exclusive/passthrough output) to light up");
     fmt::println("a receiver's Dolby Digital{} indicator.", eac3 ? " Plus" : "");
+    return 0;
+}
+
+namespace {
+
+// How much carrier to hand the reader at a time. Nothing here scales with the
+// input's length: this buffer, one burst inside BurstReader, and whatever one
+// burst's payload comes to are the whole of unspdif's memory, so a two-hour
+// capture costs exactly what a two-second one does.
+constexpr std::size_t kCarrierChunkBytes = 64 * 1024;
+
+// Walks a RIFF file's chunk list to its data chunk, leaving `in` positioned
+// at the first payload byte. Deliberately not read_wav/WavStreamReader: both
+// hand back floats, and a burst carrier's value is in its exact 16-bit words
+// - a trip through float and back is a conversion this has no reason to make
+// and no way to prove it survived. Returns the data chunk's byte length
+// (clamped to what the file actually holds), or nullopt if `in` is not a
+// PCM16 RIFF/WAVE file, which is how a raw carrier is told from a wrapped one.
+struct CarrierChunk {
+    std::uint64_t bytes = 0;
+    std::uint32_t sample_rate = 0;
+    std::uint16_t channels = 0;
+};
+
+std::optional<CarrierChunk> seek_riff_data(std::istream& in, std::uint64_t file_bytes) {
+    std::array<char, 12> riff{};
+    if (!in.read(riff.data(), riff.size())) {
+        return std::nullopt;
+    }
+    if (std::string_view{riff.data(), 4} != "RIFF" ||
+        std::string_view{riff.data() + 8, 4} != "WAVE") {
+        return std::nullopt;
+    }
+    const auto read_u16 = [](const char* p) {
+        return static_cast<std::uint16_t>(static_cast<std::uint8_t>(p[0]) |
+                                          (static_cast<std::uint8_t>(p[1]) << 8));
+    };
+    const auto read_u32 = [](const char* p) {
+        return static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[0])) |
+               (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[1])) << 8) |
+               (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[2])) << 16) |
+               (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[3])) << 24);
+    };
+
+    CarrierChunk found;
+    std::uint64_t at = riff.size();
+    // A chunk header is 8 bytes; a chunk of odd length is followed by a pad
+    // byte. Bounded by the file's own length, so a chunk size claiming more
+    // than the file holds cannot walk the cursor off the end.
+    while (at + 8 <= file_bytes) {
+        std::array<char, 8> header{};
+        if (!in.read(header.data(), header.size())) {
+            return std::nullopt;
+        }
+        const std::string_view id{header.data(), 4};
+        const auto size = read_u32(header.data() + 4);
+        at += 8;
+        const auto available = file_bytes - at;
+        if (id == "fmt " && size >= 16) {
+            std::array<char, 16> fmt{};
+            if (!in.read(fmt.data(), fmt.size())) {
+                return std::nullopt;
+            }
+            found.channels = read_u16(fmt.data() + 2);
+            found.sample_rate = read_u32(fmt.data() + 4);
+            in.seekg(static_cast<std::streamoff>(at + size + (size & 1u)), std::ios::beg);
+        } else if (id == "data") {
+            found.bytes = std::min<std::uint64_t>(size, available);
+            return found;
+        } else {
+            in.seekg(static_cast<std::streamoff>(at + size + (size & 1u)), std::ios::beg);
+        }
+        at += size + (size & 1u);
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial) {
+    // "-" reads the carrier from stdin, so a capture tool can be piped
+    // straight in - which on a machine with a real S/PDIF input is the
+    // natural shape of this ("arecord ... | ac3cli unspdif - out.ec3"). The
+    // RIFF walk below needs to seek and stdin does not, but it does not need
+    // to run at all: BurstReader resyncs on Pa/Pb, and a WAV header cannot
+    // contain a preamble followed by a syncframe, so the header simply gets
+    // scanned past. All that is lost is the carrier's declared rate, which
+    // is a reported detail rather than something the unwrap depends on.
+    const bool stdio = is_stdio_path(in_path);
+    std::ifstream file;
+    if (stdio) {
+        ac3::cli::platform::set_stdio_binary();
+    } else {
+        file.open(std::string{in_path}, std::ios::binary);
+        if (!file) {
+            fmt::println(stderr, "error: cannot read {}", in_path);
+            return 1;
+        }
+    }
+    std::istream& in = stdio ? std::cin : file;
+
+    std::uint64_t file_bytes = 0;
+    if (!stdio) {
+        in.seekg(0, std::ios::end);
+        const auto end = in.tellg();
+        if (end < 0) {
+            fmt::println(stderr, "error: cannot read {}", in_path);
+            return 1;
+        }
+        file_bytes = static_cast<std::uint64_t>(end);
+        in.seekg(0, std::ios::beg);
+    }
+
+    // A WAV carrier (what 'spdif' writes, and what a capture tool saves) or a
+    // bare dump of carrier bytes. Both are ordinary inputs here, so neither
+    // is an error: if the RIFF walk does not find a data chunk, the whole
+    // file is the carrier.
+    const auto chunk = stdio ? std::nullopt : seek_riff_data(in, file_bytes);
+    // Unbounded for stdin, whose length nothing knows until it ends; the
+    // read loop below stops on the first short read either way.
+    std::uint64_t remaining = stdio ? UINT64_MAX : file_bytes;
+    if (chunk) {
+        remaining = chunk->bytes;
+    } else if (!stdio) {
+        in.clear();
+        in.seekg(0, std::ios::beg);
+    }
+
+    EncodedStreamSink sink;
+    if (!sink.open(out_path, keep_partial)) {
+        return 1;
+    }
+    ac3::iec61937::BurstReader reader;
+    std::vector<std::byte> carrier(kCarrierChunkBytes);
+    std::vector<std::byte> payload;
+    std::uint64_t elementary_bytes = 0;
+
+    while (remaining > 0) {
+        const auto want = static_cast<std::size_t>(
+            std::min<std::uint64_t>(remaining, kCarrierChunkBytes));
+        in.read(reinterpret_cast<char*>(carrier.data()), static_cast<std::streamsize>(want));
+        const auto got = static_cast<std::size_t>(in.gcount());
+        if (got == 0) {
+            break;
+        }
+        remaining -= got;
+        payload.clear();
+        const auto pushed = reader.push(std::span{carrier}.first(got), payload);
+        if (!pushed) {
+            sink.abort();
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         ac3::iec61937::describe(pushed.error()));
+            return 1;
+        }
+        if (!payload.empty()) {
+            elementary_bytes += payload.size();
+            if (!sink.push(payload)) {
+                sink.abort();
+                return 1;
+            }
+        }
+    }
+
+    // A capture stopped mid-burst is worth saying so about rather than
+    // silently keeping a stream one frame short of what the operator saw.
+    const auto finished = reader.finish();
+    if (reader.bursts() == 0) {
+        sink.abort();
+        fmt::println(stderr, "error: {} holds no AC-3 or E-AC-3 bursts{}", in_path,
+                     reader.skipped_bursts() > 0
+                         ? " (its bursts are another data type)"
+                         : " - is it ordinary PCM rather than an IEC 61937 carrier?");
+        return 1;
+    }
+    if (!sink.close()) {
+        return 1;
+    }
+
+    // Compared as an optional rather than dereferenced: bursts() > 0 does
+    // guarantee data_type() is engaged, but that is an invariant of the
+    // reader rather than something visible here, and the answer wanted is a
+    // bool either way - std::optional's own operator== gives it directly.
+    const bool eac3 = reader.data_type() == ac3::iec61937::BurstDataType::kEac3;
+    // stderr when the elementary stream itself is going to stdout, the same
+    // convention encode/decode follow (see status_stream's own comment):
+    // this report must never land in the middle of the bytes a pipeline is
+    // reading.
+    auto* status = status_stream(out_path);
+    fmt::println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
+                 eac3 ? "E-AC-3" : "AC-3", reader.bursts() == 1 ? "" : "s", out_path,
+                 elementary_bytes);
+    if (chunk) {
+        // The carrier rate, not the content rate: an E-AC-3 carrier runs at
+        // 4x, so 192000 here means a 48 kHz programme.
+        fmt::println(status, "carrier: {} Hz, {} ch, {} words", chunk->sample_rate,
+                     chunk->channels,
+                     reader.word_order() == ac3::iec61937::WordOrder::kBigEndian
+                         ? "big-endian"
+                         : "little-endian");
+    }
+    if (reader.skipped_bursts() > 0) {
+        fmt::println(status, "skipped {} burst(s) of another data type", reader.skipped_bursts());
+    }
+    if (reader.false_syncs() > 0) {
+        fmt::println(status, "resynced past {} preamble pattern(s) with no syncframe behind them",
+                     reader.false_syncs());
+    }
+    if (!finished) {
+        fmt::println(status, "warning: {}", ac3::iec61937::describe(finished.error()));
+    }
     return 0;
 }
 

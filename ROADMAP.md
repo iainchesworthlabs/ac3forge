@@ -255,16 +255,24 @@ machine-readable output and a single failure exit code. Users arrive with contai
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
   `*.ac3/*.ec3`) accept containers, plus `demux` and container-to-container remux — the
-  `dec3`-repair case the old `A1` cited. One PR per container, each an M.
-- [ ] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
+  `dec3`-repair case the old `A1` cited. One PR per container, each an M. **Matroska and MP4 done**
+  (`matroska::demux`/`Reader`, `mp4::demux`/`Reader` including the `dec3` parser and fragmented
+  `moof`/`trun`, plus `ac3cli demux` and a fuzz harness per container); MPEG-TS next, and the
+  other commands widen to containers with it.
+- [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
-  Also the missing round-trip test for the wrap side.
-- [ ] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
+  Also the missing round-trip test for the wrap side. — `ac3::iec61937::BurstReader`/
+  `unwrap_stream`/`PassthroughDetector`, `ac3cli unspdif`, and detection in `record` (switches
+  to writing the elementary stream) and `live` (stops rather than encode a session of noise).
+  Round-trips byte-exactly against this project's own wrapper AND FFmpeg's `spdif` muxer, both
+  data types, both word orders. Fuzzed via `fuzz_iec61937_unwrap`. Not hardware-confirmed: no
+  capture device has been available, the same gap the passthrough output side has.
+- [x] **IO4 (M)** — Streaming fMP4/CMAF fragmenter. `mp4::fragment` is batch ("a true live
   fragmenter would need…", `mp4.hpp`); Matroska and MPEG-TS have incremental `Writer`s since
   0.9.0, so the GUI live session can target both but not the one container whose native shape
   is streaming. Running `tfdt`, a rolling HLS playlist, a dynamic MPD.
-- [ ] **IO5 (S)** — DASH JOC signalling and the `ceao` brand. `dash.hpp` says there is no
+- [x] **IO5 (S)** — DASH JOC signalling and the `ceao` brand. `dash.hpp` says there is no
   established convention to point at; DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3 names the
   `tag:dolby.com,2018:dash:EC3_ExtensionType:2018` and `…ExtensionComplexityIndex:2018`
   supplemental properties (ETSI TS 103 420 D.2), the E-AC-3 `AudioChannelConfiguration`, and
@@ -288,17 +296,31 @@ machine-readable output and a single failure exit code. Users arrive with contai
   writes once, has no device-drop watchdog, no object add/reassign and no parallel AC-3 downmix
   leg (`docs/gui/live-session.md` records the gap); `obj`/`objm` in `src=`/`map=` parse but do
   nothing in `ac3cli`.
-- [ ] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` keys its weights on
-  `Acmod`, so `qc` measures the independent substream's bed only and never a dependent's height
-  or wide channels (the comment in `apps/cli/commands/analysis.cpp` says so). BS.1770-4's
-  positional rule and BS.1770-5's extended and object-based algorithms cover 7.1, 5.1.4 and
-  7.1.4; Apple measures Atmos loudness per BS.1770-4, Netflix via a 5.1 re-render. Meter the
-  `decode_access_unit` render with a `layout=rendered|bed` switch.
-- [ ] **IO11 (S)** — QC preset refresh. `qc.hpp` has three presets, citing A/85:2013 with the
-  2021 corrigendum and Netflix v1.6. ATSC published A/85:2026-07 (approved 2026-07-08, the first
-  full revision since 2013, with two new annexes on streaming services using metadata-based
-  codecs), EBU R 128 s4 (2023) covers cinematic content, and Apple Music Atmos, Netflix Atmos Home
-  Mix and Amazon each publish their own targets. Record version and date per preset.
+- [x] **IO10 (M)** — Loudness of the rendered layout. `LoudnessMeter` gained a second
+  constructor taking an `eac3::chanmap::Layout` and applying ITU-R BS.1770-5 (11/2023) Annex 3's
+  extended algorithm for advanced sound systems, whose Table 4 weights each channel by position
+  (1.41 between 60° and 120° azimuth below 30° elevation, 1.00 elsewhere, LFE excluded) instead
+  of by its slot in a Table 5.8 `acmod` — so `Lrs`/`Rrs`, `Vhl`/`Vhr`, `Lts`/`Rts`, `Cs` and
+  `Lw`/`Rw` all have a weight and 7.1, 5.1.2, 5.1.4 and 7.1.4 can be metered. `qc` takes
+  `layout=rendered|bed`; `bed` stays the default and now says out loud when a stream's dependent
+  substreams were left out. Annex 3's Table 5 gives a second check on every weight, and the
+  meter was cross-checked against ffmpeg's `ebur128` on 5.1. BS.1770-5 Annex 4's object-based
+  algorithm is not implemented — see IO12.
+- [x] **IO11 (S)** — QC preset refresh. `atsc-a85` re-cited to A/85:2026-07 (approved
+  2026-07-08), which restates −24 LKFS / ±2 dB / −2 dBTP unchanged; new `atsc-a85-streaming`
+  from that revision's Annex L.5 (a −23…−27 LKFS band) and `apple-music-atmos` from Apple's
+  Immersive Audio Source Profile (a −18 LKFS *ceiling*, which is why `QcPreset` gained a
+  band-vs-ceiling kind). Every preset now records its document version and date. EBU R 128 s4,
+  Netflix's Atmos Home Mix v2.3 and Amazon were checked and deliberately left out — the first
+  two are numerically identical to presets already present and the third has no primary source
+  that could be read; `qc.hpp` and `docs/cli/metadata-options.md` record why for each.
+- [ ] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 specifies a loudness
+  algorithm for object-based audio, and for a combination of channel- and object-based audio, in
+  which each object is weighted by its own OAMD position rather than by a fixed speaker slot.
+  IO10 implemented Annex 3 (channel-based, advanced sound systems) and left this half out.
+  `oba::DecodedProgram` already carries per-object position, and `DecodedAccessUnit` already
+  carries `object_audio` beside the rendered bed, so the inputs exist; what is missing is the
+  Annex 4 weighting itself and a `qc` mode that meters bed and objects together.
 
 ## IM. Immersive and other formats
 
@@ -357,16 +379,22 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Dolby-produced streams is allowed at all — `CONTRIBUTING.md`'s clean-room rule covers published
   standards and FFmpeg-as-oracle, not that. Stays blocked until those exist; listed so the state
   is recorded rather than rediscovered.
-- [ ] **IM7 (M)** — A public object-scene timeline type. `AtmosEncoder` takes keyframes; the
+- [x] **IM7 (M)** — A public object-scene timeline type. `AtmosEncoder` takes keyframes; the
   station-broadcast example, the GUI live room, `atmos-path` and any live source (UX4) each
   re-invent a scene description. One `ObjectScene` (JSON/YAML, interpolation and ramps,
   orientation rotation as metadata — not rendering) shared by all of them.
+  *Done: `ac3/oba/scene.hpp`. JSON, not YAML — the codec target takes no third-party
+  dependencies, so the format is parsed in-tree, and RFC 8259 is small enough to implement
+  completely where YAML 1.2 is not. `atmos-path`/`atmos-encode`, the examples and the GUI's
+  export are on it, the keyframe grammar still reads byte-identically, and `SceneCursor` is the
+  live seam UX4 plugs into. The GUI's own per-frame encode loops still build `ObjectPath`s
+  directly — a follow-up, not a gap in the type.*
 
 ## VX. Verification and oracles
 
 Nine required build legs, sanitizers, clang-tidy, PREfast, CodeQL, per-component coverage
-floors, a gold-reference gate on every leg, six libFuzzer harnesses and an AC-3 input-space
-fuzzer already exist. What remains is mostly what the tree names itself.
+floors, a gold-reference gate on every leg, eleven libFuzzer harnesses (one of them opt-in) and
+an AC-3 input-space fuzzer already exist. What remains is mostly what the tree names itself.
 
 - [x] **VX1 (L)** — E-AC-3 encoder input-space fuzzing — `G4`'s own stated gap
   (`fuzz_encoder_space.py`: "Scope: AC-3 only"). Random Annex E tool tokens, `fscod2` rates, VBR,
@@ -386,7 +414,7 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   sides passes it. Per-substream, per-block diffs of exponents, bap, delta, AHT gains, coupling
   and spx coordinates, including dependents and the tpn hold-back — the facility that fired four
   frames before the `deltbaie` symptom on AC-3.
-- [ ] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
+- [x] **VX3 (M)** — libFuzzer harnesses for the metadata parsers (`emdf::parse_container`,
   `oba::parse_payload`, `joc::parse_payload`, `signing::verify_atmos_stream`,
   `ac3adm::parse_bw64`), plus a CRC-re-stamping custom mutator for the decode harnesses so
   mutated skip-field bytes reach the object parsers instead of dying at the CRC check, which
@@ -401,9 +429,13 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `none/cpl/spx/aht/all` only; point it at ecpl, tpn, 7.1.4 and E-AC-3 `compr` — the "no
   external oracle" claims in `docs/verification.md` are about FFmpeg, and the licensed decoder is
   already wired up (S, local). Then make the player's path configurable and run it as a
-  self-skipping job on the self-hosted Windows runner. First explain why it decodes DEE's own
-  stereo output to garbage (`gen_external_baseline.py`): every conclusion drawn through that
-  pipeline inherits the answer.
+  self-skipping job on the self-hosted Windows runner. The "decodes DEE's own stereo output to
+  garbage" blocker on this item is answered and was never a decode defect: the player applies
+  dialnorm, DEE writes a measured dialnorm of 12 on that stream, and the resulting 19 dB
+  attenuation was being charged to the decode by scoring it against an un-normalised source WAV.
+  Compensate the 19 dB and the same decode scores 32.19 dB. So `dolby_decode` has to normalise
+  for dialnorm (or the material has to be encoded at dialnorm 31) before any conclusion is drawn
+  through it - see `gen_external_baseline.py`'s module docstring.
 - [ ] **VX6 (M)** — A perceptual column that carries numbers. `visqol-python` is deliberately
   not installed on the `ffmpeg-validate` leg, so `mos_lqo` is null in every one of the 3,758
   trend rows ever recorded and every landscape MOS cell reads n/a — `G1` is half-true. Add the
@@ -440,21 +472,39 @@ fuzzer already exist. What remains is mostly what the tree names itself.
   `continue-on-error` on `fuzz-short` and `fuzz-differential` (clean since 2026-08-09 and
   2026-08-16), add the differential harnesses to nightly, persist the grown corpus as an
   artifact. The ruleset edits are the repository admin's, not a PR's.
-- [ ] **VX14 (S)** — Lint and scan the non-C++ code. `codeql.yml` covers `cpp` only; ~29 Python
-  files under `tools/` implement the oracles and gates (`quality_race.py`,
-  `fuzz_encoder_space.py`, `compare_wav.py`, the trend appenders) and none are linted. `ruff`,
-  `shellcheck`, `actionlint`, and CodeQL's `python`/`javascript`/`java-kotlin`, hash-pinned like
-  the other locks.
-- [ ] **VX15 (M)** — Coverage floors for `apps/cli` (about 6,500 lines that front every CI
-  gate; `coverage_report.sh` stops at `src/`) and `pytest --cov` for `python/`. GUI C++ coverage
-  needs a Qt kit on the coverage leg and is a separate decision.
-- [ ] **VX16 (S)** — A ThreadSanitizer leg over the audio layer: a lock-free SPSC ring, a
-  silence watchdog and a drift servo shared between a real-time callback thread and the encoder
-  thread, and ASan/UBSan cannot see a race. `AC3FORGE_SANITIZERS` already takes a list; a
-  `concurrency` ctest label (none exist today).
-- [ ] **VX17 (M)** — PR-time performance comparison, merge-base vs head on one runner. Trends
-  are recorded on push only, and `ac3perf`'s absolute real-time gate has too much headroom to
-  notice a 2× slowdown.
+- [x] **VX14 (S)** — Lint and scan the non-C++ code. A `script-lint` job runs `ruff` over every
+  `.py` file (curated rule set in `ruff.toml`), `shellcheck` over `git ls-files '*.sh'` and
+  `actionlint` over the workflows, all three hash-pinned in
+  `requirements/requirements-lint.txt`. `codeql.yml` is now a language matrix with `python` and
+  `javascript-typescript` alongside `cpp`. `java-kotlin` is NOT included: CodeQL's Kotlin
+  extractor has no buildless mode, so `build-mode: none` extracted nothing and ended as a
+  configuration error on a measured dispatch run — enabling it needs JDK 17, the pinned NDK and
+  Gradle, i.e. a CodeQL step inside `_build.yml`'s existing `build-android` job rather than a
+  leg of its own. Carried forward as **VX21** below.
+- [x] **VX15 (M)** — Coverage floors for `apps/cli` and `python/`. `coverage_report.sh` gates
+  `apps/cli` at line 40 / branch 34 against a measured 54.0 / 46.5 (re-checked after roadmap
+  `IO2`'s container-reader/probe work landed in the same window), and prints a per-command
+  breakdown below the gate so a thin command module is visible rather than averaged away;
+  `wheels.yml`'s `python-coverage` job runs `pytest --cov` against the built wheel. Getting a
+  number at all needed `ac3cli` to link `ac3::coverage` itself — `--coverage` is target-scoped at
+  compile time, so linking an instrumented library was giving it the gcov runtime and no
+  instrumentation. GUI C++ coverage remains out of scope (it needs a Qt kit on the coverage leg);
+  `commands/containers.cpp` measured 0.0% at the time - since risen to 30.4% as roadmap `IO2`'s
+  own read-side work added coverage incidentally, but still well under the aggregate, so the
+  gap is carried forward as **VX22** below.
+- [x] **VX16 (S)** — A ThreadSanitizer leg over the audio layer. `config-linux-llvm-tsan` plus
+  a `Linux LLVM TSan` matrix entry, running a `concurrency` ctest label over `tests/audio/` and
+  `tests/cli/test_cli_live.cpp` (the headless CLI device paths, new here — nothing tested them
+  before). The label comes from `catch_discover_tests(... ADD_TAGS_AS_LABELS)`, which turns
+  Catch2 tags into ctest labels; two labels did already exist (`Performance`, `gui`), so this
+  follows their convention rather than introducing the mechanism. `tsan.supp` is checked in and
+  near-empty — the first run was clean. `ac3membench` is excluded from the leg: its global
+  `operator new`/`delete` replacements collide with TSan's runtime at link.
+- [x] **VX17 (M)** — PR-time performance comparison, merge base vs head on one runner. A
+  `performance-compare` job builds `ac3bench`/`ac3kernelbench` on both sides, runs each three
+  times, and posts a delta table to the job summary using the same soft/hard tiers
+  `append_performance_history.py` applies — imported from it, not restated. Non-blocking by
+  design and absent from `CI Status`; the trend-branch append stays push-only.
 - [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
   instrumented test for the Android bridge's device-free paths.
@@ -464,6 +514,18 @@ fuzzer already exist. What remains is mostly what the tree names itself.
 - [ ] **VX20 (M)** — Publish conformance vectors: a versioned release artifact of streams per
   tool and layout with expected decode hashes, so other decoders can test against this project.
   The complement of VX4.
+- [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
+  `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
+  (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a
+  configuration error), and that job already provisions JDK 17, the pinned NDK and the signing
+  key material. Split out of VX14.
+- [ ] **VX22 (S)** — CLI tests for the container commands. `apps/cli/commands/containers.cpp`
+  (`mkv`, `mp4`, `fmp4`, `ts`) measured 0.0% line coverage when VX15 first pointed the gate at
+  `apps/`; re-measured at 30.4% after roadmap `IO2`'s container-reader/`probe` work landed in the
+  same window and incidentally exercised some of it, but still well under `apps/cli`'s 54.0%
+  aggregate. Unlike `audio_io`/`live_audio` nothing about these commands needs a device — they are
+  fully testable headless, and the library-level container tests do not exercise the CLI paths
+  that wrap them. Split out of VX15.
 
 ## PF. Performance and portability
 
@@ -480,15 +542,28 @@ no SIMD and no threading anywhere in the codec core.
   exported `std::round` call made about 9,100 times per frame, ~33–38 µs and the largest named
   remainder of the last profile (~7% of the fast path). Byte-identical streams on the corpus are
   the gate.
-- [ ] **PF3 (M)** — Fast IMDCT in the two places still direct: `ecpl_channel_spectrum` (three
+- [x] **PF3 (M)** — Fast IMDCT in the two places still direct: `ecpl_channel_spectrum` (three
   direct 512-point inverses per coupled channel per block, encode and decode) and JOC object
   synthesis (`joc.cpp`, one per object per block — a 16-object frame spends ~1.7 ms there, more
   than a whole 5.1 encode, and the WASM demo decodes objects in the browser). Prove
-  byte-identical encodes for the encoder-internal use or keep that side direct.
-- [ ] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
+  byte-identical encodes for the encoder-internal use or keep that side direct. Done: both
+  forward a `fast` flag, the decoder passing `DecoderConfig::fast_imdct` and the
+  encoder-internal `ecpl` use `eac3::FrameConfig::fast_mdct`; the 40-stream encode corpus is
+  byte-identical to before. `ecpl_channel_spectrum` 4.4× (74.8 → 17.1 µs, before PF4, 6.9×
+  with it); a 180-second enhanced-coupling decode 5.84 → 3.24 s, a 30-second 15-object decode
+  6.47 → 4.83 s. `joc::reconstruct` still runs its bed
+  ANALYSIS (five forward MDCTs per block) direct, which is now the dominant cost of an object
+  decode — see PF8.
+- [x] **PF4 (M)** — FFT core follow-ups: the generic iterative radix-2 with an explicit
   bit-reversal pass (`fft_radix2.hpp`) becomes fixed-size radix-4/split-radix codelets for
   P = 64/128/512 with trivial-twiddle elimination. Decode is transform-dominated now; encode gains
-  about 10%.
+  about 10%. Done as `fft_kernel.hpp`: compile-time-specialised radix-4 stages with a trailing
+  radix-2 stage where log2(P) is odd, the first stage's unit twiddles gone, and the
+  digit-reversal folded into each caller's own input-producing loop instead of running as a
+  pass. The kernel measured standalone is 1.6–1.75× across P = 64/128/512; at the caller level,
+  median of ten interleaved runs, 1.24–1.86× per fast transform against an 0.90–1.07× spread on
+  the unchanged ones. A 180-second 5.1 AC-3 decode 4.19 → 2.92 s. Encodes byte-identical;
+  `dft512` against its own O(N²) sum improved from 1.9e-15 to 1.7e-15.
 - [ ] **PF5 (L)** — SIMD kernels through CMake-selected per-architecture directories
   (`src/forge/src/internal/arch/{generic,x86_64,aarch64}/`, the same mechanism as
   `profiling/tracy_{enabled,disabled}` — no `#ifdef`), or `std::simd` where the toolchain has
@@ -502,6 +577,14 @@ no SIMD and no threading anywhere in the codec core.
   decode loop, an explicit table ROM budget, a `-fno-exceptions`/no-RTTI audit, a float32 path,
   and a cross-compiled no-OS CI leg (`arm-none-eabi` under QEMU). The memory programme cut decode
   bytes per frame by more than half; this is the next step for set-top and DSP ports.
+- [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
+  `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
+  forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.
+  Measured after PF3/PF4: a 30-second 15-object decode is 4.83 s, of which about 3.5 s is those
+  transforms; the object inverses PF3 just fixed were 1.6 s of the 6.5 s before. It is one
+  argument, but it changes decoded object audio at ~1e-13 and there is no decoder-side forward
+  switch to hang it on today — `DecoderConfig::fast_imdct` names the inverse — so it wants a
+  deliberate decision, not a drive-by flip.
 
 ## AP. Library surface, bindings and v1.0
 
@@ -582,7 +665,8 @@ no SIMD and no threading anywhere in the codec core.
 - [ ] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
   room — OSC first, then MIDI and a desktop game controller. `apps/cli/main.cpp` still describes
   the synthetic orbit as "the hook a real live position source drops into once one exists"; the
-  Shield app is the only controller-driven path. Feeds IM7.
+  Shield app is the only controller-driven path. Lands on `ac3::oba::SceneCursor`, the live half
+  of IM7's scene type, which exists for exactly this.
 - [ ] **UX5 (L)** — WASM as a reusable streaming decoder: a push-frame API over
   `decode_access_unit_into`, an AudioWorklet, multichannel output or DC1's downmix, published as
   a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3

@@ -65,6 +65,19 @@ choice is also what lets `mp4::mp4`'s HLS/DASH signaling helpers build for Andro
 note in `apps/android/app/src/main/cpp/CMakeLists.txt` for why this app still doesn't link them
 regardless (it never muxes a file).
 
+The same libc++ implements only `<charconv>`'s **integer** `from_chars`, not its floating-point
+overloads — a gap {fmt} does not close, since {fmt} only formats text *out*, the same direction
+`std::format` goes. Library code that has to turn text *into* a `double` therefore uses `strtod`
+instead (`src/forge/src/encoder/plan.cpp`, `encoder/assignment.cpp`,
+`src/forge/src/oba/scene_text.hpp`, which also serves the object-scene file formats' parsing —
+the write side of that same file goes through `fmt::format`, like everything else, once {fmt}
+made that safe). The macOS wheel's own deployment target has the identical `from_chars` gap
+(`'from_chars' is unavailable: introduced in macOS 26.0`) — {fmt}'s own vendored formatting avoids
+the matching `to_chars` gap there (`'to_chars' is unavailable: introduced in macOS 13.3`) that a
+raw `std::format` call would hit — so this leg and **Build wheels (macos-latest)** are the two
+that catch a *parsing* regression; a *formatting* one shows up everywhere, same as any other
+compile error.
+
 `minSdk = 26` (Oreo) is a hard floor, not a target: `monitor.cpp` depends on AAudio outright, which
 does not exist below API 26, and there is no fallback path. Real Shield TV hardware (2017 model
 onward) ships well above this. Only `arm64-v8a` is built — every real Shield TV is arm64, and
