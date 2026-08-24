@@ -61,9 +61,14 @@ metadata options (any order, after the positional arguments):
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
-                    ebu-r128-s2 | atsc-a85 | netflix
+                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
   preset=all        gate against every preset above
                     omitted: measure and report only, no gate
+  layout=bed        the default - meter the independent substream's own
+                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)
+  layout=rendered   meter the whole assembled program instead, every
+                    dependent substream's height/wide/rear channels
+                    included (BS.1770-5 Annex 3's extended algorithm)
 ```
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
@@ -340,14 +345,19 @@ ac3cli live out.ec3 0 30 448 -2 -2 atmos capture2=1
 Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
 (clock-conformed to device 0), no monitor or passthrough, writing `out.ec3`.
 
-## Qc options (`qc`): `preset=`
+## Qc options (`qc`): `preset=`, `layout=`
 
 ```text
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
-                    ebu-r128-s2 | atsc-a85 | netflix
+                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
   preset=all        gate against every preset above
                     omitted: measure and report only, no gate
+  layout=bed        the default - meter the independent substream's own
+                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)
+  layout=rendered   meter the whole assembled program instead, every
+                    dependent substream's height/wide/rear channels
+                    included (BS.1770-5 Annex 3's extended algorithm)
 ```
 
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
@@ -357,11 +367,94 @@ not a tolerance band). The numbers are defined in `ac3::meta::qc_preset()`
 ([`ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/forge/include/ac3/meta/qc.hpp)), each
 read directly from its own primary source rather than recalled from memory:
 
-| Preset | Target | Tolerance | Max true peak | Source |
-|---|---|---|---|---|
-| `ebu-r128-s2` | −23.0 LUFS | ±1.0 LU | −1.0 dBTP | EBU R 128 s2 "Loudness in Streaming" (Geneva, November 2023, v3) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, November 2023, v5) recommendations (h) and (m) |
-| `atsc-a85` | −24.0 LKFS | ±2.0 dB | −2.0 dBTP | ATSC A/85:2013 (with Corrigendum No. 1, 11 February 2021) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange" |
-| `netflix` | −27.0 LKFS | ±2.0 LU | −2.0 dBTP | Netflix "Sound Mix Specifications & Best Practices" v1.6, Near-field Audio Prerequisites for Mix Facilities |
+| Preset | Loudness | Max true peak | Source (version, date) |
+|---|---|---|---|
+| `ebu-r128-s2` | −23.0 LUFS ±1.0 LU | −1.0 dBTP | EBU R 128 s2 "Loudness in Streaming" (Geneva, **November 2023, v3**) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, **November 2023, v5**) recommendations (h) and (m) |
+| `atsc-a85` | −24.0 LKFS ±2.0 dB | −2.0 dBTP | ATSC **A/85:2026-07** (approved **8 July 2026**) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange" |
+| `atsc-a85-streaming` | −25.0 LKFS ±2.0 LU | −2.0 dBTP | ATSC **A/85:2026-07** (approved **8 July 2026**) Annex L.5 — "Selecting a Loudness value between −23 and −27 LKFS is recommended", restated in Annex M's Table M.1 |
+| `netflix` | −27.0 LKFS ±2.0 LU | −2.0 dBTP | Netflix "Sound Mix Specifications & Best Practices" **v1.6**, Near-field Audio Prerequisites for Mix Facilities; Netflix "Dolby Atmos Home Mix Deliverable Requirements" **v2.3** states the same numbers for an Atmos deliverable |
+| `apple-music-atmos` | **≤ −18.0 LKFS** (a ceiling, not a band) | −1.0 dBTP | Apple "Immersive Audio Source Profile" (Apple Video and Audio Asset Guide), Dolby Atmos music deliverables — "should not exceed −18 LKFS measured as per ITU-R BS. 1770-4" |
+
+Two of these need a word of explanation.
+
+`atsc-a85-streaming` carries a **band**, not a point. Annex L.5 asks a streaming service to pick "only one
+specific and consistent Target Loudness" somewhere between −23 and −27 LKFS; −25.0 ±2.0 reproduces those two
+edges exactly. The −25.0 midpoint is an artefact of how this table is shaped and is *not* a level the Annex
+asks anyone to aim for — it names −23, −24 and −27 as the values real operators actually use.
+
+`apple-music-atmos` is the one preset whose loudness figure is a **ceiling** rather than a band: Apple's clause
+is "should not exceed", so a quieter master is compliant however quiet it is. Gating that as a ±band would fail
+material the specification accepts, so `qc` prints it as `limit <= -18.0 LKFS` and passes anything at or under
+it. True peak is always a ceiling, for every preset.
+
+### Specifications deliberately not given a preset
+
+Adding these would mean shipping a second name for a verdict already on offer, so they are documented here
+instead:
+
+- **EBU R 128 s4** "Loudness Normalisation of Cinematic Content" (November 2023). Recommendation (m) normalises
+  Programme Loudness to "a Target Level of −23.0 LUFS" and (l) repeats the −1 dBTP ceiling — numerically
+  identical to `ebu-r128-s2`. What s4 adds is recommendation (j), a Loudness-to-Dialogue Ratio not exceeding
+  5 LU; that is a Programme-minus-Dialogue figure, and `LoudnessMeter` has no dialogue gate, so the single
+  clause that would distinguish an s4 preset is also the one this meter cannot evaluate.
+- **Netflix Dolby Atmos Home Mix Deliverable Requirements v2.3**. Same three numbers as `netflix`. What it adds
+  is scope rather than numbers — "Loudness and peaks should be measured via a 5.1 rerender" — which is a
+  `layout=` choice, not a gate.
+- **Amazon.** Prime Video figures are widely repeated at −24 LKFS/−2 dBTP, but every source found for them is a
+  third-party summary and Amazon's own delivery specifications sit behind a partner portal. Nothing in this
+  table is cited to a document that was not read, so the row is absent rather than guessed — and −24/±2/−2
+  would in any case restate `atsc-a85`.
+
+### `layout=bed` (default) and `layout=rendered`
+
+`layout=` chooses *which soundfield* is metered, and with it which of BS.1770's two algorithms does the
+metering:
+
+| | What is measured | Algorithm |
+|---|---|---|
+| `layout=bed` (default) | The independent substream's own Table 5.8 bed | BS.1770 Annex 1's basic algorithm — Table 3 weights, keyed on `acmod` |
+| `layout=rendered` | The whole assembled program, every dependent substream's channels laid over the bed in Table E2.5 order | BS.1770-5 (11/2023) Annex 3's extended algorithm — Table 4 weights, keyed on each channel's position |
+
+The default is `bed`, which is what `qc` has always measured. On a stream that carries dependent substreams,
+`bed` now says so explicitly rather than silently reporting the 5.1 as if it were the whole programme:
+
+```text
+qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+  note: this stream carries dependent substreams whose channels (height, wide, rear)
+        are NOT in the figures above - layout=rendered measures them as well
+```
+
+`layout=rendered` is what makes 7.1, 5.1.2, 5.1.4 and 7.1.4 measurable at all, since none of those channels is
+a member of Table 5.8. Annex 3's Table 4 weights a channel by where it sits: **1.41 (+1.5 dB)** for anything
+between 60° and 120° azimuth below 30° elevation, **1.00** everywhere else. Applied to Table E2.5's locations
+that gives:
+
+| Weight | Locations | BS.2051 label |
+|---|---|---|
+| 1.41 (+1.5 dB) | `Ls` `Rs` `Lsd` `Rsd` `Lw` `Rw` | M±110, M±090, M±060 |
+| 1.00 (0 dB) | `L` `C` `R` `Lc` `Rc` | M+000, M±030, M±SC |
+| 1.00 (0 dB) | `Lrs` `Rrs` `Cs` | M±135, M+180 |
+| 1.00 (0 dB) | `Vhl` `Vhr` `Vhc` `Lts` `Rts` `Ts` | every U/T position |
+| excluded | `LFE` `LFE2` | — |
+
+Two results there are worth reading twice, because reasoning from the channel *names* gets both wrong: a 7.1
+layout's rear pair is **not** surround-weighted (M±135 is past the 120° edge), and **no** height channel is
+either (Table 4's elevation row simply does not cover the upper layer). The wides *are*, sitting exactly on the
+inclusive 60° edge.
+
+That first one is where other meters differ. ffmpeg's `ebur128`, probed one channel at a time, weights a 7.1
+layout's back surrounds at 1.41 just like its side surrounds — it generalises Annex 1's Table 3 by channel
+*name*, so anything called a surround gets +1.5 dB. Annex 3's Table 4 and Table 5 both put M±135 at 1.00, and
+`layout=rendered` follows the standard, so expect a 1.5 dB disagreement on exactly those two channels. On 5.1
+the two agree to within 0.02 dB, which is why `ebur128` is a good cross-check for `layout=bed` and not for
+`layout=rendered`.
+
+For a plain 5.1 stream the two algorithms are the same function — `Ls`/`Rs` are M±110, inside Table 4's +1.5 dB
+sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes nothing there. The one Table 5.8
+layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
+meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
+a rear centre at M+180, at unity.
 
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the

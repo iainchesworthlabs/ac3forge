@@ -24,6 +24,8 @@
 #   AC3FORGE_FUZZ_BUILD_DIR     CMake build directory (default build/fuzz)
 #   AC3FORGE_FUZZ_CORPUS_DIR    grown, persistent corpus (default fuzz/corpus, gitignored)
 #   AC3FORGE_FUZZ_ARTIFACT_DIR  where crashing inputs land (default fuzz/artifacts, gitignored)
+#   AC3FORGE_FUZZ_ADM           also build and run fuzz_adm_parse; needs VCPKG_ROOT and network
+#                               access (see configure_and_build's own comment)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +45,26 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 # `fuzz/run.sh run fuzz_scan` already lets a caller run just one target from
 # this list. See seed_source_for below for how they reuse seed corpora
 # without duplicating any files.
-readonly TARGETS=(fuzz_scan fuzz_ac3_decode fuzz_eac3_decode fuzz_wav_read fuzz_iec61937_unwrap)
+#
+# fuzz_adm_parse is absent for a different reason from the differential
+# pair's: it is not built at all unless AC3FORGE_FUZZ_ADM=1 turns
+# AC3FORGE_BUILD_ADM on (see configure_and_build below), because ac3adm needs
+# vcpkg's "adm" feature for libadm's Boost headers and nothing else in this
+# build has a vcpkg dependency of any kind. With that variable set it IS part
+# of the default list - see target_list.
+readonly BASE_TARGETS=(fuzz_scan fuzz_ac3_decode fuzz_eac3_decode fuzz_wav_read
+                       fuzz_iec61937_unwrap fuzz_emdf_parse fuzz_oamd_parse
+                       fuzz_joc_parse fuzz_signing_verify fuzz_matroska_demux)
+
+adm_enabled() { [ -n "${AC3FORGE_FUZZ_ADM:-}" ]; }
+
+target_list() {
+    local targets=("${BASE_TARGETS[@]}")
+    if adm_enabled; then
+        targets+=(fuzz_adm_parse)
+    fi
+    printf '%s\n' "${targets[@]}"
+}
 
 CXX_CANDIDATE="${CXX:-clang++}"
 if ! command -v "$CXX_CANDIDATE" >/dev/null 2>&1; then
@@ -58,6 +79,24 @@ configure_and_build() {
     # a 6-channel IMDCT is measurably slower per exec than the mutation
     # engine itself, which starves the corpus of iterations within any
     # bounded time budget). -g still lands full symbols for triage.
+    #
+    # AC3FORGE_FUZZ_ADM additionally builds fuzz_adm_parse, which needs
+    # ac3adm - and therefore vcpkg's "adm" feature for libadm's Boost
+    # headers, plus network access for the FetchContent pulls of libbw64 and
+    # libadm themselves. Nothing else in this build touches vcpkg at all, so
+    # the toolchain file is named only when that variable is set, and
+    # VCPKG_ROOT has to point somewhere real when it is.
+    local adm_args=()
+    if adm_enabled; then
+        if [ -z "${VCPKG_ROOT:-}" ]; then
+            echo "error: AC3FORGE_FUZZ_ADM needs VCPKG_ROOT set - ac3adm's libadm" >&2
+            echo "dependency takes its Boost headers from vcpkg's 'adm' feature." >&2
+            exit 1
+        fi
+        adm_args=(-DAC3FORGE_BUILD_ADM=ON
+                  -DVCPKG_MANIFEST_FEATURES=adm
+                  "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake")
+    fi
     cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -G Ninja \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_CXX_COMPILER="$CXX_CANDIDATE" \
@@ -65,7 +104,8 @@ configure_and_build() {
         -DAC3FORGE_BUILD_CLI=OFF \
         -DAC3FORGE_BUILD_GUI=OFF \
         -DAC3FORGE_BUILD_TESTS=OFF \
-        -DAC3FORGE_BUILD_EXAMPLES=OFF
+        -DAC3FORGE_BUILD_EXAMPLES=OFF \
+        "${adm_args[@]}"
     cmake --build "$BUILD_DIR" --target ac3forge_fuzzers
 }
 
@@ -96,7 +136,10 @@ prepare_dirs() {
 }
 
 cmd_run() {
-    local requested=("${@:-${TARGETS[@]}}")
+    local requested=("$@")
+    if [ "${#requested[@]}" -eq 0 ]; then
+        mapfile -t requested < <(target_list)
+    fi
     configure_and_build
     local status=0
     for target in "${requested[@]}"; do
@@ -137,7 +180,10 @@ cmd_run() {
 # than a fuzzing run. This is what CI's push-triggered job runs; the longer
 # mutation budget in cmd_run is for the scheduled/nightly job.
 cmd_regress() {
-    local requested=("${@:-${TARGETS[@]}}")
+    local requested=("$@")
+    if [ "${#requested[@]}" -eq 0 ]; then
+        mapfile -t requested < <(target_list)
+    fi
     configure_and_build
     local status=0
     for target in "${requested[@]}"; do
