@@ -14,6 +14,7 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
 #include "ac3/oba/joc.hpp"
@@ -163,7 +164,7 @@ struct DecoderConfig {
     // untouched, sample for sample. OperatingMode::kLine/kRf override
     // drc_scale/heavy_compression above rather than composing with them -
     // that is what makes them modes rather than two more switches; see
-    // resolved_gain_config().
+    // internal::resolve_operating_mode().
     OutputConfig output{};
     // §7.10: what to do with a frame that will not decode. kNone returns the
     // error, exactly as before. See ConcealmentPolicy.
@@ -177,11 +178,40 @@ struct DecoderConfig {
     // before the refusal, which is the case the comparison is most useful in.
     // AC-3 only (FrameDecoder); Eac3Decoder does not write one.
     verify::FrameTrace* trace = nullptr;
+    // --- syntax trace (ac3/decoder/syntax_trace.hpp) ------------------------
+    // Which coding tools each block used and what exponent strategy each
+    // stream carried, recorded on the way past. Null by default, at the same
+    // one-branch-per-block cost `trace` above already sets the precedent for,
+    // and written by BOTH decoders rather than just the AC-3 one - the
+    // Annex E tools are most of what makes it worth having. Filled
+    // incrementally: a frame the decoder ends up refusing leaves behind
+    // everything it read before the refusal.
+    FrameSyntax* syntax = nullptr;
+    // Parse every field exactly as a full decode does, but stop short of
+    // turning the coefficients into audio: no inverse transform, no
+    // overlap-add, no JOC object reconstruction and, for Eac3Decoder, no
+    // per-access-unit channel combination. The returned metadata - and any
+    // trace above - is identical to a full decode's; `channels` and
+    // `object_audio` come back empty.
+    //
+    // This exists because inspecting a stream and rendering it are different
+    // jobs with very different costs. Everything a reader wants to know about
+    // a frame (its metadata, its tool usage, its object layer) is settled by
+    // the parse; the transform is the expensive part and answers none of it.
+    // `ac3cli probe` runs the whole of a file this way. Note what it does NOT
+    // skip: the mantissas are still read, because the bit position of every
+    // subsequent field depends on them - a "parse" that skipped those would
+    // not be parsing the same stream.
+    bool skip_reconstruction = false;
 };
 
 struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 0;
+    // §5.4.1.3/§5.4.2.1, reported rather than merely checked: an inspection
+    // tool wants both off the wire, and nothing else here carries them.
+    int bsid = 8;
+    int bsmod = 0;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     int dialnorm = 31;
@@ -304,6 +334,10 @@ class AC3FORGE_EXPORT FrameDecoder {
 struct DecodedSubstream {
     eac3::StreamType strmtyp = eac3::StreamType::kIndependent;
     int substreamid = 0;
+    // §E2.3.1.6 and Annex E's infomdate payload. bsmod is 0 ("not indicated")
+    // where infomdate was clear, matching io::ScannedStream::bsmod.
+    int bsid = eac3::kBsid;
+    int bsmod = 0;
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
@@ -413,7 +447,7 @@ struct DecodedAccessUnit {
     // way `layout` does below.
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     std::vector<std::vector<float>> object_audio;
-    // The independent (bed) substream's own mixmdate downmix levels - see
+    // The independent substream's own mixmdate downmix levels - see
     // DecodedSubstream::mix. A dependent carries its own copy of the group,
     // but the program folds down as one thing, and the bed's is the set that
     // describes it.
@@ -519,9 +553,6 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // the configured policy, or std::nullopt when that identity has nothing
     // retained yet. `slot` is the identity key described below.
     [[nodiscard]] std::optional<DecodedSubstream> conceal(DecodeError error, std::size_t slot);
-    // The §7.8 fold, applied to an assembled program. Split out because
-    // decode_access_unit_core and flush() both need it and neither is a
-    // natural home for the Table E2.5 reduction it does first.
     // The §7.8 fold over an assembled access unit, in whichever storage it
     // landed - the result's own vectors or the caller's spans. The fold
     // itself is OutputStage's; this only decides what to hand it.
@@ -582,26 +613,6 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // vector - unlike some deques - allocates nothing, so 32 idle slots
     // cost nothing.
     std::array<std::vector<DecodedSubstream>, kSubstreamSlots> pending_au_parts_;
-    // §7.10's raw material, per substream identity: the metadata of the last
-    // frame of that identity that decoded, and its last BLOCK's windowed
-    // transform output per coded channel. Lazily allocated behind unique_ptr
-    // for the same reason delay_ is - 32 by-value slots would pin 768 KB for
-    // a stream that has one identity and (usually) no concealment at all.
-    struct RetainedSubstream {
-        DecodedSubstream shape;
-        std::array<std::array<double, 512>, 6> last_block{};
-        int nchans = 0;
-    };
-    std::array<std::unique_ptr<RetainedSubstream>, kSubstreamSlots> retained_;
-    // Where the block loop writes its last block while a frame is still in
-    // progress, committed into retained_ only once the frame has decoded
-    // cleanly - see FrameDecoder's own conceal_scratch_ for why. Sized lazily,
-    // so a decoder with concealment off never allocates it.
-    std::vector<std::array<double, 512>> conceal_scratch_;
-    // The identity of the last frame that decoded, for the one concealment
-    // case that cannot name its own: a frame damaged so far forward that even
-    // strmtyp/substreamid cannot be trusted. -1 until something decodes.
-    int last_identity_ = -1;
 
     // decode_substream's own per-block IMDCT/enhanced-coupling scratch
     // (PREfast's C6262, alert #63): reused across every (block, channel)
@@ -677,6 +688,27 @@ class AC3FORGE_EXPORT Eac3Decoder {
         std::array<int, eac3::chanmap::kMaxSubstreamChannels + 1> endmant{};
     };
     std::vector<BlockTail> tails_;
+    // §7.10's raw material, per substream identity: the metadata of the last
+    // frame of that identity that decoded, and its last BLOCK's windowed
+    // transform output per coded channel. Lazily allocated behind unique_ptr
+    // for the same reason delay_ is - 32 by-value slots would pin 768 KB for
+    // a stream that has one identity and (usually) no concealment at all.
+    struct RetainedSubstream {
+        DecodedSubstream shape;
+        std::array<std::array<double, 512>, 6> last_block{};
+        int nchans = 0;
+    };
+    std::array<std::unique_ptr<RetainedSubstream>, kSubstreamSlots> retained_;
+    // Where the block loop writes its last block while a frame is still in
+    // progress, committed into retained_ only once the frame has decoded
+    // cleanly - see FrameDecoder's own conceal_scratch_ for why. Sized lazily,
+    // so a decoder with concealment off never allocates it.
+    std::vector<std::array<double, 512>> conceal_scratch_;
+    // The identity of the last frame that decoded, for the one concealment
+    // case that cannot name its own: a frame damaged so far forward that even
+    // strmtyp/substreamid cannot be trusted. -1 until something decodes.
+    int last_identity_ = -1;
+
     // §7.3.4 dither (Annex E's dithflag[ch]/dithflage), shared across every
     // substream identity decode_substream ever sees - nothing about §7.3.4
     // requires per-identity separation, only that simultaneous channels'

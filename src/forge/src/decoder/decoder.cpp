@@ -21,6 +21,7 @@
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -283,6 +284,9 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     if (config_.trace != nullptr) {
         config_.trace->reset();
     }
+    if (config_.syntax != nullptr) {
+        config_.syntax->reset();
+    }
     if (frame.size() < 6) {
         return std::unexpected(DecodeError::kTruncated);
     }
@@ -320,7 +324,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     if (bsid > 8) {
         return std::unexpected(DecodeError::kUnsupported);
     }
-    (void)r.read(3);  // bsmod
+    const auto bsmod = r.read(3);  // §5.4.2.1, reported on DecodedFrame
     const auto acmod_value = r.read(3);
     const auto acmod = static_cast<Acmod>(acmod_value);
     // §5.4.2.4/§5.4.2.5. Both fields are conditional on acmod, so "absent"
@@ -382,6 +386,8 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     DecodedFrame out;
     out.sample_rate = sample_rate;
     out.bitrate_kbps = kbps;
+    out.bsid = static_cast<int>(bsid);
+    out.bsmod = static_cast<int>(bsmod);
     out.acmod = acmod;
     out.lfe = lfe;
     out.dialnorm = dialnorm;
@@ -397,8 +403,14 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // them, otherwise vectors allocated into the result exactly as before.
     // Every sample of every coded channel is written below (six blocks of
     // 256 each), so external storage needs no pre-clearing.
+    // config_.skip_reconstruction leaves both forms untouched: nothing below
+    // writes PCM at all, so the value form allocates none (its `channels`
+    // comes back empty, as that option's own comment promises) and the
+    // decode_frame_into form simply never writes through the caller's spans.
     std::array<std::span<float>, 6> pcm_target{};
-    if (external.empty()) {
+    if (config_.skip_reconstruction) {
+        // Nothing to point at.
+    } else if (external.empty()) {
         out.channels.assign(static_cast<std::size_t>(nchans),
                             std::vector<float>(kSamplesPerFrame, 0.0f));
         for (int ch = 0; ch < nchans; ++ch) {
@@ -474,6 +486,18 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         config_.trace->fbw_channels = nfchans;
         config_.trace->coded_channels = nchans;
     }
+    // The syntax trace's frame-wide shape (ac3/decoder/syntax_trace.hpp).
+    // Every Annex E frame gate it carries stays false here: AC-3 has no
+    // audfrm section at all, so blkswe/dithflage/bamode and the rest simply
+    // do not exist, and every one of their per-block fields is unconditional
+    // instead. per_block_exp_strategy is true for the same reason - Table
+    // E2.10's hoisted frame codes are an Annex E addition.
+    if (config_.syntax != nullptr) {
+        config_.syntax->valid = true;
+        config_.syntax->fbw_channels = nfchans;
+        config_.syntax->lfe = lfe;
+        config_.syntax->block_count = kBlocksPerFrame;
+    }
 
     // Per-block scratch, declared once ahead of the block loop rather than
     // freshly inside it: each is fully re-assigned or overwritten before it
@@ -497,11 +521,20 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             trace.entered = true;
             trace.bit_offset = r.bit_position();
         }
+        BlockSyntax* syntax =
+            config_.syntax != nullptr ? &config_.syntax->blocks[static_cast<std::size_t>(block)]
+                                      : nullptr;
+        if (syntax != nullptr) {
+            syntax->entered = true;
+        }
         std::array<bool, 5> blksw{};  // AC-3's widest acmod (3/2) has 5 fbw channels
         for (int ch = 0; ch < nfchans; ++ch) {
             blksw[static_cast<std::size_t>(ch)] = r.read(1) != 0;
             out.blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] =
                 blksw[static_cast<std::size_t>(ch)];
+            if (syntax != nullptr && blksw[static_cast<std::size_t>(ch)]) {
+                syntax->block_switch |= static_cast<std::uint8_t>(1U << ch);
+            }
         }
         // §5.4.3.2/§7.3.4: per-channel, read fresh every block (unlike
         // E-AC-3's frame-gated dithflage). Reconstruction is done in
@@ -511,6 +544,9 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         std::array<bool, 5> dithflag{};
         for (int ch = 0; ch < nfchans; ++ch) {
             dithflag[static_cast<std::size_t>(ch)] = r.read(1) != 0;
+            if (syntax != nullptr && dithflag[static_cast<std::size_t>(ch)]) {
+                syntax->dither |= static_cast<std::uint8_t>(1U << ch);
+            }
         }
         if (r.read(1) != 0) {  // dynrnge
             dynrng_word = static_cast<std::uint8_t>(r.read(8));
@@ -617,6 +653,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             }
         }
 
+        if (syntax != nullptr) {
+            syntax->coupling = cplinu;
+            syntax->rematrixing =
+                acmod == Acmod::k2_0 && std::ranges::any_of(rematflg, [](bool on) { return on; });
+        }
+
         // §5.3.3 exponent strategies: coupling channel first, then fbw, then LFE.
         strategy.assign(max_streams, ExpStrategy::kReuse);
         if (cplinu) {
@@ -634,6 +676,20 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 r.read(1) != 0 ? ExpStrategy::kD15 : ExpStrategy::kReuse;
             if (block == 0 && strategy[static_cast<std::size_t>(nfchans)] == ExpStrategy::kReuse) {
                 return std::unexpected(DecodeError::kInvalidStream);
+            }
+        }
+        if (syntax != nullptr) {
+            for (int ch = 0; ch < nfchans; ++ch) {
+                syntax->exp_strategy[static_cast<std::size_t>(ch)] =
+                    strategy[static_cast<std::size_t>(ch)];
+            }
+            if (lfe) {
+                syntax->exp_strategy[static_cast<std::size_t>(nfchans)] =
+                    strategy[static_cast<std::size_t>(nfchans)];
+            }
+            if (cplinu) {
+                syntax->exp_strategy[kCouplingSyntaxStream] =
+                    strategy[static_cast<std::size_t>(cpl_stream)];
             }
         }
         // chbwcod exists only for fbw channels that are NOT coupled.
@@ -840,6 +896,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         }
         if (r.read(1) != 0) {  // skiple
             const auto skipl = r.read(9);
+            if (syntax != nullptr) {
+                syntax->skip_field = true;
+                syntax->skip_bytes = static_cast<std::uint16_t>(skipl);
+            }
             r.skip(skipl * 8);
         }
 
@@ -877,6 +937,16 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // from the wire. Placed after the allocation rather than after the
         // audio, so a block whose mantissas turn out to be unreadable still
         // reports the state that decided how wide they were.
+        // §5.4.3.47's gate bit says what this block TRANSMITTED; the syntax
+        // trace reports what is in FORCE, which is not the same question - a
+        // clear deltbaie retains the previous block's segments rather than
+        // clearing them (see verify/mirror.hpp for why that distinction has
+        // its own bug attached).
+        if (syntax != nullptr) {
+            for (int stream = 0; stream < streams && !syntax->delta_bit_alloc; ++stream) {
+                syntax->delta_bit_alloc = delta[static_cast<std::size_t>(stream)].deltnseg > 0;
+            }
+        }
         if (config_.trace != nullptr) {
             auto& trace = config_.trace->blocks[static_cast<std::size_t>(block)];
             trace.deltbaie = deltbaie;
@@ -1024,27 +1094,37 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 }
             }
         }
-        for (int ch = 0; ch < nchans; ++ch) {
-            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)]) {
-                imdct256_pair_windowed(coeffs[static_cast<std::size_t>(ch)], x,
-                                       config_.fast_imdct);
-            } else {
-                imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x, config_.fast_imdct);
-            }
-            auto& delay = delay_[static_cast<std::size_t>(ch)];
-            const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
-            for (int n = 0; n < 256; ++n) {
-                pcm[static_cast<std::size_t>(block * 256 + n)] = static_cast<float>(
-                    2.0 * (x[static_cast<std::size_t>(n)] + delay[static_cast<std::size_t>(n)]));
-                delay[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
-            }
-            // §7.10's raw material, captured into scratch rather than
-            // straight into retained_: this frame may still be refused
-            // below, and a refused frame must not become what the NEXT loss
-            // is reconstructed from.
-            if (retain_last_block && block == kBlocksPerFrame - 1) {
-                std::copy(x.begin(), x.end(),
-                          conceal_scratch_[static_cast<std::size_t>(ch)].begin());
+        // Everything above this point read the wire; everything below turns
+        // what it read into audio. config_.skip_reconstruction stops here -
+        // see its own comment for why an inspection pass wants exactly that
+        // cut, and note that it is the LAST thing in the block: no field this
+        // frame still has to read depends on it, so a parse that stops here
+        // reads the identical bits a full decode does.
+        if (!config_.skip_reconstruction) {
+            for (int ch = 0; ch < nchans; ++ch) {
+                if (ch < nfchans && blksw[static_cast<std::size_t>(ch)]) {
+                    imdct256_pair_windowed(coeffs[static_cast<std::size_t>(ch)], x,
+                                           config_.fast_imdct);
+                } else {
+                    imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x,
+                                      config_.fast_imdct);
+                }
+                auto& delay = delay_[static_cast<std::size_t>(ch)];
+                const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
+                for (int n = 0; n < 256; ++n) {
+                    pcm[static_cast<std::size_t>(block * 256 + n)] =
+                        static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)] +
+                                                  delay[static_cast<std::size_t>(n)]));
+                    delay[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                }
+                // §7.10's raw material, captured into scratch rather than
+                // straight into retained_: this frame may still be refused
+                // below, and a refused frame must not become what the NEXT
+                // loss is reconstructed from.
+                if (retain_last_block && block == kBlocksPerFrame - 1) {
+                    std::copy(x.begin(), x.end(),
+                             conceal_scratch_[static_cast<std::size_t>(ch)].begin());
+                }
             }
         }
         if (r.overflowed()) {
@@ -1074,13 +1154,20 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     }
     // §5.4.2.8/§7.8, last: everything above reconstructs the CODED channels,
     // which is what the decoder is a reference for. Whatever the caller
-    // wanted to hear instead happens here, once.
-    const auto levels = mix_levels(cmixlev, surmixlev);
-    if (external.empty()) {
-        output_.apply(out.channels, acmod, lfe, levels, dialnorm);
-    } else {
-        output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
-                      dialnorm);
+    // wanted to hear instead happens here, once - except under
+    // skip_reconstruction, where there is no PCM to fold: the value form's
+    // `channels` is empty (harmless no-op below) but the decode_frame_into
+    // form's `external` spans were never written through, and folding them
+    // would read - and, for a caller who also asked for a downmix, silently
+    // rewrite - buffers this call promised to leave untouched.
+    if (!config_.skip_reconstruction) {
+        const auto levels = mix_levels(cmixlev, surmixlev);
+        if (external.empty()) {
+            output_.apply(out.channels, acmod, lfe, levels, dialnorm);
+        } else {
+            output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
+                          dialnorm);
+        }
     }
     return out;
 }

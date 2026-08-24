@@ -21,6 +21,7 @@ Usage:
   ac3cli eac3-sine    <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode  <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli decode       <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
+  ac3cli probe        <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli levels       <in.wav|in.ac3|in.ec3>                  (per-channel peak/RMS report)
   ac3cli loudness     <in.wav>                                (BS.1770-4 loudness -> dialnorm)
   ac3cli qc           <in.ac3|in.ec3> [preset=<name>|all]     (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
@@ -157,6 +158,7 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 | Command | What it does |
 |---|---|
 | `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there |
+| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1` |
 | `levels` | Per-channel peak/RMS report — takes a WAV or an encoded stream |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
 | `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream, measures it with the real BS.1770-4/EBU Tech 3342 meter, and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
@@ -230,6 +232,165 @@ ac3cli decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
 Either way the run reports how many frames or access units were concealed. Off by default: a
 decode that hides a damaged frame looks exactly like one that had nothing to hide. See
 [Decoding → Concealing it instead](../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
+
+#### `probe` — what the stream says about itself
+
+Every other inspection here goes through the audio: `levels` and `qc` decode the whole
+programme to measure it, and `decode` reports an object count on its way past. `probe` asks
+the other question — what the bitstream *declares* — and answers it without reconstructing a
+single sample:
+
+```bash
+ac3cli probe programme.ec3
+```
+
+```text
+file            programme.ec3
+codec           E-AC-3 (bsid 16)
+sample rate     48000 Hz
+bsmod           0 (complete main)
+layout          3/2 + LFE (acmod 7, lfeon 1)
+renders         6 channel(s): L C R Ls Rs LFE
+blocks          6 per syncframe (numblkscod 3)
+substreams      1 per access unit
+                independent id 0, 3/2 + LFE, 63 syncframe(s), -
+access units    63 (63 syncframe(s)), 112896 bytes
+duration        2.016 s
+bit rate        448.0 kbit/s measured
+rate control    constant (1792 .. 1792 bytes per access unit)
+dialnorm        -31 dB
+compr           absent
+dynrng          absent
+EMDF            payload id(s) 11 (OAMD), 14 (JOC)
+object audio    5 object(s): bed LFE only, 4 dynamic, in 63 frame(s)
+complexity      5
+JOC             present
+authenticity    no tag
+CRC             63 of 63 syncframe(s) valid
+tools           378 block(s) parsed
+  delta ba      372 of 378 block(s)
+  skip field    63 of 378 block(s)
+  exponents     reuse 1890, D15 378, D25 0, D45 0
+```
+
+It reads a stream in two tiers, and the distinction is the point. The **header tier** —
+syncinfo plus the whole of bsi — answers for every syncframe whether or not its audio is
+readable, so a stream this decoder refuses is still described in full. The **parse tier** runs
+the real decoder with the inverse transform switched off, which is where the `dynrng` words,
+the EMDF payload ids, the object layer and the per-block tool usage come from. A syncframe the
+parse tier declines is counted and reported; the header tier's answers for it stand.
+
+That is not a hypothetical: the committed DEE-encoded E-AC-3 baseline is exactly such a stream.
+`ac3cli decode` on it fails with `decode failed (code 5)` and stops. `probe` reports its layout,
+rate, duration, substream map and CRC state, says that 76 of its 79 syncframes were refused and
+why, and tells you it uses AHT — which is the first thing a bug report about it would need.
+
+**Exit code** is 0 only when every syncframe passed its CRC *and* the parser accepted it, so
+`probe` works as a pipeline gate without anything having to read its output:
+
+```bash
+ac3cli probe delivery.ec3 || echo "stream is not clean"
+```
+
+Memory is flat in the length of the stream: input is pulled through a fixed window rather than
+loaded, and the per-frame dump is written as the walk produces it. Probing a two-hour file costs
+what probing a two-second one does. `-` in place of the path reads the stream from stdin, so
+`probe` sits in a pipe.
+
+##### Per-frame and per-block detail
+
+`detail=frames` adds one entry per access unit — byte offset, size, timestamp, and each
+syncframe's own header, CRC state and object layer. `detail=blocks` adds every block's coding
+tools and exponent strategies underneath: the C++ counterpart of `tools/references/eac3_parse.py`,
+and what a codec bug report actually needs.
+
+```bash
+ac3cli probe programme.ec3 detail=blocks
+```
+
+```text
+access unit 0 @ 0 (768 bytes, t=0.0000s)
+  independent id 0 @ 0: 768 bytes, 2/0 stereo, crc ok, dialnorm -31 dB
+    blk 0: cpl+dither+remat             exp [D45 D45 cpl:D45]
+    blk 1: cpl+dither                   exp [D15 D15 cpl:D15]
+    blk 2: cpl+dither                   exp [reuse reuse cpl:reuse]
+```
+
+##### JSON output (`json=1`)
+
+`json=1` emits the same walk as a JSON document instead. The schema is a **stable contract** —
+sibling tooling is built on it (an HLS/DASH manifest check comparing a `dec3` box against the
+real substream map is the natural next consumer), so the rules below are commitments, not
+description.
+
+```bash
+ac3cli probe programme.ec3 json=1
+```
+
+**Versioning.** The top-level `schema` member names the contract: `"ac3forge.probe/1"`. Within
+one version, members are only ever *added*; an existing member never changes its type, its units
+or its meaning, and never disappears. A member that does not apply to a given stream is present
+and `null` (or `false`/`[]`), never omitted — a consumer must not have to tell "no such key"
+apart from "no such thing". A change that would break any of that changes the version.
+
+**Ordering.** `access_units` is written *before* `stream`, because the summary is only complete
+once every unit has been walked and the per-frame dump has to stream. JSON member order carries
+no meaning, so this costs a consumer nothing — but do not build anything that depends on the
+opposite order.
+
+**Units.** `dialnorm_db`/`dialnorm2_db` are reported in **dB** (negative), not as the
+transmitted 1..31 code — the field means −1..−31 dB LKFS and that is what a delivery spec is
+written in. `compr`, `compr2`, `dynrng` and `dynrng2` are the raw 8-bit words, because their
+meaning is a non-linear gain curve (§7.7) and a *range* of gains is not a well-defined thing to
+report. `bitrate_kbps` is measured over the whole stream; `nominal_bitrate_kbps` is AC-3's
+declared Table 5.18 rate and is `null` for E-AC-3, which has no such field.
+
+Top level:
+
+| Member | Type | Meaning |
+|---|---|---|
+| `schema` | string | `"ac3forge.probe/1"` |
+| `generator` | string | The `ac3cli` version that wrote it |
+| `file` | string | The input path as given |
+| `access_units` | array | Present only with `detail=` — see below |
+| `stream` | object | The summary |
+
+`stream`:
+
+| Member | Type | Meaning |
+|---|---|---|
+| `codec` | `"ac3"` or `"eac3"` | Which generation, from `bsid` |
+| `bsid`, `bsmod` | int | §5.4.1.3 / §5.4.2.1 as transmitted; `bsmod_label` names it (Table 5.7) |
+| `sample_rate_hz` | int | 48000/44100/32000, or Annex E's 24000/22050/16000 |
+| `reduced_rate` | bool | The rate came from `fscod2` (§E2.3.1.3) |
+| `acmod`, `lfeon` | int, bool | As transmitted; `layout_label` names the pair |
+| `numblkscod`, `blocks_per_syncframe` | int | §E2.3.1.4; always 6 for AC-3 |
+| `coded_channels` | int | What the independent substream itself codes |
+| `rendered_channels` | int | What the program renders, every dependent's `chanmap` unioned in (§E3.8.2) |
+| `layout` | array of string | Table E2.5 locations, in order. Empty for 1+1 dual mono, which has no layout |
+| `substreams` | array | One entry per `(stream_type, substream_id)` identity, with its own `bsid`/`bsmod`/`acmod`/`lfeon`/`numblkscod`/`chanmap` and the `syncframes` that carried it |
+| `substreams_per_access_unit` | int | Substreams in the first access unit |
+| `access_units`, `syncframes`, `bytes` | int | Extent |
+| `duration_seconds` | float | From the coded block counts, not a container timestamp |
+| `bitrate_kbps` | float | Measured over the whole stream |
+| `nominal_bitrate_kbps` | int or null | AC-3's declared rate; `null` for E-AC-3 |
+| `variable_bitrate` | bool | Access units differ in size |
+| `access_unit_bytes` | `{min, max}` | The spread behind that flag |
+| `metadata` | object | `dialnorm_db`, `dialnorm2_db`, `compr`, `compr2`, `dynrng`, `dynrng2`, each `{present, min, max}` with `min`/`max` `null` when `present` is false |
+| `objects` | object | `complexity_index` (TS 103 420 §8.3.2.2, from `addbsi`), `oamd`, `joc`, `emdf_payload_ids`, and the program the first OAMD payload described: `total`, `dynamic`, `bed`, `bed_mask`, `lfe`, plus the `frames` that carried one |
+| `authenticity` | `{present, tagged_syncframes}` | Whether frames carry an authenticity tag. Answered **without a key** — where the tag lives is fixed by the container, and only whether it *matches* needs the key (that is `decode ... verify-objects`) |
+| `integrity` | object | `crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error` |
+| `tools` | object | `blocks` parsed, then how many of them used `coupling`, `enhanced_coupling`, `spectral_extension`, `block_switch`, `dither`, `rematrixing`, `delta_bit_alloc`, `skip_field`; `aht_syncframes` and `transient_prenoise_syncframes` are counted in frames, since Table E1.3 decides them per frame; `exponent_strategy` totals `reuse`/`D15`/`D25`/`D45` over every coded stream of every block |
+
+`access_units[]` (with `detail=`): `index`, `byte_offset`, `bytes`, `start_seconds`, and
+`syncframes[]` — each with its own `byte_offset`, `bytes`, `stream_type`, `substream_id`,
+`bsid`, `bsmod`, `acmod`, `lfeon`, `numblkscod`, `dialnorm_db`, `compr`, `chanmap`, `crc_valid`,
+`authenticity_tag`, `parse_error` and `objects`. With `detail=blocks` each syncframe also carries
+`frame_tools` (Table E1.3's frame-level gates, `aht_streams`, `snroffststr`,
+`per_block_exp_strategy`) and `blocks[]` — per block: `parsed`, `coupling`,
+`enhanced_coupling`, `spectral_extension`, `block_switch` and `dither` (per-channel bit masks),
+`rematrixing`, `delta_bit_alloc`, `skip_field`, `skip_bytes`, `exponent_strategy` (one entry per
+coded channel, LFE last) and `coupling_exponent_strategy`.
 
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 
