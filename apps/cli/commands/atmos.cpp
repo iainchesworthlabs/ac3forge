@@ -144,7 +144,8 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
                                     .dialnorm = meta.p.dialnorm,
                                     .num_bands_idx = 4,
                                     .emit_object_metadata = emit_objects,
-                                    .fast_mdct = meta.fast_mdct},
+                                    .fast_mdct = meta.fast_mdct,
+                                    .joc_domain = meta.joc_domain},
                                    static_cast<int>(objects)};
 
     // Distinct tones so the objects are separable in the first place, and a
@@ -281,7 +282,8 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
 
     ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
-         .fast_mdct = meta.fast_mdct},
+         .fast_mdct = meta.fast_mdct,
+         .joc_domain = meta.joc_domain},
         static_cast<int>(objects)};
 
     // Distinct tones purely for audibility, same as 'atmos'.
@@ -408,7 +410,8 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
 
     ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
-         .fast_mdct = meta.fast_mdct},
+         .fast_mdct = meta.fast_mdct,
+         .joc_domain = meta.joc_domain},
         static_cast<int>(count)};
 
     // Objects that reach the bed by the same route are exactly the ones JOC
@@ -610,7 +613,8 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 
     ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
-         .num_bands_idx = 4, .fast_mdct = meta.fast_mdct},
+         .num_bands_idx = 4, .fast_mdct = meta.fast_mdct,
+         .joc_domain = meta.joc_domain},
         static_cast<int>(count)};
 
     // Metered the same way run_atmos_encode meters its own bed: 3/2 + LFE is AtmosEncoder's own

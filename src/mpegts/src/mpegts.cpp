@@ -3,7 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <optional>
+#include <span>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "ts_detail.hpp"
 
@@ -864,8 +871,8 @@ std::expected<Writer, MuxError> Writer::create(const AudioTrack& track,
 
 Writer::Writer(AudioTrack track, MuxOptions options, std::vector<std::byte> pat_section,
                std::vector<std::byte> pmt_section)
-    : track_(std::move(track)),
-      options_(std::move(options)),
+    : track_(track),
+      options_(options),
       pat_section_(std::move(pat_section)),
       pmt_section_(std::move(pmt_section)) {}
 

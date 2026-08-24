@@ -59,6 +59,7 @@ add_executable(ac3tests
     decoder/test_decoder.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
+    dsp/test_dsp_qmf.cpp
     dsp/test_dsp_resampler.cpp
     encoder/test_eac3.cpp
     decoder/test_eac3_decoder.cpp
