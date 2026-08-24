@@ -64,6 +64,23 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   extension leaves the field empty rather than reporting a confident zero.
 - **`ac3cli demux` reads MP4** as well as Matroska, still by magic bytes rather than file name,
   and `fuzz_mp4_demux` joins the harness set.
+- **MPEG-TS container reader** (roadmap `IO2`, third of three — all readers now land).
+  `mpegts::demux` and `mpegts::Reader` (`mpegts/reader.hpp`) lock to the packet grid (188 bytes,
+  M2TS's 192, or 204 with kept Reed-Solomon parity — detected, not assumed), follow PAT to PMT
+  to an elementary PID and reassemble PES. Unlike the sibling readers this hands back **PES
+  payloads**, not access units — a PES packet makes no such promise, and what the payloads
+  concatenate to is the elementary stream `ac3::io::scan` re-frames. The writer only ever speaks
+  DVB (`stream_type` 0x06 plus a descriptor); the reader recognises DVB, ATSC's own
+  `stream_type` 0x81/0x87, and a `registration_descriptor`'s `'AC-3'`/`'EAC3'` identifier alike,
+  reported as `ReadStream::signalling`, since a reader has to open whatever arrives. Every PSI
+  section's CRC-32 is checked before it is believed — a transport stream is designed to survive
+  bit errors, so a damaged PMT is the ordinary case, not the exceptional one, and believing one
+  would mean locking onto the wrong PID for the rest of the file. A capture that starts
+  mid-packet (the normal way one is acquired) still locks onto the grid.
+- **`ac3cli demux` reads MPEG-TS** as well as Matroska and MP4, identified by its packet grid
+  rather than magic bytes (a transport stream has none) or file name, and `fuzz_mpegts_demux`
+  joins the harness set — the container reader most likely to find a genuine hang rather than a
+  crash, since PSI and PES reassembly are loops a hostile stream can try to stall.
 - **`fuzz_matroska_demux`** — a libFuzzer harness over the EBML walk, driving both `demux` and
   the chunk-boundary state machine in `Reader::push` with arbitrary bytes. Container parsing is
   untrusted-input territory (every length in an EBML file is self-declared), so

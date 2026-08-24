@@ -275,7 +275,7 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
     {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
-    {"demux", 3, "<in.mkv|in.mp4> <out.ac3|out.ec3>",
+    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
      Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
