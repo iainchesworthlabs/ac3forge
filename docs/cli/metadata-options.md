@@ -979,7 +979,7 @@ Optional positional arguments, when omitted:
 ## Command-specific notes
 
 - **`transcode`/`metadata`/`normalize`/`cut`/`cat`** work on an already-encoded stream rather
-  than on PCM — see [Commands → Stream tools](commands.md#stream-tools--an-encoded-stream-in-an-encoded-stream-out)
+  than on PCM — see [Commands → Stream tools](commands.md#stream-tools-an-encoded-stream-in-an-encoded-stream-out)
   for what each carries across and what it deliberately does not. Only `transcode` re-encodes.
   Every metadata option above that a stream tool does not name is ignored by it, the same way
   `mkv` ignores all of them.
