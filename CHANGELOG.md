@@ -14,6 +14,26 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **Matroska container reader** (roadmap `IO2`, first of three). `matroska::demux` and
+  `matroska::Reader` (`matroska/reader.hpp`) are the read side of `matroska::mux`/`Writer`, and
+  codec-blind in the same way — they walk EBML, select a track and hand each frame back as
+  opaque bytes. `demux` is batch and zero-copy (frames are spans into the caller's buffer);
+  `Reader` is incremental, delivering frames through a callback so peak memory is one chunk plus
+  one frame rather than the file. Both read shapes this project's own writer never emits,
+  because a disc rip or another muxer does: all three lacing forms, `BlockGroup`-wrapped
+  `Block`s, several tracks, 32-bit `SamplingFrequency`, and unknown-size clusters as well as
+  unknown-size segments. A file truncated mid-cluster returns every whole frame before the cut.
+  The EBML element ids now live in one shared `src/matroska/src/ebml_detail.hpp` that both sides
+  read, so the reader cannot drift from the writer.
+- **`ac3cli demux`** — the inverse of `ac3cli mkv`: unwraps the elementary stream a container
+  carries, which is what every other command takes as input. The container is identified by its
+  own magic bytes rather than by the file name, and the whole path streams, so a multi-gigabyte
+  rip never lands in memory. Matroska/WebM in this release.
+- **`fuzz_matroska_demux`** — a libFuzzer harness over the EBML walk, driving both `demux` and
+  the chunk-boundary state machine in `Reader::push` with arbitrary bytes. Container parsing is
+  untrusted-input territory (every length in an EBML file is self-declared), so
+  `matroska_objects` is now instrumented with ASan/UBSan/coverage in fuzz builds the same way
+  `forge_objects` already was.
 - **Loudness of the rendered layout** (`IO10`). `ac3::meta::LoudnessMeter` has a second
   constructor taking an `eac3::chanmap::Layout`, which measures through **ITU-R BS.1770-5
   (11/2023) Annex 3**'s extended algorithm for advanced sound systems instead of Annex 1's basic
