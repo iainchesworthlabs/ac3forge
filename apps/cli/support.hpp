@@ -148,6 +148,19 @@ struct Options {
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
     ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
+    // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
+    // of the human-readable table. Off by default - a bare `ac3cli probe
+    // <file>` is meant to be read by a person, and every other command here
+    // prints for one too.
+    bool json = false;
+    // 'probe' only: how much per-frame detail the report carries - unset for
+    // the stream summary alone, "frames" for one entry per access unit,
+    // "blocks" to also dump every block's coding tools and exponent
+    // strategies. A string rather than an enum for the same reason
+    // qc_preset below is one: parse_options only ever sees command-line text,
+    // and the command that consumes it is the one that knows what the values
+    // mean.
+    std::optional<std::string> detail;
     // §7.3.4 dithflag (plan::Tools::dither), on by default like the library
     // configs it feeds; dither=off pins it at 0 unconditionally wherever this
     // command encodes, the same key=off shape fast-mdct=off already uses -
