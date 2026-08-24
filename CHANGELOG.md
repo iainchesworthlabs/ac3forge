@@ -56,6 +56,32 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 - **`obj`/`objm` are real destinations on `atmos-encode`**, which now honours `src=`/`map=`: each
   `obj` channel becomes its own object, a contiguous `objm` range folds to one mono object, and
   objects appear in `map=` order. They parsed and did nothing before.
+- **E-AC-3 delta bit allocation under coupling** (`EQ5`). `§7.2.2.6` corrections are no longer
+  skipped for every stream in a coupled frame: the coupling channel carries its own
+  `cpldeltbae` like any full-bandwidth channel, on the same per-run, per-block terms `D3`
+  already established for AC-3 — no reuse code, a wanted correction pays its full segment cost
+  again on every block it applies to. AHT streams still carry none, on measured grounds — the
+  comparison was tried on the AHT axis (where those exponents actually normalise) and still
+  lost on every AHT-carrying point, because the concentration a DCT transform buys is not
+  quantization error. Whether a correction is worth its side info is decided per frame against
+  the rate fit rather than assumed; at that real, repeated cost it wins on a modest minority of
+  coupled frames at low-to-mid bitrates (measured on real material at 96/128/192 kbit/s
+  stereo), never enough to make coupling itself the reason it's withheld.
+- **Per-channel AC-3 coupling membership** (`EQ6a`). `chincpl` is a per-channel decision now — a
+  block-switched channel is excluded from coupling for the frame while the rest still share a
+  coupling channel, rather than the whole frame losing the tool over one channel's transient
+  (the §8.2.4.1 case `docs/library/encoding-ac3.md` used to record as unhandled). Coupling
+  coordinates resend only when the quantized value actually changes rather than on a fixed
+  0/2/4 cadence, and 2/0 carries a measured `phsflg` restoring phase where an out-of-phase pair
+  would otherwise cancel in the coupling sum (up to +12.3 dB on genuinely anti-phase material).
+  Measured tradeoff: 5.1 coupled loses up to 0.4 dB SNR at 192 kbit/s, where more frequent
+  resends compete with mantissas for an already-tight budget.
+- **`ecplangleintrp` (E-AC-3 enhanced coupling angle interpolation)** (`EQ6c`). §3.5.5.3's linear
+  interpolation between band-centre angles, rather than direct per-band application, is decoded
+  now on both sides — the decoder used to refuse any stream that set the flag. The encoder
+  decides per frame by reconstructing both ways with the already-fitted band values and keeping
+  whichever is closer to the real content; on measured material it fires on a meaningful
+  fraction of enhanced-coupling frames.
 - **Decoder output stage** (ROADMAP `DC1`). `ac3/decoder/output.hpp` adds `ac3::OutputStage` on
   `DecoderConfig::output`: §5.4.2.8 dialnorm normalisation onto the −31 dBFS reference, §7.8's
   Lo/Ro, Lt/Rt and mono downmixes, optional LFE mixing, and §7.7's line and RF operating modes
@@ -809,6 +835,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **E-AC-3 decoder never read `cpldeltbae`.** Unreachable before EQ5, since coupling
+  unconditionally cleared delta on the encoder side — the first coupled frame that carried a
+  correction after that changed would have desynchronised every field behind it.
+- **AC-3 coupling desynchronised when membership was partial.** The shared channel's mantissas
+  were coded immediately after channel 0 unconditionally; once `chincpl` became per-channel
+  (EQ6a), a frame that excluded channel 0 handed the coupling channel's mantissas to the wrong
+  stream. Invisible to every structural check (frame size, both CRCs, exponent range) — only
+  visible in per-channel SNR on the low band, which is what a new regression test
+  (`tests/decoder/test_decoder.cpp`) now pins directly.
 - **`split_access_units` no longer reads an AC-3 frame's `crc1` as `strmtyp`/`substreamid`.**
   Those fields only live in byte 2 of an Annex E frame; in an AC-3 one that byte is part of
   `crc1` and aliases to "dependent" about a quarter of the time, merging runs of frames into one

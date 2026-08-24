@@ -304,20 +304,28 @@ AC3FORGE_EXPORT void ecpl_amplitudes(std::span<const int> ecplamp, std::span<con
                                      int end_subbnd, std::span<const bool> structure,
                                      std::span<double> amp_out);
 
-// §3.5.5.3's angle decode + de-correlation add, WITHOUT the optional linear
-// interpolation (ecplangleintrp == 1): band angles apply directly to every
-// bin of that band, the same duplication ecpl_amplitudes uses. The
-// interpolated form is legal syntax this decoder does not implement (no
-// stream this project's own encoder produces sets the flag - the decoder
-// refuses streams that do, the same stance taken elsewhere in this file for
-// syntax nothing here exercises). `noise` supplies rand_trans[] when
-// `ecpltrans` is set; ecpl_rand_notrans is used internally otherwise.
+// §3.5.5.3's angle decode + de-correlation add. `interpolate` selects between
+// the two ways that section gives for turning BAND angles into BIN angles:
+// cleared (ecplangleintrp == 0) duplicates a band's angle across every bin of
+// it, the same shape ecpl_amplitudes uses; set (ecplangleintrp == 1) ramps
+// linearly between band CENTRES instead, which is what the flag exists for -
+// a band edge otherwise steps the phase discontinuously, and across a
+// continuous signal spread over several bands that step is audible where a
+// ramp is not.
+//
+// The interpolated form follows §3.5.5.3's own pseudocode, its even/odd
+// band-width cases included, and keeps that code's wrap discipline: angles
+// are a fraction of pi on (-1, 1], so each PAIR is unwrapped before its slope
+// is taken (or a pair straddling the wrap would ramp the long way round)
+// while every emitted value is wrapped back. `noise` supplies rand_trans[]
+// when `ecpltrans` is set; ecpl_rand_notrans is used internally otherwise.
+// Chaos and noise are added per bin AFTER the conversion, either way.
 // `angle_out` has the same shape/indexing as ecpl_amplitudes' `amp_out`.
 AC3FORGE_EXPORT void ecpl_angles(int channel, std::span<const int> ecplangle,
                                  std::span<const int> ecplchaos, bool ecpltrans,
                                  bool is_first_channel, int begin_subbnd, int end_subbnd,
                                  std::span<const bool> structure, EcplNoise& noise,
-                                 std::span<double> angle_out);
+                                 std::span<double> angle_out, bool interpolate = false);
 
 // §3.5.5.4: the final complex-product reconstruction, given this block's
 // enhanced coupling channel spectrum (`real_in`/`imag_in`, bins 0..255 from

@@ -92,18 +92,39 @@ both encoders decide from content rather than from the bit rate.
   whose copy-source reconstruction the encoder cannot mirror. Free in bits: the flag is
   transmitted either way. It trades waveform SNR for perceptual quality, which is what §7.3.4 is
   for; see the pull request's table.
-- [ ] **EQ5 (M)** — E-AC-3 delta bit allocation under coupling and on AHT streams. Skipped for
-  every channel whenever coupling is in use that frame (`eac3_frame.cpp`, gate
-  `!plan.aht && !is_lfe && !cpl.in_use`); `docs/index.md` says "for now". AC-3's `D3` was worth
-  0.7 dB at 448 kbit/s once the cost check existed. The recorded reason the first attempt was
-  dropped — side-info overhead at 128 kbit/s 5.1 — is the regression gate to keep.
-- [ ] **EQ6 (L)** — Content-adaptive coupling. Every decision is static: every fbw channel is
-  coupled (`chincpl` written as 1), coordinates are sent on blocks 0/2/4 unconditionally, no
-  phase flags, a fixed band-widening template, `cplbegf` from the rate alone. Natural split: (a)
-  per-channel `chincpl`, coordinate-on-change and `phsflg` — so one block-switching channel stops
-  disabling coupling for the whole frame, the §8.2.4.1 case `docs/library/encoding-ac3.md`
-  documents as unhandled; (b) coherence-driven `cplbndstrc`; (c) `ecplangleintrp`, encode and
-  decode (the decoder refuses it today).
+- [x] **EQ5 (M)** — E-AC-3 delta bit allocation under coupling and on AHT streams. No longer
+  skipped for a coupled frame: the coupling channel carries its own `cpldeltbae` like any
+  full-bandwidth channel, transmitted on the same per-run, per-block terms `D3` already
+  established for AC-3 — no reuse code, a wanted correction pays its full segment cost again on
+  every block it applies to. AHT streams stay excluded, on measured grounds: the comparison was
+  put on the AHT axis and still lost on every AHT-carrying point, because the DCT's own job is
+  to concentrate six blocks into one coefficient, and that concentration is what the comparison
+  was reading as quantization error. Whether a correction earns its side info is a closed-loop
+  decision against the rate fit (fit with and without, keep the higher composite SNR offset,
+  the E-AC-3 half of what `D3` established for AC-3) — at that real, repeated cost it wins on a
+  modest minority of coupled frames at low-to-mid bitrates, never enough to make coupling the
+  reason it's skipped. Also fixed in the same pass: the decoder never read `cpldeltbae` at all
+  (unreachable before, since delta was off in every coupled frame), which desynchronised the
+  first coupled frame that carried one once it became reachable.
+- [x] **EQ6 (L)** — Content-adaptive coupling. (a): AC-3's `chincpl` is per channel now — a
+  block-switched channel is excluded and the rest still couple, rather than the whole frame
+  losing coupling — coordinates resend only when the quantized value actually changes, and 2/0
+  carries a measured `phsflg` (up to +12 dB where the coupling sum would otherwise cancel an
+  out-of-phase pair). Found and fixed along the way: coded order follows the FIRST COUPLED
+  channel, not channel 0, once membership is partial — a structural desync invisible to every
+  size/CRC/exponent-range check, only visible in whole-file SNR. (b) coherence-driven
+  `cplbndstrc` was implemented and measured against the fixed frequency template — a wash on SNR
+  and LSD across every rate/layout tried, so it was dropped rather than shipped for its own
+  sake; the fixed template stands. (c) `ecplangleintrp` — §3.5.5.3's linear interpolation between
+  band centres — decodes on both sides now; the encoder decides per frame by actually
+  reconstructing both ways with the fitted band values and keeping whichever is closer to the
+  real content, which measurably fires (real material chooses it on a meaningful fraction of
+  frames, not a rare edge case). Measured with `tools/ci/quality_race.py`: almost every row flat
+  or improved, up to +3.1 dB E-AC-3 stereo and +12.3 dB AC-3 anti-phase stereo. One tradeoff:
+  AC-3 5.1 coupled loses up to 0.4 dB SNR (192 kbit/s) from coordinate resends genuinely competing
+  with mantissas for the same tight budget where they previously didn't get the chance to — the
+  same dynamic EQ5's closed-loop delta decision exists to solve, not yet extended to coordinates.
+  See the PR body for the full table.
 - [x] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Both encoders now
   take the per-channel-rate curve as a ceiling and put the frame's own spectrum under it, band by
   band against Table 7.15's hearing threshold, up to 128 kbit/s per channel; `fgaincod` follows a

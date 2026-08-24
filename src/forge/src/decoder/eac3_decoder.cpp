@@ -1005,10 +1005,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     std::uint8_t dynrng2_word = meta::kDynrngUnity;
     // §7.2.2.6, reset to "no segments" at the start of every syncframe like
     // fsnroffst/codes above, then persisting block to block until
-    // re-transmitted or cleared. Only the per-fbw-channel deltbae[ch] exists
-    // (§5.4.3.49/E2.3.2.9 bound their loop by nfchans) - no coupling-channel
-    // or LFE slot.
-    std::array<DeltaSegments, kMaxSubstreamChannels> delta{};
+    // re-transmitted or cleared. Indexed by STREAM, so the coupling channel's
+    // own `cpldeltbae` segments live at kCplStream alongside the fbw
+    // channels' deltbae[ch] ones. The LFE slot is never written:
+    // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so no
+    // bitstream field for it exists.
+    std::array<DeltaSegments, kMaxSubstreamStreams> delta{};
 
     // Coupling state (Annex E variant of §7.4). All of it persists until
     // re-transmitted - this encoder only ever (re)sends geometry in block 0,
@@ -1552,12 +1554,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         } else if (frm->cplinu[static_cast<std::size_t>(blk)]) {
             // --- enhanced coupling coordinates (§E2.3.3.20-26, §3.5.4) ---
             ecplangleintrp = r.read(1) != 0;
-            if (ecplangleintrp) {
-                // Legal syntax this decoder does not implement - see
-                // ecpl_angles' own doc comment. No stream this project's own
-                // encoder produces sets this flag.
-                return std::unexpected(DecodeError::kUnsupported);
-            }
             int firstchincpl = -1;
             for (int ch = 0; ch < nfchans; ++ch) {
                 const auto uch = static_cast<std::size_t>(ch);
@@ -1854,14 +1850,53 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             block_trace->deltbaie = deltbaie;
         }
         if (deltbaie) {
-            // §E2.3.2.9/§5.4.3.49-57: deltbae[ch] per fbw channel only - no
-            // cpldeltbae, since coupling already errors before this point.
-            // The syntax table reads every channel's 2-bit deltbae[ch] code
-            // FIRST, then every channel's segment data - not interleaved per
-            // channel - so all codes are read and validated up front. Bounds
-            // are checked here, before compute_bit_allocation ever sees them,
-            // since deltoffst/deltlen are attacker-controlled and mask[] is
-            // exactly 50 bands wide.
+            // §E2.3.2.9/§5.4.3.49-57: the syntax table reads every stream's
+            // 2-bit cpldeltbae/deltbae[ch] code FIRST, then every stream's
+            // segment data - not interleaved per stream - so all codes are
+            // read and validated up front. Bounds are checked here, before
+            // compute_bit_allocation ever sees them, since deltoffst/deltlen
+            // are attacker-controlled and mask[] is exactly 50 bands wide.
+            //
+            // The coupling channel is in §7.2.2.6's scope like any fbw
+            // channel and carries its own cpldeltbae, exactly as AC-3's own
+            // decoder reads it (decoder.cpp). Its band cursor starts at
+            // bin_to_band(cplstrtmant) rather than 0, matching
+            // compute_bit_allocation()'s own origin for a coupling region.
+            const auto parse_segments =
+                [&r](int band_start) -> std::expected<DeltaSegments, DecodeError> {
+                DeltaSegments segs;
+                segs.deltnseg = static_cast<int>(r.read(3)) + 1;
+                int band = band_start;
+                for (int seg = 0; seg < segs.deltnseg; ++seg) {
+                    segs.deltoffst[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(5));
+                    segs.deltlen[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(4));
+                    segs.deltba[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(3));
+                    band += segs.deltoffst[static_cast<std::size_t>(seg)];
+                    const int len = segs.deltlen[static_cast<std::size_t>(seg)];
+                    if (band < 0 || band + len > 50) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                    band += len;
+                }
+                return segs;
+            };
+            // Table 5.16: 00 reuse, 01 new info follows, 10 no delta, 11
+            // reserved. cplcode stays at "reuse" when coupling is not in use
+            // this block, so delta[kCplStream] is left alone in that case.
+            const bool cplinu_blk = frm->cplinu[static_cast<std::size_t>(blk)];
+            int cplcode = 0;
+            if (cplinu_blk) {
+                cplcode = static_cast<int>(r.read(2));
+                if (cplcode == 3) {  // Table 5.16: reserved
+                    return std::unexpected(DecodeError::kReservedValue);
+                }
+                if (blk == 0 && cplcode == 0) {
+                    return std::unexpected(DecodeError::kInvalidStream);  // shall not reuse in block 0
+                }
+            }
             std::array<int, eac3::chanmap::kMaxSubstreamFullbw> chcodes{};
             for (int ch = 0; ch < nfchans; ++ch) {
                 chcodes[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(2));
@@ -1872,27 +1907,23 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     return std::unexpected(DecodeError::kInvalidStream);  // shall not reuse in block 0
                 }
             }
+            if (cplinu_blk && cplcode == 1) {  // new info follows
+                auto segs = parse_segments(bin_to_band(cplstrtmant));
+                if (!segs) {
+                    return std::unexpected(segs.error());
+                }
+                delta[static_cast<std::size_t>(kCplStream)] = *segs;
+            } else if (cplinu_blk && cplcode == 2) {  // perform no delta alloc
+                delta[static_cast<std::size_t>(kCplStream)] = {};
+            }
             for (int ch = 0; ch < nfchans; ++ch) {
                 const int chcode = chcodes[static_cast<std::size_t>(ch)];
                 if (chcode == 1) {  // new info follows
-                    DeltaSegments segs;
-                    segs.deltnseg = static_cast<int>(r.read(3)) + 1;
-                    int band = 0;
-                    for (int seg = 0; seg < segs.deltnseg; ++seg) {
-                        segs.deltoffst[static_cast<std::size_t>(seg)] =
-                            static_cast<std::uint8_t>(r.read(5));
-                        segs.deltlen[static_cast<std::size_t>(seg)] =
-                            static_cast<std::uint8_t>(r.read(4));
-                        segs.deltba[static_cast<std::size_t>(seg)] =
-                            static_cast<std::uint8_t>(r.read(3));
-                        band += segs.deltoffst[static_cast<std::size_t>(seg)];
-                        const int len = segs.deltlen[static_cast<std::size_t>(seg)];
-                        if (band < 0 || band + len > 50) {
-                            return std::unexpected(DecodeError::kInvalidStream);
-                        }
-                        band += len;
+                    auto segs = parse_segments(0);
+                    if (!segs) {
+                        return std::unexpected(segs.error());
                     }
-                    delta[static_cast<std::size_t>(ch)] = segs;
+                    delta[static_cast<std::size_t>(ch)] = *segs;
                 } else if (chcode == 2) {  // perform no delta alloc
                     delta[static_cast<std::size_t>(ch)] = {};
                 }
@@ -1900,10 +1931,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         } else if (blk == 0) {
             // §5.4.3.47: deltbaie == 0 in block 0 forces "no delta alloc" for
-            // every fbw channel. Reached both when dbaflde is clear (delta[]
-            // is already {} from the frame-start reset, so this is a no-op)
-            // and when dbaflde is set but this frame's first block's deltbaie
-            // reads 0 (where it is the rule that actually matters).
+            // the coupling channel (if any) and every fbw channel. Reached
+            // both when dbaflde is clear (delta[] is already {} from the
+            // frame-start reset, so this is a no-op) and when dbaflde is set
+            // but this frame's first block's deltbaie reads 0 (where it is
+            // the rule that actually matters).
+            delta[static_cast<std::size_t>(kCplStream)] = {};
             for (int ch = 0; ch < nfchans; ++ch) {
                 delta[static_cast<std::size_t>(ch)] = {};
             }
@@ -1988,7 +2021,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                     .cplfleak = cplfleak,
                                     .cplsleak = cplsleak,
                                     .snr_all_zero = snr_all_zero,
-                                    .high_efficiency = frm->ahtinu[s]});
+                                    .high_efficiency = frm->ahtinu[s],
+                                    .delta = delta[static_cast<std::size_t>(kCplStream)]});
         }
         {
             AC3_ZONE_SCOPED_N("eac3_bit_allocation");
@@ -2358,6 +2392,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     break;
                 }
             }
+            tail.ecplangleintrp = ecplangleintrp;
             tail.ecpl_begin_subbnd = ecpl_begin_subbnd;
             tail.ecpl_end_subbnd = ecpl_end_subbnd;
             tail.ecpl_structure = ecpl_structure;
@@ -2458,7 +2493,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
                                   tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                   tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise,
-                                  angle_bin);
+                                  angle_bin, tail.ecplangleintrp);
                 eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
                                                 tail.cplendmant, coeffs[uch]);
             }
