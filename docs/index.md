@@ -117,6 +117,22 @@ not do](#what-it-does-not-do)), and that holding-back is not just a `decode_subs
 its substreams set the flag, queuing whichever substreams release early rather than losing or
 misaligning them against the one still catching up.
 
+Downstream of the coded channels there is an **output stage** (`ac3/decoder/output.hpp`), off by
+default so the decoders stay usable as a reference: §5.4.2.8 dialnorm normalisation onto the
+−31 dBFS reference, §7.8's Lo/Ro, Lt/Rt and mono downmixes driven by the stream's own
+`cmixlev`/`surmixlev` or `mixmdate` levels, optional LFE mixing, and §7.7's line and RF operating
+modes — RF including the overload protection a fold needs but `compr` (which is computed for the
+*mono* downmix) does not provide. Lt/Rt's surround sum is genuinely phase shifted 90°. Layouts
+§7.8 has no fold for, because they predate nothing that could code them, are reduced to the
+nearest acmod layout first rather than having their extra channels dropped. Verified against
+FFmpeg's `-ac 2` decode of the same stream.
+
+§7.10 **error concealment** is opt-in on the same config. A frame that will not decode can be
+reconstructed from the previous block's overlap — repeated and faded, or muted through the
+codec's own window — instead of leaving a hard discontinuity in the PCM, with the substitution
+reported on the result. For E-AC-3, an access unit whose *dependent* substream will not decode
+renders its bed rather than failing outright.
+
 ### Inspection
 
 Decoding a stream and *describing* one are different jobs. `ac3::io::probe` (`ac3cli probe`)

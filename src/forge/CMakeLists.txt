@@ -117,6 +117,7 @@ target_sources(forge_objects
         src/core/mdct.cpp
         src/decoder/decoder.cpp
         src/decoder/eac3_decoder.cpp
+        src/decoder/output.cpp
         src/decoder/transient_prenoise.cpp
         src/dsp/biquad.cpp
         src/dsp/qmf.cpp

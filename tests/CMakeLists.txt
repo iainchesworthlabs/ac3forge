@@ -58,6 +58,7 @@ add_executable(ac3tests
     encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
+    decoder/test_concealment.cpp
     core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
     meta/test_drc.cpp
@@ -82,6 +83,7 @@ add_executable(ac3tests
     sinks/test_iec61937.cpp
     sinks/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
+    decoder/test_output_stage.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
     containers/test_matroska.cpp

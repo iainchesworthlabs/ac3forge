@@ -7,6 +7,7 @@
 #include <expected>
 #include <format>
 #include <fstream>
+#include <ios>
 #include <iterator>
 #include <numbers>
 #include <optional>

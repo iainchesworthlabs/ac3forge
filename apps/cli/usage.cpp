@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 46> kOptionTokens{{
+constexpr std::array<OptionToken, 51> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -49,6 +49,7 @@ constexpr std::array<OptionToken, 46> kOptionTokens{{
     {"keep-partial", "keep a failed run's already-encoded frames as <name>.partial.<ext>"},
     {"sign-objects", "write a keyed EMDF object signature (needs signing-key=)"},
     {"verify-objects", "check each frame's EMDF object signature instead of just decoding"},
+    {"mix-lfe", "decode/monitor: fold the LFE into the §7.8 output-stage downmix too"},
     {"fast-mdct", "names the default forward MDCT (the fast §7.9.4 path)"},
     {"fast-imdct", "names the default inverse MDCT (the fast §7.9.4 step 3)"},
     {"quiet", "no status output at all - errors and the payload only"},
@@ -70,6 +71,10 @@ constexpr std::array<OptionToken, 46> kOptionTokens{{
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
     {"search=", "AC-3 encode: distortion or perceptual bit-allocation search, off (default)"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
+    {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
+    {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},
+    {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes"},
+    {"conceal=", "decode/monitor: repeat or mute, §7.10 error concealment for a bad frame"},
     {"src=", "an additional input source; repeat for more than one"},
     {"map=", "where each source channel goes"},
     {"offset=", "<sourceIndex>:<seconds> leading silence for that source"},
@@ -80,7 +85,8 @@ constexpr std::array<OptionToken, 46> kOptionTokens{{
     {"codec=", "record/live: ac3 or eac3, instead of deriving it from layout="},
     {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
     {"objects=", "live mode=atmos: the object-slot budget, 1..15"},
-    {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1"},
+    {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1 - "
+                "decode/monitor: loro, ltrt or mono fold the §7.8 output stage"},
     {"preset=", "qc: gate the measurement against a named delivery spec"},
     {"json=", "probe: emit the JSON document instead of the human table"},
     {"detail=", "probe: frames or blocks - add per-access-unit/per-block detail"},
@@ -285,6 +291,19 @@ void print_decode_topic() {
     fmt::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
     fmt::println("decode objects_dir (E-AC-3 Atmos only): exports each JOC-reconstructed object");
     fmt::println("       as its own object_NN.wav, alongside the usual 5.1 bed WAV.");
+    fmt::println("");
+    fmt::println("decode/monitor also take the §7.8 output stage (ac3/decoder/output.hpp), off");
+    fmt::println("       by default so a plain invocation still emits the coded channels");
+    fmt::println("       untouched: channels=2|1 applies dialnorm normalisation and folds down");
+    fmt::println("       to that many channels (as-coded, the default, does nothing); downmix=");
+    fmt::println("       loro|ltrt|mono picks the fold (naming one implies channels=); ltrt-");
+    fmt::println("       phase=off takes §7.8.2's sign-only matrix instead of the real 90°");
+    fmt::println("       surround phase shift; mix-lfe folds the LFE in too. drcmode=line|rf");
+    fmt::println("       applies §7.7's two named consumer DRC modes, both with dialnorm");
+    fmt::println("       normalisation on. conceal=repeat|mute reconstructs a frame that will");
+    fmt::println("       not decode from the previous block's overlap instead of failing the");
+    fmt::println("       command; monitor also folds on its own initiative when the output");
+    fmt::println("       endpoint renders fewer channels than the programme.");
 }
 
 void print_qc_topic() {

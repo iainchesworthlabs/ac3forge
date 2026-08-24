@@ -29,6 +29,8 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/dec3.hpp"
@@ -40,6 +42,7 @@
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -329,8 +332,236 @@ void Progress::start(std::string_view verb, std::uint64_t total) {
     total_ = total;
     done_ = 0;
     last_ = std::chrono::steady_clock::now();
-}
-
+void print_meta_usage() {
+    fmt::println("metadata options (any order, after the positional arguments):");
+    fmt::println("  drc=<profile>     §7.7.1 dynamic range control per block");
+    fmt::println("                    {}", ac3::meta::kProfileNames);
+    fmt::println("  heavy             §7.7.2 heavy compression: a peak ceiling in the");
+    fmt::println("                    mono downmix, at syncframe resolution");
+    fmt::println("  ceiling=<dBFS>    that ceiling (default -0.5)");
+    fmt::println("  dialogue=<dBFS>   where heavy compression puts dialogue (default -20)");
+    fmt::println("  drc2=<profile>    Ch2's own DRC profile, layout 1+1 only (§7.7.1) - not "
+                 "inherited from drc=, set both to compress both programmes alike");
+    fmt::println("  heavy2            Ch2's own heavy compression, layout 1+1 only (§7.7.2.2)");
+    fmt::println("  ceiling2=<dBFS>   that ceiling for Ch2 (default -0.5)");
+    fmt::println("  dialogue2=<dBFS>  where Ch2's heavy compression puts dialogue (default -20)");
+    fmt::println("  dialnorm=auto     measure BS.1770 loudness and derive dialnorm (§5.4.2.8)");
+    fmt::println("  dialnorm=<1..31>  set it directly (default 31)");
+    fmt::println("  dialnorm2=auto | <1..31>   Ch2's own dialnorm, layout 1+1 only "
+                 "(§5.4.2.16, default 31)");
+    fmt::println("  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)");
+    fmt::println("  surmixlev=-3|-6|off     surround downmix level (Table 5.10)");
+    fmt::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
+    fmt::println("  compr=<dB>        metadata only: stamp §7.7.2's compression word onto an");
+    fmt::println("                    existing stream (compr2=<dB> for Ch2). Rounded down, so");
+    fmt::println("                    the ceiling it promises stays a ceiling");
+    fmt::println("  bsmod=<0..7>      metadata only: Table 5.5's service type");
+    fmt::println("  dsurmod=<0..3>    metadata only: Table 5.11's Dolby Surround mode (2/0 only)");
+    fmt::println("  codec=ac3|eac3    transcode only: the output codec, when out_path's own");
+    fmt::println("                    suffix cannot say it (stdout, or an unusual name)");
+    fmt::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
+    fmt::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
+    fmt::println("  ltrtcmixlev=<dB>  Lt/Rt centre level, Table D2.3: "
+                 "+3|+1.5|0|-1.5|-3|-4.5|-6|off");
+    fmt::println("  lorocmixlev=<dB>  Lo/Ro centre level, Table D2.5 (same eight values)");
+    fmt::println("  ltrtsurmixlev=<dB>      Lt/Rt surround level, Table D2.4: "
+                 "-1.5|-3|-4.5|-6|off (the three louder codes are reserved)");
+    fmt::println("  lorosurmixlev=<dB>      Lo/Ro surround level, Table D2.6 (same five)");
+    fmt::println("                    all four ride mixmdate on E-AC-3 and Annex D's xbsi1 "
+                 "on AC-3; naming any of them turns the group on");
+    fmt::println("");
+    fmt::println("  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod "
+                 "fields on Annex D's xbsi1/xbsi2 instead (§D1) - implied by dmixmod=, the "
+                 "four levels above, and the three xbsi2 fields below");
+    fmt::println("  dsurexmod=<mode>  Dolby Surround EX, Table D2.7: {}",
+                 ac3::meta::kSurroundExModeNames);
+    fmt::println("  dheadphonmod=<mode>     Dolby Headphone, Table D2.8: {}",
+                 ac3::meta::kHeadphoneModeNames);
+    fmt::println("  adconvtyp=<type>  A/D converter, Table D2.9: {}",
+                 ac3::meta::kAdConverterNames);
+    fmt::println("  encinfo           AC-3 Annex D: set the encoder's own reserved bit "
+                 "(§D2.3.1.12)");
+    fmt::println("");
+    fmt::println("  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2) - "
+                 "implied by every informational option below, and by dsurexmod=/"
+                 "dheadphonmod=/adconvtyp= above");
+    fmt::println("  bsmod=<service>   type of service, Table 5.7: {}", ac3::meta::kBsmodNames);
+    fmt::println("  dsurmod=<mode>    Dolby Surround, 2/0 only, Table 5.11: {}",
+                 ac3::meta::kSurroundModeNames);
+    fmt::println("  mixlevel=<dB SPL>       peak mixing level, 80..111 (§5.4.2.14)");
+    fmt::println("  roomtyp=<type>    mixing room, Table 5.12: {}", ac3::meta::kRoomTypeNames);
+    fmt::println("  mixlevel2=/roomtyp2=    Ch2's own pair, layout 1+1 only (§5.4.2.22/23)");
+    fmt::println("  langcod / langcod2      emit the reserved 0xFF language byte "
+                 "(§5.4.2.12); AC-3 only");
+    fmt::println("  copyright         set copyrightb (§5.4.2.24; default clear)");
+    fmt::println("  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)");
+    fmt::println("  sourcefscod       E-AC-3: the source was sampled at twice fscod's rate "
+                 "(§E2.3.1.63)");
+    fmt::println("  timecode=<code>   AC-3 bsid 8 only: {} (§5.4.2.26-28)",
+                 ac3::meta::kTimeCodeSyntax);
+    fmt::println("");
+    fmt::println("  pgmscl=<dB>|mute  E-AC-3 programme scale factor, -50..+12 dB "
+                 "(§E2.3.1.13); pgmscl2= is Ch2's, extpgmscl= the external "
+                 "programme's (§E2.3.1.17)");
+    fmt::println("  mixdef=<option>   E-AC-3 mixing-parameter block, Table E2.6: "
+                 "none | premix | reserved | ext");
+    fmt::println("  premixcmp=<sel>:<src>:<scale>   dynrng|compr : external|local : 0..7 "
+                 "(§E2.3.1.19-21)");
+    fmt::println("  mixdata=<0..4095> the twelve bits mixdef=reserved reserves (§E2.3.1.23)");
+    fmt::println("  extmix=<L>,<C>,<R>,<Ls>,<Rs>,<LFE>[,<dmix>]   mixdef=ext external channel "
+                 "scale codes 0..15 (Table E2.8), 'off' for a channel the external "
+                 "programme lacks");
+    fmt::println("  auxmix=<a1>,<a2>  mixdef=ext auxiliary channel scales, same codes");
+    fmt::println("  speechmix=<d>[,<d1>:<att1>[,<d2>:<att2>]]     mixdef=ext speech "
+                 "enhancement data (§E2.3.1.44-51)");
+    fmt::println("  paninfo=<0..239>[:<0..63>]      E-AC-3 pan position, 1.5° steps clockwise "
+                 "from centre, mono/1+1 only; paninfo2= is Ch2's (§E2.3.1.53-58)");
+    fmt::println("  blkmixcfg=<b0,..,b5>    E-AC-3 per-block mixing configuration, six 0..31 "
+                 "words or '-' for a block that sends none (§E2.3.1.59-61)");
+    fmt::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
+                 "keep whatever frames were already encoded (named beside the intended output as "
+                 "<name>.partial.<ext>) instead of discarding them - off by default, matching the "
+                 "GUI's own keep-partial-output preference");
+    fmt::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
+                 "default §7.9.4 fast path (identical streams to within ~1e-12 coefficient "
+                 "error; the direct form is the validation oracle) - applies wherever this "
+                 "command encodes, incl. atmos/record/live/eac3-sine; eac3-encode alone has a "
+                 "[tools] positional argument whose bare nofastmdct token reaches the same "
+                 "field instead; bare fast-mdct (the old opt-in) is a no-op");
+    fmt::println("  mode=reference    force BOTH transforms onto the spec's own direct "
+                 "evaluations (the forms every fast-path test validates against): the §8.2.3.2 "
+                 "forward MDCT wherever this command encodes, and §7.9.4's step-3 inverse in "
+                 "'decode' - for runs where bit-for-bit agreement with the spec's stated "
+                 "arithmetic matters more than speed. mode=performance (the default) keeps "
+                 "both fast paths: 215-285 dB SNR against reference on 180 s programmes, "
+                 "4.5-4.7x faster decodes. Tokens apply in order, so a later fast-mdct=off / "
+                 "fast-imdct=off still adjusts one half on its own");
+    fmt::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
+                 "(mode=reference's decode half); bare fast-imdct names the default");
+    fmt::println("  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction "
+                 "matrix over 256 MDCT bins instead of the default §7.1 64-band complex QMF - "
+                 "cheaper, and what this project did before it had a filterbank, but ~5 dB worse "
+                 "per object and not the domain a licensed decoder reconstructs in. Not "
+                 "part of mode= either way: unlike the two transform switches, these are "
+                 "different answers rather than the same one at different speed, and the "
+                 "default is already the domain the clause states");
+    fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
+                 "channel per block from content - applies wherever this command encodes, "
+                 "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "
+                 "has the equivalent bare nodither token instead. Real dither values are "
+                 "decoder-defined, so this is for a run that needs bit-for-bit agreement "
+                 "with another decoder more than it needs dither's own perceptual benefit "
+                 "(tools/checks/verify_gold_reference.sh is the one that does)");
+    fmt::println("  channels=2|1      decode/monitor: apply the §7.8 output stage and leave "
+                 "that many channels - 2 is a stereo fold, 1 is mono. channels=as-coded (the "
+                 "default) does nothing at all. The stream's own cmixlev/surmixlev (AC-3) or "
+                 "mixmdate levels (E-AC-3) drive the matrix; §7.8.1's normalisation keeps it "
+                 "from overloading");
+    fmt::println("  downmix=loro|ltrt|mono  which fold channels= produces: §7.8.1's plain "
+                 "stereo (the default), §7.8.2's Dolby Surround compatible Lt/Rt, or mono. "
+                 "Naming one implies the width, so downmix=ltrt on its own is enough");
+    fmt::println("  ltrt-phase=off    take Lt/Rt's sign-only matrix instead of §7.8.2's real "
+                 "90-degree surround phase shift, which costs 63 samples of output delay");
+    fmt::println("  mix-lfe           fold the LFE into the downmix too (§7.8 makes it "
+                 "optional and this decoder drops it by default), at the stream's own "
+                 "lfemixlevcod where it has one and §7.8's +10 dB ideal where it does not");
+    fmt::println("  drcmode=line|rf   decode/monitor: §7.7's two named consumer modes. line "
+                 "normalises dialnorm and applies the transmitted dynrng in full; rf uses "
+                 "compr instead (falling back on dynrng per §7.7.2.1) and protects the "
+                 "downmix from overload. Both set dialnorm normalisation, unlike drc=/heavy, "
+                 "which are the individual switches. Default: neither");
+    fmt::println("  conceal=repeat|mute     decode/monitor: §7.10 error concealment. A frame "
+                 "that will not decode is reconstructed from the previous block's overlap - "
+                 "repeated and faded, or muted through the codec's own window - instead of "
+                 "failing the command. Off by default");
+    fmt::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
+                 "signature (needs signing-key=); see docs/concepts/object-signing.md");
+    fmt::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
+                 "against signing-key= instead of just playing it - a mismatch refuses the "
+                 "command; omitted (the default) decodes signed and unsigned streams alike, "
+                 "unchecked");
+    fmt::println("  signing-key=<path>      the key file sign-objects/verify-objects use "
+                 "(or AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)");
+    fmt::println("  verify            eac3-encode: decode every access unit as it is encoded "
+                 "and diff the decoder's model against the encoder's own - per-substream, "
+                 "per-block bit offsets, exponents, bit allocation, delta, AHT gains and the "
+                 "coupling/spectral-extension coordinates. Refuses the run on the first "
+                 "disagreement and names the block it starts at. Off by default: it decodes "
+                 "everything it encodes, so it roughly doubles the work");
+    fmt::println("");
+    fmt::println("source options (encode/eac3-encode; any order, after the positional "
+                 "arguments):");
+    fmt::println("  src=<path>        an additional input source; repeat for more than one");
+    fmt::println("  map=<spec>        {}", plan::kAssignmentSyntax);
+    fmt::println("                    once given, every loaded channel must appear - explicit "
+                 "'none' silences the goes-nowhere warning without giving it anywhere to go");
+    fmt::println("  offset=<sourceIndex>:<seconds>   leading silence ahead of that source's own "
+                 "channels (seconds >= 0), same 0-based numbering as src=");
+    fmt::println("                    the programme is still as long as the longest one once "
+                 "every offset is applied");
+    fmt::println("");
+    fmt::println("programme options (eac3-encode; any order, after the positional arguments):");
+    fmt::println("  programme2=<path> author a SECOND programme into the same stream, as a "
+                 "second independent substream (§E2.3.1.2's I1) - the multi-language / "
+                 "associated-service shape of broadcast DD+. Its own audio, layout, rate and "
+                 "dialnorm; a decoder plays one programme or the other, never both");
+    fmt::println("  programme2-layout=<name>   its layout ({}); omitted follows its own source",
+                 plan::layout_names(plan::Codec::kEac3));
+    fmt::println("  programme2-bitrate=<kbps>  its own rate, spent ON TOP of the primary's "
+                 "(substreams share a frame period, not a frame); omitted is half the primary's");
+    fmt::println("  programme2-dialnorm=<1..31>  its own dialnorm (§5.4.2.8, default 31) - not "
+                 "inherited, since a commentary or description track is levelled independently "
+                 "of the mix it plays against");
+    fmt::println("");
+    fmt::println("programme options (decode, qc, levels; any order, after the positional "
+                 "arguments):");
+    fmt::println("  programme=<0..7>  which programme of a multi-programme stream to work on, "
+                 "by the §E2.3.1.2 substreamid of its independent substream; omitted takes the "
+                 "first the stream carries");
+    fmt::println("");
+    fmt::println("record/live options (record, live; any order, after the positional "
+                 "arguments):");
+    fmt::println("  container=mkv     write straight to Matroska instead of the bare elementary");
+    fmt::println("                    stream this writes by default - same shape of choice as");
+    fmt::println("                    the GUI's own Container setting");
+    fmt::println("  container=fmp4    write a DIRECTORY of fragmented MP4/CMAF segments plus live");
+    fmt::println("                    HLS playlists and a dynamic DASH MPD, updated as the");
+    fmt::println("                    session runs - the output path names the folder");
+    fmt::println("  fmp4-window=<n>   container=fmp4 only: keep only the last <n> segments in the");
+    fmt::println("                    playlist/MPD (a rolling live window); 0, the default, keeps");
+    fmt::println("                    every segment");
+    fmt::println("  container=raw     the default, spelled out");
+    fmt::println("");
+    fmt::println("live options (live; any order, after the positional arguments):");
+    fmt::println("  capture2=<index>  a second capture device, clock-conformed to the first "
+                 "(see 'devices')");
+    fmt::println("");
+    fmt::println("container options (fmp4, ts; any order, after the positional arguments):");
+    fmt::println("  fallback-51       fmp4: also write the object-stripped 5.1 companion");
+    fmt::println("                    rendition into the same #EXT-X-MEDIA group, per Apple's");
+    fmt::println("                    HLS Authoring Specification. Ignored for a stream with");
+    fmt::println("                    no object layer, which has no companion to write");
+    fmt::println("  mainid=<0-7>      ts: the main-service number this service is, or that an");
+    fmt::println("                    associated service points at. Omitted by default");
+    fmt::println("  asvc=<mask>       ts: which main services an ASSOCIATED service may be");
+    fmt::println("                    reproduced with, one bit each (decimal or 0xNN)");
+    fmt::println("");
+    fmt::println("qc options (qc; any order, after the positional arguments):");
+    fmt::println("  preset=<name>     gate the measurement against a named delivery spec");
+    fmt::println("                    {}", ac3::meta::kQcPresetNames);
+    fmt::println("  preset=all        gate against every preset above");
+    fmt::println("                    omitted: measure and report only, no gate");
+    fmt::println("  layout=bed        the default - meter the independent substream's own");
+    fmt::println("                    Table 5.8 bed (BS.1770 Annex 1's basic algorithm)");
+    fmt::println("  layout=rendered   meter the whole assembled program instead, every");
+    fmt::println("                    dependent substream's height/wide/rear channels");
+    fmt::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
+    fmt::println("");
+    fmt::println("probe options (probe; any order, after the positional arguments):");
+    fmt::println("  json=1            emit the JSON document instead of the human table");
+    fmt::println("                    (schema ac3forge.probe/1 - docs/cli/commands.md)");
+    fmt::println("  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,");
+    fmt::println("                    substream headers and each frame's object layer");
 void Progress::tick(std::uint64_t done) {
     done_ = done;
     if (!active_) {
@@ -576,6 +807,107 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          "error: mode is 'performance' (the default) or 'reference' (got '{}')",
                          token);
             return false;
+        }
+        if (token == "mix-lfe") {
+            out.output.mix_lfe = true;
+            continue;
+        }
+        if (key == "channels") {
+            // How many channels to LEAVE, which is the question an operator
+            // actually has ("this has to play on a stereo device"). Which
+            // stereo matrix is downmix='s question, and it has a default, so
+            // channels= alone is enough to get a usable fold.
+            if (value == "as-coded") {
+                out.output.target = ac3::DownmixTarget::kAsCoded;
+                continue;
+            }
+            if (value == "1") {
+                out.output.target = ac3::DownmixTarget::kMono;
+                continue;
+            }
+            if (value == "2") {
+                // A downmix= earlier on the same command line already chose
+                // the matrix; channels=2 only confirms the width.
+                if (!out.downmix_named) {
+                    out.output.target = ac3::DownmixTarget::kLoRo;
+                }
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: channels is '2' (§7.8 stereo), '1' (mono) or 'as-coded' (the "
+                         "default - no downmix at all) (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "downmix") {
+            if (value == "loro") {
+                out.output.target = ac3::DownmixTarget::kLoRo;
+            } else if (value == "ltrt") {
+                out.output.target = ac3::DownmixTarget::kLtRt;
+            } else if (value == "mono") {
+                out.output.target = ac3::DownmixTarget::kMono;
+            } else {
+                fmt::println(stderr,
+                             "error: downmix is 'loro' (§7.8.1), 'ltrt' (§7.8.2, Dolby Surround "
+                             "compatible) or 'mono' (got '{}')",
+                             token);
+                return false;
+            }
+            out.downmix_named = true;
+            continue;
+        }
+        if (key == "ltrt-phase") {
+            // The 90-degree shift on Lt/Rt's surround sum is what §7.8.2
+            // describes and costs a fixed delay on the whole output; 'off'
+            // takes the sign-only matrix a lot of hardware implements
+            // instead. Same key=off shape fast-mdct=/fast-imdct= use.
+            if (value == "off") {
+                out.output.ltrt_phase_shift = false;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: the Lt/Rt surround phase shift is the default; "
+                         "'ltrt-phase=off' selects the sign-only matrix (got '{}')",
+                         token);
+            return false;
+        }
+        if (key == "drcmode") {
+            // §7.7's two named consumer modes. Each sets dialnorm
+            // normalisation AND which of dynrng/compr applies, which is what
+            // distinguishes them from drc=/heavy - those are the individual
+            // switches, these are the two combinations that have names.
+            if (value == "line") {
+                out.output.mode = ac3::OperatingMode::kLine;
+            } else if (value == "rf") {
+                out.output.mode = ac3::OperatingMode::kRf;
+            } else if (value == "none") {
+                out.output.mode = ac3::OperatingMode::kCustom;
+            } else {
+                fmt::println(stderr,
+                             "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
+                             "overload protection) or 'none' (the default) (got '{}')",
+                             token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "conceal") {
+            // §7.10. Off by default: a decode that hits a damaged frame says
+            // so and stops, which is what a verification tool should do.
+            if (value == "repeat") {
+                out.concealment = ac3::ConcealmentPolicy::kRepeatFade;
+            } else if (value == "mute") {
+                out.concealment = ac3::ConcealmentPolicy::kMute;
+            } else if (value == "off") {
+                out.concealment = ac3::ConcealmentPolicy::kNone;
+            } else {
+                fmt::println(stderr,
+                             "error: conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
+                             "silence) or 'off' (the default) (got '{}')",
+                             token);
+                return false;
+            }
+            continue;
         }
         if (key == "drc") {
             // On the decode side drc= is a scale factor (§7.7.1 partial
