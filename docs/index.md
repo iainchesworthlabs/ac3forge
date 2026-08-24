@@ -54,10 +54,10 @@ Table 5.18 lengths on a Bresenham accumulator so the long-run rate is exact. E-A
 
 **Block switching's scope**: a §8.2.2 transient detector (cascaded biquad 8 kHz high-pass, a
 256/128/64-sample peak-ratio tree) runs per full-bandwidth channel per block; a channel that
-switches anywhere in the frame is excluded from coupling and, on E-AC-3, from AHT for that whole
-frame — this project's coupling and AHT decisions are frame-wide all-or-nothing, so there is no
-per-channel toggle to hook a narrower exclusion into. The LFE never switches (§8.2.2 defines the
-detector over full-bandwidth channels only).
+switches anywhere in the frame is excluded from coupling for that whole frame. On AC-3 that
+exclusion is per channel — `chincpl` is a per-channel field, so the rest of the frame still
+couples — while E-AC-3's coupling decision, and AHT on both, remain frame-wide all-or-nothing.
+The LFE never switches (§8.2.2 defines the detector over full-bandwidth channels only).
 
 **Dither's scope**: a bin the allocator gave no bits to is not transmitted, so the decoder
 invents it — a true zero when `dithflag` is clear, a random sample scaled to that bin's own
@@ -77,14 +77,18 @@ extension bands, and the decoder's dither sequence is not reproducible from the 
 **Delta bit allocation's scope**: the encoder compares the coarse exponent-only masking curve
 §7.2.2.2-7.2.2.5 derive against one built from the real, pre-quantization coefficient magnitude,
 and corrects bands where the two clearly diverge (at least a full 6 dB Table 5.17 step). It is
-skipped for the LFE channel (no such field exists for it). On AC-3 the coupling channel is in
-§7.2.2.6's scope like any full-bandwidth channel, and `cpldeltbae` is emitted whenever
-correction segments exist. On E-AC-3 it is skipped, for now, for every channel whenever coupling
-is in use that frame — the coupling channel is a synthesized average rather than a real recorded
-signal, and even leaving only the coupled channels' own narrow below-`cplstrtmant` region
-eligible measurably narrowed coupling's usual cost advantage and broke its tightest scenarios
-(128 kbit/s 5.1). The decoder accepts delta bit allocation on any channel, either generation,
-from any encoder.
+skipped for the LFE channel (no such field exists for it). The coupling channel is in
+§7.2.2.6's scope like any full-bandwidth channel on both generations, and `cpldeltbae` is
+emitted whenever correction segments exist. Coupling no longer suppresses it on E-AC-3: a
+coupled channel's own below-`cplstrtmant` baseband carries corrections like any other region.
+Two narrowings remain there. An AHT stream carries none — the comparison was put on the AHT
+axis, where its exponents actually live, and measured worse on every AHT-carrying point, because
+the transform's job is to concentrate six blocks into one coefficient and the gap that opens is
+that concentration rather than quantization error. And whether corrections are sent at all is
+decided per frame against the rate fit: the frame is fitted with and without them and the higher
+composite SNR offset wins, which is what keeps their side information from eating a 128 kbit/s
+5.1 frame whose mantissas are already down to about a quarter of it. The decoder accepts delta
+bit allocation on any channel, either generation, from any encoder.
 
 ### Metadata
 
@@ -116,6 +120,22 @@ not do](#what-it-does-not-do)), and that holding-back is not just a `decode_subs
 `Eac3Decoder::decode_access_unit` assembles a whole access unit correctly even when only some of
 its substreams set the flag, queuing whichever substreams release early rather than losing or
 misaligning them against the one still catching up.
+
+Downstream of the coded channels there is an **output stage** (`ac3/decoder/output.hpp`), off by
+default so the decoders stay usable as a reference: §5.4.2.8 dialnorm normalisation onto the
+−31 dBFS reference, §7.8's Lo/Ro, Lt/Rt and mono downmixes driven by the stream's own
+`cmixlev`/`surmixlev` or `mixmdate` levels, optional LFE mixing, and §7.7's line and RF operating
+modes — RF including the overload protection a fold needs but `compr` (which is computed for the
+*mono* downmix) does not provide. Lt/Rt's surround sum is genuinely phase shifted 90°. Layouts
+§7.8 has no fold for, because they predate nothing that could code them, are reduced to the
+nearest acmod layout first rather than having their extra channels dropped. Verified against
+FFmpeg's `-ac 2` decode of the same stream.
+
+§7.10 **error concealment** is opt-in on the same config. A frame that will not decode can be
+reconstructed from the previous block's overlap — repeated and faded, or muted through the
+codec's own window — instead of leaving a hard discontinuity in the PCM, with the substitution
+reported on the result. For E-AC-3, an access unit whose *dependent* substream will not decode
+renders its bed rather than failing outright.
 
 ### Inspection
 

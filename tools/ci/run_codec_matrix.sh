@@ -125,6 +125,27 @@ for layout in mono stereo 51; do
     run_ffmpeg_check "enc_${layout}.ac3"
 done
 
+# --- The §7.8 output stage and §7.10 concealment (ROADMAP DC1/DC2) ---------
+# Every new decode token, over a real 5.1 stream rather than silence, because
+# a fold of silence is silence whatever the matrix says. The unit suite
+# (tests/decoder/test_output_stage.cpp) is what checks the coefficients
+# themselves; what these rows cover is the thing a unit test cannot - that the
+# CLI plumbs each token through to a WAV that actually gets written, at the
+# channel count and channel order the sink was opened for. A fold changes both
+# of those, which is exactly the kind of wiring that breaks silently.
+run decode bootstrap_51.ac3 dc1_loro.wav channels=2
+run decode bootstrap_51.ac3 dc1_ltrt.wav downmix=ltrt
+run decode bootstrap_51.ac3 dc1_ltrt_nophase.wav downmix=ltrt ltrt-phase=off
+run decode bootstrap_51.ac3 dc1_mono.wav channels=1
+run decode bootstrap_51.ac3 dc1_line.wav channels=2 drcmode=line
+run decode bootstrap_51.ac3 dc1_rf.wav channels=2 drcmode=rf mix-lfe
+run decode bootstrap_51.ac3 dc1_ascoded.wav channels=as-coded
+# conceal= on an UNDAMAGED stream: the policy must be inert when nothing goes
+# wrong, which is the property most likely to rot unnoticed (a concealment
+# path that fired spuriously would still produce a plausible-looking WAV).
+run decode bootstrap_51.ac3 dc2_repeat.wav conceal=repeat
+run decode bootstrap_51.ac3 dc2_mute.wav conceal=mute
+
 # --- AC-3: real programme material, across each layout's whole rate range --
 # Everything above drives AC-3 from `sine`, `silence`, or bootstrap_51.wav -
 # which is itself a decoded sine. Synthetic material cannot reach a whole
@@ -238,6 +259,20 @@ done
 run eac3-silence eac3_silence.ec3 1 192 51
 run decode eac3_silence.ec3 eac3_silence.wav
 run_ffmpeg_check eac3_silence.ec3
+
+# The §7.8 output stage over E-AC-3, where the fold has a Table E2.5 layout to
+# reduce first rather than an acmod to read straight off. 714 is the row worth
+# having: twelve rendered channels, no acmod that describes them, and the
+# height layer is exactly what a fold that dropped everything §7.8 cannot name
+# would lose silently.
+run decode eac3_51.ec3 dc1_eac3_51_loro.wav channels=2
+run decode eac3_714.ec3 dc1_eac3_714_loro.wav channels=2
+run decode eac3_714.ec3 dc1_eac3_714_ltrt.wav downmix=ltrt drcmode=line
+run decode eac3_714.ec3 dc1_eac3_714_mono.wav channels=1 mix-lfe
+# 1+1 is two programmes rather than a soundfield, so the stage leaves it
+# alone whatever the token says - a row here so that stays true.
+run decode eac3_1+1.ec3 dc1_eac3_dualmono.wav channels=2
+run decode eac3_51.ec3 dc2_eac3_repeat.wav conceal=repeat
 
 # "atten:N" and "noatten" alone tune spectral extension's notch but do not,
 # by themselves, turn spx on (see parse_tools in src/forge/src/encoder/plan.cpp)

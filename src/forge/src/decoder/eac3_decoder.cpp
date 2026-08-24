@@ -23,6 +23,7 @@
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/decoder/transient_prenoise.hpp"
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
@@ -205,8 +206,16 @@ meta::MixMetadata read_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) 
         mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
     }
     if ((acmod & 0x4) != 0) {
-        mix.ltrtsurmixlev = static_cast<meta::MixLevel>(r.read(3));
-        mix.lorosurmixlev = static_cast<meta::MixLevel>(r.read(3));
+        // Tables D2.4/D2.6 reserve '000'..'010' for the surround levels, and
+        // §E2.3.1.9 has a decoder receiving one substitute 0.841 - which is
+        // exactly MixLevel::kMinus1_5dB, so the substitution is made here
+        // rather than left for every reader of the field to remember.
+        const auto surround = [&] {
+            const auto level = static_cast<meta::MixLevel>(r.read(3));
+            return meta::valid_surround_mix_level(level) ? level : meta::MixLevel::kMinus1_5dB;
+        };
+        mix.ltrtsurmixlev = surround();
+        mix.lorosurmixlev = surround();
     }
     if (bsi.lfe && r.read(1) != 0) {  // lfemixlevcode
         mix.lfemixlevcod = static_cast<int>(r.read(5));
@@ -644,6 +653,9 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
 
 }  // namespace
 
+Eac3Decoder::Eac3Decoder(const DecoderConfig& config)
+    : config_(internal::resolve_operating_mode(config)), output_(config.output) {}
+
 // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream, then
 // the AC-3 bit stream shall be processed as an independent substream assigned
 // substream ID 0." FrameDecoder does the reading, since the frame is AC-3
@@ -696,6 +708,122 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
 }
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
+    std::span<const std::byte> frame) {
+    auto decoded = decode_substream_core(frame);
+    if (decoded) {
+        return decoded;
+    }
+    if (config_.concealment == ConcealmentPolicy::kNone) {
+        return decoded;
+    }
+    // Which identity's history to reconstruct from. strmtyp and substreamid
+    // sit at fixed positions immediately after the sync word, so a frame
+    // damaged anywhere past its header still names itself - which is the
+    // shape nearly all transport corruption takes, and the CRC failure that
+    // brought us here says nothing about where in the frame the damage is.
+    //
+    // The identity is NOT second-guessed when that read succeeds. An earlier
+    // version fell back on the last identity that decoded whenever the named
+    // one had no retained block, which sounds forgiving and is actively
+    // wrong: the first dependent of a stream would then be reconstructed from
+    // the BED's history, producing a six-channel "dependent" that the §E3.8.2
+    // assembly rightly refuses. Returning the error instead lets
+    // decode_access_unit_core do the right thing with it - render the bed
+    // alone - which is a real answer rather than a plausible-looking wrong
+    // one.
+    std::size_t slot = 0;
+    BitReader peek{frame};
+    if (frame.size() >= 5 && peek.read(16) == kSyncWord) {
+        const auto strmtyp = peek.read(2);
+        const auto substreamid = peek.read(3);
+        slot = static_cast<std::size_t>(strmtyp * 8 + substreamid);
+    } else if (last_identity_ >= 0) {
+        // No usable header at all: the last identity that decoded is the only
+        // guess available, and it is the right one for the single-identity
+        // stream that covers nearly every case.
+        slot = static_cast<std::size_t>(last_identity_);
+    } else {
+        return decoded;
+    }
+    if (auto concealed = conceal(decoded.error(), slot)) {
+        return concealed;
+    }
+    return decoded;
+}
+
+std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::size_t slot) {
+    const auto& retained = retained_[slot];
+    // Nothing retained for this identity means the loss is at the head of it:
+    // there is no previous block to reconstruct from, and inventing one would
+    // be substituting audio rather than concealing a gap in it.
+    if (!retained) {
+        return std::nullopt;
+    }
+    const bool repeat = config_.concealment == ConcealmentPolicy::kRepeatFade;
+    const int nchans = retained->nchans;
+
+    DecodedSubstream out = retained->shape;
+    out.dynrng.fill(meta::kDynrngUnity);
+    out.dynrng2.fill(meta::kDynrngUnity);
+    // A concealed frame carries no object layer: OAMD and JOC describe THIS
+    // frame's objects, and repeating the previous frame's positions would put
+    // moving objects somewhere they demonstrably are not.
+    out.object_metadata = std::nullopt;
+    out.object_audio.clear();
+
+    const int nblks = eac3::blocks_per_syncframe(out.numblkscod);
+    out.channels.assign(static_cast<std::size_t>(nchans),
+                        std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
+                                           0.0f));
+
+    auto& delay_slot = delay_[slot];
+    if (!delay_slot) {
+        delay_slot = std::make_unique<std::array<std::array<double, 256>, 6>>();
+    }
+    auto& delay = *delay_slot;
+
+    // 20 dB across six blocks, the same decay FrameDecoder::conceal uses - a
+    // syncframe coding fewer blocks simply travels less of that curve, which
+    // is the right relationship: the decay is per unit of TIME lost, and a
+    // one-block syncframe loses a sixth as much of it.
+    constexpr double kDecayPerBlock = 0.6812920690579611;  // 10^(-20/(20*6))
+    double gain = kDecayPerBlock;
+    for (int blk = 0; blk < nblks; ++blk) {
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto uch = static_cast<std::size_t>(ch);
+            const auto& last = retained->last_block[uch];
+            auto& history = delay[uch];
+            auto& pcm = out.channels[uch];
+            for (int n = 0; n < kSamplesPerBlock; ++n) {
+                const auto un = static_cast<std::size_t>(n);
+                const double head = repeat ? last[un] * gain : 0.0;
+                pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
+                    static_cast<float>(2.0 * (head + history[un]));
+                history[un] = repeat ? last[un + 256] * gain : 0.0;
+            }
+        }
+        gain *= kDecayPerBlock;
+    }
+    if (repeat) {
+        const double carried = gain / kDecayPerBlock;
+        for (int ch = 0; ch < nchans; ++ch) {
+            for (double& value : retained->last_block[static_cast<std::size_t>(ch)]) {
+                value *= carried;
+            }
+        }
+    } else {
+        for (int ch = 0; ch < nchans; ++ch) {
+            retained->last_block[static_cast<std::size_t>(ch)].fill(0.0);
+        }
+    }
+
+    out.concealed = Concealment{.error = error,
+                                .action = repeat ? ConcealmentAction::kRepeatFade
+                                                 : ConcealmentAction::kMute};
+    return out;
+}
+
+std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream_core(
     std::span<const std::byte> frame) {
     AC3_ZONE_SCOPED_N("eac3_decode_substream");
     // Before the first early return, for the same reason FrameDecoder resets
@@ -851,6 +979,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                                0.0f));
     }
 
+    // §7.10: whether the block loop below has to keep its last block for a
+    // future loss of THIS identity to be reconstructed from. Skipped entirely
+    // with concealment off, which is what keeps a decoder configured the way
+    // every existing caller configures it from carrying 24 KB per identity it
+    // will never read.
+    const bool retain_last_block = config_.concealment != ConcealmentPolicy::kNone;
+    if (retain_last_block) {
+        conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
+    }
+
     // §E2.3.1.2: a dependent's substreamid starts again at 0 in its own space,
     // so identity - and hence which overlap-add history belongs to this frame
     // - is the pair, never the id alone. First use of an identity engages
@@ -879,10 +1017,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     std::uint8_t dynrng2_word = meta::kDynrngUnity;
     // §7.2.2.6, reset to "no segments" at the start of every syncframe like
     // fsnroffst/codes above, then persisting block to block until
-    // re-transmitted or cleared. Only the per-fbw-channel deltbae[ch] exists
-    // (§5.4.3.49/E2.3.2.9 bound their loop by nfchans) - no coupling-channel
-    // or LFE slot.
-    std::array<DeltaSegments, kMaxSubstreamChannels> delta{};
+    // re-transmitted or cleared. Indexed by STREAM, so the coupling channel's
+    // own `cpldeltbae` segments live at kCplStream alongside the fbw
+    // channels' deltbae[ch] ones. The LFE slot is never written:
+    // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so no
+    // bitstream field for it exists.
+    std::array<DeltaSegments, kMaxSubstreamStreams> delta{};
 
     // Coupling state (Annex E variant of §7.4). All of it persists until
     // re-transmitted - this encoder only ever (re)sends geometry in block 0,
@@ -1426,12 +1566,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         } else if (frm->cplinu[static_cast<std::size_t>(blk)]) {
             // --- enhanced coupling coordinates (§E2.3.3.20-26, §3.5.4) ---
             ecplangleintrp = r.read(1) != 0;
-            if (ecplangleintrp) {
-                // Legal syntax this decoder does not implement - see
-                // ecpl_angles' own doc comment. No stream this project's own
-                // encoder produces sets this flag.
-                return std::unexpected(DecodeError::kUnsupported);
-            }
             int firstchincpl = -1;
             for (int ch = 0; ch < nfchans; ++ch) {
                 const auto uch = static_cast<std::size_t>(ch);
@@ -1728,14 +1862,53 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             block_trace->deltbaie = deltbaie;
         }
         if (deltbaie) {
-            // §E2.3.2.9/§5.4.3.49-57: deltbae[ch] per fbw channel only - no
-            // cpldeltbae, since coupling already errors before this point.
-            // The syntax table reads every channel's 2-bit deltbae[ch] code
-            // FIRST, then every channel's segment data - not interleaved per
-            // channel - so all codes are read and validated up front. Bounds
-            // are checked here, before compute_bit_allocation ever sees them,
-            // since deltoffst/deltlen are attacker-controlled and mask[] is
-            // exactly 50 bands wide.
+            // §E2.3.2.9/§5.4.3.49-57: the syntax table reads every stream's
+            // 2-bit cpldeltbae/deltbae[ch] code FIRST, then every stream's
+            // segment data - not interleaved per stream - so all codes are
+            // read and validated up front. Bounds are checked here, before
+            // compute_bit_allocation ever sees them, since deltoffst/deltlen
+            // are attacker-controlled and mask[] is exactly 50 bands wide.
+            //
+            // The coupling channel is in §7.2.2.6's scope like any fbw
+            // channel and carries its own cpldeltbae, exactly as AC-3's own
+            // decoder reads it (decoder.cpp). Its band cursor starts at
+            // bin_to_band(cplstrtmant) rather than 0, matching
+            // compute_bit_allocation()'s own origin for a coupling region.
+            const auto parse_segments =
+                [&r](int band_start) -> std::expected<DeltaSegments, DecodeError> {
+                DeltaSegments segs;
+                segs.deltnseg = static_cast<int>(r.read(3)) + 1;
+                int band = band_start;
+                for (int seg = 0; seg < segs.deltnseg; ++seg) {
+                    segs.deltoffst[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(5));
+                    segs.deltlen[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(4));
+                    segs.deltba[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(3));
+                    band += segs.deltoffst[static_cast<std::size_t>(seg)];
+                    const int len = segs.deltlen[static_cast<std::size_t>(seg)];
+                    if (band < 0 || band + len > 50) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                    band += len;
+                }
+                return segs;
+            };
+            // Table 5.16: 00 reuse, 01 new info follows, 10 no delta, 11
+            // reserved. cplcode stays at "reuse" when coupling is not in use
+            // this block, so delta[kCplStream] is left alone in that case.
+            const bool cplinu_blk = frm->cplinu[static_cast<std::size_t>(blk)];
+            int cplcode = 0;
+            if (cplinu_blk) {
+                cplcode = static_cast<int>(r.read(2));
+                if (cplcode == 3) {  // Table 5.16: reserved
+                    return std::unexpected(DecodeError::kReservedValue);
+                }
+                if (blk == 0 && cplcode == 0) {
+                    return std::unexpected(DecodeError::kInvalidStream);  // shall not reuse in block 0
+                }
+            }
             std::array<int, eac3::chanmap::kMaxSubstreamFullbw> chcodes{};
             for (int ch = 0; ch < nfchans; ++ch) {
                 chcodes[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(2));
@@ -1746,27 +1919,23 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     return std::unexpected(DecodeError::kInvalidStream);  // shall not reuse in block 0
                 }
             }
+            if (cplinu_blk && cplcode == 1) {  // new info follows
+                auto segs = parse_segments(bin_to_band(cplstrtmant));
+                if (!segs) {
+                    return std::unexpected(segs.error());
+                }
+                delta[static_cast<std::size_t>(kCplStream)] = *segs;
+            } else if (cplinu_blk && cplcode == 2) {  // perform no delta alloc
+                delta[static_cast<std::size_t>(kCplStream)] = {};
+            }
             for (int ch = 0; ch < nfchans; ++ch) {
                 const int chcode = chcodes[static_cast<std::size_t>(ch)];
                 if (chcode == 1) {  // new info follows
-                    DeltaSegments segs;
-                    segs.deltnseg = static_cast<int>(r.read(3)) + 1;
-                    int band = 0;
-                    for (int seg = 0; seg < segs.deltnseg; ++seg) {
-                        segs.deltoffst[static_cast<std::size_t>(seg)] =
-                            static_cast<std::uint8_t>(r.read(5));
-                        segs.deltlen[static_cast<std::size_t>(seg)] =
-                            static_cast<std::uint8_t>(r.read(4));
-                        segs.deltba[static_cast<std::size_t>(seg)] =
-                            static_cast<std::uint8_t>(r.read(3));
-                        band += segs.deltoffst[static_cast<std::size_t>(seg)];
-                        const int len = segs.deltlen[static_cast<std::size_t>(seg)];
-                        if (band < 0 || band + len > 50) {
-                            return std::unexpected(DecodeError::kInvalidStream);
-                        }
-                        band += len;
+                    auto segs = parse_segments(0);
+                    if (!segs) {
+                        return std::unexpected(segs.error());
                     }
-                    delta[static_cast<std::size_t>(ch)] = segs;
+                    delta[static_cast<std::size_t>(ch)] = *segs;
                 } else if (chcode == 2) {  // perform no delta alloc
                     delta[static_cast<std::size_t>(ch)] = {};
                 }
@@ -1774,10 +1943,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         } else if (blk == 0) {
             // §5.4.3.47: deltbaie == 0 in block 0 forces "no delta alloc" for
-            // every fbw channel. Reached both when dbaflde is clear (delta[]
-            // is already {} from the frame-start reset, so this is a no-op)
-            // and when dbaflde is set but this frame's first block's deltbaie
-            // reads 0 (where it is the rule that actually matters).
+            // the coupling channel (if any) and every fbw channel. Reached
+            // both when dbaflde is clear (delta[] is already {} from the
+            // frame-start reset, so this is a no-op) and when dbaflde is set
+            // but this frame's first block's deltbaie reads 0 (where it is
+            // the rule that actually matters).
+            delta[static_cast<std::size_t>(kCplStream)] = {};
             for (int ch = 0; ch < nfchans; ++ch) {
                 delta[static_cast<std::size_t>(ch)] = {};
             }
@@ -1862,7 +2033,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                     .cplfleak = cplfleak,
                                     .cplsleak = cplsleak,
                                     .snr_all_zero = snr_all_zero,
-                                    .high_efficiency = frm->ahtinu[s]});
+                                    .high_efficiency = frm->ahtinu[s],
+                                    .delta = delta[static_cast<std::size_t>(kCplStream)]});
         }
         {
             AC3_ZONE_SCOPED_N("eac3_bit_allocation");
@@ -2232,6 +2404,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     break;
                 }
             }
+            tail.ecplangleintrp = ecplangleintrp;
             tail.ecpl_begin_subbnd = ecpl_begin_subbnd;
             tail.ecpl_end_subbnd = ecpl_end_subbnd;
             tail.ecpl_structure = ecpl_structure;
@@ -2332,7 +2505,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
                                   tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                   tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise,
-                                  angle_bin);
+                                  angle_bin, tail.ecplangleintrp);
                 eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
                                                 tail.cplendmant, coeffs[uch]);
             }
@@ -2477,6 +2650,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                                   history[static_cast<std::size_t>(n)]));
                     history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
                 }
+                // §7.10's raw material, captured into scratch rather than
+                // straight into retained_: this frame may still be refused
+                // further down, and a refused frame must not become what the
+                // NEXT loss is reconstructed from.
+                if (retain_last_block && blk == nblks - 1 && index < conceal_scratch_.size()) {
+                    std::copy(x.begin(), x.end(), conceal_scratch_[index].begin());
+                }
             }
         }
     }
@@ -2533,6 +2713,37 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
             }
         }
+    }
+
+    // §7.10: this frame decoded, so its last block becomes what a future loss
+    // of this identity is reconstructed from. Committed here, past every
+    // return that refuses the frame - including transient pre-noise
+    // processing's own kUnsupported refusal below, which is why this cannot
+    // simply live at the end of the block loop.
+    //
+    // Deliberately BEFORE the §3.7 hold-back: a held-back frame has still
+    // decoded, and its overlap tail is what the next frame of the identity
+    // continues from whether or not the PCM has been released yet.
+    if (retain_last_block) {
+        auto& retained = retained_[static_cast<std::size_t>(key)];
+        if (!retained) {
+            retained = std::make_unique<RetainedSubstream>();
+        }
+        retained->nchans = nchans;
+        for (int ch = 0; ch < nchans && static_cast<std::size_t>(ch) < conceal_scratch_.size();
+             ++ch) {
+            retained->last_block[static_cast<std::size_t>(ch)] =
+                conceal_scratch_[static_cast<std::size_t>(ch)];
+        }
+        // Metadata only - the PCM belongs to this frame, and object_metadata/
+        // object_audio describe objects a concealed frame has no business
+        // repeating (see conceal()).
+        retained->shape = out;
+        retained->shape.channels.clear();
+        retained->shape.object_metadata = std::nullopt;
+        retained->shape.object_audio.clear();
+        retained->shape.concealed = std::nullopt;
+        last_identity_ = key;
     }
 
     auto& pending_slot = pending_[static_cast<std::size_t>(key)];
@@ -2623,6 +2834,27 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         queue.clear();
     }
+    // §7.8, applied here too so a stream that ends mid-hold-back hands its
+    // last frames back at the same channel count every other frame of it came
+    // out at - a sink opened for a stereo fold cannot take six channels for
+    // the final access unit. Each flushed substream is folded on its own
+    // because that is all there is: by definition the assembly these belong
+    // to never completed (see this function's own doc comment), so there is
+    // no rendered program to fold instead.
+    for (auto& substream : ready) {
+        // A local rather than au_views_: OutputStage keeps working storage
+        // of its own and this is one call per stream, not a hot path.
+        std::vector<std::span<float>> views;
+        views.reserve(substream.channels.size());
+        for (auto& channel : substream.channels) {
+            views.emplace_back(channel);
+        }
+        const auto layout = eac3::chanmap::expand(substream.location_map());
+        output_.apply(views, layout, substream.acmod, substream.lfe,
+                      mix_levels(substream.mixing), substream.dialnorm);
+        substream.channels.resize(
+            output_channel_count(config_.output, substream.acmod, substream.lfe));
+    }
     return ready;
 }
 
@@ -2634,6 +2866,56 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_into(
     std::span<const std::byte> unit, std::span<const std::span<float>> channels) {
     return decode_access_unit_core(unit, channels);
+}
+
+// §5.4.2.8/§7.8 over an assembled program, in whichever storage it landed -
+// the result's own vectors, or the caller's spans when decode_access_unit_into
+// supplied them. A no-op unless DecoderConfig::output asks for something, and
+// the one place the fold happens for the access-unit forms.
+void Eac3Decoder::apply_output(DecodedAccessUnit& out,
+                               std::span<const std::span<float>> external) {
+    if (config_.output.target == DownmixTarget::kAsCoded &&
+        config_.output.mode == OperatingMode::kCustom && !config_.output.apply_dialnorm) {
+        return;
+    }
+    // config_.skip_reconstruction leaves `out.channels` empty (harmless below)
+    // but, for the _into form, leaves `external` UNWRITTEN - there is no PCM
+    // to fold, and folding those spans anyway would read stale caller memory
+    // and, for a caller who also asked for a downmix, silently overwrite
+    // buffers this call promised to leave untouched.
+    if (config_.skip_reconstruction) {
+        return;
+    }
+    const auto slots = out.channels.empty() ? static_cast<std::size_t>(out.layout.count)
+                                            : out.channels.size();
+    au_views_.clear();
+    if (external.empty()) {
+        for (auto& channel : out.channels) {
+            au_views_.emplace_back(channel);
+        }
+    } else {
+        for (std::size_t i = 0; i < slots && i < external.size(); ++i) {
+            au_views_.emplace_back(external[i]);
+        }
+    }
+    // `lfe` here is about the RENDERED layout, not the bed's own lfeon: a
+    // dependent can add an LFE2 the bed never had. render_output only reads
+    // it on the pass-through path anyway (the fold works out for itself which
+    // seats the layout filled), but passing the rendered answer keeps the two
+    // in agreement.
+    const bool rendered_lfe = out.layout.index_of(eac3::chanmap::Location::kLfe) >= 0;
+    output_.apply(au_views_, out.layout, out.acmod, rendered_lfe, mix_levels(out.mixing),
+                  out.dialnorm);
+    if (!external.empty()) {
+        return;
+    }
+    // output_channel_count() keys off acmod, which describes the BED; what
+    // came back here is a fold of the assembled program, so the count comes
+    // from the same three cases it does, read against the rendered layout.
+    if (config_.output.target == DownmixTarget::kAsCoded || out.acmod == Acmod::kDualMono) {
+        return;
+    }
+    out.channels.resize(config_.output.target == DownmixTarget::kMono ? 1U : 2U);
 }
 
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
@@ -2675,6 +2957,9 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // own return type.
     std::vector<int> keys;
     keys.reserve(frames->size());
+    // Set when a dependent substream of this unit was dropped rather than
+    // decoded - see the loop below and ConcealmentAction::kBedOnly.
+    std::optional<DecodeError> bed_only;
     for (const auto& frame : *frames) {
         // §E2.3.1.2 assigns an AC-3 bit stream present in an E-AC-3 bit stream
         // the identity (independent, 0) without it carrying either field -
@@ -2684,6 +2969,11 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         if (!frame_bsid) {
             return std::unexpected(frame_bsid.error());
         }
+        // §E2.3.1.2's AC-3 core is always the independent substream, never a
+        // dependent - it has no strmtyp field to say otherwise - so the
+        // concealment fallback below only ever applies to a real Annex E
+        // dependent frame.
+        bool frame_is_dependent = false;
         if (*frame_bsid <= 8) {
             keys.push_back(static_cast<int>(StreamType::kIndependent) * 8);
         } else {
@@ -2693,10 +2983,29 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                 return std::unexpected(bsi.error());
             }
             keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
+            frame_is_dependent = bsi->strmtyp == StreamType::kDependent;
         }
 
         auto decoded = decode_substream(frame);
         if (!decoded) {
+            // §7.10, the access-unit-level case. Concealment is tried at
+            // the SUBSTREAM level first (decode_substream above), so a
+            // dependent that has decoded before is reconstructed from its own
+            // previous block and never reaches here - which keeps the
+            // programme at its full rendered width, height layer included.
+            // This is the fallback for the dependent that has nothing to be
+            // reconstructed FROM: its first frame, or a new identity
+            // appearing mid-stream. Dropping it beats failing the whole
+            // access unit, because the bed is a self-sufficient rendering of
+            // the same programme - just narrower than the stream promised.
+            // The independent substream is a different matter: without it
+            // there is no program at all.
+            if (config_.concealment != ConcealmentPolicy::kNone && frame_is_dependent &&
+                keys.size() > 1) {
+                bed_only = decoded.error();
+                keys.pop_back();
+                continue;
+            }
             return std::unexpected(decoded.error());
         }
         if (decoded->has_value()) {
@@ -2772,6 +3081,20 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // units from another's.
     out.programme = lead.substreamid;
     out.substream_count = static_cast<int>(substreams.size());
+    // §7.10: kBedOnly when a dependent was dropped above, otherwise whatever
+    // the substreams themselves reported - a concealed BED is what the
+    // program as a whole was concealed by, and it outranks a narrowed layout
+    // because it says the audio itself was substituted rather than merely
+    // that some of it is missing.
+    if (bed_only) {
+        out.concealed = Concealment{.error = *bed_only, .action = ConcealmentAction::kBedOnly};
+    }
+    for (const auto& sub : substreams) {
+        if (sub.concealed) {
+            out.concealed = sub.concealed;
+            break;
+        }
+    }
 
     // The PCM target for one program slot: the caller's span when
     // decode_access_unit_into supplied them (every slot's samples are
@@ -2804,6 +3127,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         for (std::size_t ch = 0; ch < lead.channels.size(); ++ch) {
             write_slot(ch, lead.channels[ch]);
         }
+        apply_output(out, external);
         return std::optional<DecodedAccessUnit>(std::move(out));
     }
 
@@ -2852,6 +3176,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             write_slot(static_cast<std::size_t>(slot), sub.channels[static_cast<std::size_t>(i)]);
         }
     }
+    apply_output(out, external);
     return std::optional<DecodedAccessUnit>(std::move(out));
 }
 

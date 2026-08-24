@@ -12,6 +12,7 @@
 #include "ac3/core/bitalloc_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/quality/distortion.hpp"  // kBands, BandNoise
 
 namespace ac3::quality {
 

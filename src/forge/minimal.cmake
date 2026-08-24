@@ -47,6 +47,9 @@ target_sources(forge_minimal
         # --- decode ------------------------------------------------------
         src/decoder/decoder.cpp             # AC-3, plus split_frames/split_access_units
         src/decoder/eac3_decoder.cpp        # Annex E, every tool
+        src/decoder/output.cpp              # OutputStage::apply/mix_levels - both decoders'
+                                            # own OutputStage member is called unconditionally
+                                            # from decode_frame_core/apply_output/conceal
         src/decoder/transient_prenoise.cpp  # §3.7 post-IMDCT correction
         # --- what the decoders call into ---------------------------------
         src/dsp/qmf.cpp            # the polyphase QMF bank JOC's reconstruction runs through
@@ -57,6 +60,7 @@ target_sources(forge_minimal
                                    # §3.5.5 reconstruction the DECODER shares (AP2's
                                    # naming sweep owns moving it)
         src/meta/drc.cpp           # §7.7 dynrng/compr application
+        src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed
         src/oba/oamd.cpp           # §H.1 object metadata
         src/verify/eac3_mirror.cpp # DecoderConfig::syntax's E-AC-3 trace types - unconditionally

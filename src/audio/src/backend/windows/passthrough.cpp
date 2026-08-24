@@ -283,6 +283,18 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
 
         ComPtr<IAudioClient> client;
         if (SUCCEEDED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+            // The shared-mode mix format is what the endpoint actually
+            // renders, which is the figure a caller needs to know whether a
+            // decoded programme has to be folded down before it is played -
+            // see RenderDeviceInfo::channels. A failure here is not an error
+            // for this function: the field stays 0 ("cannot say") and the
+            // passthrough probes below carry on regardless.
+            WAVEFORMATEX* mix = nullptr;
+            if (SUCCEEDED(client->GetMixFormat(&mix)) && mix != nullptr) {
+                info.channels = mix->nChannels;
+                CoTaskMemFree(mix);
+            }
+
             // IsFormatSupported is the only honest way to ask "can this
             // endpoint bitstream AC-3 / E-AC-3?" - the answer depends on the
             // driver, the physical connector and the user's per-device

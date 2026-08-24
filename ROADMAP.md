@@ -92,18 +92,39 @@ both encoders decide from content rather than from the bit rate.
   whose copy-source reconstruction the encoder cannot mirror. Free in bits: the flag is
   transmitted either way. It trades waveform SNR for perceptual quality, which is what §7.3.4 is
   for; see the pull request's table.
-- [ ] **EQ5 (M)** — E-AC-3 delta bit allocation under coupling and on AHT streams. Skipped for
-  every channel whenever coupling is in use that frame (`eac3_frame.cpp`, gate
-  `!plan.aht && !is_lfe && !cpl.in_use`); `docs/index.md` says "for now". AC-3's `D3` was worth
-  0.7 dB at 448 kbit/s once the cost check existed. The recorded reason the first attempt was
-  dropped — side-info overhead at 128 kbit/s 5.1 — is the regression gate to keep.
-- [ ] **EQ6 (L)** — Content-adaptive coupling. Every decision is static: every fbw channel is
-  coupled (`chincpl` written as 1), coordinates are sent on blocks 0/2/4 unconditionally, no
-  phase flags, a fixed band-widening template, `cplbegf` from the rate alone. Natural split: (a)
-  per-channel `chincpl`, coordinate-on-change and `phsflg` — so one block-switching channel stops
-  disabling coupling for the whole frame, the §8.2.4.1 case `docs/library/encoding-ac3.md`
-  documents as unhandled; (b) coherence-driven `cplbndstrc`; (c) `ecplangleintrp`, encode and
-  decode (the decoder refuses it today).
+- [x] **EQ5 (M)** — E-AC-3 delta bit allocation under coupling and on AHT streams. No longer
+  skipped for a coupled frame: the coupling channel carries its own `cpldeltbae` like any
+  full-bandwidth channel, transmitted on the same per-run, per-block terms `D3` already
+  established for AC-3 — no reuse code, a wanted correction pays its full segment cost again on
+  every block it applies to. AHT streams stay excluded, on measured grounds: the comparison was
+  put on the AHT axis and still lost on every AHT-carrying point, because the DCT's own job is
+  to concentrate six blocks into one coefficient, and that concentration is what the comparison
+  was reading as quantization error. Whether a correction earns its side info is a closed-loop
+  decision against the rate fit (fit with and without, keep the higher composite SNR offset,
+  the E-AC-3 half of what `D3` established for AC-3) — at that real, repeated cost it wins on a
+  modest minority of coupled frames at low-to-mid bitrates, never enough to make coupling the
+  reason it's skipped. Also fixed in the same pass: the decoder never read `cpldeltbae` at all
+  (unreachable before, since delta was off in every coupled frame), which desynchronised the
+  first coupled frame that carried one once it became reachable.
+- [x] **EQ6 (L)** — Content-adaptive coupling. (a): AC-3's `chincpl` is per channel now — a
+  block-switched channel is excluded and the rest still couple, rather than the whole frame
+  losing coupling — coordinates resend only when the quantized value actually changes, and 2/0
+  carries a measured `phsflg` (up to +12 dB where the coupling sum would otherwise cancel an
+  out-of-phase pair). Found and fixed along the way: coded order follows the FIRST COUPLED
+  channel, not channel 0, once membership is partial — a structural desync invisible to every
+  size/CRC/exponent-range check, only visible in whole-file SNR. (b) coherence-driven
+  `cplbndstrc` was implemented and measured against the fixed frequency template — a wash on SNR
+  and LSD across every rate/layout tried, so it was dropped rather than shipped for its own
+  sake; the fixed template stands. (c) `ecplangleintrp` — §3.5.5.3's linear interpolation between
+  band centres — decodes on both sides now; the encoder decides per frame by actually
+  reconstructing both ways with the fitted band values and keeping whichever is closer to the
+  real content, which measurably fires (real material chooses it on a meaningful fraction of
+  frames, not a rare edge case). Measured with `tools/ci/quality_race.py`: almost every row flat
+  or improved, up to +3.1 dB E-AC-3 stereo and +12.3 dB AC-3 anti-phase stereo. One tradeoff:
+  AC-3 5.1 coupled loses up to 0.4 dB SNR (192 kbit/s) from coordinate resends genuinely competing
+  with mantissas for the same tight budget where they previously didn't get the chance to — the
+  same dynamic EQ5's closed-loop delta decision exists to solve, not yet extended to coordinates.
+  See the PR body for the full table.
 - [x] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Both encoders now
   take the per-channel-rate curve as a ceiling and put the frame's own spectrum under it, band by
   band against Table 7.15's hearing threshold, up to 128 kbit/s per channel; `fgaincod` follows a
@@ -188,26 +209,30 @@ both encoders decide from content rather than from the bit rate.
 
 ## DC. Decoder and consumer output
 
-Both decoders walk every metadata payload correctly and keep almost none of it, and neither has
-an output stage. Every consumer surface improvises: the WASM demo hand-rolls a stereo fold it
-labels "NOT a spec Lo/Ro or Lt/Rt matrix", the ALSA monitor has no downmix at all.
+Both decoders walk every metadata payload correctly and, outside the downmix levels DC1 now
+keeps, still discard almost all of it. The output stage and §7.10 concealment landed with
+DC1/DC2, so no consumer surface improvises a fold any more; what remains here is the metadata
+depth a receiver needs to do anything beyond play one programme at the right level.
 
-- [ ] **DC1 (L)** — Decoder output stage: apply dialnorm, §7.8 Lo/Ro, Lt/Rt and mono downmix
+- [x] **DC1 (L)** — Decoder output stage: apply dialnorm, §7.8 Lo/Ro, Lt/Rt and mono downmix
   using the stream's own `cmixlev`/`surmixlev` or E-AC-3 `mixmdate`, LFE mixing, and the line
-  and RF operating modes. `DecoderConfig` has only `drc_scale`, `fast_imdct`,
-  `heavy_compression` and `trace`; `decoder.cpp` discards `cmixlev`/`surmixlev`;
-  `meta::stereo_downmix`/`mono_downmix` exist but only feed the encoder's compression peak
-  detector. Expose as `ac3cli decode channels=2|1`, use it in `MonitorSink` when the device is
-  narrower than the stream, replace the WASM demo's fold, verify against FFmpeg `-ac 2`. Lo/Ro
-  plus dialnorm alone is an M; Lt/Rt's surround phase shift and RF-mode overload protection are
-  the rest. DC3/DC4 have since stopped discarding the levels: `DecodedFrame` reports
-  `cmixlev`/`surmixlev` and `DecodedSubstream` reports the whole `mixmdate` group, so the input
-  this needs is already on the wire and read back.
-- [ ] **DC2 (M)** — Error concealment (§7.10). On a CRC or truncation error the decoder returns
-  the error and `docs/library/decoding.md` tells the caller to catch it and keep going, which
-  leaves a hard discontinuity in the PCM. An opt-in policy: repeat-and-fade, mute with a window
-  ramp, render the bed alone when a dependent is missing — reported on the result so tests can
-  assert it. The live, monitor and WASM paths benefit directly.
+  and RF operating modes. Shipped as `ac3::OutputStage` (`ac3/decoder/output.hpp`) on
+  `DecoderConfig::output`, off by default; both decoders now keep the levels they used to skip.
+  `ac3cli decode|monitor channels=2|1`, `downmix=loro|ltrt|mono`, `drcmode=line|rf`, `mix-lfe`,
+  `ltrt-phase=off`; `monitor` folds on its own when the endpoint renders fewer channels than the
+  programme; the WASM demo plays the library's fold instead of one of its own. Lt/Rt's surround
+  sum is phase shifted through a 127-tap Hilbert transformer with the direct path delayed to
+  match. Lo/Ro agrees with FFmpeg `-ac 2` to 119-121 dB SNR, differing only by §7.8.1's own
+  normalisation divisor. Annex C's karaoke downmix (`bsmod` 7) is deliberately out: it
+  re-purposes `cmixlev`/`surmixlev` as vocal-channel levels, so it is a different matrix rather
+  than a variation on this one, and nothing here emits a karaoke stream to check it against.
+- [x] **DC2 (M)** — Error concealment (§7.10). Opt-in via `DecoderConfig::concealment`:
+  `kRepeatFade` or `kMute`, both working in the overlap-add domain (the decoders retain the last
+  good block's windowed transform output) so the delay state stays coherent and the fade at each
+  end is the codec's own window. Reported on the result as `concealed`; an E-AC-3 access unit
+  whose dependent will not decode renders its bed alone (`kBedOnly`). `ac3cli decode|monitor
+  conceal=repeat|mute`. Tests damage real encoded frames, which the differential fuzzers — they
+  only compare successful decodes — never did.
 - [x] **DC3 (M)** — AC-3 Annex D alternate syntax (bsid 6, `xbsi1`/`xbsi2`) and the
   informational BSI fields, encode and decode. `EncoderConfig::alternate_bsi` writes bsid 6 and
   spends the two 14-bit `timecod` fields §D1 reclaims on `dmixmod` plus separate Lt/Rt and Lo/Ro
