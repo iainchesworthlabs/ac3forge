@@ -316,13 +316,24 @@ inline constexpr std::string_view kToolsSyntax =
 
 // --- variable bit rate -------------------------------------------------------
 
-inline constexpr std::string_view kVbrSyntax = "off | q:0..1[,min:kbps][,max:kbps] - E-AC-3 only";
+inline constexpr std::string_view kVbrSyntax =
+    "off | q:0..1[,min:kbps][,max:kbps] | avg:kbps[,win:frames][,min:kbps][,max:kbps]"
+    " - E-AC-3 only";
 
-// "off" or empty clears `out` (CBR); "q:<quality>" turns VBR on, optionally
-// followed by ",min:<kbps>" and/or ",max:<kbps>" in either order. Returns
-// false on anything unrecognised, out of range, or with min above max,
-// leaving `out` partially written - the same reject-rather-than-continue
-// rule parse_tools follows, for the same reason.
+// "off" or empty clears `out` (CBR). Otherwise one of two rate controls,
+// named by the LEADING token:
+//   "q:<quality>"  - plain VBR: a fixed quality, the rate follows the content.
+//   "avg:<kbps>"   - average-rate mode (eac3::AbrConfig): the encoder steers
+//                    the SNR offset to hold that long-run average, with a
+//                    sliding-window bit reservoir underneath it. Optionally
+//                    ",win:<frames>" for the window. No quality is accepted
+//                    here and none is printed back - ABR does not read one.
+// Either may be followed by ",min:<kbps>" and/or ",max:<kbps>", which bound
+// each individual frame, in any order. Returns false on anything
+// unrecognised, out of range, naming both rate controls at once, with min
+// above max, or with a min/max bound that excludes the average, leaving `out`
+// partially written - the same reject-rather-than-continue rule parse_tools
+// follows, for the same reason.
 [[nodiscard]] AC3FORGE_EXPORT bool parse_vbr(std::string_view text,
                                              std::optional<eac3::VbrConfig>& out);
 

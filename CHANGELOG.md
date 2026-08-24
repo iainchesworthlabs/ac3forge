@@ -54,6 +54,24 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   while every access unit codes six blocks, which `numblkscod` does not guarantee.
 - New options: `codec=ac3|eac3` (`transcode`), and `compr=<dB>`, `compr2=<dB>`, `bsmod=<0..7>`,
   `dsurmod=<0..3>` (`metadata`).
+- **E-AC-3 average-rate (ABR) encoding** — `ROADMAP` EQ12. `eac3::VbrConfig::abr` (a new
+  `eac3::AbrConfig`: `target_kbps`, `window_frames`) asks the encoder for a long-run average
+  bitrate while each frame's size still follows the content, which is what a streaming ladder
+  rung or a DVB mux actually contracts for and was previously reachable only by trying quality
+  values until one landed. The encoder holds one composite SNR offset across frames and steers
+  it with a conditionally-integrating controller, over a sliding-window bit reservoir that caps
+  any window of `window_frames` consecutive frames at its pooled budget. `min_kbps`/`max_kbps`
+  still bound each individual frame; a bound that excludes the average is refused rather than
+  silently missed. On the CLI it is a new leading token in the existing `vbr` grammar —
+  `avg:kbps[,win:frames]` — mutually exclusive with `q:`, because ABR moves the offset that
+  `q:` fixes and so reads no quality at all. Documented in
+  [docs/cli/metadata-options.md](docs/cli/metadata-options.md#the-vbr-token-eac3-encode-only).
+- **A measured rate-distortion curve for VBR** — the evidence VBR shipped without. A new `vbr`
+  mode in `tools/ci/quality_race.py` sweeps `VbrConfig::quality`, measures what each point
+  actually costs, and scores CBR, ABR and FFmpeg CBR *at that same measured rate*, so "does VBR
+  beat CBR at this rate" has a number rather than a warning. The curve, and what it says about
+  where each mode is worth using, is published in
+  [docs/concepts/ac3-eac3.md](docs/concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
 - **MPEG-TS ATSC profile beside DVB** (roadmap `IO6`). `mpegts::mux` now writes either
   registry's identification, chosen per stream with `MuxOptions::profile` and on the command
   line with `ac3cli ts <in> <out> atsc`. ATSC uses `stream_type` 0x81 for AC-3 (A/52:2018

@@ -164,10 +164,13 @@ both encoders decide from content rather than from the bit rate.
   `run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting rejected config instead of
   reporting it — fixed to the same clean error every other unexpressable configuration already
   gets.
-- [ ] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. VBR shipped as a
-  per-frame quality knob (`VbrConfig`) with no race leg, no trend row and no measured
-  rate-distortion curve; add a sweep mode to `quality_race.py`, then a long-run average-rate
-  (ABR) mode with a bit reservoir, which is what a streaming ladder or a mux actually asks for.
+- [x] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. `quality_race.py vbr`
+  sweeps `VbrConfig::quality` and scores CBR and FFmpeg CBR at the rate each point actually
+  measured; the curve is published in
+  [docs/concepts/ac3-eac3.md](docs/concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
+  Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]` on the CLI): one composite SNR
+  offset held across frames and steered by an integral controller, over a sliding-window bit
+  reservoir that caps any window's pooled budget.
 - [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
   measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
   against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking

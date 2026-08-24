@@ -805,12 +805,19 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
         out = std::nullopt;
         return true;
     }
-    if (!text.starts_with("q:")) {
-        return false;
-    }
-    text = text.substr(2);
+    // Two rate controls, two leading tokens. "q:" is plain VBR - a fixed
+    // quality, the rate follows. "avg:" is average-rate mode - the offset is
+    // steered to hold a rate, so a quality would be a number the encoder
+    // never reads (see eac3::AbrConfig). Asking for both names two different
+    // things at once, so the pair is refused rather than one half silently
+    // winning.
     eac3::VbrConfig vbr;
-    {
+    const bool abr = text.starts_with("avg:");
+    if (!abr) {
+        if (!text.starts_with("q:")) {
+            return false;
+        }
+        text = text.substr(2);
         const auto comma = text.find(',');
         if (!parse_unit_double(text.substr(0, comma), vbr.quality)) {
             return false;
@@ -837,12 +844,47 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
                 return false;
             }
             vbr.max_kbps = kbps;
+        } else if (token.starts_with("avg:")) {
+            // Only the LEADING token may turn ABR on: "q:0.5,avg:192" would
+            // otherwise reach here and quietly discard a quality the caller
+            // did type, and a second "avg:" would leave which of the two
+            // rates was meant unanswerable.
+            if (!abr || vbr.abr) {
+                return false;
+            }
+            if (!parse_kbps(token.substr(4), kbps)) {
+                return false;
+            }
+            // window_frames keeps AbrConfig's own default; "win:" below is
+            // the only thing that moves it.
+            vbr.abr = eac3::AbrConfig{.target_kbps = kbps};
+        } else if (token.starts_with("win:")) {
+            // Meaningless without an average to size. Since "avg:" can only
+            // lead, a "win:" reaching here with no AbrConfig built is a
+            // window around nothing rather than a reordering.
+            if (!vbr.abr) {
+                return false;
+            }
+            // Same rule parse_kbps enforces for a rate: a zero-frame window
+            // is not a window, it is a missing one.
+            if (!parse_kbps(token.substr(4), kbps)) {
+                return false;
+            }
+            vbr.abr->window_frames = kbps;
         } else {
             return false;
         }
         text = split == std::string_view::npos ? std::string_view{} : text.substr(split + 1);
     }
     if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
+        return false;
+    }
+    // Bounds that exclude the average make it unreachable by construction;
+    // the encoder's own validate() refuses the same pair, so catching it here
+    // means the CLI reports the syntax rather than a frame-encode failure
+    // several hundred frames in.
+    if (vbr.abr && ((vbr.min_kbps && *vbr.min_kbps > vbr.abr->target_kbps) ||
+                    (vbr.max_kbps && *vbr.max_kbps < vbr.abr->target_kbps))) {
         return false;
     }
     out = vbr;
@@ -853,7 +895,20 @@ std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr) {
     if (!vbr) {
         return "off";
     }
-    std::string out = "q:" + std::to_string(vbr->quality);
+    // ABR leads with avg: and never prints a quality - the encoder does not
+    // read one, so showing it would describe a knob that does nothing.
+    std::string out;
+    if (vbr->abr) {
+        out = "avg:" + std::to_string(vbr->abr->target_kbps);
+        // The window is written only when it is not the default, so a plain
+        // avg: round-trips as the plain avg: the caller typed - the same rule
+        // the optional min:/max: fields already follow by not appearing.
+        if (vbr->abr->window_frames != eac3::kAbrDefaultWindowFrames) {
+            out += ",win:" + std::to_string(vbr->abr->window_frames);
+        }
+    } else {
+        out = "q:" + std::to_string(vbr->quality);
+    }
     if (vbr->min_kbps) {
         out += ",min:" + std::to_string(*vbr->min_kbps);
     }
@@ -1059,6 +1114,15 @@ eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
     }
     if (vbr.nominal_kbps) {
         *vbr.nominal_kbps /= 2;
+    }
+    // The ABR target is a rate too, and the plan's target is what the WHOLE
+    // access unit is contracted to average - so each substream holds half of
+    // it, or the two together would deliver twice what was asked. The window
+    // is a count of frames, not a rate, so it carries over unchanged: both
+    // substreams cover the same 1536 samples and therefore the same span of
+    // time.
+    if (vbr.abr) {
+        vbr.abr->target_kbps /= 2;
     }
     return vbr;
 }
