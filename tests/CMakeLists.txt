@@ -53,6 +53,7 @@ add_executable(ac3tests
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
     core/test_bitwriter.cpp
+    encoder/test_bit_reservoir.cpp
     encoder/test_coupling.cpp
     core/test_crc16.cpp
     core/test_crc_mutator.cpp
@@ -118,6 +119,9 @@ add_executable(ac3tests
 # header uses below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src")
 
+# test_bit_reservoir.cpp reaches the encoder's own internal bit_reservoir.hpp
+# (ABR's sliding-window accounting), which is plumbing between the encoder's
+# translation units rather than library surface - same pattern, same reason.
 # test_exp_strategy.cpp includes exp_strategy.hpp, the exponent-run planner the
 # two encoder translation units share. It is deliberately not library surface -
 # nothing outside src/forge/src/encoder/ has any business planning exponent

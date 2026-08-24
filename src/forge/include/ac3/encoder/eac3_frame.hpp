@@ -45,6 +45,39 @@ namespace ac3::eac3 {
 // whose program was previously coded as AC-3, drags in a blkid/frmsizecod
 // branch nothing here would ever emit, so validate() refuses it.
 
+// Average bit rate: a long-run rate target that still lets each frame's size
+// move with the content. CBR holds every frame to the same size; VBR holds
+// every frame to the same quality and lets the rate go where it likes;
+// neither delivers what a streaming ladder rung or a DVB mux contracts for,
+// which is a deliverable AVERAGE at a frame size still free to move.
+//
+// Set VbrConfig::abr and the encoder holds one composite SNR offset across
+// frames and steers it - up while the stream is running under its target,
+// down while it is running over - so a quiet frame stays cheap and a busy
+// one is allowed to cost more, with the average landing where it was asked
+// to. Underneath that, `window_frames` consecutive frames pool one budget as
+// a hard ceiling, so no window can overrun whatever the offset is doing.
+//
+// VbrConfig::quality is NOT read under ABR. The two are different rate
+// controls: quality fixes the offset, ABR's whole job is to move it, and the
+// stream's first frame seeds the offset from its own budget search rather
+// than from a number a caller guessed. VbrConfig::min_kbps/max_kbps do still
+// apply - they bound each individual frame, which composes with a long-run
+// average rather than competing with it.
+struct AbrConfig {
+    // The long-run average, same unit and meaning as FrameConfig::bitrate_kbps.
+    std::uint32_t target_kbps = 192;
+    // How many consecutive frames share one pooled budget. At 48 kHz a frame
+    // is 1536 samples (32 ms), so the default holds the average over about a
+    // second - long enough for a bar of music or a spoken phrase to borrow
+    // from its neighbours, short enough that a mux's own buffer model still
+    // recognises the result. 1 pools nothing, which pins every frame to one
+    // frame's share and makes ABR behave as CBR; 0 is rejected by validate().
+    std::uint32_t window_frames = 32;
+};
+
+inline constexpr std::uint32_t kAbrDefaultWindowFrames = 32;
+
 // Variable bit rate: instead of fixing the frame's word count and searching
 // for the best quality that fits it (CBR's rate control, see FrameConfig's
 // own comment below), fix the quality and let the word count follow the
@@ -52,7 +85,8 @@ namespace ac3::eac3 {
 // Table 5.18 (frmsizecod), not a free word count, so it has no equivalent.
 struct VbrConfig {
     // [0, 1]: linearly maps onto the encoder's own composite SNR-offset
-    // search space (composite = round(quality * 1023)). This is not a
+    // search space (composite = round(quality * 1023)). Not read at all when
+    // `abr` below is set - see AbrConfig. This is not a
     // perceptual or cross-encoder quality scale - it is exactly as
     // meaningful as the search space is, which is to say it is monotonic in
     // "how good" for THIS encoder and nothing more, the same caveat every
@@ -80,11 +114,17 @@ struct VbrConfig {
 
     // Drives the coupling/spx begin-frequency heuristics (default_cplbegf,
     // default_spxbegf) in place of bitrate_kbps, which VBR has nothing fixed
-    // to offer them. std::nullopt resolves to max_kbps if set, else
-    // kVbrDefaultNominalKbps - a caller who wants exactly today's CBR tool
-    // behaviour at some quality supplies the same number they would have
-    // passed as bitrate_kbps.
+    // to offer them. std::nullopt resolves to abr->target_kbps if set, then
+    // max_kbps if set, else kVbrDefaultNominalKbps - a caller who wants
+    // exactly today's CBR tool behaviour at some quality supplies the same
+    // number they would have passed as bitrate_kbps.
     std::optional<std::uint32_t> nominal_kbps = std::nullopt;
+
+    // Set to hold a long-run average rate instead of letting the rate run
+    // free: the offset is steered frame to frame rather than read off
+    // `quality`, which is then unused. See AbrConfig. Unset is plain VBR,
+    // exactly as before.
+    std::optional<AbrConfig> abr = std::nullopt;
 };
 
 inline constexpr std::uint32_t kVbrDefaultNominalKbps = 192;

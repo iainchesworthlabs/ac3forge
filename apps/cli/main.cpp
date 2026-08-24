@@ -12,6 +12,7 @@
 #include <system_error>
 #include <vector>
 
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/audio/audio_backend.hpp"
@@ -385,6 +386,14 @@ void print_usage() {
     fmt::println("        max bound will often refuse real programme material outright;");
     fmt::println("        bitrate_kbps still matters in vbr mode — it feeds the same");
     fmt::println("        coupling/spx frequency defaults it always has, not a target rate");
+    fmt::println("        avg:kbps instead of q: is average-rate (ABR) mode: the encoder");
+    fmt::println("        steers the SNR offset to hold that long-run average, with a");
+    fmt::println("        sliding-window bit reservoir underneath it, so a quiet frame");
+    fmt::println("        stays cheap and a busy one may cost more. It takes no quality —");
+    fmt::println("        that is the knob it exists to move — so q: and avg: are refused");
+    fmt::println("        together. win:frames sets the window ({} frames by default,",
+                 ac3::eac3::kAbrDefaultWindowFrames);
+    fmt::println("        about a second at 48 kHz); min:/max: still bound each frame.");
     fmt::println("atmos: objects orbit the room at different heights and rates,");
     fmt::println("       encoded as a 5.1 E-AC-3 bed with JOC + OAMD side data");
     fmt::println("       (TS 103 420). FFmpeg reports \"Dolby Digital Plus + Dolby Atmos\".");
