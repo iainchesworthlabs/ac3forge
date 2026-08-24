@@ -445,6 +445,19 @@ else
 fi
 
 # --- Reporting / container passes over a representative subset -------------
+# probe (roadmap IO1): the table form, the JSON contract, and both detail
+# levels - over an AC-3 stream, a plain E-AC-3 one and an Atmos one so its
+# object-layer/EMDF fields see a real OAMD+JOC container at least once. Its
+# own exit code is non-zero on a CRC or parse failure (see the command's own
+# doc comment), which every stream reaching this point in the script does not
+# have, so a plain `run` (which trusts a clean 0) is the right check here -
+# the same trust every other call in this section already places in a clean
+# decode/measure.
+run probe bootstrap_51.ac3
+run probe bootstrap_51.ac3 json=1
+run probe eac3enc_none.ec3
+run probe eac3enc_none.ec3 json=1 detail=frames
+run probe atmos_4.ec3 json=1 detail=blocks
 run levels bootstrap_51.wav
 run levels enc_stereo.ac3
 run levels eac3enc_none.ec3

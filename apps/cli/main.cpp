@@ -24,6 +24,7 @@
 #include "commands/decode.hpp"
 #include "commands/encode.hpp"
 #include "commands/live_audio.hpp"
+#include "commands/probe.hpp"
 #include "commands/synth.hpp"
 #include "support.hpp"
 
@@ -148,13 +149,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 26 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 27 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 26> kCommands{{
+constexpr std::array<Command, 27> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -242,6 +243,10 @@ constexpr std::array<Command, 26> kCommands{{
      "JOC-reconstructed object as its own object_NN.wav there",
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3)); }},
+    {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
+     "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
+     "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
+     Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
     {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report", Needs::kNothing,
      [](const Args& x) { return run_levels(x.str(1)); }},
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", Needs::kNothing,
@@ -320,7 +325,7 @@ void print_usage() {
     fmt::println("");
     fmt::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
     fmt::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    fmt::println("       eac3-encode, atmos-encode and decode only. e.g.:");
+    fmt::println("       eac3-encode, atmos-encode, decode and probe only. e.g.:");
     fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
     fmt::println("");
     fmt::println("live monitor_device/passthrough_device: -2 (default) leaves that leg off,");
@@ -424,6 +429,19 @@ void print_usage() {
     fmt::println("");
     fmt::println("For decode, drc=<scale> applies §7.7.1 partial compression (0 = ignore,");
     fmt::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
+    fmt::println("");
+    fmt::println("probe reports what a stream DECLARES, without decoding its audio: bsid, rate");
+    fmt::println("       (fscod2 half rates included), acmod/lfeon and the resolved layout,");
+    fmt::println("       bsmod, chanmap, the substream map, frame and access-unit counts,");
+    fmt::println("       duration, measured bit rate and VBR spread, dialnorm/compr/dynrng");
+    fmt::println("       ranges, EMDF payload ids, OAMD/JOC with complexity_index and the");
+    fmt::println("       object/bed configuration, whether an authenticity tag is present,");
+    fmt::println("       per-frame CRC validity and how often each coding tool was used.");
+    fmt::println("       json=1 emits the ac3forge.probe/1 document instead (docs/cli/");
+    fmt::println("       commands.md documents it as a stable contract); detail=frames adds");
+    fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
+    fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
+    fmt::println("       failed its CRC or the parser refused it, so this works as a gate.");
     fmt::println("");
     fmt::println("qc measures a stream's real BS.1770-4/EBU Tech 3342 loudness and compares it");
     fmt::println("       against the dialnorm/compr it embeds - preset=<name> also gates that");

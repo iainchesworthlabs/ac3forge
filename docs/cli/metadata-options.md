@@ -451,6 +451,40 @@ Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every num
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the
 full report format and the exit-code convention this drives.
 
+## Probe options (`probe`): `json=`, `detail=`
+
+```text
+probe options (probe; any order, after the positional arguments):
+  json=1            emit the JSON document instead of the human table
+                    (schema ac3forge.probe/1 - docs/cli/commands.md)
+  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
+                    substream headers and each frame's object layer
+  detail=blocks     the same, plus every block's coding tools and
+                    exponent strategies - what a codec bug report needs
+```
+
+`json=1` is a value token rather than a bare word (unlike `couple` or `heavy`) because `probe` is
+the first command here whose *output form* is a choice: `json=0` is accepted and means the table,
+so a script building its command line programmatically (`json=$want`) never has to omit the token
+to turn it off. The document it emits is a versioned contract — see
+[Commands → `probe`](commands.md#json-output-json1) for the schema, the compatibility rules and
+the units each field is in.
+
+`detail=` is independent of `json=`: all four combinations work, and the two detail levels add to
+the stream summary rather than replacing it — the same summary comes out either way.
+
+| `detail=` | What it adds |
+|---|---|
+| *(omitted)* | Nothing. The stream summary alone, which is what a pipeline or a CI gate wants |
+| `frames` | One entry per access unit: byte offset, size, start time, and each syncframe's own header, CRC state, authenticity tag and object layer |
+| `blocks` | The same, plus per syncframe: Table E1.3's frame-level tool gates, and per block which coding tools were in force and what exponent strategy each coded stream carried |
+
+A dump of a long file is a lot of output, which is why neither is on by default — but it costs no
+extra memory, because each access unit is written as the walk reaches it rather than collected
+first. See [Commands → `probe`](commands.md#per-frame-and-per-block-detail) for what the block dump
+looks like and why it exists.
+
+
 ## Defaults
 
 Optional positional arguments, when omitted:
