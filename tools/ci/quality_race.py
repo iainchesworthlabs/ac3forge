@@ -136,6 +136,70 @@ def make_material():
     return np.clip(left, -0.98, 0.98), np.clip(right, -0.98, 0.98)
 
 
+def make_material_transient():
+    """Material whose level moves BETWEEN the blocks of one frame.
+
+    make_material() above is mostly stationary across a 32 ms frame, or moves
+    slowly inside it - the case a single exponent set per frame handles well,
+    and therefore the case that says nothing about how the set is chosen. This
+    is the other case: onsets closer together than a frame, hard gates and
+    decays short enough that a frame's loudest block sits 20-30 dB above its
+    quietest. That gap is the whole cost of one exponent set per frame - every
+    quiet block quantized against a scale chosen by the loud one - so it is
+    what an exponent-run plan has to be measured on (roadmap EQ1).
+
+    Stereo, same 2 s-per-segment shape and same seed discipline as the two
+    generators above.
+    """
+    rng = np.random.default_rng(0x0B77 + 6)
+    t = np.arange(SEG) / RATE
+    segments = []
+
+    # a) percussive hits every 40 ms - about one per frame and a quarter, so
+    #    the attack lands on a different block of the frame each time.
+    def hits(period_ms, decay_ms, tone_hz, seed):
+        local = np.random.default_rng(seed)
+        out = np.zeros(SEG)
+        period = int(RATE * period_ms / 1000)
+        length = min(period, int(RATE * decay_ms / 1000) * 6)
+        n = np.arange(length)
+        env = np.exp(-n / (RATE * decay_ms / 1000))
+        for at in range(0, SEG - length, period):
+            body = np.sin(2 * np.pi * tone_hz * n / RATE)
+            out[at:at + length] += 0.85 * env * (0.7 * body + 0.3 * local.standard_normal(length))
+        return out
+
+    segments.append((hits(40, 8, 190.0, 1), hits(40, 8, 240.0, 2)))
+
+    # b) gated noise, switched every 256 samples - a block-rate square wave in
+    #    level, which is the worst case one set per frame can be handed.
+    w = rng.standard_normal(SEG)
+    gate = np.repeat(np.tile([1.0, 0.02], SEG // 512 + 1), 256)[:SEG]
+    segments.append((0.5 * w * gate, 0.5 * np.roll(w, 331) * np.roll(gate, 256)))
+
+    # c) sparse clicks over near-silence: high crest factor, and long stretches
+    #    where a frame contains exactly one loud block.
+    clicks_l = np.zeros(SEG)
+    clicks_r = np.zeros(SEG)
+    for at in rng.integers(0, SEG - 600, 24):
+        n = np.arange(600)
+        shape = np.exp(-n / 60.0) * np.sin(2 * np.pi * 3200.0 * n / RATE)
+        clicks_l[at:at + 600] += 0.9 * shape
+        clicks_r[at + 40:at + 640] += 0.8 * shape
+    floor = 0.004 * rng.standard_normal(SEG)
+    segments.append((clicks_l + floor, clicks_r + floor))
+
+    # d) a chord amplitude-modulated at 30 Hz: about two cycles per frame, so
+    #    the level swings smoothly but fully inside every frame.
+    chord = sum(np.sin(2 * np.pi * f * t) for f in (330.0, 415.3, 494.0, 660.0))
+    env = (0.5 + 0.5 * np.sin(2 * np.pi * 30.0 * t)) ** 3
+    segments.append((0.22 * chord * env, 0.22 * chord * np.roll(env, 400)))
+
+    left = np.concatenate([s[0] for s in segments]).astype(np.float32)
+    right = np.concatenate([s[1] for s in segments]).astype(np.float32)
+    return np.clip(left, -0.98, 0.98), np.clip(right, -0.98, 0.98)
+
+
 def make_material_51():
     """Six DECORRELATED channels, in WAV order (FL FR FC LFE BL BR).
 
@@ -813,6 +877,10 @@ def race_vbr(original, source, seconds, json_out=None):
 # many dB, not a fraction of one, so it clears this bar by a wide margin.
 CI_STEREO_KBPS = 192
 CI_51_KBPS = 256
+# The transient leg (make_material_transient) runs at the same stereo rate as
+# the stationary one, so the two rows differ only in the material - which is
+# the comparison the exponent-run plan has to be read against.
+CI_TRANSIENT_KBPS = 192
 
 # (min SNR dB, max LSD dB) per E-AC-3 tool variant, one table per material
 # set - 256 kbps split six ways (5.1, decorrelated) is a far tighter
@@ -857,7 +925,41 @@ CI_EAC3_THRESHOLDS = {
         "cpl+spx": (9.0, 9.5),
         "all": (9.0, 10.5),
     },
+    # Transient material, measured 2026-08-23 against a real build (FFmpeg
+    # 8.0.1): none/auto/cpl/aht 5.37 dB SNR and 0.94-0.95 dB LSD, the three
+    # spectral-extension rows -0.42 to -0.43 dB SNR and 1.81-1.85 dB LSD.
+    #
+    # The absolute numbers are not comparable to the stationary stereo row's
+    # and are not meant to be: a click train over near-silence at 192 kbit/s is
+    # a hard thing to code, and a waveform SNR near zero on parametric rows is
+    # what a synthesized high band scores by construction. What this row exists
+    # for is the exponent-run plan, so its bars sit closer to the measurement
+    # than the other rows' do - about 1.4 dB of SNR margin and 0.5 dB of LSD.
+    # That is deliberate: every regression this leg actually caught while it
+    # was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD, not the
+    # many dB a collapse elsewhere would, and a floor loose enough to ignore
+    # them would have made the leg pointless.
+    "transient": {
+        "none": (4.0, 1.5),
+        "auto": (4.0, 1.5),
+        "cpl": (4.0, 1.5),
+        "spx": (-2.0, 2.6),
+        "aht": (4.0, 1.5),
+        "cpl+spx": (-2.0, 2.6),
+        "all": (-2.0, 2.6),
+    },
 }
+
+# Transient material (make_material_transient): onsets closer together than a
+# frame, hard gates, decays that leave a frame's loudest block 20-30 dB above
+# its quietest. It exists to hold the exponent-run plan (roadmap EQ1) against a
+# regression: one exponent set per frame quantizes every quiet block against a
+# scale chosen by the loud one, and this is the material where that costs the
+# most. Absolute scores here are far below the stationary stereo row's and are
+# not comparable to it - a click train over near-silence is a hard thing to
+# code at 192 kbit/s, and the floors are set from a measured build the same way
+# every other row's are.
+CI_EAC3_MEASURED_NOTE = "measured 2026-08-23 against a real build, FFmpeg 8.0.1"
 CI_AC3_MIN_SNR_DB = 30.0
 
 # The AC-3 gate was stereo-only for a long time, which left 5.1 - and with it
@@ -902,7 +1004,7 @@ def gate(name, ok, detail):
     return ok
 
 
-def race_ci(original, source, original_51, source_51):
+def race_ci(original, source, original_51, source_51, original_tr, source_tr):
     failures = []
 
     print(f"=== AC-3 @ {CI_STEREO_KBPS} kbps ===")
@@ -921,9 +1023,14 @@ def race_ci(original, source, original_51, source_51):
                 f"SNR {snr_51:.2f} dB (floor {CI_AC3_51_MIN_SNR_DB})"):
         failures.append("ac3-51")
 
-    for label, source_wav, original_pcm, kbps in (
-        ("stereo", source, original, CI_STEREO_KBPS),
-        ("51", source_51, original_51, CI_51_KBPS),
+    for label, source_wav, original_pcm, kbps, self_variants in (
+        ("stereo", source, original, CI_STEREO_KBPS, EAC3_SELF_VARIANTS),
+        ("51", source_51, original_51, CI_51_KBPS, EAC3_SELF_VARIANTS),
+        # Transient material runs the FFmpeg-checked variants only: what this
+        # leg exists to measure is how the exponent run plan copes with level
+        # moving between the blocks of a frame, and ecpl/tpn change neither
+        # the plan nor how it is spent. They have their own rows above.
+        ("transient", source_tr, original_tr, CI_TRANSIENT_KBPS, ()),
     ):
         print(f"=== E-AC-3 {label} @ {kbps} kbps ===")
         for variant, tools in EAC3_VARIANTS:
@@ -941,8 +1048,10 @@ def race_ci(original, source, original_51, source_51):
                         f"LSD {lsd:.2f} dB (ceiling {max_lsd})"):
                 failures.append(f"eac3-{label}-{variant}")
 
+        if not self_variants:
+            continue
         print(f"=== E-AC-3 {label} @ {kbps} kbps (ecpl/tpn, own-decoder oracle) ===")
-        for variant, tools in EAC3_SELF_VARIANTS:
+        for variant, tools in self_variants:
             coded = BUILD / f"ci_eac3_{label}_{variant}_{kbps}.ec3"
             run([CLI, "eac3-encode", source_wav, coded, str(kbps), tools])
             snr, lsd, _, _ = decode_scores_ours(original_pcm, coded,
@@ -1842,10 +1951,19 @@ def main():
         race_fast_mdct(source, original)
     elif which == "ac3":
         race_ac3(original, source, seconds)
+    elif which == "eac3-transient":
+        # The same table race_eac3 prints for the stationary material, on the
+        # material an exponent-run plan actually has something to do on.
+        source = BUILD / "race_src_transient.wav"
+        write_wav_f32(source, *make_material_transient())
+        race_eac3(read_wav_f32(source), source, seconds, rates=(128, 192, 256))
     elif which == "ci":
         source_51 = BUILD / "race_src51.wav"
         write_wav_f32(source_51, make_material_51())
-        race_ci(original, source, read_wav_f32(source_51), source_51)
+        source_tr = BUILD / "race_src_transient.wav"
+        write_wav_f32(source_tr, *make_material_transient())
+        race_ci(original, source, read_wav_f32(source_51), source_51,
+                read_wav_f32(source_tr), source_tr)
     elif which == "trend":
         json_out = None
         if "--json-out" in sys.argv:
@@ -1862,8 +1980,8 @@ def main():
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | vbr | seam | crosscheck | ci | "
-            f"trend | objects)"
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | eac3-transient | vbr | seam | "
+            f"crosscheck | ci | trend | objects)"
             "\n[--material synth|speech|music] on every mode except ci, trend and eac3-51.")
 
 

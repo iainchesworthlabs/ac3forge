@@ -150,13 +150,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 29 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 30 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 29> kCommands{{
+constexpr std::array<Command, 30> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -199,6 +199,10 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) {
          return run_atmos_adm(x.str(1), x.str(2), x.u32(3, 448), x.meta, x.str(4));
      }},
+    {"strip-objects", 3, "<in.ec3> <out.ec3>",
+     "remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed",
+     Needs::kNothing,
+     [](const Args& x) { return run_strip_objects(x.str(1), x.str(2), x.meta); }},
     {"record", 2, "<out.ac3> [seconds] [bitrate_kbps] [device_index]", "", Needs::kCapture,
      [](const Args& x) {
          return run_record(x.str(1), x.u32(2, 5), x.u32(3, 192), x.i32(4, 0), x.meta);
@@ -273,9 +277,10 @@ constexpr std::array<Command, 29> kCommands{{
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
     {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
      "fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager", Needs::kNothing,
-     [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48)); }},
-    {"ts", 3, "<in.ac3|in.ec3> <out.ts>", "wrap as an MPEG-2 Transport Stream (DVB profile)",
-     Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2)); }},
+     [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
+    {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
+     "wrap as an MPEG-2 Transport Stream (DVB profile by default)", Needs::kNothing,
+     [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
@@ -300,7 +305,10 @@ void print_usage() {
     fmt::println("Usage:");
     fmt::println("  ac3cli --version    print version and git provenance, then exit");
     for (const auto& c : kCommands) {
-        std::string line = fmt::format("  ac3cli {:<13}{}", c.name, c.spec);
+        // Wide enough that the LONGEST command name still gets a separating
+        // space: 'strip-objects' is 13 characters, so a 13-wide field padded
+        // nothing at all and ran the name straight into its own spec.
+        std::string line = fmt::format("  ac3cli {:<14}{}", c.name, c.spec);
         // A command the platform cannot run is listed, not hidden: hiding it
         // makes 'ac3cli play' answer "unknown command", which is a lie about
         // a command that exists and would work elsewhere. The note slot says
@@ -450,9 +458,23 @@ void print_usage() {
     fmt::println("the HLS playlists automatically, per Apple's HLS Authoring Specification.");
     fmt::println("");
     fmt::println("ts wraps the same elementary stream as an MPEG-2 Transport Stream (PAT + PMT");
-    fmt::println("+ one PES-wrapped audio PID), identified per the DVB profile — stream_type");
-    fmt::println("0x06 plus the AC3_descriptor or Enhanced_AC3_descriptor ETSI EN 300 468 Annex D");
-    fmt::println("defines, not ATSC's — with PCR stamped on the audio PID every access unit.");
+    fmt::println("+ one PES-wrapped audio PID), with PCR stamped on the audio PID every access");
+    fmt::println("unit. Two broadcast profiles identify it, and a stream satisfies one or the");
+    fmt::println("other: dvb (the default) writes stream_type 0x06 plus the AC3_descriptor or");
+    fmt::println("enhanced_AC-3_descriptor ETSI EN 300 468 Annex D defines; atsc writes");
+    fmt::println("stream_type 0x81 (AC-3) or 0x87 (E-AC-3) plus A/52 Annex A's own");
+    fmt::println("AC-3_audio_stream_descriptor (0x81) or Annex G's E-AC-3_audio_descriptor");
+    fmt::println("(0xCC). Either way the descriptor's identification fields come off the");
+    fmt::println("bitstream itself — service type, channel mode, surround mode, bsid, the");
+    fmt::println("substreams in use — with mainid=/asvc= for the service associations no");
+    fmt::println("single elementary stream can know.");
+    fmt::println("");
+    fmt::println("strip-objects removes the JOC/OAMD object layer from a Dolby Digital Plus");
+    fmt::println("stream without decoding it: the EMDF container and the addbsi object marker");
+    fmt::println("come out, frmsiz and crc2 are re-derived, and every exponent and mantissa is");
+    fmt::println("copied bit for bit — so the result is a plain DD+ 5.1 stream whose bed audio");
+    fmt::println("decodes sample-identically. That is the rendition Apple's HLS authoring");
+    fmt::println("requirements want beside an Atmos one; 'fmp4 ... fallback-51' writes both.");
     fmt::println("");
     fmt::println("Without a layout, encode and eac3-encode both follow the source: 1 -> mono,");
     fmt::println("2 -> stereo, 3 to 6 -> 5.1; eac3-encode alone extends that to 8 -> 7.1,");
@@ -512,7 +534,7 @@ int run_main(int argc, char** argv) {
                                token == "mixmeta" || token == "sign-objects" ||
                                token == "verify-objects" || token == "verify" ||
                                token == "keep-partial" || token == "fast-mdct" ||
-                               token == "fast-imdct";
+                               token == "fast-imdct" || token == "fallback-51";
         if (token == "couple") {
             couple_flag = true;
         }
