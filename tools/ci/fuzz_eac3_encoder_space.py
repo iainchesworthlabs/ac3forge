@@ -109,7 +109,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -582,7 +582,7 @@ def draw_case(seed):
         frames=frames,
         pcm16=rng.random() < 0.7,
         audio_profile=rng.choices(
-            AUDIO_PROFILES + ["mixed"],
+            [*AUDIO_PROFILES, "mixed"],
             # `cliff` is the shape the AC-3 defect needed and the one that
             # moves an exponent strategy part-way through a frame, so it is
             # drawn more often than an even split would give it - without
@@ -664,7 +664,9 @@ class Result:
 
 
 def _run(argv):
-    return subprocess.run(argv, capture_output=True, text=True)
+    # check=False: a non-zero exit is a finding to classify, not an error to
+    # raise - see fuzz_encoder_space.py's own _run(), which this mirrors.
+    return subprocess.run(argv, capture_output=True, text=True, check=False)
 
 
 def ffmpeg_check(ffmpeg, path, forced=False):
@@ -684,7 +686,7 @@ def ffmpeg_check(ffmpeg, path, forced=False):
             "crccheck+bitstream+buffer+explode"]
     if forced:
         argv += ["-f", "eac3"]
-    return _run(argv + ["-i", str(path), "-f", "null", "-"])
+    return _run([*argv, "-i", str(path), "-f", "null", "-"])
 
 
 def syncframe_walk(path, expected_units):
@@ -1316,8 +1318,8 @@ def main():
 
     started = time.monotonic()
     counts = {"ok": 0, "refused": 0, "misprobed": 0, "no-oracle": 0, "fail": 0}
-    refusals = {reason: 0 for reason in REFUSALS}
-    gaps_seen = {name: 0 for name in ORACLE_GAPS}
+    refusals = dict.fromkeys(REFUSALS, 0)
+    gaps_seen = dict.fromkeys(ORACLE_GAPS, 0)
     failures = []
     index = 0
 
@@ -1326,8 +1328,8 @@ def main():
             return index < args.cases
         return (time.monotonic() - started) < args.seconds
 
-    with tempfile.TemporaryDirectory(prefix="eac3space_") as workdir:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+    with (tempfile.TemporaryDirectory(prefix="eac3space_") as workdir,
+          concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool):
             pending = set()
             while (budget_left() or pending) and len(failures) < args.max_failures:
                 while budget_left() and len(pending) < args.jobs * 2:

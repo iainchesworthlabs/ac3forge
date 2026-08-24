@@ -175,15 +175,15 @@ constexpr std::array<Command, 30> kCommands{{
                           x.str(6, "objects"), x.meta);
      }},
     {"atmos-path", 3, "<out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects]",
-     "objects driven by an authored keyframe file instead of the built-in orbit",
+     "objects driven by an authored scene file instead of the built-in orbit",
      Needs::kNothing,
      [](const Args& x) {
          return run_atmos_path(x.str(1), x.str(2), x.u32(3, 8), x.u32(4, 448), x.u32(5, 0),
                                x.meta);
      }},
     {"atmos-encode", 3, "<in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt]",
-     "every source channel as an object; optional: authored per-object motion from a keyframe "
-     "file (same format as atmos-path), objects it doesn't mention keep their default placement",
+     "every source channel as an object; optional: authored per-object motion from a scene "
+     "file (same formats as atmos-path), objects it doesn't mention keep their default placement",
      Needs::kNothing,
      [](const Args& x) {
          return run_atmos_encode(x.str(1), x.str(2), x.u32(3, 448), x.u32(4, 0), x.meta,
@@ -280,7 +280,7 @@ constexpr std::array<Command, 30> kCommands{{
     {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
      "wrap as an MPEG-2 Transport Stream (DVB profile by default)", Needs::kNothing,
      [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
-    {"demux", 3, "<in.mkv> <out.ac3|out.ec3>",
+    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
      Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
@@ -427,6 +427,14 @@ void print_usage() {
     fmt::println("       atmos-encode's [paths.txt] takes authored per-object motion the same");
     fmt::println("       way atmos-path does, keyed by WAV channel index; an object it doesn't");
     fmt::println("       mention keeps atmos-encode's own default (fanned-out) placement.");
+    fmt::println("");
+    fmt::println("atmos-path/atmos-encode scene files come in two forms, told apart by their");
+    fmt::println("       first character, not their suffix: the keyframe columns");
+    fmt::println("       'object_index time_s x y z gain lfe_send' per line ('#' comments), or");
+    fmt::println("       an object scene in JSON (named objects, per-segment interpolation,");
+    // "{{" is fmt::format's escape for a literal brace, which is what this
+    // line is about - the character a JSON scene file starts with.
+    fmt::println("       a scene orientation) starting with '{{'. The GUI writes either.");
     fmt::println("");
     fmt::println("mkv wraps an AC-3 or E-AC-3 elementary stream in Matroska, taking the");
     fmt::println("format, packet boundaries, sample rate and channel count from the bitstream");

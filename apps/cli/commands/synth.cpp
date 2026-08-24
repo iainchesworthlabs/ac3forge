@@ -102,6 +102,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
     }
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     const auto config = plan::ac3_config(p);
     const auto cp = plan::resolve(p);
@@ -169,6 +170,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     // this command's only way to reach it - same field, same meaning as
     // 'sine'/'encode's identical assignment.
     p.tools.fast_mdct = meta.fast_mdct;
+    p.tools.search = meta.search;
     p.tools.dither = meta.dither;
     const auto config = plan::eac3_config(p);
     const auto cp = plan::resolve(p);

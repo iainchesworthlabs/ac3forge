@@ -54,7 +54,8 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 # of the default list - see target_list.
 readonly BASE_TARGETS=(fuzz_scan fuzz_ac3_decode fuzz_eac3_decode fuzz_wav_read
                        fuzz_iec61937_unwrap fuzz_emdf_parse fuzz_oamd_parse
-                       fuzz_joc_parse fuzz_signing_verify fuzz_matroska_demux)
+                       fuzz_joc_parse fuzz_signing_verify fuzz_matroska_demux
+                       fuzz_mp4_demux fuzz_mpegts_demux)
 
 adm_enabled() { [ -n "${AC3FORGE_FUZZ_ADM:-}" ]; }
 
@@ -150,7 +151,8 @@ cmd_run() {
         # fuzz_differential_ac3_decode is a different class of finding from
         # a crash found by fuzz_ac3_decode, and minimizes into its own
         # fuzz/regressions/fuzz_differential_ac3_decode/ directory.
-        local seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
+        local seeds
+        seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
         local regressions="$REPO_ROOT/fuzz/regressions/$target"
         local extra_corpora=()
         [ -d "$seeds" ] && extra_corpora+=("$seeds")
@@ -187,7 +189,8 @@ cmd_regress() {
     configure_and_build
     local status=0
     for target in "${requested[@]}"; do
-        local seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
+        local seeds
+        seeds="$REPO_ROOT/fuzz/seeds/$(seed_source_for "$target")"
         local regressions="$REPO_ROOT/fuzz/regressions/$target"
         local inputs=()
         [ -d "$seeds" ] && inputs+=("$seeds")

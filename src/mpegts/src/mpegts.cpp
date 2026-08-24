@@ -5,15 +5,20 @@
 #include <cassert>
 #include <optional>
 
+#include "ts_detail.hpp"
+
 namespace mpegts {
 
 namespace {
 
 using Bytes = std::vector<std::byte>;
 
-constexpr std::size_t kTsPacketSize = 188;
-constexpr std::uint8_t kSyncByte = 0x47;
-constexpr std::uint16_t kPatPid = 0x0000;
+// Every packet/PID constant, the stream_type and descriptor tag numbers and
+// the PSI section CRC live in ts_detail.hpp, shared with reader.cpp - see
+// that header for why they are not transcribed twice. The reasoning for
+// each is there too, including why stream_type 0x06 rather than an audio
+// one, and why the CRC is the non-reflected MPEG-2 variant.
+using namespace detail;
 
 void put_byte(Bytes& out, std::uint8_t value) { out.push_back(static_cast<std::byte>(value)); }
 

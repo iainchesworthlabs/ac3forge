@@ -165,12 +165,20 @@
       }
     },
     {
+      "name": "sanitize-tsan",
+      "hidden": true,
+      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists (roadmap VX16): src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
+      "cacheVariables": {
+        "AC3FORGE_SANITIZERS": "thread"
+      }
+    },
+    {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3tests. CLI and examples are off purely to save build time: they would link fine (the gcov runtime propagates to consumers automatically, see cmake/Coverage.cmake), but tools/checks/coverage_report.sh filters the report to the library components, so building them instrumented buys nothing - see .github/workflows/ci.yml's coverage job.",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (roadmap VX15): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "AC3FORGE_ENABLE_COVERAGE": "ON",
-        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_CLI": "ON",
         "AC3FORGE_BUILD_EXAMPLES": "OFF",
         "AC3FORGE_BUILD_ADM": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm"
@@ -266,6 +274,11 @@
       "displayName": "Linux LLVM ASan+UBSan"
     },
     {
+      "name": "config-linux-llvm-tsan",
+      "inherits": [ "debug", "linux-llvm", "sanitize-tsan", "core" ],
+      "displayName": "Linux LLVM ThreadSanitizer"
+    },
+    {
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
       "displayName": "Linux GCC Coverage"
@@ -357,6 +370,11 @@
       "name": "build-linux-llvm-asan-ubsan",
       "configurePreset": "config-linux-llvm-asan-ubsan",
       "displayName": "Linux LLVM ASan+UBSan"
+    },
+    {
+      "name": "build-linux-llvm-tsan",
+      "configurePreset": "config-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer"
     },
     {
       "name": "build-linux-gcc-coverage",
@@ -473,6 +491,20 @@
       "filter": {
         "exclude": {
           "label": "Performance"
+        }
+      }
+    },
+    {
+      "name": "test-linux-llvm-tsan",
+      "configurePreset": "config-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer Tests (concurrency label only)",
+      "inherits": "test-base",
+      "environment": {
+        "TSAN_OPTIONS": "suppressions=${sourceDir}/tsan.supp halt_on_error=1 second_deadlock_stack=1"
+      },
+      "filter": {
+        "include": {
+          "label": "concurrency"
         }
       }
     },
@@ -611,6 +643,15 @@
         { "type": "configure", "name": "config-linux-llvm-asan-ubsan" },
         { "type": "build", "name": "build-linux-llvm-asan-ubsan" },
         { "type": "test", "name": "test-linux-llvm-asan-ubsan" }
+      ]
+    },
+    {
+      "name": "ci-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-linux-llvm-tsan" },
+        { "type": "build", "name": "build-linux-llvm-tsan" },
+        { "type": "test", "name": "test-linux-llvm-tsan" }
       ]
     }
   ]

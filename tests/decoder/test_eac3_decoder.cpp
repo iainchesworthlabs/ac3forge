@@ -13,6 +13,7 @@
 #include "ac3/core/crc16.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around
@@ -1609,7 +1610,17 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     // eac3_frame.cpp) but writes every dithflag[ch] bit as 0 (dither off),
     // so the frame is patched by hand to flip block 0's dithflag[0] and
     // crc2 is restored - the only CRC E-AC-3 has (no crc1, unlike AC-3).
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};  // default acmod k2_0, no LFE
+    // chbwcod is pinned to the full band rather than left at the encoder's
+    // own choice, because that choice now reads the spectrum - and silence
+    // has none, so the default narrows to chbwcod 0 (ac3/encoder/
+    // bandwidth.hpp). A narrower band is not a smaller version of this test,
+    // it is a different one: with fewer bins to fill, step 8's SNR-offset
+    // search raises the composite until every bin has a positive bap, and a
+    // frame with no zero-bap bin left has nothing for §7.3.4 dither to
+    // substitute into. Measured on this exact frame, dithered channel-0
+    // energy falls smoothly with the band - 3.4e-11 at chbwcod 60, 1.2e-11
+    // at 40, 1.5e-12 at 30 - and reaches exactly zero at 25 and below.
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .chbwcod = 60}};  // acmod k2_0, no LFE
     const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(2, silence);
     auto frame = encoder.encode_frame(views);
@@ -1925,5 +1936,143 @@ TEST_CASE("decode_access_unit_into passes dual mono through in coded order",
             equal = equal && storage[ch][i] == expect[i];
         }
         CHECK(equal);
+    }
+}
+
+// A/52 §E2.3.1.2's legacy-core delivery: "If an AC-3 bit stream is present in
+// the E-AC-3 bit stream, then the AC-3 bit stream shall be processed as an
+// independent substream assigned substream ID 0." Built the way real ones
+// are (see FFmpeg's FATE the_great_wall_7.1.eac3, cross-checked by hand while
+// writing tools/checks/verify_fate_interop.py): an AC-3 syncframe carrying
+// the 5.1 bed, immediately followed by an Annex E DEPENDENT substream whose
+// chanmap extends it - here to 7.1, the layout that sample actually uses.
+TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decoder]") {
+    using ac3::Acmod;
+    namespace cm = ac3::eac3::chanmap;
+
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .substreamid = 0,
+                                  .chanmap = cm::k71Rear,
+                                  .last_dependent = true}};
+
+    // Deliberately not the bed's own tones on Ls/Rs, for the same reason
+    // layout_cases() above uses different ones: identical tones could not
+    // tell the §E3.8.2 overwrite happening apart from the dependent being
+    // ignored outright.
+    const std::vector<double> bed_tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    const std::vector<double> rear_tones = {500.0, 1600.0, 400.0, 1800.0};
+    const std::vector<Speaker> speakers = {
+        {Location::kLeft, 1000.0},          {Location::kCentre, 800.0},
+        {Location::kRight, 1200.0},         {Location::kLeftSurround, 500.0},
+        {Location::kRightSurround, 1600.0}, {Location::kLrs, 400.0},
+        {Location::kRrs, 1800.0},           {Location::kLfe, 60.0}};
+
+    constexpr int kFrames = 4;
+    std::vector<std::byte> stream;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        std::vector<std::vector<float>> bed_block(6, std::vector<float>(ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> rear_block(4, std::vector<float>(ac3::kSamplesPerFrame));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < 6; ++ch) {
+                bed_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * bed_tones[ch] * t));
+            }
+            for (std::size_t ch = 0; ch < 4; ++ch) {
+                rear_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * rear_tones[ch] * t));
+            }
+        }
+        n0 += ac3::kSamplesPerFrame;
+
+        const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
+        const auto core_frame = core.encode_frame(bed_views);
+        REQUIRE(core_frame.has_value());
+        stream.insert(stream.end(), core_frame->begin(), core_frame->end());
+
+        const std::vector<std::span<const float>> rear_views(rear_block.begin(),
+                                                              rear_block.end());
+        const auto dep_frame = rear.encode_frame(rear_views);
+        REQUIRE(dep_frame.has_value());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    // The scanner recognises the arrangement (tests/io/test_elementary.cpp
+    // covers that claim directly); here the point is that split_access_units
+    // groups each core with its dependent, and Eac3Decoder renders the pair.
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    ac3::Eac3Decoder decoder;
+    std::vector<std::vector<float>> rendered;
+    ac3::eac3::chanmap::Layout layout;
+    int substreams = 0;
+    for (const auto& unit : *units) {
+        const auto decoded = decoder.decode_access_unit(unit);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        if (rendered.empty()) {
+            layout = (*decoded)->layout;
+            substreams = (*decoded)->substream_count;
+            rendered.resize((*decoded)->channels.size());
+        }
+        REQUIRE((*decoded)->channels.size() == rendered.size());
+        for (std::size_t ch = 0; ch < (*decoded)->channels.size(); ++ch) {
+            rendered[ch].insert(rendered[ch].end(), (*decoded)->channels[ch].begin(),
+                                (*decoded)->channels[ch].end());
+        }
+    }
+
+    REQUIRE(substreams == 2);  // the AC-3 core plus its one dependent
+    REQUIRE(layout.count == static_cast<int>(speakers.size()));
+    REQUIRE(rendered.size() == speakers.size());
+    for (std::size_t ch = 0; ch < speakers.size(); ++ch) {
+        CAPTURE(ch, ac3::eac3::chanmap::name(speakers[ch].location));
+        CHECK(layout[static_cast<int>(ch)] == speakers[ch].location);
+        CHECK(std::abs(dominant_freq_hz(rendered[ch]) - speakers[ch].tone_hz) < 10.0);
+    }
+}
+
+TEST_CASE("split_access_units keeps an AC-3 core and its dependent together",
+          "[eac3][decoder]") {
+    // frame[2]'s top two bits are crc1's, not strmtyp's, in an AC-3
+    // syncframe - the regression this test guards against is reading them as
+    // strmtyp regardless of bsid, which would split the core away from its
+    // own dependent whenever crc1 happens to look like kIndependent.
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = ac3::Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .chanmap = ac3::eac3::chanmap::k71Rear,
+                                  .last_dependent = true}};
+    std::vector<std::vector<float>> block(6, std::vector<float>(ac3::kSamplesPerFrame));
+    for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        block[0][static_cast<std::size_t>(i)] =
+            static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
+    }
+    const std::vector<std::span<const float>> bed_views(block.begin(), block.end());
+    const auto core_frame = core.encode_frame(bed_views);
+    REQUIRE(core_frame.has_value());
+    std::vector<std::vector<float>> rear_block(4, std::vector<float>(ac3::kSamplesPerFrame));
+    const std::vector<std::span<const float>> rear_views(rear_block.begin(), rear_block.end());
+    const auto dep_frame = rear.encode_frame(rear_views);
+    REQUIRE(dep_frame.has_value());
+
+    std::vector<std::byte> stream;
+    for (int f = 0; f < 3; ++f) {
+        stream.insert(stream.end(), core_frame->begin(), core_frame->end());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == 3);
+    for (const auto& unit : *units) {
+        CHECK(unit.size() == core_frame->size() + dep_frame->size());
     }
 }

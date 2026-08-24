@@ -99,7 +99,22 @@ class WasmDecoder {
             error_ = std::string(ac3::io::describe(scanned.error()));
             return false;
         }
-        stream_kind_ = scanned->kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3";
+        // Three kinds, not two: a §E2.3.1.2 legacy core is an AC-3 bed with
+        // E-AC-3 dependents over it, and calling that either name alone
+        // misdescribes the file in the one place the demo shows the user what
+        // it opened. It decodes down the Eac3Decoder branch below, which reads
+        // the AC-3 core natively.
+        switch (scanned->kind) {
+            case ac3::io::StreamKind::kAc3:
+                stream_kind_ = "AC-3";
+                break;
+            case ac3::io::StreamKind::kEac3:
+                stream_kind_ = "E-AC-3";
+                break;
+            case ac3::io::StreamKind::kAc3CoreEac3Extension:
+                stream_kind_ = "AC-3 core + E-AC-3 extension";
+                break;
+        }
         sample_rate_ = static_cast<int>(ac3::sample_rate_hz(scanned->sample_rate));
 
         if (scanned->kind == ac3::io::StreamKind::kAc3) {

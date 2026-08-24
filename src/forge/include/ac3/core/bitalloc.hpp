@@ -30,6 +30,12 @@ struct BitAllocCodes {
     int dbpbcod = 2;
     int floorcod = 4;
     int fgaincod = 4;
+
+    // An encoder searching these per frame needs to know whether a candidate
+    // is the one it already has (see encoder.cpp step 9a), and every member
+    // is a plain transmitted code, so the defaulted comparison says exactly
+    // the right thing.
+    [[nodiscard]] friend bool operator==(const BitAllocCodes&, const BitAllocCodes&) = default;
 };
 
 // Tables 7.11 and 7.8. Exposed because an encoder picking the coupling
@@ -44,6 +50,16 @@ struct BitAllocCodes {
 // this routine derives internally as bndstrt, rather than a second copy of
 // Table 7.13 guessing at the same value.
 [[nodiscard]] AC3FORGE_EXPORT int bin_to_band(int bin);
+
+// §7.2.2.3: bins `start`..`end` of a psd[] curve log-added into the 50-band
+// grid, indexed by absolute band. Exposed for the same reason bin_to_band is:
+// a caller deciding something from the spectrum ahead of
+// compute_bit_allocation - the coded-bandwidth decision in
+// ac3/encoder/bandwidth.hpp - has to band it with arithmetic identical to
+// the allocator's, or the two are not comparable in the same units.
+// Bands outside the requested range are left zero.
+[[nodiscard]] AC3FORGE_EXPORT std::array<int, 50> band_psd(std::span<const int> psd, int start,
+                                                           int end);
 
 // §7.2.2.1: the composite SNR offset.
 [[nodiscard]] constexpr int snr_offset(int csnroffst, int fsnroffst) {
