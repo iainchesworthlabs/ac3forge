@@ -4478,8 +4478,9 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                     // comment) - live monitoring just waits for the next one.
                     if (decoded && decoded->has_value()) {
                         const auto order =
-                            plan::wav_order(std::span{(*decoded)->layout.items}.first(
-                                static_cast<std::size_t>((*decoded)->layout.count)));
+                            plan::monitor_order(std::span{(*decoded)->layout.items}.first(
+                                                    static_cast<std::size_t>((*decoded)->layout.count)),
+                                                (*decoded)->channels.size());
                         to_play = interleave_reordered((*decoded)->channels, order);
                     }
                 } else {

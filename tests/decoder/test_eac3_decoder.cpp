@@ -13,6 +13,7 @@
 #include "ac3/core/crc16.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/plan.hpp"
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around
@@ -553,6 +554,26 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     CHECK((*au)->acmod == Acmod::kDualMono);
     CHECK((*au)->layout.count == 0);
     REQUIRE((*au)->channels.size() == 2);
+
+    // Every monitor/playback caller (ac3gui's runLiveSession, ac3cli's
+    // run_live/run_monitor) reorders decode_access_unit's `channels` for
+    // interleaving by feeding `layout` through plan::monitor_order first.
+    // layout.count == 0 above means a naive plan::wav_order call would see
+    // an empty span and return an empty permutation - fed to an interleave
+    // step, that silently drops both channels (frame_count * 0 samples)
+    // instead of erroring, which is exactly how this went unnoticed: silence
+    // on a working sink, not a crash. plan::monitor_order's whole purpose is
+    // falling back to the identity order over `channel_count` in that case,
+    // asserted here directly against the real decoded access unit, since
+    // decode_access_unit is the one fact both callers' own tests cannot
+    // otherwise pin (ac3gui's live session and ac3cli's run_live both need a
+    // real audio device Quick Test's offscreen CI has none of).
+    const auto order = ac3::plan::monitor_order(
+        std::span{(*au)->layout.items}.first(static_cast<std::size_t>((*au)->layout.count)),
+        (*au)->channels.size());
+    REQUIRE(order.size() == 2);
+    CHECK(order[0] == 0);
+    CHECK(order[1] == 1);
 }
 
 TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is not assumed",
