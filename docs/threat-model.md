@@ -29,6 +29,7 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | Object authenticity tags | `ac3::signing::verify_atmos_frame` | no |
 | Matroska/WebM containers | `matroska::demux`, `matroska::Reader` | yes |
 | MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
+| MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
@@ -43,11 +44,11 @@ caller, not an attack:
 - File paths, output destinations, and the caller-owned spans the `_into` decode forms write
   through — see [Raw-pointer boundaries](#raw-pointer-boundaries).
 
-**Not a boundary this project defends.** MPEG-TS. `mpegts::Writer` is a muxer only — it turns
-access units already in hand into bytes. There is no MPEG-TS demuxer, so an embedder demuxing
-MPEG-TS is trusting *its own* demuxer, not this one. Matroska/WebM and MP4/ISOBMFF moved off this
-list once their readers landed (`matroska::demux`/`Reader`, `mp4::demux`/`Reader`, roadmap `IO2`);
-both are in the untrusted table above.
+**No remaining undefended container.** Matroska/WebM, MP4/ISOBMFF and MPEG-TS all had a reader
+land (roadmap `IO2`) and are in the untrusted table above; each container this project also
+writes now has a matching demuxer this project defends. An embedder demuxing a container format
+this project does not read — or write, such as a bare Ogg or ADTS wrapper — is still trusting
+*its own* demuxer, not this one.
 
 ## Memory-safety posture
 
