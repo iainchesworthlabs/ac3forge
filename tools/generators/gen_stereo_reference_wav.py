@@ -79,9 +79,11 @@ def segment_chord(n: int) -> tuple[list[float], list[float]]:
     t = [i / RATE for i in range(n)]
     vibrato = [1.0 + 0.003 * math.sin(2 * math.pi * 4.5 * tt) for tt in t]
     chord = [sum(math.sin(2 * math.pi * f * v * tt) for f in (220.0, 277.18, 329.63))
-             for tt, v in zip(t, vibrato)]
-    left = [0.18 * c + 0.03 * math.sin(2 * math.pi * 1318.5 * tt) for c, tt in zip(chord, t)]
-    right = [0.18 * c + 0.03 * math.sin(2 * math.pi * 987.77 * tt) for c, tt in zip(chord, t)]
+             for tt, v in zip(t, vibrato, strict=True)]
+    left = [0.18 * c + 0.03 * math.sin(2 * math.pi * 1318.5 * tt)
+            for c, tt in zip(chord, t, strict=True)]
+    right = [0.18 * c + 0.03 * math.sin(2 * math.pi * 987.77 * tt)
+             for c, tt in zip(chord, t, strict=True)]
     return left, right
 
 
@@ -100,7 +102,7 @@ def segment_noise(n: int) -> tuple[list[float], list[float]]:
     base = noise(seed=0xEAC35201, length=n, taps=20)
     extra = noise(seed=0xEAC35202, length=n, taps=20)
     left = [0.28 * v for v in base]
-    right = [0.28 * (0.85 * b + 0.15 * e) for b, e in zip(base, extra)]
+    right = [0.28 * (0.85 * b + 0.15 * e) for b, e in zip(base, extra, strict=True)]
     return left, right
 
 
@@ -110,7 +112,7 @@ def segment_near_mono(n: int) -> tuple[list[float], list[float]]:
     formants = [sum(0.3 * math.sin(2 * math.pi * f * tt) for f in (700.0, 1220.0, 2600.0))
                 for tt in t]
     carrier = [0.25 * math.sin(2 * math.pi * 180.0 * tt) * e * (1.0 + 0.3 * fm)
-               for tt, e, fm in zip(t, env, formants)]
+               for tt, e, fm in zip(t, env, formants, strict=True)]
     left = carrier
     right = [0.97 * v for v in carrier]
     return left, right

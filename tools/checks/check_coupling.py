@@ -55,7 +55,9 @@ def read_wav_f32(path):
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # check=False + the explicit test below: the raise has to carry the command
+    # line and the captured output, which CalledProcessError would not.
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"failed: {' '.join(map(str, cmd))}\n{result.stdout}{result.stderr}")
 
