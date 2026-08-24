@@ -39,6 +39,7 @@
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <expected>
 #include <fstream>
+#include <ios>
 #include <iterator>
 #include <numbers>
 #include <optional>

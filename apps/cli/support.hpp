@@ -74,18 +74,17 @@ enum class RecordContainer : std::uint8_t {
 };
 
 struct Options {
-    ac3::plan::Metadata p{};
     // Decoder side, for 'decode'.
     double drc_scale = 0.0;
+    // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
+    // Every field defaults off, so a plain invocation still writes the coded
+    // channels untouched - see channels=/downmix=/drcmode= in
+    // print_meta_usage. Set straight into DecoderConfig::output.
+    ac3::OutputConfig output{};
     // Each src= occurrence, in order given - additional input sources beyond
     // the primary positional argument. encode/eac3-encode only; empty unless
     // multi-source input is in play.
     std::vector<std::string> sources;
-    // The raw map= text, if given - parsed into a plan::Assignment once the
-    // sources are loaded and their channel counts are known, which
-    // parse_options itself cannot do (it only sees command-line text, not
-    // opened files).
-    std::optional<std::string> map_spec;
     // Each offset= occurrence: (sourceIndex, seconds) - leading silence ahead
     // of that source's own audio, in the same 0-based numbering src=
     // establishes (0 = the primary positional argument, 1..N = each src= in
@@ -94,13 +93,47 @@ struct Options {
     // may appear more than once; the last occurrence wins (see
     // offset_samples_for).
     std::vector<std::pair<std::size_t, double>> offsets;
+    // The raw map= text, if given - parsed into a plan::Assignment once the
+    // sources are loaded and their channel counts are known, which
+    // parse_options itself cannot do (it only sees command-line text, not
+    // opened files).
+    std::optional<std::string> map_spec;
+    // signing-key=<path>, read by sign-objects/verify-objects below - kept
+    // apart from those two so their own comments stay about what they DO
+    // rather than where the key comes from.
+    std::optional<std::string> signing_key;
+    // 'probe' only: how much per-frame detail the report carries - unset for
+    // the stream summary alone, "frames" for one entry per access unit,
+    // "blocks" to also dump every block's coding tools and exponent
+    // strategies. A string rather than an enum for the same reason
+    // qc_preset below is one: parse_options only ever sees command-line text,
+    // and the command that consumes it is the one that knows what the values
+    // mean.
+    std::optional<std::string> detail;
+    // 'qc' only: which delivery gate(s) to check the measurement against -
+    // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
+    // Unset (measure-only, no gate) is the default - a plain
+    // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
+    std::optional<std::string> qc_preset;
+    ac3::plan::Metadata p{};
+    // 'record'/'live' with container=fmp4 only: how many of the most recent
+    // media segments the HLS playlist and DASH MPD list - a rolling live
+    // window (mp4::FragmentOptions::playlist_window_segments). 0, the
+    // default, lists every segment, which is what a session whose directory
+    // will be served whole afterwards wants; a real origin deleting segments
+    // behind itself sets its own depth here.
+    std::uint32_t fmp4_window_segments = 0;
+    // 'live' only: a second ("slave") capture device index, same numbering
+    // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
+    // positional already reads. Unset means the classic single-device
+    // session, unchanged from before this option existed.
+    std::optional<int> capture2 = std::nullopt;
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
     // operator both asks (sign-objects) and provides a key - either
     // signing-key=<path> here, or the AC3FORGE_SIGNING_KEY[_FILE] env vars
     // load_signing_key() falls back to. The key is never stored by this tool;
     // see docs/concepts/object-signing.md.
     bool sign_objects = false;
-    std::optional<std::string> signing_key;
     // 'decode'/'monitor' only: check each frame's EMDF object container
     // against signing-key= (same option sign-objects uses - a decode never
     // signs, so there is no ambiguity in sharing it) instead of just playing
@@ -108,11 +141,6 @@ struct Options {
     // an unsigned one unless the operator opts in here - see
     // docs/concepts/object-signing.md.
     bool verify_objects = false;
-    // 'live' only: a second ("slave") capture device index, same numbering
-    // ac3::audio::enumerate_devices()/'devices' uses and the capture_device
-    // positional already reads. Unset means the classic single-device
-    // session, unchanged from before this option existed.
-    std::optional<int> capture2 = std::nullopt;
     // 'record'/'live' only: which container the take is written in, the same
     // shape of choice the GUI's own Container combo offers
     // (EncoderController::containerIndex). kRaw - the default, matching every
@@ -123,13 +151,6 @@ struct Options {
     // containers with an incremental writer behind them are offered here -
     // plain MP4 and MPEG-TS are 'ac3cli mp4'/'ac3cli ts' on a finished file.
     RecordContainer container = RecordContainer::kRaw;
-    // 'record'/'live' with container=fmp4 only: how many of the most recent
-    // media segments the HLS playlist and DASH MPD list - a rolling live
-    // window (mp4::FragmentOptions::playlist_window_segments). 0, the
-    // default, lists every segment, which is what a session whose directory
-    // will be served whole afterwards wants; a real origin deleting segments
-    // behind itself sets its own depth here.
-    std::uint32_t fmp4_window_segments = 0;
     // Off by default, matching every bare token here - keep whatever frames
     // a failed encode already produced, written beside the intended output
     // as <name>.partial.<ext> instead of discarded outright. The same
@@ -174,14 +195,6 @@ struct Options {
     // <file>` is meant to be read by a person, and every other command here
     // prints for one too.
     bool json = false;
-    // 'probe' only: how much per-frame detail the report carries - unset for
-    // the stream summary alone, "frames" for one entry per access unit,
-    // "blocks" to also dump every block's coding tools and exponent
-    // strategies. A string rather than an enum for the same reason
-    // qc_preset below is one: parse_options only ever sees command-line text,
-    // and the command that consumes it is the one that knows what the values
-    // mean.
-    std::optional<std::string> detail;
     // §7.3.4 dithflag (plan::Tools::dither), on by default like the library
     // configs it feeds; dither=off pins it at 0 unconditionally wherever this
     // command encodes, the same key=off shape fast-mdct=off already uses -
@@ -194,11 +207,6 @@ struct Options {
     // design (see EncoderConfig::dither's own comment), which is exactly
     // what tools/checks/verify_gold_reference.sh needs this for.
     bool dither = true;
-    // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
-    // Every field defaults off, so a plain invocation still writes the coded
-    // channels untouched - see channels=/downmix=/drcmode= in
-    // print_meta_usage. Set straight into DecoderConfig::output.
-    ac3::OutputConfig output{};
     // Whether channels= or downmix= actually named a target this run, so the
     // two can cooperate without either silently winning: downmix=ltrt on its
     // own means stereo, channels=2 on its own means Lo/Ro, and the pair in
@@ -207,11 +215,6 @@ struct Options {
     // 'decode'/'monitor' only: §7.10 error concealment. Off by default, so a
     // damaged frame is still reported rather than papered over.
     ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kNone;
-    // 'qc' only: which delivery gate(s) to check the measurement against -
-    // one of ac3::meta::kQcPresetNames, or "all" to check every preset.
-    // Unset (measure-only, no gate) is the default - a plain
-    // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
-    std::optional<std::string> qc_preset;
     // 'qc' only: which soundfield to meter. false (layout=bed, the default)
     // measures the independent substream's own Table 5.8 bed through
     // BS.1770 Annex 1's basic algorithm - what this command has always

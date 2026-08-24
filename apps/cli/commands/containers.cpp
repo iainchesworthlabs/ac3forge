@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <ranges>
 #include <cstdint>
 #include <filesystem>
 #include <fmt/base.h>
