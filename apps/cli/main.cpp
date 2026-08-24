@@ -150,13 +150,13 @@ struct Command {
     int (*run)(const Args&);
 };
 
-// 27 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 28 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 27> kCommands{{
+constexpr std::array<Command, 28> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
@@ -258,6 +258,11 @@ constexpr std::array<Command, 27> kCommands{{
      Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta.qc_preset); }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
+    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
+     "the inverse: recover the elementary stream from IEC 61937 bursts, as captured from "
+     "an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end",
+     Needs::kNothing,
+     [](const Args& x) { return run_unspdif(x.str(1), x.str(2), x.meta.keep_partial); }},
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
     {"mp4", 3, "<in.ac3|in.ec3> <out.mp4>",

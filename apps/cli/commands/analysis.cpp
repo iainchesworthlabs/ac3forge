@@ -7,6 +7,10 @@
 #include <cstdint>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <fstream>
+#include <ios>
+#include <iostream>
+#include <istream>
 #include <memory>
 #include <optional>
 #include <span>
@@ -14,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
@@ -740,6 +745,216 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
                  eac3 ? "E-AC-3 access units" : "AC-3 frames", out_path, carrier_rate);
     fmt::println("play bit-exactly (100% volume, exclusive/passthrough output) to light up");
     fmt::println("a receiver's Dolby Digital{} indicator.", eac3 ? " Plus" : "");
+    return 0;
+}
+
+namespace {
+
+// How much carrier to hand the reader at a time. Nothing here scales with the
+// input's length: this buffer, one burst inside BurstReader, and whatever one
+// burst's payload comes to are the whole of unspdif's memory, so a two-hour
+// capture costs exactly what a two-second one does.
+constexpr std::size_t kCarrierChunkBytes = 64 * 1024;
+
+// Walks a RIFF file's chunk list to its data chunk, leaving `in` positioned
+// at the first payload byte. Deliberately not read_wav/WavStreamReader: both
+// hand back floats, and a burst carrier's value is in its exact 16-bit words
+// - a trip through float and back is a conversion this has no reason to make
+// and no way to prove it survived. Returns the data chunk's byte length
+// (clamped to what the file actually holds), or nullopt if `in` is not a
+// PCM16 RIFF/WAVE file, which is how a raw carrier is told from a wrapped one.
+struct CarrierChunk {
+    std::uint64_t bytes = 0;
+    std::uint32_t sample_rate = 0;
+    std::uint16_t channels = 0;
+};
+
+std::optional<CarrierChunk> seek_riff_data(std::istream& in, std::uint64_t file_bytes) {
+    std::array<char, 12> riff{};
+    if (!in.read(riff.data(), riff.size())) {
+        return std::nullopt;
+    }
+    if (std::string_view{riff.data(), 4} != "RIFF" ||
+        std::string_view{riff.data() + 8, 4} != "WAVE") {
+        return std::nullopt;
+    }
+    const auto read_u16 = [](const char* p) {
+        return static_cast<std::uint16_t>(static_cast<std::uint8_t>(p[0]) |
+                                          (static_cast<std::uint8_t>(p[1]) << 8));
+    };
+    const auto read_u32 = [](const char* p) {
+        return static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[0])) |
+               (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[1])) << 8) |
+               (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[2])) << 16) |
+               (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[3])) << 24);
+    };
+
+    CarrierChunk found;
+    std::uint64_t at = riff.size();
+    // A chunk header is 8 bytes; a chunk of odd length is followed by a pad
+    // byte. Bounded by the file's own length, so a chunk size claiming more
+    // than the file holds cannot walk the cursor off the end.
+    while (at + 8 <= file_bytes) {
+        std::array<char, 8> header{};
+        if (!in.read(header.data(), header.size())) {
+            return std::nullopt;
+        }
+        const std::string_view id{header.data(), 4};
+        const auto size = read_u32(header.data() + 4);
+        at += 8;
+        const auto available = file_bytes - at;
+        if (id == "fmt " && size >= 16) {
+            std::array<char, 16> fmt{};
+            if (!in.read(fmt.data(), fmt.size())) {
+                return std::nullopt;
+            }
+            found.channels = read_u16(fmt.data() + 2);
+            found.sample_rate = read_u32(fmt.data() + 4);
+            in.seekg(static_cast<std::streamoff>(at + size + (size & 1u)), std::ios::beg);
+        } else if (id == "data") {
+            found.bytes = std::min<std::uint64_t>(size, available);
+            return found;
+        } else {
+            in.seekg(static_cast<std::streamoff>(at + size + (size & 1u)), std::ios::beg);
+        }
+        at += size + (size & 1u);
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial) {
+    // "-" reads the carrier from stdin, so a capture tool can be piped
+    // straight in - which on a machine with a real S/PDIF input is the
+    // natural shape of this ("arecord ... | ac3cli unspdif - out.ec3"). The
+    // RIFF walk below needs to seek and stdin does not, but it does not need
+    // to run at all: BurstReader resyncs on Pa/Pb, and a WAV header cannot
+    // contain a preamble followed by a syncframe, so the header simply gets
+    // scanned past. All that is lost is the carrier's declared rate, which
+    // is a reported detail rather than something the unwrap depends on.
+    const bool stdio = is_stdio_path(in_path);
+    std::ifstream file;
+    if (stdio) {
+        ac3::cli::platform::set_stdio_binary();
+    } else {
+        file.open(std::string{in_path}, std::ios::binary);
+        if (!file) {
+            fmt::println(stderr, "error: cannot read {}", in_path);
+            return 1;
+        }
+    }
+    std::istream& in = stdio ? std::cin : file;
+
+    std::uint64_t file_bytes = 0;
+    if (!stdio) {
+        in.seekg(0, std::ios::end);
+        const auto end = in.tellg();
+        if (end < 0) {
+            fmt::println(stderr, "error: cannot read {}", in_path);
+            return 1;
+        }
+        file_bytes = static_cast<std::uint64_t>(end);
+        in.seekg(0, std::ios::beg);
+    }
+
+    // A WAV carrier (what 'spdif' writes, and what a capture tool saves) or a
+    // bare dump of carrier bytes. Both are ordinary inputs here, so neither
+    // is an error: if the RIFF walk does not find a data chunk, the whole
+    // file is the carrier.
+    const auto chunk = stdio ? std::nullopt : seek_riff_data(in, file_bytes);
+    // Unbounded for stdin, whose length nothing knows until it ends; the
+    // read loop below stops on the first short read either way.
+    std::uint64_t remaining = stdio ? UINT64_MAX : file_bytes;
+    if (chunk) {
+        remaining = chunk->bytes;
+    } else if (!stdio) {
+        in.clear();
+        in.seekg(0, std::ios::beg);
+    }
+
+    EncodedStreamSink sink;
+    if (!sink.open(out_path, keep_partial)) {
+        return 1;
+    }
+    ac3::iec61937::BurstReader reader;
+    std::vector<std::byte> carrier(kCarrierChunkBytes);
+    std::vector<std::byte> payload;
+    std::uint64_t elementary_bytes = 0;
+
+    while (remaining > 0) {
+        const auto want = static_cast<std::size_t>(
+            std::min<std::uint64_t>(remaining, kCarrierChunkBytes));
+        in.read(reinterpret_cast<char*>(carrier.data()), static_cast<std::streamsize>(want));
+        const auto got = static_cast<std::size_t>(in.gcount());
+        if (got == 0) {
+            break;
+        }
+        remaining -= got;
+        payload.clear();
+        const auto pushed = reader.push(std::span{carrier}.first(got), payload);
+        if (!pushed) {
+            sink.abort();
+            fmt::println(stderr, "error: {}: {}", in_path,
+                         ac3::iec61937::describe(pushed.error()));
+            return 1;
+        }
+        if (!payload.empty()) {
+            elementary_bytes += payload.size();
+            if (!sink.push(payload)) {
+                sink.abort();
+                return 1;
+            }
+        }
+    }
+
+    // A capture stopped mid-burst is worth saying so about rather than
+    // silently keeping a stream one frame short of what the operator saw.
+    const auto finished = reader.finish();
+    if (reader.bursts() == 0) {
+        sink.abort();
+        fmt::println(stderr, "error: {} holds no AC-3 or E-AC-3 bursts{}", in_path,
+                     reader.skipped_bursts() > 0
+                         ? " (its bursts are another data type)"
+                         : " - is it ordinary PCM rather than an IEC 61937 carrier?");
+        return 1;
+    }
+    if (!sink.close()) {
+        return 1;
+    }
+
+    // Compared as an optional rather than dereferenced: bursts() > 0 does
+    // guarantee data_type() is engaged, but that is an invariant of the
+    // reader rather than something visible here, and the answer wanted is a
+    // bool either way - std::optional's own operator== gives it directly.
+    const bool eac3 = reader.data_type() == ac3::iec61937::BurstDataType::kEac3;
+    // stderr when the elementary stream itself is going to stdout, the same
+    // convention encode/decode follow (see status_stream's own comment):
+    // this report must never land in the middle of the bytes a pipeline is
+    // reading.
+    auto* status = status_stream(out_path);
+    fmt::println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
+                 eac3 ? "E-AC-3" : "AC-3", reader.bursts() == 1 ? "" : "s", out_path,
+                 elementary_bytes);
+    if (chunk) {
+        // The carrier rate, not the content rate: an E-AC-3 carrier runs at
+        // 4x, so 192000 here means a 48 kHz programme.
+        fmt::println(status, "carrier: {} Hz, {} ch, {} words", chunk->sample_rate,
+                     chunk->channels,
+                     reader.word_order() == ac3::iec61937::WordOrder::kBigEndian
+                         ? "big-endian"
+                         : "little-endian");
+    }
+    if (reader.skipped_bursts() > 0) {
+        fmt::println(status, "skipped {} burst(s) of another data type", reader.skipped_bursts());
+    }
+    if (reader.false_syncs() > 0) {
+        fmt::println(status, "resynced past {} preamble pattern(s) with no syncframe behind them",
+                     reader.false_syncs());
+    }
+    if (!finished) {
+        fmt::println(status, "warning: {}", ac3::iec61937::describe(finished.error()));
+    }
     return 0;
 }
 
