@@ -23,6 +23,7 @@
 // skipping the parse/bridge/encode demo below - see main()'s own comment on why
 // tools/ci/run_codec_matrix.sh uses exactly this to drive a real `ac3cli atmos-adm` invocation.
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -30,6 +31,7 @@
 #include <fmt/printf.h>
 #include <fstream>
 #include <numbers>
+#include <random>
 #include <span>
 #include <string>
 #include <string_view>
@@ -45,6 +47,21 @@
 namespace {
 
 using Bytes = std::string;
+
+// A per-run name rather than a fixed one: every checkout of this repo runs the
+// examples under its own `ctest` (examples/CMakeLists.txt registers each as a
+// test case), several checkouts commonly run at once, and they share a temp
+// directory - two runs on one fixed name read and delete each other's files.
+// Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
+// Only for the paths this example picks itself; --write-fixture's path comes
+// from the caller (tools/ci/run_codec_matrix.sh) and stays exactly as given.
+std::string scratch_path(std::string_view name) {
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
+}
 
 void put_u16le(Bytes& out, std::uint16_t value) {
     out.push_back(static_cast<char>(value & 0xFFu));
@@ -234,8 +251,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    const auto fixture_path =
-        (std::filesystem::temp_directory_path() / "ac3forge_encode_adm_fixture.wav").string();
+    const auto fixture_path = scratch_path("encode_adm_fixture.wav");
     if (!write_fixture(fixture_path)) {
         fmt::printf("could not write fixture file\n");
         return 1;
@@ -300,8 +316,7 @@ int main(int argc, char** argv) {
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    const auto out_path =
-        (std::filesystem::temp_directory_path() / "ac3forge_encode_adm_out.ec3").string();
+    const auto out_path = scratch_path("encode_adm_out.ec3");
     std::ofstream out(out_path, std::ios::binary);
     out.write(reinterpret_cast<const char*>(stream.data()), static_cast<std::streamsize>(stream.size()));
     const bool wrote = static_cast<bool>(out);
