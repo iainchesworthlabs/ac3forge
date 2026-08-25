@@ -5,7 +5,7 @@ Ideas under consideration — a candidate list, not a commitment.
 Each item carries a stable ID so pull requests and discussions can reference it: two letters for
 the theme plus a number (`EQ1`, `IO4`). The single-letter IDs of the 2026-08-15 roadmap
 (`A1`–`G4`) are retired and listed at the end so older references still resolve. An item is
-checked off when the work is merged to `develop`; partial progress is noted inline rather than
+checked off when the work is merged to `main`; partial progress is noted inline rather than
 half-checked. Sizes are rough guesses: **S** (an afternoon), **M** (a day or two), **L** (a
 focused week), **XL** (several PRs).
 
@@ -188,7 +188,7 @@ both encoders decide from content rather than from the bit rate.
 - [x] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. `quality_race.py vbr`
   sweeps `VbrConfig::quality` and scores CBR and FFmpeg CBR at the rate each point actually
   measured; the curve is published in
-  [docs/concepts/ac3-eac3.md](docs/concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
+  [docs/concepts/ac3-eac3.md](concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
   Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]` on the CLI): one composite SNR
   offset held across frames and steered by an integral controller, over a sliding-window bit
   reservoir that caps any window's pooled budget.

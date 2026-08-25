@@ -146,7 +146,7 @@ an artefact of the fixture. See [tools/generators/README.md](https://github.com/
 for the measured spectra, the licences, and which fixture is evidence about what.
 
 That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same gold-reference SNR
-by commit, on every push to `develop` and `main`, so a regression shows up as a trend line
+by commit, on every push to `main`, so a regression shows up as a trend line
 rather than only in that run's CI log.
 
 The object layer has its own series, [Object quality trend](object-quality-trend.md): a fixed

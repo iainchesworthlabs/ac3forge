@@ -1,6 +1,6 @@
 # Quality trend
 
-Every push to `develop` or `main` that gets through the [gold-reference
+Every push to `main` that gets through the [gold-reference
 gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with
 `ac3cli`'s own decoder, delay-compensated SNR between the two) has its
@@ -532,7 +532,7 @@ that question — see [Landscape](landscape.md) and
     const allRecords = [];
     TRACKS.forEach((t, i) => allRecords.push(...results[i]));
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="quality-trend-status">No quality-trend history yet - it is written by CI on the first push to develop or main after this page landed.</p>';
+      root.innerHTML = '<p class="quality-trend-status">No quality-trend history yet - it is written by CI on the first push to main after this page landed.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -608,12 +608,12 @@ Results are appended to a dedicated `quality-history` branch (`develop.jsonl`
 entire tree on every deploy, which would silently discard anything appended
 there outside of what `mkdocs build` itself generates. This page fetches the
 two files directly from `raw.githubusercontent.com` client-side, so a new
-`develop` push shows up here without waiting on a docs deploy (which,
+push shows up here without waiting on a docs deploy (which,
 per [docs.yml](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/docs.yml),
 only runs on push to `main`).
 
 History is written by a job in `_build.yml` that runs after every
-`gold_reference` leg passes, on direct pushes to `develop` or `main` only —
+`gold_reference` leg passes, on direct pushes to `main` only —
 never on a pull request, so unmerged work never pollutes the trend. It reuses
 numbers the gate already computed rather than re-running the encode/decode
 pass, so — unlike a from-scratch perceptual pass, which would need a nightly

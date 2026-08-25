@@ -8,15 +8,15 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches: [ main, develop ]
-  # develop's merge queue (see .github/branch-protection.md) needs "Scan
+    branches: [ main ]
+  # main's merge queue (see .github/branch-protection.md) needs "Scan
   # dependency diff" to actually report on its temporary
   # gh-readonly-queue/... ref - see ci.yml's own merge_group comment for the
   # general reason. actions/dependency-review-action has supported merge_group
   # (diffing against github.event.merge_group.base_sha) since v3.1.0, well
   # below the v5 pin below.
   merge_group:
-    branches: [ develop ]
+    branches: [ main ]
 
 permissions:
   contents: read
