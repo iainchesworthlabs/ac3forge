@@ -38,7 +38,8 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   segmented control, a **QC a stream…** button (a separate dialog that measures an
   already-encoded file — see [QC a stream](qc.md)), an **Inspect objects…** button (its decode-side
   counterpart for Dolby Atmos object metadata/audio — see [Inspect objects](inspect-objects.md)),
-  and a **Preferences** button.
+  an **Open stream…** button (plays an already-encoded file and exports its decode — see
+  [Open stream](open-stream.md)), and a **Preferences** button.
 - **Left rail — "the signal"** (always visible, never scrolled away, and never affected by which
   tier is selected): three numbered blocks — **01 Input** (one input, with a **File / Live
   capture** selector, the loaded source list and its totals), **02 Levels** (the channel meters),
@@ -189,6 +190,8 @@ The rest of the guide, in reading order:
    header's own dialog
 9. [Inspect objects](inspect-objects.md) — see the Dolby Atmos object positions and audio a decoder
    actually recovers from an already-encoded file, from the header's own dialog
+10. [Open stream](open-stream.md) — play an already-encoded file and export its decode, from the
+    header's own dialog or a finished run's own **More…** menu
 
 Or start with [Concepts](../concepts/index.md) if terms like "dependent substream" or "JOC" are
 unfamiliar — the GUI uses the same vocabulary as the standards it implements.

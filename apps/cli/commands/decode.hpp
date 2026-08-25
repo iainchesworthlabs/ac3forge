@@ -11,6 +11,6 @@
 namespace ac3cli::commands {
 
 int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli::Options& meta,
-               std::string_view objects_dir);
+               std::string_view objects_dir, std::string_view adm_out);
 
 }  // namespace ac3cli::commands
