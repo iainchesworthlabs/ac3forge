@@ -1371,11 +1371,23 @@ ApplicationWindow {
         // ---- header ----------------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
+            // Margins/spacing trimmed from 20/Theme.space4: a sixth header
+            // action ("Open stream…", roadmap UX1) pushed this row's own
+            // implicit width just far enough over the 1280 px minimum width
+            // that the workbench RowLayout below it - an unrelated sibling,
+            // sharing the same outer ColumnLayout - stopped being clamped to
+            // the window's actual width and rendered wider than it, which at
+            // exactly this window size silently pushed the Guided wizard's
+            // Quality step's third rate card off the right edge (real
+            // pixels, not just visually - a synthetic click at its own
+            // reported centre landed outside the window and hit nothing).
+            // Reclaiming width here is what keeps every Layout.fillWidth
+            // sibling correctly clamped again.
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
             Layout.topMargin: 14
             Layout.bottomMargin: 14
-            spacing: Theme.space4
+            spacing: Theme.space2
 
             Text {
                 text: qsTr("ac3forge")
