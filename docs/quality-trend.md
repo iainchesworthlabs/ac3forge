@@ -65,10 +65,11 @@ that question — see [Landscape](landscape.md) and
 (function () {
   const REPO = "iainchesworthlabs/ac3forge";
   const HISTORY_BRANCH = "quality-history";
-  const TRACKS = [
-    { branch: "develop", color: "#7c4dff" },
-    { branch: "main", color: "#00acc1" },
-  ];
+  const MAIN_COLOR = "#00acc1";
+  // Muted and dashed (see buildChart) rather than a third saturated colour -
+  // the historical track is deliberately styled to read as archived, not as
+  // a second live series competing with main.
+  const HISTORICAL_COLOR = "#9e9e9e";
   // Mirrors tools/ci/append_quality_history.py's own constants - keep these two in
   // sync if that script's thresholds change; this is a display-only echo of the
   // same judgment call, not a second source of truth for it. Only the soft
@@ -105,25 +106,24 @@ that question — see [Landscape](landscape.md) and
   // thread its way back in as a parameter.
   const state = {
     codec: "ac3",
-    // "branch": one line per branch, worst-of-5-legs per commit (the
-    // original view - good for "did anything regress"). "leg": one line per
-    // CI leg for a single branch, un-folded (good for "is one platform
-    // drifting relative to the others over time") - see LEGS above. Never
-    // both branch and leg as line dimensions at once: up to 5 legs x 2
-    // branches = 10 lines was exactly the "unreadable" case worstPerCommit
-    // was written to avoid, so leg view picks one branch instead of folding
-    // it away.
+    // "branch": one line for main, worst-of-5-legs per commit (the
+    // original view - good for "did anything regress"), plus an optional
+    // second line for develop's frozen history. "leg": one line per CI leg
+    // for a single track, un-folded (good for "is one platform drifting
+    // relative to the others over time") - see LEGS above. Never both
+    // branch and leg as line dimensions at once: up to 5 legs x 2 tracks =
+    // 10 lines was exactly the "unreadable" case worstPerCommit was written
+    // to avoid, so leg view picks one track instead of folding it away.
     view: "branch",
-    branches: { main: true, develop: true },
-    // develop pushes far more often than main (every commit vs. only release
-    // promotions) and fans out to the same 5 legs x 2 codecs per commit, so
-    // showing its full history by default crowds main's rows out of the
-    // table entirely. Collapsed to its latest commit until asked to expand.
-    developFullHistory: false,
-    // Which branch's per-leg lines are drawn in "leg" view. develop by
-    // default since it has enough push frequency for the per-leg lines to
-    // actually look like trends; main's own history is comparatively sparse.
-    legBranch: "develop",
+    // develop stopped moving on 2026-08-25's move to trunk-based
+    // development (see "Where the data lives" below) - its history is real
+    // and kept, but it is no longer an ongoing parallel track, so it starts
+    // hidden rather than shown by default alongside main.
+    showHistorical: false,
+    // Which track's per-leg lines are drawn in "leg" view. main by default,
+    // now that it is the only track still gaining commits; develop's frozen
+    // history is still selectable for the platforms it covered.
+    legBranch: "main",
   };
 
   function rawUrl(branch, file) {
@@ -203,24 +203,14 @@ that question — see [Landscape](landscape.md) and
     return r.channels_db.map((v, i) => `${channelLabel(i, r.channels_db.length)} ${v.toFixed(2)} dB`).join(" · ");
   }
 
-  function mostRecentCommit(records) {
-    if (records.length === 0) return null;
-    return records.reduce((a, b) => (a.commit_date > b.commit_date ? a : b)).commit;
-  }
-
-  // The records currently in scope given the branch checkboxes and the
-  // develop-history collapse - both the chart and the table are built from
-  // this, not from the raw fetch, so they always agree with what the
-  // controls say should be visible.
+  // The records currently in scope given the historical toggle - both the
+  // chart and the table are built from this, not from the raw fetch, so
+  // they always agree with what the control says should be visible. main is
+  // always in scope; develop's frozen history joins it only when asked for,
+  // and always in full (nothing to collapse - it is a fixed, finite series
+  // now, not an ever-growing one crowding main's rows out of the table).
   function visibleRecords(allRecords) {
-    const latestDevelop = mostRecentCommit(allRecords.filter((r) => r.branch === "develop"));
-    return allRecords.filter((r) => {
-      if (!state.branches[r.branch]) return false;
-      if (r.branch === "develop" && !state.developFullHistory) {
-        return r.commit === latestDevelop;
-      }
-      return true;
-    });
+    return allRecords.filter((r) => r.branch === "main" || (state.showHistorical && r.branch === "develop"));
   }
 
   // verify_gold_reference.sh runs more than one check per codec now - e.g.
@@ -330,7 +320,8 @@ that question — see [Landscape](landscape.md) and
       if (pts.length === 0) continue;
       if (pts.length > 1) {
         const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(Date.parse(p.commit_date)).toFixed(1)},${y(p.worst_db).toFixed(1)}`).join(" ");
-        svg += `<path d="${path}" fill="none" stroke="${track.color}" stroke-width="2"/>`;
+        const dash = track.dashed ? ' stroke-dasharray="5,3"' : "";
+        svg += `<path d="${path}" fill="none" stroke="${track.color}" stroke-width="2"${dash}/>`;
       }
       pts.forEach((p) => {
         const cx = x(Date.parse(p.commit_date)).toFixed(1);
@@ -417,22 +408,20 @@ that question — see [Landscape](landscape.md) and
         </label>
         <label for="quality-trend-view">Chart
           <select id="quality-trend-view">
-            <option value="branch" ${!legView ? "selected" : ""}>Worst of legs, by branch</option>
+            <option value="branch" ${!legView ? "selected" : ""}>Worst of legs</option>
             <option value="leg" ${legView ? "selected" : ""}>By platform leg</option>
           </select>
         </label>
         ${legView ? `
-          <label for="quality-trend-leg-branch">Branch
+          <label for="quality-trend-leg-branch">Track
             <select id="quality-trend-leg-branch">
-              <option value="develop" ${state.legBranch === "develop" ? "selected" : ""}>develop</option>
               <option value="main" ${state.legBranch === "main" ? "selected" : ""}>main</option>
+              <option value="develop" ${state.legBranch === "develop" ? "selected" : ""}>develop (historical, pre-2026-08-25)</option>
             </select>
           </label>
         ` : `
-          <label><input type="checkbox" id="quality-trend-branch-main" ${state.branches.main ? "checked" : ""}/> main</label>
-          <label><input type="checkbox" id="quality-trend-branch-develop" ${state.branches.develop ? "checked" : ""}/> develop</label>
+          <label><input type="checkbox" id="quality-trend-show-historical" ${state.showHistorical ? "checked" : ""}/> Show historical (develop, pre-2026-08-25)</label>
         `}
-        ${!legView && state.branches.develop ? `<label><input type="checkbox" id="quality-trend-develop-history" ${state.developFullHistory ? "checked" : ""}/> develop: show full history</label>` : ""}
       </div>
     `;
   }
@@ -453,34 +442,20 @@ that question — see [Landscape](landscape.md) and
         render(allRecords, releasesBySha);
       });
     }
-    const mainToggle = document.getElementById("quality-trend-branch-main");
-    if (mainToggle) {
-      mainToggle.addEventListener("change", (e) => {
-        state.branches.main = e.target.checked;
-        render(allRecords, releasesBySha);
-      });
-    }
-    const developToggle = document.getElementById("quality-trend-branch-develop");
-    if (developToggle) {
-      developToggle.addEventListener("change", (e) => {
-        state.branches.develop = e.target.checked;
-        render(allRecords, releasesBySha);
-      });
-    }
-    const historyToggle = document.getElementById("quality-trend-develop-history");
-    if (historyToggle) {
-      historyToggle.addEventListener("change", (e) => {
-        state.developFullHistory = e.target.checked;
+    const historicalToggle = document.getElementById("quality-trend-show-historical");
+    if (historicalToggle) {
+      historicalToggle.addEventListener("change", (e) => {
+        state.showHistorical = e.target.checked;
         render(allRecords, releasesBySha);
       });
     }
   }
 
-  // Builds this render's tracks per state.view - branch view folds each
-  // branch down to its worst-of-legs line (worstPerCommit); leg view
-  // un-folds a single branch into one line per CI leg (perLegSeries). Kept
-  // out of render() itself so render() stays about assembling the page, not
-  // about which view is active.
+  // Builds this render's tracks per state.view - branch view folds main
+  // (and, if asked for, develop's frozen history) down to a worst-of-legs
+  // line each (worstPerCommit); leg view un-folds a single track into one
+  // line per CI leg (perLegSeries). Kept out of render() itself so render()
+  // stays about assembling the page, not about which view is active.
   function buildTracks(visible) {
     if (state.view === "leg") {
       const byLeg = perLegSeries(visible, state.codec, state.legBranch);
@@ -491,12 +466,22 @@ that question — see [Landscape](landscape.md) and
         points: byLeg[legDef.leg] || [],
       }));
     }
-    return TRACKS.map((t) => ({
-      key: t.branch,
-      label: t.branch === "develop" && !state.developFullHistory ? `${t.branch} (latest commit only)` : t.branch,
-      color: t.color,
-      points: state.branches[t.branch] ? worstPerCommit(visible.filter((r) => r.branch === t.branch), state.codec) : [],
-    }));
+    const tracks = [{
+      key: "main",
+      label: "main",
+      color: MAIN_COLOR,
+      points: worstPerCommit(visible.filter((r) => r.branch === "main"), state.codec),
+    }];
+    if (state.showHistorical) {
+      tracks.push({
+        key: "develop",
+        label: "develop (historical, pre-2026-08-25)",
+        color: HISTORICAL_COLOR,
+        dashed: true,
+        points: worstPerCommit(visible.filter((r) => r.branch === "develop"), state.codec),
+      });
+    }
+    return tracks;
   }
 
   function render(allRecords, releasesBySha) {
@@ -527,10 +512,11 @@ that question — see [Landscape](landscape.md) and
     attachControlListeners(allRecords, releasesBySha);
   }
 
-  Promise.all([...TRACKS.map((t) => fetchTrack(t.branch)), fetchReleaseShaMap()]).then((results) => {
-    const releasesBySha = results.pop();
-    const allRecords = [];
-    TRACKS.forEach((t, i) => allRecords.push(...results[i]));
+  // Both files are always fetched - main to render, develop so the
+  // historical toggle above has something to show the instant it is
+  // checked, with no second round-trip.
+  Promise.all([fetchTrack("main"), fetchTrack("develop"), fetchReleaseShaMap()]).then(([mainRecords, developRecords, releasesBySha]) => {
+    const allRecords = [...mainRecords, ...developRecords];
     if (allRecords.length === 0) {
       root.innerHTML = '<p class="quality-trend-status">No quality-trend history yet - it is written by CI on the first push to main after this page landed.</p>';
       return;
@@ -562,14 +548,17 @@ the chart rather than something you'd only catch by scanning the table leg
 by leg. Both views read the same underlying rows; nothing about which view
 is active changes what counts as a regression in the table below.
 
-`develop` and `main` are shown as separate tracks because they represent
-different points in the codec's history — `main` only advances on a release
-promotion, so it should read as a strictly-behind, occasionally-jumping
-version of `develop`'s line, not a second independent series. By default
-`develop` is collapsed to just its latest commit (its push frequency and
-five-leg fan-out would otherwise crowd `main`'s rows out of the table
-entirely) — use the "develop: show full history" control to expand it, or
-uncheck a branch's box to hide it from the chart and table.
+`main`'s full history is the default view. Before 2026-08-25's move to
+trunk-based development (see "Where the data lives" below), `develop` was
+the everyday integration branch nearly every commit landed on and `main`
+only advanced on a release promotion, so the two really were separate
+tracks rather than one delayed copy of the other — which is why this page
+used to plot them side by side by default. `develop` is retired now and its
+line stopped moving on its last commit before the migration; check **Show
+historical (develop, pre-2026-08-25)** to add that frozen history back into
+the chart and table as a dashed, muted secondary line, styled to read as
+archived rather than as a second live series. "By platform leg" offers the
+same choice through its **Track** selector.
 
 The **Codec** control scopes the table as well as the chart — picking
 `E-AC-3` shows only `eac3` rows, never an unrelated `ac3` row sorted in by
@@ -611,6 +600,15 @@ two files directly from `raw.githubusercontent.com` client-side, so a new
 push shows up here without waiting on a docs deploy (which,
 per [docs.yml](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/docs.yml),
 only runs on push to `main`).
+
+`develop.jsonl` stopped gaining rows on 2026-08-24, `develop`'s last commit
+before the branch was retired in favour of trunk-based development. It is
+kept as-is — real project history, not deleted or rewritten — and is what
+the "Show historical" control above reads; every trigger that used to append
+to it now targets `main` only (`.github/workflows/ci.yml`'s and
+`_build.yml`'s push conditions, and the `--branch` argument
+`tools/ci/append_quality_history.py` is called with, both narrowed to `main`
+in the same migration).
 
 History is written by a job in `_build.yml` that runs after every
 `gold_reference` leg passes, on direct pushes to `main` only —

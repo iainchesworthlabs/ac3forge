@@ -115,6 +115,15 @@ comparing one consistent runner against its own history over time, not in compar
 GitHub's runner classes against each other the way the gold-reference SNR numbers
 usefully are cross-platform.
 
+`performance-develop.jsonl`, `kernels-develop.jsonl` and `memory-develop.jsonl`
+all stopped gaining rows on 2026-08-24, `develop`'s last commit before
+2026-08-25's move to trunk-based development retired the branch - see
+[Quality trend](quality-trend.md#where-the-data-lives) for the detail, which
+applies here identically. They are kept as-is, not deleted or merged into
+`main`'s own files; each section below renders `main`'s ongoing history
+directly and folds `develop`'s frozen one into a collapsed *Show historical
+data* block beneath it instead.
+
 ## Whole-frame trend
 
 Each series below is a chart first, table second. The chart plots that
@@ -124,7 +133,12 @@ budget and a dashed ring around any point whose commit was tagged as a
 GitHub release - hover a point for the exact commit, date and number. A
 downward slope is the improvement this whole page exists to make visible;
 release rings turn that into a release-to-release story instead of a wall
-of per-commit numbers.
+of per-commit numbers. `main`'s chart and table render directly, in solid
+colour; `develop`'s frozen history sits inside the collapsed *Show
+historical data (develop, pre-2026-08-25 GitFlow era)* block below each
+series, drawn dashed and muted when opened so it reads as archived rather
+than as a second live series - the per-kernel and memory sections below
+follow the same convention, table-only (no chart to style).
 
 <div id="performance-trend-app">
   <p class="performance-trend-status">Loading trend data…</p>
@@ -142,18 +156,83 @@ of per-commit numbers.
 #performance-trend-app table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
 #performance-trend-app th, #performance-trend-app td { padding: 0.35em 0.6em; text-align: left; border-bottom: 1px solid var(--md-default-fg-color--lightest); white-space: nowrap; }
 .performance-trend-over-budget { color: var(--md-typeset-mark-color, #c62828); font-weight: 600; }
-.performance-trend-branch-heading { margin-top: 1.5em; }
 .performance-trend-release-row { background: color-mix(in srgb, var(--md-accent-fg-color, #7c4dff) 8%, transparent); }
 .performance-trend-release { text-decoration: none; font-weight: 600; }
 .performance-trend-release:hover { text-decoration: underline; }
+.performance-trend-historical { margin-top: 1.5em; border-top: 1px solid var(--md-default-fg-color--lightest); padding-top: 0.75em; }
+.performance-trend-historical summary { cursor: pointer; font-weight: 600; color: var(--md-default-fg-color--light); }
+.performance-trend-historical summary:hover { color: var(--md-default-fg-color); }
 </style>
 
 <script>
+  // Shared by all three sections below (whole-frame, per-kernel, memory) so
+  // the fetch/parse plumbing and the main-vs-historical split live in one
+  // place instead of three near-identical copies - the three IIFEs used to
+  // redefine rawUrl/parseJsonl/shortSha/groupBy identically. Deliberately
+  // scoped to this one page, not a separate docs/javascripts asset: every
+  // trend page here is self-contained by design (see the top of this repo's
+  // docs/CONTRIBUTING notes on the CI-trend pages), and these three sections
+  // are the only ones on the same page repeating each other - the sibling
+  // pages' own near-duplication is across separate documents, not something
+  // a page-local script can reach anyway.
+  const PERF_TREND_REPO = "iainchesworthlabs/ac3forge";
+  const PERF_TREND_HISTORY_BRANCH = "quality-history";
+  const PERF_TREND_MAIN_COLOR = "#7c4dff";
+  // Muted and dashed (see each section's buildChart) rather than a second
+  // saturated colour - the historical track reads as archived, not as a
+  // second live series. Matches the sibling trend pages' identical choice.
+  const PERF_TREND_HISTORICAL_COLOR = "#9e9e9e";
+
+  function perfTrendRawUrl(branch, file) {
+    return `https://raw.githubusercontent.com/${PERF_TREND_REPO}/${branch}/${file}`;
+  }
+
+  function perfTrendParseJsonl(text) {
+    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+  }
+
+  function perfTrendShortSha(sha) {
+    return (sha || "").slice(0, 7);
+  }
+
+  function perfTrendGroupBy(records, keyFn) {
+    const groups = new Map();
+    for (const rec of records) {
+      const key = keyFn(rec);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(rec);
+    }
+    return groups;
+  }
+
+  // Renders `sectionRenderer`'s output for main's records directly - no
+  // heading, since main is the only ongoing track and this page no longer
+  // presents it as one of two choices - then, only if this fetch actually
+  // has develop rows, renders develop's output again inside a collapsed
+  // <details>, explicitly labelled as frozen pre-2026-08-25 GitFlow-era
+  // history rather than an ongoing parallel branch. `sectionRenderer`
+  // receives (records, isHistorical); the whole-frame section uses
+  // isHistorical to pick a chart colour, the kernel and memory sections
+  // (table-only, no chart) ignore it.
+  function perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer, noDataMessage) {
+    const mainRecords = allRecords.filter((r) => r.branch === "main");
+    const historicalRecords = allRecords.filter((r) => r.branch === "develop");
+    if (mainRecords.length === 0 && historicalRecords.length === 0) {
+      root.innerHTML = noDataMessage;
+      return;
+    }
+    const mainHtml = mainRecords.length ? sectionRenderer(mainRecords, false) : "<p><em>No data yet on main.</em></p>";
+    const historicalHtml = historicalRecords.length
+      ? `<details class="performance-trend-historical"><summary>Show historical data (develop, pre-2026-08-25 GitFlow era)</summary>${sectionRenderer(historicalRecords, true)}</details>`
+      : "";
+    root.innerHTML = mainHtml + historicalHtml;
+  }
+</script>
+
+<script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
-  const HISTORY_BRANCH = "quality-history";
-  const BRANCHES = ["develop", "main"];
-  // How many of each (branch, leg, config)'s most recent rows to show in the
+  const REPO = PERF_TREND_REPO;
+  // How many of each (leg, config) series' most recent rows to show in the
   // table - a trend readout, not a full audit log. Mirrors quality-trend.md's
   // own TABLE_ROWS in spirit, just scoped per-series instead of globally,
   // since performance-trend.md only ever has one leg (linux-gcc) rather than
@@ -161,23 +240,14 @@ of per-commit numbers.
   // it plots the series' full history so a release from further back than
   // the last 20 runs still shows up as a ring.
   const ROWS_PER_SERIES = 20;
-  const CHART_COLOR = "#7c4dff";
 
   const root = document.getElementById("performance-trend-app");
 
-  function rawUrl(branch, file) {
-    return `https://raw.githubusercontent.com/${REPO}/${branch}/${file}`;
-  }
-
-  function parseJsonl(text) {
-    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
-  }
-
   async function fetchBranch(branch) {
     try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `performance-${branch}.jsonl`));
+      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `performance-${branch}.jsonl`));
       if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
+      return perfTrendParseJsonl(await resp.text());
     } catch (e) {
       return [];
     }
@@ -222,25 +292,13 @@ of per-commit numbers.
     return shaMap;
   }
 
-  function shortSha(sha) {
-    return (sha || "").slice(0, 7);
-  }
-
-  function groupBy(records, keyFn) {
-    const groups = new Map();
-    for (const rec of records) {
-      const key = keyFn(rec);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(rec);
-    }
-    return groups;
-  }
-
   // sortedRows: full series history, oldest to newest. Budget is read off
   // the most recent row, same as the table below - a config's budget
   // doesn't change often, but this always reflects the current one, not a
-  // stale first-run value.
-  function buildChart(sortedRows, releasesBySha) {
+  // stale first-run value. color/dashed pick main's or the historical
+  // track's styling - see perfTrendRenderMainAndHistorical above.
+  function buildChart(sortedRows, releasesBySha, opts) {
+    const { color = PERF_TREND_MAIN_COLOR, dashed = false } = opts || {};
     const width = 720, height = 160, pad = { top: 10, right: 12, bottom: 22, left: 46 };
     const budget = sortedRows.length ? sortedRows[sortedRows.length - 1].real_time_budget_ms_per_frame : null;
     const values = sortedRows.map((r) => r.ms_per_frame).concat(budget !== null ? [budget] : []);
@@ -269,26 +327,27 @@ of per-commit numbers.
 
     if (sortedRows.length > 1) {
       const path = sortedRows.map((r, i) => `${i === 0 ? "M" : "L"}${x(Date.parse(r.commit_date)).toFixed(1)},${y(r.ms_per_frame).toFixed(1)}`).join(" ");
-      svg += `<path d="${path}" fill="none" stroke="${CHART_COLOR}" stroke-width="2"/>`;
+      const dash = dashed ? ' stroke-dasharray="5,3"' : "";
+      svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"${dash}/>`;
     }
     sortedRows.forEach((r) => {
       const cx = x(Date.parse(r.commit_date)).toFixed(1);
       const cy = y(r.ms_per_frame).toFixed(1);
       const release = releasesBySha[r.commit];
-      const title = `${shortSha(r.commit)} - ${r.ms_per_frame.toFixed(3)} ms/frame on ${r.commit_date.slice(0, 10)}${release ? ` - release ${release.name}` : ""}`;
-      svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${CHART_COLOR}"><title>${title}</title></circle>`;
+      const title = `${perfTrendShortSha(r.commit)} - ${r.ms_per_frame.toFixed(3)} ms/frame on ${r.commit_date.slice(0, 10)}${release ? ` - release ${release.name}` : ""}`;
+      svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"><title>${title}</title></circle>`;
       if (release) {
-        svg += `<circle cx="${cx}" cy="${cy}" r="6.5" fill="none" stroke="${CHART_COLOR}" stroke-width="1.5" stroke-dasharray="2,1.5"><title>${title}</title></circle>`;
+        svg += `<circle cx="${cx}" cy="${cy}" r="6.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="2,1.5"><title>${title}</title></circle>`;
       }
     });
     svg += "</svg>";
     return svg;
   }
 
-  function buildLegend(sortedRows, releasesBySha) {
+  function buildLegend(sortedRows, releasesBySha, color) {
     const anyRelease = sortedRows.some((r) => releasesBySha[r.commit]);
     const items = [
-      '<span><i></i>ms/frame</span>',
+      `<span><i style="background:${color}"></i>ms/frame</span>`,
       '<span><i style="background:none;border:1.5px dashed var(--md-typeset-mark-color, #c62828);border-radius:0;"></i>budget</span>',
     ];
     if (anyRelease) {
@@ -297,10 +356,11 @@ of per-commit numbers.
     return `<div class="performance-trend-legend">${items.join("")}</div>`;
   }
 
-  function renderSeries(leg, config, rows, releasesBySha) {
+  function renderSeries(leg, config, rows, releasesBySha, isHistorical) {
     const sorted = rows.slice().sort((a, b) => a.commit_date.localeCompare(b.commit_date));
     const recent = sorted.slice(-ROWS_PER_SERIES).reverse();
     const budget = sorted.length ? sorted[sorted.length - 1].real_time_budget_ms_per_frame : null;
+    const color = isHistorical ? PERF_TREND_HISTORICAL_COLOR : PERF_TREND_MAIN_COLOR;
     const trs = recent.map((r) => {
       const overBudget = budget !== null && r.ms_per_frame > budget;
       const release = releasesBySha[r.commit];
@@ -310,7 +370,7 @@ of per-commit numbers.
         : "";
       return `<tr${classes ? ` class="${classes}"` : ""}>
         <td>${r.commit_date ? r.commit_date.slice(0, 10) : ""}</td>
-        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${shortSha(r.commit)}</a></td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${perfTrendShortSha(r.commit)}</a></td>
         <td>${r.ms_per_frame.toFixed(3)}</td>
         <td>${budget !== null ? budget.toFixed(3) : ""}</td>
         <td>${r.frames}</td>
@@ -319,8 +379,8 @@ of per-commit numbers.
     }).join("");
 
     return `<h4>${leg} / ${config}</h4>
-    <div class="performance-trend-chart-wrap">${buildChart(sorted, releasesBySha)}</div>
-    ${buildLegend(sorted, releasesBySha)}
+    <div class="performance-trend-chart-wrap">${buildChart(sorted, releasesBySha, { color, dashed: isHistorical })}</div>
+    ${buildLegend(sorted, releasesBySha, color)}
     <div class="performance-trend-table-wrap">
       <table>
         <thead><tr><th>Date</th><th>Commit</th><th>ms/frame</th><th>Budget (ms/frame)</th><th>Frames</th><th>Release</th></tr></thead>
@@ -329,32 +389,25 @@ of per-commit numbers.
     </div>`;
   }
 
-  function renderBranch(branch, records, releasesBySha) {
-    if (records.length === 0) {
-      return `<h3 class="performance-trend-branch-heading">${branch}</h3><p><em>No data yet.</em></p>`;
-    }
-    const groups = groupBy(records, (r) => `${r.leg} ${r.config}`);
-    const sections = [...groups.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, rows]) => {
-        const [leg, config] = key.split(" ");
-        return renderSeries(leg, config, rows, releasesBySha);
-      })
-      .join("\n");
-    return `<h3 class="performance-trend-branch-heading">${branch}</h3>${sections}`;
-  }
-
   async function render() {
-    const [perBranch, releasesBySha] = await Promise.all([
-      Promise.all(BRANCHES.map(fetchBranch)),
+    const [mainRecords, developRecords, releasesBySha] = await Promise.all([
+      fetchBranch("main"),
+      fetchBranch("develop"),
       fetchReleaseShaMap(),
     ]);
-    const anyData = perBranch.some((records) => records.length > 0);
-    if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
-      return;
-    }
-    root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i], releasesBySha)).join("\n");
+    const allRecords = [...mainRecords, ...developRecords];
+    const sectionRenderer = (records, isHistorical) => {
+      const groups = perfTrendGroupBy(records, (r) => `${r.leg} ${r.config}`);
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, rows]) => {
+          const [leg, config] = key.split(" ");
+          return renderSeries(leg, config, rows, releasesBySha, isHistorical);
+        })
+        .join("\n");
+    };
+    perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer,
+      '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>');
   }
 
   render();
@@ -395,9 +448,7 @@ decode spends; the bare row is what the oracle costs.
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
-  const HISTORY_BRANCH = "quality-history";
-  const BRANCHES = ["develop", "main"];
+  const REPO = PERF_TREND_REPO;
   // Fewer rows per series than the whole-frame tables' 20: there are a dozen-plus
   // kernel series to the whole-frame tables' handful of configs, and this page is
   // a trend readout, not an audit log - the JSONL keeps everything.
@@ -411,36 +462,14 @@ decode spends; the bare row is what the oracle costs.
 
   const root = document.getElementById("kernel-trend-app");
 
-  function rawUrl(branch, file) {
-    return `https://raw.githubusercontent.com/${REPO}/${branch}/${file}`;
-  }
-
-  function parseJsonl(text) {
-    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
-  }
-
   async function fetchBranch(branch) {
     try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `kernels-${branch}.jsonl`));
+      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `kernels-${branch}.jsonl`));
       if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
+      return perfTrendParseJsonl(await resp.text());
     } catch (e) {
       return [];
     }
-  }
-
-  function shortSha(sha) {
-    return (sha || "").slice(0, 7);
-  }
-
-  function groupBy(records, keyFn) {
-    const groups = new Map();
-    for (const rec of records) {
-      const key = keyFn(rec);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(rec);
-    }
-    return groups;
   }
 
   function formatNs(ns) {
@@ -465,7 +494,7 @@ decode spends; the bare row is what the oracle costs.
       const delta = r.slowdown === null ? "" : `${r.slowdown >= 0 ? "+" : ""}${(r.slowdown * 100).toFixed(1)}%`;
       return `<tr${cls}>
         <td>${r.commit_date ? r.commit_date.slice(0, 10) : ""}</td>
-        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${shortSha(r.commit)}</a></td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${perfTrendShortSha(r.commit)}</a></td>
         <td>${formatNs(r.ns_per_call)}</td>
         <td>${delta}</td>
         <td>${r.iters}</td>
@@ -481,31 +510,23 @@ decode spends; the bare row is what the oracle costs.
     </div>`;
   }
 
-  function renderBranch(branch, records) {
-    if (records.length === 0) {
-      return `<h3 class="performance-trend-branch-heading">${branch}</h3><p><em>No data yet.</em></p>`;
-    }
+  async function render() {
+    const [mainRecords, developRecords] = await Promise.all([fetchBranch("main"), fetchBranch("develop")]);
+    const allRecords = [...mainRecords, ...developRecords];
     // Grouped per (leg, kernel), never merged across kernels - a series is
     // only meaningful against its own history.
-    const groups = groupBy(records, (r) => `${r.leg} ${r.kernel}`);
-    const sections = [...groups.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, rows]) => {
-        const [leg, kernel] = key.split(" ");
-        return renderSeries(leg, kernel, rows);
-      })
-      .join("\n");
-    return `<h3 class="performance-trend-branch-heading">${branch}</h3>${sections}`;
-  }
-
-  async function render() {
-    const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
-    const anyData = perBranch.some((records) => records.length > 0);
-    if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
-      return;
-    }
-    root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
+    const sectionRenderer = (records) => {
+      const groups = perfTrendGroupBy(records, (r) => `${r.leg} ${r.kernel}`);
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, rows]) => {
+          const [leg, kernel] = key.split(" ");
+          return renderSeries(leg, kernel, rows);
+        })
+        .join("\n");
+    };
+    perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer,
+      '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>');
   }
 
   render();
@@ -646,9 +667,7 @@ the table silently.
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
-  const HISTORY_BRANCH = "quality-history";
-  const BRANCHES = ["develop", "main"];
+  const REPO = PERF_TREND_REPO;
   const ROWS_PER_SERIES = 10;
   // Mirrors append_memory_history.py's window and tiers, so a flagged row
   // here and an annotation in the CI log are the same statement about the
@@ -659,36 +678,14 @@ the table silently.
 
   const root = document.getElementById("memory-trend-app");
 
-  function rawUrl(branch, file) {
-    return `https://raw.githubusercontent.com/${REPO}/${branch}/${file}`;
-  }
-
-  function parseJsonl(text) {
-    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
-  }
-
   async function fetchBranch(branch) {
     try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `memory-${branch}.jsonl`));
+      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `memory-${branch}.jsonl`));
       if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
+      return perfTrendParseJsonl(await resp.text());
     } catch (e) {
       return [];
     }
-  }
-
-  function shortSha(sha) {
-    return (sha || "").slice(0, 7);
-  }
-
-  function groupBy(records, keyFn) {
-    const groups = new Map();
-    for (const rec of records) {
-      const key = keyFn(rec);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(rec);
-    }
-    return groups;
   }
 
   function formatBytes(b) {
@@ -722,7 +719,7 @@ the table silently.
       const delta = r.bytesGrowth === null ? "" : `${r.bytesGrowth >= 0 ? "+" : ""}${(r.bytesGrowth * 100).toFixed(1)}%`;
       return `<tr${cls}>
         <td>${r.commit_date ? r.commit_date.slice(0, 10) : ""}</td>
-        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${shortSha(r.commit)}</a></td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${perfTrendShortSha(r.commit)}</a></td>
         <td>${r.allocs_per_frame.toFixed(1)}</td>
         <td>${formatBytes(r.bytes_per_frame)}</td>
         <td>${r.steady_live_growth === 0 ? "0" : formatBytes(r.steady_live_growth)}</td>
@@ -740,29 +737,21 @@ the table silently.
     </div>`;
   }
 
-  function renderBranch(branch, records) {
-    if (records.length === 0) {
-      return `<h3 class="performance-trend-branch-heading">${branch}</h3><p><em>No data yet.</em></p>`;
-    }
-    const groups = groupBy(records, (r) => `${r.leg} ${r.config}`);
-    const sections = [...groups.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, rows]) => {
-        const [leg, config] = key.split(" ");
-        return renderSeries(leg, config, rows);
-      })
-      .join("\n");
-    return `<h3 class="performance-trend-branch-heading">${branch}</h3>${sections}`;
-  }
-
   async function render() {
-    const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
-    const anyData = perBranch.some((records) => records.length > 0);
-    if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
-      return;
-    }
-    root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
+    const [mainRecords, developRecords] = await Promise.all([fetchBranch("main"), fetchBranch("develop")]);
+    const allRecords = [...mainRecords, ...developRecords];
+    const sectionRenderer = (records) => {
+      const groups = perfTrendGroupBy(records, (r) => `${r.leg} ${r.config}`);
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, rows]) => {
+          const [leg, config] = key.split(" ");
+          return renderSeries(leg, config, rows);
+        })
+        .join("\n");
+    };
+    perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer,
+      '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>');
   }
 
   render();
