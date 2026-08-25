@@ -863,9 +863,15 @@ std::expected<void, DemuxError> walk(ReaderState& s, std::span<const std::byte> 
                 ok = parse_chunk_offsets(box.type, body, s.options, s.pending);
                 break;
             case kTrex:
+                // Body layout past the FullBox header (offset 0): track_ID(4),
+                // default_sample_description_index(8), default_sample_duration(12),
+                // default_sample_size(16), default_sample_flags(20) - ISO/IEC
+                // 14496-12 §8.8.3. Confirmed against this project's own writer
+                // (fragment.cpp's build_trex) and the reader test helper's
+                // independent read_trex().
                 if (body.size() >= 20) {
                     s.trex_track_id = get_u32(body, 4);
-                    s.trex_default_sample_size = get_u32(body, 12);
+                    s.trex_default_sample_size = get_u32(body, 16);
                     s.have_trex = true;
                 }
                 break;

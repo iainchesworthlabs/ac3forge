@@ -154,9 +154,35 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   of a hand-rolled one; `ac3::signing` and the object-strip share one syncframe walk.
 - **ROADMAP.md rebuilt** for the post-0.9.0 state — see the roadmap file itself for the new
   two-letter ID scheme and what's next.
+- **Repo moved to trunk-based development.** `develop` is retired (left in place, frozen, not
+  deleted); `main` is now the single long-lived branch, and every topic branch (`feature/*`,
+  `bugfix/*` — the `release`/`hotfix`/`support` types are gone, since there is no separate
+  release-branch flow to name them for) merges straight into it. This removes the
+  `develop`→`main` promotion PR and the `main`→`develop` sync-back PR entirely — real overhead
+  the 2026-08-24 concurrent-PR push paid repeatedly. Branch protection (required checks, the
+  `code_scanning` gate, the `merge_queue`) moved from `develop` to `main` with the same
+  parameters; `.github/dependabot.yml` now targets `main`. See
+  [.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
+  and [CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#branches-and-pull-requests).
+  The `quality-history`/`performance-trend`/`object-quality-trend`/`tool-comparison-trend` pages'
+  two-track `develop`/`main` chart display is unchanged for now — historical `develop` data stays
+  visible, new data is `main`-only going forward; reworking those pages for a single-track future
+  is deliberately left as a separate follow-up rather than rushed into this change.
 
 ### Fixed
 
+- **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
+  coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
+  correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`
+  for any stream past the full-bandwidth channels. That was correct when the trace was written —
+  the coupling channel had no delta field yet — but went stale the moment a parallel branch of
+  work gave it one (`EQ5`'s coupling-aware delta bit allocation): the two lines of development
+  never shared a commit until the PR that merged both, so neither side's tests caught the other's
+  now-outdated assumption. Only visible once the coupling channel's own cost/rate-fit comparison
+  actually chose a nonzero correction mid-stream, which needs enough real programme material to
+  reach — `tools/ci/run_codec_matrix.sh`'s `cpl+ecpl` mirror-check leg does, one second into
+  `reference_51.wav`, `git bisect` traced the false failure to that merge, and a new regression
+  test reproduces it in well under a second.
 - **Five real E-AC-3 decoder defects, all in syntax only a third-party encoder produces** — found
   by finally pointing the decoder at real Dolby Encoding Engine and FFmpeg streams (`VX4`): AHT
   flags gated incorrectly, the coupling channel's own gain/offset fields not read at all,
@@ -184,6 +210,11 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   allocation, ADM parsing and signing verification, each with a reproducer under `fuzz/regressions/`.
 - **`dither=off`/`nodither`** pins `dithflag` at 0 for the one caller that needs bit-for-bit
   agreement between two decodes (`verify_gold_reference.sh`'s decoder-agreement gate).
+- **`build-footprint`'s minimum-footprint decoder image ceiling** (`PF7`) was stale: it and
+  `docs/performance-trend.md`'s footprint table were measured early in PF6/PF7's own feature
+  branch, before that branch's own later `develop` merges landed DC10's QMF-domain JOC
+  reconstruction and other decode-path growth the profile genuinely needs. Re-measured and
+  re-based to the current 412,516-byte image (ceiling now 465,000).
 
 ## [0.9.0-beta.1] - 2026-08-22
 

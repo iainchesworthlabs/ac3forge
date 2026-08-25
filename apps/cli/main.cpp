@@ -5,16 +5,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <fmt/base.h>
-#include <fmt/format.h>
 #include <span>
-#include <string>
 #include <string_view>
 #include <system_error>
 #include <vector>
 
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/meta/qc.hpp"
 #include "ac3/audio/audio_backend.hpp"
 #include "ac3/version.hpp"
 #include "adm/atmos_adm.hpp"
@@ -277,7 +272,9 @@ constexpr std::array<Command, 38> kCommands{{
     {"eac3-encode", 3,
      "<in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav]",
      "in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= "
-     "for more than one source",
+     "for more than one source. programme2= is a different thing entirely - a second, "
+     "independent E-AC-3 substream (its own layout/bitrate/dialnorm via "
+     "programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one",
      topic::kStdio | topic::kLayout | topic::kTools | topic::kVbr | topic::kMulti | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {

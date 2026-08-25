@@ -11,7 +11,7 @@ Four separate mechanisms, not one, and it matters which is which:
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
-  ms/frame number, not just a pass/fail, on every push to `develop`/`main`. It exists
+  ms/frame number, not just a pass/fail, on every push to `main`. It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
   over time even while it keeps passing.
 - **This page's per-kernel tables**: `ac3kernelbench`
@@ -74,7 +74,7 @@ slice), consistent with the ~33-38 µs the change targeted. The gate that actual
 matters for this change is byte-identical output, not a timing number: see the PF2
 commit message for the corpus that was checked.
 
-`tools/ci/append_performance_history.py` appends every `develop`/`main` run's numbers
+`tools/ci/append_performance_history.py` appends every `main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
 `gh-pages`: incremental, no publish-cadence coupling, fetchable client-side with no
@@ -351,7 +351,7 @@ of per-commit numbers.
     ]);
     const anyData = perBranch.some((records) => records.length > 0);
     if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
+      root.innerHTML = '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
       return;
     }
     root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i], releasesBySha)).join("\n");
@@ -502,7 +502,7 @@ decode spends; the bare row is what the oracle costs.
     const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
     const anyData = perBranch.some((records) => records.length > 0);
     if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
+      root.innerHTML = '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
       return;
     }
     root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
@@ -566,27 +566,38 @@ run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprin
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
+The table below was first measured early in PF6/PF7's own feature branch (PR #351). Several
+`develop` merges landed on that branch afterwards but before it merged to `main` — most
+significantly DC10's QMF-domain JOC reconstruction, which the decode path genuinely needs
+(`src/dsp/qmf.cpp` and `src/verify/eac3_mirror.cpp`, both correctly added to
+`src/forge/minimal.cmake`'s source list at the time, per that merge's own commit message), plus
+the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
+or the ceiling before merging. The image had already reached 412,516 bytes by then; the numbers
+below are that re-measurement, re-based against the current `main`.
+
 ### Static footprint
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 120,728 |
-| `.data` (initialised) | 396 |
-| `.bss` (zero-initialised) | 232,936 |
-| **Image total** | **354,060** (345.8 KiB) |
+| `.text` (code + read-only data) | 174,524 |
+| `.data` (initialised) | 400 |
+| `.bss` (zero-initialised) | 237,592 |
+| **Image total** | **412,516** (402.8 KiB) |
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 22.8 KiB | 96.1 KiB |
+| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.4 KiB | 96.1 KiB |
 | `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 20.0 KiB | 42.3 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 36.8 KiB | 0 |
-| `mdct.cpp.obj` (inverse transform, fast path only) | 9.3 KiB | 12.4 KiB |
-| `decoder.cpp.obj` (AC-3) | 12.2 KiB | 0 |
-| everything else, summed | 46.8 KiB | 13.1 KiB |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 21.3 KiB | 42.3 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 50.5 KiB | 0 |
+| `decoder.cpp.obj` (AC-3) | 17.3 KiB | 0 |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 15.2 KiB | 12.4 KiB |
+| `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction — new since 354,060) | 8.9 KiB | 4.2 KiB |
+| `eac3_mirror.cpp.obj` (E-AC-3 decode-side trace, DecoderConfig::syntax — new since 354,060) | 8.5 KiB | 0 |
+| everything else, summed | 87.7 KiB | 12.9 KiB |
 
 `tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
 (`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
@@ -615,16 +626,16 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 242,986 bytes (237.3 KiB) |
+| Peak heap | 243,470 bytes (237.8 KiB) |
 | Leaked at exit | 0 |
-| `sizeof(ac3::FrameDecoder)` | 12,312 bytes |
-| `sizeof(ac3::Eac3Decoder)` | 12,600 bytes |
+| `sizeof(ac3::FrameDecoder)` | 12,952 bytes |
+| `sizeof(ac3::Eac3Decoder)` | 27,408 bytes |
 | Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
 | AC-3 allocations per frame, steady state | 45 |
-| E-AC-3 allocations per frame, steady state | 85 |
+| E-AC-3 allocations per frame, steady state | 87 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
-for zero, and this is 45/85 — from the per-block geometry vectors inside the decoders and the
+for zero, and this is 45/87 — from the per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
 memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
 those two return types, not to allocation *reuse*. Reaching zero means those becoming
@@ -759,7 +770,7 @@ the table silently.
     const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
     const anyData = perBranch.some((records) => records.length > 0);
     if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
+      root.innerHTML = '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>';
       return;
     }
     root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");

@@ -44,9 +44,9 @@ on:
         description: >-
           After the gold-reference gate passes on every leg, append this run's SNR results to the
           quality-history branch (see docs/quality-trend.md). Computed and set by ci.yml only for
-          direct pushes to develop/main - never for a PR, so unmerged work never pollutes the
-          trend - and left false by release.yml's call, which is tag-triggered, not a push to
-          either branch. A plain boolean input rather than this job re-deriving
+          direct pushes to main - never for a PR, so unmerged work never pollutes the
+          trend - and left false by release.yml's call, which is tag-triggered, not a push at
+          all. A plain boolean input rather than this job re-deriving
           github.event_name/github.ref itself: those reflect the reusable workflow's own call
           context, and computing the condition once at the unambiguous caller site is simpler
           than relying on exactly how that context propagates through workflow_call.
@@ -1349,10 +1349,10 @@ jobs:
   # A dedicated branch sidesteps that entirely, and - since this is a public
   # repo - is fetchable client-side from raw.githubusercontent.com with no
   # auth, no API rate limit, and no server: see docs/quality-trend.md's own
-  # script. That also decouples data collection (every develop/main push)
-  # from the docs site's own publish cadence (push to main only, per
-  # docs.yml) - a develop push's numbers show up on the trend page without
-  # needing a docs deploy at all.
+  # script. That also decouples data collection (every main push) from the
+  # docs site's own publish cadence (also push to main, per docs.yml, but a
+  # separate job) - a push's numbers show up on the trend page without
+  # waiting on that job to finish.
   quality-trend:
     name: Publish quality trend
     needs: build

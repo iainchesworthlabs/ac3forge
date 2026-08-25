@@ -2086,10 +2086,20 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 auto& stream = block_trace->streams[slot];
                 stream.exponents = exps[s];
                 stream.bap = bap[s];
-                // Only a full-bandwidth channel has a delta slot at all -
-                // §E2.3.2.9 bounds its deltbae[ch] loop by nfchans, so the
-                // LFE and the coupling stream carry none.
-                stream.delta = s < static_cast<std::size_t>(nfchans) ? delta[s] : DeltaSegments{};
+                // Every full-bandwidth channel AND the coupling stream carry
+                // a delta slot - the coupling channel's own cpldeltbae
+                // (§E2.3.2.9, added alongside delta bit allocation under
+                // coupling) lives at delta[kCplStream], mirroring the
+                // encoder's trace. Only the LFE has none: §E2.3.2.9 bounds
+                // the deltbae[ch] loop by nfchans, so delta[nfchans] (the
+                // LFE's would-be slot) is never written by the parse above
+                // and reads back {} on its own. Indexing `delta` directly for
+                // every slot - rather than special-casing the coupling
+                // stream to always show {} - is the fix for a real self-check
+                // false positive this trace produced: the parser above
+                // already reads cpldeltbae correctly into delta[kCplStream],
+                // this was only failing to carry it into the trace.
+                stream.delta = delta[s];
                 stream.start = s == static_cast<std::size_t>(kCplStream) ? cplstrtmant : 0;
                 stream.endmant = endmant[s];
                 stream.aht = frm->ahtinu[s];

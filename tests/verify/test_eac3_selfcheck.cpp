@@ -353,6 +353,43 @@ TEST_CASE("E-AC-3 encoder and decoder agree across the Annex E tool matrix",
     }
 }
 
+TEST_CASE("E-AC-3 encoder and decoder agree on the coupling channel's own delta",
+          "[verify][golden]") {
+    // Regression test: the decoder's mirror trace hardcoded an empty
+    // DeltaSegments for any stream past the full-bandwidth channels, on the
+    // (stale, pre delta-under-coupling) assumption that only a fbw channel
+    // ever carries one. `delta[kCplStream]` was being parsed correctly all
+    // along - only the trace was throwing it away - so this only ever showed
+    // up as a false "encoder and decoder disagree" once the coupling
+    // channel's own cost/rate-fit comparison actually chose a nonzero
+    // cpldeltbae, which the codec matrix's short fixtures never ran long
+    // enough to reach.
+    //
+    // Reproducing it needs the exact shape tools/ci/run_codec_matrix.sh's
+    // mirror self-check feeds `eac3-encode`: one second of reference_51.wav
+    // (48000 samples - 31.25 frames), padded to a whole 32 frames by HOLDING
+    // the last real sample rather than dropping to zero (run_encode's own
+    // padding rule, encode.cpp, so a discontinuity that exists only because
+    // the clip ends mid-frame does not itself cost a block-switch). That held
+    // plateau is what makes the coupling channel's own rate-fit comparison
+    // choose a real, nonzero cpldeltbae for the first time, mid-frame, at
+    // access unit 31 - plain silence padding or more (unpadded) seconds of
+    // programme material both left every frame's coupling delta at zero and
+    // never reached this at all.
+    auto channels = golden_audio("reference_51.wav");
+    constexpr std::size_t kOneSecond = 48000;
+    constexpr std::size_t kPaddedFrames = 32;
+    for (auto& channel : channels) {
+        channel.resize(kOneSecond);
+        const float hold = channel.back();
+        channel.resize(kPaddedFrames * ac3::kSamplesPerFrame, hold);
+    }
+    const auto failure = mirror_encode(eac3_plan(ac3::plan::LayoutId::k51, 192, "cpl+ecpl"),
+                                       channels, kPaddedFrames);
+    INFO(failure);
+    CHECK(failure.empty());
+}
+
 TEST_CASE("E-AC-3 encoder and decoder agree at every layout", "[verify][golden]") {
     const auto channels = golden_audio("reference_51.wav");
     // 7.1.4 is the layout with no external oracle at all: FFmpeg refuses a

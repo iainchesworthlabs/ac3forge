@@ -7,7 +7,7 @@
 #   fuzz-regress       Replays fuzz/seeds/ and fuzz/regressions/ with -runs=0
 #                      (no mutation) - a correctness gate: every regression
 #                      corpus entry must still not crash. Seconds, not
-#                      minutes; runs on every push/PR to main/develop and is
+#                      minutes; runs on every push/PR to main and is
 #                      NOT experimental - a regression here means a fixed bug
 #                      came back.
 #   fuzz-short         A bounded mutation budget (60s/target, ~8 minutes
@@ -107,9 +107,9 @@ name: Fuzz
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   schedule:
     # 03:17 UTC - an off-the-hour time so a future second scheduled workflow
     # does not contend with this one for the same runner-queue instant.
