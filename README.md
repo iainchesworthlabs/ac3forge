@@ -36,7 +36,7 @@ your use is your problem to assess, not something this project resolves.
 **Status.** The API is not stable — releases so far are 0.x betas; the Latest release badge
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains. CI
 requires Windows (MSVC, clang-cl), Linux (GCC and Clang, x64 and arm64) and macOS (Homebrew
-LLVM) — CLI and GUI alike everywhere except macOS, which builds the CLI only — plus an
+LLVM) — CLI and GUI alike on every platform — plus an
 ASan+UBSan leg, clang-tidy static analysis, a coverage gate over the library, a per-platform
 gold-reference quality gate, dedicated Linux FFmpeg- and ADM-validation legs, and a required
 Android build leg for the Shield TV demo app under `apps/android/`. See
@@ -166,7 +166,8 @@ tools/          Python: table/fixture generators and the published conformance v
                 (checks/), independent reference implementations (references/),
                 CI-only orchestration - trend appenders, the codec matrix, the
                 FFmpeg quality race (ci/)
-packaging/      staged (unpublished) vcpkg port, Homebrew formula, winget manifest, Conan recipe
+packaging/      vcpkg port, winget manifest, Conan recipe (staged, pending upstream submission);
+                Homebrew formula/cask (published to the live homebrew-ac3forge tap)
 docs/           the site source — see Documentation below
 ```
 
