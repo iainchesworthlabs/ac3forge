@@ -320,6 +320,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                              .heavy_compression = meta.p.heavy.has_value(),
                              .output = meta.output,
                              .concealment = meta.concealment,
+                             .fast_mdct = meta.fast_mdct,
                              .joc_domain = meta.joc_domain,
                              .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the

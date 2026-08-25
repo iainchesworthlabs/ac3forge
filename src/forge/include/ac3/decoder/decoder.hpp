@@ -176,6 +176,30 @@ struct DecoderConfig {
     // §7.10: what to do with a frame that will not decode. kNone returns the
     // error, exactly as before. See ConcealmentPolicy.
     ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
+    // §7.9.4's forward MDCT fold, for JOC bed analysis under
+    // joc::Domain::kMdctBand only (PF8) - the one place a DECODE ever runs a
+    // forward transform. §6.6.6's per-band matrix combines the transmitted
+    // coefficients against the BED re-expressed in the same spectral domain
+    // the matrix was estimated in, so reconstruct() must forward-transform
+    // the decoded bed before it can apply them; fast_imdct above covers only
+    // the inverses that follow. No effect under the default kQmf domain,
+    // whose filterbank has only the one evaluation - see joc_domain below.
+    // Default ON, the same evidence and margin fast_imdct's own default
+    // rests on: worst transform-level relative error 1.3e-13 (the same
+    // forward kernel mdct512_forward's own fast-path tests already pin),
+    // full joc::reconstruct output agreeing 321-325 dB SNR against the
+    // direct form over three objects (tests/oba/test_atmos.cpp), and the
+    // bed analysis' own kernel cost (isolated from object synthesis, which
+    // this does not touch) measured 11.0x - 238 to 2628 microseconds per
+    // block-of-5-channels, a release build's ac3kernelbench
+    // joc_reconstruct_mdct_4obj[_direct] - a fixed ~2.4 ms saved per frame
+    // regardless of object count, ~2.2 s over a 30 s kMdctBand decode (see
+    // ROADMAP.md PF8). false selects the direct §8.2.3.2 form -
+    // joc::reconstruct's own default, and what every fast-path test
+    // validates against. joc.hpp's reconstruct() doc comment names this
+    // field for its first bool parameter, the way it already
+    // named fast_imdct for the second.
+    bool fast_mdct = true;
     // Which domain JOC object reconstruction applies §6.6.6's matrix in.
     // joc::Domain::kQmf is what the clause describes and what a licensed
     // decoder runs: §7.1's 64-band complex QMF, ac3::dsp::QmfAnalysis.

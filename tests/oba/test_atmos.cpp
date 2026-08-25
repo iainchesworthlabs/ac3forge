@@ -696,6 +696,102 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
     CHECK(cross_qmf_mdct < qmf_mean);
 }
 
+TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[atmos][joc][fast-mdct][decoder]") {
+    // PF8: DecoderConfig::fast_mdct reaches joc::reconstruct's own bed
+    // analysis under Domain::kMdctBand - the one place a DECODE runs a
+    // forward transform. Same two-part shape as "band_energy consults its
+    // fast flag..." above: the two paths must AGREE (quality) and must NOT
+    // be identical (wiring - if the flag were silently ignored, both legs
+    // would be the same direct call and byte-equal, which the REQUIRE below
+    // refuses). Real encoded-and-decoded bytes through Eac3Decoder, not a
+    // synthetic bed, so quantized coefficients and real bit-allocated PCM
+    // feed the transform exactly as a real decode would.
+    constexpr auto kDomain = ac3::joc::Domain::kMdctBand;
+    constexpr int kObjects = 3;
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = kDomain}, kObjects};
+    const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
+        {.position = {.x = 0.1, .y = 0.3, .z = 0.0}},
+        {.position = {.x = 0.9, .y = 0.3, .z = 0.5}},
+        {.position = {.x = 0.5, .y = 0.9, .z = 1.0}},
+    }};
+    const std::array<double, kObjects> hz{233.0, 1500.0, 4200.0};
+    const std::array<double, kObjects> amplitude{0.28, 0.24, 0.20};
+
+    constexpr std::array<int, ac3::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    ac3::Eac3Decoder decoder;
+    ac3::joc::ReconstructionState direct_state;
+    ac3::joc::ReconstructionState fast_state;
+    std::vector<std::span<const float>> views(kObjects);
+
+    constexpr int kFrames = 8;
+    std::array<std::vector<float>, kObjects> direct;
+    std::array<std::vector<float>, kObjects> fast;
+    bool any_difference = false;
+
+    for (int frame = 0; frame < kFrames; ++frame) {
+        const auto start = static_cast<std::uint64_t>(frame) * kFrame;
+        std::vector<std::vector<float>> essences;
+        for (std::size_t i = 0; i < kObjects; ++i) {
+            essences.push_back(tone(hz[i], amplitude[i], 0.7 * static_cast<double>(i), start));
+        }
+        for (std::size_t i = 0; i < views.size(); ++i) {
+            views[i] = essences[i];
+        }
+        const auto encoded = encoder.encode_frame(views, placement);
+        REQUIRE(encoded.has_value());
+        const auto frame_bytes = encoded->substream(0);
+        const auto decoded = decoder.decode_substream(frame_bytes);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const auto& sub = **decoded;
+
+        const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+        REQUIRE(joc_bytes.has_value());
+        const auto params = ac3::joc::parse_payload(*joc_bytes);
+        REQUIRE(params.has_value());
+
+        std::array<std::span<const float>, ac3::joc::kNumChannels5X> bed_joc_order{};
+        for (int jc = 0; jc < ac3::joc::kNumChannels5X; ++jc) {
+            bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
+                kAc3FromJoc[static_cast<std::size_t>(jc)])];
+        }
+        const auto direct_out = ac3::joc::reconstruct(bed_joc_order, *params, direct_state,
+                                                       /*fast_mdct=*/false, /*fast_imdct=*/true,
+                                                       kDomain);
+        const auto fast_out = ac3::joc::reconstruct(bed_joc_order, *params, fast_state,
+                                                     /*fast_mdct=*/true, /*fast_imdct=*/true,
+                                                     kDomain);
+        REQUIRE(direct_out.size() == kObjects);
+        REQUIRE(fast_out.size() == kObjects);
+        for (std::size_t i = 0; i < kObjects; ++i) {
+            direct[i].insert(direct[i].end(), direct_out[i].begin(), direct_out[i].end());
+            fast[i].insert(fast[i].end(), fast_out[i].begin(), fast_out[i].end());
+        }
+    }
+
+    for (int object = 0; object < kObjects; ++object) {
+        CAPTURE(object);
+        const auto index = static_cast<std::size_t>(object);
+        double signal = 0.0;
+        double error = 0.0;
+        for (std::size_t n = 0; n < direct[index].size(); ++n) {
+            const double want = static_cast<double>(direct[index][n]);
+            const double got = static_cast<double>(fast[index][n]);
+            signal += want * want;
+            error += (got - want) * (got - want);
+            any_difference = any_difference || got != want;
+        }
+        const double snr_db = 10.0 * std::log10(signal / std::max(error, 1e-30));
+        CAPTURE(snr_db);
+        // The fast forward fold's own tolerance (mdct512_forward's fast-path
+        // tests hold ~1e-13 relative error), carried through six blocks of
+        // bed analysis feeding three objects' worth of matrixing and
+        // synthesis - loose next to that, tight next to anything audible.
+        CHECK(snr_db > 200.0);
+    }
+    REQUIRE(any_difference);
+}
+
 TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmos][decoder]") {
     ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
     const std::array<ac3::oba::ObjectPlacement, 3> placement{{

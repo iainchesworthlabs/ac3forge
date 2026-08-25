@@ -792,14 +792,24 @@ directory; there is still no threading anywhere in the codec core.
   Two requirements are recorded as open gaps rather than half-enforced: zero heap traffic in the
   decode loop (today: 45-87 allocations/frame) and a float32-only internal path - see
   `docs/building.md`'s Gaps section.
-- [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
-  `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
-  forward transforms per block — 30 a frame at ~123 µs each, against ~1.6 µs on the fast fold.
-  Measured after PF3/PF4: a 30-second 15-object decode is 4.83 s, of which about 3.5 s is those
-  transforms; the object inverses PF3 just fixed were 1.6 s of the 6.5 s before. It is one
-  argument, but it changes decoded object audio at ~1e-13 and there is no decoder-side forward
-  switch to hang it on today — `DecoderConfig::fast_imdct` names the inverse — so it wants a
-  deliberate decision, not a drive-by flip.
+- [x] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` called
+  `joc::reconstruct` with `fast_mdct = false` hardcoded, so every object frame under
+  `joc-domain=mdct` ran five direct §8.2.3.2 forward transforms per block, and there was no
+  decoder-side forward switch to hang a fix on — `DecoderConfig::fast_imdct` names only the
+  inverses. Decided: add one, default it ON, the same gate every other fast path here already
+  passed. `DecoderConfig::fast_mdct` now carries `joc::reconstruct`'s own `fast_mdct` parameter
+  from `decode`/`monitor`/`live` (CLI: `fast-mdct=off`/`mode=reference`, now reaching decode as
+  well as every encode path they already covered). Evidence: 1.3e-13 worst relative error at the
+  transform level (the same forward kernel `EncoderConfig::fast_mdct` already validates), full
+  `joc::reconstruct` output agreeing 321-325 dB SNR against the direct form over three real
+  encoded-and-decoded objects, and the bed analysis kernel itself — isolated from object
+  synthesis, which this switch does not touch — 11.0x faster on a release build (238 µs against
+  2628 µs per block's five-channel analysis, `ac3kernelbench`'s
+  `joc_reconstruct_mdct_4obj`/`_direct`): a fixed ~2.4 ms saved per frame regardless of object
+  count, ~2.2 s projected over a 30 s decode. Has no effect under the default `joc-domain=qmf`,
+  whose filterbank has only the one evaluation, so this only matters for a stream (this
+  project's own `joc-domain=mdct` request, or a third-party one whose matrix was estimated that
+  way) that actually reconstructs in the MDCT-band domain.
 
 ## AP. Library surface, bindings and v1.0
 

@@ -193,14 +193,32 @@ against an external decoder, or isolating a suspected transform defect — and `
 `fast-imdct=off` adjust one half at a time; see
 [Options & grammars](cli/metadata-options.md#command-specific-notes) for the full token
 semantics. At the library level the same pair is `EncoderConfig::fast_mdct` /
-`eac3::FrameConfig::fast_mdct` and `DecoderConfig::fast_imdct`.
+`eac3::FrameConfig::fast_mdct` for the forward transform and `DecoderConfig::fast_imdct` for the
+inverse.
 
-Encoded output never depends on the decode-side switch. An enhanced-coupling encode does run an
+Encoded output never depends on `DecoderConfig`. An enhanced-coupling encode does run an
 inverse transform of its own — `ecpl_channel_spectrum` reconstructs the spectrum the decoder
 will hold — and that one follows `eac3::FrameConfig::fast_mdct`, which makes that field the
 encoder's fast-transform switch in both directions and keeps `mode=reference` direct end to
 end. It is byte-identical either way on the encode corpus at the tolerances above, so it is a
-speed choice, not an output one; `DecoderConfig::fast_imdct` reaches no encoder at all.
+speed choice, not an output one.
+
+One decode-side case runs the FORWARD transform too: JOC's own bed analysis under
+`joc-domain=mdct` (PF8) has to re-express the decoded bed in the same 256-bin MDCT domain the
+transmitted matrix was estimated in before it can apply §6.6.6's per-band combination — the one
+place a decode ever needs the fold `mode=`/`fast-mdct=off` otherwise only reach on the encode
+side. `DecoderConfig::fast_mdct` carries it (`joc::reconstruct`'s own `fast_mdct` parameter,
+threaded from `decode`/`monitor`/`live`), defaulted ON by the same evidence gate as every other
+fast path here: 1.3e-13 worst relative error at the transform level (the same forward kernel
+`EncoderConfig::fast_mdct` already validates), full `joc::reconstruct` output agreeing
+321-325 dB SNR against the direct form over three real encoded-and-decoded objects
+(`tests/oba/test_atmos.cpp`), and the bed analysis kernel itself — isolated from object
+synthesis, which this switch does not touch — measured 11.0x, 238 to 2628 microseconds per
+block's five-channel analysis on a release build (`ac3kernelbench`'s
+`joc_reconstruct_mdct_4obj`/`_direct`): a fixed ~2.4 ms saved per frame regardless of object
+count, ~2.2 s over a 30 s `kMdctBand` decode. It has no effect under the default
+`joc-domain=qmf`, whose filterbank has only the one evaluation, and — like
+`DecoderConfig::fast_imdct` — never reaches an encoder.
 
 ## Test suite
 
