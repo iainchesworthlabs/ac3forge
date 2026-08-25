@@ -873,7 +873,7 @@ directory; there is still no threading anywhere in the codec core.
 
 ## UX. Applications
 
-- [ ] **UX1 (M)** — A GUI player/monitor for an existing stream with decode-to-WAV and object
+- [x] **UX1 (M)** — A GUI player/monitor for an existing stream with decode-to-WAV and object
   export, and the run-chip shortcuts into QC and Inspect that two docs pages each end by saying
   do not exist yet. The `MonitorSink` plumbing is already owned by the object-decode controller;
   only the file-driven transport and UI are missing.
