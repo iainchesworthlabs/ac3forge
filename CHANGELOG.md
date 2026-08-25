@@ -194,6 +194,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   an unrelated `run_codec_matrix.sh` abort earlier in the same job (fixed above); once that
   stopped hiding it, the gap showed up on `main` as a "FFmpeg Validate" failure with no real
   coverage gap behind it.
+- **`tools/ci/fuzz_encoder_space.py`'s `classify()` false-failed the sub-gate-loudness refusal**
+  (`dialnorm=auto` correctly declining to measure BS.1770-4 loudness on generated audio entirely
+  below the -70 LKFS absolute gate — see `REFUSALS`'s own comment on why the generator produces
+  that material on purpose). The check only looked for a `REFUSALS` message when the encoder
+  exited `1`; the CLI's own structured exit codes (roadmap `IO8`) put this specific refusal on
+  `5` (a runtime condition, not a usage error) rather than `1`, so it read as a hard failure
+  instead of a recognised refusal. Fixed by matching the message on any non-zero exit rather than
+  gating on a specific code, and pinned as a new `REGRESSION_SEEDS` entry.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`
