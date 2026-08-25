@@ -960,9 +960,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
-        if (key == "codec") {
-            // 'transcode' only. Named rather than inferred when out_path is
-            // "-" or has no .ac3/.ec3 suffix to read - see Options::codec.
+        if (key == "codec" && command == "transcode") {
+            // 'transcode' only - disambiguated from record/live's own codec=
+            // below the same way layout= is, a few blocks down. Named rather
+            // than inferred when out_path is "-" or has no .ac3/.ec3 suffix
+            // to read - see Options::codec.
             if (value == "ac3") {
                 out.codec = ac3::plan::Codec::kAc3;
             } else if (value == "eac3" || value == "ec3") {
