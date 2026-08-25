@@ -513,6 +513,21 @@ machine-readable output and a single failure exit code. Users arrive with contai
   hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
   files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
   ingest only; rendering stays with Cavern.
+  *Phase 1 done: `ac3iab::` (`src/ac3iab`) parses the full §7/§8 Preamble+IAFrame segment
+  framing and every element in §9's Table 4 tree — IAFrame, BedDefinition (+ recursive
+  BedDefinition/BedRemap children), ObjectDefinition (+ recursive ObjectDefinition/
+  ObjectZoneDefinition19 children) and AudioDataPCM, all fully decoded (positions/spreads/
+  snap tolerance resolved via §5.4's DistanceXY/DistanceZ formulas, gains via §5.5, zone gains
+  via their own separate linear §10.5.14/§10.6.3 formula — the two are easy to conflate and an
+  early draft did). AudioDataDLC is read by identity only (AudioDataID, the opaque coded
+  residual as a byte span) per this phase's own scope; Annex B's lossless predictor/entropy
+  coder is undecoded and stays a documented follow-up. Validated against
+  `DTSProAudio/iab-validator`'s own real sample corpus (`test/bitstreams/*.iab`, MIT) as an
+  external oracle, not vendored into this repo per the project's spec-PDF convention: this
+  reader's parsed header (SampleRate/BitDepth/FrameRate/FrameCount/MaxRendered) matches that
+  tool's own reference JSON exactly on all 10 streams sampled, and every frame across all ten
+  streams parses without error (one stream alone carries 720 real AudioDataDLC elements and 240
+  ObjectDefinitions). Phases 2 (MXF/KLV) and 3 (`atmos-iab`/`admbridge`) are unstarted.*
 - [x] **IM2 (L)** — JOC → ADM BWF writer. `decode … adm_out` writes a Dolby Atmos Master ADM
   Profile BW64 (cartesian coordinates, `audioBlockFormat` automation, `chna`) from
   `Eac3Decoder`'s object metadata, object audio and the bed's own LFE, round-tripped through

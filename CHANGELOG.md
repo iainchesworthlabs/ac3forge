@@ -109,6 +109,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3::oba::ObjectScene`** (`IM7`): one object-scene timeline (named objects, interpolated
   automation, orientation-as-metadata, JSON) shared by `atmos-path`, the GUI and the examples,
   replacing four ad-hoc formats.
+- **`ac3iab::`, a standalone reader for SMPTE ST 2098-2's Immersive Audio Bitstream** (`IM1`
+  phase 1 of 3): the Preamble+IAFrame segment framing, and every element in the format's
+  Table 4 tree — IAFrame, BedDefinition/BedRemap, ObjectDefinition/ObjectZoneDefinition19 and
+  AudioDataPCM — fully decoded (positions, spreads and gains resolved through the spec's own
+  distance and gain formulas). AudioDataDLC's lossless coder is read by identity only, not
+  decoded, and stays a documented follow-up. Validated against `DTSProAudio/iab-validator`'s
+  own real sample corpus as an external oracle: this reader's parsed header matches that tool's
+  reference output exactly across every stream sampled. Container extraction (MXF/KLV) and the
+  `atmos-iab` bridge onto `ac3::admbridge` are unstarted (phases 2 and 3).
 - **A JOC → ADM BWF writer** (`IM2`): `ac3cli decode ... adm_out` writes a Dolby Atmos Master ADM
   Profile BW64 (BS.2076-2 ADM XML + BS.2088 BW64, cartesian `audioBlockFormat` automation) from a
   decoded E-AC-3/Atmos stream's own bed LFE and JOC-reconstructed dynamic objects, positioned by
