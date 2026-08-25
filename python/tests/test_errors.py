@@ -4,6 +4,9 @@ Result-like return. Every case here checks both the exception TYPE and its `.err
 not just that *something* was raised.
 """
 
+import subprocess
+import sys
+
 import ac3forge as ac3
 import numpy as np
 import pytest
@@ -45,3 +48,53 @@ def test_channel_length_mismatch_is_a_value_error():
 def test_encoder_config_rejects_unknown_kwarg():
     with pytest.raises(TypeError):
         ac3.EncoderConfig(dialnrm=10)  # typo: not a real field
+
+
+def _run_child(code):
+    # A wrong channel/object COUNT (unlike the per-channel sample-LENGTH mismatch above) used to
+    # skip validation entirely: extract_channels() never checked py::len(channels) against the
+    # encoder's channel_count(), and the C++ side's own guard is a plain assert() compiled out in
+    # the Release build these wheels use, so the encoder read out of bounds instead of raising.
+    # That's a real interpreter crash, not a Python exception - checking it in-process would take
+    # the whole pytest run down with it, so run the repro in a subprocess and inspect its exit
+    # code instead.
+    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+
+
+def test_frame_encoder_wrong_channel_count_raises_value_error():
+    code = (
+        "import ac3forge as ac3\n"
+        "import numpy as np\n"
+        "encoder = ac3.FrameEncoder(ac3.EncoderConfig(bitrate_kbps=192, acmod=ac3.Acmod.k3_2, lfe=True))\n"
+        "channels = [np.zeros(ac3.SAMPLES_PER_FRAME, dtype=np.float32) for _ in range(2)]\n"
+        "try:\n"
+        "    encoder.encode_frame(channels)\n"
+        "except ValueError:\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(1)\n"
+    )
+    result = _run_child(code)
+    assert result.returncode == 0, (
+        f"expected a clean ValueError (exit 0), got returncode={result.returncode}\n"
+        f"stderr:\n{result.stderr}"
+    )
+
+
+def test_atmos_encoder_wrong_object_count_raises_value_error():
+    code = (
+        "import ac3forge as ac3\n"
+        "import numpy as np\n"
+        "encoder = ac3.AtmosEncoder(ac3.AtmosConfig(bitrate_kbps=448), 2)\n"
+        "objects = [np.zeros(ac3.SAMPLES_PER_FRAME, dtype=np.float32)]\n"
+        "placements = [ac3.ObjectPlacement(position=ac3.Position(x=0.2, y=0.5, z=0.0), gain=1.0)]\n"
+        "try:\n"
+        "    encoder.encode_frame(objects, placements)\n"
+        "except ValueError:\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(1)\n"
+    )
+    result = _run_child(code)
+    assert result.returncode == 0, (
+        f"expected a clean ValueError (exit 0), got returncode={result.returncode}\n"
+        f"stderr:\n{result.stderr}"
+    )

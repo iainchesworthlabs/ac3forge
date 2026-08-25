@@ -171,6 +171,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`ac3.FrameEncoder.encode_frame`/`ac3.AtmosEncoder.encode_frame` segfaulted the Python
+  interpreter instead of raising when called with the wrong *number* of channel/object arrays**
+  (as opposed to the wrong per-channel sample length, which was already checked).
+  `bindings.cpp`'s `extract_channels()` validated each array's sample length against
+  `expected_len` but never validated `py::len(channels)` against the encoder's actual
+  `channel_count()`/`dynamic_object_count()`; the underlying C++ guard is a plain `assert()`,
+  compiled out in the Release build these wheels use, so a mismatched span count read out of
+  bounds instead of failing cleanly. Both entry points now check the sequence length up front
+  and raise `py::value_error`, matching the check `ac3.eac3.FrameEncoder`/`AccessUnitEncoder`
+  already had.
 - **`python/tests/test_latency.py` asserted the wrong Atmos object-path latency, failing the
   `Python Wheels` workflow's `macos-latest` and `windows-latest` `pytest` steps.** The test
   claimed an `AtmosEncoder`'s `latency.transform_samples` was `2 * TRANSFORM_DELAY_SAMPLES`
