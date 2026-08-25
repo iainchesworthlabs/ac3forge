@@ -190,6 +190,22 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`coupling::quantize_coordinate`/`choose_master` computed a coordinate's binade shift via
+  `floor(-std::log2(value))`** (`VX12`): a transcendental libm call whose last-bit behaviour is
+  not required to agree across compilers/architectures, at exactly the input class (a value on or
+  near a power of two) where its true result is itself an integer, so any rounding at all could
+  land `floor()` on either side of it. Replaced with `std::ilogb`, which reads the binary exponent
+  directly out of the IEEE-754 representation with no rounding at all. Proven behaviour-preserving
+  on real material: the gold-reference gate's three self-encoded streams hash byte-identical to
+  their pre-change values.
+- **`tools/ci/quality_race.py trend` crashed on `eac3-stereo-64`'s known-infeasible tool
+  variants** rather than reporting them. That leg exists specifically to bracket the rate where
+  E-AC-3 stereo needs *both* coupling and spectral extension to fit (32 kbit/s per channel — see
+  `TREND_LEGS`'s own comment); `none`/`cpl`/`aht`/`tpn` each turn off at least one of the two, so
+  the encoder correctly refuses with its own "header room" message (`ac3::eac3`'s budget check,
+  also named in `fuzz_eac3_encoder_space.py`'s `REFUSALS`) — a real outcome the trend run exists
+  to show, not a defect. `_trend_encode` now recognises that one specific refusal and reports
+  `n/a` for the cell instead of aborting the whole run; every other non-zero exit still raises.
 - **`python/tests/test_latency.py` asserted the wrong Atmos object-path latency, failing the
   `Python Wheels` workflow's `macos-latest` and `windows-latest` `pytest` steps.** The test
   claimed an `AtmosEncoder`'s `latency.transform_samples` was `2 * TRANSFORM_DELAY_SAMPLES`
