@@ -207,7 +207,7 @@ def fetch(sample: dict, cache_dir: Path) -> Path:
         if not local.exists():
             url = BASE_URL + sample["path"]
             print(f"    fetching {url}")
-            with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=120) as response:
                 local.write_bytes(response.read())
         actual = sha256_of(local)
         if actual == sample["sha256"]:
