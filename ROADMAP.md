@@ -636,10 +636,32 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   Audit the encoder's decision points for floating-point dependence (or move them to integer),
   then gate byte-identical gold encodes across every leg, at least under `mode=reference`; a
   recorded-decisions replay mode makes bisecting and paper reproduction possible.
-- [ ] **VX13 (S)** — Promote the fuzz jobs: make Fuzz Regress a required check, delete the
-  `continue-on-error` on `fuzz-short` and `fuzz-differential` (clean since 2026-08-09 and
-  2026-08-16), add the differential harnesses to nightly, persist the grown corpus as an
-  artifact. The ruleset edits are the repository admin's, not a PR's.
+- [x] **VX13 (S)** — Promote the fuzz jobs. The claimed track record didn't hold up under a real
+  check of `gh run list`/job-level history back to 2026-08-09: `fuzz-differential` genuinely had
+  zero failures across 218 push runs, but `fuzz-short` had five, all the same
+  `UndefinedBehaviorSanitizer` report in `fuzz_mp4_demux`, clustered in the 24 hours before this
+  item was picked up (first at 2026-08-24T10:42Z) rather than spread across the window — a live
+  regression, not pre-existing flakiness. Root cause: `mp4::Reader`'s box walk computed
+  `box_end = parse_pos + box.size` with no check that `box.size` (attacker-controlled up to
+  `UINT64_MAX` via ISOBMFF §4.2's 64-bit largesize escape) could be added without wrapping past
+  2^64; a box using it could send `parse_pos` backwards past the streaming reader's sliding
+  `window_pos`, and the next iteration's `parse_pos - window_pos` then underflowed to a
+  near-`SIZE_MAX` `std::size_t` that `read_box_header`'s own bounds check failed to catch for the
+  identical reason, indexing far past the buffer. Fixed with one bounds check on the addition
+  itself (`src/mp4/src/reader.cpp`), the same rejection `read_box_header` already gives a size
+  smaller than its own header; the crash minimised into
+  `fuzz/regressions/fuzz_mp4_demux/largesize-escape-wraps-parse-pos-overflow`. `fuzz-short` and
+  `fuzz-differential` both had their `continue-on-error` deleted in the same PR — the fix removes
+  the only failure `fuzz-short` had ever recorded, so promoting the job stakes exactly what the
+  investigation found rather than the roadmap's earlier, unverified claim. `fuzz-nightly` now
+  also runs the two differential harnesses at its deeper budget (they were never in `run.sh`'s
+  `BASE_TARGETS`, the same reason `fuzz-differential` is its own job), and `fuzz/corpus/` persists
+  across nightly runs via `actions/cache` (restore by prefix, save under a run-scoped key — cache
+  entries are immutable, so there is no in-place update) instead of every scheduled run mutating
+  from an empty corpus, which is what every job log up to this point actually showed. Making
+  `Fuzz Regress` a required check is a repository-admin ruleset edit
+  (`.github/branch-protection.md`), not something a PR can do — the one step this item leaves for
+  a human.
 - [x] **VX14 (S)** — Lint and scan the non-C++ code. A `script-lint` job runs `ruff` over every
   `.py` file (curated rule set in `ruff.toml`), `shellcheck` over `git ls-files '*.sh'` and
   `actionlint` over the workflows, all three hash-pinned in
