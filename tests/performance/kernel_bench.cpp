@@ -451,6 +451,17 @@ int main(int argc, char** argv) {
                                       /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
             g_sink += static_cast<double>(out[0][128]);
         }));
+        // PF8: bed analysis' own forward transform, isolated from the object
+        // synthesis inverse (left fast on both sides, matching
+        // Eac3Decoder's real default) - what DecoderConfig::fast_mdct now
+        // switches, against the direct §8.2.3.2 form it replaced.
+        results.push_back(time_kernel("joc_reconstruct_mdct_4obj_direct", [&] {
+            static ac3::joc::ReconstructionState state;
+            const auto out =
+                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/false,
+                                      /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
+            g_sink += static_cast<double>(out[0][128]);
+        }));
         results.push_back(time_kernel("joc_reconstruct_qmf_4obj", [&] {
             static ac3::joc::ReconstructionState state;
             const auto out =

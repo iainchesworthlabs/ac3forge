@@ -145,6 +145,10 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   remainder of the last encoder profile.
 - **The fast IMDCT reaches enhanced coupling and JOC, and the FFT core is radix-4** (`PF3`, `PF4`):
   a 30 s 15-object decode drops from 6.5 s to under 3 s combined.
+- **The decoder's JOC bed analysis now has a fast forward transform too** (`PF8`,
+  `DecoderConfig::fast_mdct`, default ON): 11.0x on the bed analysis kernel itself under
+  `joc-domain=mdct`, agreeing 321-325 dB SNR against the direct form it replaces. No effect
+  under the default `joc-domain=qmf`.
 - **SIMD kernels selected by CMake, not `#ifdef`** (`PF5`): 128-bit vectorised hot paths on
   x86-64/ARMv8, bit-identical output, no runtime dispatch.
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
