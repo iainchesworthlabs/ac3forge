@@ -202,6 +202,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   `5` (a runtime condition, not a usage error) rather than `1`, so it read as a hard failure
   instead of a recognised refusal. Fixed by matching the message on any non-zero exit rather than
   gating on a specific code, and pinned as a new `REGRESSION_SEEDS` entry.
+- **`tools/ci/fuzz_eac3_encoder_space.py`'s `classify()` had the same gap**, independently, for
+  its own `sub-gate loudness` and `unmeasurable loudness` entries (the latter is `atmos-encode`'s
+  own wording for the identical BS.1770-4 absolute-gate refusal, reached through `eac3-encode` or
+  `atmos-encode` rather than plain `encode`). Unlike the sibling harness, this one's exit-code
+  check exists for a real reason — the first defect it ever found was an `assert()` abort that a
+  blanket `!= 0` would have swallowed as a tolerated refusal — so the fix narrows rather than
+  removes it: `classify()` now checks `REFUSALS` on exit `1` *or* `5`, the CLI's own two
+  refusal-capable codes, while any other code (including the abort signatures the original check
+  was written to catch) still fails outright. Pinned two new `REGRESSION_SEEDS` entries, one per
+  wording.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`
