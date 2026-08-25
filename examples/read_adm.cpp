@@ -18,10 +18,13 @@
 // is adapted from Recommendation ITU-R BS.2076-2 (10/2019) Annex 2 §2's own
 // "Object-based example" ("Car" object), the standard's own worked example.
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <fstream>
+#include <random>
 #include <string>
 #include <string_view>
 
@@ -30,6 +33,19 @@
 namespace {
 
 using Bytes = std::string;
+
+// A per-run name rather than a fixed one: every checkout of this repo runs the
+// examples under its own `ctest` (examples/CMakeLists.txt registers each as a
+// test case), several checkouts commonly run at once, and they share a temp
+// directory - two runs on one fixed name read and delete each other's fixture.
+// Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
+std::string scratch_path(std::string_view name) {
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
+}
 
 void put_u16le(Bytes& out, std::uint16_t value) {
     out.push_back(static_cast<char>(value & 0xFFu));
@@ -136,23 +152,23 @@ bool write_fixture(const std::string& path) {
 }  // namespace
 
 int main() {
-    const auto fixture_path = (std::filesystem::temp_directory_path() / "ac3forge_adm_fixture.wav").string();
+    const auto fixture_path = scratch_path("adm_fixture.wav");
     if (!write_fixture(fixture_path)) {
-        std::printf("could not write fixture file\n");
+        fmt::printf("could not write fixture file\n");
         return 1;
     }
 
     const auto document = ac3adm::parse_bw64(fixture_path);
     if (!document) {
-        std::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
+        fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
                     ac3adm::describe(document.error()).data());
         return 1;
     }
 
-    std::printf("PCM: %u Hz, %u-bit, %zu channel(s), %zu frame(s)\n", document->audio.sample_rate,
+    fmt::printf("PCM: %u Hz, %u-bit, %zu channel(s), %zu frame(s)\n", document->audio.sample_rate,
                 document->audio.bits_per_sample, document->audio.channels.size(), document->audio.frame_count());
-    std::printf("chna rows: %zu\n", document->chna.size());
-    std::printf("ADM graph: %zu programme(s), %zu content(s), %zu object(s), %zu pack format(s), "
+    fmt::printf("chna rows: %zu\n", document->chna.size());
+    fmt::printf("ADM graph: %zu programme(s), %zu content(s), %zu object(s), %zu pack format(s), "
                 "%zu channel format(s), %zu stream format(s), %zu track format(s), %zu track UID(s)\n",
                 document->model.programmes.size(), document->model.contents.size(), document->model.objects.size(),
                 document->model.pack_formats.size(), document->model.channel_formats.size(),
@@ -160,11 +176,11 @@ int main() {
                 document->model.track_uids.size());
 
     for (const auto& programme : document->model.programmes) {
-        std::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
+        fmt::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
                     programme.content_refs.size());
     }
     for (const auto& object : document->model.objects) {
-        std::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
+        fmt::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
                     object.start_s, object.track_uid_refs.size());
     }
 

@@ -20,7 +20,7 @@ if (!document) { /* ... */ }
 
 const auto bridged = ac3::admbridge::build(*document);
 if (!bridged) {
-    std::printf("build failed: %.*s\n",
+    fmt::printf("build failed: %.*s\n",
                 static_cast<int>(ac3::admbridge::describe(bridged.error()).size()),
                 ac3::admbridge::describe(bridged.error()).data());
     return 1;
@@ -96,15 +96,44 @@ independent of `ac3adm`'s own BW64/ADM-XML-specific parsing, even though
   `audioPackFormat` → `audioChannelFormat`, then resolves each channel's `audioTrackUIDRef`
   through `<chna>` to its physical PCM channel in `AdmDocument::audio`.
 
+## Object extent and channel lock
+
+`width`/`height`/`depth` map straight through to `ac3::oba::ObjectSize` on every keyframe this
+bridge produces. BS.2076-2 Table 15/16/17's extents and TS 103 420 §5.6.1.2's
+`object_width`/`object_depth`/`object_height` are the same normalized `[0, 1]` quantity on the
+same three axes, so this is a rename rather than a conversion, and §10.3's interpolation of them
+between blocks is exactly what `KeyframePath` already does with position and gain.
+
+`channelLock` maps to `ObjectPlacement::snap` — BS.2076-2 §10.2 and TS 103 420 §5.6.1.5.1
+("Channel lock") describe the same instruction to a renderer: place the object at its nearest
+speaker instead of panning between speakers. `maxDistance` has no image: `b_object_snap` is one
+bit with no distance to condition it on, so a conditioned `channelLock` becomes an unconditioned
+snap, which is the closest thing the syntax can say.
+
+Both reach the bitstream and stop there. `AtmosEncoder` still folds every object into its 5.1 bed
+as a point source, for the reason
+[Spatial & Atmos objects](spatial-and-atmos.md#extent-and-rendering-constraints) gives: spreading
+an object in the downmix would have the receiving renderer spread it a second time.
+
 ## What does not get mapped
 
-`width`/`height`/`depth`/`diffuse`/`objectDivergence` (parsed by `ac3adm`, and per §10.3 also
-nominally interpolatable) have no equivalent in `ac3::oba::Keyframe`/`ObjectPlacement` at all —
-`AtmosEncoder`'s object model is a pure point source, so every channel this bridge produces is one
-too, regardless of what the source ADM data's spread parameters said. `channelLock`/`zoneExclusion`
-are parsed but likewise dropped — there is no "nearest bed speaker" or "masked zone" concept
-downstream of a fixed 5.1 VBAP ring to map them onto. Both are silent drops, documented here rather
-than left for a caller to discover by reading source.
+- **`diffuse`** (§10.1) is parsed by `ac3adm` and dropped. It is a direct-versus-diffuse balance,
+  not an extent; OAMD has no field for it, and folding it into `object_size` would misreport a
+  decorrelation instruction as a physical size.
+- **`zoneExclusion`** (§10.4) and **`objectDivergence`** (§10.5) are not parsed by `ac3adm` at all
+  — `ac3adm::AudioBlockFormat` has no field for either, so nothing is dropped so much as never
+  read. Both have a partial image in OAMD (`zone_constraints_idx`, and `obj_div_block` in the
+  `extended_object_element`), but neither is a clean mapping: BS.2076-2 excludes arbitrary
+  axis-aligned cuboids, while TS 103 420 Table 20 offers six named presets and no way to express
+  anything else, and `obj_div_block` rides in an element `oba::build_payload` does not write. The
+  decode side reads both (`DynamicObject::zone`, `DynamicObject::divergence`); the ADM-to-OAMD
+  direction is left unmapped rather than approximated.
+- **`screenRef`** and the Matrix/Binaural-specific sub-elements are likewise unparsed, per
+  `ac3adm::model.hpp`'s own scope note.
+
+`ObjectPlacement::zone` and `ObjectPlacement::enable_elevation` exist and are transmitted — a
+caller constructing paths directly can set them; it is only the ADM-derived route that leaves them
+at their defaults.
 
 ## API
 

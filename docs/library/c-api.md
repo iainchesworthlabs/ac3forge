@@ -108,7 +108,10 @@ through `ac3forge_decoded_substream_has_object_metadata()`/
 `ac3forge_decoded_access_unit_has_object_metadata()` and a parallel set of accessors — program
 shape (`program_dynamic_only`/`program_lfe`/`program_bed`), each dynamic object's room-anchored
 position and gain (`..._dynamic_object`), and JOC's reconstructed per-object audio
-(`..._object_audio`/`..._object_audio_count`), index-parallel to the dynamic objects. See
+(`..._object_audio`/`..._object_audio_count`). Those audio entries are index-parallel to the
+dynamic objects for the dynamic-object-only programme this project's own encoder writes; for a
+bed programme they are its bed channels instead, and the C++ surface
+(`DecodedSubstream::object_indices`, `ac3::oba::joc_object_indices`) is what says which. See
 [Spatial & Atmos objects](spatial-and-atmos.md) for what the position/gain values mean and how
 `ac3forge_atmos_encoder_t` (the C counterpart to `ac3::oba::AtmosEncoder`) produces them.
 
@@ -120,3 +123,13 @@ custom `ac3::meta::Profile` DRC curve (attack/release timing, boost ratios) is l
 tuning knob; the C API exposes only the five named presets (above). Internal kernel-level
 benchmarking entry points such as `ac3::oba::band_energy` are excluded outright — their own C++
 doc comments already say no caller outside the library should need them directly.
+
+`ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
+export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
+here either, and that is a decision rather than an omission: the shape of the type is expected to
+move when a live position source lands (roadmap `UX4`, which is why `SceneCursor` exists), and
+this surface is a candidate for the coming API freeze, where an experimental type would be a
+lasting commitment. Exposing half of it - the serialisation without the type, say - would be
+worse than exposing none, because a caller would get a scene it could load and not evaluate.
+Read and write the JSON form from the host language and hand the resulting placements to the
+encoder entry points above until the type settles.

@@ -91,8 +91,14 @@ def read_channels(path: Path) -> tuple[list[list[float]], int]:
     return out, rate
 
 
+# strict=True at every zip in this file, not the length-tolerant default: this
+# script is the gold-reference gate's comparator, and a silent truncation to
+# the shorter sequence is exactly how a comparison oracle reports a pass it
+# never checked. Every call site here already guarantees equal lengths -
+# best_lag skips a short probe, align() trims both to one common n, and the
+# channel-count mismatch is rejected above - so strict= can say so out loud.
 def dot(a: list[float], b: list[float]) -> float:
-    return sum(x * y for x, y in zip(a, b))
+    return sum(x * y for x, y in zip(a, b, strict=True))
 
 
 def best_lag(ref_mono: list[float], act_mono: list[float], max_lag: int, probe_len: int) -> int:
@@ -104,10 +110,7 @@ def best_lag(ref_mono: list[float], act_mono: list[float], max_lag: int, probe_l
     ref_probe = ref_mono[:n]
     best = (0, -1.0)
     for lag in range(-max_lag, max_lag + 1):
-        if lag >= 0:
-            act_probe = act_mono[lag:lag + n]
-        else:
-            act_probe = ([0.0] * (-lag) + act_mono)[: n]
+        act_probe = act_mono[lag:lag + n] if lag >= 0 else ([0.0] * -lag + act_mono)[:n]
         if len(act_probe) < n:
             continue
         score = dot(ref_probe, act_probe)
@@ -133,7 +136,7 @@ def diff_rms_dbfs(reference: list[float], actual: list[float]) -> float:
     only on the way into JSON, same as snr_db's +inf."""
     if not reference:
         return -math.inf
-    power = sum((r - a) ** 2 for r, a in zip(reference, actual)) / len(reference)
+    power = sum((r - a) ** 2 for r, a in zip(reference, actual, strict=True)) / len(reference)
     if power <= 1e-30:
         return -math.inf
     return 10.0 * math.log10(power)
@@ -141,7 +144,7 @@ def diff_rms_dbfs(reference: list[float], actual: list[float]) -> float:
 
 def snr_db(reference: list[float], actual: list[float]) -> float:
     signal_power = sum(v * v for v in reference)
-    noise_power = sum((r - a) ** 2 for r, a in zip(reference, actual))
+    noise_power = sum((r - a) ** 2 for r, a in zip(reference, actual, strict=True))
     if noise_power <= 1e-20:
         return math.inf
     if signal_power <= 1e-20:
@@ -186,15 +189,16 @@ def main() -> int:
     act_channels, act_rate = read_channels(args.actual)
 
     if ref_rate != act_rate:
-        print(f"FAIL: sample rate mismatch ({args.reference}={ref_rate} vs {args.actual}={act_rate})")
+        print(f"FAIL: sample rate mismatch ({args.reference}={ref_rate} "
+              f"vs {args.actual}={act_rate})")
         return 1
     if len(ref_channels) != len(act_channels):
         print(f"FAIL: channel count mismatch ({args.reference}={len(ref_channels)} "
               f"vs {args.actual}={len(act_channels)})")
         return 1
 
-    ref_mono = [sum(frame) for frame in zip(*ref_channels)]
-    act_mono = [sum(frame) for frame in zip(*act_channels)]
+    ref_mono = [sum(frame) for frame in zip(*ref_channels, strict=True)]
+    act_mono = [sum(frame) for frame in zip(*act_channels, strict=True)]
     lag = best_lag(ref_mono, act_mono, args.max_lag_samples, args.probe_samples)
 
     worst = math.inf
@@ -202,7 +206,7 @@ def main() -> int:
     failed = False
     channels_db = []
     diffs_dbfs = []
-    for idx, (ref_ch, act_ch) in enumerate(zip(ref_channels, act_channels)):
+    for idx, (ref_ch, act_ch) in enumerate(zip(ref_channels, act_channels, strict=True)):
         r, a = align(ref_ch, act_ch, lag)
         result = snr_db(r, a)
         diff = diff_rms_dbfs(r, a)

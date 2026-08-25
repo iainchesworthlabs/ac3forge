@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <fmt/format.h>
+#include <string>
 #include <vector>
 
 #include "ac3/core/bitwriter.hpp"
@@ -31,6 +33,18 @@ namespace {
 
 std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     BitWriter w;
+
+    // §E2.3.1.2's legacy core has no codec-config box defined for it. An
+    // AC3SpecificBox describes one AC-3 syncframe and has no field that can
+    // mention the Annex E dependents at all; an EC3SpecificBox's bsid field
+    // would have to claim the independent substream is Annex E syntax when it
+    // is an AC-3 frame. Neither is a description of what is in mdat, and
+    // guessing one produces a file whose header contradicts its payload -
+    // so this returns nothing and leaves the muxer to refuse the stream
+    // (apps/cli/commands/containers.cpp does, before ever reaching here).
+    if (stream.kind == StreamKind::kAc3CoreEac3Extension) {
+        return {};
+    }
 
     if (stream.kind == StreamKind::kAc3) {
         // ETSI TS 102 366 Annex F §F.4 AC3SpecificBox: fscod(2) + bsid(5) +
@@ -71,27 +85,43 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     // not a real-world case.
     constexpr std::uint32_t kMaxDataRate = (1U << 13) - 1;
     w.put(static_cast<std::uint32_t>(std::min<std::uint64_t>(data_rate_kbps, kMaxDataRate)), 13);
-    // num_ind_sub: ac3::io::scan() groups an access unit as exactly one
-    // independent substream plus whatever dependents follow it before the
-    // next independent one (scan_eac3's close_unit) - so there is always
-    // exactly one loop iteration below, encoded as num_ind_sub == 0 (the
-    // field counts "one less than" the substream count, mirroring frmsiz's
-    // own "value plus one" convention elsewhere in this syntax).
+    // num_ind_sub: ONE, encoded as 0 (the field counts "one less than" the
+    // substream count, mirroring frmsiz's own "value plus one" convention
+    // elsewhere in this syntax).
+    //
+    // §F.6 does repeat the per-substream block for each independent substream,
+    // and a stream may carry up to eight (§E2.3.1.2) - but this box describes
+    // whatever went into the track, and what goes into the track is
+    // ScannedStream::access_units, which is the FIRST programme's units alone
+    // (see its own comment: two programmes are alternatives, not layers, and
+    // splicing their units into one track is not something a player can
+    // undo). Carrying every programme in one track, with num_ind_sub > 1 and
+    // a per-substream block each, is roadmap IO6's job together with the
+    // service granularity DC3 supplies - the two have to arrive together,
+    // since a box declaring programmes the track does not contain is worse
+    // than one describing what it does.
     w.put(0, 3);  // num_ind_sub
 
-    w.put(box_fscod(stream.sample_rate), 2);             // fscod
-    w.put(static_cast<std::uint32_t>(stream.bsid), 5);   // bsid
-    w.put(0, 1);                                         // reserved
-    // asvc: the associated-service flag. This project has no concept of an
-    // associated service for the streams it produces - every stream here is
-    // a single, self-contained programme - so 0 is the objectively correct
-    // value, not a placeholder for a field ScannedStream simply doesn't
-    // carry yet.
-    w.put(0, 1);                                         // asvc
+    // The programme those access units belong to - the same one every scalar
+    // field on ScannedStream describes.
+    const ScannedProgramme absent{};
+    const ScannedProgramme& programme =
+        stream.programmes.empty() ? absent : stream.programmes.front();
+    w.put(box_fscod(stream.sample_rate), 2);            // fscod
+    w.put(static_cast<std::uint32_t>(stream.bsid), 5);  // bsid
+    w.put(0, 1);                                        // reserved
+    // asvc: the associated-service flag. A/52 §5.4.2.2 puts the service type
+    // in bsmod, and 2-7 are the associated services (audio description,
+    // commentary, emergency and the rest) a receiver mixes against a main
+    // one, while 0-1 are complete main services. So this is exactly "is this
+    // programme's own bsmod an associated one", read off the bitstream rather
+    // than assumed - which for the ordinary main-service stream still comes
+    // out 0, as it always did.
+    w.put(programme.bsmod >= 2 ? 1U : 0U, 1);            // asvc
     w.put(static_cast<std::uint32_t>(stream.bsmod), 3);  // bsmod
     w.put(static_cast<std::uint32_t>(stream.acmod), 3);  // acmod
-    w.put(stream.lfe ? 1U : 0U, 1);                       // lfeon
-    w.put(0, 3);                                          // reserved
+    w.put(stream.lfe ? 1U : 0U, 1);                      // lfeon
+    w.put(0, 3);                                         // reserved
     // substreams_per_unit counts every substream of the first access unit,
     // independent one included (ScannedStream's own comment) - so the
     // dependent count is one less, floored at 0 for a stream scan() rejected
@@ -131,6 +161,13 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
         w.put(0, 1);  // flag_ec3_extension_type_a
     }
     return w.take();
+}
+
+std::string dash_channel_configuration(const ScannedStream& stream) {
+    // Four upper-case hex digits of ScannedStream::channel_map, zero-padded -
+    // see this function's own comment in ac3/io/dec3.hpp for the scheme and
+    // the citation.
+    return fmt::format("{:04X}", stream.channel_map);
 }
 
 }  // namespace ac3::io

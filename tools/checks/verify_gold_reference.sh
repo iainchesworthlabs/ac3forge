@@ -197,9 +197,21 @@ check_against_source() {
     fi
 }
 
+# dither=off / nodither below: §7.3.4 leaves the actual dither VALUES
+# decoder-defined ("any reasonably random sequence"), so two independent,
+# spec-correct decoders given the same dithered stream diverge in the
+# dithered bins by design, not by bug - once dithflag is really decided from
+# content (EncoderConfig::dither / plan::Tools::dither), the gold material
+# below hits that on most blocks and would fail this gate's tight floor for a
+# reason that has nothing to do with a regression. This gate exists to
+# compare two decodes of the SAME bitstream at floating-point-noise
+# precision, so it asks every encode here for the deterministic, pre-EQ4
+# dithflag=0 behaviour instead - the one thing this gate cannot tell apart
+# from a real bug. Nothing about dither itself is exercised here;
+# tools/ci/quality_race.py and the CLI's own dithflag tests own that.
 count=$((count + 1))
 echo "[$count] encode: AC-3 5.1 @ 448 kbps"
-run_cli encode "$GOLD_WAV" "$WORKDIR/gold.ac3" 448 51 >/dev/null
+run_cli encode "$GOLD_WAV" "$WORKDIR/gold.ac3" 448 51 dither=off >/dev/null
 check_one "ac3" "$WORKDIR/gold.ac3" "ac3" 448
 
 count=$((count + 1))
@@ -207,8 +219,10 @@ echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=none)"
 # The plain-path baseline: no Annex E tool engages, so this is the closest
 # thing to an apples-to-apples comparison between the two decoders and sets
 # the tightest floor (see MIN_SNR_DB's own comment for the 61.8-67.9 dB range
-# this has landed in historically).
-run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold.ec3" 256 none 51 >/dev/null
+# this has landed in historically). "nodither" alone is this generation's
+# "no tools" - the literal "none" is a distinct special case parse_tools()
+# does not let another token join.
+run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold.ec3" 256 nodither 51 >/dev/null
 check_one "eac3" "$WORKDIR/gold.ec3" "eac3" 256
 
 count=$((count + 1))
@@ -239,7 +253,7 @@ echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=cpl)"
 # all at the round-trips-without-crashing and FFmpeg-parses-it level; this
 # gate's tight dB-based regression detection just isn't the right tool for
 # them yet.
-run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold_cpl.ec3" 256 cpl 51 >/dev/null
+run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
 check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256
 
 # Third-party interop: cplbndstrce == 0 (Annex E's default coupling band
@@ -355,24 +369,27 @@ EOF
     check_one "$ext_label" "$EXTERNAL_BASELINE_DIR/$ext_path" "$ext_codec" "$ext_kbps" "$ext_floor"
 done
 
-# The sixth. FFmpeg cannot read DEE's stereo E-AC-3 stream: its own decoder
-# reports "exponent 25 is out-of-range" and "error decoding the audio block"
-# on frame after frame, which under this script's strict flags is a hard
-# failure and even without them is real concealment damage - FFmpeg's decode
-# of this fixture scores 14.3 dB against the source WAV, where ac3cli's scores
-# 33.7 dB on the same alignment. So there is no FFmpeg oracle here at all,
-# the same situation run_codec_matrix.sh already handles by skipping the
-# FFmpeg check rather than tolerating its failure. The reference used instead
-# is the WAV DEE was handed, which this repository has: 33.7 dB measured, and
-# comparable to the 33.1 dB ac3cli's decoder gets on FFmpeg's own encode of
-# the same source at the same rate - two encoders' output landing within
-# 0.6 dB of each other through one decoder is what says this decode is right
-# and FFmpeg's is not. Floor 25, the same measured-minus-8 basis as above.
+# The sixth. FFmpeg fails frame 0 of DEE's stereo E-AC-3 stream from cold -
+# one frame of the 94, reporting "exponent 25 is out-of-range" and "error
+# decoding the audio block" - and conceals it by repeating block 0 across
+# blocks 1-4 rather than dropping it. Under this script's strict flags that
+# one frame is a hard failure outright, and even without them the concealment
+# is whole-file damage: FFmpeg's decode of this fixture scores 14.30 dB
+# against the source WAV, where ac3cli's scores 33.72 dB on the same
+# alignment. So there is no usable FFmpeg oracle here, the same situation
+# run_codec_matrix.sh already handles by skipping the FFmpeg check rather
+# than tolerating its failure. The reference used instead is the WAV DEE was
+# handed, which this repository has: 33.72 dB measured, and comparable to the
+# 33.1 dB ac3cli's decoder gets on FFmpeg's own encode of the same source at
+# the same rate - two encoders' output landing within 0.6 dB of each other
+# through one decoder is what says this decode is right and FFmpeg's is not.
+# Floor 25, the same measured-minus-8 basis as above.
 #
-# (This also contradicts manifest.json's recorded 33.32 dB for DEE's stereo
-# leg, which says "decoded_with": "ffmpeg". Re-measuring that number is
-# gen_external_baseline.py's business, not this gate's - noted here so the
-# discrepancy is on record rather than lost.)
+# manifest.json's 33.32 dB for this leg says "decoded_with": "ffmpeg" and is
+# not in conflict with the 14.30 dB above: quality_race.py's score_fixed
+# skips the first 0.2 s, which is exactly where the failing frame sits. See
+# gen_external_baseline.py's module docstring, which records the whole
+# analysis.
 DEE_STEREO_EC3="$EXTERNAL_BASELINE_DIR/eac3-stereo-192/dee.ec3"
 STEREO_WAV="$REPO_ROOT/tests/golden/audio/reference_stereo.wav"
 for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do

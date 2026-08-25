@@ -9,11 +9,15 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/bitalloc.hpp"  // BitAllocCodes, for previous_codes_ below
 #include "ac3/core/mantissas.hpp"  // MantissaToken, for the token scratch below
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/mirror.hpp"
@@ -40,6 +44,12 @@ struct EncoderConfig {
     // meaningless otherwise — the two programmes are levelled independently.
     std::optional<int> dialnorm2 = std::nullopt;
     int chbwcod = -1;  // fbw bandwidth code 0..60; -1 = auto from bitrate
+    // §7.2.2.4 fast gain, Table 7.11. -1 asks for the encoder's own choice,
+    // which is rate-dependent (see encoder.cpp step 0's measurement table);
+    // 0..7 pins it. Pinned here rather than searched per frame for the reason
+    // that comment gives: two code sets produce two different masking curves,
+    // so the encoder's own composite SNR offset cannot compare them.
+    int fgaincod = -1;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     // Channel coupling (§7.4): above the coupling frequency the fbw channels
@@ -58,10 +68,22 @@ struct EncoderConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp).
     bool fast_mdct = true;
+
+    // §7.3.4 dithflag, decided per channel per block from content (see
+    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // config field here. false pins dithflag at 0 unconditionally, the
+    // deterministic behaviour from before this existed: real dither values
+    // are decoder-defined (the spec's own "any reasonably random sequence"),
+    // so two independent, spec-correct decoders given the same dithered
+    // stream diverge in the dithered bins by design - which is exactly what
+    // breaks a bit-for-bit comparison between this project's own decoder and
+    // an external one (tools/checks/verify_gold_reference.sh). That gate sets
+    // this false; nothing else needs to.
+    bool dither = true;
 
     // --- dynamic range and downmix metadata (§7.7, §7.8) -------------------
     // Dynamic range control. std::nullopt leaves dynrnge clear in every block,
@@ -81,6 +103,54 @@ struct EncoderConfig {
     // heavy-compression peak detector consults them whatever acmod is.
     meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
     meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+
+    // --- bit stream information (§5.4.2, Annex D) --------------------------
+    // The informational fields: what service this is, whether the 2/0 pair is
+    // a Dolby Surround matrix, the mixing room it was judged in, the copyright
+    // and original-bitstream bits, and the time code. Every default matches
+    // the constant this encoder wrote before any of it was configurable, so a
+    // config that leaves this alone produces the same bits it always did.
+    // BsiInfo's dheadphonmod/dsurexmod/sourcefscod have no home in AC-3 bsi
+    // and are not read here - Annex D's xbsi2 below carries the first two.
+    meta::BsiInfo info{};
+    // Annex D (§D2.2): std::nullopt writes bsid 8 with info.timecod1/2 in the
+    // two 14-bit fields; set writes bsid 6 and spends those same 28 bits on
+    // xbsi1/xbsi2 instead, at which point info.timecod1/2 are unwritable and
+    // encode_frame() refuses rather than dropping them silently.
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
+
+    // --- decision search (ac3/quality) -------------------------------------
+    // §7.2.2's bit allocation parameters are chosen once, from the bit rate,
+    // and written into every frame of the encode. The comment at their
+    // declaration in encoder.cpp records why they were never searched: the
+    // only in-loop criterion this encoder had was the composite SNR offset,
+    // and that number is not comparable between two code sets because each
+    // produces a different masking curve for the offset to sit on.
+    //
+    // ac3::quality supplies the criterion that was missing - the error the
+    // decoder will actually reconstruct - so with this set the encoder tries
+    // a small set of candidate BitAllocCodes per frame, and decides the
+    // delta-bit-allocation race on measured error rather than on the
+    // composite offset each pass happened to reach.
+    //
+    // kNone by default, and not just because the search costs real time.
+    // Validated on real CC0/CC-BY programme material against FFmpeg's decode
+    // (SNR, log-spectral distance, ViSQOL MOS-LQO -
+    // docs/library/encoding-ac3.md's own table has the numbers): kDistortion
+    // is a real, repeatable win from 448 kbit/s up, but at 192 kbit/s its own
+    // criterion still improves while LSD and MOS both worsen - redistributing
+    // bits away from dbpbcod's quiet-band floor buys back less SNR than it
+    // costs in per-band spectral shape at that budget. kPerceptual
+    // loses outright at every rate tested, despite its psychoacoustic model
+    // being independently validated (tests/quality/test_perceptual.cpp): its
+    // objective correctly discounts already-masked headroom, which leaves it
+    // much thinner decision margins than raw distortion, and on real stereo
+    // material with rematrixing active those margins are landing on the
+    // wrong side of external metrics. This project does not turn a decision
+    // knob on without the numbers to justify it, and right now only
+    // kDistortion at the higher rates has them. `ac3cli encode search=...`
+    // sets it.
+    quality::Criterion search = quality::Criterion::kNone;
 
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // When set, encode_frame() records its own model of the decoder - the bit
@@ -121,6 +191,22 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] int channel_count() const {
         return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
     }
+
+    // Roadmap PF6. Constant for the life of the encoder - nothing in
+    // EncoderConfig moves any term (see ac3/latency.hpp for what each one
+    // is): AC-3 has one frame length, this encoder needs no lookahead, and
+    // §3.7's hold-back is an Annex E tool AC-3 does not have. Reported as a
+    // member function rather than a free constant so a caller holding an
+    // encoder can ask it directly, and so the E-AC-3 and Atmos encoders -
+    // where the answer DOES depend on the configuration - answer the same
+    // question the same way.
+    [[nodiscard]] LatencyBudget latency() const {
+        return LatencyBudget{.frame_samples = kSamplesPerFrame,
+                             .transform_samples = kTransformDelaySamples,
+                             .lookahead_samples = 0,
+                             .holdback_samples = 0};
+    }
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
     EncoderConfig config_;
@@ -177,6 +263,32 @@ class AC3FORGE_EXPORT FrameEncoder {
     // state only: it changes how fast the search converges, never which
     // offset it converges to. Negative until a frame has been encoded.
     int snr_search_hint_ = -1;
+    // The previous frame's winning BitAllocCodes (EncoderConfig::search),
+    // unlike the hint above NOT performance-only: it is step 9a's incumbent
+    // for THIS frame's comparison, so which candidate wins can depend on it.
+    // Without this, every frame compared its six candidates against the same
+    // fixed default, with nothing that favoured staying where the PREVIOUS
+    // frame landed - and on material where two candidates measure within the
+    // switch margin of each other, that reproduces exactly the failure the
+    // margin exists to prevent: real material was measured switching on 156
+    // of 750 frames, 80 of them a single frame reverting the next. Carrying
+    // the winner forward as the incumbent gives "stay" a standing zero-cost
+    // option every frame (down to 123 of 750 with this in place), which is
+    // what turns the margin into real hysteresis instead of a per-frame coin
+    // flip that happens to be biased. This did not turn out to be the whole
+    // story behind the low-bitrate quality tradeoff documented at
+    // EncoderConfig::search - see that comment - but it is real, measured
+    // instability the margin was already supposed to prevent, independent of
+    // that finding. Meaningless, and never read, while EncoderConfig::search
+    // is kNone.
+    BitAllocCodes previous_codes_{.dbpbcod = 3};
+    // The chbwcod this encoder last transmitted, so the content-adaptive
+    // band edge can be rate-limited on the way DOWN (see encode_frame's
+    // bandwidth step). Unlike snr_search_hint_ above this is not a
+    // performance hint: it is part of the decision, and dropping it would
+    // change the bitstream. Negative until a frame has been encoded, which
+    // is what lets the first frame take the content's answer outright.
+    int chbwcod_state_ = -1;
     // Both controllers smooth their gain over time, so they have to outlive a
     // frame - a per-frame instance would restart the attack every 32 ms.
     std::optional<meta::RangeController> range_;

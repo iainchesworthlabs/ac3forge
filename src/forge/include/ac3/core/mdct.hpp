@@ -18,9 +18,10 @@
 // accepted that evidence it is what every encoder config defaults to
 // (EncoderConfig::fast_mdct / eac3::FrameConfig::fast_mdct default true and
 // are what an encoder actually reads to decide - a caller of THIS function
-// still opts in explicitly). Only THIS transform (alpha = 0) has an
-// accelerated path today - mdct256_forward_first/second's `fast` currently
-// has no effect; see their own doc comment for why.
+// still opts in explicitly). All three forward transforms accelerate - this
+// one and both halves of a block-switched pair, each down its own
+// independently-derived fold; see mdct256_forward_first/second's own doc
+// comment below.
 //
 // Inverse (decoder side, NORMATIVE §7.9.4.1): the N/4-point complex
 // transform with xcos1/xsin1 pre/post twiddles and the windowing/
@@ -29,12 +30,12 @@
 // plus the §7.9.4.1 step-6 overlap-add (pcm = 2 * (x + delay), the factor
 // of 2 undoing encoder headroom scaling).
 //
-// The inverses' `fast` selects a radix-2 FFT for step 3's N/4-point complex
-// sum ONLY - the spec's own pseudocode evaluates that step as a direct
-// O(N^2) sum against a tabulated (k, n) matrix, and with the +j*sin sign
+// The inverses' `fast` selects an FFT for step 3's N/4-point complex sum
+// ONLY - the spec's own pseudocode evaluates that step as a direct O(N^2)
+// sum against a tabulated (k, n) matrix, and with the +j*sin sign
 // convention it is exactly an unscaled inverse DFT, so the fast path is
-// conj(FFT(conj(Z))) through the same radix-2 core the forward's fast fold
-// already uses (fft_radix2.hpp). Steps 2, 4 and 5 - the normative twiddles
+// conj(FFT(conj(Z))) through the same kernel the forward's fast fold
+// already uses (fft_kernel.hpp). Steps 2, 4 and 5 - the normative twiddles
 // and the windowing/de-interleave map - are the identical code either way.
 // Direct remains the default at THIS level for the forward's own reason:
 // the direct evaluation is the spec's statement of the transform and the

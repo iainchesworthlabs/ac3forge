@@ -10,8 +10,8 @@ Four separate mechanisms, not one, and it matters which is which:
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
-  runs the same encoder configurations for longer (200 frames) and records the actual
-  ms/frame number, not just a pass/fail, on every push to `develop`/`main`. It exists
+  runs the same configurations for longer (200 frames) and records the actual
+  ms/frame number, not just a pass/fail, on every push to `main`. It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
   over time even while it keeps passing.
 - **This page's per-kernel tables**: `ac3kernelbench`
@@ -34,7 +34,47 @@ forward MDCT should have cached) once shipped with no coverage to catch it: the 
 gate blocks a repeat outright, and the trend tables catch the gradual drift a
 pass/fail gate cannot see.
 
-`tools/ci/append_performance_history.py` appends every `develop`/`main` run's numbers
+## What is measured, and on what
+
+Both timing producers and the gate cover the same nine workloads: three encoders
+(`plain_51` and `plain_51_fast_mdct`, `eac3_51_auto` and `eac3_stereo_auto`,
+`atmos_4obj` and `atmos_4obj_fast_mdct`) and the three decoders that read what they
+produce (`ac3_51_decode`, `eac3_51_decode`, `atmos_4obj_decode`). Until roadmap PF1
+the E-AC-3 encoder — the largest source file in the codec — and every decode path had
+no ms/frame number and no real-time gate anywhere, so a regression in any of them was
+invisible here. The decode series are timed against streams the encode series in the
+same run just produced: a decode number only means something against a stream whose
+rate and tool set are known.
+
+Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
+through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and
+`ac3perf` ran on before PF1. A single stationary tone is not a cheaper version of
+programme material, it is a different workload: its spectrum is one bin wide, so the
+SNR-offset search converges against an allocation almost nothing competes for,
+coupling has near-nothing to share between channels, rematrixing sees a pair that is
+already identical, and the transient detector never fires — so the block-switched
+transform never runs at all. A regression confined to any of those could not move the
+number. `ac3kernelbench` had this rule from the start; PF1 applied it to the other
+two. The fixture is 78 frames long and the benches run 200, so frame indices wrap;
+the seam that creates lands in the same place on every run.
+
+Only `linux-gcc` is measured, not the full CI matrix — see the note below the append
+scripts for why. Every number on this page is that one runner's; nothing here is a
+cross-platform comparison, and a number from a developer machine is not comparable
+to one of these rows.
+
+Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
+show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
+targeted is smaller than this page's own run-to-run variance on a shared runner, so
+the effect is real but not visible against that noise floor in a 200-frame series.
+Isolated from the rest of the frame - the exact per-bin loop, `~9,100` conversions
+sized like one real 5.1 frame's worth, minimum of several runs - it measured
+~50 µs before and ~30 µs after per frame's worth of calls (a 1.5-1.8× speedup on that
+slice), consistent with the ~33-38 µs the change targeted. The gate that actually
+matters for this change is byte-identical output, not a timing number: see the PF2
+commit message for the corpus that was checked.
+
+`tools/ci/append_performance_history.py` appends every `main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
 `gh-pages`: incremental, no publish-cadence coupling, fetchable client-side with no
@@ -43,6 +83,13 @@ check: a soft one (20% slower than the trailing 10-run mean, `::warning::` only)
 a hard one (100% slower - i.e. at least doubled - `::error::`, fails the
 `persist-performance-trend` CI job *after* the numbers are still recorded, so a big
 regression is never silently un-recorded just because it also failed the run).
+
+Both append scripts key every series by its own name end to end, so a workload or
+kernel added to a bench simply starts its own series: its first run has no trailing
+mean to be compared against and cannot trip its own regression gate, and it never
+perturbs an existing series' baseline. That is also why an existing series' name is
+not reused for a differently-shaped measurement — a trailing mean over two different
+workloads is a number with no owner.
 
 `tools/ci/append_kernel_history.py` does the same for `ac3kernelbench`'s per-kernel
 numbers (`kernels-develop.jsonl` / `kernels-main.jsonl`, same branch), with the same
@@ -68,6 +115,15 @@ comparing one consistent runner against its own history over time, not in compar
 GitHub's runner classes against each other the way the gold-reference SNR numbers
 usefully are cross-platform.
 
+`performance-develop.jsonl`, `kernels-develop.jsonl` and `memory-develop.jsonl`
+all stopped gaining rows on 2026-08-24, `develop`'s last commit before
+2026-08-25's move to trunk-based development retired the branch - see
+[Quality trend](quality-trend.md#where-the-data-lives) for the detail, which
+applies here identically. They are kept as-is, not deleted or merged into
+`main`'s own files; each section below renders `main`'s ongoing history
+directly and folds `develop`'s frozen one into a collapsed *Show historical
+data* block beneath it instead.
+
 ## Whole-frame trend
 
 Each series below is a chart first, table second. The chart plots that
@@ -77,7 +133,12 @@ budget and a dashed ring around any point whose commit was tagged as a
 GitHub release - hover a point for the exact commit, date and number. A
 downward slope is the improvement this whole page exists to make visible;
 release rings turn that into a release-to-release story instead of a wall
-of per-commit numbers.
+of per-commit numbers. `main`'s chart and table render directly, in solid
+colour; `develop`'s frozen history sits inside the collapsed *Show
+historical data (develop, pre-2026-08-25 GitFlow era)* block below each
+series, drawn dashed and muted when opened so it reads as archived rather
+than as a second live series - the per-kernel and memory sections below
+follow the same convention, table-only (no chart to style).
 
 <div id="performance-trend-app">
   <p class="performance-trend-status">Loading trend data…</p>
@@ -95,18 +156,83 @@ of per-commit numbers.
 #performance-trend-app table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
 #performance-trend-app th, #performance-trend-app td { padding: 0.35em 0.6em; text-align: left; border-bottom: 1px solid var(--md-default-fg-color--lightest); white-space: nowrap; }
 .performance-trend-over-budget { color: var(--md-typeset-mark-color, #c62828); font-weight: 600; }
-.performance-trend-branch-heading { margin-top: 1.5em; }
 .performance-trend-release-row { background: color-mix(in srgb, var(--md-accent-fg-color, #7c4dff) 8%, transparent); }
 .performance-trend-release { text-decoration: none; font-weight: 600; }
 .performance-trend-release:hover { text-decoration: underline; }
+.performance-trend-historical { margin-top: 1.5em; border-top: 1px solid var(--md-default-fg-color--lightest); padding-top: 0.75em; }
+.performance-trend-historical summary { cursor: pointer; font-weight: 600; color: var(--md-default-fg-color--light); }
+.performance-trend-historical summary:hover { color: var(--md-default-fg-color); }
 </style>
 
 <script>
+  // Shared by all three sections below (whole-frame, per-kernel, memory) so
+  // the fetch/parse plumbing and the main-vs-historical split live in one
+  // place instead of three near-identical copies - the three IIFEs used to
+  // redefine rawUrl/parseJsonl/shortSha/groupBy identically. Deliberately
+  // scoped to this one page, not a separate docs/javascripts asset: every
+  // trend page here is self-contained by design (see the top of this repo's
+  // docs/CONTRIBUTING notes on the CI-trend pages), and these three sections
+  // are the only ones on the same page repeating each other - the sibling
+  // pages' own near-duplication is across separate documents, not something
+  // a page-local script can reach anyway.
+  const PERF_TREND_REPO = "iainchesworthlabs/ac3forge";
+  const PERF_TREND_HISTORY_BRANCH = "quality-history";
+  const PERF_TREND_MAIN_COLOR = "#7c4dff";
+  // Muted and dashed (see each section's buildChart) rather than a second
+  // saturated colour - the historical track reads as archived, not as a
+  // second live series. Matches the sibling trend pages' identical choice.
+  const PERF_TREND_HISTORICAL_COLOR = "#9e9e9e";
+
+  function perfTrendRawUrl(branch, file) {
+    return `https://raw.githubusercontent.com/${PERF_TREND_REPO}/${branch}/${file}`;
+  }
+
+  function perfTrendParseJsonl(text) {
+    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+  }
+
+  function perfTrendShortSha(sha) {
+    return (sha || "").slice(0, 7);
+  }
+
+  function perfTrendGroupBy(records, keyFn) {
+    const groups = new Map();
+    for (const rec of records) {
+      const key = keyFn(rec);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(rec);
+    }
+    return groups;
+  }
+
+  // Renders `sectionRenderer`'s output for main's records directly - no
+  // heading, since main is the only ongoing track and this page no longer
+  // presents it as one of two choices - then, only if this fetch actually
+  // has develop rows, renders develop's output again inside a collapsed
+  // <details>, explicitly labelled as frozen pre-2026-08-25 GitFlow-era
+  // history rather than an ongoing parallel branch. `sectionRenderer`
+  // receives (records, isHistorical); the whole-frame section uses
+  // isHistorical to pick a chart colour, the kernel and memory sections
+  // (table-only, no chart) ignore it.
+  function perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer, noDataMessage) {
+    const mainRecords = allRecords.filter((r) => r.branch === "main");
+    const historicalRecords = allRecords.filter((r) => r.branch === "develop");
+    if (mainRecords.length === 0 && historicalRecords.length === 0) {
+      root.innerHTML = noDataMessage;
+      return;
+    }
+    const mainHtml = mainRecords.length ? sectionRenderer(mainRecords, false) : "<p><em>No data yet on main.</em></p>";
+    const historicalHtml = historicalRecords.length
+      ? `<details class="performance-trend-historical"><summary>Show historical data (develop, pre-2026-08-25 GitFlow era)</summary>${sectionRenderer(historicalRecords, true)}</details>`
+      : "";
+    root.innerHTML = mainHtml + historicalHtml;
+  }
+</script>
+
+<script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
-  const HISTORY_BRANCH = "quality-history";
-  const BRANCHES = ["develop", "main"];
-  // How many of each (branch, leg, config)'s most recent rows to show in the
+  const REPO = PERF_TREND_REPO;
+  // How many of each (leg, config) series' most recent rows to show in the
   // table - a trend readout, not a full audit log. Mirrors quality-trend.md's
   // own TABLE_ROWS in spirit, just scoped per-series instead of globally,
   // since performance-trend.md only ever has one leg (linux-gcc) rather than
@@ -114,23 +240,14 @@ of per-commit numbers.
   // it plots the series' full history so a release from further back than
   // the last 20 runs still shows up as a ring.
   const ROWS_PER_SERIES = 20;
-  const CHART_COLOR = "#7c4dff";
 
   const root = document.getElementById("performance-trend-app");
 
-  function rawUrl(branch, file) {
-    return `https://raw.githubusercontent.com/${REPO}/${branch}/${file}`;
-  }
-
-  function parseJsonl(text) {
-    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
-  }
-
   async function fetchBranch(branch) {
     try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `performance-${branch}.jsonl`));
+      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `performance-${branch}.jsonl`));
       if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
+      return perfTrendParseJsonl(await resp.text());
     } catch (e) {
       return [];
     }
@@ -175,25 +292,13 @@ of per-commit numbers.
     return shaMap;
   }
 
-  function shortSha(sha) {
-    return (sha || "").slice(0, 7);
-  }
-
-  function groupBy(records, keyFn) {
-    const groups = new Map();
-    for (const rec of records) {
-      const key = keyFn(rec);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(rec);
-    }
-    return groups;
-  }
-
   // sortedRows: full series history, oldest to newest. Budget is read off
   // the most recent row, same as the table below - a config's budget
   // doesn't change often, but this always reflects the current one, not a
-  // stale first-run value.
-  function buildChart(sortedRows, releasesBySha) {
+  // stale first-run value. color/dashed pick main's or the historical
+  // track's styling - see perfTrendRenderMainAndHistorical above.
+  function buildChart(sortedRows, releasesBySha, opts) {
+    const { color = PERF_TREND_MAIN_COLOR, dashed = false } = opts || {};
     const width = 720, height = 160, pad = { top: 10, right: 12, bottom: 22, left: 46 };
     const budget = sortedRows.length ? sortedRows[sortedRows.length - 1].real_time_budget_ms_per_frame : null;
     const values = sortedRows.map((r) => r.ms_per_frame).concat(budget !== null ? [budget] : []);
@@ -222,26 +327,27 @@ of per-commit numbers.
 
     if (sortedRows.length > 1) {
       const path = sortedRows.map((r, i) => `${i === 0 ? "M" : "L"}${x(Date.parse(r.commit_date)).toFixed(1)},${y(r.ms_per_frame).toFixed(1)}`).join(" ");
-      svg += `<path d="${path}" fill="none" stroke="${CHART_COLOR}" stroke-width="2"/>`;
+      const dash = dashed ? ' stroke-dasharray="5,3"' : "";
+      svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"${dash}/>`;
     }
     sortedRows.forEach((r) => {
       const cx = x(Date.parse(r.commit_date)).toFixed(1);
       const cy = y(r.ms_per_frame).toFixed(1);
       const release = releasesBySha[r.commit];
-      const title = `${shortSha(r.commit)} - ${r.ms_per_frame.toFixed(3)} ms/frame on ${r.commit_date.slice(0, 10)}${release ? ` - release ${release.name}` : ""}`;
-      svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${CHART_COLOR}"><title>${title}</title></circle>`;
+      const title = `${perfTrendShortSha(r.commit)} - ${r.ms_per_frame.toFixed(3)} ms/frame on ${r.commit_date.slice(0, 10)}${release ? ` - release ${release.name}` : ""}`;
+      svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"><title>${title}</title></circle>`;
       if (release) {
-        svg += `<circle cx="${cx}" cy="${cy}" r="6.5" fill="none" stroke="${CHART_COLOR}" stroke-width="1.5" stroke-dasharray="2,1.5"><title>${title}</title></circle>`;
+        svg += `<circle cx="${cx}" cy="${cy}" r="6.5" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="2,1.5"><title>${title}</title></circle>`;
       }
     });
     svg += "</svg>";
     return svg;
   }
 
-  function buildLegend(sortedRows, releasesBySha) {
+  function buildLegend(sortedRows, releasesBySha, color) {
     const anyRelease = sortedRows.some((r) => releasesBySha[r.commit]);
     const items = [
-      '<span><i></i>ms/frame</span>',
+      `<span><i style="background:${color}"></i>ms/frame</span>`,
       '<span><i style="background:none;border:1.5px dashed var(--md-typeset-mark-color, #c62828);border-radius:0;"></i>budget</span>',
     ];
     if (anyRelease) {
@@ -250,10 +356,11 @@ of per-commit numbers.
     return `<div class="performance-trend-legend">${items.join("")}</div>`;
   }
 
-  function renderSeries(leg, config, rows, releasesBySha) {
+  function renderSeries(leg, config, rows, releasesBySha, isHistorical) {
     const sorted = rows.slice().sort((a, b) => a.commit_date.localeCompare(b.commit_date));
     const recent = sorted.slice(-ROWS_PER_SERIES).reverse();
     const budget = sorted.length ? sorted[sorted.length - 1].real_time_budget_ms_per_frame : null;
+    const color = isHistorical ? PERF_TREND_HISTORICAL_COLOR : PERF_TREND_MAIN_COLOR;
     const trs = recent.map((r) => {
       const overBudget = budget !== null && r.ms_per_frame > budget;
       const release = releasesBySha[r.commit];
@@ -263,7 +370,7 @@ of per-commit numbers.
         : "";
       return `<tr${classes ? ` class="${classes}"` : ""}>
         <td>${r.commit_date ? r.commit_date.slice(0, 10) : ""}</td>
-        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${shortSha(r.commit)}</a></td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${perfTrendShortSha(r.commit)}</a></td>
         <td>${r.ms_per_frame.toFixed(3)}</td>
         <td>${budget !== null ? budget.toFixed(3) : ""}</td>
         <td>${r.frames}</td>
@@ -272,8 +379,8 @@ of per-commit numbers.
     }).join("");
 
     return `<h4>${leg} / ${config}</h4>
-    <div class="performance-trend-chart-wrap">${buildChart(sorted, releasesBySha)}</div>
-    ${buildLegend(sorted, releasesBySha)}
+    <div class="performance-trend-chart-wrap">${buildChart(sorted, releasesBySha, { color, dashed: isHistorical })}</div>
+    ${buildLegend(sorted, releasesBySha, color)}
     <div class="performance-trend-table-wrap">
       <table>
         <thead><tr><th>Date</th><th>Commit</th><th>ms/frame</th><th>Budget (ms/frame)</th><th>Frames</th><th>Release</th></tr></thead>
@@ -282,32 +389,25 @@ of per-commit numbers.
     </div>`;
   }
 
-  function renderBranch(branch, records, releasesBySha) {
-    if (records.length === 0) {
-      return `<h3 class="performance-trend-branch-heading">${branch}</h3><p><em>No data yet.</em></p>`;
-    }
-    const groups = groupBy(records, (r) => `${r.leg} ${r.config}`);
-    const sections = [...groups.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, rows]) => {
-        const [leg, config] = key.split(" ");
-        return renderSeries(leg, config, rows, releasesBySha);
-      })
-      .join("\n");
-    return `<h3 class="performance-trend-branch-heading">${branch}</h3>${sections}`;
-  }
-
   async function render() {
-    const [perBranch, releasesBySha] = await Promise.all([
-      Promise.all(BRANCHES.map(fetchBranch)),
+    const [mainRecords, developRecords, releasesBySha] = await Promise.all([
+      fetchBranch("main"),
+      fetchBranch("develop"),
       fetchReleaseShaMap(),
     ]);
-    const anyData = perBranch.some((records) => records.length > 0);
-    if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
-      return;
-    }
-    root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i], releasesBySha)).join("\n");
+    const allRecords = [...mainRecords, ...developRecords];
+    const sectionRenderer = (records, isHistorical) => {
+      const groups = perfTrendGroupBy(records, (r) => `${r.leg} ${r.config}`);
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, rows]) => {
+          const [leg, config] = key.split(" ");
+          return renderSeries(leg, config, rows, releasesBySha, isHistorical);
+        })
+        .join("\n");
+    };
+    perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer,
+      '<p class="performance-trend-status">No performance-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>');
   }
 
   render();
@@ -317,10 +417,22 @@ of per-commit numbers.
 ## Per-kernel trend
 
 Same commits, one level finer: each kernel's ns/call from `ac3kernelbench`, one
-series per kernel. The Δ column is each run against its own series' trailing
+series per kernel. Both directions of both block sizes are covered in both their
+direct and fast forms — `mdct512_forward`/`_fast`, `mdct256_pair`/`_fast`,
+`imdct512_windowed`/`_fast`, `imdct256_pair`/`_fast` — so the ratio between a pair
+is what `mode=reference` costs, and the fast inverse that became the decoder's
+default in 0.9.0 has a series of its own rather than being tracked through the
+direct form no decoder runs any more. The Δ column is each run against its own series' trailing
 10-run mean - the same window and thresholds `append_kernel_history.py` annotates
 with: ≥ +20% is flagged as a soft drift, ≥ +100% as a hard one. Neither ever fails
 CI (see above); a flagged row here is an invitation to look, not a broken build.
+
+Several kernels appear twice, as a `<name>` / `<name>_fast` pair: the transforms
+exist in two evaluations (the spec's own direct form and an accelerated one - see
+[Verification](verification.md#performance-and-reference-modes)), and both are
+recorded, because the reference form is maintained code that a `mode=reference` run
+actually executes, not dead weight. The `_fast` row is what a default encode or
+decode spends; the bare row is what the oracle costs.
 
 <div id="kernel-trend-app">
   <p class="performance-trend-status">Loading kernel trend data…</p>
@@ -336,9 +448,7 @@ CI (see above); a flagged row here is an invitation to look, not a broken build.
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
-  const HISTORY_BRANCH = "quality-history";
-  const BRANCHES = ["develop", "main"];
+  const REPO = PERF_TREND_REPO;
   // Fewer rows per series than the whole-frame tables' 20: there are a dozen-plus
   // kernel series to the whole-frame tables' handful of configs, and this page is
   // a trend readout, not an audit log - the JSONL keeps everything.
@@ -352,36 +462,14 @@ CI (see above); a flagged row here is an invitation to look, not a broken build.
 
   const root = document.getElementById("kernel-trend-app");
 
-  function rawUrl(branch, file) {
-    return `https://raw.githubusercontent.com/${REPO}/${branch}/${file}`;
-  }
-
-  function parseJsonl(text) {
-    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
-  }
-
   async function fetchBranch(branch) {
     try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `kernels-${branch}.jsonl`));
+      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `kernels-${branch}.jsonl`));
       if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
+      return perfTrendParseJsonl(await resp.text());
     } catch (e) {
       return [];
     }
-  }
-
-  function shortSha(sha) {
-    return (sha || "").slice(0, 7);
-  }
-
-  function groupBy(records, keyFn) {
-    const groups = new Map();
-    for (const rec of records) {
-      const key = keyFn(rec);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(rec);
-    }
-    return groups;
   }
 
   function formatNs(ns) {
@@ -406,7 +494,7 @@ CI (see above); a flagged row here is an invitation to look, not a broken build.
       const delta = r.slowdown === null ? "" : `${r.slowdown >= 0 ? "+" : ""}${(r.slowdown * 100).toFixed(1)}%`;
       return `<tr${cls}>
         <td>${r.commit_date ? r.commit_date.slice(0, 10) : ""}</td>
-        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${shortSha(r.commit)}</a></td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${perfTrendShortSha(r.commit)}</a></td>
         <td>${formatNs(r.ns_per_call)}</td>
         <td>${delta}</td>
         <td>${r.iters}</td>
@@ -422,31 +510,23 @@ CI (see above); a flagged row here is an invitation to look, not a broken build.
     </div>`;
   }
 
-  function renderBranch(branch, records) {
-    if (records.length === 0) {
-      return `<h3 class="performance-trend-branch-heading">${branch}</h3><p><em>No data yet.</em></p>`;
-    }
+  async function render() {
+    const [mainRecords, developRecords] = await Promise.all([fetchBranch("main"), fetchBranch("develop")]);
+    const allRecords = [...mainRecords, ...developRecords];
     // Grouped per (leg, kernel), never merged across kernels - a series is
     // only meaningful against its own history.
-    const groups = groupBy(records, (r) => `${r.leg} ${r.kernel}`);
-    const sections = [...groups.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, rows]) => {
-        const [leg, kernel] = key.split(" ");
-        return renderSeries(leg, kernel, rows);
-      })
-      .join("\n");
-    return `<h3 class="performance-trend-branch-heading">${branch}</h3>${sections}`;
-  }
-
-  async function render() {
-    const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
-    const anyData = perBranch.some((records) => records.length > 0);
-    if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
-      return;
-    }
-    root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
+    const sectionRenderer = (records) => {
+      const groups = perfTrendGroupBy(records, (r) => `${r.leg} ${r.kernel}`);
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, rows]) => {
+          const [leg, kernel] = key.split(" ");
+          return renderSeries(leg, kernel, rows);
+        })
+        .join("\n");
+    };
+    perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer,
+      '<p class="performance-trend-status">No kernel-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>');
   }
 
   render();
@@ -487,10 +567,104 @@ the table: the direct evaluation's 320 KiB of step-3 matrices are lazily
 built *static* storage, so switching the default to the FFT path removes
 them from the process (a 3-minute CLI decode's peak working set drops
 ~0.2-0.3 MiB) without moving an allocation count. Its real payoff is time,
-which the timing series on this page do not cover (they time encode only):
+which the timing series on this page did not cover when it landed (they timed
+encode only; roadmap PF1 added the three decode series after the fact):
 measured 180-second decodes went from 3.53 s to 0.79 s (AC-3) and 3.49 s to
 0.75 s (E-AC-3) when the fast path became the default - `mode=reference`
 runs the old numbers on purpose.
+
+## Minimum-footprint decoder
+
+Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
+soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
+[Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
+for what the profile changes and why.
+
+`apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
+E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from the
+run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprint` in
+`.github/workflows/_build.yml` reproduces them on every push, and
+`tools/checks/run_baremetal_probe.sh` reproduces them locally.
+
+The table below was first measured early in PF6/PF7's own feature branch (PR #351). Several
+`develop` merges landed on that branch afterwards but before it merged to `main` — most
+significantly DC10's QMF-domain JOC reconstruction, which the decode path genuinely needs
+(`src/dsp/qmf.cpp` and `src/verify/eac3_mirror.cpp`, both correctly added to
+`src/forge/minimal.cmake`'s source list at the time, per that merge's own commit message), plus
+the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
+or the ceiling before merging. The image had already reached 412,516 bytes by then; the numbers
+below are that re-measurement, re-based against the current `main`.
+
+### Static footprint
+
+| | Bytes |
+|---|---|
+| `.text` (code + read-only data) | 174,524 |
+| `.data` (initialised) | 400 |
+| `.bss` (zero-initialised) | 237,592 |
+| **Image total** | **412,516** (402.8 KiB) |
+
+Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
+attribution from the linker map):
+
+| Object | `.text` | `.bss` |
+|---|---|---|
+| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.4 KiB | 96.1 KiB |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 21.3 KiB | 42.3 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 50.5 KiB | 0 |
+| `decoder.cpp.obj` (AC-3) | 17.3 KiB | 0 |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 15.2 KiB | 12.4 KiB |
+| `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction — new since 354,060) | 8.9 KiB | 4.2 KiB |
+| `eac3_mirror.cpp.obj` (E-AC-3 decode-side trace, DecoderConfig::syntax — new since 354,060) | 8.5 KiB | 0 |
+| everything else, summed | 87.7 KiB | 12.9 KiB |
+
+`tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
+(`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
+`ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited, and checked by two
+`ASSERT()`s in the linker script rather than trusted.
+
+### Table ROM budget
+
+The reason PF7 asks for this figure by name: the direct-form transform tables `mode=reference`
+needs are **absent from this image entirely**, not merely unused. Measured on the object file
+with `dumpbin /HEADERS` (Windows) — the actual `.bss` reservation, not an estimate:
+
+| Table | Bytes | Only needed by |
+|---|---|---|
+| `ForwardCosTable<512>` | 1,048,576 | Direct-form forward MDCT, long — **encode**, not on this decoder's path at all |
+| `ForwardCosTable<256>` × 2 | 524,288 | Direct-form forward MDCT, short — **encode** |
+| `InnerSumTable` | 262,144 | Direct-form inverse, long — decode, `mode=reference` only |
+| `InnerSumPairTable` | 65,536 | Direct-form inverse, short — decode, `mode=reference` only |
+| **Total excluded** | **1,900,544** (1.81 MiB) | |
+| *Fast-path tables actually linked in* | *~12,600* | |
+
+A build asking for `mode=reference` in this profile gets `DecodeError::kUnsupported` rather than
+a silent fast-path substitution — see the building doc for why.
+
+### Runtime footprint
+
+| | Value |
+|---|---|
+| Peak heap | 243,470 bytes (237.8 KiB) |
+| Leaked at exit | 0 |
+| `sizeof(ac3::FrameDecoder)` | 12,952 bytes |
+| `sizeof(ac3::Eac3Decoder)` | 27,408 bytes |
+| Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
+| AC-3 allocations per frame, steady state | 45 |
+| E-AC-3 allocations per frame, steady state | 87 |
+
+The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
+for zero, and this is 45/87 — from the per-block geometry vectors inside the decoders and the
+`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
+memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
+those two return types, not to allocation *reuse*. Reaching zero means those becoming
+fixed-capacity, a public-type change tracked separately from this profile.
+
+`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak and both allocation counts
+at ceilings above these measured values, so a regression stops the build instead of drifting
+the table silently.
 
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>
@@ -504,9 +678,7 @@ runs the old numbers on purpose.
 
 <script>
 (function () {
-  const REPO = "iainchesworthlabs/ac3forge";
-  const HISTORY_BRANCH = "quality-history";
-  const BRANCHES = ["develop", "main"];
+  const REPO = PERF_TREND_REPO;
   const ROWS_PER_SERIES = 10;
   // Mirrors append_memory_history.py's window and tiers, so a flagged row
   // here and an annotation in the CI log are the same statement about the
@@ -517,36 +689,14 @@ runs the old numbers on purpose.
 
   const root = document.getElementById("memory-trend-app");
 
-  function rawUrl(branch, file) {
-    return `https://raw.githubusercontent.com/${REPO}/${branch}/${file}`;
-  }
-
-  function parseJsonl(text) {
-    return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
-  }
-
   async function fetchBranch(branch) {
     try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `memory-${branch}.jsonl`));
+      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `memory-${branch}.jsonl`));
       if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
+      return perfTrendParseJsonl(await resp.text());
     } catch (e) {
       return [];
     }
-  }
-
-  function shortSha(sha) {
-    return (sha || "").slice(0, 7);
-  }
-
-  function groupBy(records, keyFn) {
-    const groups = new Map();
-    for (const rec of records) {
-      const key = keyFn(rec);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(rec);
-    }
-    return groups;
   }
 
   function formatBytes(b) {
@@ -580,7 +730,7 @@ runs the old numbers on purpose.
       const delta = r.bytesGrowth === null ? "" : `${r.bytesGrowth >= 0 ? "+" : ""}${(r.bytesGrowth * 100).toFixed(1)}%`;
       return `<tr${cls}>
         <td>${r.commit_date ? r.commit_date.slice(0, 10) : ""}</td>
-        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${shortSha(r.commit)}</a></td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${perfTrendShortSha(r.commit)}</a></td>
         <td>${r.allocs_per_frame.toFixed(1)}</td>
         <td>${formatBytes(r.bytes_per_frame)}</td>
         <td>${r.steady_live_growth === 0 ? "0" : formatBytes(r.steady_live_growth)}</td>
@@ -598,29 +748,21 @@ runs the old numbers on purpose.
     </div>`;
   }
 
-  function renderBranch(branch, records) {
-    if (records.length === 0) {
-      return `<h3 class="performance-trend-branch-heading">${branch}</h3><p><em>No data yet.</em></p>`;
-    }
-    const groups = groupBy(records, (r) => `${r.leg} ${r.config}`);
-    const sections = [...groups.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, rows]) => {
-        const [leg, config] = key.split(" ");
-        return renderSeries(leg, config, rows);
-      })
-      .join("\n");
-    return `<h3 class="performance-trend-branch-heading">${branch}</h3>${sections}`;
-  }
-
   async function render() {
-    const perBranch = await Promise.all(BRANCHES.map(fetchBranch));
-    const anyData = perBranch.some((records) => records.length > 0);
-    if (!anyData) {
-      root.innerHTML = '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first develop/main push that reaches the persist-performance-trend CI job.</p>';
-      return;
-    }
-    root.innerHTML = BRANCHES.map((branch, i) => renderBranch(branch, perBranch[i])).join("\n");
+    const [mainRecords, developRecords] = await Promise.all([fetchBranch("main"), fetchBranch("develop")]);
+    const allRecords = [...mainRecords, ...developRecords];
+    const sectionRenderer = (records) => {
+      const groups = perfTrendGroupBy(records, (r) => `${r.leg} ${r.config}`);
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, rows]) => {
+          const [leg, config] = key.split(" ");
+          return renderSeries(leg, config, rows);
+        })
+        .join("\n");
+    };
+    perfTrendRenderMainAndHistorical(root, allRecords, sectionRenderer,
+      '<p class="performance-trend-status">No memory-trend data recorded yet - it appears after the first main push that reaches the persist-performance-trend CI job.</p>');
   }
 
   render();

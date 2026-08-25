@@ -28,6 +28,16 @@
 # this problem: matroska_static under the matroska:: namespace already lands
 # on the intended matroska::matroska_static with no stutter.)
 # ---------------------------------------------------------------------------
+# Roadmap PF7's minimum-footprint decoder profile builds something different
+# enough - static only, decode only, no exceptions, no direct-form transform
+# tables - that it gets its own file rather than a dozen conditionals through
+# this one. Off by default; the root CMakeLists.txt refuses the combination of
+# this option with anything that would need the full library.
+if(AC3FORGE_MINIMAL_DECODER)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
+    return()
+endif()
+
 add_library(forge_objects OBJECT)
 add_library(forge_static STATIC)
 add_library(forge_shared SHARED)
@@ -115,13 +125,18 @@ target_sources(forge_objects
         src/core/fft.cpp
         src/core/mantissas.cpp
         src/core/mdct.cpp
+        src/core/transform/reference/reference_transform.cpp
         src/decoder/decoder.cpp
         src/decoder/eac3_decoder.cpp
+        src/decoder/output.cpp
         src/decoder/transient_prenoise.cpp
         src/dsp/biquad.cpp
+        src/dsp/qmf.cpp
         src/dsp/resampler.cpp
         src/emdf/emdf.cpp
+        src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
+        src/encoder/bandwidth.cpp
         src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
         src/encoder/eac3_tools.cpp
@@ -130,9 +145,14 @@ target_sources(forge_objects
         src/encoder/transient.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/metadata_edit.cpp
+        src/io/object_strip.cpp
+        src/io/probe.cpp
         src/io/wav.cpp
+        src/io/wav_format.cpp
         src/io/wav_stream_reader.cpp
         src/io/wav_stream_writer.cpp
+        src/meta/bsi.cpp
         src/meta/drc.cpp
         src/meta/loudness.cpp
         src/meta/mixing.cpp
@@ -141,8 +161,15 @@ target_sources(forge_objects
         src/oba/joc.cpp
         src/oba/motion.cpp
         src/oba/oamd.cpp
+        src/oba/scene.cpp
+        src/oba/scene_json.cpp
+        src/oba/scene_text.cpp
+        src/quality/distortion.cpp
+        src/quality/perceptual.cpp
         src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
+        src/verify/eac3_mirror.cpp
+        src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
         src/verify/selfcheck.cpp
         src/version.cpp)
@@ -172,6 +199,90 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
 endif()
 
+# The same mechanism again, for the build-profile facts every source asks
+# through ac3/internal/profile.hpp (roadmap PF7): full/ says the direct-form
+# transform tables are present, minimal/ says they are not, and CMake picks
+# the directory rather than any source picking with an #ifdef.
+#
+# ac3::forge itself is always the full profile - the minimum-footprint
+# decoder is a SEPARATE target (forge_minimal, below), not a reconfiguration
+# of this one, so turning the option on never changes what an ordinary build
+# produces.
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/full")
+
+# src/core/ on the include path so the CMake-selected
+# src/core/transform/<variant>/reference_transform.cpp can include the
+# declaration it implements the same way mdct.cpp includes it - quote-relative
+# lookup only reaches a file's own directory, and the two variants live one
+# level down from the header they share.
+target_include_directories(forge_objects PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+
+# ---------------------------------------------------------------------------
+# The SIMD arch tree (ROADMAP PF5).
+#
+# Exactly the mechanism directly above, on the architecture axis instead of
+# the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
+# identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
+# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
+# codec core resolves to it. No translation unit ever asks what it is being
+# compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
+# and adding an architecture means adding a directory, not editing
+# conditionals in the kernels.
+#
+# The kernels themselves are NOT duplicated per directory. They live once,
+# in shared code (src/core/fft_radix2.hpp, src/core/mdct.cpp,
+# src/core/bitalloc.cpp, src/core/exponents.cpp), written against the two
+# 128-bit vector types the header defines; the directories carry the types
+# and their operations. See the generic header for why that is what makes
+# the bit-exactness claim testable.
+#
+# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
+# reproducibility comparison wants (is a difference between two machines the
+# vector kernels or something else?), and is the reference
+# tests/core/test_simd_kernels.cpp's scalar side is written to match.
+# ---------------------------------------------------------------------------
+set(AC3FORGE_SIMD "auto" CACHE STRING
+    "SIMD kernel directory: auto (from CMAKE_SYSTEM_PROCESSOR), generic, x86_64, or aarch64")
+set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
+
+if(AC3FORGE_SIMD STREQUAL "auto")
+    # AC3FORGE_BUILD_ARCH is resolved further up this file for version
+    # strings, from the same CMAKE_SYSTEM_PROCESSOR; reuse it rather than
+    # spelling the platform regexes a second time and letting the two drift.
+    # Anything that is not one of the two architectures with a directory -
+    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a soft-float
+    # embedded target - lands on generic, which is a complete implementation
+    # and not a stub.
+    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
+        set(AC3FORGE_SIMD_RESOLVED "x86_64")
+    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
+        set(AC3FORGE_SIMD_RESOLVED "aarch64")
+    else()
+        set(AC3FORGE_SIMD_RESOLVED "generic")
+    endif()
+else()
+    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
+endif()
+
+set(AC3FORGE_ARCH_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/${AC3FORGE_SIMD_RESOLVED}")
+if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
+    message(FATAL_ERROR
+        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
+        "directory under src/forge/src/internal/arch/. Add "
+        "src/forge/src/internal/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
+        "the portable implementation and is a working starting point.")
+endif()
+target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
+
+# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
+# simd.hpp the library was built with - the same white-box arrangement
+# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
+set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
+# For the configure summary at the end of the top-level CMakeLists.txt.
+set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
+
 target_compile_features(forge_objects PUBLIC cxx_std_23)
 
 # $<BUILD_INTERFACE:...> wrapping, not a plain PRIVATE link: ac3::warnings/
@@ -188,7 +299,8 @@ target_compile_features(forge_objects PUBLIC cxx_std_23)
 target_link_libraries(forge_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
     "$<BUILD_INTERFACE:ac3::coverage>"
-    "$<BUILD_INTERFACE:ac3::tracy>")
+    "$<BUILD_INTERFACE:ac3::tracy>"
+    "$<BUILD_INTERFACE:ac3::fmt>")
 
 # --- Static+shared plumbing -------------------------------------------------
 # PIC is required for any object code that might end up in a shared library

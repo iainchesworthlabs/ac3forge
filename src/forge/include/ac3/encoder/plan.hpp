@@ -11,9 +11,11 @@
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 
@@ -199,6 +201,19 @@ struct CodedChannel {
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> wav_order(
     std::span<const eac3::chanmap::Location> locations);
 
+// Same permutation as wav_order(locations), for callers reordering a decoded
+// access unit's `channels` for playback specifically. Dual mono (acmod
+// kDualMono) is the one case with no Table E2.5 layout at all -
+// DecodedAccessUnit's own comment documents `layout` as left empty (count 0)
+// for it - so `locations` arrives empty too, and wav_order alone would
+// return an empty permutation: fed to an interleave step, that silently
+// drops every channel instead of erroring. This returns the identity order
+// over `channel_count` in that case; Ch1 and Ch2 have no speaker location to
+// sort by, only the coded order decode_access_unit already documents them
+// in, which identity preserves.
+[[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> monitor_order(
+    std::span<const eac3::chanmap::Location> locations, std::size_t channel_count);
+
 // --- Annex E coding tools ---------------------------------------------------
 
 // Every tool is a trade rather than a free win, so they are selected rather
@@ -240,22 +255,54 @@ struct Tools {
     // spx_atten above. Deliberately NOT part of any(): whether a stream
     // used a coding tool is a bitstream question this flag never touches.
     bool fast_mdct = true;
+    // EncoderConfig::search - the per-frame search over transmitted bit
+    // allocation parameters, judged on the error the decoder will
+    // reconstruct (ac3/quality/distortion.hpp). Like fast_mdct above this is
+    // not a coding tool that changes the bitstream's SYNTAX, so it is
+    // likewise not part of any(); unlike fast_mdct it does change which
+    // codes a frame carries. kNone by default, matching the library config
+    // it feeds. AC-3 only so far: the E-AC-3 encoder's own step 9 has a
+    // different shape (Table E2.10 strategies hoisted to audfrm, snroffststr
+    // never exercised) and wiring it is EQ1/EQ2 work, not this.
+    quality::Criterion search = quality::Criterion::kNone;
+
+    // §7.3.4 dithflag, per-channel-per-block content decision - likewise not
+    // a coding tool (a decoder that never receives a set dithflag still
+    // decodes every stream correctly), but shares this surface with
+    // fast_mdct for the same reason. On by default (see EncoderConfig::
+    // dither / eac3::FrameConfig::dither); "nodither" pins it at 0
+    // unconditionally, the deterministic behaviour a bit-for-bit comparison
+    // against an external decoder needs (see dither's own comment for why
+    // real dither values are inherently decoder-specific).
+    bool dither = true;
+
+    // §E2.3.1.4: how many 256-sample blocks a syncframe carries - see
+    // eac3::FrameConfig::numblkscod for what a value below the default 3
+    // (six blocks) buys and what it forces off (AHT, the hoisted exponent-
+    // strategy form). E-AC-3 only, like every other field here; unlike them,
+    // this one is not optional to honour once asked for - a decoder that
+    // ignores it decodes the wrong number of samples, so it is not folded
+    // into any() as an on/off tool but always carried through apply_tools.
+    int numblkscod = 3;
 
     // `auto` counts: it may well turn a tool on, and the caller needs E-AC-3
-    // either way for the choice to be available at all.
+    // either way for the choice to be available at all - numblkscod != 3
+    // needs E-AC-3 for the same reason, since classic AC-3 has no such field.
     [[nodiscard]] bool any() const {
-        return auto_tools || coupling || spx || aht || transient_prenoise;
+        return auto_tools || coupling || spx || aht || transient_prenoise || numblkscod != 3;
     }
 };
 
 inline constexpr std::string_view kToolsSyntax =
-    "none | auto | cpl | spx | aht | tpn | nofastmdct | all (auto picks the tool set from the "
-    "per-channel rate and ignores the on/off tokens, which is what a stream should normally "
-    "use; cpl:N / spx:N pin a band edge, aht:N the "
+    "none | auto | cpl | spx | aht | tpn | nofastmdct | nodither | numblkscod:N | all (auto picks "
+    "the tool set from the per-channel rate and ignores the on/off tokens, which is what a stream "
+    "should normally use; cpl:N / spx:N pin a band edge, aht:N the "
     "gain mode, ecpl selects enhanced coupling instead of standard, tpn selects transient "
     "pre-noise processing, nofastmdct forces the direct-form forward MDCT instead of the "
-    "default §7.9.4 fast path - the fast MDCT is not a coding tool, so 'none'/'all' leave it "
-    "alone and the older opt-in spelling 'fastmdct' is accepted as a no-op)";
+    "default §7.9.4 fast path, nodither pins dithflag at 0 instead of deciding it from content - "
+    "neither is a coding tool, so 'none'/'all' leave them alone and the older opt-in spelling "
+    "'fastmdct' is accepted as a no-op; numblkscod:N (0-3, default 3) shortens the syncframe to "
+    "1/2/3/6 blocks and forces AHT off, and 'none'/'all' leave it alone too)";
 
 // The '+'-joined token: "none", "cpl", "cpl+spx", "all", "cpl:4+spx:5",
 // "aht:0", "spx+noatten", "atten:12". Returns false on anything unrecognised
@@ -270,13 +317,24 @@ inline constexpr std::string_view kToolsSyntax =
 
 // --- variable bit rate -------------------------------------------------------
 
-inline constexpr std::string_view kVbrSyntax = "off | q:0..1[,min:kbps][,max:kbps] - E-AC-3 only";
+inline constexpr std::string_view kVbrSyntax =
+    "off | q:0..1[,min:kbps][,max:kbps] | avg:kbps[,win:frames][,min:kbps][,max:kbps]"
+    " - E-AC-3 only";
 
-// "off" or empty clears `out` (CBR); "q:<quality>" turns VBR on, optionally
-// followed by ",min:<kbps>" and/or ",max:<kbps>" in either order. Returns
-// false on anything unrecognised, out of range, or with min above max,
-// leaving `out` partially written - the same reject-rather-than-continue
-// rule parse_tools follows, for the same reason.
+// "off" or empty clears `out` (CBR). Otherwise one of two rate controls,
+// named by the LEADING token:
+//   "q:<quality>"  - plain VBR: a fixed quality, the rate follows the content.
+//   "avg:<kbps>"   - average-rate mode (eac3::AbrConfig): the encoder steers
+//                    the SNR offset to hold that long-run average, with a
+//                    sliding-window bit reservoir underneath it. Optionally
+//                    ",win:<frames>" for the window. No quality is accepted
+//                    here and none is printed back - ABR does not read one.
+// Either may be followed by ",min:<kbps>" and/or ",max:<kbps>", which bound
+// each individual frame, in any order. Returns false on anything
+// unrecognised, out of range, naming both rate controls at once, with min
+// above max, or with a min/max bound that excludes the average, leaving `out`
+// partially written - the same reject-rather-than-continue rule parse_tools
+// follows, for the same reason.
 [[nodiscard]] AC3FORGE_EXPORT bool parse_vbr(std::string_view text,
                                              std::optional<eac3::VbrConfig>& out);
 
@@ -317,14 +375,60 @@ struct Metadata {
     std::optional<meta::Profile> drc2 = std::nullopt;
     std::optional<meta::HeavyConfig> heavy2 = std::nullopt;
     // E-AC-3 only: emit the mixmdate group. AC-3 carries cmixlev/surmixlev in
-    // bsi and has nowhere to put the rest.
+    // bsi and has nowhere to put the rest of it - bar the four Lt/Rt and
+    // Lo/Ro levels and dmixmod, which Annex D's xbsi1 does carry; `annexd`
+    // below is that path.
     bool mixmeta = false;
     std::optional<int> lfemix = meta::kLfeMixLevelIdeal;
     meta::DownmixMode dmixmod = meta::DownmixMode::kLoRo;
+    // The four Table D2.3-D2.6 levels. std::nullopt keeps the derivation
+    // mix_metadata() has always used - the Lo/Ro pair widened from
+    // cmixlev/surmixlev above, the Lt/Rt pair at -3 dB - so a plan that says
+    // nothing here produces exactly the group it produced before.
+    std::optional<meta::MixLevel> ltrtcmixlev = std::nullopt;
+    std::optional<meta::MixLevel> lorocmixlev = std::nullopt;
+    std::optional<meta::MixLevel> ltrtsurmixlev = std::nullopt;
+    std::optional<meta::MixLevel> lorosurmixlev = std::nullopt;
+    // The rest of Table E1.2's mixmdate (E-AC-3 only): programme scale
+    // factors, the mixing-parameter block, pan information and the per-block
+    // mixing configuration. Carried on a MixMetadata of its own rather than
+    // as a dozen loose fields, since that is the shape both the encoder and
+    // the decoder already speak; mix_metadata() copies it over the levels it
+    // derives. Setting anything here implies mixmeta.
+    meta::MixMetadata mixdepth{};
+
+    // --- bit stream information (§5.4.2, Annex D, Table E1.2) -------------
+    // What service this is and how it was produced. AC-3 writes these into
+    // bsi unconditionally; E-AC-3 has to open an infomdat element for them,
+    // which `infomdat` below does.
+    meta::BsiInfo info{};
+    // E-AC-3 only: emit the infomdat group. AC-3 has no such gate - every one
+    // of these fields is unconditional in its bsi.
+    bool infomdat = false;
+    // §D2.3.1.10 / Table E1.2: the A/D converter type is stated once here and
+    // each codec's config builder puts it where that codec has room for it -
+    // Annex D's xbsi2 on AC-3, inside audprodie on E-AC-3. Keeping it out of
+    // `info.audprod` is what stops naming a converter type from inventing an
+    // audprodie group on AC-3, which has no field for it there.
+    meta::AdConverterType adconvtyp = meta::AdConverterType::kStandard;
+    // §D2.3.1.12, AC-3 Annex D only: the one bit reserved for the encoder.
+    bool encinfo = false;
+    // AC-3 only: emit bsid 6 and Annex D's xbsi1/xbsi2 in place of the two
+    // timecod fields. E-AC-3 has no alternate syntax - its own mixmdate and
+    // infomdat carry the same quantities - so this is ignored there.
+    bool annexd = false;
 };
 
-// The mixmdate group these options imply.
+// The mixmdate group these options imply: the five Table D2.2-D2.6 levels
+// derived from cmixlev/surmixlev/dmixmod (or taken from the explicit
+// overrides where they are set), lfemix, and everything Metadata::mixdepth
+// carries verbatim.
 [[nodiscard]] AC3FORGE_EXPORT meta::MixMetadata mix_metadata(const Metadata& options);
+
+// Annex D's xbsi1/xbsi2 the same options imply, for the AC-3 path. xbsi1 is
+// the same five levels mix_metadata() derives, minus the LFE level Annex D
+// has no field for.
+[[nodiscard]] AC3FORGE_EXPORT meta::AlternateBsi alternate_bsi(const Metadata& options);
 
 // --- the plan ---------------------------------------------------------------
 
@@ -351,10 +455,14 @@ struct Plan {
 enum class PlanError : std::uint8_t {
     kLayoutNeedsEac3,      // an immersive layout (or channel selection) asked of AC-3
     kBitrateNotLegal,      // AC-3 takes only the 19 Table 5.18 rates
+    kBitrateNotFramable,   // E-AC-3: a substream's frame size does not fit frmsiz's 11 bits
     kNoSourceLayout,       // no standard speaker layout has that many channels
     kInvalidChannels,      // custom_locations is not a channel selection allocate() can satisfy
     kSampleRateNeedsEac3,  // fscod2 (24/22.05/16 kHz) asked of AC-3, which has no such field
     kVbrNeedsEac3,         // vbr was set alongside Codec::kAc3
+    // Annex D's xbsi1/xbsi2 and the time code occupy the same 28 bits (§D1),
+    // so a plan asking for both is asking for a frame twice the size it has.
+    kTimecodeNeedsBsid8,
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(PlanError error);
@@ -363,7 +471,11 @@ enum class PlanError : std::uint8_t {
 // set, else channel_plan_for(layout). Every function below that consumes a
 // Plan's channels goes through this, so a custom selection and a named
 // layout are built exactly the same way. Assumes `plan` already passed
-// validate(), the way ac3_config/eac3_config already assume a valid bitrate.
+// validate(), the way ac3_config/eac3_config already assume a valid bitrate -
+// with the one deliberate exception validate() itself makes, which calls
+// eac3_config() (and so this) to reach the per-substream rates it has to
+// check. That call is made only after the channel checks have passed, so what
+// it resolves is always a selection allocate() could satisfy.
 [[nodiscard]] AC3FORGE_EXPORT ChannelPlan resolve(const Plan& plan);
 
 // AC-3 only; the caller has already checked carries(). Coupling comes from
@@ -376,6 +488,25 @@ enum class PlanError : std::uint8_t {
 // substreams occupy one frame period, not one frame.
 [[nodiscard]] AC3FORGE_EXPORT eac3::AccessUnitConfig eac3_config(const Plan& plan);
 
+// One programme of an access unit, built from a plan of its own: the same
+// independent-plus-dependents shape eac3_config() produces, without the
+// AccessUnitConfig wrapper. A front end authoring a second independent
+// substream (§E2.3.1.2 - a second language, an audio description, a
+// commentary) plans it exactly like the first, with its own layout, rate,
+// tools and metadata, and pushes the result onto
+// AccessUnitConfig::additional.
+//
+// substreamid is not set here: the access unit assigns it by position, so a
+// programme does not know its own id until it is placed.
+[[nodiscard]] AC3FORGE_EXPORT eac3::ProgrammeConfig eac3_programme(const Plan& plan);
+
+// The one diagnosis every front end shares: std::nullopt if this plan is one
+// the encoders can actually be built from, else the first thing wrong with
+// it, ready for describe(). Worth asking BEFORE constructing an encoder from
+// ac3_config/eac3_config: a config either of those produces from a plan this
+// refuses is one no encoder can report on, because a constructor has nowhere
+// to return a verdict to. eac3::AccessUnitEncoder's simply builds no
+// substreams, which leaves its channel_count() at zero.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<PlanError> validate(const Plan& plan);
 
 // --- routing a source onto a plan -------------------------------------------

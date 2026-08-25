@@ -21,14 +21,14 @@ So the order is just:
 
 1. Merge to `main`.
 2. Tag.
-3. Sync `main` back into `develop`: `gh pr create --base develop --head main`, then merge it the
-   same way as any other PR. This isn't optional cleanup - `git describe --tags` walks ancestry
-   from HEAD, so a tag that exists only on `main`'s side of history is invisible to a `develop`
-   build. Skipping this step after the v0.6.0-beta.1 promotion (#180) left `develop` builds
-   reporting a stale `v0.5.0-beta.1-...` version - visible in `ac3gui`'s About dialog - until the
-   gap was closed with #192.
 
-No version-bump commit, no file to keep in sync - tagging *is* the release decision.
+No version-bump commit, no file to keep in sync, and (since the 2026-08 move to trunk-based
+development) no second branch to sync the tag back into either - tagging *is* the release
+decision. Before trunk-based development, `main` and `develop` were separate branches and a tag
+placed only on `main` was invisible to `git describe --tags` on a `develop` build until a
+sync-back PR carried it over (the v0.6.0-beta.1 promotion, #180, missed this and left `develop`
+builds reporting a stale version until #192 caught up) - that whole class of gap no longer
+exists because there is only one branch to tag.
 
 Tags are strict SemVer 2.0.0: `vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]`, e.g. `v0.2.0` or
 `v0.2.0-beta.1`. A tag with a prerelease suffix (or the dispatch form's `prerelease` checkbox)
@@ -45,22 +45,21 @@ dispatched build fetches full history (or gets the version stamped directly via
 
 ## Pre-release checklist
 
-1. **Before opening the `develop` -> `main` promotion PR**: confirm `develop` carries no
-   unexplained open code-scanning alerts.
+1. **Before tagging**: confirm `main` carries no unexplained open code-scanning alerts.
 
    ```bash
-   gh api "repos/iainchesworthlabs/ac3forge/code-scanning/alerts?ref=refs/heads/develop&state=open" -q '.[] | [.number, .rule.id, .most_recent_instance.location.path] | @tsv'
+   gh api "repos/iainchesworthlabs/ac3forge/code-scanning/alerts?ref=refs/heads/main&state=open" -q '.[] | [.number, .rule.id, .most_recent_instance.location.path] | @tsv'
    ```
 
    Empty output - or every remaining line individually understood and either fixed or
-   dismissed with a justification - is the bar. This step exists because the PR-time gate
-   cannot cover it: alerts are tracked per-ref and the Security tab filters to the default
-   branch (`main`), so anything that accumulates on `develop` between releases (a scheduled
-   run picking up updated query packs, an already-dismissed finding re-minted by a file
-   move - alert identity is rule + line hash + *file path*) stays invisible until the
-   promotion merge lands it all on `main` at once, which is exactly how the v0.9.0-beta.1
-   promotion surfaced alerts #83-94. `release.yml`'s `alert-review` job re-checks this
-   (advisory only, default branch) as a backstop.
+   dismissed with a justification - is the bar. Under trunk-based development this is a single
+   check against the branch a release is actually cut from (a scheduled run picking up updated
+   query packs, or an already-dismissed finding re-minted by a file move, can still add an
+   alert between releases even with no separate integration branch in the picture).
+   `release.yml`'s `alert-review` job re-checks this (advisory only, default branch) as a
+   backstop - it is what caught alerts #83-94 unnoticed on `main` under the old
+   `develop`-\>`main` promotion flow, where alerts could accumulate on `develop` invisibly
+   until a promotion merge landed them all on `main` at once.
 2. CI green on `main` for the commit you're about to tag.
 3. Releases must be **cut from main** - `resolve-version` checks this with
    `git merge-base --is-ancestor` and fails otherwise (dry runs are exempt).
@@ -459,6 +458,19 @@ mode. A release keystore is a prerequisite before this could ever go through the
 which sideloading itself doesn't require. (Not to be confused with **object signing** - the EMDF
 Atmos authenticity tag, provisioned separately via the `ATMOS_SIGNING_KEY` secret and
 unrelated to APK code-signing; see "Provisioning the Android object-signing key" below.)
+
+Alongside the packages, one artifact that is not a build of anything:
+**`ac3forge-conformance-vectors-<version>.tar.gz`**, the published conformance vector set
+(roadmap VX20) - 60 AC-3 / E-AC-3 / Atmos streams covering each coding tool, layout and sample
+rate the encoder can emit, with the source PCM each was encoded from, the expected decode hashes
+and a manifest of what each exercises. `_build.yml`'s linux-gcc leg builds it, from
+`tools/generators/gen_conformance_vectors.py`; the release call additionally sets
+`publish_conformance_vectors`, which regenerates the whole bundle a second time and fails the leg
+if a single hash moved. It lands in `release-artifacts/` after the "at least one package was
+built" check - deliberately, since it is a `.tar.gz` and would otherwise satisfy that check on
+its own - and from there it is signed, checksummed, SBOM'd and attested exactly like a package.
+See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
+uses it.
 
 No leg is `experimental: true` any more (see `ci.yml`'s status table), so all five package
 for real rather than best-effort - a packaging failure on any of them blocks the release the

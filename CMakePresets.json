@@ -165,17 +165,42 @@
       }
     },
     {
+      "name": "sanitize-tsan",
+      "hidden": true,
+      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists (roadmap VX16): src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
+      "cacheVariables": {
+        "AC3FORGE_SANITIZERS": "thread"
+      }
+    },
+    {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3tests. CLI and examples are off purely to save build time: they would link fine (the gcov runtime propagates to consumers automatically, see cmake/Coverage.cmake), but tools/checks/coverage_report.sh filters the report to the library components, so building them instrumented buys nothing - see .github/workflows/ci.yml's coverage job.",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (roadmap VX15): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "AC3FORGE_ENABLE_COVERAGE": "ON",
-        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_CLI": "ON",
         "AC3FORGE_BUILD_EXAMPLES": "OFF",
         "AC3FORGE_BUILD_ADM": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm"
       }
     },
+    {
+      "name": "minimal-decoder",
+      "hidden": true,
+      "description": "Roadmap PF7's minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
+      "cacheVariables": {
+        "AC3FORGE_MINIMAL_DECODER": "ON",
+        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_GUI": "OFF",
+        "AC3FORGE_BUILD_TESTS": "OFF",
+        "AC3FORGE_BUILD_EXAMPLES": "OFF",
+        "AC3FORGE_BUILD_MATROSKA": "OFF",
+        "AC3FORGE_BUILD_MP4": "OFF",
+        "AC3FORGE_BUILD_MPEGTS": "OFF",
+        "AC3FORGE_BUILD_CAPI": "OFF"
+      }
+    },
+
     {
       "name": "shared-libs",
       "hidden": true,
@@ -266,9 +291,36 @@
       "displayName": "Linux LLVM ASan+UBSan"
     },
     {
+      "name": "config-linux-llvm-tsan",
+      "inherits": [ "debug", "linux-llvm", "sanitize-tsan", "core" ],
+      "displayName": "Linux LLVM ThreadSanitizer"
+    },
+    {
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
       "displayName": "Linux GCC Coverage"
+    },
+    {
+      "name": "config-linux-gcc-minimal",
+      "inherits": [ "minimal-decoder", "release", "linux-gcc", "core" ],
+      "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
+      "name": "config-linux-llvm-minimal",
+      "inherits": [ "minimal-decoder", "release", "linux-llvm", "core" ],
+      "displayName": "Linux LLVM minimum-footprint decoder"
+    },
+    {
+      "name": "config-arm-none-eabi-minimal",
+      "inherits": [ "minimal-decoder" ],
+      "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint decoder",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target roadmap PF7 names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
     },
     {
       "name": "config-linux-llvm-shared",
@@ -359,9 +411,29 @@
       "displayName": "Linux LLVM ASan+UBSan"
     },
     {
+      "name": "build-linux-llvm-tsan",
+      "configurePreset": "config-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer"
+    },
+    {
       "name": "build-linux-gcc-coverage",
       "configurePreset": "config-linux-gcc-coverage",
       "displayName": "Linux GCC Coverage"
+    },
+    {
+      "name": "build-linux-gcc-minimal",
+      "configurePreset": "config-linux-gcc-minimal",
+      "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
+      "name": "build-linux-llvm-minimal",
+      "configurePreset": "config-linux-llvm-minimal",
+      "displayName": "Linux LLVM minimum-footprint decoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal",
+      "configurePreset": "config-arm-none-eabi-minimal",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint decoder"
     },
     {
       "name": "build-linux-llvm-shared",
@@ -473,6 +545,20 @@
       "filter": {
         "exclude": {
           "label": "Performance"
+        }
+      }
+    },
+    {
+      "name": "test-linux-llvm-tsan",
+      "configurePreset": "config-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer Tests (concurrency label only)",
+      "inherits": "test-base",
+      "environment": {
+        "TSAN_OPTIONS": "suppressions=${sourceDir}/tsan.supp halt_on_error=1 second_deadlock_stack=1"
+      },
+      "filter": {
+        "include": {
+          "label": "concurrency"
         }
       }
     },
@@ -611,6 +697,15 @@
         { "type": "configure", "name": "config-linux-llvm-asan-ubsan" },
         { "type": "build", "name": "build-linux-llvm-asan-ubsan" },
         { "type": "test", "name": "test-linux-llvm-asan-ubsan" }
+      ]
+    },
+    {
+      "name": "ci-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-linux-llvm-tsan" },
+        { "type": "build", "name": "build-linux-llvm-tsan" },
+        { "type": "test", "name": "test-linux-llvm-tsan" }
       ]
     }
   ]

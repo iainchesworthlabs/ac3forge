@@ -29,6 +29,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/atmos.hpp"
@@ -93,6 +94,7 @@ std::string frame_error_name(ac3::FrameError e) {
         case ac3::FrameError::kInvalidChannelMap: return "kInvalidChannelMap";
         case ac3::FrameError::kTooManyChannels: return "kTooManyChannels";
         case ac3::FrameError::kInvalidMixLevel: return "kInvalidMixLevel";
+        case ac3::FrameError::kInvalidBsi: return "kInvalidBsi";
         case ac3::FrameError::kInvalidObjectAudio: return "kInvalidObjectAudio";
     }
     return "unknown";
@@ -227,6 +229,7 @@ PYBIND11_MODULE(_ac3forge, m) {
 
     m.attr("SAMPLES_PER_FRAME") = ac3::kSamplesPerFrame;
     m.attr("BLOCKS_PER_FRAME") = ac3::kBlocksPerFrame;
+    m.attr("TRANSFORM_DELAY_SAMPLES") = ac3::kTransformDelaySamples;
 
     // --- exceptions ----------------------------------------------------------
     // Defined here (rather than pure-Python subclasses of RuntimeError) so the extension owns
@@ -291,6 +294,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kInvalidChannelMap", ac3::FrameError::kInvalidChannelMap)
         .value("kTooManyChannels", ac3::FrameError::kTooManyChannels)
         .value("kInvalidMixLevel", ac3::FrameError::kInvalidMixLevel)
+        .value("kInvalidBsi", ac3::FrameError::kInvalidBsi)
         .value("kInvalidObjectAudio", ac3::FrameError::kInvalidObjectAudio);
 
     py::enum_<ac3::eac3::StreamType>(m, "StreamType")
@@ -372,6 +376,34 @@ PYBIND11_MODULE(_ac3forge, m) {
         py::arg("frame"));
 
     // --- plain data types (kwargs-constructible where a caller builds one) -------------------
+    // --- latency (roadmap PF6) ---------------------------------------------
+    py::class_<ac3::LatencyBudget>(
+        m, "LatencyBudget",
+        "Algorithmic delay of an encode->decode chain, in samples at the coded rate. "
+        "frame_samples is the encoder's input granularity; transform_samples is the "
+        "MDCT/IMDCT overlap and the one term that is a sample-domain shift (decoded sample "
+        "k is input sample k - transform_samples); lookahead_samples is input needed beyond "
+        "the frame being coded (zero throughout this library); holdback_samples is the "
+        "E-AC-3 §3.7 decoder hold-back.")
+        .def_readonly("frame_samples", &ac3::LatencyBudget::frame_samples)
+        .def_readonly("transform_samples", &ac3::LatencyBudget::transform_samples)
+        .def_readonly("lookahead_samples", &ac3::LatencyBudget::lookahead_samples)
+        .def_readonly("holdback_samples", &ac3::LatencyBudget::holdback_samples)
+        .def_property_readonly("total_samples", &ac3::LatencyBudget::total_samples)
+        .def(
+            "milliseconds",
+            [](const ac3::LatencyBudget& self, ac3::SampleRate sample_rate) {
+                return ac3::latency_ms(self, sample_rate);
+            },
+            py::arg("sample_rate"), "total_samples at the given coded rate, in milliseconds")
+        .def("__repr__", [](const ac3::LatencyBudget& b) {
+            return "LatencyBudget(frame=" + std::to_string(b.frame_samples) +
+                   ", transform=" + std::to_string(b.transform_samples) +
+                   ", lookahead=" + std::to_string(b.lookahead_samples) +
+                   ", holdback=" + std::to_string(b.holdback_samples) +
+                   ", total=" + std::to_string(b.total_samples()) + ")";
+        });
+
     py::class_<ac3::meta::Profile>(m, "Profile", "A/52 §7.7 DRC compression characteristic")
         .def(py::init([](py::kwargs kwargs) {
             return KwargBinder<ac3::meta::Profile>(std::move(kwargs))
@@ -513,7 +545,9 @@ PYBIND11_MODULE(_ac3forge, m) {
             "channels: a sequence of 1-D float arrays, ac3.SAMPLES_PER_FRAME samples each, AC-3 "
             "channel order (LFE last). Returns one syncframe as bytes.")
         .def_property_readonly("config", &ac3::FrameEncoder::config)
-        .def_property_readonly("channel_count", &ac3::FrameEncoder::channel_count);
+        .def_property_readonly("channel_count", &ac3::FrameEncoder::channel_count)
+        .def_property_readonly("latency", &ac3::FrameEncoder::latency)
+        .def_property_readonly("latency_samples", &ac3::FrameEncoder::latency_samples);
 
     // --- decoder ---------------------------------------------------------------
     py::class_<ac3::DecoderConfig>(m, "DecoderConfig")
@@ -616,7 +650,10 @@ PYBIND11_MODULE(_ac3forge, m) {
                 }
                 return result;
             },
-            py::arg("frame"), "Decode exactly one AC-3 syncframe");
+            py::arg("frame"), "Decode exactly one AC-3 syncframe")
+        .def_property_readonly(
+            "latency_samples", [](const ac3::FrameDecoder&) { return ac3::FrameDecoder::latency_samples(); },
+            "The delay this decoder adds on top of the encoder's budget: always 0 for AC-3.");
 
     py::class_<ac3::Eac3Decoder>(m, "Eac3Decoder")
         .def(py::init<>())
@@ -657,14 +694,19 @@ PYBIND11_MODULE(_ac3forge, m) {
             py::arg("unit"),
             "Decode one access unit (independent substream + dependents, as split_access_units "
             "delimits them). Same None convention as decode_substream, for the same reason.")
-        .def("flush", [](ac3::Eac3Decoder& self) {
-            std::vector<ac3::DecodedSubstream> out;
-            {
-                py::gil_scoped_release release;
-                out = self.flush();
-            }
-            return out;
-        });
+        .def("flush",
+             [](ac3::Eac3Decoder& self) {
+                 std::vector<ac3::DecodedSubstream> out;
+                 {
+                     py::gil_scoped_release release;
+                     out = self.flush();
+                 }
+                 return out;
+             })
+        .def_property_readonly(
+            "latency_samples", &ac3::Eac3Decoder::latency_samples,
+            "The delay this decoder adds on top of the encoder's budget: 0 until some "
+            "substream's frame sets transproce, SAMPLES_PER_FRAME from then on.");
 
     // --- Atmos objects -----------------------------------------------------
     py::class_<ac3::oba::AtmosConfig>(m, "AtmosConfig")
@@ -711,5 +753,14 @@ PYBIND11_MODULE(_ac3forge, m) {
             "objects: one mono ac3.SAMPLES_PER_FRAME array per object, in construction order. "
             "placement: one ac3.ObjectPlacement per object. Returns one E-AC-3 access unit as bytes.")
         .def_property_readonly("dynamic_object_count", &ac3::oba::AtmosEncoder::dynamic_object_count)
-        .def_property_readonly("program", &ac3::oba::AtmosEncoder::program);
+        .def_property_readonly("program", &ac3::oba::AtmosEncoder::program)
+        .def_property_readonly(
+            "latency", &ac3::oba::AtmosEncoder::latency,
+            "The OBJECT path's budget. Its transform term is TRANSFORM_DELAY_SAMPLES plus the "
+            "§7.1 QMF filterbank's own delay (576 samples): JOC reconstruction pulls objects "
+            "back out of the decoded bed in a 64-band complex QMF domain, not the MDCT's.")
+        .def_property_readonly("latency_samples", &ac3::oba::AtmosEncoder::latency_samples)
+        .def_property_readonly(
+            "bed_latency", &ac3::oba::AtmosEncoder::bed_latency,
+            "The 5.1 bed's budget: what a legacy decoder that ignores the container hears.");
 }

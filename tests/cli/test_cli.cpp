@@ -1,9 +1,12 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -14,8 +17,14 @@
 #include <string_view>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
+
 #include "ac3/core/tables.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/qc.hpp"
+#include "ac3/oba/scene.hpp"
 
 // apps/cli/main.cpp compiles directly into the ac3cli executable, everything
 // in an anonymous namespace - there is no library surface parse_options,
@@ -34,17 +43,44 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Scratch space for this file's own tests. AC3FORGE_TEST_SCRATCH_DIR (see
+// tests/CMakeLists.txt for why it is a build-tree path and not
+// fs::temp_directory_path()) is the whole suite's root; the leaf below is this
+// file's own. Duplicated in every test file that needs scratch space rather
+// than shared, per this project's per-file test-helper convention - only the
+// leaf name differs between the copies.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_cli_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli";
     fs::create_directories(dir);
     return dir;
 }
 
+// std::system()'s return value is the child's own exit code on Windows
+// (cmd.exe /c ... for a plain non-shell-builtin invocation), but on POSIX
+// it is the raw wait() status word: WIFEXITED/WEXITSTATUS have to unpack it,
+// or exit code 1 arrives here as 256 (1 << 8). Without this, every run_cli*
+// helper below would be a Windows-only exit-code check wearing a portable
+// face - exactly the trap the comment at this file's frmsiz assertion tests
+// used to route around case by case rather than fix once, here.
+int child_exit_code(int system_status) {
+#ifdef _WIN32
+    return system_status;
+#else
+    if (system_status == -1) {
+        return system_status;
+    }
+    // A signal-terminated child (crash, abort()) has no exit code to report;
+    // 128 + signal is the shell convention, and distinguishable from every
+    // real ac3cli exit code (0..7 - apps/cli/exit_codes.hpp).
+    return WIFEXITED(system_status) ? WEXITSTATUS(system_status)
+                                    : 128 + WTERMSIG(system_status);
+#endif
+}
+
 // Runs `ac3cli <args>`, both streams redirected to `log` so a failing
-// assertion can print exactly what the binary said. Returns whatever
-// std::system reports - on Windows (cmd.exe /c ...) that is the child
-// process's own exit code for a plain non-shell-builtin invocation like
-// this one, which is all ac3cli ever returns (0 or 1 - see main.cpp).
+// assertion can print exactly what the binary said. Returns ac3cli's own
+// exit code (apps/cli/exit_codes.hpp), portable across std::system()'s
+// platform-specific return-value shape - see child_exit_code above.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
@@ -64,9 +100,9 @@ int run_cli(const std::string& args, const fs::path& log) {
     // read the entire command (redirections included) as one big quoted
     // word, which is exactly the "not found" this guard avoids.
     const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
+    return child_exit_code(std::system(wrapped.c_str()));
 #else
-    return std::system(command.c_str());
+    return child_exit_code(std::system(command.c_str()));
 #endif
 }
 
@@ -90,9 +126,9 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
     // Same double-quote-wrapping workaround run_cli uses above, and for the
     // same reason - see its comment.
     const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
+    return child_exit_code(std::system(wrapped.c_str()));
 #else
-    return std::system(command.c_str());
+    return child_exit_code(std::system(command.c_str()));
 #endif
 }
 
@@ -109,9 +145,9 @@ int run_cli_stdout(const std::string& args, const fs::path& out_file, const fs::
     // Same double-quote-wrapping workaround run_cli uses above, and for the
     // same reason - see its comment.
     const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
+    return child_exit_code(std::system(wrapped.c_str()));
 #else
-    return std::system(command.c_str());
+    return child_exit_code(std::system(command.c_str()));
 #endif
 }
 
@@ -322,6 +358,59 @@ TEST_CASE("offset= rejects malformed tokens", "[cli][offset]") {
     }
 }
 
+TEST_CASE("eac3-encode verify runs the mirror self-check", "[cli][verify]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "verify_in.wav";
+    // Six blocks a frame, several frames: the recorded lesson is that frame 0
+    // alone gives a false pass, and the tools this exercises (coupling,
+    // spectral extension, AHT) say nothing at all on silence.
+    const auto channels = make_tone_channels(6, 48000 / 4, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    SECTION("a clean encode reports the check and still writes the stream") {
+        const auto out_path = dir / "verify_ok.ec3";
+        const auto log = dir / "verify_ok.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 192 all 51 verify",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 0);
+        CHECK(fs::exists(out_path));
+        CHECK(text.find("verify: encoder and decoder agree") != std::string::npos);
+    }
+
+    SECTION("the same encode without the option says nothing about it") {
+        // Named without the word "verify": the paths themselves are echoed
+        // into the log, and a filename carrying the word would satisfy the
+        // absence check below on its own.
+        const auto out_path = dir / "plain_encode.ec3";
+        const auto log = dir / "plain_encode.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 192 all 51",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 0);
+        CHECK(text.find("verify") == std::string::npos);
+    }
+
+    SECTION("it reaches the tools with no external oracle, and 7.1.4") {
+        const auto out_path = dir / "verify_ecpl.ec3";
+        const auto log = dir / "verify_ecpl.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 448 cpl+ecpl+tpn 714 verify",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 0);
+        CHECK(text.find("verify: encoder and decoder agree") != std::string::npos);
+    }
+}
+
 TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "fastmdct_in.wav";
@@ -398,6 +487,44 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
         CHECK(text.find("nofastmdct") != std::string::npos);
     }
 
+    SECTION("dither=off reaches an AC-3 encode, and nodither reaches E-AC-3's tools=") {
+        // AC-3 has no tools= string, so dither=off (support.hpp's
+        // Options::dither) is its equivalent - the same relationship
+        // fast-mdct=off already has to eac3-encode's bare nofastmdct token.
+        const auto ac3_path = dir / "nodither.ac3";
+        const auto ac3_log = dir / "nodither_ac3.log";
+        fs::remove(ac3_path);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() +
+                                    "\" 192 stereo dither=off",
+                                ac3_log);
+        CHECK(rc == 0);
+        CHECK(fs::exists(ac3_path));
+
+        const auto eac3_path = dir / "nodither.ec3";
+        const auto eac3_log = dir / "nodither_eac3.log";
+        fs::remove(eac3_path);
+        const auto rc2 = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                     eac3_path.string() + "\" 192 nodither stereo",
+                                 eac3_log);
+        const auto text = read_log(eac3_log);
+        INFO(text);
+        CHECK(rc2 == 0);
+        CHECK(fs::exists(eac3_path));
+        CHECK(text.find("nodither") != std::string::npos);
+    }
+
+    SECTION("dither=on is refused, not ignored - only off is a value 'dither' takes") {
+        const auto out_path = dir / "dither_bad.ac3";
+        const auto log = dir / "dither_bad.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                                    "\" 192 stereo dither=on",
+                                log);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(read_log(log).find("dither") != std::string::npos);
+    }
+
     SECTION("eac3-encode-multi (src=/map=) also honors fast-mdct=off directly") {
         const auto out_path = dir / "fastmdct_eac3_multi_off.ec3";
         const auto log = dir / "fastmdct_eac3_multi.log";
@@ -453,6 +580,120 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
 // so a malformed token is refused the same way regardless of which command
 // carries it, and 'encode' (Needs::kNothing) lets this run without a real
 // capture device, the same way the offset= tests above do.
+TEST_CASE("the bit stream information tokens reach the wire and round trip",
+          "[cli][bsi]") {
+    // The library-level round trips live in tests/meta/test_bsi.cpp; what is
+    // only reachable here is the GRAMMAR - whether a spelling a person would
+    // actually type parses at all. That is a distinct failure: `extpgmscl=+3`
+    // parsed everywhere except the command line, because std::from_chars does
+    // not accept the leading + a signed decibel figure reads with.
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "bsi_in.wav";
+    const auto channels = make_tone_channels(6, 3000, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    SECTION("AC-3: the informational fields and Annex D come back off the wire") {
+        const auto out_path = dir / "bsi_annexd.ac3";
+        const auto log = dir / "bsi_annexd.log";
+        fs::remove(out_path);
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" 384 51 dmixmod=ltrt ltrtcmixlev=-1.5 lorosurmixlev=off "
+                            "dsurexmod=ex adconvtyp=hdcd bsmod=vi mixlevel=105 roomtyp=large "
+                            "copyright origbs=off langcod",
+                        log) == 0);
+        REQUIRE(fs::exists(out_path));
+
+        const auto decode_log = dir / "bsi_annexd_decode.log";
+        REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" +
+                            (dir / "bsi_annexd.wav").string() + "\"",
+                        decode_log) == 0);
+        const auto text = read_log(decode_log);
+        INFO(text);
+        // dmixmod= alone should have selected bsid 6: on AC-3 there is nowhere
+        // else for a preferred downmix to go.
+        CHECK(text.find("bsid 6") != std::string::npos);
+        CHECK(text.find("visually impaired") != std::string::npos);
+        CHECK(text.find("105 dB SPL") != std::string::npos);
+        CHECK(text.find("large room") != std::string::npos);
+        CHECK(text.find("copyright asserted") != std::string::npos);
+        CHECK(text.find("not the original bit stream") != std::string::npos);
+        CHECK(text.find("Dolby Surround EX") != std::string::npos);
+        CHECK(text.find("A/D converter: HDCD") != std::string::npos);
+    }
+
+    SECTION("AC-3: a time code and Annex D are refused together") {
+        const auto out_path = dir / "bsi_clash.ac3";
+        const auto log = dir / "bsi_clash.log";
+        fs::remove(out_path);
+        CHECK(run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                          "\" 384 51 annexd timecode=01:02:03",
+                      log) != 0);
+        CHECK_FALSE(fs::exists(out_path));
+    }
+
+    SECTION("AC-3: a time code alone round trips through both halves") {
+        const auto out_path = dir / "bsi_timecode.ac3";
+        const auto log = dir / "bsi_timecode.log";
+        fs::remove(out_path);
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" 256 51 timecode=17:43:46:21.39",
+                        log) == 0);
+        const auto decode_log = dir / "bsi_timecode_decode.log";
+        REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" +
+                            (dir / "bsi_timecode.wav").string() + "\"",
+                        decode_log) == 0);
+        const auto text = read_log(decode_log);
+        INFO(text);
+        CHECK(text.find("timecode: 17:43:46:21.39") != std::string::npos);
+    }
+
+    SECTION("E-AC-3: the mixmdate depth and infomdat come back off the wire") {
+        const auto out_path = dir / "bsi_mixdepth.ec3";
+        const auto log = dir / "bsi_mixdepth.log";
+        fs::remove(out_path);
+        // extpgmscl=+3 is the spelling this section exists for; pgmscl=-6 is
+        // the other sign, and mute is the third form.
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" 448 none 51 mixmeta pgmscl=-6 extpgmscl=+3 mixdef=ext "
+                            "premixcmp=compr:local:2 extmix=0,2,0,5,5,off,7 auxmix=1,off "
+                            "speechmix=9,3:1,4:5 blkmixcfg=3,-,7,-,-,31 bsmod=commentary "
+                            "dsurexmod=pliiz mixlevel=98 roomtyp=small sourcefscod",
+                        log) == 0);
+        REQUIRE(fs::exists(out_path));
+
+        const auto decode_log = dir / "bsi_mixdepth_decode.log";
+        REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" +
+                            (dir / "bsi_mixdepth.wav").string() + "\"",
+                        decode_log) == 0);
+        const auto text = read_log(decode_log);
+        INFO(text);
+        CHECK(text.find("commentary") != std::string::npos);
+        CHECK(text.find("Pro Logic IIz") != std::string::npos);
+        CHECK(text.find("98 dB SPL") != std::string::npos);
+        CHECK(text.find("programme scale: -6 dB") != std::string::npos);
+        CHECK(text.find("external programme scale: +3 dB") != std::string::npos);
+        CHECK(text.find("mixdef 3") != std::string::npos);
+        CHECK(text.find("per-block mixing configuration") != std::string::npos);
+        CHECK(text.find("twice the coded rate") != std::string::npos);
+    }
+
+    SECTION("a value outside its field is refused rather than truncated") {
+        const auto out_path = dir / "bsi_bad.ac3";
+        const auto log = dir / "bsi_bad.log";
+        for (const auto* token : {"mixlevel=120", "bsmod=8", "roomtyp=huge",
+                                  "timecode=25:00:00", "pgmscl=+20", "blkmixcfg=1,2,3",
+                                  "extmix=0,2,0,5,5,16", "paninfo=240",
+                                  "premixcmp=dynrng:external:9"}) {
+            fs::remove(out_path);
+            INFO(token);
+            CHECK(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                              "\" 448 none 51 " + token,
+                          log) != 0);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+    }
+}
+
 TEST_CASE("capture2= rejects malformed tokens", "[cli][capture2]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "capture2_parse_in.wav";
@@ -655,6 +896,109 @@ TEST_CASE("atmos-encode with a keyframes file authors motion", "[cli][atmos-enco
     // was observed to crash outright.
     const bool differs = static_bytes != motion_bytes;
     CHECK(differs);
+}
+
+// atmos-path's file argument used to be the keyframe grammar and only that.
+// It now reads an ac3::oba::ObjectScene in JSON as well, told apart by the
+// first character - so the two spellings of one scene have to encode to the
+// same stream, byte for byte, or "migrate your file" would silently be a
+// change to the mix.
+TEST_CASE("atmos-path reads a keyframe file and its JSON form identically",
+          "[cli][atmos-path][scene]") {
+    const auto dir = scratch_dir();
+    const auto keyframes_path = dir / "scene_equivalence.txt";
+    // Every object the file will have is mentioned in it, so neither run
+    // needs atmos-path's own fallback for an index the file skipped - this
+    // test is about the two READERS agreeing, not about that policy.
+    {
+        std::ofstream keyframes{keyframes_path};
+        REQUIRE(keyframes.is_open());
+        keyframes << "# two objects crossing over\n";
+        keyframes << "0 0.0  0.10 0.20  0.00  0.50 0.00\n";
+        keyframes << "0 0.25 0.90 0.80  0.40  0.90 0.10   # arrives back right, high\n";
+        keyframes << "\n";
+        keyframes << "   0 0.40 0.50 0.50 -0.25  0.20 0.00\n";
+        keyframes << "1 0.05 0.30 0.70  0.10  0.75 0.05\n";
+        keyframes << "1 0.35 0.70 0.30 -0.10  0.25 0.00\n";
+    }
+
+    // The same scene through the library, saved as JSON.
+    const auto scene_path = dir / "scene_equivalence.json";
+    {
+        std::ifstream in{keyframes_path, std::ios::binary};
+        const std::string text{std::istreambuf_iterator<char>{in},
+                               std::istreambuf_iterator<char>{}};
+        const auto scene = ac3::oba::scene_from_text(text);
+        REQUIRE(scene.has_value());
+        REQUIRE(scene->object_count() == 2);
+        std::ofstream json{scene_path, std::ios::binary};
+        REQUIRE(json.is_open());
+        json << ac3::oba::to_json(*scene);
+    }
+
+    const auto from_keyframes = dir / "scene_from_keyframes.ec3";
+    const auto from_json = dir / "scene_from_json.ec3";
+    const auto keyframes_rc =
+        run_cli("atmos-path \"" + from_keyframes.string() + "\" \"" + keyframes_path.string() +
+                    "\" 1 448 2",
+                dir / "scene_from_keyframes.log");
+    const auto json_rc = run_cli("atmos-path \"" + from_json.string() + "\" \"" +
+                                     scene_path.string() + "\" 1 448 2",
+                                 dir / "scene_from_json.log");
+    INFO(read_log(dir / "scene_from_keyframes.log"));
+    CHECK(keyframes_rc == 0);
+    INFO(read_log(dir / "scene_from_json.log"));
+    CHECK(json_rc == 0);
+    REQUIRE(fs::exists(from_keyframes));
+    REQUIRE(fs::exists(from_json));
+    REQUIRE(fs::file_size(from_keyframes) > 0);
+
+    std::ifstream a_in{from_keyframes, std::ios::binary};
+    std::ifstream b_in{from_json, std::ios::binary};
+    const std::vector<char> a{std::istreambuf_iterator<char>{a_in},
+                              std::istreambuf_iterator<char>{}};
+    const std::vector<char> b{std::istreambuf_iterator<char>{b_in},
+                              std::istreambuf_iterator<char>{}};
+    // Compared as a bool for the same reason the atmos-encode test above
+    // does it: CHECK'ing multi-KB vectors asks Catch2 to stringify both.
+    const bool identical = a == b;
+    CHECK(identical);
+}
+
+TEST_CASE("atmos-path reports a bad scene file without writing one", "[cli][atmos-path][scene]") {
+    const auto dir = scratch_dir();
+
+    SECTION("a malformed keyframe line names the file and its line") {
+        const auto path = dir / "scene_bad_line.txt";
+        {
+            std::ofstream out{path};
+            out << "# fine\n0 0 0 0 0 1 0\n0 1 2 3\n";
+        }
+        const auto ec3 = dir / "scene_bad_line.ec3";
+        const auto rc = run_cli("atmos-path \"" + ec3.string() + "\" \"" + path.string() + "\" 1",
+                                dir / "scene_bad_line.log");
+        CHECK(rc != 0);
+        const auto log = read_log(dir / "scene_bad_line.log");
+        INFO(log);
+        CHECK(log.find(":3: expected 'object time_s x y z gain lfe_send'") != std::string::npos);
+        CHECK_FALSE(fs::exists(ec3));
+    }
+
+    SECTION("a JSON scene this build cannot read says so") {
+        const auto path = dir / "scene_bad.json";
+        {
+            std::ofstream out{path};
+            out << R"({"ac3forge_scene": 1, "objects": [{"automation": [{"t": 0, "gian": 1}]}]})";
+        }
+        const auto ec3 = dir / "scene_bad_json.ec3";
+        const auto rc = run_cli("atmos-path \"" + ec3.string() + "\" \"" + path.string() + "\" 1",
+                                dir / "scene_bad_json.log");
+        CHECK(rc != 0);
+        const auto log = read_log(dir / "scene_bad_json.log");
+        INFO(log);
+        CHECK(log.find("unknown automation member 'gian'") != std::string::npos);
+        CHECK_FALSE(fs::exists(ec3));
+    }
 }
 
 // sign-objects/signing-key= used to be wired into 'atmos' only - 'atmos-path'
@@ -902,6 +1246,116 @@ TEST_CASE("keep-partial", "[cli][keep-partial]") {
     }
 }
 
+// Found by tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1) on its first
+// sweep of the Annex E half sample rates.
+//
+// A nominal Table 5.18 bitrate and an Annex E `fscod2` half rate are each
+// legal on their own everywhere else in the CLI, and nothing in its grammar
+// marks the pair. But §E2.3.1.3's frmsiz is an 11-bit word count, so a
+// syncframe can never exceed ac3::eac3::kMaxFrameWords words: above
+// bitrate * kSamplesPerFrame / sample_rate / 16 words the combination is not
+// expressible at all. AccessUnitEncoder reports that by building NO
+// substreams rather than by failing construction, and run_eac3_encode used to
+// meet the resulting channel_count() == 0 with an assert() - a clean (if
+// causeless) refusal in a release build, an abort in any build with
+// assertions live. Every layout was affected, and every one of the three half
+// rates has legal Table 5.18 rates above its ceiling: 320 kbps at 16 kHz,
+// 448 at 22.05 kHz, 512 at 24 kHz are the highest that fit.
+//
+// atmos-encode never took that path and always refused cleanly, which is why
+// tools/ci/run_codec_matrix.sh - whose only WAV source is 48 kHz - could not
+// have seen this.
+TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
+          "[cli][eac3][frmsiz]") {
+    const auto dir = scratch_dir();
+
+    // The exact ceiling per Annex E half rate, and the first legal Table 5.18
+    // rate above it. Written out rather than computed so a change to either
+    // side of the arithmetic has to be stated here too.
+    struct Probe {
+        std::uint32_t sample_rate;
+        std::uint32_t highest_that_fits;
+        std::uint32_t first_that_does_not;
+    };
+    constexpr std::array<Probe, 3> kProbes{{{16000, 320, 384},
+                                            {22050, 448, 512},
+                                            {24000, 512, 576}}};
+
+    for (const auto& probe : kProbes) {
+        const auto tag = std::to_string(probe.sample_rate);
+        INFO("sample rate " << tag);
+        const auto wav_path = dir / ("frmsiz_in_" + tag + ".wav");
+        const auto channels =
+            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame),
+                               probe.sample_rate);
+        REQUIRE(
+            ac3::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate).has_value());
+
+        // The highest rate that fits still encodes - so the check above is a
+        // ceiling, not a blanket refusal of the half rates.
+        {
+            const auto out_path = dir / ("frmsiz_ok_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_ok_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.highest_that_fits) + " none stereo",
+                        log);
+            INFO(read_log(log));
+            CHECK(rc == 0);
+            CHECK(fs::file_size(out_path) > 0);
+        }
+
+        // The first rate that does not is refused, not aborted.
+        {
+            const auto out_path = dir / ("frmsiz_over_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_over_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.first_that_does_not) + " none stereo",
+                        log);
+            const auto text = read_log(log);
+            INFO(text);
+            CHECK(rc != 0);
+            // What actually separates a refusal from the abort this replaced
+            // is the MESSAGE, not the exit code: an assertion failure prints
+            // its own text and never reaches the diagnosis below. The code
+            // itself is deliberately not compared against an exact value -
+            // std::system() hands back the child's own code on Windows but a
+            // POSIX wait status elsewhere, where exit 1 arrives as 256, so
+            // `rc == 1` would be a Windows-only assertion wearing a portable
+            // face.
+            CHECK(text.find("Assertion") == std::string::npos);
+            CHECK(text.find("frmsiz") != std::string::npos);
+            CHECK(text.find("words per syncframe") != std::string::npos);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+
+        // The multi-source entry point builds its own AccessUnitEncoder and
+        // had its own copy of the same assert. A `map=` with no `src=` is
+        // enough to route through it - run_eac3_encode hands off on either
+        // token - and avoids the "more than one source needs map=" refusal a
+        // bare second `src=` would meet first.
+        {
+            const auto out_path = dir / ("frmsiz_multi_" + tag + ".ec3");
+            const auto log = dir / ("frmsiz_multi_" + tag + ".log");
+            fs::remove(out_path);
+            const auto rc =
+                run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + out_path.string() +
+                            "\" " + std::to_string(probe.first_that_does_not) +
+                            " none stereo off map=0.0:L,0.1:R",
+                        log);
+            const auto text = read_log(log);
+            INFO(text);
+            CHECK(rc != 0);
+            CHECK(text.find("Assertion") == std::string::npos);
+            CHECK(text.find("frmsiz") != std::string::npos);
+            CHECK_FALSE(fs::exists(out_path));
+        }
+    }
+}
+
 TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
           "[cli][encode][heavy2]") {
     const auto dir = scratch_dir();
@@ -1055,7 +1509,7 @@ TEST_CASE("eac3-encode and atmos-encode accept '-' for input and output", "[cli]
 // in two places, neither caught by the round-trip test above because it
 // never turns dialnorm=auto or src=/map= on: finish_measurement() (behind
 // every dialnorm=auto/dialnorm2=auto path) printed its "measured N LKFS ->
-// dialnorm M" line with the no-stream std::println overload, which always
+// dialnorm M" line with the no-stream fmt::println overload, which always
 // targets stdout regardless of out_path; and run_eac3_encode_multi/
 // run_encode_multi's own final summary/routing report used that same
 // unconditional stdout instead of threading status_stream(out_path) through
@@ -1698,16 +2152,24 @@ TEST_CASE(
     const auto text = read_log(log);
     INFO(text);
 
-    for (const std::string_view name : {"ebu-r128-s2:", "atsc-a85:", "netflix:"}) {
-        CHECK(text.find(name) != std::string::npos);
+    // Every preset in ac3::meta::kQcPresetIds, not a hand-copied subset -
+    // preset=all promising "every one" and then silently skipping a row
+    // added later is exactly the failure this loop exists to catch.
+    std::vector<bool> verdicts;
+    for (const auto id : ac3::meta::kQcPresetIds) {
+        const auto heading = std::string{ac3::meta::qc_preset_name(id)} + ":";
+        INFO("preset " << heading);
+        const auto at = text.find(heading);
+        REQUIRE(at != std::string::npos);
+        const auto verdict = gate_verdict_after(text, at);
+        REQUIRE(verdict.has_value());
+        verdicts.push_back(*verdict);
+        // Each row also names the document edition it was judged against
+        // (IO11) - a verdict against an unnamed spec is not auditable.
+        const auto source = ac3::meta::qc_preset(id).source;
+        CHECK(text.find(std::string{source}) != std::string::npos);
     }
-
-    const auto ebu_pass = gate_verdict_after(text, text.find("ebu-r128-s2:"));
-    const auto atsc_pass = gate_verdict_after(text, text.find("atsc-a85:"));
-    const auto netflix_pass = gate_verdict_after(text, text.find("netflix:"));
-    REQUIRE(ebu_pass.has_value());
-    REQUIRE(atsc_pass.has_value());
-    REQUIRE(netflix_pass.has_value());
+    REQUIRE(verdicts.size() == ac3::meta::kQcPresetIds.size());
 
     // The exit code (this project's own binary 0/1 convention - see this
     // file's own run_cli comment) must match "every requested gate passed",
@@ -1715,8 +2177,108 @@ TEST_CASE(
     // whichever way the real BS.1770 numbers actually land, a bug that ORs
     // instead of ANDs the per-preset verdicts (or ignores one preset
     // entirely) shows up here as rc disagreeing with this recomputation.
-    const bool expect_success = *ebu_pass && *atsc_pass && *netflix_pass;
+    const bool expect_success =
+        std::all_of(verdicts.begin(), verdicts.end(), [](bool v) { return v; });
     CHECK((rc == 0) == expect_success);
+}
+
+// Roadmap IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
+// independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
+// sees the two dependents' rear and height channels at all; the rendered pass
+// measures the assembled program through BS.1770-5 Annex 3's extended
+// algorithm, which has a weight for every Table E2.5 position.
+TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed does not",
+          "[cli][qc][layout]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_layout_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    // 2 s - many BS.1770 400 ms blocks and ~62 access units, well past the
+    // "3+ frames of real audio" this project's own validation rule requires
+    // before a codec measurement means anything.
+    constexpr std::size_t kFrames = 96000;
+    // 7.1.4's twelve channels: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE. A
+    // distinct tone per channel so no two can be confused for one another,
+    // and so a permuted layout would not still measure the same total.
+    std::vector<std::vector<float>> channels;
+    channels.reserve(12);
+    for (int ch = 0; ch < 12; ++ch) {
+        channels.push_back(
+            make_tone(0.2, 180.0 + 91.0 * static_cast<double>(ch), kFrames, kRate));
+    }
+    REQUIRE(write_wav(wav_path, channels, kRate));
+
+    const auto ec3_path = dir / "qc_layout.ec3";
+    REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 448 none 714 dialnorm=auto",
+                    dir / "qc_layout_encode.log") == 0);
+
+    const auto bed_log = dir / "qc_layout_bed.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=bed", bed_log) == 0);
+    const auto bed_text = read_log(bed_log);
+    INFO("bed:\n" << bed_text);
+
+    const auto rendered_log = dir / "qc_layout_rendered.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=rendered", rendered_log) == 0);
+    const auto rendered_text = read_log(rendered_log);
+    INFO("rendered:\n" << rendered_text);
+
+    // Each pass says which algorithm produced its numbers, and the bed pass
+    // says out loud that it left the dependents' channels out - staying
+    // quiet about that is what made the old behaviour a trap.
+    CHECK(bed_text.find("layout=bed") != std::string::npos);
+    CHECK(bed_text.find("BS.1770 Annex 1") != std::string::npos);
+    CHECK(bed_text.find("dependent substreams whose channels") != std::string::npos);
+    CHECK(rendered_text.find("layout=rendered") != std::string::npos);
+    CHECK(rendered_text.find("BS.1770-5 Annex 3") != std::string::npos);
+    CHECK(rendered_text.find("dependent substreams whose channels") == std::string::npos);
+
+    // The bed pass reports the Table 5.8 layout it can name (3/2 + LFE, i.e.
+    // 5.1 in the spec's own notation); the rendered pass names every Table
+    // E2.5 location it actually metered, height channels included.
+    CHECK(bed_text.find("3/2 + LFE") != std::string::npos);
+    for (const std::string_view location : {"Lrs", "Rrs", "Vhl", "Vhr", "Lts", "Rts"}) {
+        INFO("location " << location);
+        CHECK(rendered_text.find(location) != std::string::npos);
+        CHECK(bed_text.find(location) == std::string::npos);
+    }
+
+    // Six more channels of comparable-level tone are being summed, so the
+    // rendered measurement has to come out meaningfully louder. This is the
+    // substantive check: if layout=rendered were quietly still metering the
+    // bed, the two numbers would be identical.
+    const auto bed_lkfs = value_after(bed_text, "integrated loudness");
+    const auto rendered_lkfs = value_after(rendered_text, "integrated loudness");
+    REQUIRE(bed_lkfs.has_value());
+    REQUIRE(rendered_lkfs.has_value());
+    CHECK(*rendered_lkfs > *bed_lkfs + 1.0);
+
+    // True peak, by contrast, is not channel-weighted and both passes see a
+    // full-bandwidth channel at the same level, so it should barely move.
+    const auto bed_tp = value_after(bed_text, "true peak");
+    const auto rendered_tp = value_after(rendered_text, "true peak");
+    REQUIRE(bed_tp.has_value());
+    REQUIRE(rendered_tp.has_value());
+    CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
+}
+
+TEST_CASE("qc layout= rejects anything but bed or rendered", "[cli][qc][layout]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_layout_bad_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 48000;
+    REQUIRE(write_wav(wav_path, {make_tone(0.4, 440.0, kFrames, kRate),
+                                  make_tone(0.4, 660.0, kFrames, kRate)},
+                      kRate));
+    const auto ac3_path = dir / "qc_layout_bad.ac3";
+    REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() + "\" 192",
+                    dir / "qc_layout_bad_encode.log") == 0);
+
+    const auto log = dir / "qc_layout_bad.log";
+    const auto rc = run_cli("qc \"" + ac3_path.string() + "\" layout=stereo", log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc != 0);
+    CHECK(text.find("layout must be bed or rendered") != std::string::npos);
 }
 
 // silence/eac3-silence build their frames from build_silent_stereo_frame/
@@ -1788,6 +2350,122 @@ TEST_CASE("silence rejects an illegal bitrate and leaves no file behind", "[cli]
     CHECK(rc != 0);
     CHECK_FALSE(fs::exists(out_path));
     CHECK(read_log(log).find("bitrate") != std::string::npos);
+}
+
+// eac3-sine builds an AccessUnitEncoder from a plan the same way eac3-encode
+// does (see that command's own "refuses a rate frmsiz cannot signal" test
+// above), and had the identical assert() - nchans == tone_hz.size(), rather
+// than encode.cpp's channel_count() comparison, but the same root cause: a
+// bitrate whose word count does not fit §E2.3.1.3's 11-bit frmsiz leaves
+// AccessUnitEncoder with no substreams. eac3-encode's own fix is a
+// post-construction check (encode.cpp's eac3_config_accepted()); this command
+// asks ac3::plan::validate() BEFORE construction instead, which is also the
+// one place precise enough to catch a layout with dependent substreams: each
+// dependent gets HALF the plan's bitrate (eac3_config()), so a rate that
+// looks framable at face value can still leave a dependent with a frame of no
+// words. eac3_config_accepted() checks the plan's own bitrate against the
+// whole-frame ceiling, not each substream's actual (possibly halved) share of
+// it, so it cannot name frmsiz as the cause there - confirmed empirically
+// below: eac3-encode at the same "1 kbit/s over 7.1.4" case this test pins
+// falls back to eac3_config_accepted()'s generic "cannot express" message.
+TEST_CASE("eac3-sine rejects a rate frmsiz cannot express", "[cli][eac3-sine][frmsiz]") {
+    const auto dir = scratch_dir();
+
+    // Shared by every rejection below: a diagnosis naming the field, and no
+    // sign of the assertion this used to be.
+    const auto check_rejected = [](const std::string& text) {
+        CHECK(text.find("error:") != std::string::npos);
+        CHECK(text.find("frmsiz") != std::string::npos);
+        CHECK(text.find("Assertion") == std::string::npos);
+    };
+
+    SECTION("1024 kbit/s at 48 kHz is exactly the ceiling, 1026 is past it") {
+        const auto ok_path = dir / "sine_frmsiz_ceiling_ok.ec3";
+        const auto ok_log = dir / "sine_frmsiz_ceiling_ok.log";
+        fs::remove(ok_path);
+        const auto ok_rc = run_cli("eac3-sine \"" + ok_path.string() + "\" 1 1024", ok_log);
+        INFO(read_log(ok_log));
+        CHECK(ok_rc == 0);
+        CHECK(fs::exists(ok_path));
+
+        const auto over_path = dir / "sine_frmsiz_ceiling_over.ec3";
+        const auto over_log = dir / "sine_frmsiz_ceiling_over.log";
+        fs::remove(over_path);
+        const auto over_rc = run_cli("eac3-sine \"" + over_path.string() + "\" 1 1026", over_log);
+        const auto text = read_log(over_log);
+        INFO(text);
+        CHECK(over_rc != 0);
+        CHECK_FALSE(fs::exists(over_path));
+        check_rejected(text);
+    }
+
+    SECTION("0 kbit/s is the same rule from the floor - a frame of no words") {
+        const auto out_path = dir / "sine_frmsiz_floor.ec3";
+        const auto log = dir / "sine_frmsiz_floor.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-sine \"" + out_path.string() + "\" 1 0", log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        check_rejected(text);
+    }
+
+    SECTION("an immersive layout's dependents each get half the rate, and that half "
+           "has to be framable too") {
+        // 1 kbit/s over 7.1.4 halves to 0 kbit/s per dependent - a frame of
+        // no words - which plan::validate() refuses by name before the
+        // encoder is ever built.
+        const auto floor_path = dir / "sine_frmsiz_dependent_floor.ec3";
+        const auto floor_log = dir / "sine_frmsiz_dependent_floor.log";
+        fs::remove(floor_path);
+        const auto floor_rc =
+            run_cli("eac3-sine \"" + floor_path.string() + "\" 1 1 440 50 714", floor_log);
+        const auto floor_text = read_log(floor_log);
+        INFO(floor_text);
+        CHECK(floor_rc != 0);
+        CHECK_FALSE(fs::exists(floor_path));
+        check_rejected(floor_text);
+
+        // 768 kbit/s is comfortably framable at every substream once halved,
+        // and actually encodes - the check above is a real ceiling, not a
+        // blanket refusal of dependent substreams.
+        const auto ok_path = dir / "sine_frmsiz_dependent_ok.ec3";
+        const auto ok_log = dir / "sine_frmsiz_dependent_ok.log";
+        fs::remove(ok_path);
+        const auto ok_rc =
+            run_cli("eac3-sine \"" + ok_path.string() + "\" 1 768 440 50 714", ok_log);
+        INFO(read_log(ok_log));
+        CHECK(ok_rc == 0);
+        CHECK(fs::exists(ok_path));
+    }
+
+    SECTION("eac3-encode meets the identical dependent-floor case with a less precise "
+           "message, since its own check runs after construction against the plan's "
+           "whole bitrate rather than each substream's own share of it") {
+        const auto wav_path = dir / "sine_frmsiz_encode_compare_in.wav";
+        const auto channels =
+            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame), 48000);
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+        const auto out_path = dir / "sine_frmsiz_encode_compare.ec3";
+        const auto log = dir / "sine_frmsiz_encode_compare.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    out_path.string() + "\" 1 none 714",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        // Refused cleanly either way - this is not an assertion regression -
+        // but the plan layer's own diagnosis is not among its reasons, since
+        // eac3-encode never asks plan::validate() for this: encode.cpp's own
+        // post-construction check judges the plan's whole bitrate (1 kbit/s,
+        // itself framable) rather than the dependent's halved share of it.
+        CHECK(text.find("Assertion") == std::string::npos);
+        CHECK(text.find("frmsiz") == std::string::npos);
+    }
 }
 
 TEST_CASE("eac3-silence threads its layout argument through to the reported label and "
@@ -2069,4 +2747,771 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
     CHECK(run_cli("sine \"" + (dir / "mode_bad.ac3").string() + "\" 2 192 440 70 stereo "
                       "mode=fast",
                   log) != 0);
+}
+
+// --------------------------------------------------------------------------
+// Roadmap IO8: the documented exit-code scheme, per-command help, quiet/
+// verbose, and the generated man page and completions.
+// --------------------------------------------------------------------------
+
+TEST_CASE("every failure path returns its own documented exit code", "[cli][exit-codes]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "exit_codes.log";
+
+    // The numbers here are the contract, not an implementation detail: a
+    // script distinguishes a bad command line from a bad file from a failed
+    // gate by exactly these. apps/cli/exit_codes.hpp is where they are chosen
+    // and docs/cli/metadata-options.md#exit-codes is where they are published;
+    // this is what keeps all three agreeing.
+    SECTION("0 - success") {
+        CHECK(run_cli("silence \"" + (dir / "exit_ok.ac3").string() + "\" 1 192", log) == 0);
+    }
+
+    SECTION("1 - usage: too few arguments, an unknown command, an unknown option") {
+        CHECK(run_cli("encode", log) == 1);
+        CHECK(run_cli("definitely-not-a-command", log) == 1);
+        CHECK(run_cli("silence \"" + (dir / "exit_usage.ac3").string() + "\" 1 192 nosuch=1",
+                      log) == 1);
+    }
+
+    SECTION("1 - usage: a configuration the encoder cannot express") {
+        // A layout AC-3 has no coding mode for. Refused before anything is
+        // written, and refused as a USAGE error - retrying the same command
+        // line cannot help.
+        const auto wav_path = dir / "exit_usage_in.wav";
+        REQUIRE(write_wav(wav_path, make_tone_channels(2, 4000, 48000), 48000));
+        CHECK(run_cli("encode \"" + wav_path.string() + "\" \"" +
+                          (dir / "exit_usage2.ac3").string() + "\" 192 714",
+                      log) == 1);
+    }
+
+    SECTION("2 - input: unreadable, and present-but-not-a-stream") {
+        CHECK(run_cli("decode \"" + (dir / "exit_absent.ac3").string() + "\" \"" +
+                          (dir / "exit_absent.wav").string() + "\"",
+                      log) == 2);
+        const auto empty = dir / "exit_empty.ac3";
+        { std::ofstream out{empty, std::ios::binary}; }
+        CHECK(run_cli("decode \"" + empty.string() + "\" \"" + (dir / "exit_empty.wav").string() +
+                          "\"",
+                      log) == 2);
+    }
+
+    SECTION("3 - output: a destination that cannot be created") {
+        // A path whose parent directory does not exist - the one
+        // "cannot write" every platform agrees on without needing a
+        // permission model.
+        const auto wav_path = dir / "exit_out_in.wav";
+        REQUIRE(write_wav(wav_path, make_tone_channels(2, 4000, 48000), 48000));
+        const auto bad = dir / "no_such_directory" / "out.ac3";
+        CHECK(run_cli("encode \"" + wav_path.string() + "\" \"" + bad.string() + "\" 192 stereo",
+                      log) == 3);
+    }
+
+    SECTION("6 - a QC gate failed, distinct from 2 (qc could not read the file)") {
+        // A 440 Hz test tone was never mastered to any delivery target, so
+        // preset=all is a genuine FAIL - the whole point of the code being
+        // its own rather than folded into "something went wrong".
+        const auto stream = dir / "exit_qc.ac3";
+        REQUIRE(run_cli("sine \"" + stream.string() + "\" 2 192 440 70 stereo", log) == 0);
+        CHECK(run_cli("qc \"" + stream.string() + "\" preset=all", log) == 6);
+        CHECK(run_cli("qc \"" + stream.string() + "\"", log) == 0);
+        CHECK(run_cli("qc \"" + (dir / "exit_qc_absent.ac3").string() + "\"", log) == 2);
+    }
+}
+
+TEST_CASE("help prints one command's own row, not the whole manual", "[cli][help]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "help.log";
+
+    REQUIRE(run_cli("help", log) == 0);
+    const auto full = read_log(log);
+    REQUIRE(run_cli("help encode", log) == 0);
+    const auto one = read_log(log);
+
+    // The row itself, and the grammars encode actually uses.
+    CHECK(one.find("ac3cli encode") != std::string::npos);
+    CHECK(one.find("layout:") != std::string::npos);
+    CHECK(one.find("metadata options") != std::string::npos);
+    // Not the ones it does not: encode has no Annex E tool set and no VBR.
+    CHECK(one.find("Annex E coding tools") == std::string::npos);
+    CHECK(one.find("vbr (eac3-encode only)") == std::string::npos);
+    // And decisively shorter than the whole listing, which is the behaviour
+    // change worth asserting: an argument error used to print all of `full`.
+    CHECK(one.size() < full.size());
+
+    SECTION("eac3-encode's own help does carry the tool and vbr grammars") {
+        REQUIRE(run_cli("help eac3-encode", log) == 0);
+        const auto text = read_log(log);
+        CHECK(text.find("Annex E coding tools") != std::string::npos);
+        CHECK(text.find("vbr (eac3-encode only)") != std::string::npos);
+    }
+
+    SECTION("--help and -h are the same thing spelled the other way round") {
+        REQUIRE(run_cli("encode --help", log) == 0);
+        const auto dashes = read_log(log);
+        REQUIRE(run_cli("help encode", log) == 0);
+        CHECK(dashes == read_log(log));
+        REQUIRE(run_cli("encode -h", log) == 0);
+        CHECK(read_log(log) == dashes);
+    }
+
+    SECTION("--help wins over an otherwise-unsatisfied argument list") {
+        // `ac3cli encode` alone is a usage error; `ac3cli encode --help` is
+        // not, which is the whole point of lifting the flag out first.
+        CHECK(run_cli("encode --help", log) == 0);
+    }
+
+    SECTION("help exit-codes prints the scheme") {
+        REQUIRE(run_cli("help exit-codes", log) == 0);
+        const auto text = read_log(log);
+        CHECK(text.find("QC gate") != std::string::npos);
+        CHECK(text.find("unavailable here") != std::string::npos);
+    }
+
+    SECTION("an argument error names the command and points at its help") {
+        CHECK(run_cli("encode", log) != 0);
+        const auto text = read_log(log);
+        CHECK(text.find("ac3cli help encode") != std::string::npos);
+        // The whole manual is what it must NOT print any more.
+        CHECK(text.find("metadata options") == std::string::npos);
+        CHECK(text.size() < full.size());
+    }
+
+    SECTION("help for something that is not a command is a usage error") {
+        CHECK(run_cli("help not-a-command", log) == 1);
+    }
+}
+
+TEST_CASE("quiet silences status output without touching the payload", "[cli][quiet]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "quiet.log";
+    const auto out = dir / "quiet.ac3";
+
+    fs::remove(out);
+    REQUIRE(run_cli("sine \"" + out.string() + "\" 1 192 440 70 stereo quiet", log) == 0);
+    CHECK(read_log(log).empty());
+    CHECK(fs::exists(out));
+    CHECK(fs::file_size(out) > 0);
+
+    SECTION("without quiet the same run does report itself") {
+        REQUIRE(run_cli("sine \"" + (dir / "quiet_off.ac3").string() + "\" 1 192 440 70 stereo",
+                        log) == 0);
+        CHECK_FALSE(read_log(log).empty());
+    }
+
+    SECTION("a reporting command still reports: its answer is its output") {
+        REQUIRE(run_cli("levels \"" + out.string() + "\" quiet", log) == 0);
+        CHECK(read_log(log).find("per-channel levels") != std::string::npos);
+    }
+
+    SECTION("errors are never silenced") {
+        CHECK(run_cli("decode \"" + (dir / "quiet_absent.ac3").string() + "\" \"" +
+                          (dir / "quiet_absent.wav").string() + "\" quiet",
+                      log) == 2);
+        CHECK(read_log(log).find("error:") != std::string::npos);
+    }
+}
+
+TEST_CASE("verbose puts a progress line on stderr, never on stdout", "[cli][verbose]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "verbose_in.wav";
+    REQUIRE(write_wav(wav_path, make_tone_channels(2, 48000, 48000), 48000));
+
+    const auto out = dir / "verbose_out.ac3";
+    const auto log = dir / "verbose.log";
+    REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + out.string() +
+                        "\" 192 stereo verbose",
+                    log) == 0);
+    CHECK(read_log(log).find("encoding") != std::string::npos);
+
+    SECTION("a short run stays quiet about progress unless asked") {
+        // One second of audio is 31 frames, far under the threshold at which
+        // the line turns itself on - so the default run says nothing about
+        // progress at all.
+        const auto plain = dir / "verbose_plain.log";
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" +
+                            (dir / "verbose_plain.ac3").string() + "\" 192 stereo",
+                        plain) == 0);
+        CHECK(read_log(plain).find("encoding ") == std::string::npos);
+    }
+
+    SECTION("with a '-' output the progress line stays out of the stream") {
+        const auto piped = dir / "verbose_piped.ac3";
+        const auto err = dir / "verbose_piped.err";
+        REQUIRE(run_cli_stdout("encode \"" + wav_path.string() + "\" - 192 stereo verbose",
+                               piped, err) == 0);
+        CHECK(fs::file_size(piped) > 0);
+        CHECK(read_log(err).find("encoding") != std::string::npos);
+        // The payload must still be a decodable AC-3 stream - i.e. nothing
+        // human-readable leaked into it.
+        const auto back = dir / "verbose_piped.wav";
+        CHECK(run_cli("decode \"" + piped.string() + "\" \"" + back.string() + "\" quiet",
+                      dir / "verbose_piped_decode.log") == 0);
+    }
+}
+
+TEST_CASE("man and completions are generated from the command table", "[cli][man]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "man.log";
+
+    SECTION("the man page is a section-1 groff page naming every command") {
+        REQUIRE(run_cli("man", log) == 0);
+        const auto page = read_log(log);
+        CHECK(page.find(".TH AC3CLI 1") != std::string::npos);
+        CHECK(page.find(".SH COMMANDS") != std::string::npos);
+        CHECK(page.find(".SH EXIT STATUS") != std::string::npos);
+        // A command from each end of the table, so a truncated render fails.
+        CHECK(page.find("ac3cli silence") != std::string::npos);
+        CHECK(page.find("ac3cli monitor") != std::string::npos);
+        CHECK(page.find("ac3cli completions") != std::string::npos);
+    }
+
+    SECTION("each shell gets its own script, and an unknown shell is refused") {
+        struct Case {
+            const char* shell;
+            const char* marker;
+        };
+        for (const auto& c : {Case{"bash", "complete -F _ac3cli ac3cli"},
+                              Case{"zsh", "#compdef ac3cli"},
+                              Case{"fish", "complete -c ac3cli"},
+                              Case{"powershell", "Register-ArgumentCompleter"}}) {
+            INFO(c.shell);
+            REQUIRE(run_cli(std::string{"completions "} + c.shell, log) == 0);
+            const auto script = read_log(log);
+            CHECK(script.find(c.marker) != std::string::npos);
+            // Generated from the table, so a command must appear in it.
+            CHECK(script.find("eac3-encode") != std::string::npos);
+        }
+        CHECK(run_cli("completions tcsh", log) == 1);
+    }
+
+    SECTION("every bare option token the completions offer is really accepted") {
+        // The completion list is a second statement of what parse_options
+        // takes (see kOptionTokens' own comment) - this is what keeps it from
+        // drifting into offering something the parser refuses. Only the
+        // valueless tokens can be checked this cheaply; a key= token's value
+        // grammar differs per option.
+        REQUIRE(run_cli("completions fish", log) == 0);
+        const auto script = read_log(log);
+        for (const auto* token : {"couple", "heavy", "heavy2", "mixmeta", "keep-partial",
+                                  "sign-objects", "verify-objects", "fast-mdct", "fast-imdct",
+                                  "quiet", "verbose"}) {
+            INFO(token);
+            CHECK(script.find(std::string{"-a '"} + token + "'") != std::string::npos);
+            CHECK(run_cli(std::string{"silence \""} + (dir / "man_opt.ac3").string() + "\" 1 192 " +
+                              token,
+                          dir / "man_opt.log") == 0);
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// Roadmap IO9: record/live parity with the GUI session. The capture side
+// cannot run headlessly - there is no capture endpoint on a CI machine, and
+// on a platform with no capture backend at all `record`/`live` are refused
+// before their arguments are read - so what is checked here is the option
+// surface those commands added, which parse_options settles before dispatch
+// and therefore on every platform alike.
+// --------------------------------------------------------------------------
+
+TEST_CASE("record/live take options parse or are refused", "[cli][record][live]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "take_opts.log";
+    const auto probe = dir / "take_opts.ac3";
+    // `silence` ignores all of these, which is exactly what makes it a clean
+    // probe of the PARSER: a run that reaches the encoder proves the token was
+    // accepted, and a refusal proves it was not silently ignored.
+    const auto parses = [&](const std::string& token) {
+        return run_cli("silence \"" + probe.string() + "\" 1 192 " + token, log);
+    };
+
+    SECTION("container= takes all five streamable containers") {
+        for (const auto* value : {"raw", "mkv", "matroska", "ts", "mpegts", "spdif", "fmp4", "cmaf"}) {
+            INFO(value);
+            CHECK(parses(std::string{"container="} + value) == 0);
+        }
+        CHECK(parses("container=avi") == 1);
+        CHECK(read_log(log).find("raw, mkv, ts, spdif or fmp4") != std::string::npos);
+        // Plain mp4 cannot be written incrementally (moov/stco need every
+        // frame's final offset), so it is refused here rather than silently
+        // accepted and then not honoured - unlike fragmented mp4 (fmp4/cmaf
+        // above), which has no such constraint.
+        CHECK(parses("container=mp4") == 1);
+    }
+
+    SECTION("layout=/codec= parse, and a bad codec is refused") {
+        CHECK(parses("layout=51") == 0);
+        CHECK(parses("layout=L,C,R,LFE,Vhl,Vhr") == 0);
+        CHECK(parses("codec=ac3") == 0);
+        CHECK(parses("codec=eac3") == 0);
+        CHECK(parses("codec=ec3") == 0);
+        CHECK(parses("codec=truehd") == 1);
+        CHECK(parses("layout=") == 1);
+    }
+
+    SECTION("watchdog= takes a non-negative timeout in seconds") {
+        CHECK(parses("watchdog=0") == 0);
+        CHECK(parses("watchdog=1.5") == 0);
+        CHECK(parses("watchdog=-1") == 1);
+        CHECK(parses("watchdog=soon") == 1);
+    }
+
+    SECTION("objects= is a 1..15 slot budget") {
+        CHECK(parses("objects=1") == 0);
+        CHECK(parses("objects=15") == 0);
+        CHECK(parses("objects=0") == 1);
+        CHECK(parses("objects=16") == 1);
+    }
+
+    SECTION("downmix= is on or off") {
+        CHECK(parses("downmix=on") == 0);
+        CHECK(parses("downmix=off") == 0);
+        CHECK(parses("downmix=maybe") == 1);
+    }
+}
+
+TEST_CASE("atmos-encode assembles real objects behind src=/map=",
+          "[cli][atmos-encode][map]") {
+    const auto dir = scratch_dir();
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 24000;  // half a second
+    const auto a = dir / "map_obj_a.wav";
+    const auto b = dir / "map_obj_b.wav";
+    REQUIRE(write_wav(a, make_tone_channels(4, kFrames, kRate), kRate));
+    REQUIRE(write_wav(b, make_tone_channels(2, kFrames, kRate), kRate));
+
+    const auto out = dir / "map_obj.ec3";
+    const auto log = dir / "map_obj.log";
+    // Four objects out of six loaded channels: two on their own, two folded
+    // to one mono object, one silenced, plus one from the second source.
+    // obj rows come first (in source, then channel order), then the objm
+    // group - the order the two front ends have to agree on for a GUI
+    // assignment to be reproducible headlessly.
+    const auto rc = run_cli(
+        "atmos-encode \"" + a.string() + "\" \"" + out.string() + "\" 448 src=\"" + b.string() +
+            "\" map=0.0:obj,0.1:obj@-3,0.2-3:objm,1.0:obj,1.1:none",
+        log);
+    INFO(read_log(log));
+    REQUIRE(rc == 0);
+    REQUIRE(fs::exists(out));
+    CHECK(read_log(log).find("4 objects") != std::string::npos);
+
+    SECTION("the stream really carries them, read back by the decoder") {
+        const auto wav_out = dir / "map_obj_back.wav";
+        const auto dec_log = dir / "map_obj_decode.log";
+        REQUIRE(run_cli("decode \"" + out.string() + "\" \"" + wav_out.string() + "\"",
+                        dec_log) == 0);
+        // Four dynamic objects plus the bed's LFE.
+        CHECK(read_log(dec_log).find("4 dynamic objects") != std::string::npos);
+    }
+
+    SECTION("a map= naming no object destination is refused, not silently empty") {
+        CHECK(run_cli("atmos-encode \"" + a.string() + "\" \"" + (dir / "map_none.ec3").string() +
+                          "\" 448 map=0.0:L,0.1:R,0.2:none,0.3:none",
+                      log) == 1);
+    }
+
+    SECTION("src= without map= makes every loaded channel an object, in load order") {
+        const auto plain = dir / "map_obj_plain.ec3";
+        REQUIRE(run_cli("atmos-encode \"" + a.string() + "\" \"" + plain.string() + "\" 448 src=\"" +
+                            b.string() + "\"",
+                        log) == 0);
+        CHECK(read_log(log).find("6 objects") != std::string::npos);
+    }
+
+    SECTION("[objects] and map= are alternatives, not a pair") {
+        CHECK(run_cli("atmos-encode \"" + a.string() + "\" \"" + (dir / "map_both.ec3").string() +
+                          "\" 448 2 src=\"" + b.string() + "\" map=0.0:obj,0.1:none,0.2:none,"
+                          "0.3:none,1.0:none,1.1:none",
+                      log) == 1);
+    }
+}
+
+// --- roadmap IO7: the object-layer strip ----------------------------------
+
+TEST_CASE("strip-objects leaves a decodable 5.1 stream with no object metadata",
+          "[cli][strip-objects]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "strip.log";
+    const auto atmos = dir / "strip_atmos.ec3";
+    const auto bed = dir / "strip_bed51.ec3";
+    const auto atmos_wav = dir / "strip_atmos.wav";
+    const auto bed_wav = dir / "strip_bed51.wav";
+
+    REQUIRE(run_cli("atmos \"" + atmos.string() + "\" 1 448 2 4 objects", log) == 0);
+    REQUIRE(run_cli("strip-objects \"" + atmos.string() + "\" \"" + bed.string() + "\"", log) == 0);
+    const auto report = read_log(log);
+    CHECK(report.find("no object metadata remains") != std::string::npos);
+    CHECK(fs::file_size(bed) < fs::file_size(atmos));
+
+    // The claim the command makes about the audio, checked through the
+    // decoder rather than taken on trust: the bed is bit-identical.
+    REQUIRE(run_cli("decode \"" + atmos.string() + "\" \"" + atmos_wav.string() + "\"", log) == 0);
+    REQUIRE(run_cli("decode \"" + bed.string() + "\" \"" + bed_wav.string() + "\"", log) == 0);
+    const auto read_all_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::string{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    };
+    CHECK(read_all_bytes(atmos_wav) == read_all_bytes(bed_wav));
+
+    // Nothing left to strip the second time round.
+    const auto again = dir / "strip_bed51_again.ec3";
+    REQUIRE(run_cli("strip-objects \"" + bed.string() + "\" \"" + again.string() + "\"", log) == 0);
+    CHECK(read_all_bytes(again) == read_all_bytes(bed));
+}
+
+TEST_CASE("strip-objects refuses an AC-3 stream", "[cli][strip-objects]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "strip_ac3.log";
+    const auto ac3 = dir / "strip_input.ac3";
+    REQUIRE(run_cli("silence \"" + ac3.string() + "\" 1 192", log) == 0);
+    CHECK(run_cli("strip-objects \"" + ac3.string() + "\" \"" + (dir / "strip_out.ec3").string() +
+                      "\"",
+                  log) != 0);
+    CHECK(read_log(log).find("E-AC-3") != std::string::npos);
+}
+
+// --- roadmap IO6: the MPEG-TS broadcast profiles ---------------------------
+
+TEST_CASE("ts writes the profile it is asked for", "[cli][ts]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ts_profile.log";
+    const auto source = dir / "ts_profile.ac3";
+    REQUIRE(run_cli("sine \"" + source.string() + "\" 1 448 440 60 51", log) == 0);
+
+    const auto read_all_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::string{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    };
+    const auto ts_of = [&](std::string_view profile, const fs::path& out) {
+        const std::string tail = profile.empty() ? std::string{} : " " + std::string{profile};
+        REQUIRE(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\"" + tail, log) ==
+                0);
+        return read_all_bytes(out);
+    };
+
+    const auto implicit = ts_of("", dir / "ts_implicit.ts");
+    const auto dvb = ts_of("dvb", dir / "ts_dvb.ts");
+    const auto atsc = ts_of("atsc", dir / "ts_atsc.ts");
+    // DVB is the default, so an unqualified invocation is unchanged.
+    CHECK(implicit == dvb);
+    // ATSC differs only in the PMT, so the files are the same length but not
+    // the same bytes - a stream_type and a descriptor apart.
+    CHECK(atsc.size() == dvb.size());
+    CHECK(atsc != dvb);
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + (dir / "ts_bad.ts").string() + "\" pal",
+                  log) != 0);
+    CHECK(read_log(log).find("dvb or atsc") != std::string::npos);
+}
+
+TEST_CASE("mainid= and asvc= are range-checked", "[cli][ts]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ts_service.log";
+    const auto source = dir / "ts_service.ac3";
+    const auto out = dir / "ts_service.ts";
+    REQUIRE(run_cli("sine \"" + source.string() + "\" 1 192 440 60 stereo", log) == 0);
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=7", log) ==
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0xFF", log) ==
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=8", log) !=
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=256", log) !=
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb mainid=x", log) !=
+          0);
+}
+
+TEST_CASE("fmp4 fallback-51 writes the paired rendition into one EXT-X-MEDIA group",
+          "[cli][fmp4][strip-objects]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "fmp4_fallback.log";
+    const auto atmos = dir / "fallback_atmos.ec3";
+    const auto out_dir = dir / "fallback_out";
+    fs::remove_all(out_dir);
+    REQUIRE(run_cli("atmos \"" + atmos.string() + "\" 1 448 2 4 objects", log) == 0);
+    REQUIRE(run_cli("fmp4 \"" + atmos.string() + "\" \"" + out_dir.string() + "\" 4 fallback-51",
+                    log) == 0);
+
+    CHECK(fs::exists(out_dir / "bed51" / "init.mp4"));
+    CHECK(fs::exists(out_dir / "bed51" / "audio.m3u8"));
+    std::ifstream master_in{out_dir / "master.m3u8", std::ios::binary};
+    const std::string master{std::istreambuf_iterator<char>{master_in},
+                             std::istreambuf_iterator<char>{}};
+    CHECK(master.find("/JOC\"") != std::string::npos);
+    CHECK(master.find("CHANNELS=\"6\"") != std::string::npos);
+    CHECK(master.find("URI=\"bed51/audio.m3u8\"") != std::string::npos);
+
+    // A stream with no object layer has no companion to write, and says so
+    // rather than writing an empty directory.
+    const auto plain = dir / "fallback_plain.ec3";
+    const auto plain_dir = dir / "fallback_plain_out";
+    fs::remove_all(plain_dir);
+    REQUIRE(run_cli("eac3-sine \"" + plain.string() + "\" 1 192 440 50 stereo", log) == 0);
+    REQUIRE(run_cli("fmp4 \"" + plain.string() + "\" \"" + plain_dir.string() + "\" 4 fallback-51",
+                    log) == 0);
+    CHECK(read_log(log).find("carries no object layer") != std::string::npos);
+    CHECK_FALSE(fs::exists(plain_dir / "bed51"));
+}
+
+// ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
+// worth anything if it is a true inverse - the elementary stream that goes
+// into a container has to be the one that comes back out, byte for byte. A
+// container reader that dropped a frame, mis-split a block or trimmed a
+// trailing byte would still produce something a decoder mostly plays, which
+// is exactly why this is checked as bytes and not as audio.
+TEST_CASE("demux recovers the exact elementary stream a container wrapped",
+          "[cli][demux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "demux.log";
+
+    // read_bytes is a lambda local to another test case above; this one
+    // needs the same thing and defines its own rather than reaching into it.
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    // Both containers, from the same elementary stream: whichever one wrapped
+    // it, demux has to hand back the identical bytes. `wrap` names the
+    // wrapping command, which is also the extension the container gets.
+    const auto check_round_trip = [&](const std::string& make, const fs::path& elementary,
+                                      const std::string& wrap) {
+        const auto container = dir / (elementary.stem().string() + "." + wrap);
+        const auto recovered = dir / (elementary.stem().string() + "." + wrap + ".back");
+        REQUIRE(run_cli(make, log) == 0);
+        REQUIRE(run_cli(wrap + " \"" + elementary.string() + "\" \"" + container.string() + "\"",
+                        log) == 0);
+        REQUIRE(run_cli("demux \"" + container.string() + "\" \"" + recovered.string() + "\"",
+                        log) == 0);
+        CHECK(read_bytes(recovered) == read_bytes(elementary));
+    };
+
+    SECTION("E-AC-3 through Matroska") {
+        const auto es = dir / "demux_eac3.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mkv");
+    }
+
+    SECTION("AC-3 through Matroska") {
+        const auto es = dir / "demux_ac3.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mkv");
+    }
+
+    SECTION("E-AC-3 through MP4") {
+        const auto es = dir / "demux_eac3_mp4.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "mp4");
+    }
+
+    SECTION("AC-3 through MP4") {
+        const auto es = dir / "demux_ac3_mp4.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "mp4");
+    }
+
+    SECTION("E-AC-3 through MPEG-TS") {
+        const auto es = dir / "demux_eac3_ts.ec3";
+        check_round_trip("eac3-sine \"" + es.string() + "\" 2 448 440 60 51", es, "ts");
+    }
+
+    SECTION("AC-3 through MPEG-TS") {
+        const auto es = dir / "demux_ac3_ts.ac3";
+        check_round_trip("sine \"" + es.string() + "\" 2 192 440 60 stereo", es, "ts");
+    }
+}
+
+TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "demux_bad.log";
+
+    // Same local helper as the round-trip case above.
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    SECTION("a bare elementary stream is not a container") {
+        // The single most likely mistake, and the one where naming the file
+        // .mkv or .mp4 would have made a name-based guess say yes.
+        const auto es = dir / "demux_bare.ac3";
+        REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
+        CHECK(run_cli("demux \"" + es.string() + "\" \"" + (dir / "demux_bare.out").string() +
+                          "\"",
+                      log) != 0);
+    }
+
+    SECTION("a truncated container reports the reader's own error") {
+        const auto es = dir / "demux_trunc.ac3";
+        const auto mkv = dir / "demux_trunc.mkv";
+        const auto cut = dir / "demux_trunc_cut.mkv";
+        REQUIRE(run_cli("silence \"" + es.string() + "\" 1 192", log) == 0);
+        REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+        // Keep only the first 20 bytes: past the EBML header id, nowhere
+        // near a track, so there is nothing to hand back.
+        const auto whole = read_bytes(mkv);
+        REQUIRE(whole.size() > 20);
+        {
+            std::ofstream out{cut, std::ios::binary};
+            out.write(reinterpret_cast<const char*>(whole.data()), 20);
+        }
+        CHECK(run_cli("demux \"" + cut.string() + "\" \"" + (dir / "demux_trunc.out").string() +
+                          "\"",
+                      log) != 0);
+    }
+
+    SECTION("a missing input file") {
+        CHECK(run_cli("demux \"" + (dir / "demux_absent.mkv").string() + "\" \"" +
+                          (dir / "demux_absent.out").string() + "\"",
+                      log) != 0);
+    }
+}
+
+// --- unspdif (roadmap IO3) ---------------------------------------------------
+
+TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif.log";
+    const auto file_bytes = [](const fs::path& p) {
+        std::ifstream in{p, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    // AC-3 and E-AC-3 both: their burst periods, their Pd units (bits vs
+    // bytes) and their carrier rates all differ, so one passing says nothing
+    // about the other.
+    const auto ac3 = dir / "unspdif_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ac3_wav = dir / "unspdif_src_ac3.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + ac3_wav.string() + "\"", log) == 0);
+    const auto ac3_back = dir / "unspdif_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + ac3_wav.string() + "\" \"" + ac3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ac3_back) == file_bytes(ac3));
+
+    const auto ec3 = dir / "unspdif_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 51", log) == 0);
+    const auto ec3_wav = dir / "unspdif_src_ec3.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + ec3_wav.string() + "\"", log) == 0);
+    const auto ec3_back = dir / "unspdif_back.ec3";
+    REQUIRE(run_cli("unspdif \"" + ec3_wav.string() + "\" \"" + ec3_back.string() + "\"", log) ==
+            0);
+    CHECK(file_bytes(ec3_back) == file_bytes(ec3));
+
+    // What came back is a stream in its own right, not only a byte match:
+    // it decodes.
+    const auto decoded = dir / "unspdif_back.wav";
+    CHECK(run_cli("decode \"" + ec3_back.string() + "\" \"" + decoded.string() + "\"", log) == 0);
+}
+
+TEST_CASE("cli: unspdif reads a bare carrier as well as a WAV", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_raw.log";
+    const auto ac3 = dir / "unspdif_raw_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_raw.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // The same carrier with its RIFF header cut off - what a capture tool
+    // that dumps raw device bytes leaves behind. kWavHeaderBytes is 44 for
+    // every WAV this project writes (see write_wav_pcm16_raw).
+    std::ifstream in{wav, std::ios::binary};
+    REQUIRE(in.is_open());
+    const std::vector<char> whole{std::istreambuf_iterator<char>{in},
+                                  std::istreambuf_iterator<char>{}};
+    REQUIRE(whole.size() > 44);
+    const auto raw = dir / "unspdif_raw.carrier";
+    {
+        std::ofstream out{raw, std::ios::binary};
+        out.write(whole.data() + 44, static_cast<std::streamsize>(whole.size() - 44));
+    }
+    const auto back = dir / "unspdif_raw_back.ac3";
+    REQUIRE(run_cli("unspdif \"" + raw.string() + "\" \"" + back.string() + "\"", log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{back, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+}
+
+TEST_CASE("cli: unspdif refuses ordinary PCM and leaves no output behind", "[cli][unspdif]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_pcm.log";
+    const auto ac3 = dir / "unspdif_pcm_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto pcm = dir / "unspdif_pcm.wav";
+    REQUIRE(run_cli("decode \"" + ac3.string() + "\" \"" + pcm.string() + "\"", log) == 0);
+
+    const auto out = dir / "unspdif_pcm_out.ac3";
+    fs::remove(out);
+    CHECK(run_cli("unspdif \"" + pcm.string() + "\" \"" + out.string() + "\"", log) != 0);
+    CHECK(read_log(log).find("no AC-3 or E-AC-3 bursts") != std::string::npos);
+    // A failed run leaves no half-written stream to be mistaken for output.
+    CHECK_FALSE(fs::exists(out));
+
+    // And a file that is not there at all is a clean error, not a crash.
+    CHECK(run_cli("unspdif \"" + (dir / "definitely_absent.wav").string() + "\" \"" +
+                      out.string() + "\"",
+                  log) != 0);
+}
+
+TEST_CASE("cli: unspdif writes a clean stream to stdout, status text to stderr", "[cli][unspdif]") {
+    // The convention encode/decode already follow (status_stream): with "-"
+    // as the output, the human-readable report must not land in the middle of
+    // the binary a pipeline is reading. Worth its own test because getting it
+    // wrong is invisible until something downstream chokes - the report is
+    // valid-looking text prepended to a valid stream.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdout.log";
+    const auto ac3 = dir / "unspdif_stdout_src.ac3";
+    REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdout.wav";
+    REQUIRE(run_cli("spdif \"" + ac3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    const auto piped = dir / "unspdif_stdout.ac3";
+    REQUIRE(run_cli_stdout("unspdif \"" + wav.string() + "\" -", piped, log) == 0);
+
+    std::ifstream a{ac3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
+    // And the report did go somewhere - to stderr, not nowhere.
+    CHECK(read_log(log).find("unwrapped") != std::string::npos);
+}
+
+TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
+    // The natural shape of this on a machine with a real S/PDIF input is a
+    // capture tool piped straight in, so "-" has to work on the input side
+    // too - and it takes a different code path from the file one, which
+    // seeks and walks the RIFF chunk list. Here the WAV header is simply
+    // scanned past, which is only safe because a header cannot contain a
+    // preamble with a syncframe behind it.
+    const auto dir = scratch_dir();
+    const auto log = dir / "unspdif_stdin.log";
+    const auto ec3 = dir / "unspdif_stdin_src.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+    const auto wav = dir / "unspdif_stdin.wav";
+    REQUIRE(run_cli("spdif \"" + ec3.string() + "\" \"" + wav.string() + "\"", log) == 0);
+
+    // Both ends piped at once, the way a shell would use it.
+    const auto piped = dir / "unspdif_stdin.ec3";
+    REQUIRE(run_cli_stdio("unspdif - -", wav, piped, log) == 0);
+
+    std::ifstream a{ec3, std::ios::binary};
+    std::ifstream b{piped, std::ios::binary};
+    const std::vector<char> expected{std::istreambuf_iterator<char>{a},
+                                     std::istreambuf_iterator<char>{}};
+    const std::vector<char> got{std::istreambuf_iterator<char>{b},
+                                std::istreambuf_iterator<char>{}};
+    CHECK(got == expected);
 }

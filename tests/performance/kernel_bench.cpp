@@ -20,11 +20,13 @@
 // against one pure tone's degenerate, single-bin spectrum does not cost what
 // it costs against broadband program material.
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fmt/printf.h>
 #include <fstream>
 #include <span>
 #include <string>
@@ -33,22 +35,19 @@
 
 #include "ac3/core/bitalloc.hpp"
 #include "ac3/core/exponents.hpp"
+#include "ac3/core/fft.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/dsp/qmf.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/joc_tables.hpp"
+#include "real_audio.hpp"
 
 namespace {
-
-// Set by CMake to the repo root, so the real-audio fixture resolves
-// regardless of the working directory this binary is launched from.
-#ifndef AC3FORGE_SOURCE_DIR
-#define AC3FORGE_SOURCE_DIR "."
-#endif
-constexpr const char* kDefaultWav = AC3FORGE_SOURCE_DIR "/tests/golden/audio/reference_51.wav";
 
 // The largest legal fbw mantissa count (chbwcod = 60: 37 + 3*(60+12) = 253 -
 // see exponents.cpp's own derivation). compute_bit_allocation/
@@ -133,9 +132,12 @@ std::array<std::uint8_t, 256> exps_from_coeffs(const std::array<double, 256>& co
 // Real fixture, loaded once: reference_51.wav's six channels, each long
 // enough to supply several consecutive real blocks (AHT's six-block window,
 // ecpl's prev/curr/next triple) without running off the end of the file.
+// The loading and its no-synthetic-fallback rule live in real_audio.hpp,
+// shared with ac3bench and ac3perf so the three benches cannot drift apart
+// again on what a bench input is.
 struct RealAudio {
     ac3::io::WavData wav;
-    static constexpr int kMinChannels = 6;
+    static constexpr std::size_t kMinChannels = 6;
     static constexpr int kMinBlocks = 8;  // covers every kernel's block reach
 
     [[nodiscard]] std::span<const float> channel(std::size_t index) const {
@@ -143,29 +145,11 @@ struct RealAudio {
     }
 };
 
-RealAudio load_real_audio(const std::string& path) {
-    auto result = ac3::io::read_wav(path);
-    if (!result) {
-        std::fprintf(stderr,
-                     "kernel_bench: failed to read real-audio fixture '%s' (%s) - kernel "
-                     "inputs must come from real audio, not synthetic silence, so there is no "
-                     "fallback here\n",
-                     path.c_str(), std::string(ac3::io::describe(result.error())).c_str());
-        std::exit(1);
-    }
-    if (static_cast<int>(result->channels.size()) < RealAudio::kMinChannels) {
-        std::fprintf(stderr, "kernel_bench: '%s' has %zu channels, need >= %d\n", path.c_str(),
-                     result->channels.size(), RealAudio::kMinChannels);
-        std::exit(1);
-    }
-    const auto min_samples =
-        static_cast<std::size_t>(RealAudio::kMinBlocks + 1) * ac3::kSamplesPerBlock;
-    if (result->frame_count() < min_samples) {
-        std::fprintf(stderr, "kernel_bench: '%s' has %zu samples/channel, need >= %zu\n",
-                     path.c_str(), result->frame_count(), min_samples);
-        std::exit(1);
-    }
-    return RealAudio{.wav = std::move(*result)};
+RealAudio load_fixture(const std::string& path) {
+    return RealAudio{
+        .wav = perf::load_real_audio(path, RealAudio::kMinChannels,
+                                     static_cast<std::size_t>(RealAudio::kMinBlocks + 1) *
+                                         ac3::kSamplesPerBlock)};
 }
 
 void write_json(const std::vector<KernelResult>& results, const std::string& path) {
@@ -184,7 +168,7 @@ void write_json(const std::vector<KernelResult>& results, const std::string& pat
 
 int main(int argc, char** argv) {
     std::string json_out;
-    std::string wav_path = kDefaultWav;
+    std::string wav_path = perf::kReference51Wav;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--json-out" && i + 1 < argc) {
@@ -194,7 +178,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    const RealAudio audio = load_real_audio(wav_path);
+    const RealAudio audio = load_fixture(wav_path);
 
     // Real per-block MDCT coefficients and their derived exponents, for a
     // handful of consecutive blocks on the first two real channels - enough
@@ -249,10 +233,55 @@ int main(int argc, char** argv) {
     }));
 
     // --- imdct512_windowed ----------------------------------------------------
+    // The inverse transform is where a decode frame's time actually goes,
+    // and until roadmap PF1 only the direct form was benched here - while
+    // the fast one became DecoderConfig::fast_imdct's default in 0.9.0, so
+    // this series tracked a transform no decoder runs any more. Both forms
+    // are timed for the same reason the forward pair above is: mode=reference
+    // still selects the direct evaluation, and the ratio between these two
+    // rows is what that choice costs.
     results.push_back(time_kernel("imdct512_windowed", [&] {
         std::array<double, 512> x{};
         ac3::imdct512_windowed(ch0_coeffs[4], x);
         g_sink += x[256];
+    }));
+    // The same inverse down its radix-2 step 3 - what DecoderConfig::fast_imdct
+    // (default on since 0.9.0) actually runs, and so the row that matters for
+    // decode throughput; the direct row above is the reference form. Added
+    // with the PF5 vector kernels, which speed up this path and not the
+    // direct one: without it the whole decode side of that work is invisible
+    // to the trend tables. (ROADMAP PF1 wants more than this - E-AC-3 encode
+    // series, decoder Tracy zones, real-audio timing inputs - and is
+    // unaffected.)
+    results.push_back(time_kernel("imdct512_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct512_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
+
+    // --- imdct256_pair_windowed (block-switched inverse) ----------------------
+    results.push_back(time_kernel("imdct256_pair_windowed", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x);
+        g_sink += x[256];
+    }));
+    results.push_back(time_kernel("imdct256_pair_windowed_fast", [&] {
+        std::array<double, 512> x{};
+        ac3::imdct256_pair_windowed(ch0_coeffs[4], x, /*fast=*/true);
+        g_sink += x[256];
+    }));
+
+    // --- dft512 (the FFT core at P = 512, its largest size) ------------------
+    // §E3.5.5.1 step 5's full complex spectrum, the step-4 half of
+    // ecpl_channel_spectrum below. Real input: one block's windowed PCM in
+    // the real part, zero imaginary, the shape ecpl's own step 3 hands it.
+    std::array<double, 512> dft_in_re = windowed_block;
+    std::array<double, 512> dft_in_im{};
+    results.push_back(time_kernel("dft512", [&] {
+        std::array<double, 512> out_re{};
+        std::array<double, 512> out_im{};
+        ac3::dft512(dft_in_re, dft_in_im, out_re, out_im);
+        g_sink += out_re[64];
     }));
 
     // --- compute_bit_allocation -----------------------------------------------
@@ -330,6 +359,17 @@ int main(int argc, char** argv) {
                                          imag_out);
         g_sink += real_out[64];
     }));
+    // The same call with its three step-1 inverses on the fast path - what a
+    // decode (DecoderConfig::fast_imdct) and a default enhanced-coupling
+    // encode (eac3::FrameConfig::fast_mdct) both run; the row above is the
+    // reference form.
+    results.push_back(time_kernel("ecpl_channel_spectrum_fast", [&] {
+        std::array<double, 256> real_out{};
+        std::array<double, 256> imag_out{};
+        ac3::eac3::ecpl_channel_spectrum(ch0_coeffs[3], ch0_coeffs[4], ch0_coeffs[5], real_out,
+                                         imag_out, /*fast=*/true);
+        g_sink += real_out[64];
+    }));
 
     // --- band_energy (one real 5.1 frame, default 9-band JOC layout) ---------
     const auto frame0 = audio.channel(0).subspan(0, static_cast<std::size_t>(ac3::kSamplesPerFrame));
@@ -346,6 +386,79 @@ int main(int argc, char** argv) {
         ac3::oba::band_energy(frame0, mapping, energy, /*fast=*/true);
         g_sink += energy[0];
     }));
+
+    // --- the QMF-domain siblings (joc::Domain::kQmf) --------------------------
+    // Same frame, same band layout, read off §7.1's 64 complex subbands
+    // instead of 256 MDCT bins. The filterbank rows underneath it are the
+    // per-timeslot primitives both sides are built from - a frame is 24 of
+    // them per signal.
+    results.push_back(time_kernel("qmf_band_energy", [&] {
+        static ac3::dsp::QmfAnalysis analysis;
+        std::array<double, 9> energy{};
+        ac3::oba::qmf_band_energy(frame0, mapping, energy, analysis);
+        g_sink += energy[0];
+    }));
+    results.push_back(time_kernel("qmf_analysis_timeslot", [&] {
+        static ac3::dsp::QmfAnalysis analysis;
+        std::array<double, ac3::dsp::kQmfSubbands> real{};
+        std::array<double, ac3::dsp::kQmfSubbands> imag{};
+        analysis.push(std::span<const float, ac3::dsp::kQmfHop>{
+                          frame0.data(), static_cast<std::size_t>(ac3::dsp::kQmfHop)},
+                      real, imag);
+        g_sink += real[7];
+    }));
+    results.push_back(time_kernel("qmf_synthesis_timeslot", [&] {
+        static ac3::dsp::QmfSynthesis synthesis;
+        std::array<double, ac3::dsp::kQmfSubbands> real{};
+        std::array<double, ac3::dsp::kQmfSubbands> imag{};
+        real[7] = 0.5;
+        imag[9] = -0.25;
+        std::array<float, ac3::dsp::kQmfHop> out{};
+        synthesis.pull(real, imag, out);
+        g_sink += static_cast<double>(out[3]);
+    }));
+
+    // --- joc::reconstruct, both domains, one whole 4-object frame -------------
+    // The decode-side cost the WASM demo and the Android app actually pay:
+    // five downmix channels analysed and four objects synthesised, per frame.
+    {
+        std::vector<std::vector<float>> bed_storage(
+            static_cast<std::size_t>(ac3::joc::kNumChannels5X),
+            std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        for (std::size_t ch = 0; ch < bed_storage.size(); ++ch) {
+            const auto source =
+                audio.channel(ch).subspan(0, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+            std::copy(source.begin(), source.end(), bed_storage[ch].begin());
+        }
+        std::vector<std::span<const float>> bed;
+        bed.reserve(bed_storage.size());
+        for (const auto& channel : bed_storage) {
+            bed.emplace_back(channel);
+        }
+        ac3::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 5};
+        params.matrix.assign(params.coefficient_count(), 0.0);
+        for (int object = 0; object < params.objects; ++object) {
+            for (int channel = 0; channel < params.channels; ++channel) {
+                for (int band = 0; band < params.bands(); ++band) {
+                    params.at(object, channel, band) = 0.4 - 0.05 * ((object + channel) % 5);
+                }
+            }
+        }
+        results.push_back(time_kernel("joc_reconstruct_mdct_4obj", [&] {
+            static ac3::joc::ReconstructionState state;
+            const auto out =
+                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                                      /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
+            g_sink += static_cast<double>(out[0][128]);
+        }));
+        results.push_back(time_kernel("joc_reconstruct_qmf_4obj", [&] {
+            static ac3::joc::ReconstructionState state;
+            const auto out =
+                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                                      /*fast_imdct=*/true, ac3::joc::Domain::kQmf);
+            g_sink += static_cast<double>(out[0][128]);
+        }));
+    }
 
     // --- one full bits_at evaluation ------------------------------------------
     // The SNR-offset binary search's per-iteration cost unit (see
@@ -376,15 +489,15 @@ int main(int argc, char** argv) {
     }));
 
     for (const auto& r : results) {
-        std::printf("%-28s %10llu iters  %10.1f ns/call\n", r.name.c_str(),
+        fmt::printf("%-28s %10llu iters  %10.1f ns/call\n", r.name.c_str(),
                     static_cast<unsigned long long>(r.iters), r.ns_per_call);
     }
     // Not printed for its value - just to anchor g_sink as observably used.
-    std::printf("(checksum %.6f)\n", g_sink);
+    fmt::printf("(checksum %.6f)\n", g_sink);
 
     if (!json_out.empty()) {
         write_json(results, json_out);
-        std::printf("wrote %s\n", json_out.c_str());
+        fmt::printf("wrote %s\n", json_out.c_str());
     }
 
     return 0;

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -18,13 +19,19 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
 
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/quality/distortion.hpp"
+#include "ac3/quality/perceptual.hpp"
 #include "ac3/verify/mirror.hpp"
+#include "dither.hpp"
+#include "exp_strategy.hpp"
 #include "snr_search.hpp"
 
 namespace ac3 {
@@ -42,41 +49,6 @@ constexpr bool has_three_front(Acmod acmod) {
 
 constexpr bool has_surround(Acmod acmod) {
     return (static_cast<std::uint8_t>(acmod) & 0x4) != 0;
-}
-
-// §8.2.8: strategy by the number of blocks an exponent set serves.
-constexpr ExpStrategy strategy_for_span(int span) {
-    if (span <= 1) {
-        return ExpStrategy::kD45;
-    }
-    if (span <= 3) {
-        return ExpStrategy::kD25;
-    }
-    return ExpStrategy::kD15;
-}
-
-// Exponent-set change detection (§8.2.8: "when the variation exceeds a
-// threshold, new exponents will be sent").
-//
-// The threshold is a judgement about COST, so it is not one number. A full-
-// bandwidth channel's set is 4 + 7*ngrps bits - about 590 at D15 over a
-// 250-coefficient band - and spending that mid-frame has to buy back more
-// than it costs, so it waits for the exponents to have really moved: a mean
-// change above two steps, 12 dB per bin.
-//
-// The LFE's set is always two groups, 18 bits, thirty times cheaper. Holding
-// it to the same bar means almost never refreshing it, and the frame's one
-// set is then the per-bin minimum across six blocks - a scale chosen by the
-// loudest of them. Any block quieter than that is quantized against the wrong
-// scale for the sake of not spending 18 bits. So the LFE refreshes as soon as
-// its exponents move at all, which is the trade its own cost argues for.
-bool needs_new_exponents(std::span<const std::uint8_t> current,
-                         std::span<const std::uint8_t> reference, bool is_lfe) {
-    long long diff = 0;
-    for (std::size_t i = 0; i < current.size(); ++i) {
-        diff += std::abs(static_cast<int>(current[i]) - static_cast<int>(reference[i]));
-    }
-    return diff > (is_lfe ? 0 : 2 * static_cast<long long>(current.size()));
 }
 
 // Where coupling should start when the caller does not say. Sub-band 4 - bin
@@ -120,6 +92,86 @@ int rematrix_band_count(bool cplinu, int cplbegf) {
     }
     return cplbegf > 0 ? 3 : 2;
 }
+
+// §7.2.2.4's fast gain (Table 7.11), when the caller has not pinned one.
+//
+// The gain is subtracted from a band's psd to form the fast leak, so raising
+// it lowers the excitation the whole masking curve is built on and asks for
+// more precision everywhere; the SNR-offset search then gives that back by
+// shifting the composite. What it really controls is how far a loud band's
+// mask spreads over its quiet neighbours, and the right amount of spreading
+// depends on how much precision there is to spread.
+//
+// §8.2.12 recommends a fixed 4. Measured across the per-channel rate on real
+// programme material (the 5.1 mix; ViSQOL, since waveform SNR prefers 7 at
+// every single rate and so says nothing):
+//
+//   per channel        38     51     64     89    128 kbit/s
+//   best fgaincod       7      6      4      3      0
+//   MOS over 4     +0.099 +0.027  0.000 +0.004 +0.158
+//
+// which is a straight line from 7 at 38 kbit/s per channel to 0 at 128, and
+// is the same shape - in the same direction - as the SNR-only sweep recorded
+// in step 0's comment, which found fgaincod 1 worth +2 dB at 448 and +7 dB
+// at 640 kbit/s 5.1 while regressing at 192. Two independent measurements,
+// two different materials, two different metrics, one curve.
+//
+// Confirmed on a second material at the low end, where the change is
+// largest: reference_51.wav at 192 kbit/s also prefers 7, worth +0.070 MOS.
+int fgaincod_for(const EncoderConfig& config, int nfchans) {
+    if (config.fgaincod >= 0) {
+        return config.fgaincod;
+    }
+    // The line through (38, 7) and (128, 0), rounded rather than truncated.
+    constexpr int kTopKbps = 128;
+    constexpr int kSpanKbps = 90;
+    const int per_channel_kbps =
+        static_cast<int>(config.bitrate_kbps) / std::max(nfchans, 1);
+    const int numerator = (kTopKbps - per_channel_kbps) * 7 + kSpanKbps / 2;
+    return std::clamp(numerator / kSpanKbps, 0, 7);
+}
+
+// Step 9a's candidate set: what the per-frame search over transmitted bit
+// allocation parameters is allowed to try, on top of the no-search defaults
+// (dbpbcod 3, fgaincod_for's own rate-adaptive curve above) - which the
+// search's own incumbent/defaults handling scores explicitly rather than
+// relying on it appearing here by coincidence, so turning the search on can
+// never silently discard fgaincod_for's measured win.
+//
+// Six, not all 8192. The declaration of `codes` in encode_frame records
+// which of the six parameters were measured to matter and which were not,
+// and a search is only worth running over the ones that move the result:
+//
+//   floorcod  - inert. The floor never binds at any rate on any material
+//               tried, so all eight values encode identically.
+//   sdcycod / fdcycod / sgaincod
+//             - move the result by tenths of a decibel, and sgaincod also
+//               drags cplsleak with it. Not worth a settlement each.
+//   dbpbcod   - large and rate-dependent: 2 (the §8.2.12 recommendation)
+//               against 3 (measured better at every rate on every material,
+//               by +5.9 dB at 192 and +1.2 dB at 640).
+//   fgaincod  - fgaincod_for above already answers this per frame from the
+//               rate alone; these three fixed values are what is left to
+//               try beyond that curve - the SNR-only sweep in step 0's
+//               comment measured fgaincod 1 worth +2 dB at 448 and +7 dB at
+//               640 while regressing at 192, which is a sharper local
+//               optimum than a smooth rate curve can express on its own.
+//
+// So the set is dbpbcod {2, 3} x fgaincod {1, 2, 4}. Every other field keeps
+// the §8.2.12 basic-encoder value in every candidate.
+constexpr std::array<BitAllocCodes, 6> kCodeCandidates = {
+    BitAllocCodes{.dbpbcod = 2, .fgaincod = 1}, BitAllocCodes{.dbpbcod = 2, .fgaincod = 2},
+    BitAllocCodes{.dbpbcod = 2, .fgaincod = 4}, BitAllocCodes{.dbpbcod = 3, .fgaincod = 1},
+    BitAllocCodes{.dbpbcod = 3, .fgaincod = 2}, BitAllocCodes{.dbpbcod = 3, .fgaincod = 4},
+};
+
+// How much better a candidate has to measure before the frame changes its
+// codes. Two reasons it is not zero. A win of a hundredth of a decibel is
+// measurement noise rather than anything audible; and these codes are
+// transmitted per frame, so a search flipping between two near-equal answers
+// would modulate the masking curve at the frame rate - 31 Hz at 48 kHz - for
+// no benefit at all.
+constexpr double kCodeSwitchMarginDb = 0.05;
 
 // Step 9's SNR-offset search result: the composite offset it found, and the
 // mantissa bit cost AT that offset (so a caller never has to re-run
@@ -170,6 +222,35 @@ struct FrameEncoder::PlanScratch {
     std::vector<int> starts;
     std::vector<std::uint8_t> raw;
     std::vector<double> peak_mag;
+
+    // --- step 9a's decision search (EncoderConfig::search) ------------------
+    // All unused, and the model unconstructed, when the search is off.
+    //
+    // The model is here rather than in encoder.hpp because it carries state
+    // ACROSS frames - its tonality estimate extrapolates from the previous
+    // two blocks, and the previous frame's last two blocks are what make
+    // blocks 0 and 1 of this one as good as the rest. std::optional because
+    // it needs the sample rate and a channel count to construct, which
+    // FrameEncoder's constructor has, and because a config that never asks
+    // for the search should never pay for its tables.
+    std::optional<quality::PerceptualModel> perceptual;
+    // Whether the frame the model last saw was a coupling frame. cplinu is
+    // not stable across frames (§8.2.4.1 excludes a block-switched channel,
+    // so a transient turns coupling off for that frame), and stream index
+    // nchans is the coupling channel only while it is on - so its history
+    // has to be dropped whenever that changes, or this frame's coupling
+    // spectrum would be extrapolated from a spectrum belonging to a
+    // different signal.
+    bool coupled_last_frame = false;
+    // Per (stream, block): the measured reconstruction noise at the
+    // allocation run_bap currently holds, and the masking thresholds it is
+    // judged against. Split that finely for the same reason noise_to_mask
+    // weighs bands separately rather than dividing sums - a channel with
+    // slack must not pay for a channel without, and neither must a loud
+    // block for a quiet one.
+    std::vector<quality::BandNoise> measured;
+    std::vector<std::array<double, quality::kBands>> thresholds;
+    quality::BlockAnalysis analysis;
 };
 
 FrameEncoder::~FrameEncoder() = default;
@@ -226,6 +307,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (dual_mono &&
         (!config_.dialnorm2 || *config_.dialnorm2 < 1 || *config_.dialnorm2 > 31)) {
         return std::unexpected(FrameError::kInvalidDialnorm);
+    }
+    if (!meta::valid_bsi_info(config_.info)) {
+        return std::unexpected(FrameError::kInvalidBsi);
+    }
+    if (config_.alternate_bsi) {
+        if (!meta::valid_alternate_bsi(*config_.alternate_bsi)) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
+        // §D1: the alternate syntax lives IN the two timecod fields. Asking
+        // for both is asking for 56 bits where the frame has 28, and quietly
+        // dropping one of them would leave the caller believing a time code
+        // went out that never did.
+        if (config_.info.timecod1 || config_.info.timecod2) {
+            return std::unexpected(FrameError::kInvalidBsi);
+        }
     }
     const int nfchans = fullbw_channel_count(config_.acmod);
     const int nchans = channel_count();
@@ -301,50 +397,20 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     AC3_ZONE_END(zone_metadata);
 
-    // Bandwidth: explicit config, or a bitrate-aware default. This comes
-    // before the coupling decision because coupling inherits it - see
-    // default_cplendf.
-    //
-    // Do not tune this against the checked-in fixtures. Swept 2026-08-17 over
-    // chbwcod 24..60 at 192-640 kbit/s on both of them, and narrowing looks
-    // like a large win on every metric this repo measures: 5.1 at 448 gains
-    // 2.1 dB of SNR at chbwcod 28, and even log-spectral distance improves
-    // (5.43 -> 5.26). It is an artifact. chbwcod 28 codes to 14.7 kHz, and
-    // reference_51.wav carries 1.1e-4 of its energy above that (it is built
-    // from FIR-smoothed noise), so discarding the top 9 kHz costs almost
-    // nothing there while freeing bits everywhere else. Real programme
-    // material is not band-limited like that, and a 14.7 kHz AC-3 encoder at
-    // 448 kbit/s would be plainly worse to listen to while scoring better
-    // here.
-    //
-    // The other direction was measured too, and the current rule is right:
-    // forcing full bandwidth (chbwcod 60) is worth -0.004 dB at 448 - the
-    // rule already reaches 59 there - and -0.83 dB at 384, where the extra
-    // band costs more in quantisation noise than the energy it recovers.
-    // Trading bandwidth for precision as the rate falls is what this does,
-    // and it is doing it correctly.
-    int chbwcod = config_.chbwcod;
-    if (chbwcod < 0) {
-        const int per_channel_kbps =
-            static_cast<int>(config_.bitrate_kbps) / std::max(nfchans, 1);
-        chbwcod = std::clamp(per_channel_kbps * 2 / 3, 24, 60);
-    }
-    assert(chbwcod >= 0 && chbwcod <= 60);
-    const int chbw_endmant = ((chbwcod + 12) * 3) + 37;
-
     // --- Block switching (§8.2.2/§7.9) --------------------------------------
     // Decided before the coupling decision below, because §8.2.4.1's basic-
-    // encoder guidance excludes a block-switched channel from coupling, and
-    // this codebase's coupling is frame-wide all-or-nothing rather than a
-    // per-channel toggle (emit_block_side_info below sends chincpl as
-    // unconditionally 1 for every fbw channel) - so the only way to honour
-    // that exclusion without inventing bitstream machinery this phase has no
-    // room for is to leave coupling off for the WHOLE frame whenever any
-    // eligible channel switches, rather than just that one channel.
+    // encoder guidance excludes a block-switched channel from coupling -
+    // and `chincpl` is a per-channel bitstream field, so that exclusion is
+    // honoured by leaving the switching channel out of coupling and letting
+    // every other channel keep it, rather than by turning the tool off for
+    // the whole frame. A channel that switches in ANY block is out for the
+    // whole frame, because this encoder only ever sends coupling strategy
+    // (and with it chincpl) in block 0.
     AC3_ZONE_BEGIN(zone_transients, "step0_transient_detect");
     auto& blksw = scratch_->blksw;
     blksw.assign(static_cast<std::size_t>(nfchans), {});
-    bool any_switched = false;
+    // AC-3's widest acmod (3/2) codes five full-bandwidth channels.
+    std::array<bool, 5> switched{};
     for (int ch = 0; ch < nfchans; ++ch) {
         const auto& pcm = channels[static_cast<std::size_t>(ch)];
         for (int block = 0; block < kBlocksPerFrame; ++block) {
@@ -359,120 +425,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 kSamplesPerBlock};
             const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
             blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] = sw;
-            any_switched = any_switched || sw;
+            switched[static_cast<std::size_t>(ch)] =
+                switched[static_cast<std::size_t>(ch)] || sw;
         }
     }
     AC3_ZONE_END(zone_transients);
-
-    // --- Coupling decision -------------------------------------------------
-    // Coupling needs at least two full-bandwidth channels to share anything -
-    // true of dual mono's nfchans too, but sharing is exactly what its two
-    // channels must never do: they are unrelated programmes, and a coupling
-    // channel built from their average would leak each into the other. A
-    // channel that block-switched anywhere this frame is excluded too - see
-    // the block-switching pre-pass above.
-    const bool cplinu = config_.coupling && nfchans >= 2 && !dual_mono && !any_switched;
-    int cplbegf = 0;
-    int cplendf = 0;
-    int cplstrtmant = 0;
-    int cplendmant = 0;
-    int ncplsubnd = 0;
-    std::array<bool, coupling::kSubBands> cplbndstrc{};
-    coupling::BandLayout cplbands{};
-    if (cplinu) {
-        cplendf = config_.cplendf >= 0 ? config_.cplendf
-                                       : default_cplendf(chbw_endmant);
-        cplendf = std::clamp(cplendf, 0, 15);
-        // The default start never runs past the end; an explicit one is
-        // caught by the sub-band count below.
-        cplbegf = config_.cplbegf >= 0
-                      ? config_.cplbegf
-                      : std::min(default_cplbegf(config_.bitrate_kbps, nfchans),
-                                 cplendf + 2);
-        cplbegf = std::clamp(cplbegf, 0, 15);
-        // cplendf is read by adding 3, so the coded region must extend past
-        // where coupling starts.
-        if (coupling::sub_band_count(cplbegf, cplendf) < 1) {
-            cplendf = std::min(15, cplbegf);
-        }
-        cplstrtmant = coupling::start_mant(cplbegf);
-        cplendmant = std::min(coupling::end_mant(cplendf), 253);
-        ncplsubnd = (cplendmant - cplstrtmant) / coupling::kBinsPerSubBand;
-        cplbndstrc = coupling::band_structure(cplbegf, ncplsubnd);
-        cplbands = coupling::group_bands(cplbegf, ncplsubnd, cplbndstrc);
-    }
-
-    // Coupled channels stop at the coupling frequency instead.
-    const int fbw_endmant = cplinu ? cplstrtmant : chbw_endmant;
-
-    // Stream layout: the fbw channels, the LFE, then the coupling channel as
-    // one more stream carrying the shared high band.
-    const int cpl_stream = cplinu ? nchans : -1;
-    const int streams = nchans + (cplinu ? 1 : 0);
-    const auto stream_start = [&](int s) { return s == cpl_stream ? cplstrtmant : 0; };
-    const auto stream_end = [&](int s) {
-        if (s == cpl_stream) {
-            return cplendmant;
-        }
-        return s < nfchans ? fbw_endmant : kLfeEndmant;
-    };
-
-    // --- Frame size via the CBR accumulator --------------------------------
-    const std::uint64_t ideal_bits_num =
-        static_cast<std::uint64_t>(config_.bitrate_kbps) * 1000 * kSamplesPerFrame;
-    const std::uint64_t denom =
-        static_cast<std::uint64_t>(sample_rate_hz(config_.sample_rate)) * 16;
-    rate_accumulator_ += ideal_bits_num;
-    const std::uint64_t words64 = rate_accumulator_ / denom - words_emitted_;
-    words_emitted_ += words64;
-    const auto words = static_cast<std::uint32_t>(words64);
-    const std::uint32_t base_words =
-        *frame_size_words(config_.sample_rate, config_.bitrate_kbps, false);
-    assert(words == base_words || words == base_words + 1);
-    const bool pad = words != base_words;
-    const std::uint32_t total_bytes = words * 2;
-    const std::uint32_t total_bits = total_bytes * 8;
-    const std::uint32_t words58 = frame_size_58_words(words);
-    // §8.2.12's basic-encoder defaults, with one departure: dbpbcod.
-    //
-    // dbpbcod picks dbknee (Table 7.9), and §7.2.2.5 adds
-    // (dbknee - bndpsd) >> 2 to the excitation of every band quieter than the
-    // knee. Raising it therefore lifts the mask over quiet bands only, which
-    // steers bits from bands that hold almost no energy towards the ones that
-    // do. The spec's own recommendation is 2; every rate and every material
-    // measured here prefers 3, and the win is large where it matters most -
-    // the low rates, which have the fewest bits to misplace:
-    //
-    //             192    256    320    384    448    640 kbit/s
-    //   5.1 fixture   +5.90  +4.75  +3.18  +2.46  +2.39  +1.17 dB
-    //   5.1 synth     +1.69  +1.66    -    +1.10  +1.44  +1.33 dB
-    //   stereo fixture +0.36  +0.08    -    +1.55  +4.48  +2.49 dB
-    //
-    // ViSQOL MOS is flat or better in every one of those cells, which is the
-    // check that matters: this is exactly the kind of change that can buy
-    // waveform SNR by de-prioritising quiet bands and sound worse for it.
-    // Measured on three materials, including quality_race's synthesized
-    // full-band decorrelated 5.1, because this project has already been
-    // caught once by a "win" that was really a property of one band-limited
-    // fixture (see chbwcod below).
-    //
-    // The other four are left alone deliberately. floorcod turns out to be
-    // inert - the floor never binds at any rate on any material tried, so all
-    // eight values encode identically. sdcycod/fdcycod/sgaincod move the
-    // result by tenths. fgaincod is the one real temptation: fgaincod 1 is
-    // worth another +2 dB at 448 and +7 dB at 640, but it REGRESSES at
-    // 192 kbit/s (-0.22 dB on synthesized stereo) and costs 0.09 MOS at
-    // 320 on the 5.1 fixture, so it is not a default - it would need to be
-    // rate-dependent, and that wants its own measurement pass.
-    //
-    // Searching these per frame was considered and rejected: the only
-    // in-loop quality criterion this encoder has is the composite SNR offset
-    // step 9 maximises, and that number is not comparable between two
-    // different code sets, because each set produces a different masking
-    // curve for the offset to sit on. A sound search would have to
-    // reconstruct and measure real distortion per candidate, which is a far
-    // larger change than the uniform win above justifies.
-    const BitAllocCodes codes{.dbpbcod = 3};
 
     // --- 1. MDCT per channel per block -------------------------------------
     AC3_ZONE_BEGIN(zone_mdct, "step1_mdct");
@@ -480,8 +437,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // (bins outside a stream's coded range stay zero, whether or not any
     // reader depends on that today) - only the storage itself is the reused
     // member (see encoder.hpp's work-buffer comment).
+    //
+    // Sized for the real channels only: whether there is a coupling stream on
+    // the end is not known yet, because the coupling decision now reads a
+    // bandwidth this transform has to produce first. Step 2 resizes when it
+    // turns out there is one - the coupling slot sits at index nchans, past
+    // everything written here, so growing the vector leaves every existing
+    // index where it was.
     auto& coeffs = coeffs_;
-    coeffs.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, {});
+    coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
     const auto coeffs_at = [&](int s, int block) -> std::array<double, 256>& {
         return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
                       static_cast<std::size_t>(block)];
@@ -531,13 +495,243 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     AC3_ZONE_END(zone_mdct);
 
+    // Bandwidth: explicit config, or the rate AND the content. This comes
+    // before the coupling decision because coupling inherits it - see
+    // default_cplendf - and after the transform because the content half
+    // reads this frame's own spectrum.
+    //
+    // Do not tune this against the checked-in fixtures. Swept 2026-08-17 over
+    // chbwcod 24..60 at 192-640 kbit/s on both of them, and narrowing looks
+    // like a large win on every metric this repo measures: 5.1 at 448 gains
+    // 2.1 dB of SNR at chbwcod 28, and even log-spectral distance improves
+    // (5.43 -> 5.26). It is an artifact. chbwcod 28 codes to 14.7 kHz, and
+    // reference_51.wav carries 1.1e-4 of its energy above that (it is built
+    // from FIR-smoothed noise), so discarding the top 9 kHz costs almost
+    // nothing there while freeing bits everywhere else.
+    //
+    // What EQ7's own pass added is that this is NOT a property of that
+    // fixture. Re-swept 2026-08-23 on real programme material (CC0/public-
+    // domain piano, thunderstorm, church bells, speech and samba - see the
+    // PR), waveform SNR still rises monotonically as the band narrows,
+    // because the discarded energy is a vanishing fraction of the total in
+    // any natural signal too: a solo piano recording carries 3.5e-8 of its
+    // energy above 14.7 kHz, half a decade LESS than reference_51.wav's
+    // 7e-5. An SNR-led bandwidth rule narrows until it is plainly audible on
+    // any material at all. ViSQOL is what separates them, and it is
+    // emphatic - AC-3 5.1 at 448 kbit/s, real material:
+    //
+    //   chbwcod        24     28     32     40     48     59
+    //   kHz          13.6   14.7   15.8   18.1   20.3   23.4
+    //   SNR dB      26.07  25.96  25.80  25.57  25.41  25.18
+    //   MOS         3.843  4.131  4.217  4.256  4.252  4.248
+    //
+    // so the top of the band is worth about 0.4 MOS and costs 0.9 dB of SNR,
+    // and everything above 18 kHz is free either way.
+    //
+    // The rate half stays as it was, and stays a CEILING: at 192 kbit/s 5.1
+    // the same measurement runs the other way (MOS 3.145 at chbwcod 24 down
+    // to 2.411 at 59), because there the bits the top of the band costs are
+    // bits the rest of the spectrum needed. Trading bandwidth for precision
+    // as the rate falls is right, and content cannot be allowed to buy back
+    // a band the frame cannot afford.
+    //
+    // Under that ceiling the content decides, through A/52's own hearing
+    // threshold - see ac3/encoder/bandwidth.hpp for why that particular test
+    // and not an energy one, and for the per-channel rate above which the
+    // content is not consulted at all (reclaimed bits are only worth having
+    // while the rest of the spectrum is short of them). Narrowing is
+    // rate-limited so a quiet passage cannot pump the band edge; widening is
+    // immediate.
+    int chbwcod = config_.chbwcod;
+    if (chbwcod < 0) {
+        std::array<std::uint8_t, 253> peak_exponents{};
+        peak_exponents.fill(static_cast<std::uint8_t>(kMaxExponent));
+        for (int ch = 0; ch < nfchans; ++ch) {
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                encoder::accumulate_peak_exponents(coeffs_at(ch, block), peak_exponents);
+            }
+        }
+        chbwcod = encoder::choose_chbwcod(config_.bitrate_kbps, nfchans, peak_exponents,
+                                          config_.sample_rate, chbwcod_state_);
+        chbwcod_state_ = chbwcod;
+    }
+    assert(chbwcod >= 0 && chbwcod <= 60);
+    const int chbw_endmant = ((chbwcod + 12) * 3) + 37;
+
+    // --- Coupling decision -------------------------------------------------
+    // Coupling needs at least two full-bandwidth channels to share anything -
+    // true of dual mono's nfchans too, but sharing is exactly what its two
+    // channels must never do: they are unrelated programmes, and a coupling
+    // channel built from their average would leak each into the other.
+    //
+    // Membership is per channel (§5.4.3.7's chincpl[ch]): a channel that
+    // block-switched anywhere this frame is left out and keeps its own full
+    // bandwidth, while the rest still share a coupling channel. On 5.1 that
+    // is the difference between one transient in one surround costing the
+    // whole frame its coupling and costing only that surround its share of
+    // it. Below two members there is nothing left to share, which also
+    // settles 2/0: excluding either channel there leaves one, so a transient
+    // in either still turns the tool off for the frame - and that in turn
+    // keeps §5.4.3.19's nrematbd (derived from cplinu and cplbegf, and
+    // necessarily one value for the pair) well defined.
+    std::array<bool, 5> chincpl{};
+    int coupled_count = 0;
+    if (config_.coupling && nfchans >= 2 && !dual_mono) {
+        for (int ch = 0; ch < nfchans; ++ch) {
+            chincpl[static_cast<std::size_t>(ch)] = !switched[static_cast<std::size_t>(ch)];
+            coupled_count += chincpl[static_cast<std::size_t>(ch)] ? 1 : 0;
+        }
+    }
+    const bool cplinu = coupled_count >= 2;
+    if (!cplinu) {
+        chincpl = {};
+        coupled_count = 0;
+    }
+    int cplbegf = 0;
+    int cplendf = 0;
+    int cplstrtmant = 0;
+    int cplendmant = 0;
+    int ncplsubnd = 0;
+    std::array<bool, coupling::kSubBands> cplbndstrc{};
+    coupling::BandLayout cplbands{};
+    if (cplinu) {
+        cplendf = config_.cplendf >= 0 ? config_.cplendf
+                                       : default_cplendf(chbw_endmant);
+        cplendf = std::clamp(cplendf, 0, 15);
+        // The default start never runs past the end; an explicit one is
+        // caught by the sub-band count below.
+        cplbegf = config_.cplbegf >= 0
+                      ? config_.cplbegf
+                      : std::min(default_cplbegf(config_.bitrate_kbps, nfchans),
+                                 cplendf + 2);
+        cplbegf = std::clamp(cplbegf, 0, 15);
+        // cplendf is read by adding 3, so the coded region must extend past
+        // where coupling starts.
+        if (coupling::sub_band_count(cplbegf, cplendf) < 1) {
+            cplendf = std::min(15, cplbegf);
+        }
+        cplstrtmant = coupling::start_mant(cplbegf);
+        cplendmant = std::min(coupling::end_mant(cplendf), 253);
+        ncplsubnd = (cplendmant - cplstrtmant) / coupling::kBinsPerSubBand;
+        cplbndstrc = coupling::band_structure(cplbegf, ncplsubnd);
+        cplbands = coupling::group_bands(cplbegf, ncplsubnd, cplbndstrc);
+    }
+
+    // A COUPLED channel stops at the coupling frequency; one left out of
+    // coupling keeps its own chbwcod bandwidth, and says so on the wire (see
+    // the chbwcod emit, which is per channel for exactly this reason).
+    const int fbw_endmant = cplinu ? cplstrtmant : chbw_endmant;
+    const auto channel_endmant = [&](int ch) {
+        return chincpl[static_cast<std::size_t>(ch)] ? cplstrtmant : chbw_endmant;
+    };
+
+    // Stream layout: the fbw channels, the LFE, then the coupling channel as
+    // one more stream carrying the shared high band.
+    const int cpl_stream = cplinu ? nchans : -1;
+    const int streams = nchans + (cplinu ? 1 : 0);
+    const auto stream_start = [&](int s) { return s == cpl_stream ? cplstrtmant : 0; };
+    const auto stream_end = [&](int s) {
+        if (s == cpl_stream) {
+            return cplendmant;
+        }
+        return s < nfchans ? channel_endmant(s) : kLfeEndmant;
+    };
+
+    // --- Frame size via the CBR accumulator --------------------------------
+    const std::uint64_t ideal_bits_num =
+        static_cast<std::uint64_t>(config_.bitrate_kbps) * 1000 * kSamplesPerFrame;
+    const std::uint64_t denom =
+        static_cast<std::uint64_t>(sample_rate_hz(config_.sample_rate)) * 16;
+    rate_accumulator_ += ideal_bits_num;
+    const std::uint64_t words64 = rate_accumulator_ / denom - words_emitted_;
+    words_emitted_ += words64;
+    const auto words = static_cast<std::uint32_t>(words64);
+    const std::uint32_t base_words =
+        *frame_size_words(config_.sample_rate, config_.bitrate_kbps, false);
+    assert(words == base_words || words == base_words + 1);
+    const bool pad = words != base_words;
+    const std::uint32_t total_bytes = words * 2;
+    const std::uint32_t total_bits = total_bytes * 8;
+    const std::uint32_t words58 = frame_size_58_words(words);
+    // §8.2.12's basic-encoder defaults, with one departure: dbpbcod.
+    //
+    // dbpbcod picks dbknee (Table 7.9), and §7.2.2.5 adds
+    // (dbknee - bndpsd) >> 2 to the excitation of every band quieter than the
+    // knee. Raising it therefore lifts the mask over quiet bands only, which
+    // steers bits from bands that hold almost no energy towards the ones that
+    // do. The spec's own recommendation is 2; every rate and every material
+    // measured here prefers 3, and the win is large where it matters most -
+    // the low rates, which have the fewest bits to misplace:
+    //
+    //             192    256    320    384    448    640 kbit/s
+    //   5.1 fixture   +5.90  +4.75  +3.18  +2.46  +2.39  +1.17 dB
+    //   5.1 synth     +1.69  +1.66    -    +1.10  +1.44  +1.33 dB
+    //   stereo fixture +0.36  +0.08    -    +1.55  +4.48  +2.49 dB
+    //
+    // ViSQOL MOS is flat or better in every one of those cells, which is the
+    // check that matters: this is exactly the kind of change that can buy
+    // waveform SNR by de-prioritising quiet bands and sound worse for it.
+    // Measured on three materials, including quality_race's synthesized
+    // full-band decorrelated 5.1, because this project has already been
+    // caught once by a "win" that was really a property of one band-limited
+    // fixture (see chbwcod below).
+    //
+    // The other three are left alone deliberately. floorcod turns out to be
+    // inert - the floor never binds at any rate on any material tried, so all
+    // eight values encode identically. sdcycod and fdcycod move the result by
+    // tenths, and EQ7's re-check confirms that on real programme material
+    // with a perceptual score too: over their whole legal range at 192 kbit/s
+    // 5.1, sdcycod spans 3.219-3.234 MOS and fdcycod 3.202-3.226, with the
+    // §8.2.12 defaults inside 0.008 of the best either way.
+    //
+    // sgaincod is the one that did not come back flat: 2 measured +0.045 MOS
+    // and +0.22 dB over the default 1 on that leg, and 3 nearly as much. One
+    // material at one rate is not enough to move a default that touches every
+    // AC-3 stream - fgaincod below took five rates on two materials plus a
+    // 25-cell verification - so it is recorded here as the next thing to
+    // measure rather than changed.
+    //
+    // fgaincod itself is no longer fixed; see fgaincod_for above for the
+    // rate-dependent curve and the measurement behind it.
+    //
+    // Searching these per frame was considered and rejected once, because
+    // the only in-loop quality criterion this encoder had was the composite
+    // SNR offset step 9 maximises, and that number is not comparable between
+    // two different code sets: each set produces a different masking curve
+    // for the offset to sit on. A sound search would have to reconstruct and
+    // measure real distortion per candidate.
+    //
+    // ac3::quality does exactly that (see ac3/quality/distortion.hpp), so
+    // step 9a below now runs the search these values are the starting point
+    // for - but only when EncoderConfig::search asks for it. fgaincod_for's
+    // rate-adaptive curve above is the no-search default either way; the
+    // search (when on) tries kCodeCandidates around it and keeps whichever
+    // measures better, dbpbcod included.
+    BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_, nfchans)};
+
     // --- 2. Coupling: form the shared channel and its coordinates ----------
-    // Coordinates are sent in blocks 0, 2 and 4 and reused in between
-    // (§8.2.4.1); the coupling channel itself is the plain average of the
-    // coupled channels the spec's basic encoder describes (§7.4.1), with the
-    // decoder's x8 living entirely in the coordinates. One coordinate per
-    // BAND, which is one or more sub-bands joined by cplbndstrc.
-    std::array<bool, kBlocksPerFrame> send_coords{};
+    // The coupling channel is one more stream on the end, so its coefficient
+    // slots are the growth step 1 deliberately left off (see its comment).
+    // resize() value-initializes the new slots, which is the same zero fill
+    // assign() gave every other one.
+    if (cplinu) {
+        coeffs.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    }
+    // The coupling channel is the plain average of the coupled channels the
+    // spec's basic encoder describes (§7.4.1), with the decoder's x8 living
+    // entirely in the coordinates. One coordinate per BAND, which is one or
+    // more sub-bands joined by cplbndstrc.
+    //
+    // §8.2.4.1 offers blocks 0/2/4 as a cadence; cplcoe[ch] is a per-channel
+    // per-block bit, so what actually goes out here is "send when the
+    // quantized coordinate set differs from the one the decoder is holding".
+    // That is better on both sides of the trade: a channel whose high band
+    // is stationary sends once per frame instead of three times, and one
+    // that moves gets a correct coordinate in the block it moves in rather
+    // than the previous send's - which the fixed cadence applied to blocks
+    // 1, 3 and 5 regardless.
+    std::array<std::array<bool, 5>, kBlocksPerFrame> send_coords{};
+
     // assign(), not resize(): a fresh vector here was zero-initialized, and
     // the coupling loops below rely on writing before reading rather than
     // on any particular starting value - so the reused storage is put back
@@ -560,6 +754,49 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     const auto master_at = [&](int block, int ch) -> int& {
         return master[static_cast<std::size_t>(block) * static_cast<std::size_t>(nfchans) +
                       static_cast<std::size_t>(ch)];
+    };
+
+    // §7.4.1/§5.4.3.16: for 2/0 only, a set phase flag tells the decoder to
+    // negate the RIGHT channel's coordinate across that band. That exists
+    // because the coupling channel is a SUM: where L and R are out of phase
+    // the sum cancels, the band's shared energy collapses to near nothing,
+    // and every coordinate measured against it runs away. Choosing the sign
+    // that maximises the sum's energy per band, and telling the decoder
+    // which bands were flipped, keeps the shared channel carrying real
+    // signal there instead.
+    //
+    // Frame-constant by construction. phsflg is only transmitted in a block
+    // where some channel sent a coordinate, so a per-block value would have
+    // to track which blocks those were and would go stale in the others;
+    // one decision per frame is always consistent with whatever the
+    // coordinate cadence above ends up choosing. phsflginu stays 0 unless
+    // some band actually wants a flip, so material that does not need this
+    // pays nothing for it beyond the one gating bit.
+    std::array<bool, coupling::kSubBands> phsflg{};
+    bool phsflginu = false;
+    if (cplinu && config_.acmod == Acmod::k2_0) {
+        for (int bnd = 0; bnd < cplbands.count; ++bnd) {
+            const int low = cplbands.start[static_cast<std::size_t>(bnd)];
+            const int high =
+                std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
+            double correlation = 0.0;
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                for (int bin = low; bin < high; ++bin) {
+                    correlation += coeffs_at(0, block)[static_cast<std::size_t>(bin)] *
+                                   coeffs_at(1, block)[static_cast<std::size_t>(bin)];
+                }
+            }
+            phsflg[static_cast<std::size_t>(bnd)] = correlation < 0.0;
+            phsflginu = phsflginu || phsflg[static_cast<std::size_t>(bnd)];
+        }
+        if (!phsflginu) {
+            phsflg = {};
+        }
+    }
+    // The sign the decoder will apply to this channel's coordinate in this
+    // band, and so the sign this encoder must build the shared channel with.
+    const auto coupling_sign = [&](int ch, int bnd) {
+        return (phsflginu && ch == 1 && phsflg[static_cast<std::size_t>(bnd)]) ? -1.0 : 1.0;
     };
 
     if (cplinu) {
@@ -598,24 +835,39 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // average of the coupled channels, K = nfchans, so the shared channel
         // sits at the natural level of one real channel - which is the level
         // the allocator's model expects - and every block shares one scale.
-        const double scale = static_cast<double>(nfchans);
-
+        // K is the number of channels actually sharing the channel, not
+        // nfchans: with a block-switching channel left out, averaging by
+        // nfchans would put the shared channel a level step below where the
+        // allocator's absolute psd model expects it.
+        const double scale = static_cast<double>(coupled_count);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
-            send_coords[static_cast<std::size_t>(block)] = block % 2 == 0;
-
             auto& cpl = coeffs_at(cpl_stream, block);
             cpl.fill(0.0);
             // The raw sum for now; the division by `scale` comes after the
             // coordinates, which are measured against that same raw sum.
-            for (int bin = cplstrtmant; bin < cplendmant; ++bin) {
-                double sum = 0.0;
-                for (int ch = 0; ch < nfchans; ++ch) {
-                    sum += coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
+            // Each channel enters with the sign the decoder will reconstruct
+            // it with, so an out-of-phase pair adds instead of cancelling.
+            for (int bnd = 0; bnd < cplbands.count; ++bnd) {
+                const int low = cplbands.start[static_cast<std::size_t>(bnd)];
+                const int high =
+                    std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
+                for (int bin = low; bin < high; ++bin) {
+                    double sum = 0.0;
+                    for (int ch = 0; ch < nfchans; ++ch) {
+                        if (!chincpl[static_cast<std::size_t>(ch)]) {
+                            continue;
+                        }
+                        sum += coupling_sign(ch, bnd) *
+                               coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
+                    }
+                    cpl[static_cast<std::size_t>(bin)] = sum;
                 }
-                cpl[static_cast<std::size_t>(bin)] = sum;
             }
 
             for (int ch = 0; ch < nfchans; ++ch) {
+                if (!chincpl[static_cast<std::size_t>(ch)]) {
+                    continue;
+                }
                 for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                     const int low = cplbands.start[static_cast<std::size_t>(bnd)];
                     const int high =
@@ -634,25 +886,38 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     values[static_cast<std::size_t>(bnd)] = ratio * scale / 8.0;
                 }
                 const int chosen = coupling::choose_master(values);
+                // Quantize into this block's own slots, then ask whether the
+                // decoder is already holding exactly this - the comparison
+                // has to be on the QUANTIZED values, since those are all the
+                // decoder ever sees and two different ratios landing on one
+                // code are genuinely nothing to retransmit.
                 master_at(block, ch) = chosen;
                 for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                     coord_at(block, ch, bnd) = coupling::quantize_coordinate(
                         values[static_cast<std::size_t>(bnd)], chosen);
                 }
-                // Above the coupling frequency the channel carries nothing of
-                // its own any more.
-                for (int bin = cplstrtmant; bin < 256; ++bin) {
-                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0.0;
+                bool changed = block == 0 || master_at(block - 1, ch) != chosen;
+                for (int bnd = 0; bnd < cplbands.count && !changed; ++bnd) {
+                    const auto held = coord_at(block - 1, ch, bnd);
+                    const auto now = coord_at(block, ch, bnd);
+                    changed = held.exp != now.exp || held.mant != now.mant;
                 }
-            }
-            // Blocks that reuse coordinates must reuse the ones actually
-            // transmitted, or encoder and decoder diverge.
-            if (!send_coords[static_cast<std::size_t>(block)]) {
-                for (int ch = 0; ch < nfchans; ++ch) {
+                send_coords[static_cast<std::size_t>(block)][static_cast<std::size_t>(ch)] =
+                    changed;
+                if (!changed) {
+                    // Not sent, so the decoder keeps the previous block's -
+                    // which is bit-for-bit what was just computed. Copying it
+                    // back anyway keeps "this block's slots are what the
+                    // decoder holds" true without depending on that equality.
                     master_at(block, ch) = master_at(block - 1, ch);
                     for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                         coord_at(block, ch, bnd) = coord_at(block - 1, ch, bnd);
                     }
+                }
+                // Above the coupling frequency the channel carries nothing of
+                // its own any more.
+                for (int bin = cplstrtmant; bin < 256; ++bin) {
+                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0.0;
                 }
             }
             for (int bin = cplstrtmant; bin < cplendmant; ++bin) {
@@ -706,18 +971,27 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 4. Fixed point + per-block raw exponents --------------------------
     AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
     auto& fixed = fixed_;
-    fixed.clear();
     {
-        // One reservation instead of push_back growth across ~10k bins - the
-        // exact total is knowable up front, and the phase-5 Tracy zones put
-        // this stage second only to transient detection in the former
-        // unzoned remainder.
+        // Sized once, up front: the exact total across ~10k bins is knowable
+        // before the loop, and the phase-5 Tracy zones put this stage second
+        // only to transient detection in the former unzoned remainder.
+        //
+        // resize() with no clear() before it, unlike the push_back form this
+        // replaced (ROADMAP PF5 gave every slot a contiguous destination to
+        // batch into, which needs the space to exist first). clear() would
+        // drop the size to zero and make the resize value-initialize all ten
+        // thousand elements again on every frame; without it, a steady-state
+        // frame whose layout has not changed finds the vector already the
+        // right size and the call does nothing at all. Nothing reads a stale
+        // value either way - every slot below is fully overwritten by
+        // to_fixed25_block before fixed_at can reach it, and fixed_base
+        // carries the offsets rather than them being implied by growth.
         std::size_t total = 0;
         for (int s = 0; s < streams; ++s) {
             total += static_cast<std::size_t>(stream_end(s) - stream_start(s)) *
                      kBlocksPerFrame;
         }
-        fixed.reserve(total);
+        fixed.resize(total);
     }
     auto& fixed_base = fixed_base_;
     fixed_base.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, 0);
@@ -726,21 +1000,32 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // inner vector's capacity where assign would discard it.
     auto& block_exps = block_exps_;
     block_exps.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
+    // Where the next slot starts in `fixed`, now that the vector is sized up
+    // front and its size no longer tracks how much has been written.
+    std::size_t cursor = 0;
     for (int s = 0; s < streams; ++s) {
         const int begin = stream_start(s);
         const int end = stream_end(s);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
-            fixed_base[slot] = fixed.size();
-            block_exps[slot].resize(static_cast<std::size_t>(end - begin));
-            for (int bin = begin; bin < end; ++bin) {
-                const std::int32_t f =
-                    to_fixed25(coeffs_at(s, block)[static_cast<std::size_t>(bin)]);
-                fixed.push_back(f);
-                block_exps[slot][static_cast<std::size_t>(bin - begin)] =
-                    static_cast<std::uint8_t>(exponent_from_fixed(f));
-            }
+            // Batched rather than bin-by-bin (ROADMAP PF5): to_fixed25_block
+            // rounds two coefficients at a time through the architecture
+            // seam, and extract_exponents is the same per-element
+            // exponent_from_fixed this loop used to call inline. Both
+            // produce identical values to the element-wise form - see
+            // exponents.cpp - so the bitstream is unchanged.
+            const auto count = static_cast<std::size_t>(end - begin);
+            fixed_base[slot] = cursor;
+            const std::size_t base = cursor;
+            cursor += count;
+            block_exps[slot].resize(count);
+            to_fixed25_block(
+                std::span<const double>{coeffs_at(s, block)}.subspan(
+                    static_cast<std::size_t>(begin), count),
+                std::span<std::int32_t>{fixed}.subspan(base, count));
+            extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
+                              block_exps[slot]);
         }
     }
     AC3_ZONE_END(zone_fixed);
@@ -817,7 +1102,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 s < nfchans &&
                 (blksw[static_cast<std::size_t>(s)][static_cast<std::size_t>(block)] ||
                  blksw[static_cast<std::size_t>(s)][static_cast<std::size_t>(block - 1)]);
-            if (needs_new_exponents(current, *reference, is_lfe) || switch_boundary) {
+            if (internal::needs_new_exponents(current, *reference, is_lfe) ||
+                switch_boundary) {
                 starts.push_back(block);
                 reference = &current;
             }
@@ -933,15 +1219,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // The transmitted leaks continue the masking decay across the coupling
     // boundary; derive them from the coupling channel's own first band so the
     // allocator starts from a sensible level rather than a fixed guess.
+    //
+    // A lambda rather than a one-off, because both seeds are functions of
+    // codes.fgaincod/sgaincod: a candidate that moves either has to move
+    // these with it, or the allocator would run against a decay the stream
+    // does not transmit.
     int cplfleak = 0;
     int cplsleak = 0;
-    if (cplinu) {
+    const auto seed_coupling_leaks = [&] {
+        if (!cplinu) {
+            return;
+        }
         const auto& first_run = plan[static_cast<std::size_t>(cpl_stream)].runs.front();
         const int exp = first_run.decoded[static_cast<std::size_t>(cplstrtmant)];
         const int psd = 3072 - (exp << 7);
         cplfleak = std::clamp((psd - fast_gain(codes.fgaincod) - 768) >> 8, 0, 7);
         cplsleak = std::clamp((psd - slow_gain(codes.sgaincod) - 768) >> 8, 0, 7);
-    }
+    };
+    seed_coupling_leaks();
 
     // --- 7. The block emitter ----------------------------------------------
     // One function writes a block's side information; the bit budget is
@@ -949,6 +1244,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // a parallel formula that every new field could silently invalidate.
     int csnroffst = 0;
     int fsnroffst = 0;
+    // §7.3.4's dithflag[ch], one bit per fbw channel per block. Decided from
+    // content by step 9a below, once the allocation this frame will actually
+    // carry is known - which is after the SNR search, and therefore after
+    // step 8 has already run this emitter into its bit counter. That is
+    // harmless and deliberate: the field is one bit whichever way it reads,
+    // so the measurement pass sees the right WIDTH from the all-false
+    // starting state and only the real write below sees the right value.
+    std::array<std::array<bool, kBlocksPerFrame>, 5> dithflag{};
+    assert(nfchans <= static_cast<int>(dithflag.size()));
 
     // The snroffste block gives the LFE its own 4-bit lfefsnroffst, alongside
     // each fbw channel's chfsnroffst and the coupling channel's cplfsnroffst,
@@ -1008,7 +1312,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                   1);  // blksw
         }
         for (int ch = 0; ch < nfchans; ++ch) {
-            w.put(0, 1);  // dithflag
+            w.put(dithflag[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] ? 1
+                                                                                          : 0,
+                  1);  // dithflag
         }
         // §7.7.1.2: an absent word means "keep the previous BLOCK's", so only a
         // change needs sending. Block 0 inherits nothing - absence there is
@@ -1042,10 +1348,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             w.put(cplinu ? 1 : 0, 1);
             if (cplinu) {
                 for (int ch = 0; ch < nfchans; ++ch) {
-                    w.put(1, 1);  // chincpl: every fbw channel is coupled
+                    // §5.4.3.7: per channel. A channel that block-switched
+                    // this frame is out (see the coupling decision above) and
+                    // carries its own high band instead.
+                    w.put(chincpl[static_cast<std::size_t>(ch)] ? 1 : 0, 1);  // chincpl[ch]
                 }
                 if (config_.acmod == Acmod::k2_0) {
-                    w.put(0, 1);  // phsflginu: no phase restoration
+                    w.put(phsflginu ? 1 : 0, 1);  // phsflginu
                 }
                 w.put(static_cast<std::uint32_t>(cplbegf), 4);
                 w.put(static_cast<std::uint32_t>(cplendf), 4);
@@ -1059,10 +1368,18 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
         if (cplinu) {
+            bool any_new = false;
             for (int ch = 0; ch < nfchans; ++ch) {
-                const bool send = send_coords[static_cast<std::size_t>(block)];
-                w.put(send ? 1 : 0, 1);  // cplcoe
+                // §5.4.3.14: cplcoe exists only for a channel that is IN
+                // coupling - an excluded one has no coordinates to send.
+                if (!chincpl[static_cast<std::size_t>(ch)]) {
+                    continue;
+                }
+                const bool send =
+                    send_coords[static_cast<std::size_t>(block)][static_cast<std::size_t>(ch)];
+                w.put(send ? 1 : 0, 1);  // cplcoe[ch]
                 if (send) {
+                    any_new = true;
                     w.put(static_cast<std::uint32_t>(master_at(block, ch)), 2);
                     for (int bnd = 0; bnd < cplbands.count; ++bnd) {
                         const auto coordinate = coord_at(block, ch, bnd);
@@ -1071,7 +1388,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     }
                 }
             }
-            // phsflginu is 0, so no phase flags follow.
+            // §5.4.3.16: the phase flags ride with the coordinates - they are
+            // present only in a block where at least one channel sent new
+            // ones, and persist otherwise. Block 0 always has a send (see the
+            // cadence above), so the decoder never applies an unset flag.
+            if (phsflginu && any_new) {
+                for (int bnd = 0; bnd < cplbands.count; ++bnd) {
+                    w.put(phsflg[static_cast<std::size_t>(bnd)] ? 1 : 0, 1);  // phsflg[bnd]
+                }
+            }
         }
 
         if (rematrixing) {
@@ -1111,12 +1436,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (config_.lfe) {
             w.put(fresh(nfchans) ? 1 : 0, 1);  // lfeexpstr
         }
-        // chbwcod exists only for channels NOT in coupling.
-        if (!cplinu) {
-            for (int ch = 0; ch < nfchans; ++ch) {
-                if (fresh(ch)) {
-                    w.put(static_cast<std::uint32_t>(chbwcod), 6);
-                }
+        // §5.4.3.8: chbwcod exists only for a channel NOT in coupling -
+        // per channel, so a partially coupled frame sends it for exactly the
+        // channels that kept their own high band.
+        for (int ch = 0; ch < nfchans; ++ch) {
+            if (chincpl[static_cast<std::size_t>(ch)]) {
+                continue;
+            }
+            if (fresh(ch)) {
+                w.put(static_cast<std::uint32_t>(chbwcod), 6);
             }
         }
 
@@ -1307,14 +1635,30 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // --- 8. Measure the side information -----------------------------------
     const auto measure_side_bits = [&] {
         std::uint32_t bits = 16 + 16 + 2 + 6;  // syncinfo
+        // bsid, bsmod, acmod, lfeon, dialnorm, compre, langcode, audprodie,
+        // copyrightb, origbs, the two 1-bit flags at the end (timecod1e and
+        // timecod2e, or Annex D's xbsi1e and xbsi2e - the same two bits either
+        // way, which is exactly the property §D3.2 relies on) and addbsie.
         std::uint32_t bsi = 25;
         if (has_three_front(config_.acmod)) bsi += 2;  // cmixlev
         if (has_surround(config_.acmod)) bsi += 2;     // surmixlev
         if (config_.acmod == Acmod::k2_0) bsi += 2;    // dsurmod
         if (config_.heavy) bsi += 8;                   // compr (§5.4.2.10)
+        if (config_.info.langcod) bsi += 8;            // langcod (§5.4.2.12)
+        if (config_.info.audprod) bsi += 5 + 2;        // mixlevel, roomtyp
         if (dual_mono) {
             bsi += 5 + 1 + 1 + 1;  // dialnorm2, compr2e, langcod2e, audprodi2e
             if (config_.heavy2) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
+            if (config_.info.langcod2) bsi += 8;
+            if (config_.info.audprod2) bsi += 5 + 2;
+        }
+        if (config_.alternate_bsi) {
+            if (config_.alternate_bsi->mix) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
+            // dsurexmod, dheadphonmod, adconvtyp, xbsi2, encinfo.
+            if (config_.alternate_bsi->extended) bsi += 2 + 2 + 1 + 8 + 1;
+        } else {
+            if (config_.info.timecod1) bsi += 14;
+            if (config_.info.timecod2) bsi += 14;
         }
         bits += bsi;
         BitWriter counter;
@@ -1432,81 +1776,379 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         return {found, last_eval == found ? last_bits : bits_at(found)};
     };
 
-    auto [lo, mantissa_bits] = search(budget);
-
-    // §7.2.2.6 says delta is a pure refinement, and step 8 above already
-    // guarantees it never costs a frame its FIT. It can still cost a frame
-    // composite SNR offset - quality - even while comfortably fitting: every
-    // delta segment is side-info bits taken out of the same budget that
-    // would otherwise buy a higher offset, and a correction that lowers the
-    // mask in one band asks for MORE mantissa precision there, not less.
-    // Coupling is where this was first caught, because "coupling must not
-    // cost more bits than the channels it replaces" (test_encoder.cpp) is a
-    // standing promise this encoder makes about the resulting composite
-    // offset, and it broke - at 96 kbit/s stereo, no exotic layout required -
-    // the moment delta became eligible during coupling (see step 5's
-    // comment). But nothing in the reasoning above is about coupling: a
-    // delta segment costs the same 12 bits, out of the same budget, whether
-    // or not a coupling channel exists. Gating the check on cplinu just meant
-    // the one layout that never couples never got it - and that is where it
-    // cost the most. At 448 kbit/s 5.1 this encoder emitted about ten
-    // segments per block, 724 bits per frame (5% of the whole frame), and
-    // paid for them with roughly 44 composite offset units across every
-    // channel; measured against FFmpeg on the same file, dropping them is
-    // worth over 2 dB. So whenever there is a delta queued to send (step 8's
-    // fit-based fallback may already have cleared every one of them), the
-    // search is repeated with delta fully cleared, and whichever pass reaches
-    // the higher composite offset wins - a tie keeps delta, since at equal
-    // offset it is a strictly free correction.
-    bool any_delta = false;
-    for (const auto& p : plan) {
-        for (const auto& run : p.runs) {
-            any_delta = any_delta || run.delta.deltnseg > 0;
+    // Everything from here to the end of the delta race is one settlement of
+    // the frame at the CURRENT `codes`, and a search over codes has to be
+    // able to run it more than once - so it is a lambda rather than straight
+    // line code. Two pieces of state it mutates have to be rewound first:
+    // `budget`, which the delta race may swap for the no-delta one, and the
+    // plan's delta segments, which that race may leave cleared. Rewinding
+    // them at entry rather than at exit keeps the winning candidate's state
+    // in place for step 10, which is the state that must survive.
+    const std::uint32_t budget_with_delta = budget;
+    // Fixed-size for the same reason the race's own copy is: DeltaSegments is
+    // a small POD, streams never exceed nchans + 1, and a run per block is
+    // the most a stream can have.
+    std::array<std::array<DeltaSegments, kBlocksPerFrame>, 7> original_delta{};
+    assert(plan.size() <= original_delta.size());
+    for (std::size_t s = 0; s < plan.size(); ++s) {
+        assert(plan[s].runs.size() <= original_delta[s].size());
+        for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
+            original_delta[s][r] = plan[s].runs[r].delta;
         }
     }
-    if (any_delta) {
-        // Fixed-size: DeltaSegments is a small POD, streams never exceed
-        // nchans + 1 and a run per block is the most a stream can have, so
-        // ~1.2 KB of stack replaces eight heap allocations on every frame
-        // that runs the delta on/off race.
-        std::array<std::array<DeltaSegments, kBlocksPerFrame>, 7> saved{};
-        assert(plan.size() <= saved.size());
+
+    struct Settlement {
+        int composite = 0;
+        std::uint32_t mantissa_bits = 0;
+    };
+    const auto settle = [&]() -> Settlement {
+        budget = budget_with_delta;
         for (std::size_t s = 0; s < plan.size(); ++s) {
-            assert(plan[s].runs.size() <= saved[s].size());
             for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
-                saved[s][r] = plan[s].runs[r].delta;
-                plan[s].runs[r].delta = {};
+                plan[s].runs[r].delta = original_delta[s][r];
             }
         }
-        const std::uint32_t side_bits_without = measure_side_bits();
-        // Clearing delta only ever removes bits from the side information,
-        // so this cannot be larger than what step 8 already proved fits.
-        assert(side_bits_without <= side_bits);
-        const std::uint32_t budget_without = total_bits - side_bits_without - detail::kTailBits;
-        const auto without = search(budget_without);
-        if (without.composite > lo) {
-            lo = without.composite;
-            budget = budget_without;
-            mantissa_bits = without.mantissa_bits;
-            // Deltas are already cleared above; leave them that way.
-        } else {
+        auto [lo, mantissa_bits] = search(budget);
+
+        // §7.2.2.6 says delta is a pure refinement, and step 8 above already
+        // guarantees it never costs a frame its FIT. It can still cost a frame
+        // composite SNR offset - quality - even while comfortably fitting: every
+        // delta segment is side-info bits taken out of the same budget that
+        // would otherwise buy a higher offset, and a correction that lowers the
+        // mask in one band asks for MORE mantissa precision there, not less.
+        // Coupling is where this was first caught, because "coupling must not
+        // cost more bits than the channels it replaces" (test_encoder.cpp) is a
+        // standing promise this encoder makes about the resulting composite
+        // offset, and it broke - at 96 kbit/s stereo, no exotic layout required -
+        // the moment delta became eligible during coupling (see step 5's
+        // comment). But nothing in the reasoning above is about coupling: a
+        // delta segment costs the same 12 bits, out of the same budget, whether
+        // or not a coupling channel exists. Gating the check on cplinu just meant
+        // the one layout that never couples never got it - and that is where it
+        // cost the most. At 448 kbit/s 5.1 this encoder emitted about ten
+        // segments per block, 724 bits per frame (5% of the whole frame), and
+        // paid for them with roughly 44 composite offset units across every
+        // channel; measured against FFmpeg on the same file, dropping them is
+        // worth over 2 dB. So whenever there is a delta queued to send (step 8's
+        // fit-based fallback may already have cleared every one of them), the
+        // search is repeated with delta fully cleared, and whichever pass reaches
+        // the higher composite offset wins - a tie keeps delta, since at equal
+        // offset it is a strictly free correction.
+        bool any_delta = false;
+        for (const auto& p : plan) {
+            for (const auto& run : p.runs) {
+                any_delta = any_delta || run.delta.deltnseg > 0;
+            }
+        }
+        if (any_delta) {
+            // Fixed-size: DeltaSegments is a small POD, streams never exceed
+            // nchans + 1 and a run per block is the most a stream can have, so
+            // ~1.2 KB of stack replaces eight heap allocations on every frame
+            // that runs the delta on/off race.
+            std::array<std::array<DeltaSegments, kBlocksPerFrame>, 7> saved{};
+            assert(plan.size() <= saved.size());
             for (std::size_t s = 0; s < plan.size(); ++s) {
+                assert(plan[s].runs.size() <= saved[s].size());
                 for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
-                    plan[s].runs[r].delta = saved[s][r];
+                    saved[s][r] = plan[s].runs[r].delta;
+                    plan[s].runs[r].delta = {};
                 }
             }
-            // run_bap was left holding the no-delta pass's allocation above;
-            // restoring plan's deltas invalidates it, so step 10 needs a
-            // fresh evaluation at the winning (delta) composite.
-            mantissa_bits = bits_at(lo);
+            const std::uint32_t side_bits_without = measure_side_bits();
+            // Clearing delta only ever removes bits from the side information,
+            // so this cannot be larger than what step 8 already proved fits.
+            assert(side_bits_without <= side_bits);
+            const std::uint32_t budget_without = total_bits - side_bits_without - detail::kTailBits;
+            const auto without = search(budget_without);
+            if (without.composite > lo) {
+                lo = without.composite;
+                budget = budget_without;
+                mantissa_bits = without.mantissa_bits;
+                // Deltas are already cleared above; leave them that way.
+            } else {
+                for (std::size_t s = 0; s < plan.size(); ++s) {
+                    for (std::size_t r = 0; r < plan[s].runs.size(); ++r) {
+                        plan[s].runs[r].delta = saved[s][r];
+                    }
+                }
+                // run_bap was left holding the no-delta pass's allocation above;
+                // restoring plan's deltas invalidates it, so step 10 needs a
+                // fresh evaluation at the winning (delta) composite.
+                mantissa_bits = bits_at(lo);
+            }
         }
+
+
+        return {.composite = lo, .mantissa_bits = mantissa_bits};
+    };
+
+    Settlement settlement = settle();
+
+    // --- 9a. Search the transmitted bit allocation parameters ---------------
+    // The search the declaration of `codes` records as rejected, now that
+    // there is something to judge it with. Everything above chose those
+    // values once, from the bit rate, on measurements averaged over whole
+    // files; this asks the same question of THIS frame and answers it from
+    // the error the decoder will reconstruct.
+    if (config_.search != quality::Criterion::kNone) {
+        AC3_ZONE_SCOPED_N("step9a_codes_search");
+        // Per (stream, block), not per stream. Masking is a within-block
+        // phenomenon, and a frame-summed threshold would let a loud block's
+        // slack pay for a quiet block's excess - the same failure
+        // noise_to_mask avoids across bands and the per-stream split avoids
+        // across channels.
+        const auto slot_count = static_cast<std::size_t>(streams) * kBlocksPerFrame;
+        auto& measured = scratch_->measured;
+        measured.resize(slot_count);
+        const auto slot_of = [&](int s, int block) {
+            return static_cast<std::size_t>(s) * kBlocksPerFrame +
+                   static_cast<std::size_t>(block);
+        };
+
+        // The measurement at whatever allocation run_bap currently holds -
+        // which, after a settle(), is the winning composite offset's.
+        const auto measure = [&] {
+            AC3_ZONE_SCOPED_N("step9a_measure");
+            for (auto& slot : measured) {
+                slot.reset();
+            }
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                for (int s = 0; s < streams; ++s) {
+                    const auto& p = plan[static_cast<std::size_t>(s)];
+                    const auto run = static_cast<std::size_t>(
+                        p.run_of_block[static_cast<std::size_t>(block)]);
+                    const int begin = stream_start(s);
+                    const int end = stream_end(s);
+                    quality::accumulate_block(
+                        std::span<const std::int32_t>(fixed).subspan(
+                            fixed_base[slot_of(s, block)],
+                            static_cast<std::size_t>(end - begin)),
+                        p.runs[run].decoded, run_bap[static_cast<std::size_t>(s)][run], begin,
+                        end, measured[slot_of(s, block)]);
+                }
+            }
+        };
+
+        // The masking thresholds, when they are wanted. Once per frame, not
+        // once per candidate: they describe the SIGNAL, and no choice of
+        // codes changes that. This is the whole reason the psychoacoustic
+        // analysis is affordable here at all - it is fixed overhead against
+        // a variable-length search, not a per-candidate cost.
+        auto& thresholds = scratch_->thresholds;
+        if (config_.search == quality::Criterion::kPerceptual) {
+            AC3_ZONE_SCOPED_N("step9a_perceptual");
+            if (!scratch_->perceptual.has_value()) {
+                // nchans + 1: every coded stream, with the coupling channel's
+                // slot present whether or not this frame uses it.
+                scratch_->perceptual.emplace(config_.sample_rate, nchans + 1);
+            }
+            auto& model = *scratch_->perceptual;
+            if (cplinu != scratch_->coupled_last_frame && cpl_stream >= 0) {
+                model.reset(cpl_stream);
+            }
+            scratch_->coupled_last_frame = cplinu;
+
+            thresholds.assign(slot_count, {});
+            auto& analysis = scratch_->analysis;
+            // Block-outer, stream-inner: analyse() advances one channel's
+            // history by exactly one block, so each stream's calls have to
+            // arrive in block order.
+            for (int block = 0; block < kBlocksPerFrame; ++block) {
+                for (int s = 0; s < streams; ++s) {
+                    model.analyse(s, coeffs_at(s, block), stream_end(s), analysis);
+                    thresholds[slot_of(s, block)] = analysis.threshold;
+                }
+            }
+        }
+
+        // Lower is better, in dB, for both criteria - so the switch margin
+        // below is one constant that means the same thing either way. The
+        // perceptual criterion's own quantity is a bit count rather than a
+        // ratio, so it is put on a log scale here for that reason alone: a
+        // 0.05 dB margin is then about 1.2% either way.
+        const auto score = [&]() -> double {
+            measure();
+            if (config_.search == quality::Criterion::kDistortion) {
+                // Per STREAM, mean of the ratios - not one ratio of pooled
+                // power across every stream. Rematrixing and coupling both
+                // routinely leave one stream far quieter than another (a
+                // rematrixed difference channel against its sum, a coupled
+                // channel's shared high band against a full-bandwidth low
+                // one), and a pooled ratio is dominated by whichever stream
+                // is loudest: a candidate could serve the quiet stream worse
+                // while barely moving the pooled number, because the quiet
+                // stream's absolute noise is small next to the loud
+                // stream's. That is the exact "loud pays for quiet" failure
+                // noise_to_mask's own mean-of-ratios exists to avoid one
+                // level down (across bands) - measured on real 2/0 material
+                // with rematrixing active, pooling here cost 1.8 dB of SNR
+                // and 0.45 dB of log-spectral distance against a mono
+                // control (no rematrixing) that showed neither.
+                double sum_ratio = 0.0;
+                int counted = 0;
+                for (int s = 0; s < streams; ++s) {
+                    double signal = 0.0;
+                    double noise = 0.0;
+                    for (int block = 0; block < kBlocksPerFrame; ++block) {
+                        const auto& slot = measured[slot_of(s, block)];
+                        signal += slot.total_signal();
+                        noise += slot.total_noise();
+                    }
+                    if (signal > 0.0) {
+                        sum_ratio += noise / std::max(signal, 1e-300);
+                        ++counted;
+                    }
+                }
+                if (counted == 0) {
+                    return -quality::kMaxSnrDb;
+                }
+                return 10.0 * std::log10(sum_ratio / counted);  // mean noise-to-signal
+            }
+            double bits = 0.0;
+            for (std::size_t slot = 0; slot < slot_count; ++slot) {
+                bits += quality::noise_to_mask(measured[slot], thresholds[slot]).audible_bits;
+            }
+            // Summed, not averaged: these are bits of audible error, and the
+            // frame's total is what a listener meets. A floor keeps a
+            // transparent frame off the log's asymptote without ever being
+            // reachable by a frame that has any audible error at all.
+            constexpr double kBitsFloor = 1e-6;
+            return 10.0 * std::log10(std::max(bits, kBitsFloor));
+        };
+
+        // The incumbent is the PREVIOUS FRAME's winning codes, not the fixed
+        // defaults `codes` currently holds - see previous_codes_'s own
+        // comment on FrameEncoder for why: comparing every frame against the
+        // same fixed baseline gives "stay where you were" no advantage over
+        // switching, which turns the margin below into real hysteresis
+        // instead of a per-frame coin flip. `codes` is still the defaults
+        // here and `settlement` already reflects them from the search that
+        // ran above this point, so the extra settlement below runs only when
+        // the previous frame actually chose something else.
+        const BitAllocCodes defaults = codes;
+        const BitAllocCodes incumbent = previous_codes_;
+        codes = incumbent;
+        if (!(incumbent == defaults)) {
+            seed_coupling_leaks();
+            settlement = settle();
+        }
+        BitAllocCodes best_codes = incumbent;
+        Settlement best_settlement = settlement;
+        double best = score();
+        BitAllocCodes last_tried = incumbent;
+
+        // `defaults` - dbpbcod 3 at fgaincod_for's own rate-adaptive curve -
+        // is scored explicitly here rather than left to appear only if it
+        // happens to match one of kCodeCandidates' fixed values. Without
+        // this, turning the search on could silently discard that curve's
+        // own measured win on every frame whose incumbent and every fixed
+        // candidate both lose to it, which defeats the point of it existing.
+        if (!(defaults == incumbent)) {
+            codes = defaults;
+            seed_coupling_leaks();
+            const Settlement trial = settle();
+            last_tried = defaults;
+            const double value = score();
+            if (value < best - kCodeSwitchMarginDb) {
+                best = value;
+                best_codes = defaults;
+                best_settlement = trial;
+            }
+        }
+
+        for (const BitAllocCodes& candidate : kCodeCandidates) {
+            if (candidate == incumbent || candidate == defaults) {
+                continue;  // already scored above
+            }
+            codes = candidate;
+            seed_coupling_leaks();
+            const Settlement trial = settle();
+            last_tried = candidate;
+            const double value = score();
+            // A margin, not a strict comparison. Two things want it: a
+            // candidate that wins by a hundredth of a decibel is noise in
+            // the measurement rather than a difference anyone could hear,
+            // and the codes are transmitted per frame - so a search that
+            // flipped between two near-equal answers every 32 ms would
+            // modulate the masking curve at 31 Hz for nothing.
+            if (value < best - kCodeSwitchMarginDb) {
+                best = value;
+                best_codes = candidate;
+                best_settlement = trial;
+            }
+        }
+
+        codes = best_codes;
+        if (last_tried == best_codes) {
+            settlement = best_settlement;
+        } else {
+            // run_bap, the plan's deltas and `budget` all belong to the last
+            // candidate tried, not to the winner. Re-settling is the only
+            // way to put them back: keeping a copy per candidate would mean
+            // copying every stream's every run's allocation six times a
+            // frame, which costs more than the one extra settlement does.
+            seed_coupling_leaks();
+            settlement = settle();
+        }
+        previous_codes_ = best_codes;
     }
 
+    const int lo = settlement.composite;
+    const std::uint32_t mantissa_bits = settlement.mantissa_bits;
     snr_search_hint_ = lo;
     csnroffst = lo >> 4;
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);
     AC3_ZONE_END(zone_snr_search);
+
+    // --- 9b. Dither substitution per channel per block ---------------------
+    // §7.3.4, decided from what the allocation above actually left out - see
+    // dither.hpp for the comparison itself. It has to run here rather than
+    // anywhere earlier: run_bap holds the winning offset's allocation only
+    // once step 9's delta on/off race has settled, and the zero-bap bins are
+    // the whole input. It costs nothing in bits - the flag is transmitted in
+    // every block either way (§5.4.3.2) - so it does not disturb the budget
+    // this step just finished spending.
+    //
+    // A coupled channel is weighed over both regions it receives: its own
+    // spectrum up to cplstrtmant, then the shared coupling channel's band,
+    // whose zero-bap bins the decoder dithers per RECEIVING channel (§7.3.4's
+    // "uncorrelated" requirement) and therefore under this channel's flag.
+    //
+    // config_.dither is on by default; the whole loop below is skipped when
+    // it is not, leaving dithflag at its all-false default - the
+    // deterministic behaviour from before this feature existed, for a caller
+    // that needs bit-for-bit agreement with an external decoder more than it
+    // needs the flag itself (see EncoderConfig::dither's own comment).
+    AC3_ZONE_BEGIN(zone_dither, "step9a_dither_flags");
+    for (int ch = 0; ch < nfchans && config_.dither; ++ch) {
+        const auto& p = plan[static_cast<std::size_t>(ch)];
+        for (int block = 0; block < kBlocksPerFrame; ++block) {
+            const auto run = static_cast<std::size_t>(
+                p.run_of_block[static_cast<std::size_t>(block)]);
+            internal::DitherBallot ballot;
+            ballot.weigh(coeffs_at(ch, block), p.runs[run].decoded,
+                         run_bap[static_cast<std::size_t>(ch)][run], 0, stream_end(ch));
+            if (cplinu) {
+                const auto& cp = plan[static_cast<std::size_t>(cpl_stream)];
+                const auto crun = static_cast<std::size_t>(
+                    cp.run_of_block[static_cast<std::size_t>(block)]);
+                ballot.weigh(coeffs_at(cpl_stream, block), cp.runs[crun].decoded,
+                             run_bap[static_cast<std::size_t>(cpl_stream)][crun],
+                             cplstrtmant, cplendmant);
+            }
+            // A block-switched channel never dithers. The transform there is
+            // two 256-point halves interleaved into one coefficient set, so a
+            // zero-bap "bin" is really two half-block bins, and filling it
+            // spreads noise across a transient this frame just spent bits
+            // resolving. Dolby's own encoder writes exactly this rule - see
+            // dither.hpp's note on the reference streams.
+            dithflag[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] =
+                !blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] &&
+                ballot.on();
+        }
+    }
+    AC3_ZONE_END(zone_dither);
 
     // --- 10. Mantissa tokens per block -------------------------------------
     AC3_ZONE_BEGIN(zone_mantissa_tokens, "step10_mantissa_tokens");
@@ -1538,10 +2180,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 writer.add(mantissa, bap[static_cast<std::size_t>(bin)]);
             }
         };
+        // §5.4.3.x coded order: the shared channel rides immediately after
+        // the FIRST COUPLED channel, which is not necessarily channel 0 once
+        // chincpl is per channel - a channel left out of coupling does not
+        // pull the coupling channel along behind it. The decoder keys off
+        // exactly this (decoder.cpp's own read loop), and getting it wrong
+        // does not desynchronise the frame - the same total number of
+        // mantissa bits is still consumed - it silently hands one channel's
+        // mantissas to another, which comes back as noise in only the frames
+        // where a channel happened to be excluded.
         bool emitted_coupling = false;
         for (int ch = 0; ch < nfchans; ++ch) {
             emit_stream(ch);
-            if (cplinu && !emitted_coupling) {
+            if (cplinu && chincpl[static_cast<std::size_t>(ch)] && !emitted_coupling) {
                 emit_stream(cpl_stream);
                 emitted_coupling = true;
             }
@@ -1567,8 +2218,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     w.put(static_cast<std::uint32_t>(config_.sample_rate), 2);
     w.put(static_cast<std::uint32_t>(*index) * 2 + (pad ? 1u : 0u), 6);
 
-    w.put(8, 5);  // bsid
-    w.put(0, 3);  // bsmod
+    // §D2.1: bsid 6 IS the announcement that the alternate syntax is in use.
+    // Everything up to origbs is identical either way (Table D2.1 restates
+    // §5.4.2 verbatim to that point); only the last 28 bits differ.
+    w.put(config_.alternate_bsi ? 6 : 8, 5);  // bsid
+    w.put(static_cast<std::uint32_t>(config_.info.bsmod), 3);
     w.put(static_cast<std::uint32_t>(config_.acmod), 3);
     if (has_three_front(config_.acmod)) {
         w.put(static_cast<std::uint32_t>(config_.cmixlev), 2);
@@ -1577,7 +2231,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         w.put(static_cast<std::uint32_t>(config_.surmixlev), 2);
     }
     if (config_.acmod == Acmod::k2_0) {
-        w.put(0, 2);  // dsurmod
+        w.put(static_cast<std::uint32_t>(config_.info.dsurmod), 2);
     }
     w.put(config_.lfe ? 1 : 0, 1);
     w.put(static_cast<std::uint32_t>(config_.dialnorm), 5);
@@ -1585,8 +2239,26 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (config_.heavy) {
         w.put(compr, 8);
     }
-    w.put(0, 1);  // langcode
-    w.put(0, 1);  // audprodie
+    // §5.4.2.12: langcod carries no information any more - the language table
+    // it once indexed was dropped - so the only thing to choose is whether the
+    // reserved 0xFF byte is present at all.
+    const auto emit_langcod = [&w](bool present) {
+        w.put(present ? 1 : 0, 1);  // langcode
+        if (present) {
+            w.put(0xFF, 8);  // langcod
+        }
+    };
+    const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
+        w.put(production ? 1 : 0, 1);  // audprodie
+        if (production) {
+            w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
+            w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
+            // No adconvtyp here: §5.4.2's audprodie stops at roomtyp. Only
+            // E-AC-3's infomdat and Annex D's xbsi2 carry that field.
+        }
+    };
+    emit_langcod(config_.info.langcod);
+    emit_audprod(config_.info.audprod);
     if (dual_mono) {
         w.put(static_cast<std::uint32_t>(*config_.dialnorm2), 5);
         // compr2e is Ch2's OWN flag (§5.4.2.11 mirrors §5.4.2.10 for the
@@ -1597,13 +2269,49 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (config_.heavy2) {
             w.put(compr2, 8);
         }
-        w.put(0, 1);  // langcod2e
-        w.put(0, 1);  // audprodi2e
+        emit_langcod(config_.info.langcod2);
+        emit_audprod(config_.info.audprod2);
     }
-    w.put(0, 1);  // copyrightb
-    w.put(1, 1);  // origbs
-    w.put(0, 1);  // timecod1e
-    w.put(0, 1);  // timecod2e
+    w.put(config_.info.copyrightb ? 1 : 0, 1);  // copyrightb
+    w.put(config_.info.origbs ? 1 : 0, 1);      // origbs
+    if (config_.alternate_bsi) {
+        const auto& alternate = *config_.alternate_bsi;
+        w.put(alternate.mix ? 1 : 0, 1);  // xbsi1e
+        if (alternate.mix) {
+            // Table D2.1's field order, which is NOT Table E1.2's: Annex D
+            // pairs the two Lt/Rt levels and then the two Lo/Ro ones, where
+            // mixmdate pairs centre with centre and surround with surround.
+            // Same five quantities, different order on the wire.
+            w.put(static_cast<std::uint32_t>(alternate.mix->dmixmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.mix->ltrtcmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->ltrtsurmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->lorocmixlev), 3);
+            w.put(static_cast<std::uint32_t>(alternate.mix->lorosurmixlev), 3);
+        }
+        w.put(alternate.extended ? 1 : 0, 1);  // xbsi2e
+        if (alternate.extended) {
+            w.put(static_cast<std::uint32_t>(alternate.extended->dsurexmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.extended->dheadphonmod), 2);
+            w.put(static_cast<std::uint32_t>(alternate.extended->adconvtyp), 1);
+            w.put(0, 8);  // xbsi2: §D2.3.1.11 reserves it and requires zero
+            w.put(alternate.extended->encinfo ? 1 : 0, 1);
+        }
+    } else {
+        w.put(config_.info.timecod1 ? 1 : 0, 1);  // timecod1e
+        if (config_.info.timecod1) {
+            const auto& t = *config_.info.timecod1;
+            w.put(static_cast<std::uint32_t>(t.hours), 5);
+            w.put(static_cast<std::uint32_t>(t.minutes), 6);
+            w.put(static_cast<std::uint32_t>(t.eight_seconds), 3);
+        }
+        w.put(config_.info.timecod2 ? 1 : 0, 1);  // timecod2e
+        if (config_.info.timecod2) {
+            const auto& t = *config_.info.timecod2;
+            w.put(static_cast<std::uint32_t>(t.seconds), 3);
+            w.put(static_cast<std::uint32_t>(t.frames), 5);
+            w.put(static_cast<std::uint32_t>(t.sixty_fourths), 6);
+        }
+    }
     w.put(0, 1);  // addbsie
 
     // The self-check's encoder-side view (ac3/verify/mirror.hpp). Recorded

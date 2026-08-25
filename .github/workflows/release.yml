@@ -155,17 +155,18 @@ jobs:
 
           echo "Resolved $version_tag (version $bare_version, prerelease=$is_prerelease, dry_run=$is_dry_run)"
 
-  # Advisory, never gating: by the time a release run starts, the
-  # develop -> main promotion has already merged, so the real gate is the
-  # pre-release checklist step in docs/releasing.md (review develop's own
-  # open alerts BEFORE opening the promotion PR - code-scanning alerts are
-  # tracked per-ref and the Security tab filters to the default branch, so
-  # develop's accumulate invisibly between releases). This job is the
-  # backstop for the case where that step was skipped: it surfaces any open
-  # analysis alerts loudly in the release run's log/summary instead of
-  # letting a release ship with unreviewed findings sitting in the Security
-  # tab - which is how the v0.9.0-beta.1 promotion landed alerts #83-94 on
-  # main unnoticed. Filtered to the code-analysis tools (PREfast, CodeQL):
+  # Advisory, never gating: trunk-based means everything already lands on
+  # main directly, so the real gate is the pre-release checklist step in
+  # docs/releasing.md (review main's own open alerts before tagging -
+  # code-scanning alerts are tracked per-ref and the Security tab filters to
+  # the default branch, so this is now a single check against the branch a
+  # release is actually cut from, not a separate integration branch whose
+  # alerts could accumulate invisibly). This job is the backstop for the
+  # case where that manual step was skipped: it surfaces any open analysis
+  # alerts loudly in the release run's log/summary instead of letting a
+  # release ship with unreviewed findings sitting in the Security tab - the
+  # class of miss that landed alerts #83-94 on main unnoticed under the old
+  # develop->main promotion flow. Filtered to the code-analysis tools (PREfast, CodeQL):
   # Scorecard's advisory alerts (e.g. the branch-protection score) are open
   # deliberately and would otherwise warn on every release forever.
   alert-review:
@@ -221,6 +222,10 @@ jobs:
       # so `git describe` alone would find nothing (or the previous release).
       fetch_depth: 0
       version_tag: ${{ needs.resolve-version.outputs.version_tag }}
+      # Roadmap VX20. The generator runs on the linux-gcc leg for every call
+      # to _build.yml; this flag adds the determinism re-run and the upload
+      # that github-release below attaches. See docs/conformance-vectors.md.
+      publish_conformance_vectors: true
     # ci.yml's call to _build.yml passes none of these - it never sets
     # do_package for a release APK, so build-android's signing step has
     # nothing to decode there regardless. Threaded through even on a dry
@@ -286,6 +291,20 @@ jobs:
             exit 1
           fi
           printf '%s\n' "${artifacts[@]}"
+
+      # Deliberately after the "at least one package" check above rather than
+      # merged into the same download: the vector bundle is a .tar.gz, and
+      # that check's own glob counts .tar.gz files - downloading it first
+      # would let it stand in for a platform package and turn "every platform
+      # failed to build" into a green release. It lands in the same directory
+      # so it picks up the GPG signature, the SHA512SUMS line, the SBOM and
+      # both attestations from the steps below, exactly as every package does.
+      - name: Download conformance vectors
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: conformance-vectors
+          path: release-artifacts
+          merge-multiple: true
 
       - name: Import GPG signing key
         if: env.HAVE_GPG_KEY == 'true'
@@ -400,8 +419,11 @@ jobs:
             name="$(basename "$f")"
             workdir="$(mktemp -d)"
             ( cd "$workdir" && gh attestation download "$OLDPWD/$f" --repo "${{ github.repository }}" )
-            bundle="$(ls "$workdir"/*.jsonl | head -1)"
-            mv "$bundle" "release-artifacts/${name}.intoto.jsonl"
+            # A glob, not `ls | head -1`: nullglob is set above, so an empty
+            # match leaves the array empty and set -u fails the step loudly
+            # rather than silently `mv`-ing an empty path.
+            bundles=("$workdir"/*.jsonl)
+            mv "${bundles[0]}" "release-artifacts/${name}.intoto.jsonl"
             rm -rf "$workdir"
           done
 

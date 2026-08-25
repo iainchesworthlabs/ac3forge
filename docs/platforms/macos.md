@@ -8,7 +8,7 @@
     issue (Homebrew's unpinned `llvm` formula flagging Catch2's `__COUNTER__` usage under
     `-Wc2y-extensions` — see `cmake/CompilerWarnings.cmake`), fixed in one commit, followed by two
     consecutive clean runs. The `continue-on-error` escape hatch has since been removed
-    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/develop/.github/workflows/_build.yml)),
+    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)),
     so a `macos-llvm` failure blocks like every other required leg now.
 
 ## Toolchain
@@ -38,6 +38,15 @@ Silicon Macs without documenting the HAL mechanism behind it, so where a driver 
 that format (older hardware, a non-HDMI output, an Intel Mac) the backend simply reports E-AC-3
 passthrough unavailable rather than claiming it everywhere — see `passthrough.cpp`'s own "AC-3
 and E-AC-3" section.
+
+Passthrough **capture** — an input carrying somebody else's bitstream — needs none of that
+machinery, on macOS or anywhere else: IEC 61937 bursts arrive as ordinary PCM samples, and
+recognising them is `ac3::iec61937::PassthroughDetector`, which works off whatever interleaved
+floats the backend delivers rather than off any HAL property. `ac3cli record` uses it to write
+the elementary stream instead of encoding the bursts as audio, `ac3cli live` to stop rather than
+encode a session of noise, and `ac3cli unspdif` does the same job on a capture already saved to
+disk. That part is platform-independent and shares the verification the framing has — see
+[Windows](windows.md#passthrough-capture) for what is and is not confirmed.
 
 The backend is CI-verified only: the parts that need no live device — enumeration on a machine
 with none, format matching, sample conversion — run under `ac3tests` on the hosted runner, same

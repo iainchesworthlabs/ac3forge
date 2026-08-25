@@ -13,6 +13,7 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3forge_c/ac3forge.h"
 
@@ -95,6 +96,13 @@ namespace ac3forge_c {
                                    .release_db_per_second = config.release_db_per_second};
 }
 
+[[nodiscard]] inline ac3forge_latency_t from_cpp(const ac3::LatencyBudget& budget) {
+    return ac3forge_latency_t{.frame_samples = budget.frame_samples,
+                              .transform_samples = budget.transform_samples,
+                              .lookahead_samples = budget.lookahead_samples,
+                              .holdback_samples = budget.holdback_samples};
+}
+
 [[nodiscard]] inline ac3forge_status_t from_cpp(ac3::FrameError error) {
     switch (error) {
         case ac3::FrameError::kInvalidBitrate: return AC3FORGE_ERROR_ENCODE_INVALID_BITRATE;
@@ -103,6 +111,7 @@ namespace ac3forge_c {
         case ac3::FrameError::kInvalidChannelMap: return AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP;
         case ac3::FrameError::kTooManyChannels: return AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
         case ac3::FrameError::kInvalidMixLevel: return AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
+        case ac3::FrameError::kInvalidBsi: return AC3FORGE_ERROR_ENCODE_INVALID_BSI;
         case ac3::FrameError::kInvalidObjectAudio:
             return AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO;
     }

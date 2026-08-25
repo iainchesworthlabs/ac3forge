@@ -46,9 +46,30 @@ class Ac3forge < Formula
                      *std_cmake_args
     system "cmake", "--build", "build"
     system "cmake", "--install", "build"
+
+    # `cmake --install` already placed the generated man page and the four
+    # shell completion scripts (roadmap IO8 - see apps/cli/CMakeLists.txt,
+    # which generates them by running the freshly built ac3cli) under
+    # #{prefix}/share. Homebrew links share/man/man1 and
+    # share/zsh/site-functions itself, so those two need nothing here. bash
+    # and fish are the two it expects a formula to place through its own
+    # helpers, so those move into place. The PowerShell script stays where
+    # CMake put it, under share/ac3forge/completions: it has no
+    # convention-driven search path to be linked into, and `ac3cli
+    # completions powershell` says so itself.
+    bash_completion.install share/"bash-completion/completions/ac3cli"
+    fish_completion.install share/"fish/vendor_completions.d/ac3cli.fish"
   end
 
   test do
     assert_match "ac3forge #{version}", shell_output("#{bin}/ac3cli --version")
+    # The generated artefacts, checked as installed files: a formula that
+    # silently stops shipping them is the failure worth catching here.
+    assert_path_exists man1/"ac3cli.1"
+    assert_match "_ac3cli", (bash_completion/"ac3cli").read
+    # Per-command help, and the documented exit-code scheme (roadmap IO8):
+    # a usage error is 1, not an undifferentiated non-zero.
+    assert_match "ac3cli encode", shell_output("#{bin}/ac3cli help encode")
+    shell_output("#{bin}/ac3cli encode 2>&1", 1)
   end
 end

@@ -19,10 +19,25 @@ qt_add_executable(ac3gui
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
-    recording_sink.cpp
-    recording_sink.hpp
+    ../common/fmp4_folder_writer.cpp
+    ../common/fmp4_folder_writer.hpp
+    ../common/recording_sink.cpp
+    ../common/recording_sink.hpp
     system_theme.cpp
     system_theme.hpp)
+
+# RecordingSink and its Fmp4FolderWriter moved to apps/common when
+# `ac3cli record`/`live` started writing their takes through the same classes
+# (roadmap IO9) - see recording_sink.hpp's own header comment, and
+# Fmp4FolderWriter's own comment on the third near-identical copy this move
+# closes. `RecordingSink::Config::fmp4_window_segments` carries container=
+# fmp4's fmp4-window= knob through to Fmp4FolderWriter::open(), so there is no
+# separate writer for it any more. Compiled straight into this target as it
+# always was (the source lines above); apps/common has no CMakeLists.txt and
+# no library target of its own, because a two-class static library shared by
+# exactly two executables in the same build would be more machinery than the
+# thing it wraps.
+target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # The QML lives in qml/ on disk but belongs at the root of the QML module, so
 # every file is aliased to its bare name. Left alone, Qt lays the module out as
@@ -183,6 +198,7 @@ target_link_libraries(ac3gui
         mp4::mp4
         mpegts::mpegts
         ac3::warnings
+        ac3::fmt
         Qt6::Core
         Qt6::Gui
         Qt6::Quick

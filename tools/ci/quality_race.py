@@ -17,6 +17,13 @@ Modes:
   eac3       - our E-AC-3 encoder, one row per Annex E tool set, vs FFmpeg's
                E-AC-3 encoder, at the low rates the tools exist to serve
   eac3-51    - the same for 5.1, with genuinely decorrelated channels
+  vbr        - the E-AC-3 rate-distortion curve VBR shipped without: sweeps
+               VbrConfig.quality, measures what rate each point actually
+               costs, and scores CBR and FFmpeg CBR at that same measured
+               rate - so "does VBR at a given average rate beat CBR at that
+               rate" has a number rather than a warning. Also checks the
+               average-rate (ABR) mode lands on the rate it was asked for.
+               See race_vbr(); `--json-out PATH` writes the rows as JSON.
   seam       - where the spectral extension notch lands, and how deep
   crosscheck - every tool set through BOTH decoders: FFmpeg and Dolby's own,
                via the reference player's GStreamer elements. Agreeing with
@@ -32,8 +39,8 @@ Modes:
                has an external oracle at all.
   trend      - the CI-time half of the external-encoder landscape
                comparison (tools/generators/gen_external_baseline.py is the local-only
-               half that actually invokes FFmpeg/DEE): encodes the three
-               committed fixed legs with THIS build and scores everything
+               half that actually invokes FFmpeg/DEE): encodes every
+               committed fixed leg with THIS build and scores everything
                through this project's own decoder, so it needs neither
                FFmpeg's nor DEE's own encoder. Compute-only, no gate; see
                race_trend(). `--json-out PATH` writes the rows as JSON.
@@ -42,11 +49,26 @@ Modes:
                render_spectrograms() - this part DOES need an `ffmpeg`
                binary, only ever to decode the already-committed
                tests/golden/external-baseline/ bitstreams, never to encode.
+  objects    - object-reconstruction quality: the committed five-object
+               scene (tests/golden/audio/reference_objects.wav plus its
+               .paths placements) encoded with `atmos-encode` and decoded
+               back to per-object WAVs, one SNR/LSD/MOS row per object per
+               rate. Compute-only, no gate; see race_objects(). There is no
+               external oracle for object decode at all - not FFmpeg's
+               decoder, not Dolby's - so this is a self-consistency series
+               throughout, which that function's own comment spells out.
+               `--json-out PATH` writes the rows as JSON.
+
+Every mode except `ci` and `trend` takes `--material synth|speech|music`,
+which swaps the synthesized source for one of the committed 30 s CC0
+programme fixtures - see MATERIALS near main() for why that matters and why
+those two modes decline it.
 
 Usage (repo root, after building):  python tools/ci/quality_race.py [mode]
 Set AC3CLI to override the ac3cli binary (see CLI below); CI always does.
 """
 
+import itertools
 import json
 import math
 import os
@@ -114,6 +136,70 @@ def make_material():
     return np.clip(left, -0.98, 0.98), np.clip(right, -0.98, 0.98)
 
 
+def make_material_transient():
+    """Material whose level moves BETWEEN the blocks of one frame.
+
+    make_material() above is mostly stationary across a 32 ms frame, or moves
+    slowly inside it - the case a single exponent set per frame handles well,
+    and therefore the case that says nothing about how the set is chosen. This
+    is the other case: onsets closer together than a frame, hard gates and
+    decays short enough that a frame's loudest block sits 20-30 dB above its
+    quietest. That gap is the whole cost of one exponent set per frame - every
+    quiet block quantized against a scale chosen by the loud one - so it is
+    what an exponent-run plan has to be measured on (roadmap EQ1).
+
+    Stereo, same 2 s-per-segment shape and same seed discipline as the two
+    generators above.
+    """
+    rng = np.random.default_rng(0x0B77 + 6)
+    t = np.arange(SEG) / RATE
+    segments = []
+
+    # a) percussive hits every 40 ms - about one per frame and a quarter, so
+    #    the attack lands on a different block of the frame each time.
+    def hits(period_ms, decay_ms, tone_hz, seed):
+        local = np.random.default_rng(seed)
+        out = np.zeros(SEG)
+        period = int(RATE * period_ms / 1000)
+        length = min(period, int(RATE * decay_ms / 1000) * 6)
+        n = np.arange(length)
+        env = np.exp(-n / (RATE * decay_ms / 1000))
+        for at in range(0, SEG - length, period):
+            body = np.sin(2 * np.pi * tone_hz * n / RATE)
+            out[at:at + length] += 0.85 * env * (0.7 * body + 0.3 * local.standard_normal(length))
+        return out
+
+    segments.append((hits(40, 8, 190.0, 1), hits(40, 8, 240.0, 2)))
+
+    # b) gated noise, switched every 256 samples - a block-rate square wave in
+    #    level, which is the worst case one set per frame can be handed.
+    w = rng.standard_normal(SEG)
+    gate = np.repeat(np.tile([1.0, 0.02], SEG // 512 + 1), 256)[:SEG]
+    segments.append((0.5 * w * gate, 0.5 * np.roll(w, 331) * np.roll(gate, 256)))
+
+    # c) sparse clicks over near-silence: high crest factor, and long stretches
+    #    where a frame contains exactly one loud block.
+    clicks_l = np.zeros(SEG)
+    clicks_r = np.zeros(SEG)
+    for at in rng.integers(0, SEG - 600, 24):
+        n = np.arange(600)
+        shape = np.exp(-n / 60.0) * np.sin(2 * np.pi * 3200.0 * n / RATE)
+        clicks_l[at:at + 600] += 0.9 * shape
+        clicks_r[at + 40:at + 640] += 0.8 * shape
+    floor = 0.004 * rng.standard_normal(SEG)
+    segments.append((clicks_l + floor, clicks_r + floor))
+
+    # d) a chord amplitude-modulated at 30 Hz: about two cycles per frame, so
+    #    the level swings smoothly but fully inside every frame.
+    chord = sum(np.sin(2 * np.pi * f * t) for f in (330.0, 415.3, 494.0, 660.0))
+    env = (0.5 + 0.5 * np.sin(2 * np.pi * 30.0 * t)) ** 3
+    segments.append((0.22 * chord * env, 0.22 * chord * np.roll(env, 400)))
+
+    left = np.concatenate([s[0] for s in segments]).astype(np.float32)
+    right = np.concatenate([s[1] for s in segments]).astype(np.float32)
+    return np.clip(left, -0.98, 0.98), np.clip(right, -0.98, 0.98)
+
+
 def make_material_51():
     """Six DECORRELATED channels, in WAV order (FL FR FC LFE BL BR).
 
@@ -136,6 +222,32 @@ def make_material_51():
     back_r = 0.55 * np.roll(left, -delay) + 0.05 * rng.standard_normal(n)
     channels = [left, right, centre, lfe, back_l, back_r]
     return [np.clip(c, -0.98, 0.98).astype(np.float32) for c in channels]
+
+
+def make_material_dynamic(left, right, loud_s=0.5, quiet_gain=0.05):
+    """make_material()'s programme with a slow loud/quiet envelope on top.
+
+    A bit reservoir has nothing to redistribute unless some frames genuinely
+    cost less than their share, and make_material() is deliberately dense
+    from end to end - every segment is a steady, fully-scored signal. Real
+    programme material is not: speech has gaps, music has rests, and that is
+    where an average-rate encoder banks the bits it spends on the loud parts.
+    This is the cheapest honest stand-in - alternating half-second passages at
+    full level and at `quiet_gain` (-26 dB by default) - applied with a raised
+    -cosine ramp so the gate itself is not a transient the encoder has to
+    spend bits coding.
+    """
+    n = len(left)
+    block = int(loud_s * RATE)
+    ramp = int(0.02 * RATE)
+    envelope = np.full(n, quiet_gain, dtype=np.float64)
+    for start in range(0, n, 2 * block):
+        envelope[start:start + block] = 1.0
+    # Smooth the steps: a hard gate is an impulse, and coding an impulse is
+    # not what this material is meant to be measuring.
+    window = np.hanning(2 * ramp + 1)
+    envelope = np.convolve(envelope, window / window.sum(), mode="same")
+    return (left * envelope).astype(np.float32), (right * envelope).astype(np.float32)
 
 
 def write_wav_f32(path, *channels):
@@ -185,7 +297,10 @@ def read_wav_any(path):
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # check=False, then the explicit returncode test below: the raise has to
+    # carry the command line and the captured stderr, which CalledProcessError
+    # alone would not put in the CI log.
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
 
@@ -212,7 +327,7 @@ def align(original, decoded, skip=RATE, probe_len=32768, window_extra=65536):
 
 
 def aligned_snr(original, decoded):
-    o, d, lag = align(original, decoded)
+    o, d, _lag = align(original, decoded)
     noise = d - o
     return 10 * np.log10(np.sum(o**2) / max(np.sum(noise**2), 1e-30))
 
@@ -237,7 +352,7 @@ def _bark_bands():
     edges = [0]
     for step in np.linspace(bark[1], bark[-1], 25)[1:]:
         edges.append(int(np.searchsorted(bark, step)))
-    return [(a, b) for a, b in zip(edges, edges[1:]) if b > a]
+    return [(a, b) for a, b in itertools.pairwise(edges) if b > a]
 
 
 BANDS = _bark_bands()
@@ -317,12 +432,48 @@ except ImportError:
 _visqol_api = None
 _visqol_warned = False
 
+# How much audio ViSQOL is ever handed for one score, in seconds.
+#
+# ViSQOL's patch matching is super-linear in signal length. Measured on this
+# package (visqol-python 3.7.0, one machine, same synthetic pair truncated to
+# each length):
+#
+#   2 s -> 2.2 s     4 s -> 5.8 s     6 s -> 9.8 s     8 s -> 14.1 s
+#   3 s -> 3.9 s    10 s -> 20.5 s   30 s -> 127.8 s
+#
+# so a 30 s programme fixture costs 30x what a 3 s synthetic one does, and
+# `trend` mode makes 62 distinct scoring calls per run across its eight legs.
+# Uncapped, the programme legs alone would add over half an hour to a
+# pull-request job. Capped at 4 s, the whole column measured about seven
+# minutes (a full `trend` run took 10m48s with ViSQOL and 3m59s with it
+# stubbed out).
+#
+# 4 s is where the score itself has converged: the same pair reads 4.336 at
+# 2 s, 4.272 at 4 s, 4.257 at 6 s and 4.251 at 8 s, so the residual against a
+# much longer window is ~0.02 MOS - and it is a CONSTANT offset, because the
+# window is always the same deterministic span of the same fixture. Trend
+# deltas, which is what every consumer of this column actually reads, are
+# unaffected by a constant offset; only the absolute value moves, and only by
+# less than the difference between two adjacent tool sets.
+#
+# Anything shorter than this is scored whole, so the existing 2.5-3 s
+# synthetic fixtures are unaffected by this cap existing.
+MOS_WINDOW_S = 4.0
+
 
 def perceptual_score(o, d, rate=RATE):
     """MOS-LQO via ViSQOL audio mode, or None if it isn't available.
 
     o/d are aligned original/decoded arrays from align()/score_fixed, any
-    channel count. Downmixed to mono by hand (plain channel average) before
+    channel count. Trimmed to MOS_WINDOW_S (see its own comment for the
+    measured cost curve that makes the cap necessary) around the MIDDLE of
+    the overlap rather than its start - a fixture's first second is the most
+    likely place to find a fade-in, and align()'s own leading trim varies by
+    a handful of samples between calls, so a centred window is both more
+    representative and less sensitive to that. The same span is taken from
+    both arrays, so the alignment align() established is preserved.
+
+    Downmixed to mono by hand (plain channel average) before
     scoring rather than handed through as-is: measure_from_arrays() accepts
     a multi-channel array without erroring, but a real 6-channel A/B scored
     3.38 through its own internal handling against 1.60 for the identical
@@ -341,7 +492,7 @@ def perceptual_score(o, d, rate=RATE):
     same run) without being a "the tool is unavailable" condition worth
     repeating a message for.
     """
-    global _visqol_api, _visqol_warned
+    global _visqol_api, _visqol_warned  # noqa: PLW0603 - memoised handle + once-per-run flag, see the docstring
     if VisqolApi is None:
         if not _visqol_warned:
             print("  (visqol-python not installed - skipping the perceptual-quality "
@@ -351,11 +502,16 @@ def perceptual_score(o, d, rate=RATE):
     if _visqol_api is None:
         _visqol_api = VisqolApi()
         _visqol_api.create(mode="audio")
+    window = int(MOS_WINDOW_S * rate)
+    n = min(len(o), len(d))
+    if n > window:
+        start = (n - window) // 2
+        o, d = o[start:start + window], d[start:start + window]
     mono_o = np.ascontiguousarray((o.mean(axis=1) if o.ndim > 1 else o), dtype=np.float64)
     mono_d = np.ascontiguousarray((d.mean(axis=1) if d.ndim > 1 else d), dtype=np.float64)
     try:
         mos = float(_visqol_api.measure_from_arrays(mono_o, mono_d, sample_rate=rate).moslqo)
-    except Exception as exc:  # noqa: BLE001 - see graceful-degradation reasoning above
+    except Exception as exc:  # every failure mode degrades to None, see the docstring
         if not _visqol_warned:
             print(f"  (visqol scoring failed ({exc}) - skipping the perceptual-quality column)")
             _visqol_warned = True
@@ -380,7 +536,7 @@ def decode_scores(original, coded, wav_path, strict=True, perceptual=False):
         # checking. -xerror is what turns a detected error into a failing
         # process and a raised SystemExit here.
         cmd += ["-xerror", "-err_detect", "crccheck+bitstream+buffer+explode"]
-    run(cmd + ["-i", coded, "-c:a", "pcm_f32le", wav_path])
+    run([*cmd, "-i", coded, "-c:a", "pcm_f32le", wav_path])
     o, d, _ = align(original, read_wav_f32(wav_path))
     snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
     lsd, hf = spectral_scores(o, d)
@@ -417,7 +573,7 @@ def decode_scores_ours(original, coded, wav_path, perceptual=False):
 # would trim them to an empty or inverted overlap (see its docstring), so
 # external-baseline scoring (tools/generators/gen_external_baseline.py, and the `trend`
 # mode built on the same fixtures) uses this scaled-down window instead.
-FIXED_ALIGN = dict(skip=int(0.2 * RATE), probe_len=8192, window_extra=16384)
+FIXED_ALIGN = {"skip": int(0.2 * RATE), "probe_len": 8192, "window_extra": 16384}
 
 
 def score_fixed(original, decoded, perceptual=False):
@@ -483,7 +639,7 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
           f"{'HF dB':>6} | {'MOS':>4} | {'rate':>6}")
     print("-" * 62)
     for kbps in rates:
-        for label, tools in EAC3_VARIANTS + [("ffmpeg", "ffmpeg")]:
+        for label, tools in [*EAC3_VARIANTS, ("ffmpeg", "ffmpeg")]:
             coded = BUILD / f"race_e_{label}_{kbps}.ec3"
             if tools == "ffmpeg":
                 run(["ffmpeg", "-v", "error", "-y", "-i", source, "-c:a", "eac3",
@@ -500,6 +656,207 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
             print(f"{kbps:>5} | {label:<10} | {snr:>7.2f} | {lsd:>6.2f} | "
                   f"{hf:>+6.1f} | {_fmt_mos(mos):>4} | {rate:>6.1f}")
         print()
+
+
+# --- VBR characterisation ----------------------------------------------------
+#
+# VBR shipped as a per-frame quality knob with no evidence at all: no race
+# leg, no trend row, no rate-distortion curve - only a warning in
+# docs/concepts/ac3-eac3.md that cost "rises steeply in the top part of the
+# quality range". This is the measurement that warning was standing in for.
+#
+# The question a VBR mode exists to answer is not "what does quality 0.6
+# sound like", it is "at the rate this ends up costing, would plain CBR have
+# done better". So every sweep point is scored against a CBR encode at the
+# rate the VBR point actually measured - not at some nominal rate - and
+# against FFmpeg's own CBR encoder at the same number, which is the neutral
+# third opinion the rest of this file already leans on.
+#
+# The format's own ceiling is 2048 words per frame (frmsiz is 11 bits), which
+# at 48 kHz is 1024 kbit/s. Every sweep point carries that as its max_kbps:
+# without a bound, a high quality on real material asks for more than any
+# legal frame can hold and the encoder refuses the frame outright (see
+# VbrConfig::quality). Bounding at the FORMAT ceiling rather than at some
+# tighter number keeps the curve honest - nothing is capped that the
+# bitstream itself could have carried.
+VBR_FORMAT_MAX_KBPS = 1024
+VBR_QUALITIES = (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90)
+
+# The ABR targets checked for delivery. Spread across the rates a streaming
+# ladder actually asks E-AC-3 for, since "hits the rate it was told to hit"
+# is the whole deliverable.
+ABR_TARGETS = (96, 128, 192, 256, 384)
+
+
+def _encode_eac3(source, out, kbps, vbr=None, tools="none"):
+    cmd = [CLI, "eac3-encode", source, out, str(kbps), tools, "stereo"]
+    if vbr is not None:
+        cmd.append(vbr)
+    run(cmd)
+    return out
+
+
+def race_vbr(original, source, seconds, json_out=None):
+    """Sweep VbrConfig.quality; score each point against CBR at the SAME
+    measured rate, and against FFmpeg CBR at that rate.
+
+    Read the `gap` columns, not the absolute SNR: a sweep point that costs
+    203 kbit/s is only interesting next to what 203 kbit/s of CBR buys.
+    Positive means VBR won.
+
+    Three comparisons per point, all at the rate the VBR point measured:
+    CBR (a fixed frame size), ABR (the same rate asked for as an average),
+    and FFmpeg's own CBR encoder. The ABR column is there because "average
+    rate" and "variable rate" sound alike and are not: holding an average is
+    the same constraint CBR encodes under, so ABR is expected to score with
+    CBR rather than with VBR, and that expectation is worth having on the
+    table rather than in a comment.
+    """
+    rows = []
+    print("=== E-AC-3 VBR rate-distortion sweep (stereo, tools=none) ===")
+    print(f"{'quality':>7} | {'kbps':>6} | {'SNR dB':>7} | {'LSD dB':>6} | {'MOS':>4} | "
+          f"{'CBR SNR':>7} | {'vs CBR':>7} | {'ABR SNR':>7} | {'vs ABR':>7} | "
+          f"{'ff SNR':>7} | {'vs ff':>7}")
+    print("-" * 104)
+    for quality in VBR_QUALITIES:
+        tag = f"{quality:.2f}".replace(".", "")
+        coded = BUILD / f"vbr_q{tag}.ec3"
+        _encode_eac3(source, coded, 192, f"q:{quality},max:{VBR_FORMAT_MAX_KBPS}")
+        kbps = measured_kbps(coded, seconds)
+        snr, lsd, _hf, mos = decode_scores(original, coded, BUILD / f"vbr_q{tag}.wav",
+                                           perceptual=True)
+
+        # The comparison encode: CBR at the rate the VBR point actually cost,
+        # rounded to whole kbit/s. Anything else compares two different rates.
+        # Clamped to the format ceiling: measured_kbps divides by the SOURCE's
+        # duration, but the encoder pads the last frame out to a whole 1536
+        # samples, so a stream already pinned to 1024 kbit/s measures a
+        # fraction of a per cent above it and CBR has no legal frame that big.
+        cbr_kbps = min(VBR_FORMAT_MAX_KBPS, max(32, round(kbps)))
+        cbr = BUILD / f"vbr_cbr{cbr_kbps}.ec3"
+        _encode_eac3(source, cbr, cbr_kbps)
+        cbr_snr, cbr_lsd, _cbr_hf, cbr_mos = decode_scores(
+            original, cbr, BUILD / f"vbr_cbr{cbr_kbps}.wav", perceptual=True)
+
+        # ...and the same rate asked for as an AVERAGE rather than as a fixed
+        # frame size. This is the column that says what ABR is and is not
+        # for: holding an average is the same constraint CBR encodes under,
+        # so ABR is expected to land on CBR, not on VBR - and a change that
+        # quietly turned ABR into either one of them shows up right here.
+        abr = BUILD / f"vbr_abr{cbr_kbps}.ec3"
+        _encode_eac3(source, abr, 192, f"avg:{cbr_kbps}")
+        abr_snr, abr_lsd, _abr_hf, abr_mos = decode_scores(
+            original, abr, BUILD / f"vbr_abr{cbr_kbps}.wav", perceptual=True)
+        abr_kbps = measured_kbps(abr, seconds)
+
+        ff = BUILD / f"vbr_ff{cbr_kbps}.ec3"
+        run(["ffmpeg", "-v", "error", "-y", "-i", source, "-c:a", "eac3",
+             "-b:a", f"{cbr_kbps}k", ff])
+        ff_snr, ff_lsd, _ff_hf, ff_mos = decode_scores(
+            original, ff, BUILD / f"vbr_ff{cbr_kbps}.wav", strict=False, perceptual=True)
+
+        rows.append({"mode": "vbr", "quality": quality, "measured_kbps": float(kbps),
+                     "snr_db": float(snr), "lsd_db": float(lsd),
+                     "mos_lqo": None if mos is None else float(mos),
+                     "cbr_kbps": cbr_kbps, "cbr_snr_db": float(cbr_snr),
+                     "cbr_lsd_db": float(cbr_lsd),
+                     "cbr_mos_lqo": None if cbr_mos is None else float(cbr_mos),
+                     "abr_measured_kbps": float(abr_kbps), "abr_snr_db": float(abr_snr),
+                     "abr_lsd_db": float(abr_lsd),
+                     "abr_mos_lqo": None if abr_mos is None else float(abr_mos),
+                     "ffmpeg_snr_db": float(ff_snr), "ffmpeg_lsd_db": float(ff_lsd),
+                     "ffmpeg_mos_lqo": None if ff_mos is None else float(ff_mos)})
+        print(f"{quality:>7.2f} | {kbps:>6.1f} | {snr:>7.2f} | {lsd:>6.2f} | "
+              f"{_fmt_mos(mos):>4} | {cbr_snr:>7.2f} | {snr - cbr_snr:>+7.2f} | "
+              f"{abr_snr:>7.2f} | {snr - abr_snr:>+7.2f} | "
+              f"{ff_snr:>7.2f} | {snr - ff_snr:>+7.2f}")
+
+    print()
+    print("=== E-AC-3 ABR: does the average land where it was asked to? ===")
+    print(f"{'target':>6} | {'measured':>8} | {'error %':>7} | {'SNR dB':>7} | "
+          f"{'LSD dB':>6} | {'MOS':>4} | {'CBR SNR':>7} | {'vs CBR':>7}")
+    print("-" * 72)
+    for target in ABR_TARGETS:
+        coded = BUILD / f"abr_{target}.ec3"
+        # quality 1.0 makes the reservoir the only thing bounding the rate,
+        # which is what "hold this average" is being asked to mean here.
+        _encode_eac3(source, coded, 192, f"avg:{target}")
+        kbps = measured_kbps(coded, seconds)
+        snr, lsd, _hf, mos = decode_scores(original, coded, BUILD / f"abr_{target}.wav",
+                                           perceptual=True)
+        cbr = BUILD / f"abr_cbr{target}.ec3"
+        _encode_eac3(source, cbr, target)
+        cbr_snr, _cbr_lsd, _cbr_hf, _cbr_mos = decode_scores(
+            original, cbr, BUILD / f"abr_cbr{target}.wav", perceptual=False)
+        error = 100.0 * (kbps - target) / target
+        rows.append({"mode": "abr", "target_kbps": target, "measured_kbps": float(kbps),
+                     "error_pct": float(error), "snr_db": float(snr), "lsd_db": float(lsd),
+                     "mos_lqo": None if mos is None else float(mos),
+                     "cbr_snr_db": float(cbr_snr)})
+        print(f"{target:>6} | {kbps:>8.1f} | {error:>+7.2f} | {snr:>7.2f} | {lsd:>6.2f} | "
+              f"{_fmt_mos(mos):>4} | {cbr_snr:>7.2f} | {snr - cbr_snr:>+7.2f}")
+
+    # --- where the reservoir actually earns its keep -----------------------
+    #
+    # Every row above lands on its target and scores IDENTICALLY to CBR,
+    # which is not a bug and not a coincidence: at quality 1.0 the composite
+    # SNR offset saturates the bit allocation for every band regardless of
+    # what the band contains, so every frame asks for more than its share,
+    # every frame is capped at its share, and ABR reduces exactly to CBR.
+    # A reservoir can only redistribute bits that some frame declined to
+    # spend - which means a quality ceiling BELOW 1.0, on material that has
+    # cheap frames in it. make_material() has neither. This block supplies
+    # both, and is the only place in this mode where ABR is measured against
+    # CBR on a level footing rather than being it.
+    print()
+    print("=== E-AC-3 ABR on material with dynamics (loud/quiet passages) ===")
+    dyn_left, dyn_right = make_material_dynamic(*make_material())
+    dyn_source = BUILD / "vbr_dynamic.wav"
+    write_wav_f32(dyn_source, dyn_left, dyn_right)
+    dyn_original = read_wav_f32(dyn_source)
+    print(f"{'mode':<14} | {'kbps':>6} | {'SNR dB':>7} | {'LSD dB':>6} | {'MOS':>4} | "
+          f"{'vs CBR':>7}")
+    print("-" * 60)
+    dyn_target = 192
+    cbr = BUILD / f"vbr_dyn_cbr{dyn_target}.ec3"
+    _encode_eac3(dyn_source, cbr, dyn_target)
+    cbr_snr, cbr_lsd, _hf, cbr_mos = decode_scores(
+        dyn_original, cbr, BUILD / f"vbr_dyn_cbr{dyn_target}.wav", perceptual=True)
+    cbr_rate = measured_kbps(cbr, seconds)
+    rows.append({"mode": "dynamic-cbr", "target_kbps": dyn_target,
+                 "measured_kbps": float(cbr_rate), "snr_db": float(cbr_snr),
+                 "lsd_db": float(cbr_lsd),
+                 "mos_lqo": None if cbr_mos is None else float(cbr_mos)})
+    print(f"{'cbr':<14} | {cbr_rate:>6.1f} | {cbr_snr:>7.2f} | {cbr_lsd:>6.2f} | "
+          f"{_fmt_mos(cbr_mos):>4} | {0.0:>+7.2f}")
+    # The window is the one knob ABR has, so sweep it: too short and the
+    # reservoir cannot carry a quiet passage's savings as far as the loud one
+    # that needs them, too long and the offset drifts away from the content it
+    # is meant to be tracking.
+    for window in (8, 16, 32, 64):
+        coded = BUILD / f"vbr_dyn_abr_w{window}.ec3"
+        _encode_eac3(dyn_source, coded, 192, f"avg:{dyn_target},win:{window}")
+        rate = measured_kbps(coded, seconds)
+        snr, lsd, _hf2, mos = decode_scores(dyn_original, coded,
+                                            BUILD / f"vbr_dyn_abr_w{window}.wav",
+                                            perceptual=True)
+        rows.append({"mode": "dynamic-abr", "window_frames": window,
+                     "target_kbps": dyn_target, "measured_kbps": float(rate),
+                     "snr_db": float(snr), "lsd_db": float(lsd),
+                     "mos_lqo": None if mos is None else float(mos),
+                     "cbr_snr_db": float(cbr_snr)})
+        print(f"{'abr win=' + str(window):<14} | {rate:>6.1f} | {snr:>7.2f} | "
+              f"{lsd:>6.2f} | {_fmt_mos(mos):>4} | {snr - cbr_snr:>+7.2f}")
+
+    print()
+    print("gap columns are positive when ac3forge VBR/ABR beats the comparison at the")
+    print("SAME measured rate. MOS-LQO (ViSQOL audio mode, 1-4.75): '-' means")
+    print("visqol-python isn't installed - see perceptual_score()'s own docstring.")
+    if json_out is not None:
+        Path(json_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(json_out).write_text(json.dumps({"rows": rows}, indent=2) + "\n")
+        print(f"wrote {json_out}")
+    return rows
 
 
 # --- CI gate mode ------------------------------------------------------------
@@ -520,6 +877,10 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
 # many dB, not a fraction of one, so it clears this bar by a wide margin.
 CI_STEREO_KBPS = 192
 CI_51_KBPS = 256
+# The transient leg (make_material_transient) runs at the same stereo rate as
+# the stationary one, so the two rows differ only in the material - which is
+# the comparison the exponent-run plan has to be read against.
+CI_TRANSIENT_KBPS = 192
 
 # (min SNR dB, max LSD dB) per E-AC-3 tool variant, one table per material
 # set - 256 kbps split six ways (5.1, decorrelated) is a far tighter
@@ -531,13 +892,20 @@ CI_51_KBPS = 256
 # fidelity for the banded envelope on purpose (see spectral_scores'
 # docstring) - that is why their SNR floors are lower and LSD ceilings
 # higher than "none"/"cpl" rather than every row sharing one bar.
-# "auto" resolves to a different tool set per leg - at these two rates it
-# picks aht for stereo (192 kbit/s, 96 per channel) and cpl+spx+aht for 5.1
-# (256 kbit/s, 51 per channel) - so its floor is that set's floor rather than
-# a number of its own. Measured 2026-08-17 against a real build: stereo
-# 40.42 dB SNR / 5.96 dB LSD, 5.1 14.08 dB / 7.70 dB, both comfortably inside
-# the bars below. A change to the rate policy that silently flipped either leg
-# to the wrong set would land well under them.
+# "auto" resolves to a different tool set per leg, and since the tool
+# decisions read the frame's own spectrum as well as the rate (see
+# eac3_frame.cpp's own "What the content says" block) that set depends on the
+# material here, not only on the bitrate - so its floor is the floor of the
+# sets it can reach rather than a number of its own. Measured 2026-08-23
+# against a real build on make_material()/make_material_51(): stereo 41.55 dB
+# SNR / 6.08 dB LSD, 5.1 14.29 dB / 7.59 dB, both comfortably inside the bars
+# below. A change to the policy that silently flipped either leg to the wrong
+# set would land well under them.
+#
+# One thing this leg is load-bearing for beyond its own numbers: it is
+# strict-decoded by FFmpeg, so it is what catches `auto` reaching for a tool
+# FFmpeg cannot read. That is not hypothetical - it is how enhanced coupling
+# was found to be unshippable in `auto` (docs/library/encoding-eac3.md).
 CI_EAC3_THRESHOLDS = {
     "stereo": {
         "none": (28.0, 7.5),
@@ -557,7 +925,41 @@ CI_EAC3_THRESHOLDS = {
         "cpl+spx": (9.0, 9.5),
         "all": (9.0, 10.5),
     },
+    # Transient material, measured 2026-08-23 against a real build (FFmpeg
+    # 8.0.1): none/auto/cpl/aht 5.37 dB SNR and 0.94-0.95 dB LSD, the three
+    # spectral-extension rows -0.42 to -0.43 dB SNR and 1.81-1.85 dB LSD.
+    #
+    # The absolute numbers are not comparable to the stationary stereo row's
+    # and are not meant to be: a click train over near-silence at 192 kbit/s is
+    # a hard thing to code, and a waveform SNR near zero on parametric rows is
+    # what a synthesized high band scores by construction. What this row exists
+    # for is the exponent-run plan, so its bars sit closer to the measurement
+    # than the other rows' do - about 1.4 dB of SNR margin and 0.5 dB of LSD.
+    # That is deliberate: every regression this leg actually caught while it
+    # was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD, not the
+    # many dB a collapse elsewhere would, and a floor loose enough to ignore
+    # them would have made the leg pointless.
+    "transient": {
+        "none": (4.0, 1.5),
+        "auto": (4.0, 1.5),
+        "cpl": (4.0, 1.5),
+        "spx": (-2.0, 2.6),
+        "aht": (4.0, 1.5),
+        "cpl+spx": (-2.0, 2.6),
+        "all": (-2.0, 2.6),
+    },
 }
+
+# Transient material (make_material_transient): onsets closer together than a
+# frame, hard gates, decays that leave a frame's loudest block 20-30 dB above
+# its quietest. It exists to hold the exponent-run plan (roadmap EQ1) against a
+# regression: one exponent set per frame quantizes every quiet block against a
+# scale chosen by the loud one, and this is the material where that costs the
+# most. Absolute scores here are far below the stationary stereo row's and are
+# not comparable to it - a click train over near-silence is a hard thing to
+# code at 192 kbit/s, and the floors are set from a measured build the same way
+# every other row's are.
+CI_EAC3_MEASURED_NOTE = "measured 2026-08-23 against a real build, FFmpeg 8.0.1"
 CI_AC3_MIN_SNR_DB = 30.0
 
 # The AC-3 gate was stereo-only for a long time, which left 5.1 - and with it
@@ -602,7 +1004,7 @@ def gate(name, ok, detail):
     return ok
 
 
-def race_ci(original, source, original_51, source_51):
+def race_ci(original, source, original_51, source_51, original_tr, source_tr):
     failures = []
 
     print(f"=== AC-3 @ {CI_STEREO_KBPS} kbps ===")
@@ -621,9 +1023,14 @@ def race_ci(original, source, original_51, source_51):
                 f"SNR {snr_51:.2f} dB (floor {CI_AC3_51_MIN_SNR_DB})"):
         failures.append("ac3-51")
 
-    for label, source_wav, original_pcm, kbps in (
-        ("stereo", source, original, CI_STEREO_KBPS),
-        ("51", source_51, original_51, CI_51_KBPS),
+    for label, source_wav, original_pcm, kbps, self_variants in (
+        ("stereo", source, original, CI_STEREO_KBPS, EAC3_SELF_VARIANTS),
+        ("51", source_51, original_51, CI_51_KBPS, EAC3_SELF_VARIANTS),
+        # Transient material runs the FFmpeg-checked variants only: what this
+        # leg exists to measure is how the exponent run plan copes with level
+        # moving between the blocks of a frame, and ecpl/tpn change neither
+        # the plan nor how it is spent. They have their own rows above.
+        ("transient", source_tr, original_tr, CI_TRANSIENT_KBPS, ()),
     ):
         print(f"=== E-AC-3 {label} @ {kbps} kbps ===")
         for variant, tools in EAC3_VARIANTS:
@@ -641,8 +1048,10 @@ def race_ci(original, source, original_51, source_51):
                         f"LSD {lsd:.2f} dB (ceiling {max_lsd})"):
                 failures.append(f"eac3-{label}-{variant}")
 
+        if not self_variants:
+            continue
         print(f"=== E-AC-3 {label} @ {kbps} kbps (ecpl/tpn, own-decoder oracle) ===")
-        for variant, tools in EAC3_SELF_VARIANTS:
+        for variant, tools in self_variants:
             coded = BUILD / f"ci_eac3_{label}_{variant}_{kbps}.ec3"
             run([CLI, "eac3-encode", source_wav, coded, str(kbps), tools])
             snr, lsd, _, _ = decode_scores_ours(original_pcm, coded,
@@ -677,10 +1086,66 @@ def race_ci(original, source, original_51, source_51):
 # the local-only, never-in-CI script and this mode is the opposite: CI-only,
 # no external encoder ever invoked.
 AUDIO_DIR = REPO / "tests" / "golden" / "audio"
+
+
+# The programme fixtures ship as FLAC (tools/generators/gen_programme_fixtures.py's
+# own docstring says why: 3.1 MB against 5.8 MB of WAV each, under a standing
+# repo constraint on fixture bytes). Nothing else in this file, and nothing in
+# ac3cli, reads FLAC - so every fixture path goes through this one function,
+# which hands back a WAV path either way and only ever shells out for the FLAC
+# case. ffmpeg is already a hard dependency of every mode here.
+#
+# Cached under BUILD by name: `trend` alone reads the same fixture ten-plus
+# times across variants, and re-decoding 30 s of FLAC per row would be pure
+# waste. Regenerated when the FLAC is newer than the WAV, so editing a fixture
+# locally does not leave a stale decode behind.
+def materialise_fixture(path):
+    path = Path(path)
+    if path.suffix != ".flac":
+        return path
+    out = BUILD / f"fixture_{path.stem}.wav"
+    if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
+        BUILD.mkdir(parents=True, exist_ok=True)
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-c:a", "pcm_s16le", str(out)])
+    return out
+
+
+SPEECH_FIXTURE = AUDIO_DIR / "programme_speech_stereo.flac"
+MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
+
+# Kept in sync by hand with tools/generators/gen_external_baseline.py's LEGS -
+# see this section's own header for why this file must never import that one.
+#
+# Two things changed at baseline_version 2. First, real programme material:
+# the five reference_* legs are 2.5-3 s of sin()/noise/FIR (see
+# gen_programme_fixtures.py for what that costs), and the three programme_*
+# ones are 30 s CC0 recordings that roll off the way real material does. The
+# synthetic legs are NOT retired - their series go back to the first
+# baseline, and breaking that continuity to swap material would throw away
+# the history the landscape page exists to show.
+#
+# Second, rates where the Annex E tools actually run. `auto` turns coupling on
+# below 12 + 14n kbit/s per channel and spectral extension below 56 (see
+# eac3_frame.cpp's coupling_rate_ceiling/kSpxRateCeiling), and the only stereo
+# leg sat at 192 kbit/s - 96 per channel, above both - so `auto` chose no
+# tools at all there and the landscape never once compared this project's
+# Annex E work against FFmpeg's or DEE's at a rate where it exists. The two
+# stereo legs added here bracket both crossovers: 96 kbit/s is 48 per channel
+# (spectral extension on, coupling off - it isolates spx) and 64 kbit/s is 32
+# per channel (both on). The 5.1 legs already sat below both ceilings at
+# 256 kbit/s, which is why no low-rate 5.1 leg is added.
 TREND_LEGS = [
-    dict(name="ac3-51-448", codec="ac3", kbps=448, wav=AUDIO_DIR / "reference_51.wav"),
-    dict(name="eac3-stereo-192", codec="eac3", kbps=192, wav=AUDIO_DIR / "reference_stereo.wav"),
-    dict(name="eac3-51-256", codec="eac3", kbps=256, wav=AUDIO_DIR / "reference_51.wav"),
+    {"name": "ac3-51-448", "codec": "ac3", "kbps": 448, "wav": AUDIO_DIR / "reference_51.wav"},
+    {"name": "eac3-stereo-192", "codec": "eac3", "kbps": 192,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "eac3-51-256", "codec": "eac3", "kbps": 256, "wav": AUDIO_DIR / "reference_51.wav"},
+    {"name": "eac3-stereo-96", "codec": "eac3", "kbps": 96,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "eac3-stereo-64", "codec": "eac3", "kbps": 64,
+     "wav": AUDIO_DIR / "reference_stereo.wav"},
+    {"name": "ac3-music-stereo-192", "codec": "ac3", "kbps": 192, "wav": MUSIC_FIXTURE},
+    {"name": "eac3-music-stereo-96", "codec": "eac3", "kbps": 96, "wav": MUSIC_FIXTURE},
+    {"name": "eac3-speech-stereo-64", "codec": "eac3", "kbps": 64, "wav": SPEECH_FIXTURE},
 ]
 
 
@@ -721,7 +1186,8 @@ def race_trend(json_out=None):
     results = []
     ext = {"ac3": "ac3", "eac3": "ec3"}
     for leg in TREND_LEGS:
-        name, codec, kbps, wav = leg["name"], leg["codec"], leg["kbps"], leg["wav"]
+        name, codec, kbps = leg["name"], leg["codec"], leg["kbps"]
+        wav = materialise_fixture(leg["wav"])
         is_eac3 = codec == "eac3"
         original = read_wav_any(wav)
         seconds = len(original) / RATE
@@ -782,6 +1248,12 @@ def race_trend(json_out=None):
 # never-runs-in-CI boundary docs/landscape.md documents for the numbers.
 
 
+# How many seconds of each leg the spectrogram images cover. See the
+# centring code in render_spectrograms() for why this is capped rather than
+# rendering whole fixtures.
+SPECTROGRAM_SPAN_S = 10.0
+
+
 def _decode_baseline(coded_path, tag):
     scratch = BUILD / f"spectrogram_{tag}.wav"
     run(["ffmpeg", "-v", "error", "-y", "-i", str(coded_path), "-c:a", "pcm_f32le", str(scratch)])
@@ -819,19 +1291,20 @@ def render_spectrograms(out_dir):
     this file stays matplotlib-free; only a caller that actually asks for
     spectrograms needs it installed.
     """
-    import matplotlib
+    import matplotlib  # noqa: PLC0415 - deliberate, see the docstring above
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt  # noqa: PLC0415 - must follow the use("Agg") call
 
-    manifest = json.loads((REPO / "tests" / "golden" / "external-baseline" / "manifest.json").read_text())
+    baseline_root = REPO / "tests" / "golden" / "external-baseline"
+    manifest = json.loads((baseline_root / "manifest.json").read_text())
     ext = {"ac3": "ac3", "eac3": "ec3"}
-    baseline_dir = REPO / "tests" / "golden" / "external-baseline"
+    baseline_dir = baseline_root
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for leg in TREND_LEGS:
-        name, codec, wav = leg["name"], leg["codec"], leg["wav"]
-        original = read_wav_any(wav)
+        name, codec = leg["name"], leg["codec"]
+        original = read_wav_any(materialise_fixture(leg["wav"]))
         ours_wav = BUILD / f"trend_{name}_landscape.wav"
         if not ours_wav.exists():
             raise SystemExit(f"{ours_wav} missing - render_spectrograms must run after "
@@ -840,6 +1313,13 @@ def render_spectrograms(out_dir):
         _, d_ours, _ = align(original, read_wav_f32(ours_wav), **FIXED_ALIGN)
         panels = [("original", original), ("ac3forge", d_ours)]
 
+        if name not in manifest["legs"]:
+            raise SystemExit(
+                f"leg '{name}' is in TREND_LEGS but not in the committed external baseline "
+                f"(baseline_version {manifest['baseline_version']}). Those two lists are kept in "
+                "sync by hand - see TREND_LEGS' own comment. Rerun "
+                "tools/generators/gen_external_baseline.py locally, with its LEGS updated to "
+                "match, and commit the manifest it writes.")
         leg_scores = manifest["legs"][name]["scores"]
         for tool_label in ("ffmpeg", "dee"):
             entry = leg_scores.get(tool_label, {})
@@ -853,14 +1333,26 @@ def render_spectrograms(out_dir):
             panels.append((tool_label, d))
 
         # Same span for every row - align()'s own overlap trim can differ by
-        # a handful of samples between calls.
+        # a handful of samples between calls - and capped at
+        # SPECTROGRAM_SPAN_S, centred, mainly so every leg's image is drawn
+        # at a comparable time scale instead of squeezing 30 s of programme
+        # material into the width a 3 s synthetic fixture gets. It trims the
+        # PNGs too, but only somewhat - most of a programme leg's file size
+        # is spectral detail, not duration (1.78 MB whole, 1.43 MB capped,
+        # against 0.49 MB for a synthetic leg) - so this is a legibility
+        # change first and a size one second. What the image is for, showing
+        # what each encoder did to the spectrum, reads the same either way.
         n = min(p[1].shape[0] for p in panels)
+        span = int(SPECTROGRAM_SPAN_S * RATE)
+        offset = (n - span) // 2 if n > span else 0
+        n = min(n, span)
 
         fig, axes = plt.subplots(len(panels), 1, figsize=(11, 2.0 * len(panels)), sharex=True)
         if len(panels) == 1:
             axes = [axes]
-        for ax, (label, data) in zip(axes, panels):
-            mono = data[:n].mean(axis=1) if data.ndim > 1 else data[:n]
+        for ax, (label, data) in zip(axes, panels, strict=True):
+            chunk = data[offset:offset + n]
+            mono = chunk.mean(axis=1) if chunk.ndim > 1 else chunk
             _plot_spectrogram(ax, mono, f"{name} - {label}")
         axes[-1].set_xlabel("seconds")
         fig.tight_layout()
@@ -868,6 +1360,271 @@ def render_spectrograms(out_dir):
         fig.savefig(out_path, dpi=130)
         plt.close(fig)
         print(f"wrote {out_path}")
+
+
+# --- Object-reconstruction quality mode ---------------------------------------
+#
+# The only quality series this project has for its OBJECT layer. Every codec
+# layer beside it - AC-3, E-AC-3, and each Annex E tool - has a per-commit
+# trend row; object reconstruction had exactly one measurement anywhere in
+# the tree, tests/oba/test_atmos.cpp's `snr_db > 10.0` against 18-35 dB
+# measured, so a 10-20 dB JOC regression passed CI and appeared on no page.
+#
+# The loop is the one that unit test runs, moved out to the CLI and to a
+# committed scene: encode tests/golden/audio/reference_objects.wav (five mono
+# object essences as WAV channels) with `atmos-encode`, driven by the
+# committed placements in reference_objects.paths, then decode with
+# `decode <stream> <bed> <objects_dir>` and score each exported object_NN.wav
+# against the source channel it came from. tools/generators/gen_object_scene_wav.py
+# generates both committed files and documents the scene.
+#
+# THERE IS NO EXTERNAL ORACLE FOR OBJECT DECODE AT ALL - a weaker position
+# than even ecpl/tpn are in (see decode_scores_ours' docstring). FFmpeg has no
+# JOC reconstruction at all, and Dolby's own decoder gates object decoding on
+# a keyed authenticity tag this project ships no key for (docs/concepts/
+# atmos-joc.md), so it plays these streams as their 5.1 bed and never
+# produces objects to compare against. This is a pure self-consistency
+# series: this project's own encoder and decoder share one reading of TS 103
+# 420, so a genuine regression in either still collapses these numbers, and a
+# defect both sides agree on is invisible here. docs/object-quality-trend.md
+# says exactly that on the page itself.
+OBJECTS_WAV = AUDIO_DIR / "reference_objects.wav"
+OBJECTS_PATHS = AUDIO_DIR / "reference_objects.paths"
+
+# Kept in sync by hand with gen_object_scene_wav.py's OBJECT_NAMES (that
+# module is stdlib-only and local-only, this one is numpy-based and CI-side -
+# the same no-cross-import rule race_trend already follows with
+# gen_external_baseline.py). Each name is a trend series' `variant`, so
+# renaming one starts a new series rather than continuing the old one.
+OBJECT_NAMES = ["broadcast", "comet", "engine", "pod-hi", "pod-lo"]
+
+# Two rates, because they fail differently. At 256 kbit/s the five objects are
+# reconstructed out of a bed whose own mantissas are the binding constraint;
+# at 448 (AtmosConfig's default) the bed is comfortable and what is left is
+# the reconstruction limit itself. Measured against a real build (2026-08-23):
+# 9.6-18.6 dB at 256, 11.9-22.7 dB at 448. A regression in bit allocation
+# moves the first far more than the second; one in the JOC matrix moves both.
+OBJECT_LEGS = [
+    {"name": "atmos-objects-256", "kbps": 256},
+    {"name": "atmos-objects-448", "kbps": 448},
+]
+
+# joc::reconstruct is a DELAYED identity, not an instantaneous one: two
+# stacked algorithmic delays - 256 samples from the real encode+decode of
+# the bed itself, plus reconstruct()'s own pass over that decoded bed. That
+# second delay depends on the domain reconstruct() runs in, and these legs
+# exercise the CLI's default (AtmosConfig::joc_domain / DecoderConfig::
+# joc_domain = ac3::joc::Domain::kQmf, apps/cli/support.hpp), which is
+# ac3::dsp::kQmfDelay = kQmfTaps - kQmfHop = 576 samples (src/forge/include/
+# ac3/dsp/qmf.hpp), not the 256-sample MDCT round trip the older
+# Domain::kMdctBand path used. 256 + 576 = 832.
+# ac3::joc::reconstruction_delay(domain) is the single place either number
+# is derived (src/forge/include/ac3/oba/joc.hpp); tests/oba/test_atmos.cpp
+# calls it rather than hard-coding a figure, and its comment carries the
+# full reasoning. Fixed here rather than searched for by cross-correlation
+# the way align() does for the codec legs: the delay is a known property of
+# the transform pair, and a correlation search would silently absorb a real
+# timing regression as "just a different lag" instead of reporting it as
+# the SNR collapse it is.
+# Confirmed empirically against this exact scene before being fixed here -
+# the correlation peak lands on 832 for every object.
+OBJECT_DELAY = 832
+
+# Skipped at each end, in samples: one syncframe of warm-up and cool-down,
+# matching the unit test's own kSkip. The decoder's first frame has no
+# previous half-block to overlap-add against and the last object frame is the
+# tail of one, so scoring either would measure the transform's edges rather
+# than the reconstruction.
+OBJECT_SKIP = 1536
+
+
+# A band is "occupied" by an object if its reference energy is within this
+# much of the object's loudest band. Everything below the line is treated as
+# out-of-band and scored as leakage instead of as spectral distance - see
+# object_spectral_scores. 40 dB is a wide net on purpose: it has to keep an
+# object's real skirts and harmonics inside, and how much of the spectrum
+# that is varies enormously by object. Measured over this scene's five: the
+# engine and pod-hi occupy 3 of the 24 Bark bands each, pod-lo 4, broadcast
+# 13, and the comet - broadband hiss - all 24, which is why it is the one
+# object with no leakage figure at all.
+OBJECT_BAND_FLOOR_DB = 40.0
+
+
+def _fmt_leak(leak):
+    """"-" for an object that occupies every band, same convention as
+    _fmt_mos' own missing-value cell."""
+    return "-" if leak is None else f"{leak:+.1f}"
+
+
+def object_spectral_scores(o, d):
+    """Banded LSD over the bands this object occupies, plus its leakage.
+
+    spectral_scores() as written cannot be used directly on an object.
+    Objects are individually NARROW-BAND by nature - this scene's engine is
+    58-232 Hz and its pod-hi is 4.7-9.4 kHz - so most of the 24 Bark bands
+    hold nothing but the reference's own numerical floor, and any leakage
+    from the four other objects into one of those bands is a ratio against
+    ~zero. Run unmodified, that reports this scene's objects at 10-38 dB
+    "log-spectral distance", which is a true statement about band ratios and
+    a useless one about envelope fidelity: it is dominated by bands the
+    object was never in. spectral_scores' own frame-level `loud` filter
+    exists for exactly this reason one axis over (it drops near-silent
+    frames); this is the same idea applied to bands.
+
+    So the two questions are separated and both reported:
+
+    lsd_db  - mean |10 log10(coded/reference)| per band per loud frame, over
+              the OCCUPIED bands only. Directly comparable in meaning to
+              every other LSD in this file, just restricted to the part of
+              the spectrum the object is actually in.
+    leak_db - all the coded energy that landed OUTSIDE those bands, against
+              all the reference energy inside them. This is the measure
+              specific to object coding: the audible failure of a JOC
+              reconstruction is another object's content arriving in this
+              one, and for well-separated objects that lands where this
+              object has no content of its own. Lower is better. None - not
+              a large negative number - for an object that occupies every
+              band, since there is then nowhere outside for anything to leak
+              into and no measurement to report; this scene's comet, a
+              broadband hiss, is exactly that case.
+    """
+    so = _spectrogram(o)
+    sd = _spectrogram(d)
+    # Same near-silent-frame filter as spectral_scores, and for the same
+    # reason: a frame whose band ratios are all floor-against-floor would
+    # otherwise swamp the average.
+    energy = so.sum(axis=1)
+    loud = energy > 1e-6 * max(energy.max(), 1e-30)
+    band_o = np.array([so[loud, lo:hi].sum() for lo, hi in BANDS])
+    band_d = np.array([sd[loud, lo:hi].sum() for lo, hi in BANDS])
+    occupied = band_o >= band_o.max() * 10 ** (-OBJECT_BAND_FLOOR_DB / 10.0)
+
+    lsd = []
+    leak = (None if occupied.all()
+            else 10 * np.log10(max(band_d[~occupied].sum(), 1e-30) /
+                               max(band_o[occupied].sum(), 1e-30)))
+    for (lo, hi), inside in zip(BANDS, occupied, strict=True):
+        if not inside:
+            continue
+        eo = so[loud, lo:hi].sum(axis=1) + 1e-12
+        ed = sd[loud, lo:hi].sum(axis=1) + 1e-12
+        lsd.append(np.mean(np.abs(10 * np.log10(ed / eo))))
+    return float(np.mean(lsd)), (None if leak is None else float(leak))
+
+
+def object_scores(source, recovered, perceptual=False):
+    """SNR/LSD/leakage/MOS for one object, at the fixed OBJECT_DELAY.
+
+    source/recovered are 1-D float arrays: the scene channel this object was
+    built from, and the object_NN.wav the decoder exported for it. Both are
+    trimmed to the common overlap with OBJECT_SKIP samples dropped at each
+    end, and stay 1-D - _spectrogram and perceptual_score both read a single
+    channel that way, and there is no second channel to average over here
+    the way there is on every other mode's material.
+    """
+    n = min(len(source) - OBJECT_SKIP,
+            len(recovered) - OBJECT_DELAY - OBJECT_SKIP) - OBJECT_SKIP
+    if n <= 0:
+        raise SystemExit("object audio is shorter than the warm-up/cool-down window")
+    o = source[OBJECT_SKIP:OBJECT_SKIP + n]
+    d = recovered[OBJECT_SKIP + OBJECT_DELAY:OBJECT_SKIP + OBJECT_DELAY + n]
+    snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
+    lsd, leak = object_spectral_scores(o, d)
+    mos = perceptual_score(o, d) if perceptual else None
+    return float(snr), lsd, leak, (None if mos is None else float(mos))
+
+
+def race_objects(json_out=None):
+    """One row per (leg, object), plus a `scene` row per leg.
+
+    The `scene` row is the plain mean of that leg's per-object SNR/LSD/leakage
+    (and of MOS where every object has one) - a single number per leg for a reader
+    who wants "did the object layer move" without reading five rows, and the
+    row docs/object-quality-trend.md charts by default. It is a mean of the
+    objects, not a separate measurement: an object that collapses on its own
+    shows up here diluted by four that did not, which is exactly why the
+    per-object rows exist beside it rather than instead of it.
+    """
+    if not OBJECTS_WAV.exists() or not OBJECTS_PATHS.exists():
+        raise SystemExit(f"missing {OBJECTS_WAV} / {OBJECTS_PATHS} - regenerate them with "
+                         "python tools/generators/gen_object_scene_wav.py")
+    source = read_wav_any(OBJECTS_WAV)
+    if source.shape[1] != len(OBJECT_NAMES):
+        raise SystemExit(f"{OBJECTS_WAV} has {source.shape[1]} channels, but OBJECT_NAMES lists "
+                         f"{len(OBJECT_NAMES)} - regenerate the scene, or fix the list")
+    seconds = len(source) / RATE
+
+    print(f"{'leg':<18} | {'object':<10} | {'SNR dB':>7} | {'LSD dB':>6} | "
+          f"{'leak dB':>7} | {'MOS':>4} | {'kbps':>6}")
+    print("-" * 72)
+
+    results = []
+    for leg in OBJECT_LEGS:
+        name, kbps = leg["name"], leg["kbps"]
+        coded = BUILD / f"objects_{name}.ec3"
+        bed = BUILD / f"objects_{name}_bed.wav"
+        objects_dir = BUILD / f"objects_{name}"
+        # Any previous run's exports are removed first: the decoder writes one
+        # object_NN.wav per object it reconstructs, so a run that produced
+        # FEWER objects than the last one would otherwise be scored partly
+        # against stale files left behind by the earlier run.
+        if objects_dir.exists():
+            for stale in objects_dir.glob("object_*.wav"):
+                stale.unlink()
+        run([CLI, "atmos-encode", str(OBJECTS_WAV), str(coded), str(kbps),
+             str(len(OBJECT_NAMES)), str(OBJECTS_PATHS)])
+        run([CLI, "decode", str(coded), str(bed), str(objects_dir)])
+        kbps_measured = measured_kbps(coded, seconds)
+
+        rows = []
+        for index, object_name in enumerate(OBJECT_NAMES):
+            exported = objects_dir / f"object_{index:02}.wav"
+            if not exported.exists():
+                raise SystemExit(f"{exported} was not written - the decoder reconstructed fewer "
+                                 f"than {len(OBJECT_NAMES)} objects from {coded}")
+            recovered = read_wav_f32(exported)[:, 0]
+            snr, lsd, leak, mos = object_scores(np.ascontiguousarray(source[:, index]),
+                                                np.ascontiguousarray(recovered),
+                                                perceptual=True)
+            rows.append({"leg": name, "bitrate_kbps": kbps, "variant": object_name, "snr_db": snr,
+                        "lsd_db": lsd, "leak_db": leak, "mos_lqo": mos,
+                        "measured_kbps": float(kbps_measured)})
+
+        # Every mean is taken over `objects` rather than over `rows`, which
+        # the scene row is about to join: averaging a list while appending
+        # the average to it is the kind of thing that works today and breaks
+        # the moment someone moves the append.
+        objects = list(rows)
+        every_mos = [r["mos_lqo"] for r in objects]
+        every_leak = [r["leak_db"] for r in objects if r["leak_db"] is not None]
+        rows.append({
+            "leg": name, "bitrate_kbps": kbps, "variant": "scene",
+            "snr_db": float(np.mean([r["snr_db"] for r in objects])),
+            "lsd_db": float(np.mean([r["lsd_db"] for r in objects])),
+            # Averaged over the objects that HAVE a leakage figure: an
+            # object occupying every band contributes no measurement rather
+            # than a floor value that would drag the scene mean down by
+            # hundreds of dB (see object_spectral_scores).
+            "leak_db": (float(np.mean(every_leak)) if every_leak else None),
+            "mos_lqo": (None if any(m is None for m in every_mos)
+                        else float(np.mean(every_mos))),
+            "measured_kbps": float(kbps_measured)})
+
+        for row in rows:
+            print(f"{row['leg']:<18} | {row['variant']:<10} | {row['snr_db']:>7.2f} | "
+                  f"{row['lsd_db']:>6.2f} | {_fmt_leak(row['leak_db']):>7} | "
+                  f"{_fmt_mos(row['mos_lqo']):>4} | {row['measured_kbps']:>6.1f}")
+        print()
+        results.extend(rows)
+
+    print("No external oracle exists for object decode - FFmpeg has no JOC reconstruction, and")
+    print("Dolby's own decoder needs a key this project does not ship, so it plays these streams")
+    print("as their 5.1 bed. These are self-consistency numbers; see race_objects' own comment.")
+
+    if json_out is not None:
+        Path(json_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(json_out).write_text(json.dumps({"rows": results}, indent=2) + "\n")
+        print(f"wrote {json_out}")
 
 
 DRP = Path(r"C:\Program Files\Dolby\Dolby Reference Player")
@@ -896,7 +1653,7 @@ def dolby_decode(coded, wav):
          "!", "dlbac3parse", "!", "dlbac3dec", "!", "audioconvert",
          "!", "audio/x-raw,format=F32LE", "!", "wavenc",
          "!", "filesink", f"location={Path(wav).as_posix()}"],
-        capture_output=True, text=True, env=env)
+        capture_output=True, text=True, env=env, check=False)
     if result.returncode != 0:
         print(f"  (dolby decode failed: {result.stderr.strip().splitlines()[:1]})")
         return False
@@ -904,7 +1661,18 @@ def dolby_decode(coded, wav):
 
 
 def agreement_db(a, b):
-    """How closely two decodings of the same bits match, in dB."""
+    """How closely two decodings of the same bits match, in dB.
+
+    Presumes both decodes came from a stream encoded with nodither: §7.3.4
+    leaves the actual dither VALUES decoder-defined ("any reasonably random
+    sequence"), so once dithflag is really decided from content, two
+    independent, spec-correct decoders given the same dithered stream diverge
+    in the dithered bins by design, not by bug - which would silently lower
+    every number this function reports for no reason related to a regression.
+    crosscheck() below asks for nodither on every tools set it puts through
+    here so this premise actually holds; see tools/checks/verify_gold_
+    reference.sh, which needed the same fix for the same reason.
+    """
     a, b = a[:, 0].astype(np.float64), b[:, 0].astype(np.float64)
     probe = b[200000:232768]
     corr = np.correlate(a[199000:234000], probe, mode="valid")
@@ -929,8 +1697,14 @@ def crosscheck(original, source):
     for tools in ("none", "cpl", "spx", "aht", "all"):
         coded = BUILD / f"x_{tools}.ec3"
         cmd = [CLI, "eac3-encode", source, coded, "128"]
-        if tools != "none":
-            cmd.append(tools)
+        # nodither on every tools set - see agreement_db's own comment for
+        # why: it keeps this a comparison of the SAME bitstream through two
+        # decoders instead of a measurement of dither's own legitimate
+        # decoder-to-decoder divergence. "none" has no '+' form of its own
+        # (parse_tools() treats it as an exact-match special case that cannot
+        # join with another token), so it becomes bare "nodither" rather than
+        # "none+nodither".
+        cmd.append("nodither" if tools == "none" else f"{tools}+nodither")
         run(cmd)
         ff_wav = BUILD / f"x_{tools}_ff.wav"
         run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
@@ -1108,14 +1882,59 @@ def race_fast_mdct(source, original):
     print("verified-error comment; a large negative delta would be a regression.")
 
 
+# `--material speech|music` on the interactive modes: score against one of the
+# committed 30 s CC0 programme fixtures instead of make_material()'s
+# synthesized tones-and-noise. Opt-in, never a default, and deliberately not
+# accepted by `ci` or `trend` - `ci` is a hard gate whose floors were set
+# against the synthesized material and would all have to move, and `trend`
+# already carries the programme fixtures as their own legs (TREND_LEGS) rather
+# than as an alternative source for the existing ones.
+#
+# This is the knob for the encoder-tuning question this project has already
+# been caught by once: a bit-allocation or bandwidth policy that looks like a
+# win on the synthetic fixtures needs re-measuring on material that is not
+# band-limited like they are, and before this there was nowhere to do that
+# except by hand (see src/lib/src/encoder/encoder.cpp's chbwcod comment, and
+# tools/generators/gen_programme_fixtures.py for the measured spectra).
+MATERIALS = {"speech": SPEECH_FIXTURE, "music": MUSIC_FIXTURE}
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "ac3"
     BUILD.mkdir(exist_ok=True)
-    left, right = make_material()
-    source = BUILD / "race_src.wav"
-    write_wav_f32(source, left, right)
-    original = read_wav_f32(source)
-    seconds = len(left) / RATE
+
+    material = "synth"
+    if "--material" in sys.argv:
+        material = sys.argv[sys.argv.index("--material") + 1]
+        if material not in MATERIALS and material != "synth":
+            raise SystemExit(f"unknown material '{material}' (synth | speech | music)")
+        if material != "synth" and which in ("ci", "trend"):
+            raise SystemExit(
+                f"--material is not accepted by '{which}' mode - see MATERIALS' own comment. "
+                "`ci` gates against floors set on the synthesized material; `trend` already "
+                "carries the programme fixtures as their own legs.")
+        # Rejected rather than silently ignored: this mode replaces `source`
+        # with make_material_51() unconditionally, and both programme fixtures
+        # are stereo - there is no redistributable native 5.1 programme source
+        # (see gen_programme_fixtures.py's own docstring for why an upmix is
+        # not a substitute).
+        if material != "synth" and which == "eac3-51":
+            raise SystemExit(
+                "--material is not accepted by 'eac3-51' mode: both programme fixtures are "
+                "stereo and this mode is 5.1-only.")
+
+    if material == "synth":
+        left, right = make_material()
+        source = BUILD / "race_src.wav"
+        write_wav_f32(source, left, right)
+        original = read_wav_f32(source)
+        seconds = len(left) / RATE
+    else:
+        source = materialise_fixture(MATERIALS[material])
+        original = read_wav_any(source)
+        seconds = len(original) / RATE
+        print(f"material: {MATERIALS[material].name} ({seconds:.1f}s, "
+              f"{original.shape[1]} channels)")
     if which == "eac3":
         race_eac3(original, source, seconds)
     elif which == "eac3-51":
@@ -1125,6 +1944,11 @@ def main():
         source = BUILD / "race_src51.wav"
         write_wav_f32(source, make_material_51())
         race_eac3(read_wav_f32(source), source, seconds, rates=(192, 256, 384))
+    elif which == "vbr":
+        json_out = None
+        if "--json-out" in sys.argv:
+            json_out = Path(sys.argv[sys.argv.index("--json-out") + 1])
+        race_vbr(original, source, seconds, json_out=json_out)
     elif which == "seam":
         seam_check(source)
     elif which == "crosscheck":
@@ -1135,10 +1959,19 @@ def main():
         race_fast_mdct(source, original)
     elif which == "ac3":
         race_ac3(original, source, seconds)
+    elif which == "eac3-transient":
+        # The same table race_eac3 prints for the stationary material, on the
+        # material an exponent-run plan actually has something to do on.
+        source = BUILD / "race_src_transient.wav"
+        write_wav_f32(source, *make_material_transient())
+        race_eac3(read_wav_f32(source), source, seconds, rates=(128, 192, 256))
     elif which == "ci":
         source_51 = BUILD / "race_src51.wav"
         write_wav_f32(source_51, make_material_51())
-        race_ci(original, source, read_wav_f32(source_51), source_51)
+        source_tr = BUILD / "race_src_transient.wav"
+        write_wav_f32(source_tr, *make_material_transient())
+        race_ci(original, source, read_wav_f32(source_51), source_51,
+                read_wav_f32(source_tr), source_tr)
     elif which == "trend":
         json_out = None
         if "--json-out" in sys.argv:
@@ -1147,10 +1980,17 @@ def main():
         if "--spectrogram-dir" in sys.argv:
             spectrogram_dir = Path(sys.argv[sys.argv.index("--spectrogram-dir") + 1])
             render_spectrograms(spectrogram_dir)
+    elif which == "objects":
+        json_out = None
+        if "--json-out" in sys.argv:
+            json_out = Path(sys.argv[sys.argv.index("--json-out") + 1])
+        race_objects(json_out=json_out)
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | seam | crosscheck | ci | trend)")
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | eac3-transient | vbr | seam | "
+            f"crosscheck | ci | trend | objects)"
+            "\n[--material synth|speech|music] on every mode except ci, trend and eac3-51.")
 
 
 if __name__ == "__main__":
