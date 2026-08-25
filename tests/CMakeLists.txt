@@ -87,6 +87,7 @@ add_executable(ac3tests
     decoder/test_output_stage.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
+    containers/test_container_input.cpp
     containers/test_matroska.cpp
     containers/test_matroska_reader.cpp
     core/test_mdct.cpp
@@ -320,10 +321,19 @@ endif()
 # in a CLI-only build too - and apps/common, unlike apps/gui, is present
 # whatever AC3FORGE_BUILD_GUI says. The test file itself stays under
 # tests/gui/ so its history and its "[gui]" tag are unbroken.
+#
+# container_input.cpp (roadmap IO2) joined the same way for the same reason:
+# ac3::apps::sniff_container/elementary_stream_from_bytes are what
+# decode/qc/levels/play/monitor and the GUI's QC/Inspect pickers all call, so
+# a sniffing regression belongs in the plain Catch2 suite rather than only in
+# the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
+# 3600083275727211684 in tools/ci/fuzz_encoder_space.py) - this file covers it
+# deterministically and without needing ffmpeg on the machine running it.
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own

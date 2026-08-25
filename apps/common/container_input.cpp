@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <string_view>
 
+#include "ac3/io/elementary.hpp"
 #include "matroska/reader.hpp"
 #include "mp4/reader.hpp"
 #include "mpegts/reader.hpp"
@@ -107,6 +108,20 @@ ContainerKind sniff_container(std::span<const std::byte> head) {
     }
     if (has_isobmff_box_at_start(sniffed)) {
         return ContainerKind::kMp4;
+    }
+    // A raw AC-3/E-AC-3 elementary stream is checked for BEFORE the packet
+    // grid below, not after: this is what actually reads a well-formed
+    // syncframe rather than one coincidental byte, and it settles a real
+    // collision the grid alone cannot - AC-3 at 48 kbps/48 kHz codes
+    // exactly 192-byte frames, one of the grid's own three strides, and a
+    // steady or otherwise low-entropy signal encodes near-identical frames,
+    // so "0x47 recurs every 192 bytes" is something a perfectly ordinary
+    // elementary stream can produce on its own, not just an MPEG-TS capture.
+    // ac3::io::read_frame_header validates the sync word and the whole of
+    // bsi, which no accidental byte pattern satisfies by chance the way a
+    // single recurring byte can.
+    if (ac3::io::read_frame_header(sniffed).has_value()) {
+        return ContainerKind::kUnknown;
     }
     if (has_ts_packet_grid(sniffed)) {
         return ContainerKind::kMpegTs;

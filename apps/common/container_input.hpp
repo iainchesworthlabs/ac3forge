@@ -18,7 +18,11 @@
 // e.g. matroska/reader.hpp's own header comment) - the containers are
 // deliberately independent of the codec, and giving the codec library a
 // dependency back on them would invert that for every third party that links
-// ac3::forge to decode bare elementary streams and wants nothing else.
+// ac3::forge to decode bare elementary streams and wants nothing else. This
+// file depends on both instead, which is fine at this layer - apps/common
+// already does for RecordingSink (ac3/io/wav.hpp, ac3/sinks/iec61937.hpp) -
+// since disambiguating a container from a bare elementary stream is exactly
+// where knowing both sides earns its keep (see ContainerKind's own comment).
 
 namespace ac3::apps {
 
@@ -28,6 +32,18 @@ namespace ac3::apps {
 // KiB; a whole file works too but is wasted effort. kUnknown covers a bare
 // elementary stream (or a WAV, for the callers that also accept one), which
 // is most of what either caller actually sees.
+//
+// The MPEG-TS check is the loosest of the three - it has no magic, only a
+// recurring sync byte - and a bare AC-3/E-AC-3 stream can satisfy it by
+// accident: at some common bitrate/rate pairs (48 kbit/s at 48 kHz codes
+// exactly 192-byte frames, one of the three grid strides) a low-entropy
+// signal encodes near-identical bytes every frame, which looks exactly like
+// a packet grid to a check that only counts recurrence (tools/ci/
+// fuzz_encoder_space.py's REGRESSION_SEEDS, seed 3600083275727211684, found
+// this for real). sniff_container's implementation checks for a genuine,
+// syntactically-valid AC-3/E-AC-3 frame header first, which no accidental
+// byte pattern satisfies the way a single recurring byte can - see its own
+// comment.
 enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4, kMpegTs };
 
 [[nodiscard]] ContainerKind sniff_container(std::span<const std::byte> head);
