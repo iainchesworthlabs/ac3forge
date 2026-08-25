@@ -782,12 +782,12 @@ carry the types, not a copy of each kernel:
 
 | Kernel | Where | Note |
 |---|---|---|
-| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT/DCT-IV core (`fft_kernel.hpp`, see the boundary note below). The core wants its input digit-reversed and returns its output in natural order, so the pre-twiddle gathers at stride ±2 and scatters to `bitrev[m]`, and the post-twiddle reads at stride +1 and scatters to stride ±2. Every gather and scatter stays scalar; only the arithmetic between them goes two-wide. |
-| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Both inverses' pre- and post-transform complex multiplies, same gather/scatter-around-the-core shape as above for the pre-twiddle, unit stride for the post-twiddle. |
-| analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. |
-| `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. |
-| §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. |
-| `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. |
+| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT/DCT-IV core (`fft_kernel.hpp`, see the boundary note below). The core wants its input digit-reversed and returns its output in natural order, so the pre-twiddle gathers at stride ±2 and scatters to `bitrev[m]`, and the post-twiddle reads at stride +1 and scatters to stride ±2. Every gather and scatter stays scalar; only the arithmetic between them goes two-wide. Also has a real AVX2 tier — see [Runtime AVX2 dispatch](#runtime-avx2-dispatch). |
+| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Both inverses' pre- and post-transform complex multiplies, same gather/scatter-around-the-core shape as above for the pre-twiddle, unit stride for the post-twiddle. Also has a real AVX2 tier. |
+| analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. Also has a real AVX2 tier. |
+| `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. SSE2/NEON only — Phase 1's own measurement (below) found no reproducible AVX2 signal, since this is a small slice of a function `fft_kernel.hpp`'s own unaccelerated core dominates. |
+| §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. SSE2/NEON only, same reason as `dft512` above. |
+| `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. SSE2/NEON only, same reason as `dft512` above. |
 
 **The FFT/DCT-IV core itself is not part of this seam.** `src/forge/src/core/fft_kernel.hpp`
 (ROADMAP PF4) is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
@@ -807,9 +807,10 @@ for the same reason (its cost is the MDCT inside it, which does get faster). Ste
 inverses are permutation-dominated. This seam itself stays SSE2-width on x86-64: AVX and FMA3 are
 CPU features rather than architecture, so a compile-time `-march=` for them would produce a binary
 that faults on older hardware. [Runtime AVX2 dispatch](#runtime-avx2-dispatch) below covers the
-`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — as of ROADMAP
-PF5's dynamic-dispatch follow-on it exists as infrastructure, proven end to end on a trivial probe
-function, and is not yet wired to any kernel in the table above. 128 bits is the native width of
+`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — ROADMAP PF5's
+dynamic-dispatch follow-on wired it to the analysis windowing and DCT-IV/IMDCT twiddle kernels in
+the table above (the two Phase 1's own measurement found a real win for); `dft512`'s normalisation,
+exponent-to-PSD and `to_fixed25_block` stay SSE2/NEON-only for the same reason. 128 bits is the native width of
 NEON and of WASM's `simd128` in any case, and those are the platforms with the least headroom —
 which is also why this dispatch mechanism is x86-64 only: NEON double-precision is mandatory
 ARMv8-A baseline, so aarch64 has no equivalent feature gap to close.
@@ -903,12 +904,27 @@ guarantee, never silently claiming a check that did not run:
 AC3FORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
 ```
 
-As of ROADMAP PF5's dynamic-dispatch follow-on this whole mechanism is proven end to end against one
-trivial function (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
-of its own) rather than against a real kernel — deliberately, so the build/link/dispatch/test
-pipeline is proven before any kernel's correctness depends on it. None of the kernels in the table
-under [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree) dispatch
-through it yet.
+ROADMAP PF5's dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
+function first (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
+of its own) — deliberately, so the build/link/dispatch/test pipeline was proven before any kernel's
+correctness depended on it — then wired two real kernels behind it: `apply_analysis_window` and the
+DCT-IV/IMDCT twiddle stages (`mdct.cpp`'s `dct4_pre_twiddle`/`dct4_post_twiddle`,
+`imdct512_pre_twiddle`/`imdct512_negate_copy`/`imdct512_post_twiddle`, `imdct256_post_twiddle` —
+see `src/forge/src/internal/avx2/mdct_avx2.hpp`).
+
+**Which kernel gets wired is decided by measurement, not by which ones happen to be easiest.** A
+symbol-scoped `perf record` comparison (generic-vs-x86_64-tier `ac3kernelbench`, PID-attributed
+cycles rather than whole-process wall-clock — the latter turned out to be confounded by link-time
+code layout even between builds differing in nothing SIMD-related, an early false lead this project
+ruled out empirically) found a real, reproducible ~15-20% cycle reduction for `apply_analysis_window`
+and the twiddle stages, comfortably clear of the ~2-4% cross-build measurement noise floor a known-
+identical control function (`reference_mdct512_forward`, never touched by any SIMD tier) established.
+The same measurement found no signal above that noise floor for `dft512`'s normalisation,
+exponent-to-PSD or `to_fixed25_block` — each vectorises a small slice of a much larger, non-
+accelerated function (the FFT core, the §7.2.2.4/.5 excitation/masking recurrence, and the exponent
+pipeline respectively), so whatever benefit the vectorised slice contributes is swamped by the rest
+of its caller at the per-call granularity this method can resolve. Those three stay SSE2/NEON-only;
+extending them to AVX2 would need proof of aggregate (not per-call) benefit first.
 
 ## Floating-point contraction
 
