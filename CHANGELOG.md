@@ -272,6 +272,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`ac3.FrameEncoder.encode_frame`/`ac3.AtmosEncoder.encode_frame` segfaulted the Python
+  interpreter instead of raising when called with the wrong *number* of channel/object arrays**
+  (as opposed to the wrong per-channel sample length, which was already checked).
+  `bindings.cpp`'s `extract_channels()` validated each array's sample length against
+  `expected_len` but never validated `py::len(channels)` against the encoder's actual
+  `channel_count()`/`dynamic_object_count()`; the underlying C++ guard is a plain `assert()`,
+  compiled out in the Release build these wheels use, so a mismatched span count read out of
+  bounds instead of failing cleanly. Both entry points now check the sequence length up front
+  and raise `py::value_error`, matching the check `ac3.eac3.FrameEncoder`/`AccessUnitEncoder`
+  already had.
 - **`coupling::quantize_coordinate`/`choose_master` computed a coordinate's binade shift via
   `floor(-std::log2(value))`** (`VX12`): a transcendental libm call whose last-bit behaviour is
   not required to agree across compilers/architectures, at exactly the input class (a value on or
