@@ -199,7 +199,7 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
             z_im[d1] = zi.lane1();
         }
     }
-    internal::fft_forward_bitrev<P>(t.fft, z_re, z_im);
+    internal::fft_forward_bitrev<P, double>(t.fft, z_re, z_im);
 
     if (internal::cpu::has_avx2()) {
         internal::avx2::dct4_post_twiddle(z_re, z_im, t.post_re, t.post_im, scale, out);
@@ -379,7 +379,7 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
                 z_im[d1] = zi.lane1();
             }
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter)>(fft, z_re, z_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), double>(fft, z_re, z_im);
         // Unit stride throughout, so this negation goes wide with nothing
         // to gather or scatter.
         if (internal::cpu::has_avx2()) {
@@ -491,8 +491,8 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
             z2_re[d] = a2 * c - b2 * s;
             z2_im[d] = -(b2 * c + a2 * s);
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth)>(fft, z1_re, z1_im);
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth)>(fft, z2_re, z2_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), double>(fft, z1_re, z1_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), double>(fft, z2_re, z2_im);
         for (int n = 0; n < kEighth; ++n) {
             t1_re[static_cast<std::size_t>(n)] = z1_re[static_cast<std::size_t>(n)];
             t1_im[static_cast<std::size_t>(n)] = -z1_im[static_cast<std::size_t>(n)];

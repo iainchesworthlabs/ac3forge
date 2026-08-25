@@ -33,7 +33,8 @@ void dft512(std::span<const double, kDftLength> real_in,
         real_out[t.bitrev[n]] = real_in[n];
         imag_out[t.bitrev[n]] = imag_in[n];
     }
-    internal::fft_forward_bitrev<static_cast<std::size_t>(kDftLength)>(t, real_out, imag_out);
+    internal::fft_forward_bitrev<static_cast<std::size_t>(kDftLength), double>(t, real_out,
+                                                                                imag_out);
     // The spec sum's own 1/N normalisation (see fft.hpp), two bins at a time
     // through the arch seam (ROADMAP PF5). Multiplication by the reciprocal
     // rather than division: N is 512, so 1/N is exactly representable and

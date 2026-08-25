@@ -98,7 +98,7 @@ void QmfAnalysis::push(std::span<const float, kQmfHop> block,
         spectrum_real[d] = folded[m] * tw.real[m];
         spectrum_imag[d] = folded[m] * tw.imag[m];
     }
-    internal::fft_forward_bitrev<kFold>(t, spectrum_real, spectrum_imag);
+    internal::fft_forward_bitrev<kFold, double>(t, spectrum_real, spectrum_imag);
 
     // The transform is conjugate-symmetric about k = 2M - 1 - k for real
     // input, so the upper half carries nothing the lower half does not.
@@ -128,7 +128,7 @@ void QmfSynthesis::pull(std::span<const double, kQmfSubbands> real,
         time_real[d] = real[k];
         time_imag[d] = -imag[k];
     }
-    internal::fft_forward_bitrev<kFold>(t, time_real, time_imag);
+    internal::fft_forward_bitrev<kFold, double>(t, time_real, time_imag);
 
     // Post-twiddle by exp(+i*pi*m/(2M)) and take the real part. With the
     // conjugation above, Re{conj(z) * conj(w)} == Re{z * w}, so the
