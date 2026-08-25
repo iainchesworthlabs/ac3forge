@@ -279,7 +279,13 @@ struct ReconstructionState {
     // BETWEEN calls the way bed_history/previous_matrix/object_history do.
     std::array<std::array<double, 256>, kMaxChannels> bed_mdct_scratch{};
     std::array<double, 512> time_scratch{};
-    std::array<double, 512> windowed_scratch{};
+    // Four windowed blocks, not one (ROADMAP PF5 phase 4c): the bed
+    // analysis batches four CHANNELS' forward transforms into one
+    // ac3::mdct512_forward_batch4 call, which needs all four windowed
+    // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
+    // four plus one ordinary call; lane 0 doubles as the scalar path's own
+    // buffer, so this costs 3 x 512 doubles over the previous single one.
+    std::array<std::array<double, 512>, 4> windowed_scratch{};
     // Per-object (ROADMAP PF5's batch-axis follow-on): every present
     // object's spectrum/synthesis output now coexists, so the imdct pass
     // can batch four objects at a time (ac3::imdct512_windowed_batch4)

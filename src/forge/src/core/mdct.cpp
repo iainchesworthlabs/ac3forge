@@ -475,6 +475,27 @@ void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
     imdct512_windowed(coeffs3, x3, /*fast=*/true);
 }
 
+void mdct512_forward_batch4(std::span<const double, 512> w0, std::span<const double, 512> w1,
+                            std::span<const double, 512> w2, std::span<const double, 512> w3,
+                            std::span<double, 256> c0, std::span<double, 256> c1,
+                            std::span<double, 256> c2, std::span<double, 256> c3) {
+    if (internal::cpu::has_avx2()) {
+        // Same table-resolution job imdct512_windowed_batch4 does above:
+        // FastMdctTables<512> lives in this file's anonymous namespace, so
+        // the AVX2 body cannot look it up and takes its four twiddle
+        // arrays, the FFT table and dct4_scaled's own -2/NLen scale as
+        // plain arguments instead.
+        const auto& t = fast_mdct_tables<512>();
+        internal::avx2::mdct512_forward_batch4(w0, w1, w2, w3, t.pre_re, t.pre_im, t.post_re,
+                                               t.post_im, t.fft, -2.0 / 512.0, c0, c1, c2, c3);
+        return;
+    }
+    mdct512_forward(w0, c0, /*fast=*/true);
+    mdct512_forward(w1, c1, /*fast=*/true);
+    mdct512_forward(w2, c2, /*fast=*/true);
+    mdct512_forward(w3, c3, /*fast=*/true);
+}
+
 void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
                             bool fast) {
     const auto& tw = twiddles2();

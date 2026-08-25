@@ -637,6 +637,51 @@ TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", 
 #endif
 }
 
+TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit",
+         "[simd][avx2]") {
+    // Same shape, and for the same reason, as the inverse case below: the
+    // low-level AVX2 body needs FastMdctTables<512>, private to mdct.cpp,
+    // so this goes through the PUBLIC ac3::mdct512_forward_batch4, which
+    // only takes the AVX2 path when has_avx2() is true - guarded here
+    // exactly like every other [avx2] case in this file.
+    if (!ac3::internal::cpu::has_avx2()) {
+        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+        INFO("this CPU does not report AVX2 support - nothing to execute here");
+        if (required) {
+            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+                "it exists to prove - pin this job to hardware that actually has AVX2");
+        }
+        SKIP("AVX2 not available on this CPU");
+    }
+
+    std::mt19937_64 rng(0x6d646374'6634666dULL);
+    std::uniform_real_distribution<double> dist(-1.5, 1.5);
+    std::array<std::array<double, 512>, 4> windowed{};
+    for (auto& one : windowed) {
+        for (double& v : one) {
+            v = dist(rng);
+        }
+    }
+
+    std::array<std::array<double, 256>, 4> scalar_c{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        ac3::mdct512_forward(windowed[i], scalar_c[i], /*fast=*/true);
+    }
+
+    std::array<std::array<double, 256>, 4> batch_c{};
+    ac3::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3], batch_c[0],
+                                batch_c[1], batch_c[2], batch_c[3]);
+
+    std::size_t mismatches = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        if (!all_bits_equal(batch_c[i], scalar_c[i])) {
+            ++mismatches;
+        }
+    }
+    CHECK(mismatches == 0);
+}
+
 TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-bit",
          "[simd][avx2]") {
     // Unlike the kernels above, this one is tested through the PUBLIC

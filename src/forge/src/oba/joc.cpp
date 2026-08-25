@@ -420,7 +420,10 @@ namespace {
         // Only block 0 ever reads negative indices (into the previous
         // frame's tail); every later block's window sits entirely inside
         // THIS frame's own already-decoded samples.
-        for (int ch = 0; ch < channels; ++ch) {
+        // Gather-and-window one channel into lane `lane` of the windowed
+        // scratch. Split out so the batched and one-at-a-time paths below
+        // share it verbatim rather than restating the §7.9.4 window walk.
+        const auto gather_and_window = [&](int ch, std::size_t lane) {
             for (int n = 0; n < 512; ++n) {
                 const int index = block * kSamplesPerBlock + n - 256;
                 time[static_cast<std::size_t>(n)] =
@@ -430,8 +433,32 @@ namespace {
                         : state.bed_history[static_cast<std::size_t>(ch)]
                                            [static_cast<std::size_t>(256 + index)];
             }
-            apply_analysis_window(time, windowed);
-            mdct512_forward(windowed, bed_mdct[static_cast<std::size_t>(ch)], fast_mdct);
+            apply_analysis_window(time, windowed[lane]);
+        };
+        // Four channels' forward transforms at a time (ROADMAP PF5 phase
+        // 4c), the forward twin of the object loop's batching below:
+        // mdct512_forward_batch4 checks has_avx2() internally and falls
+        // back to four ordinary calls, so this is bit-identical either
+        // way. channels is kNumChannels5X = 5, so this is one batch of
+        // four plus one ordinary call; mode=reference (fast_mdct false)
+        // never batches, exactly as the object loop does not.
+        int bed_ch = 0;
+        while (bed_ch < channels) {
+            if (fast_mdct && bed_ch + 4 <= channels) {
+                for (std::size_t lane = 0; lane < 4; ++lane) {
+                    gather_and_window(bed_ch + static_cast<int>(lane), lane);
+                }
+                mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
+                                       bed_mdct[static_cast<std::size_t>(bed_ch)],
+                                       bed_mdct[static_cast<std::size_t>(bed_ch + 1)],
+                                       bed_mdct[static_cast<std::size_t>(bed_ch + 2)],
+                                       bed_mdct[static_cast<std::size_t>(bed_ch + 3)]);
+                bed_ch += 4;
+                continue;
+            }
+            gather_and_window(bed_ch, 0);
+            mdct512_forward(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
+            ++bed_ch;
         }
 
         // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking

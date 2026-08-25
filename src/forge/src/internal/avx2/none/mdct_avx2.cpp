@@ -75,4 +75,15 @@ void imdct512_windowed_batch4(std::span<const double> /*coeffs0*/,
     std::unreachable();
 }
 
+void mdct512_forward_batch4(std::span<const double> /*w0*/, std::span<const double> /*w1*/,
+                            std::span<const double> /*w2*/, std::span<const double> /*w3*/,
+                            std::span<const double> /*pre_re*/, std::span<const double> /*pre_im*/,
+                            std::span<const double> /*post_re*/,
+                            std::span<const double> /*post_im*/,
+                            const ac3::internal::FftTables<128>& /*fft*/, double /*scale*/,
+                            std::span<double> /*c0*/, std::span<double> /*c1*/,
+                            std::span<double> /*c2*/, std::span<double> /*c3*/) {
+    std::unreachable();
+}
+
 }  // namespace ac3::internal::avx2

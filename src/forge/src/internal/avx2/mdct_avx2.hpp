@@ -122,4 +122,36 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
                               const ac3::internal::FftTables<128>& fft, std::span<double> x0,
                               std::span<double> x1, std::span<double> x2, std::span<double> x3);
 
+// ac3::mdct512_forward_batch4's AVX2 body (mdct.hpp): the forward twin of
+// imdct512_windowed_batch4 above, and the same three-part shape - transpose
+// the four windowed blocks in at the boundary, run every interior step as
+// f64x4-per-index arithmetic, transpose the coefficients back out - for the
+// same measured reason (see that function's own comment).
+//
+// The interior is mdct.cpp's mdct_forward_fast_core<512> followed by
+// dct4_scaled<512>, transcribed operation for operation: the quarter fold
+// (u[i] = -w[3Q-1-i] - w[3Q+i], u[Q+j] = w[j] - w[2Q-1-j], Q = 128) is
+// folded INTO the entry transposes rather than run as its own pass, since
+// each of its four index walks is contiguous in groups of four - two
+// ascending, two descending, and a descending run is just the same
+// contiguous load with the four RESULT vectors taken in reverse order,
+// which costs nothing. Then the pre-twiddle (u at 2m / M-1-2m, complex
+// multiply by pre_re[m]/pre_im[m], bitrev scatter), the P = 128 FFT, and
+// the post-twiddle (complex multiply by post_re[k]/post_im[k], times
+// `scale`, out at 2k / M-1-2k) - all of which become plain indexed vector
+// reads and writes once the data is interleaved, exactly as they do on the
+// inverse side.
+//
+// w0..w3 are 512 long, c0..c3 256; pre_re/pre_im/post_re/post_im are the
+// kP = 128 twiddle tables and fft the P = 128 FFT table, all four living in
+// mdct.cpp's anonymous namespace and so passed in rather than looked up
+// here; `scale` is dct4_scaled's own -2/NLen.
+void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> w1,
+                            std::span<const double> w2, std::span<const double> w3,
+                            std::span<const double> pre_re, std::span<const double> pre_im,
+                            std::span<const double> post_re, std::span<const double> post_im,
+                            const ac3::internal::FftTables<128>& fft, double scale,
+                            std::span<double> c0, std::span<double> c1, std::span<double> c2,
+                            std::span<double> c3);
+
 }  // namespace ac3::internal::avx2

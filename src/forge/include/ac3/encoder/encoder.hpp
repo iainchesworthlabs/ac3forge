@@ -223,7 +223,13 @@ class AC3FORGE_EXPORT FrameEncoder {
     // nothing observable. Not thread-safe for concurrent calls on the same
     // instance, same as history_ and the other per-frame state above.
     std::array<double, 512> time_scratch_{};
-    std::array<double, 512> windowed_scratch_{};
+    // Four windowed blocks, not one (ROADMAP PF5 phase 4c): step 1's
+    // per-channel loop batches four BLOCKS' forward transforms into one
+    // ac3::mdct512_forward_batch4 call, which needs all four to coexist.
+    // Six blocks a frame, so a channel whose first four blocks are all
+    // long runs one batch plus two ordinary calls; lane 0 doubles as the
+    // one-at-a-time path's own buffer.
+    std::array<std::array<double, 512>, 4> windowed_scratch_{};
     std::array<double, 128> half1_scratch_{};
     std::array<double, 128> half2_scratch_{};
     // Frame-lifetime work buffers, reused across encode_frame calls under

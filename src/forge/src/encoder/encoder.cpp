@@ -451,7 +451,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                       static_cast<std::size_t>(block)];
     };
     for (int ch = 0; ch < nchans; ++ch) {
-        for (int block = 0; block < kBlocksPerFrame; ++block) {
+        auto& windowed = windowed_scratch_;
+        // Gather-and-window one block into lane `lane`. Split out so the
+        // batched and one-at-a-time paths below share it verbatim.
+        const auto gather_and_window = [&](int block, std::size_t lane) {
             auto& time = time_scratch_;
             AC3_ZONE_BEGIN(zone_gather, "step1_gather");
             for (int n = 0; n < 512; ++n) {
@@ -464,16 +467,41 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                           [static_cast<std::size_t>(pos)]);
             }
             AC3_ZONE_END(zone_gather);
-            auto& windowed = windowed_scratch_;
             AC3_ZONE_BEGIN(zone_window, "step1_window");
-            apply_analysis_window(time, windowed);
+            apply_analysis_window(time, windowed[lane]);
             AC3_ZONE_END(zone_window);
-            if (ch < nfchans && blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)]) {
+        };
+        const auto is_long = [&](int block) {
+            return !(ch < nfchans &&
+                     blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)]);
+        };
+        // Four BLOCKS' forward transforms at a time (ROADMAP PF5 phase
+        // 4c). mdct512_forward_batch4 checks has_avx2() internally and
+        // falls back to four ordinary calls, so this is bit-identical
+        // either way. Only a run of four LONG blocks can batch - a
+        // block-switched one is a different transform pair entirely
+        // (§7.9.2) - and fast_mdct=false never batches at all, so
+        // mode=reference is untouched.
+        int block = 0;
+        while (block < kBlocksPerFrame) {
+            if (config_.fast_mdct && block + 4 <= kBlocksPerFrame && is_long(block) &&
+                is_long(block + 1) && is_long(block + 2) && is_long(block + 3)) {
+                for (std::size_t lane = 0; lane < 4; ++lane) {
+                    gather_and_window(block + static_cast<int>(lane), lane);
+                }
+                mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
+                                       coeffs_at(ch, block), coeffs_at(ch, block + 1),
+                                       coeffs_at(ch, block + 2), coeffs_at(ch, block + 3));
+                block += 4;
+                continue;
+            }
+            gather_and_window(block, 0);
+            if (!is_long(block)) {
                 // §7.9.2: the two half-block transforms are interleaved
                 // bin-by-bin into one ordinary 256-coefficient set - from
                 // here on, exponent/bitalloc/mantissa code cannot tell this
                 // block apart from a long one.
-                const std::span<const double, 512> full(windowed);
+                const std::span<const double, 512> full(windowed[0]);
                 auto& first = half1_scratch_;
                 auto& second = half2_scratch_;
                 mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
@@ -484,8 +512,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
                 }
             } else {
-                mdct512_forward(windowed, coeffs_at(ch, block), config_.fast_mdct);
+                mdct512_forward(windowed[0], coeffs_at(ch, block), config_.fast_mdct);
             }
+            ++block;
         }
         for (int n = 0; n < 256; ++n) {
             history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =

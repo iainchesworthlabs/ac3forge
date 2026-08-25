@@ -262,4 +262,102 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
     }
 }
 
+void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> w1,
+                            std::span<const double> w2, std::span<const double> w3,
+                            std::span<const double> pre_re, std::span<const double> pre_im,
+                            std::span<const double> post_re, std::span<const double> post_im,
+                            const ac3::internal::FftTables<128>& fft, double scale,
+                            std::span<double> c0, std::span<double> c1, std::span<double> c2,
+                            std::span<double> c3) {
+    constexpr std::size_t kQ = 128;       // NLen / 4
+    constexpr std::size_t kM = 256;       // NLen / 2, the DCT-IV length
+    constexpr std::size_t kP = 128;       // kM / 2, the FFT length
+
+    // Load four blocks' values at four CONSECUTIVE indices and interleave
+    // them: on return r0..r3 hold index base+0..base+3, each with all four
+    // blocks in its lanes.
+    const auto gather4 = [&](std::size_t base, f64x4& r0, f64x4& r1, f64x4& r2, f64x4& r3) {
+        r0 = f64x4::load(&w0[base]);
+        r1 = f64x4::load(&w1[base]);
+        r2 = f64x4::load(&w2[base]);
+        r3 = f64x4::load(&w3[base]);
+        transpose4x4(r0, r1, r2, r3);
+    };
+
+    // Steps 1: the quarter fold, straight into interleaved form. Each of
+    // the two halves pairs one ascending index walk with one descending
+    // one; the descending walk loads the SAME contiguous range and simply
+    // consumes the four transposed results back-to-front, so it needs no
+    // reversal instruction of its own.
+    std::array<f64x4, kM> u{};
+    for (std::size_t i = 0; i < kQ; i += 4) {
+        f64x4 a0{}, a1{}, a2{}, a3{};
+        gather4(3 * kQ + i, a0, a1, a2, a3);  // w[3Q+i .. +3]
+        f64x4 d0{}, d1{}, d2{}, d3{};
+        gather4(3 * kQ - 4 - i, d0, d1, d2, d3);  // w[3Q-4-i .. 3Q-1-i]
+        // u[i + n] = -w[3Q-1-i-n] - w[3Q+i+n]
+        u[i] = (-d3) - a0;
+        u[i + 1] = (-d2) - a1;
+        u[i + 2] = (-d1) - a2;
+        u[i + 3] = (-d0) - a3;
+    }
+    for (std::size_t j = 0; j < kQ; j += 4) {
+        f64x4 b0{}, b1{}, b2{}, b3{};
+        gather4(j, b0, b1, b2, b3);  // w[j .. j+3]
+        f64x4 e0{}, e1{}, e2{}, e3{};
+        gather4(2 * kQ - 4 - j, e0, e1, e2, e3);  // w[2Q-4-j .. 2Q-1-j]
+        // u[Q + j + n] = w[j + n] - w[2Q-1-j-n]
+        u[kQ + j] = b0 - e3;
+        u[kQ + j + 1] = b1 - e2;
+        u[kQ + j + 2] = b2 - e1;
+        u[kQ + j + 3] = b3 - e0;
+    }
+
+    // dct4_scaled's pre-twiddle: same arithmetic and same bitrev scatter
+    // target as dct4_pre_twiddle above, but u is already interleaved, so
+    // both reads are indexed vector loads and the scatter is one vector
+    // store per m.
+    std::array<f64x4, kP> z_re{};
+    std::array<f64x4, kP> z_im{};
+    for (std::size_t m = 0; m < kP; ++m) {
+        const auto a = u[2 * m];
+        const auto b = u[kM - 1 - 2 * m];
+        const double pr = pre_re[m];
+        const double pi = pre_im[m];
+        const std::size_t d = fft.bitrev[m];
+        z_re[d] = (a * pr) - (b * pi);
+        z_im[d] = (a * pi) + (b * pr);
+    }
+    fft_forward_bitrev<kP, f64x4>(fft, z_re, z_im);
+
+    // dct4_scaled's post-twiddle, into an interleaved coefficient scratch:
+    // the even/odd split writes stride +2 and -2, which is not a
+    // contiguous run in the OUTPUT index, so this pass keeps the
+    // interleaved form and the de-interleave happens once, below.
+    std::array<f64x4, kM> out{};
+    for (std::size_t k = 0; k < kP; ++k) {
+        const auto zr = z_re[k];
+        const auto zi = z_im[k];
+        const double qr = post_re[k];
+        const double qi = post_im[k];
+        out[2 * k] = scale * ((zr * qr) - (zi * qi));
+        out[kM - 1 - 2 * k] = scale * (-((zr * qi) + (zi * qr)));
+    }
+
+    // Layout seam, exit side: four consecutive coefficient indices
+    // transpose back into four per-block contiguous runs, one vector store
+    // each - the same trick the entry side uses, run once over kM rows.
+    for (std::size_t r = 0; r < kM; r += 4) {
+        auto r0 = out[r];
+        auto r1 = out[r + 1];
+        auto r2 = out[r + 2];
+        auto r3 = out[r + 3];
+        transpose4x4(r0, r1, r2, r3);
+        r0.store(&c0[r]);
+        r1.store(&c1[r]);
+        r2.store(&c2[r]);
+        r3.store(&c3[r]);
+    }
+}
+
 }  // namespace ac3::internal::avx2
