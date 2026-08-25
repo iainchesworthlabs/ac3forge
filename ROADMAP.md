@@ -673,9 +673,20 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   times, and posts a delta table to the job summary using the same soft/hard tiers
   `append_performance_history.py` applies — imported from it, not restated. Non-blocking by
   design and absent from `CI Status`; the trend-branch append stays push-only.
-- [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
+- [x] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
-  instrumented test for the Android bridge's device-free paths.
+  instrumented test for the Android bridge's device-free paths. `apps/wasm/tests/` is a small
+  Playwright harness `build-wasm` now runs against every build: it serves the just-built demo
+  directory and drives the real `WasmDecoder` Embind API to decode the bundled fixture, asserting
+  the channel count/sample rate/object count/duration/moving-object-position values that page's
+  own docs previously recorded as manual-only. `apps/android/app/src/androidTest/` adds
+  `NativeBridgeInstrumentedTest`/`PassthroughBridgeInstrumentedTest`, run by `build-android` via
+  `connectedDebugAndroidTest` against a GitHub-hosted x86_64 emulator (KVM acceleration is
+  x86/x86_64-only on these runners, so the debug build type now also targets x86_64 alongside the
+  real device's arm64-v8a — release stays arm64-v8a-only) — every case is a "no receiver attached"
+  contract check (JNI round trip and `AudioTrack`/`AudioFormat` calls fail safely rather than
+  throwing or hanging), not the real-hardware passthrough path `docs/platforms/android.md` still
+  covers as manual verification only.
 - [x] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
   posture, per-access-unit allocation caps and decode resource limits — what a media server
   wants to read before linking a decoder against internet input.
@@ -693,18 +704,31 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   and a derived FFmpeg-readability column; `docs/conformance-vectors.md` is the usage page and
   the release workflow attaches the bundle beside the SBOM and attestations. Hashes are
   per-toolchain until VX11/VX12; the source material stays synthetic until VX7.
-- [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
+- [x] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
   `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
   (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a
   configuration error), and that job already provisions JDK 17, the pinned NDK and the signing
-  key material. Split out of VX14.
-- [ ] **VX22 (S)** — CLI tests for the container commands. `apps/cli/commands/containers.cpp`
+  key material. `init`/`analyze` (the same pinned `codeql-action` SHA `codeql.yml` uses) now
+  bracket `build-android`'s existing `assembleDebug` step, `languages: java-kotlin`, `build-mode:
+  manual` — no separate build invocation, the job's own debug build already is one. Needed
+  `security-events: write` raised on `build-android`'s job permissions and on both reusable-workflow
+  callers (`ci.yml`'s `build-and-test`, `release.yml`'s `build-packages`) — a callee job cannot
+  request a permission its caller did not grant, and neither call site passed it before. Split out
+  of VX14.
+- [x] **VX22 (S)** — CLI tests for the container commands. `apps/cli/commands/containers.cpp`
   (`mkv`, `mp4`, `fmp4`, `ts`) measured 0.0% line coverage when VX15 first pointed the gate at
   `apps/`; re-measured at 30.4% after roadmap `IO2`'s container-reader/`probe` work landed in the
   same window and incidentally exercised some of it, but still well under `apps/cli`'s 54.0%
   aggregate. Unlike `audio_io`/`live_audio` nothing about these commands needs a device — they are
   fully testable headless, and the library-level container tests do not exercise the CLI paths
-  that wrap them. Split out of VX15.
+  that wrap them. `tests/cli/test_cli_containers.cpp` adds direct assertions on `mkv`/`mp4`'s own
+  success output (including the Atmos-complexity annotation), the base `fmp4` DASH/HLS path with
+  no `fallback-51` companion, `demux`'s per-container status line (sample rate present vs. the
+  MPEG-TS "PES payloads, no rate" branch), and three refusal branches nothing had ever reached in
+  either direction: `reject_legacy_core` (an AC-3-core-with-Annex-E-extension fixture, built the
+  same header-level way `tests/io/test_elementary.cpp`'s own does), the non-uniform-access-unit
+  refusal (a spliced three-block/six-block E-AC-3 fixture), and `mkv`'s multi-programme warning
+  (via `eac3-encode`'s `programme2=` tokens). Split out of VX15.
 
 ## PF. Performance and portability
 

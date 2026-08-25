@@ -292,7 +292,7 @@ endif()
 # `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
+        cli/test_cli.cpp cli/test_cli_containers.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
         cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as

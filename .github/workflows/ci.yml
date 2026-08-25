@@ -679,14 +679,17 @@ jobs:
     # (persist_quality_trend gates it to direct main pushes below);
     # actions: read is only actually used by check-runners, to list this
     # repo's (and optionally iainchesworthlabs org's) self-hosted runners -
-    # see docs/ci-self-hosted-runners.md. Every other job in that reusable
-    # workflow keeps the workflow-level `contents: read` it already declares
-    # - a callee job's own `permissions:` can only narrow what the caller
-    # grants here, never widen it, so this is the one place that ceiling has
-    # to be raised.
+    # see docs/ci-self-hosted-runners.md. security-events: write is only
+    # actually used by build-android's java-kotlin CodeQL analyze step (see
+    # its own comment in _build.yml for why that leg lives there instead of
+    # codeql.yml). Every other job in that reusable workflow keeps the
+    # workflow-level `contents: read` it already declares - a callee job's own
+    # `permissions:` can only narrow what the caller grants here, never widen
+    # it, so this is the one place that ceiling has to be raised.
     permissions:
       contents: write
       actions: read
+      security-events: write
     with:
       # Computed here, not inside _build.yml: github.event_name/github.ref
       # reflect the reusable workflow's own call context once inside it, and

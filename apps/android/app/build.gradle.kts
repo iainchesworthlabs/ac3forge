@@ -47,6 +47,11 @@ android {
         versionCode = 2
         versionName = "0.3.0-beta.1"
 
+        // roadmap VX18(b): connectedAndroidTest needs an instrumentation
+        // runner declared before Gradle will run anything under
+        // src/androidTest/ at all.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         externalNativeBuild {
             cmake {
                 // ANDROID_STL=c++_shared, not the default static libc++:
@@ -116,6 +121,23 @@ android {
                     arguments += listOf("-DCMAKE_BUILD_TYPE=RelWithDebInfo")
                 }
             }
+            // arm64-v8a is re-listed here rather than only appending
+            // x86_64, so the debug variant keeps building for it regardless
+            // of whether AGP merges this set with defaultConfig's or lets a
+            // build-type-level list override it outright - either way, real
+            // on-device debug testing on the (arm64-only) Shield must keep
+            // working. x86_64 is for CI only:
+            // _build.yml's build-android job runs connectedDebugAndroidTest
+            // (roadmap VX18b) against a GitHub-hosted emulator, which needs
+            // KVM hardware acceleration to be usable in CI time budgets -
+            // only available for an x86/x86_64 system image on these
+            // runners, not arm64-v8a under software translation. release
+            // stays arm64-v8a-only (defaultConfig's own list, untouched):
+            // that variant is the real shipped artifact for the actual
+            // (arm64) hardware, never installed on the CI emulator.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "x86_64")
+            }
         }
         release {
             isMinifyEnabled = false
@@ -161,4 +183,12 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // roadmap VX18(b): device-free instrumented coverage for
+    // NativeBridge/PassthroughBridge (src/androidTest/), run via
+    // connectedDebugAndroidTest - see _build.yml's build-android job.
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:core:1.7.0")
 }
