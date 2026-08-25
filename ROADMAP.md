@@ -459,12 +459,18 @@ machine-readable output and a single failure exit code. Users arrive with contai
   hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
   files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
   ingest only; rendering stays with Cavern.
-- [ ] **IM2 (L)** — JOC → ADM BWF writer. `decode … objects_dir` writes `object_NN.wav` only —
-  the decoded objects have no positions. Write a Dolby Atmos Master ADM Profile BW64 (cartesian
-  coordinates, `audioBlockFormat` automation, `chna`) from `Eac3Decoder`'s object metadata, object
-  audio and bed, round-trip it through `atmos-adm`, check it with MediaConch's profile rules.
-  This is also the practical IAMF bridge: AOM's `iamf-tools` encoder takes ADM-BWF input. The
-  vendored libbw64/libadm writers are unused today; inherits the `AC3FORGE_BUILD_ADM` gate.
+- [x] **IM2 (L)** — JOC → ADM BWF writer. `decode … adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (cartesian coordinates, `audioBlockFormat` automation, `chna`) from
+  `Eac3Decoder`'s object metadata, object audio and the bed's own LFE, round-tripped through
+  `atmos-adm` (`ac3adm::write_bw64` + `ac3::admbridge::write()`, both new). Scoped to
+  dynamic-object-only programmes (this project's own encoder never writes a bed program; a
+  decoded one is warned about and skipped rather than written incorrectly) and cartesian
+  positions only. Checking a written master against MediaConch's own EBU-R 143-style profile
+  rules was not attempted — no MediaConch install in this environment — so that verification is
+  still open if it turns out to matter. This is also the practical IAMF bridge: AOM's
+  `iamf-tools` encoder takes ADM-BWF input. The vendored libbw64/libadm writers were unused
+  before this; both are now driven by `ac3adm`'s new write side. Inherits the
+  `AC3FORGE_BUILD_ADM` gate.
 - [ ] **IM3 (XL)** — IAMF / Eclipsa Audio interop (was `B3`). v1.1.0 is final (`libiamf`,
   BSD-3-Clause-Clear), a v2.0.0 working-group-approved draft (2026-07-27) adds object-based
   elements, and AOM published its Open Audio Renderer v1 on 2026-07-30. IAMF's codec list is
