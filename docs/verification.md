@@ -289,7 +289,20 @@ codec-config box is defined for the arrangement (`build_codec_config_box` return
 it), so container muxing refuses it explicitly rather than emit a `dac3`/`dec3` box that
 contradicts its own `mdat`; `ac3cli decode` remains the way to read one.
 
-Three divergences are recorded rather than resolved:
+One more divergence was found and fixed rather than recorded:
+
+- **`wav_channel_order` used to write acmods 2/1 and 3/1 in bitstream order** (L C R S), on the
+  stated grounds that no WAV convention claims a mono-surround slot, while FFmpeg mapped 3/1 onto
+  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and wrote L R C S. That premise was wrong:
+  `WAVE_FORMAT_EXTENSIBLE` does define `SPEAKER_BACK_CENTER` (`0x100`), which is exactly FFmpeg's
+  mono-surround slot for both 2/1 and 3/1. `wav_channel_order` now places every acmod by WAV
+  speaker position rather than bitstream order — the practical effect is C swapping with R and
+  the LFE moving up to fourth, on top of the mono-surround fix — and the FATE sample that
+  exercises 3/1 (`millers_crossing_4.0.ac3`) went from decode-and-parse-only to a compared sample
+  once the two decoders' channel orders agreed: channel 0 (L) at 48.93 dB, and a near-silent
+  surround channel gated on absolute difference at a −46.0 dBFS floor (measured −55.31 dBFS).
+
+Two divergences are recorded rather than resolved:
 
 - **FFmpeg fails frame 0 of DEE's stereo E-AC-3 stream.** Exactly one frame, from cold, with
   `exponent 25 is out-of-range`; the other 93 read cleanly, and FFmpeg conceals the failure by
@@ -301,11 +314,6 @@ Three divergences are recorded rather than resolved:
   the source WAV instead. (`manifest.json`'s 33.32 dB for the same leg is *not* in conflict with
   this: `quality_race.py`'s `score_fixed` skips the first 0.2 s, which is exactly where the
   failing frame sits — see `tools/generators/gen_external_baseline.py`'s module docstring.)
-- **`wav_channel_order` writes acmods 2/1 and 3/1 in bitstream order** (L C R S), on the stated
-  grounds that no WAV convention claims a mono-surround slot, while FFmpeg maps 3/1 onto
-  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and writes L R C S. The audio agrees — channel 0 at
-  48.93 dB, and channels 1 and 2 swapped — but the files cannot be diffed as they stand, so the
-  FATE sample that exercises 3/1 is decode-and-parse only.
 - **`the_great_wall_7.1.eac3`'s OAMD payload does not decode.** FFmpeg reports the file as
   "Dolby Digital Plus + Dolby Atmos", and its arrangement is the real Annex E structure
   described above, but `ac3::oba::parse_payload` refuses several `object_element` fields
