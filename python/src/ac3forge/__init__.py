@@ -8,6 +8,7 @@ docs/library/python-api.md in the ac3forge repository for the full surface and w
 from ._ac3forge import (
     BLOCKS_PER_FRAME,
     SAMPLES_PER_FRAME,
+    TRANSFORM_DELAY_SAMPLES,
     Ac3DecodeError,
     Ac3EncodeError,
     Ac3Error,
@@ -37,7 +38,6 @@ from ._ac3forge import (
     SampleRate,
     StreamType,
     SurroundMixLevel,
-    TRANSFORM_DELAY_SAMPLES,
     describe,
     fullbw_channel_count,
     profile_for,
@@ -59,6 +59,7 @@ except PackageNotFoundError:  # pragma: no cover - an editable/unbuilt checkout
 __all__ = [
     "BLOCKS_PER_FRAME",
     "SAMPLES_PER_FRAME",
+    "TRANSFORM_DELAY_SAMPLES",
     "Ac3DecodeError",
     "Ac3EncodeError",
     "Ac3Error",
@@ -88,7 +89,6 @@ __all__ = [
     "SampleRate",
     "StreamType",
     "SurroundMixLevel",
-    "TRANSFORM_DELAY_SAMPLES",
     "__version__",
     "describe",
     "fullbw_channel_count",

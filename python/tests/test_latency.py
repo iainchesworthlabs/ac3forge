@@ -8,9 +8,8 @@ one term that is a sample-domain shift - that a round trip driven entirely
 from Python really does move the signal by exactly that many samples.
 """
 
-import numpy as np
-
 import ac3forge as ac3
+import numpy as np
 
 
 def _impulse(n, at, amplitude=0.9):
