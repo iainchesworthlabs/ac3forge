@@ -353,6 +353,29 @@ TEST_CASE("E-AC-3 encoder and decoder agree across the Annex E tool matrix",
     }
 }
 
+// tools/ci/run_codec_matrix.sh's own "cpl+ecpl" mirror row first found this
+// on frame 31, block 4: the coupling stream's own delta bit allocation was
+// unconditionally traced as {} on the decoder side (eac3_decoder.cpp's
+// block_trace population gated the delta field on `s < nfchans`, which
+// excludes the coupling stream's slot along with the LFE's - correct for the
+// LFE, which genuinely has none, wrong for coupling, which carries its own
+// cpldeltbae at kCplStream). Real decoding was never affected - the actual
+// decoder state `delta[kCplStream]` fed into compute_bit_allocation
+// correctly - only the self-check's own diagnostic copy of it, which is why
+// this was an isolated field mismatch rather than a cascade of them. kFrames
+// (10) above never reaches a block where the real material's coupling
+// channel first wants a mid-frame correction, which is why the tool-matrix
+// test never caught it; this needs to run substantially longer to reach the
+// access unit that does.
+TEST_CASE("E-AC-3 encoder and decoder agree with enhanced coupling past access unit 31",
+          "[verify][golden]") {
+    const auto channels = golden_audio("reference_51.wav");
+    const auto failure =
+        mirror_encode(eac3_plan(ac3::plan::LayoutId::k51, 192, "cpl+ecpl"), channels, 35);
+    INFO(failure);
+    CHECK(failure.empty());
+}
+
 TEST_CASE("E-AC-3 encoder and decoder agree at every layout", "[verify][golden]") {
     const auto channels = golden_audio("reference_51.wav");
     // 7.1.4 is the layout with no external oracle at all: FFmpeg refuses a

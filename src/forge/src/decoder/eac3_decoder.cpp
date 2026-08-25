@@ -2086,10 +2086,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 auto& stream = block_trace->streams[slot];
                 stream.exponents = exps[s];
                 stream.bap = bap[s];
-                // Only a full-bandwidth channel has a delta slot at all -
-                // §E2.3.2.9 bounds its deltbae[ch] loop by nfchans, so the
-                // LFE and the coupling stream carry none.
-                stream.delta = s < static_cast<std::size_t>(nfchans) ? delta[s] : DeltaSegments{};
+                // `delta` is already indexed by stream the same way this
+                // trace is (see its own declaration above): fbw channels at
+                // their channel index, the coupling channel at kCplStream,
+                // and the LFE slot left at its default since no bitstream
+                // field for it exists. No extra gating needed here.
+                stream.delta = delta[s];
                 stream.start = s == static_cast<std::size_t>(kCplStream) ? cplstrtmant : 0;
                 stream.endmant = endmant[s];
                 stream.aht = frm->ahtinu[s];
