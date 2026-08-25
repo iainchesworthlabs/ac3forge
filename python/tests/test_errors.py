@@ -58,14 +58,15 @@ def _run_child(code):
     # That's a real interpreter crash, not a Python exception - checking it in-process would take
     # the whole pytest run down with it, so run the repro in a subprocess and inspect its exit
     # code instead.
-    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
 
 
 def test_frame_encoder_wrong_channel_count_raises_value_error():
     code = (
         "import ac3forge as ac3\n"
         "import numpy as np\n"
-        "encoder = ac3.FrameEncoder(ac3.EncoderConfig(bitrate_kbps=192, acmod=ac3.Acmod.k3_2, lfe=True))\n"
+        "config = ac3.EncoderConfig(bitrate_kbps=192, acmod=ac3.Acmod.k3_2, lfe=True)\n"
+        "encoder = ac3.FrameEncoder(config)\n"
         "channels = [np.zeros(ac3.SAMPLES_PER_FRAME, dtype=np.float32) for _ in range(2)]\n"
         "try:\n"
         "    encoder.encode_frame(channels)\n"
