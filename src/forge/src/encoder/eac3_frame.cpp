@@ -4275,7 +4275,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // CBR always, VBR only when a max_kbps bound was actually hit. The AHT
     // pass below re-searches the same budget in that case, and otherwise
     // re-derives the word count directly, matching how `lo` itself was found.
-    std::optional<std::uint32_t> fixed_budget;
+    //
+    // A bool/uint32_t pair, not std::optional<std::uint32_t>: GCC 14 and 15's
+    // -Wmaybe-uninitialized (Release, the manylinux wheel builds - see
+    // .github/workflows/wheels.yml) cannot follow the optional's engaged
+    // state through this function's branches once everything below is
+    // inlined, and flags the merged read near the AHT pass as possibly
+    // seeing the payload before any branch has written it - every branch
+    // does, before any read of its own. Same false-positive category as
+    // cmake/CompilerWarnings.cmake's -Wno-maybe-uninitialized note for
+    // eac3_decoder.cpp (GCC >= 16 there, a nested optional-of-optional); not
+    // handled the same way here because a plain scalar pair is exactly what
+    // the analysis tracks correctly, so restructuring resolves it instead of
+    // adding another blanket-disabled warning bucket.
+    bool has_fixed_budget = false;
+    std::uint32_t fixed_budget_value = 0;
     if (!config_.vbr) {
         words = frame_words(config_.sample_rate, config_.bitrate_kbps);
         if (side_bits + kTailBits > words * 16 && drop_delta_and_remeasure()) {
@@ -4284,8 +4298,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (side_bits + kTailBits > words * 16) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
-        fixed_budget = words * 16 - side_bits - kTailBits;
-        lo = search(*fixed_budget);
+        has_fixed_budget = true;
+        fixed_budget_value = words * 16 - side_bits - kTailBits;
+        lo = search(fixed_budget_value);
         if (any_delta_applied) {
             const int lo_with_delta = lo;
             snapshot_delta();
@@ -4293,12 +4308,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             const std::uint32_t bare_budget = words * 16 - side_bits - kTailBits;
             const int lo_without_delta = search(bare_budget);
             if (lo_without_delta > lo_with_delta) {
-                fixed_budget = bare_budget;
+                fixed_budget_value = bare_budget;
                 lo = lo_without_delta;
             } else {
                 restore_delta();
-                fixed_budget = words * 16 - side_bits - kTailBits;
-                lo = search(*fixed_budget);
+                fixed_budget_value = words * 16 - side_bits - kTailBits;
+                lo = search(fixed_budget_value);
             }
         }
     } else {
@@ -4355,8 +4370,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // builds with -Werror, so emitting it here would fail every
             // non-MSVC leg. The C26829 code-scanning alert is dismissed
             // separately with this same justification instead.
-            fixed_budget = sized->fallback_budget;                    // NOLINT(bugprone-unchecked-optional-access)
-            lo = search(*fixed_budget);                               // NOLINT(bugprone-unchecked-optional-access)
+            has_fixed_budget = true;
+            fixed_budget_value = *sized->fallback_budget;             // NOLINT(bugprone-unchecked-optional-access)
+            lo = search(fixed_budget_value);
             if (state_->abr) {
                 // Under ABR the operating point is deliberately NOT pulled
                 // onto `lo` by a delta re-optimization here: the ceiling that
@@ -4387,7 +4403,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // delta: `bare_budget` has to be RECOMPUTED from
                 // drop_delta_and_remeasure()'s own (smaller) side_bits,
                 // exactly as CBR's own bare_budget is, rather than reusing
-                // `fixed_budget`'s stale with-delta value - and, a case CBR
+                // `fixed_budget_value`'s stale with-delta value - and, a case CBR
                 // structurally cannot have (its word count never moves),
                 // dropping delta can occasionally shrink the frame back
                 // UNDER vbr.max_kbps entirely, at which point there is no
@@ -4401,21 +4417,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (bare && !bare->fallback_budget) {
                     sized = bare;
                     lo = composite;
-                    fixed_budget = std::nullopt;
+                    has_fixed_budget = false;
                 } else {
                     const std::uint32_t bare_budget =
-                        bare ? *bare->fallback_budget : *fixed_budget;
+                        bare ? *bare->fallback_budget : fixed_budget_value;
                     const int lo_without_delta = search(bare_budget);
                     if (lo_without_delta > lo_with_delta) {
-                        fixed_budget = bare_budget;
+                        fixed_budget_value = bare_budget;
                         lo = lo_without_delta;
                         if (bare) {
                             sized = bare;
                         }
                     } else {
                         restore_delta();
-                        fixed_budget = sized->fallback_budget;
-                        lo = search(*fixed_budget);
+                        fixed_budget_value = *sized->fallback_budget;
+                        lo = search(fixed_budget_value);
                     }
                 }
             }
@@ -4480,10 +4496,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 }
             }
         }
-        if (fixed_budget) {
+        if (has_fixed_budget) {
             // CBR, or a VBR frame already pinned to its ceiling: the word
             // count cannot move, only which offset fits it can.
-            lo = search(*fixed_budget);
+            lo = search(fixed_budget_value);
         } else {
             // Free-running VBR (or a bound it was naturally already under):
             // quality (lo) does not change, but the gain modes just chosen
@@ -4503,8 +4519,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             words = sized->words;
             clipped = sized->fallback_budget.has_value();
             if (sized->fallback_budget) {
-                fixed_budget = sized->fallback_budget;
-                lo = search(*fixed_budget);
+                has_fixed_budget = true;
+                fixed_budget_value = *sized->fallback_budget;
+                lo = search(fixed_budget_value);
             }
             if (const auto min_words = vbr_min_words(*config_.vbr)) {
                 words = std::max(words, *min_words);
