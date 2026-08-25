@@ -202,6 +202,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   `5` (a runtime condition, not a usage error) rather than `1`, so it read as a hard failure
   instead of a recognised refusal. Fixed by matching the message on any non-zero exit rather than
   gating on a specific code, and pinned as a new `REGRESSION_SEEDS` entry.
+- **`tools/ci/fuzz_eac3_encoder_space.py`'s `classify()` had the same gap**, independently, for
+  its own `sub-gate loudness` and `unmeasurable loudness` entries (the latter is `atmos-encode`'s
+  own wording for the identical BS.1770-4 absolute-gate refusal, reached through `eac3-encode` or
+  `atmos-encode` rather than plain `encode`). Unlike the sibling harness, this one's exit-code
+  check exists for a real reason — the first defect it ever found was an `assert()` abort that a
+  blanket `!= 0` would have swallowed as a tolerated refusal — so the fix narrows rather than
+  removes it: `classify()` now checks `REFUSALS` on exit `1` *or* `5`, the CLI's own two
+  refusal-capable codes, while any other code (including the abort signatures the original check
+  was written to catch) still fails outright. Pinned two new `REGRESSION_SEEDS` entries, one per
+  wording.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`
@@ -246,6 +256,20 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   branch, before that branch's own later `develop` merges landed DC10's QMF-domain JOC
   reconstruction and other decode-path growth the profile genuinely needs. Re-measured and
   re-based to the current 412,516-byte image (ceiling now 465,000).
+- **Packaging manifests and the Homebrew tap caught up to v0.9.0-beta.1** (`DR1`): the vcpkg
+  port, Homebrew formula/cask, winget manifest and Conan recipe were still pinned to
+  v0.8.0-beta.2's tarball/binary hashes after the second release in a row; all four and the live
+  `iainchesworthlabs/homebrew-ac3forge` tap now point at the real v0.9.0-beta.1 release assets
+  (hashes computed directly against the downloaded assets and cross-checked against the release's
+  own published `SHA512SUMS`).
+- **Stale documentation corrected** (`DR5`): several pages still described shipped work as not
+  yet done — PyPI publishing and the Homebrew tap as pending/unpublished, macOS as CLI-only, the
+  ADM bridge and E-AC-3 decode-time DRC tokens as not wired up, MPEG-TS live sessions as
+  non-incremental, a stale pre-move `apps/cli/main.cpp` path, and a since-fixed FFmpeg bug
+  (upstream trac #9996) presented as an open one. Also fixes the `DR9` contradiction:
+  `docs/verification.md`, `docs/platforms/linux.md`, `docs/platforms/windows.md` and this file's
+  own 0.9.0-beta.1 Known gaps section below still described ALSA passthrough as unconfirmed
+  against real hardware after Raspberry Pi's HDMI-to-receiver validation had already confirmed it.
 
 ## [0.9.0-beta.1] - 2026-08-22
 
@@ -455,8 +479,11 @@ surface, and continued `apps/cli` command-group extraction.
   launch.
 - Objects still will not decode as *objects* in Dolby's own decoder or hardware — unchanged from
   0.6.0-beta.1; `verify-objects` checks a stream against its own signature, not Dolby's gate.
-- Exclusive-mode S/PDIF/HDMI passthrough has not been confirmed against real bitstreaming
-  hardware on any platform, ALSA, PipeWire or CoreAudio.
+- Exclusive-mode S/PDIF/HDMI passthrough has been confirmed against real bitstreaming hardware on
+  ALSA only, via a Raspberry Pi 4B to a real Atmos-capable AVR over HDMI (see
+  [docs/platforms/raspberry-pi.md](docs/platforms/raspberry-pi.md); this record corrected
+  post-release once that validation's own docs were reconciled). WASAPI exclusive mode, PipeWire
+  and CoreAudio remain unconfirmed against real bitstreaming hardware on any platform.
 - `fscod2` audio content has no external decode oracle at all — verified only by this project's
   own encoder/decoder round trip.
 

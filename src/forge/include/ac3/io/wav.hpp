@@ -82,6 +82,15 @@ struct Ac3Layout {
 
 // The inverse permutation, in the form write_wav_f32 takes: entry i names the
 // AC-3 channel that belongs at WAV position i.
+//
+// Every acmod is placed by WAVE_FORMAT_EXTENSIBLE speaker position, not by
+// A/52 coded order - including the two mono-surround modes, which sit on
+// SPEAKER_BACK_CENTER. Two things move relative to the bitstream: C swaps
+// with R (WAV is FL FR FC, A/52 is L C R), and the LFE moves from last to
+// fourth. So 3/1 goes out L R C S and 3/1+LFE goes out L R C LFE S, which is
+// what FFmpeg and every other WAV consumer expect. The one exception is 1+1,
+// which carries two independent programmes rather than a soundfield and so
+// has no speaker positions to sort; it goes out in coded order.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> wav_channel_order(Acmod acmod, bool lfe);
 
 // Float32 WAV (format tag 3), channels interleaved in the given order.
