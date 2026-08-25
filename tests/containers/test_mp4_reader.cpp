@@ -1277,8 +1277,11 @@ TEST_CASE("MP4 build_sample_refs handles every sample-table shape", "[mp4][reade
         }
         Bytes payload;
         for (const auto size : spec.sizes) {
-            payload.insert(payload.end(), Bytes(size, std::byte{0xBB}).begin(),
-                           Bytes(size, std::byte{0xBB}).end());
+            // One temporary, not two: begin()/end() from separately-constructed
+            // Bytes(...) objects are iterators into unrelated allocations, not a
+            // valid range - a real heap-buffer-overflow, not just a lint nit.
+            const Bytes fill(size, std::byte{0xBB});
+            payload.insert(payload.end(), fill.begin(), fill.end());
         }
         Bytes file = ftyp();
         file.insert(file.end(), moov.begin(), moov.end());
@@ -1355,7 +1358,12 @@ TEST_CASE("MP4 fragmented reader across tfhd/trun flag combinations", "[mp4][rea
             static_cast<std::uint64_t>(ftyp().size() + moov.size() + moof_size + 8);
         const auto tfhd = build_tfhd_flagged(0x000001U, kTrackId, abs_offset);
         const auto moof = build_moof_with(1, tfhd, trun);
-        const auto out = mp4::demux(assemble(0, 0, moof, frame_of(40, 0x21)));
+        // Named, not passed straight to demux(): out->samples are views into
+        // this buffer (demux()'s own zero-copy contract), so it has to
+        // outlive every read of them below - a temporary would already be
+        // gone by the time owned() dereferences it.
+        const auto file = assemble(0, 0, moof, frame_of(40, 0x21));
+        const auto out = mp4::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(out->samples.size() == 1);
         CHECK(owned(out->samples).front() == frame_of(40, 0x21));
@@ -1365,7 +1373,8 @@ TEST_CASE("MP4 fragmented reader across tfhd/trun flag combinations", "[mp4][rea
         const auto moof =
             build_moof_relative(kTrackId, 0x000002U | 0x000008U, 0x000200U,
                                 {TrunSample{.size = 40}});
-        const auto out = mp4::demux(assemble(1536, 0, moof, frame_of(40, 0x22)));
+        const auto file = assemble(1536, 0, moof, frame_of(40, 0x22));
+        const auto out = mp4::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(out->samples.size() == 1);
         CHECK(owned(out->samples).front() == frame_of(40, 0x22));
@@ -1385,7 +1394,8 @@ TEST_CASE("MP4 fragmented reader across tfhd/trun flag combinations", "[mp4][rea
         Bytes payload;
         put_bytes(payload, frame_of(40, 0x31));
         put_bytes(payload, frame_of(40, 0x32));
-        const auto out = mp4::demux(assemble(0, 0, moof, payload));
+        const auto file = assemble(0, 0, moof, payload);
+        const auto out = mp4::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(out->samples.size() == 2);
         CHECK(owned(out->samples)[0] == frame_of(40, 0x31));
@@ -1394,7 +1404,8 @@ TEST_CASE("MP4 fragmented reader across tfhd/trun flag combinations", "[mp4][rea
 
     SECTION("trex's own default_sample_size covers samples when tfhd sets none") {
         const auto moof = build_moof_relative(kTrackId, 0, 0x000000U, {TrunSample{}});
-        const auto out = mp4::demux(assemble(1536, 40, moof, frame_of(40, 0x41)));
+        const auto file = assemble(1536, 40, moof, frame_of(40, 0x41));
+        const auto out = mp4::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(out->samples.size() == 1);
         CHECK(owned(out->samples).front() == frame_of(40, 0x41));
@@ -1411,7 +1422,8 @@ TEST_CASE("MP4 fragmented reader across tfhd/trun flag combinations", "[mp4][rea
         const auto moof = build_moof_relative(
             kTrackId, 0, 0x000100U | 0x000200U | 0x000400U | 0x000800U,
             {TrunSample{.duration = 1536, .size = 40, .flags = 0, .cts = 0}});
-        const auto out = mp4::demux(assemble(0, 0, moof, frame_of(40, 0x51)));
+        const auto file = assemble(0, 0, moof, frame_of(40, 0x51));
+        const auto out = mp4::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(out->samples.size() == 1);
         CHECK(owned(out->samples).front() == frame_of(40, 0x51));
@@ -1420,7 +1432,8 @@ TEST_CASE("MP4 fragmented reader across tfhd/trun flag combinations", "[mp4][rea
     SECTION("first-sample-flags-present is skipped") {
         const auto moof = build_moof_relative(kTrackId, 0, 0x000200U, {TrunSample{.size = 40}},
                                               /*first_sample_flags=*/0x02000000U);
-        const auto out = mp4::demux(assemble(0, 0, moof, frame_of(40, 0x52)));
+        const auto file = assemble(0, 0, moof, frame_of(40, 0x52));
+        const auto out = mp4::demux(file);
         REQUIRE(out.has_value());
         REQUIRE(out->samples.size() == 1);
         CHECK(owned(out->samples).front() == frame_of(40, 0x52));
