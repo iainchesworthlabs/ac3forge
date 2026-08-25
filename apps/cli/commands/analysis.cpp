@@ -1045,9 +1045,10 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         // objects_layout is engaged here too - the checker cannot see the
         // correlation across the two separate optionals.
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        const auto objects_layout_label = ac3::plan::layout(*objects_layout).label;
         fmt::println("  objects={}  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD "
                      "position, via ac3::spatial's direction panner, then Annex 3)",
-                     ac3::plan::layout(*objects_layout).label);
+                     objects_layout_label);
         if (!report_qc_programme(*object_result, preset_arg)) {
             all_pass = false;
         }
