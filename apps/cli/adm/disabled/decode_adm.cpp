@@ -1,5 +1,9 @@
 #include "../decode_adm.hpp"
 
+#include <expected>
+#include <string>
+#include <string_view>
+
 #include "../atmos_adm.hpp"
 
 // Compiled only when AC3FORGE_BUILD_ADM did NOT turn ac3adm::ac3adm/ac3::admbridge on (see

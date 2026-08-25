@@ -544,7 +544,14 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
         object.pack_format_refs = {pack_format.id};
         object.track_uid_refs = {track_uid.uid};
 
-        document.chna.push_back({.track_index = static_cast<std::uint16_t>(i + 1), .uid = track_uid.uid});
+        // track_ref/pack_ref explicitly empty: write_bw64 derives the real ones itself from the
+        // resolved AudioTrackUid's own references (see ac3adm.hpp's own write_bw64 doc comment) -
+        // GCC's -Wmissing-field-initializers still wants every ChnaEntry field named here, even
+        // ones this writer never populates.
+        document.chna.push_back({.track_index = static_cast<std::uint16_t>(i + 1),
+                                 .uid = track_uid.uid,
+                                 .track_ref = {},
+                                 .pack_ref = {}});
         document.audio.channels.emplace_back(channel.pcm.begin(), channel.pcm.end());
 
         model.channel_formats.push_back(std::move(channel_format));
