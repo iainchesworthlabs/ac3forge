@@ -9,7 +9,9 @@
 #include "ac3/core/window.hpp"
 #include "ac3/internal/arch/simd.hpp"
 
+#include "cpu_features.hpp"
 #include "fft_kernel.hpp"
+#include "mdct_avx2.hpp"
 #include "reference_transform.hpp"
 
 namespace ac3 {
@@ -231,12 +233,19 @@ void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> 
 
 }  // namespace
 
-// Two samples per iteration through the arch seam (ROADMAP PF5). The
-// plainest kernel in the codec - 512 independent multiplies, unit stride on
-// all three arrays - and therefore the one where the vector form is most
-// obviously the same arithmetic as the scalar one it replaced. kN is 512, so
-// there is no tail.
+// Two (four under AVX2) samples per iteration through the arch seam (ROADMAP
+// PF5, widened in PF5's dynamic-dispatch follow-on - see
+// docs/building.md's "Runtime AVX2 dispatch"). The plainest kernel in the
+// codec - 512 independent multiplies, unit stride on all three arrays - and
+// therefore both the one where the vector form is most obviously the same
+// arithmetic as the scalar one it replaced, and the one Phase 1's own
+// measurement found the clearest real win for. kN is 512, so neither width
+// leaves a tail.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
+    if (internal::cpu::has_avx2()) {
+        internal::avx2::apply_analysis_window(x, windowed);
+        return;
+    }
     const double* const in = x.data();
     double* const out = windowed.data();
     for (std::size_t n = 0; n < static_cast<std::size_t>(kN); n += 2) {

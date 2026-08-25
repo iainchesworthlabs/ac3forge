@@ -345,7 +345,12 @@ endif()
 # answered it).
 target_include_directories(forge_objects PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/${AC3FORGE_CPU_PROBE_DIR}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/${AC3FORGE_CPU_PROBE_DIR}"
+    # mdct_avx2.hpp's plain-signature declarations (below) must resolve for
+    # mdct.cpp on every config, same reasoning as the cpu/ directory just
+    # above - its own .cpp backing is directory/target-selected further
+    # down, but the include path itself is unconditional.
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
 
 # tests/CMakeLists.txt compiles src/internal/cpu/cpu_features.cpp a SECOND
 # time, directly into ac3tests, against these same two directories - the
@@ -389,12 +394,19 @@ endif()
 # forge_objects would apply to every OTHER file in the codec core too,
 # which is exactly the "compiled with -march= for a feature the deployment
 # machine might not have" mistake ac3::internal::cpu::has_avx2() exists to
-# let this project avoid - see cpu_features.hpp. Right now this holds only
-# avx2_probe.cpp (ROADMAP PF5's dynamic-dispatch follow-on, phase one: prove
-# the whole build/link/dispatch/test pipeline before any real kernel joins
-# it); real AVX2 kernel implementations land here in a later phase.
+# let this project avoid - see cpu_features.hpp. avx2_probe.cpp proved the
+# whole build/link/dispatch/test pipeline (ROADMAP PF5's dynamic-dispatch
+# follow-on, phase one) before any real kernel joined it; mdct_avx2.cpp is
+# the first real one - apply_analysis_window and the DCT-IV/IMDCT twiddle
+# stages, the two PF5 kernels phase one's own measurement (docs/building.md)
+# showed a real, reproducible cycle-count win for. dft512's normalisation
+# and bitalloc.cpp/exponents.cpp's kernels are deliberately NOT here: that
+# same measurement found no signal for them above the ~2-4% cross-build
+# noise floor at this granularity.
 if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
-    add_library(forge_simd_avx2 OBJECT src/internal/avx2/avx2_probe.cpp)
+    add_library(forge_simd_avx2 OBJECT
+        src/internal/avx2/avx2_probe.cpp
+        src/internal/avx2/mdct_avx2.cpp)
 
     target_include_directories(forge_simd_avx2 PRIVATE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -446,6 +458,14 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
     # since cpu_features.cpp needs it too regardless of whether this AVX2
     # tier exists at all).
     set(AC3FORGE_AVX2_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2" PARENT_SCOPE)
+else()
+    # mdct.cpp's call sites still need something to link against - the
+    # unreachable-body stub, compiled straight into forge_objects with no
+    # AVX2 flag at all (it contains no AVX2 code), exactly the same
+    # "always linkable, directory-selected implementation" shape
+    # AC3FORGE_CPU_PROBE_DIR's "none" variant already uses for
+    # cpuid_reports_avx2() above.
+    target_sources(forge_objects PRIVATE src/internal/avx2/none/mdct_avx2.cpp)
 endif()
 
 target_compile_features(forge_objects PUBLIC cxx_std_23)

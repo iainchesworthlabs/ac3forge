@@ -14,11 +14,13 @@
 #include <vector>
 
 #include "ac3/core/exponents.hpp"
+#include "ac3/core/window.hpp"
 #include "ac3/internal/arch/simd.hpp"
 #include "cpu_features.hpp"
 
 #ifdef AC3FORGE_HAVE_AVX2_TIER
 #include "avx2_probe.hpp"
+#include "mdct_avx2.hpp"
 #endif
 
 // ROADMAP PF5's correctness gate.
@@ -313,6 +315,53 @@ TEST_CASE("AVX2 probe executes correctly where the CPU actually supports it",
         SKIP("AVX2 not available on this CPU");
     }
     CHECK(ac3::internal::avx2::avx2_probe_matches_expected());
+#else
+    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+#endif
+}
+
+TEST_CASE("AVX2 apply_analysis_window agrees with the scalar form bit-for-bit",
+         "[simd][avx2]") {
+#ifdef AC3FORGE_HAVE_AVX2_TIER
+    if (!ac3::internal::cpu::has_avx2()) {
+        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+        INFO("this CPU does not report AVX2 support - nothing to execute here");
+        if (required) {
+            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+                "it exists to prove - pin this job to hardware that actually has AVX2");
+        }
+        SKIP("AVX2 not available on this CPU");
+    }
+
+    // A deterministic pseudorandom 512-sample block, not the adversarial
+    // corpus above: this is a single elementwise multiply against a fixed
+    // table, so there is no rounding-mode edge case of its own to hunt for
+    // (round_ties_away is what that corpus exists for) - the only claim to
+    // check is that four lanes at a time produces the identical bits two
+    // lanes at a time does, on ordinary in-range values.
+    std::array<double, 512> x{};
+    std::mt19937_64 rng(0x61617732'6b657273ULL);
+    std::uniform_real_distribution<double> dist(-1.5, 1.5);
+    for (double& v : x) {
+        v = dist(rng);
+    }
+
+    std::array<double, 512> scalar{};
+    for (std::size_t n = 0; n < x.size(); ++n) {
+        scalar[n] = x[n] * ac3::kAnalysisWindow[n];
+    }
+
+    std::array<double, 512> avx2_result{};
+    ac3::internal::avx2::apply_analysis_window(x, avx2_result);
+
+    std::size_t mismatches = 0;
+    for (std::size_t n = 0; n < x.size(); ++n) {
+        if (!same_bits(avx2_result[n], scalar[n])) {
+            ++mismatches;
+        }
+    }
+    CHECK(mismatches == 0);
 #else
     SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif

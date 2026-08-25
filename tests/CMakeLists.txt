@@ -184,24 +184,30 @@ if(AC3FORGE_IS_MSVC_LIKE)
         COMPILE_OPTIONS "/wd4996")
 endif()
 
-# The AVX2 kernel side of the same follow-on: avx2_probe.cpp compiled a
-# second time into this target too, same reasoning as cpu_features.cpp just
-# above. AC3FORGE_AVX2_INCLUDE_DIR is empty (falsy) whenever
-# src/forge/CMakeLists.txt did not build the AVX2 tier at all
-# (AC3FORGE_AVX2=OFF, or a non-x86_64 target) - the test source is
+# The AVX2 kernel side of the same follow-on: avx2_probe.cpp and
+# mdct_avx2.cpp compiled a second time into this target too, same reasoning
+# as cpu_features.cpp just above. AC3FORGE_AVX2_INCLUDE_DIR is empty (falsy)
+# whenever src/forge/CMakeLists.txt did not build the AVX2 tier at all
+# (AC3FORGE_AVX2=OFF, or a non-x86_64 target) - the test sources are
 # conditional on the exact same condition the library used, and
 # AC3FORGE_HAVE_AVX2_TIER tells the test file itself whether to reference
-# it (a #ifdef is fine in tests/ - tools/checks/check_platform_macros.ps1
+# them (a #ifdef is fine in tests/ - tools/checks/check_platform_macros.ps1
 # scans src/ and apps/ only).
 if(AC3FORGE_AVX2_INCLUDE_DIR)
-    target_sources(ac3tests PRIVATE "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp")
+    target_sources(ac3tests PRIVATE
+        "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+        "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp")
     target_include_directories(ac3tests PRIVATE "${AC3FORGE_AVX2_INCLUDE_DIR}")
     target_compile_definitions(ac3tests PRIVATE AC3FORGE_HAVE_AVX2_TIER)
     if(AC3FORGE_IS_MSVC_LIKE)
-        set_source_files_properties("${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp" PROPERTIES
+        set_source_files_properties(
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
             COMPILE_OPTIONS "/arch:AVX2")
     else()
-        set_source_files_properties("${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp" PROPERTIES
+        set_source_files_properties(
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
             COMPILE_OPTIONS "-mavx2")
     endif()
 endif()
