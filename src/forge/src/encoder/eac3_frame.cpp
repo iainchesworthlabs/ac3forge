@@ -4335,8 +4335,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (!sized) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
-        lo = composite;
-        words = sized->words;
         clipped = sized->fallback_budget.has_value();
         if (sized->fallback_budget) {
             // The quality target overshoots the frame's ceiling - vbr.max_kbps

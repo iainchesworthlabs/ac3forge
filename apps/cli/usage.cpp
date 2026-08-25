@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 51> kOptionTokens{{
+constexpr std::array<OptionToken, 55> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -95,6 +95,10 @@ constexpr std::array<OptionToken, 51> kOptionTokens{{
     {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
     {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
                    "stream"},
+    {"programme2=", "eac3-encode: a second input file, encoded as its own independent substream"},
+    {"programme2-layout=", "eac3-encode: programme2's own layout (default stereo; not 1+1)"},
+    {"programme2-bitrate=", "eac3-encode: programme2's own bitrate in kbit/s"},
+    {"programme2-dialnorm=", "eac3-encode: programme2's own dialnorm, 1..31 (§5.4.2.8)"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already

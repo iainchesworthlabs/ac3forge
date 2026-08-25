@@ -175,10 +175,10 @@ constexpr std::uint8_t kTagAtscEac3Descriptor = 0xCC;
         return *override_value;
     }
     switch (bsmod) {
-        case 0x0: return true;   // CM   - must be set to 1
-        case 0x1: return false;  // ME   - must be set to 0
-        case 0x4: return false;  // D    - must be set to 0
-        case 0x6: return true;   // E    - must be set to 1
+        case 0x0: return true;   // CM        - must be set to 1
+        case 0x1:                // ME
+        case 0x4: return false;  // D         - both must be set to 0
+        case 0x6: return true;   // E         - must be set to 1
         case 0x7: return !is_voiceover(bsmod, acmod);  // VO must be 0, karaoke must be 1
         default: return true;    // VI, HI, C - unconstrained
     }
