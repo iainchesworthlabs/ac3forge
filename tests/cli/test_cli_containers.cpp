@@ -77,12 +77,6 @@ std::string read_log(const fs::path& log) {
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 }
 
-std::vector<char> read_bytes(const fs::path& path) {
-    std::ifstream in{path, std::ios::binary};
-    REQUIRE(in.is_open());
-    return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
-}
-
 void write_bytes(const fs::path& path, std::span<const std::byte> bytes) {
     std::ofstream out{path, std::ios::binary};
     REQUIRE(out.is_open());
@@ -105,7 +99,8 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 // built a stream that kind to hand it.
 std::vector<std::byte> legacy_core_stream() {
     ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
-    std::vector<std::vector<float>> pcm(6, std::vector<float>(ac3::kSamplesPerFrame, 0.0F));
+    std::vector<std::vector<float>> pcm(
+        6, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F));
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
         views.emplace_back(channel);
