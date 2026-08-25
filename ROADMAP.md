@@ -952,12 +952,16 @@ a draft with changes requested: every technical point was fixed, and the reviewe
 exception to the six-month maturity rule — the repository was created 2026-08-09, so not before
 about 2027-02. The winget submission is [microsoft/winget-pkgs#419594](https://github.com/microsoft/winget-pkgs/pull/419594),
 untouched since 2026-08-18 with `Needs-CLA` and a Defender validation error. ConanCenter was never
-submitted. All four staged manifests and the tap are at 0.8.0-beta.2 while v0.9.0-beta.1 shipped
-on 2026-08-22.
+submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1).
 
-- [ ] **DR1 (S)** — Bump the four manifests and the tap to v0.9.0-beta.1. `docs/releasing.md`'s
-  own rule says a release is not done until all four point at it; this is the second cycle in a
-  row they went stale.
+- [x] **DR1 (S)** — Bump the four manifests and the tap to v0.9.0-beta.1. Done: `vcpkg.json`'s
+  `version-semver` and `portfile.cmake`'s SHA512, the Homebrew formula's and cask's `url`/`sha256`/
+  `version`, `conandata.yml`'s `sources` entry, and a new `0.9.0-beta.1/` winget manifest directory
+  all point at the real release tarball/binary hashes (`sha256sum`/`sha512sum` against the
+  downloaded assets, cross-checked against the release's own published `SHA512SUMS`, not
+  fabricated); `tools/checks/check_packaging_versions.sh` passes. The live tap
+  (`iainchesworthlabs/homebrew-ac3forge`) is pushed to match. Still the second cycle in a row these
+  went stale — DR2 is the fix for that.
 - [ ] **DR2 (M)** — Post-release automation: release notes from the matching CHANGELOG section
   (`release.yml` still uses `--generate-notes`), a post-release job that computes the digests and
   opens the manifest-bump PR, and a latest-tag advisory extending
@@ -971,15 +975,23 @@ on 2026-08-22.
   likely cause — DR6), resubmit at the current release. ConanCenter: bump, run the three
   `conan create` validations `docs/releasing.md` lists, open the `conan-center-index` PR; expect
   pushback on the recipe's `cmake_find_mode = "none"`.
-- [ ] **DR5 (S)** — Fix the docs that shipped work made false. `docs/releasing.md`,
-  `wheels.yml` and the old `F2` text still say PyPI publishing is off until provisioned;
-  `releasing.md` and `README.md` still call the tap unpublished; `README.md` says macOS builds
-  the CLI only (the GUI leg has run since 0.8.0-beta.2); `docs/index.md` says the ADM bridge is
-  "not wired up yet"; `docs/cli/metadata-options.md` says the E-AC-3 DRC tokens are "silently
-  inert" (0.6.0 fixed that); `docs/gui/format-and-channels.md` says `mpegts::mux` has no
-  incremental writer (0.9.0 added one); two pages point at `run_live` in `apps/cli/main.cpp`
-  (now `commands/live_audio.cpp`); the `A1` justification cites a jellyfin-ffmpeg issue FFmpeg
-  has since fixed (trac #9996). And the DR9 contradiction below.
+- [x] **DR5 (S)** — Fix the docs that shipped work made false. Done: `docs/releasing.md` and
+  `wheels.yml`'s comments now say PyPI publishing is live, not off until provisioned;
+  `releasing.md` and `README.md` now call the Homebrew tap published/live rather than
+  pending/unpublished; `README.md` no longer says macOS builds the CLI only (the GUI leg has run
+  since 0.8.0-beta.2); `docs/index.md` now says `ac3::admbridge` wires the ADM object/bed graph
+  onto `ac3::oba::AtmosEncoder`, driven end to end by `ac3cli atmos-adm`, rather than "not wired up
+  yet"; `docs/cli/metadata-options.md` now says the E-AC-3 decode-time DRC tokens apply (0.6.0
+  fixed that) rather than "silently inert"; `docs/gui/format-and-channels.md` now lists MPEG-TS
+  beside fragmented MP4/CMAF as carrying over to a live session (0.9.0 added `mpegts::Writer`)
+  rather than falling back to the plain elementary stream; the two pages that pointed at `run_live`
+  in `apps/cli/main.cpp` (`docs/history.md`, `docs/platforms/windows.md`) now say
+  `commands/live_audio.cpp`; `docs/library/muxing-and-sinks.md`'s `A1` justification now says the
+  jellyfin-ffmpeg issue (upstream FFmpeg trac #9996) has since been fixed rather than presenting it
+  as an open bug. The DR9 contradiction below is fixed too: `docs/verification.md`,
+  `docs/platforms/linux.md`, `docs/platforms/windows.md` and the 0.9.0 CHANGELOG Known gaps section
+  all now reflect ALSA/Raspberry Pi's real HDMI-to-receiver confirmation instead of contradicting
+  it.
 - [ ] **DR6 (M, needs accounts)** — Code signing: Developer ID signing and notarisation of
   `ac3gui.app` and the `.dmg` (a Known gap in every release since 0.8.0-beta.2; Gatekeeper blocks
   it), Authenticode for the Windows binaries and installer. GPG and Sigstore satisfy neither OS.
@@ -996,10 +1008,8 @@ on 2026-08-22.
   - **Linux/ALSA: confirmed.** `docs/platforms/raspberry-pi.md` ("Live HDMI passthrough to a
     real receiver", 2026-08-20) records a Pi 4B driving an Atmos-capable AVR: every stream shape
     locked and was identified correctly, including signed Atmos with four height channels, at
-    zero underruns. Yet `docs/verification.md` still says "no downstream receiver in the loop",
-    `docs/platforms/linux.md` still warns "No Linux audio has been tried against real
-    hardware", the 0.9.0 Known gaps say "not confirmed on any platform", and
-    `docs/platforms/windows.md` says no receiver was available. Fix all four (S, with DR5).
+    zero underruns. `docs/verification.md`, `docs/platforms/linux.md`, the 0.9.0 Known gaps and
+    `docs/platforms/windows.md` all carried stale text contradicting this — fixed with DR5.
   - **Windows/WASAPI exclusive: unconfirmed** — only a Realtek analogue endpoint has been tried.
     The receiver exists now: cable the workstation's HDMI (or a USB S/PDIF for the AC-3 half)
     and run the Pi page's stream matrix (S, hardware).
