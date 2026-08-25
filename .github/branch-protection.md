@@ -12,8 +12,18 @@ in **Settings → Branches** (or **Settings → Rules → Rulesets**) by someone
 on the repo. Configure a protection rule (or ruleset) for `main` with:
 
 - **Require a pull request before merging**
-  - Require at least 1 approval
+  - Required approving review count: **0**
   - Dismiss stale approvals when new commits are pushed
+
+  Zero, not one: this is a solo-maintainer repo, and GitHub does not count an
+  author's own approval toward their own PR, so "require 1 approval" was
+  unsatisfiable through the normal merge button - every PR in this repo's
+  history has landed via `gh pr merge --admin`, bypassing the requirement
+  rather than meeting it. Dropping the count to 0 keeps "require a pull
+  request before merging" itself (still blocks direct pushes, still requires
+  every required status check below to pass, still dismisses stale approvals
+  if a second maintainer ever does leave one) while letting a green PR merge
+  through the normal button instead of only through an admin override.
 - **Require status checks to pass before merging** (enable "Require branches
   to be up to date" too), selecting:
   - `Branch Name` (from `ci.yml`)
