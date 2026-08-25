@@ -171,6 +171,18 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`python/tests/test_latency.py` asserted the wrong Atmos object-path latency, failing the
+  `Python Wheels` workflow's `macos-latest` and `windows-latest` `pytest` steps.** The test
+  claimed an `AtmosEncoder`'s `latency.transform_samples` was `2 * TRANSFORM_DELAY_SAMPLES`
+  (512); the real, correct figure — matched by `tests/decoder/test_latency.cpp` (the C++ ground
+  truth the test's own docstring says it mirrors), `tests/capi/test_capi.cpp`, and
+  `docs/library/decoding.md` — is `TRANSFORM_DELAY_SAMPLES` plus the §7.1 QMF filterbank's own
+  analysis+synthesis delay (`dsp::kQmfDelay`, 576 samples, not exposed through the Python
+  bindings), 832 total: JOC reconstruction pulls objects back out of the decoded bed in a
+  64-band complex QMF domain, not the MDCT's. No encoder defect — the Python test alone had
+  drifted from the C++ side it was meant to track. Not caught by `ubuntu-latest`'s wheel job,
+  which fails earlier at an unrelated C++ build step, nor by `ci.yml`'s C++ matrix, which never
+  runs `python/tests/`.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`

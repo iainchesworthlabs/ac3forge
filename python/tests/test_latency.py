@@ -58,11 +58,20 @@ def test_ac3_round_trip_shifts_the_signal_by_the_transform_term():
     assert decoder.latency_samples == 0
 
 
+# The §7.1 QMF filterbank's own analysis+synthesis delay (ac3::dsp::kQmfDelay =
+# 576, not exposed through the Python bindings) on top of the bed's transform
+# term: JOC reconstruction pulls objects back out of the decoded bed in a
+# 64-band complex QMF domain, not the MDCT's. 576 is spelled out here rather
+# than named, same as tests/capi/test_capi.cpp - measured end to end in
+# tests/decoder/test_latency.cpp.
+_QMF_DELAY_SAMPLES = 576
+
+
 def test_atmos_object_path_costs_a_second_transform_overlap():
     encoder = ac3.AtmosEncoder(ac3.AtmosConfig(bitrate_kbps=448), 2)
     assert encoder.bed_latency.transform_samples == ac3.TRANSFORM_DELAY_SAMPLES
-    assert encoder.latency.transform_samples == 2 * ac3.TRANSFORM_DELAY_SAMPLES
-    assert encoder.latency_samples == encoder.bed_latency.total_samples + ac3.TRANSFORM_DELAY_SAMPLES
+    assert encoder.latency.transform_samples == ac3.TRANSFORM_DELAY_SAMPLES + _QMF_DELAY_SAMPLES
+    assert encoder.latency_samples == encoder.bed_latency.total_samples + _QMF_DELAY_SAMPLES
 
     config = ac3.AtmosConfig(bitrate_kbps=448)
     config.emit_object_metadata = False
