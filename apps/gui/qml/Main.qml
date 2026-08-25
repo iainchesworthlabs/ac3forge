@@ -908,7 +908,17 @@ ApplicationWindow {
     // too. Same "file:///" + normalized-slashes convention outputFolderUrl()
     // above already uses for exactly this reason.
     function runPathUrl(path) {
-        return "file:///" + path.replace(/\\/g, "/");
+        // A POSIX path already starts with "/" (e.g. "/home/user/x.ec3");
+        // a Windows one never does even after the backslash swap (e.g.
+        // "C:/x.ec3"). Only add the separating slash "file://" needs when
+        // it isn't already there - unconditionally prepending "file:///"
+        // doubled it on Linux/macOS, corrupting every run path into
+        // "//home/..." once round-tripped back through QUrl::toLocalFile().
+        let normalized = path.replace(/\\/g, "/");
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        return "file://" + normalized;
     }
 
     // The run strip's own "More…" menu items call these rather than
