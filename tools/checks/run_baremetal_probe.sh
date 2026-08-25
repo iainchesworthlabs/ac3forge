@@ -34,12 +34,22 @@ fi
 # Bytes. text+data+bss of the linked probe on the bare-metal target, and the
 # probe's own peak heap on either. See docs/performance-trend.md's footprint
 # table for the measured values these leave headroom over.
-: "${AC3FORGE_MAX_IMAGE_BYTES:=400000}"
+#
+# AC3FORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
+# feature branch (roadmap PF6/PF7, PR #351) picked up several mid-flight merges
+# from `develop` - most significantly DC10's QMF-domain JOC reconstruction,
+# which the decode path now genuinely needs (src/dsp/qmf.cpp and
+# src/verify/eac3_mirror.cpp, both correctly added to src/forge/minimal.cmake's
+# source list) - between when 354,060/400,000 were first measured and when the
+# PR actually merged. The image had already reached 412,516 bytes at that
+# point; nobody re-measured before merging. See docs/performance-trend.md's
+# footprint table for the current breakdown.
+: "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"
 : "${AC3FORGE_MAX_HEAP_BYTES:=300000}"
 # Allocations per frame in the steady state, whichever codec is worse. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open: today's numbers are 45 (AC-3) and 85 (E-AC-3).
+# while that gap is open: today's numbers are 45 (AC-3) and 87 (E-AC-3).
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 
 if [[ "$HOST" == "1" ]]; then

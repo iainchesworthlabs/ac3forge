@@ -788,9 +788,9 @@ directory; there is still no threading anywhere in the codec core.
   decode-only `ac3::forge_minimal` with no exceptions, no RTTI and no direct-form transform
   tables (an explicit 1.81 MiB ROM budget, measured on the object file), proven on a
   cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`, `build-footprint`) that decodes
-  real AC-3/E-AC-3 to the host build's own levels in 354 KB of image and 243 KB of peak heap.
+  real AC-3/E-AC-3 to the host build's own levels in 403 KB of image and 238 KB of peak heap.
   Two requirements are recorded as open gaps rather than half-enforced: zero heap traffic in the
-  decode loop (today: 45-85 allocations/frame) and a float32-only internal path - see
+  decode loop (today: 45-87 allocations/frame) and a float32-only internal path - see
   `docs/building.md`'s Gaps section.
 - [ ] **PF8 (S)** — The decoder's JOC bed analysis is still direct. `Eac3Decoder` calls
   `joc::reconstruct` with `fast_mdct = false`, so every object frame runs five direct §8.2.3.2
