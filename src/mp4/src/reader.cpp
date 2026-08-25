@@ -865,7 +865,14 @@ std::expected<void, DemuxError> walk(ReaderState& s, std::span<const std::byte> 
             case kTrex:
                 if (body.size() >= 20) {
                     s.trex_track_id = get_u32(body, 4);
-                    s.trex_default_sample_size = get_u32(body, 12);
+                    // §8.8.3.1: track_ID(4) default_sample_description_index(4)
+                    // default_sample_duration(4) default_sample_size(4) - the
+                    // field this reader wants sits at offset 16, not 12 (that is
+                    // default_sample_duration's own offset). Never caught before:
+                    // this project's own fragment() writer always supplies an
+                    // explicit per-sample size in trun and leaves trex's default
+                    // at 0, so nothing here ever depended on the value read.
+                    s.trex_default_sample_size = get_u32(body, 16);
                     s.have_trex = true;
                 }
                 break;
