@@ -37,7 +37,6 @@ Usage (repo root):  python tools/generators/gen_object_fixture.py
 
 import os
 import subprocess
-import sys
 import wave
 from pathlib import Path
 
@@ -136,4 +135,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
