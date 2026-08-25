@@ -249,6 +249,28 @@ elseif(APPLE)
         MACOSX_PACKAGE_LOCATION "Resources")
     target_sources(ac3gui PRIVATE "${AC3_GUI_ICON_ICNS}")
     set_target_properties(ac3gui PROPERTIES MACOSX_BUNDLE_ICON_FILE ac3forge.icns)
+
+    # Roadmap UX2: a custom Info.plist (Info.plist.in, beside this file) so
+    # .ac3/.ec3 get CFBundleDocumentTypes/UTExportedTypeDeclarations - the
+    # default Info.plist CMake generates when MACOSX_BUNDLE_INFO_PLIST is
+    # left unset carries neither, and supplying a template of our own means
+    # opting out of that default entirely, so every variable it would have
+    # substituted is set explicitly here too. These are plain CMake
+    # variables (not target properties) because that is what CMake's own
+    # bundle-generation logic - the same logic MACOSX_BUNDLE_ICON_FILE's
+    # target property above already reaches through - substitutes into
+    # Info.plist.in's ${VAR} tokens.
+    set(MACOSX_BUNDLE_EXECUTABLE_NAME "ac3gui")
+    set(MACOSX_BUNDLE_BUNDLE_NAME "ac3gui")
+    set(MACOSX_BUNDLE_INFO_STRING "${PROJECT_DESCRIPTION}")
+    set(MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.ac3gui")
+    set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+    set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+    set(MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION_FULL}")
+    set(MACOSX_BUNDLE_COPYRIGHT "Copyright (c) Iain Chesworth")
+    set_target_properties(ac3gui PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -372,6 +394,49 @@ if(WIN32 OR APPLE)
         OUTPUT_SCRIPT AC3_GUI_DEPLOY_SCRIPT
         NO_UNSUPPORTED_PLATFORM_ERROR)
     install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}")
+endif()
+
+# ---------------------------------------------------------------------------
+# Roadmap UX2's Linux leg: what actually puts ac3gui in a desktop's own
+# application menu, the gap the roadmap named directly ("ac3gui is absent
+# from Linux application menus"). Every file lives under packaging/linux/
+# beside this CMakeLists.txt rather than under icons/ (the macOS/Windows
+# icon assets .rc.in/.icns wiring above already claims that directory for a
+# narrower, per-platform meaning) and installs under the standard XDG/FHS
+# paths GNUInstallDirs' own CMAKE_INSTALL_DATADIR already resolves
+# correctly for both a system prefix and a package's staging root. COMPONENT
+# runtime - same component ac3gui's own binary installs under, so a .deb/
+# .rpm split by component (cmake/Packaging.cmake) still ships every one of
+# these alongside the executable they describe rather than needing a
+# component of its own.
+#
+# LINUX, not "UNIX AND NOT APPLE": the same variable
+# cmake/Packaging.cmake's own CPACK_SYSTEM_NAME block already uses for
+# exactly this Linux-not-any-other-Unix distinction (a CMake >= 3.25
+# built-in, true only on Linux).
+# ---------------------------------------------------------------------------
+if(LINUX)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+        COMPONENT runtime)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
+        COMPONENT runtime)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui-mime.xml"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/mime/packages"
+        COMPONENT runtime)
+    # Both sizes generate_icons.py already produces (the same two the
+    # in-app window/taskbar icon above embeds via qt_add_resources) - the
+    # hicolor theme picks whichever fits, same convention every other
+    # freedesktop-menu application follows.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
+        RENAME "ac3gui.png"
+        COMPONENT runtime)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-32.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps"
+        RENAME "ac3gui.png"
+        COMPONENT runtime)
 endif()
 
 # Qt Quick Test coverage for the interactive surfaces above - gated the same

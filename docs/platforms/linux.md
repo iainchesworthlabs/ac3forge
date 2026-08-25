@@ -161,6 +161,13 @@ has also been produced and inspected on Raspberry Pi hardware (see
 [Raspberry Pi](raspberry-pi.md#verified-configuration)). See
 [Packaging](../building.md#packaging).
 
+A GUI-enabled package also installs `ac3gui.desktop` (`Exec=ac3gui %F`, `MimeType=audio/ac3;
+audio/eac3;`), an AppStream metainfo file, and a shared-mime-info fragment declaring the two media
+types against `*.ac3`/`*.ec3` — `apps/gui/packaging/linux/`, wired into `install()` behind
+`if(LINUX)` in `apps/gui/CMakeLists.txt`. Configure/build-verified only: nobody has installed the
+resulting `.deb`/`.rpm` on a real desktop and double-clicked an `.ac3` file to confirm the
+launcher fires.
+
 ## CI
 
 `linux-gcc` and `linux-llvm` both run on every push and are **required**; both install a Qt6 kit

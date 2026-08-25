@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo (roadmap UX2) - what puts ac3gui in a Linux desktop's
+  own application menu/software centre, alongside ac3gui.desktop (the entry
+  itself) and ac3gui-mime.xml (the audio/ac3, audio/eac3 types it opens).
+  <id> matches the .desktop file's own basename, the launchable AppStream
+  itself requires to associate the two.
+-->
+<component type="desktop-application">
+  <id>ac3gui.desktop</id>
+  <name>ac3gui</name>
+  <summary>Clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      ac3gui is the Qt6 front end for ac3forge, a clean-room implementation of the AC-3 and
+      E-AC-3 (Dolby Digital / Dolby Digital Plus) audio codecs. It encodes and decodes both
+      formats, including Dolby Atmos object-layer (OAMD/JOC) metadata and audio, and plays
+      back an already-encoded stream directly.
+    </p>
+  </description>
+  <launchable type="desktop-id">ac3gui.desktop</launchable>
+  <url type="homepage">https://github.com/iainchesworthlabs/ac3forge</url>
+  <provides>
+    <binary>ac3gui</binary>
+    <mediatype>audio/ac3</mediatype>
+    <mediatype>audio/eac3</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>

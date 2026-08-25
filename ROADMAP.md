@@ -877,7 +877,7 @@ directory; there is still no threading anywhere in the codec core.
   export, and the run-chip shortcuts into QC and Inspect that two docs pages each end by saying
   do not exist yet. The `MonitorSink` plumbing is already owned by the object-decode controller;
   only the file-driven transport and UI are missing.
-- [ ] **UX2 (M)** — Desktop integration: drag-and-drop, `ac3gui <file>`, file associations
+- [x] **UX2 (M)** — Desktop integration: drag-and-drop, `ac3gui <file>`, file associations
   (the installer's registry keys, `CFBundleDocumentTypes`, a `.desktop` entry plus AppStream
   metainfo and MIME XML for the `.deb`/`.rpm` — `ac3gui` is absent from Linux application menus).
 - [ ] **UX3 (M)** — Localisation and accessibility foundations: 676 `qsTr()` strings with no

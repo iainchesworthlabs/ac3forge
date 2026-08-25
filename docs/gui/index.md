@@ -28,6 +28,11 @@ on the spot) and a one-sentence tour of the window:
 
 ![The first-run screen](screenshots/firstrun.png)
 
+Any of those, plus dragging a file onto the window or launching `ac3gui path/to/file` from a
+shell, works from the first-run screen or the workbench alike — a WAV becomes a source, an
+already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. See [Loading a
+source](loading-a-source.md#01-input).
+
 ## The window
 
 Minimum size 1280×900. Two panes, divided by a vertical rule:

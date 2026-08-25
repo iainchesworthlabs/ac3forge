@@ -137,6 +137,12 @@ every push and uploads the result as a workflow artifact, a standing smoke test 
 path; tagged releases package all four `release_package` legs (Windows, Linux x64/arm64, macOS).
 See [Packaging](../building.md#packaging).
 
+The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
+`shell\open\command` at the installed `ac3gui.exe` and nudging Explorer to pick up the change with
+`SHChangeNotify`, and reverses both keys on uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/
+`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. Configure/build-verified only: no `makensis`
+locally to actually run the installer and double-click a `.ac3` file afterwards.
+
 ## CI
 
 Both Windows legs — `windows-msvc` and `windows-llvm` — run on every push and are **required**,
