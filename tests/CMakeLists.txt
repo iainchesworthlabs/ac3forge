@@ -354,6 +354,18 @@ if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
     target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp)
 endif()
 
+# ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
+# (default ON, see the root CMakeLists.txt's own option()) rather than being linked
+# unconditionally in the matroska::matroska/mp4::mp4/mpegts::mpegts list below - nothing else
+# in this test binary depends on it, so there is no FATAL_ERROR guard forcing the option to
+# stay on the way there is for those three; test_ac3iab.cpp is only added, and ac3iab::ac3iab
+# only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
+# as the AC3FORGE_BUILD_ADM block above.
+if(AC3FORGE_BUILD_IAB)
+    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp)
+    target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
+endif()
+
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, default ON - see the root
 # CMakeLists.txt) - test_capi.cpp (roadmap F1) only exists to build when it was actually built,
 # the same shape as the AC3FORGE_BUILD_ADM-gated sources above.
