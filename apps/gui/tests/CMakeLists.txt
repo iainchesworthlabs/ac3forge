@@ -28,6 +28,10 @@ qt_add_executable(ac3gui_qmltests
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
+    stream_player_controller.cpp
+    stream_player_controller.hpp
+    channel_geometry.cpp
+    channel_geometry.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp

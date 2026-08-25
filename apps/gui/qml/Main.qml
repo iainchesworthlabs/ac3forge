@@ -127,6 +127,8 @@ ApplicationWindow {
     readonly property alias qcDialogRef: qcDialog
     // Same reason again - the decode-side object inspector.
     readonly property alias objectInspectorDialogRef: objectInspectorDialog
+    // Same reason again - roadmap UX1's stream player.
+    readonly property alias streamPlayerDialogRef: streamPlayerDialog
 
     Component.onCompleted: {
         Theme.preference = appSettings.theme;
@@ -899,6 +901,31 @@ ApplicationWindow {
         return StandardPaths.writableLocation(StandardPaths.MusicLocation);
     }
 
+    // A run's own recorded path is a plain filesystem string (modelData.path,
+    // used as-is for e.g. playFileToReceiver/"Show in folder" above), not a
+    // URL - QcController.measureFile/ObjectDecodeController.inspectFile both
+    // take one, so the run strip's own "More…" menu needs this conversion
+    // too. Same "file:///" + normalized-slashes convention outputFolderUrl()
+    // above already uses for exactly this reason.
+    function runPathUrl(path) {
+        return "file:///" + path.replace(/\\/g, "/");
+    }
+
+    // The run strip's own "More…" menu items call these rather than
+    // inlining their bodies in onTriggered directly, so a test can invoke
+    // the exact same logic without needing to reach into a live Menu popup
+    // (Menu/MenuItem are not Item-derived, so findChild - which only walks
+    // Item.children - can never locate one; see tst_stream_player.qml's own
+    // comment on this).
+    function openRunInQc(path) {
+        qcDialog.open();
+        QcController.measureFile(runPathUrl(path));
+    }
+    function openRunInInspector(path) {
+        objectInspectorDialog.open();
+        ObjectDecodeController.inspectFile(runPathUrl(path));
+    }
+
     // The folder actually created once folderDialog accepts - see
     // saveFolderDialog/recordFolderDialog's own onAccepted.
     property string pendingOutputFolderName: ""
@@ -1078,6 +1105,14 @@ ApplicationWindow {
     // the Objects tab.
     ObjectInspectorDialog {
         id: objectInspectorDialog
+    }
+
+    // Roadmap UX1 - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
+    // third of this header's "distinct surface, reachable from the header"
+    // dialogs alongside the two above - see StreamPlayerDialog.qml's own
+    // header comment.
+    StreamPlayerDialog {
+        id: streamPlayerDialog
     }
 
     AboutDialog {
@@ -1382,6 +1417,11 @@ ApplicationWindow {
                 objectName: "objectInspectorOpenButton"
                 text: qsTr("Inspect objects…")
                 onClicked: objectInspectorDialog.open()
+            }
+            Button {
+                objectName: "streamPlayerOpenButton"
+                text: qsTr("Open stream…")
+                onClicked: streamPlayerDialog.open()
             }
             Button {
                 text: qsTr("Preferences")
@@ -6780,6 +6820,42 @@ ApplicationWindow {
                                             window.bannerRunId = modelData.id;
                                             if (window.dismissedRunId === modelData.id) {
                                                 window.dismissedRunId = -1;
+                                            }
+                                        }
+                                    }
+                                    // Roadmap UX1's own run-chip shortcut: docs/gui/qc.md and
+                                    // docs/gui/inspect-objects.md both used to end by saying
+                                    // there was no way to jump from a finished run straight
+                                    // into either dialog - this is that way. The first Menu
+                                    // in this window (every other run action above is a flat
+                                    // Button); a two-item dropdown reads better here than a
+                                    // third and fourth button competing with Play/Show in
+                                    // folder for the same 34 px lane.
+                                    Button {
+                                        objectName: "runMore-" + modelData.id
+                                        visible: modelData.status === "done"
+                                                 && (modelData.path || "").length > 0
+                                        text: qsTr("More…")
+                                        flat: true
+                                        onClicked: runMoreMenu.open()
+
+                                        Menu {
+                                            id: runMoreMenu
+                                            y: parent.height
+
+                                            MenuItem {
+                                                objectName: "runMoreQc-" + modelData.id
+                                                text: qsTr("QC this run")
+                                                onTriggered: window.openRunInQc(modelData.path)
+                                            }
+                                            MenuItem {
+                                                objectName: "runMoreInspect-" + modelData.id
+                                                text: qsTr("Inspect objects")
+                                                // Same gate `ac3cli decode`'s own objects_dir has:
+                                                // object audio is an E-AC-3/Annex E tool only, so a
+                                                // plain AC-3 run has nothing this dialog can show.
+                                                visible: modelData.eac3 === true
+                                                onTriggered: window.openRunInInspector(modelData.path)
                                             }
                                         }
                                     }

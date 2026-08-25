@@ -129,6 +129,17 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
   (`PF7`, `AC3FORGE_MINIMAL_DECODER`, cross-compiled and run on QEMU's Cortex-M3 target).
 
+**Applications (UX)**
+
+- **`ac3gui` gained an "Open stream…" player** (`UX1`): the GUI twin of `ac3cli monitor`, playing
+  an already-encoded `.ac3`/`.ec3` file's decoded bed through a real transport (play/pause/seek)
+  with live meters and the soundfield view, reusing the `MonitorSink` plumbing the object-decode
+  and encode-preview paths already established. **Export decoded WAV…** and **Export objects…**
+  (Atmos only) give it `ac3cli decode`'s two outputs from the same decode pass. A finished run
+  chip's own **More…** menu now offers **QC this run** and **Inspect objects** directly, closing
+  the gap [`docs/gui/qc.md`](docs/gui/qc.md) and [`docs/gui/inspect-objects.md`](docs/gui/inspect-objects.md)
+  used to both end by naming. See [docs/gui/open-stream.md](docs/gui/open-stream.md).
+
 ### Changed
 
 - **Coded bandwidth and `fgaincod` decided from content, not bit rate alone** (`EQ7`, `EQ8`):

@@ -116,6 +116,7 @@ nav:
       - Metadata: gui/metadata.md
       - QC a stream: gui/qc.md
       - Inspect objects: gui/inspect-objects.md
+      - Open stream: gui/open-stream.md
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md
