@@ -33,8 +33,6 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -45,11 +43,8 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
-#include "matroska/matroska.hpp"
-#include "mp4/dash.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
 #include "platform/stdio_binary.hpp"
+#include "recording_sink.hpp"
 #include "usage.hpp"
 
 namespace ac3cli {
