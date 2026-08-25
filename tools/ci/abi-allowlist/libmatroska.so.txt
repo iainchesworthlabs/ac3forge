@@ -1,0 +1,41 @@
+_ZSt12construct_atImJRKmEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S2_pispclsr3stdE7declvalIT0_EEEEEPS2_S5_DpOS4_
+_ZSt12construct_atImJmEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S0_pispclsr3stdE7declvalIT0_EEEEEPS0_S3_DpOS2_
+bool std::operator==<char, std::char_traits<char> >(std::basic_string_view<char, std::char_traits<char> >, std::type_identity<std::basic_string_view<char, std::char_traits<char> > >::type)
+double std::bit_cast<double, unsigned long>(unsigned long const&) requires (((sizeof (double))==(sizeof (unsigned long)))&&(is_trivially_copyable_v<double>))&&(is_trivially_copyable_v<unsigned long>)
+float std::bit_cast<float, unsigned int>(unsigned int const&) requires (((sizeof (float))==(sizeof (unsigned int)))&&(is_trivially_copyable_v<float>))&&(is_trivially_copyable_v<unsigned int>)
+matroska::Reader::Reader(matroska::ReadOptions const&)
+matroska::Reader::Reader(matroska::Reader&&)
+matroska::Reader::finish()
+matroska::Reader::frames_read() const
+matroska::Reader::operator=(matroska::Reader&&)
+matroska::Reader::push(std::span<std::byte const, 18446744073709551615ul>, std::function<void (std::span<std::byte const, 18446744073709551615ul>)> const&)
+matroska::Reader::track() const
+matroska::Reader::track_found() const
+matroska::Reader::~Reader()
+matroska::Writer::Writer(matroska::AudioTrack, matroska::MuxOptions, std::vector<std::byte, std::allocator<std::byte> >)
+matroska::Writer::close_cluster()
+matroska::Writer::create(matroska::AudioTrack const&, matroska::MuxOptions const&)
+matroska::Writer::finalize()
+matroska::Writer::push(std::span<std::byte const, 18446744073709551615ul>)
+matroska::Writer::stamp_ms(unsigned long) const
+matroska::demux(std::span<std::byte const, 18446744073709551615ul>, matroska::ReadOptions const&)
+matroska::describe(matroska::DemuxError)
+matroska::describe(matroska::MuxError)
+matroska::mux(matroska::AudioTrack const&, std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, matroska::MuxOptions const&)
+matroska::mux(matroska::AudioTrack const&, std::span<std::vector<std::byte, std::allocator<std::byte> > const, 18446744073709551615ul>, matroska::MuxOptions const&)
+std::__size_to_integer(unsigned long)
+std::enable_if<std::__is_bitwise_relocatable<unsigned long>::value, unsigned long*>::type std::__relocate_a_1<unsigned long, unsigned long>(unsigned long*, unsigned long*, unsigned long*, std::allocator<unsigned long>&)
+std::ranges::_Cpo::data
+std::ranges::_Cpo::iter_move
+std::ranges::_Cpo::size
+std::ranges::distance
+unsigned long const& std::max<unsigned long>(unsigned long const&, unsigned long const&)
+unsigned long const& std::min<unsigned long>(unsigned long const&, unsigned long const&)
+unsigned long std::bit_cast<unsigned long, double>(double const&) requires (((sizeof (unsigned long))==(sizeof (double)))&&(is_trivially_copyable_v<unsigned long>))&&(is_trivially_copyable_v<double>)
+unsigned long* std::__do_uninit_fill_n<unsigned long*, unsigned long, unsigned long>(unsigned long*, unsigned long, unsigned long const&)
+unsigned long* std::__relocate_a<unsigned long*, unsigned long*, std::allocator<unsigned long> >(unsigned long*, unsigned long*, unsigned long*, std::allocator<unsigned long>&)
+unsigned long* std::__uninitialized_fill_n_a<unsigned long*, unsigned long, unsigned long, unsigned long>(unsigned long*, unsigned long, unsigned long const&, std::allocator<unsigned long>&)
+unsigned long* std::uninitialized_fill_n<unsigned long*, unsigned long, unsigned long>(unsigned long*, unsigned long, unsigned long const&)
+void std::_Construct<unsigned long, unsigned long const&>(unsigned long*, unsigned long const&)
+void std::_Destroy<unsigned long*>(unsigned long*, unsigned long*)
+void std::__fill_a1<unsigned long*, unsigned long>(unsigned long*, unsigned long*, unsigned long const&)

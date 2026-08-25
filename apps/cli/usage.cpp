@@ -323,7 +323,10 @@ void print_qc_topic() {
     fmt::println("       layout=bed (default) meters the independent substream's own Table 5.8");
     fmt::println("       bed (BS.1770 Annex 1); layout=rendered meters the whole assembled");
     fmt::println("       program, every dependent substream's height/wide/rear channels");
-    fmt::println("       included (BS.1770-5 Annex 3's extended algorithm).");
+    fmt::println("       included (BS.1770-5 Annex 3's extended algorithm). objects=<layout>");
+    fmt::println("       additionally re-renders the stream's dynamic objects by their own");
+    fmt::println("       OAMD position onto the named layout and meters that (BS.1770-5");
+    fmt::println("       Annex 4) - only for a dynamic-object-only programme.");
 }
 
 void print_probe_topic() {
@@ -485,12 +488,14 @@ void print_option_blocks(std::uint32_t mask) {
                      "part of mode= either way: unlike the two transform switches, these are "
                      "different answers rather than the same one at different speed, and the "
                      "default is already the domain the clause states");
-        fmt::println("  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit "
-                     "allocation parameters per frame from the reconstruction error a decoder "
-                     "will produce, instead of the rate-derived defaults. distortion minimises "
-                     "that error; perceptual weights it by a tonality/masking model first. off "
-                     "(the default) keeps every release before this one's fixed values - costs "
-                     "encode time, see docs/library/quality.md for the measured figures");
+        fmt::println("  search=<what>     choose §7.2.2's transmitted bit allocation parameters "
+                     "per frame from the reconstruction error a decoder will produce, instead of "
+                     "the rate-derived defaults. distortion minimises that error; perceptual "
+                     "weights it by a tonality/masking model first. off (the default) keeps every "
+                     "release before this one's fixed values - costs encode time, see "
+                     "docs/library/quality.md for the measured figures. eac3-encode: CBR only "
+                     "(dbpbcod against kAllocCodes/Table E1.4's two values, EQ13's own scope "
+                     "note) - inert under vbr= and under perceptual, same as off");
         fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
                      "channel per block from content - applies wherever this command encodes, "
                      "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "
@@ -564,6 +569,10 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  layout=rendered   meter the whole assembled program instead, every");
         fmt::println("                    dependent substream's height/wide/rear channels");
         fmt::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
+        fmt::println("  objects=<layout>  re-render dynamic objects by their own OAMD position");
+        fmt::println("                    onto <layout> (51|71|512|514|714) and meter that too");
+        fmt::println("                    (BS.1770-5 Annex 4); dynamic-object-only programmes");
+        fmt::println("                    only");
     }
     if ((mask & topic::kProbe) != 0) {
         fmt::println("");

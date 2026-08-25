@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/export.hpp"
 
 // The spatial/object layer: applications place and move mono sources around
@@ -77,6 +78,98 @@ AC3FORGE_EXPORT void pan_ring(double azimuth_deg, std::span<const double> ring_a
 // and different heights get IDENTICAL bed gains, and nothing downstream can
 // tell them apart from the bed alone.
 [[nodiscard]] AC3FORGE_EXPORT PanGains pan_room(double x, double y);
+
+// --- arbitrary-layout, height-aware panning ---------------------------------
+//
+// Everything above targets the fixed 5.1 ring. A source with real elevation -
+// a Table E2.5 height location, or an object whose z lifts it toward the
+// ceiling - needs a second, upper ring and a crossfade between the two, which
+// is what ac3::plan's channel-layout renderer already built to move a bed's
+// channels between differently-shaped layouts (5.1 to 7.1.4 and back). It is
+// promoted here rather than duplicated because IO12's object-based loudness
+// measurement needs the identical geometry: an object panned onto a wide
+// layout by its own position must agree with what the encoder itself would
+// have rendered that position to.
+
+// A source or speaker direction: azimuth counterclockwise from front (ITU-R
+// BS.775, any range), elevation above the listener's plane in degrees (0 on
+// the ring, positive toward the ceiling).
+struct Direction {
+    double azimuth_deg = 0.0;
+    double elevation_deg = 0.0;
+};
+
+// The nominal elevation of the upper layer - TS 103 420 renders heights well
+// above the ring, and 45 degrees is the conventional Atmos ceiling angle.
+inline constexpr double kHeightElevationDeg = 45.0;
+// Everything at or above this counts as the upper layer. Half way to the
+// nominal height angle, so no real location is ambiguous.
+inline constexpr double kHeightThresholdDeg = kHeightElevationDeg / 2.0;
+// A gain below this is not a quiet signal, it is arithmetic (cos(pi/2) lands
+// near 6e-17 rather than on zero).
+inline constexpr double kNegligibleGain = 1e-9;
+
+// Where a Table E2.5 location sits, in the same (azimuth, elevation) terms as
+// `Direction` above. `has_rears`/`has_side_discrete` disambiguate the two
+// locations whose direction depends on what else is in the same layout - see
+// the .cpp for why: without a discrete rear pair, Ls/Rs sit at the 5.1 ring's
+// own +-110 degrees; with one, they move to the side (+-90) and the rear pair
+// takes +-135/180 instead. The two LFE-type locations have no direction and
+// return {0, 0}; a caller that means to pan a source should exclude them
+// first (see PanTargets below), since an LFE-type entry here says nothing
+// about where the LFE speaker is.
+[[nodiscard]] AC3FORGE_EXPORT Direction direction_of(eac3::chanmap::Location location,
+                                                      bool has_rears, bool has_side_discrete);
+
+// A layout's full-bandwidth locations and the direction each one sits at,
+// LFE-type locations excluded - the set pan_direction below actually spreads
+// a source over.
+struct PanTargets {
+    std::vector<eac3::chanmap::Location> locations;
+    std::vector<Direction> directions;
+
+    // Where a location sits in this set, or -1 if it takes no panned audio.
+    [[nodiscard]] int index_of(eac3::chanmap::Location location) const {
+        for (std::size_t i = 0; i < locations.size(); ++i) {
+            if (locations[i] == location) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+};
+
+[[nodiscard]] AC3FORGE_EXPORT PanTargets pan_targets(
+    std::span<const eac3::chanmap::Location> locations);
+
+// One source direction spread over a target speaker set. Two rings - the
+// listener's plane and the ceiling - each panned by azimuth (via pan_ring
+// above), crossfaded by elevation at constant power. `gains` is sized to
+// `targets` and OVERWRITTEN.
+//
+// A target with no upper layer takes the whole source at full level rather
+// than a cosine-attenuated share: a 5.1 ring has no height speakers, and a
+// legacy decoder has to hear everything or backward compatibility means
+// nothing - the same rule pan_room states for the 5.1 bed.
+AC3FORGE_EXPORT void pan_direction(Direction source, std::span<const Direction> targets,
+                                    std::span<double> gains);
+
+// The direction an object-audio-metadata room position (TS 103 420 §4.2.1:
+// x/y in [0, 1] as pan_room above, z -1 at the floor to +1 at the ceiling)
+// sits at, for panning it with pan_direction rather than folding it onto the
+// flat 5.1 ring the way pan_room does.
+//
+// Azimuth is exactly pan_room's own atan2(left, forward) - the two must agree
+// or an object would point one way in a 5.1 fold and another in a wider
+// render. Elevation reads z against the horizontal distance from room centre,
+// atan2(z, horizontal): an object at the room's centre height (z = 0)
+// measures 0 degrees whatever its azimuth, matching a DynamicObject's own
+// default position, and one directly overhead (x = y = 0.5, z = 1) measures a
+// full 90 regardless of the elevation angle this file otherwise treats as
+// "the ceiling" - the two are independent numbers that only happen to agree
+// at kHeightElevationDeg for a source at the room's outer edge, which is
+// where every named height location in Table E2.5 sits.
+[[nodiscard]] AC3FORGE_EXPORT Direction position_direction(double x, double y, double z);
 
 struct ObjectState {
     double azimuth_deg = 0.0;

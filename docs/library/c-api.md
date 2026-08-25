@@ -80,6 +80,65 @@ status = ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PE
 than the full custom curve struct, which stays a C++-only tuning knob; see [Metadata](metadata.md)
 for what each preset means.
 
+## E-AC-3 encoding (multiple substreams, Annex E tools)
+
+`ac3forge_eac3_encoder_t` and `ac3forge_eac3_access_unit_encoder_t` are the C counterparts to
+`ac3::eac3::FrameEncoder` and `AccessUnitEncoder` — see [Encoding E-AC-3](encoding-eac3.md) for what
+each field actually does. `ac3forge_eac3_frame_config_t` mirrors `FrameConfig`'s core surface —
+sample rate (including the three `fscod2` reduced rates), bitrate, `acmod`/`lfe`, the Annex E tools
+(`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), and substream identity
+(`strmtyp`/`substreamid`/`chanmap`):
+
+```c
+ac3forge_eac3_frame_config_t config;
+ac3forge_eac3_frame_config_init(&config);   // same defaults as FrameConfig{}
+config.bitrate_kbps = 192;
+config.acmod = AC3FORGE_ACMOD_2_0;           // L, R
+
+ac3forge_eac3_encoder_t* encoder = NULL;
+ac3forge_status_t status = ac3forge_eac3_encoder_create(&config, &encoder);
+```
+
+`ac3forge_eac3_encoder_encode_frame` takes `ac3forge_eac3_encoder_channel_count(encoder)` channel
+pointers, each `ac3forge_eac3_encoder_samples_per_frame(encoder)` samples (`AC3FORGE_SAMPLES_PER_FRAME`
+today), an optional `ac3forge_eac3_frame_metadata_t*` (`NULL` measures the §7.7 words internally),
+and an optional EMDF aux payload:
+
+```c
+const float* channels[2] = {left, right};
+ac3forge_bytes_t* encoded = NULL;
+status = ac3forge_eac3_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                             NULL, NULL, 0, &encoded);
+```
+
+Widening past 5.1 needs `ac3forge_eac3_access_unit_encoder_t`, built from one independent config
+plus an array of dependent configs (at most 8) — `AC3FORGE_CHANMAP_71_REAR`/`_512_HEIGHT`/`_TOP_QUAD`
+name the Table E2.5 combinations a dependent needs for 7.1/5.1.2/5.1.4:
+
+```c
+ac3forge_eac3_frame_config_t independent, dependent;
+ac3forge_eac3_frame_config_init(&independent);
+independent.bitrate_kbps = 448;
+independent.acmod = AC3FORGE_ACMOD_3_2;
+independent.lfe = 1;
+
+ac3forge_eac3_frame_config_init(&dependent);
+dependent.bitrate_kbps = 192;
+dependent.acmod = AC3FORGE_ACMOD_2_0;
+dependent.has_chanmap = 1;
+dependent.chanmap = AC3FORGE_CHANMAP_512_HEIGHT;   // Vhl, Vhr -> 5.1.2
+
+ac3forge_eac3_access_unit_encoder_t* au_encoder = NULL;
+status = ac3forge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &au_encoder);
+```
+
+`ac3forge_eac3_access_unit_encoder_encode` takes every substream's channels in transmission order
+(the independent's first, LFE last, then each dependent's in the order its `chanmap` names them)
+and writes an owned `ac3forge_eac3_access_unit_t` — `..._data`/`..._size` for the concatenated
+bytes, `..._substream_count`/`..._substream_bytes` for the per-substream boundaries `crc2`
+recomputation or demuxing needs. Full program:
+[`examples/capi_encode_eac3.c`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_eac3.c).
+
 ## Decoding
 
 `ac3forge_decoder_t` (AC-3) and `ac3forge_eac3_decoder_t` (E-AC-3/Atmos) mirror `FrameDecoder` and
@@ -123,6 +182,13 @@ custom `ac3::meta::Profile` DRC curve (attack/release timing, boost ratios) is l
 tuning knob; the C API exposes only the five named presets (above). Internal kernel-level
 benchmarking entry points such as `ac3::oba::band_energy` are excluded outright — their own C++
 doc comments already say no caller outside the library should need them directly.
+
+`ac3forge_eac3_frame_config_t` likewise trims `ac3::eac3::FrameConfig`: the `mixmdate`/`infomdat`
+metadata groups, `dialnorm2`/`drc`/`heavy` (dual mono and DRC would reuse the same presets the AC-3
+encoder already exposes, but the broader Table E1.2 metadata surface those two groups sit inside is
+deferred), `vbr` (CBR only), and `numblkscod` (six-block syncframes only) are not mirrored — a
+config built from `ac3forge_eac3_frame_config_init()` and read back always agrees with a default
+`FrameConfig{}` on every field this struct doesn't carry.
 
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
