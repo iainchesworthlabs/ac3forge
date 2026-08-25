@@ -69,6 +69,25 @@
       "note": "FFmpeg-encoded from reference_51.wav: `ffmpeg -y -i tests/golden/audio/reference_51.wav -c:a eac3 -b:a 448k <out>` (ffmpeg 8.0.1). Confirmed to set cplbndstrce == 0 with cplbegf == 12 in every block - see tools/checks/verify_gold_reference.sh for why cplbegf != 0 matters here."
     },
     {
+      "fixture": "reference_objects.paths",
+      "kind": "bitstream",
+      "sha256": "f922ba1ead31ade900a73705a5a05b157cac204f053bda211397af86006939db",
+      "bytes": 714,
+      "note": "Not a coded stream: atmos-path's plain-text keyframe-column format, placing gen_object_scene_wav.py's five reference_objects.wav objects (SYNTHETIC above) in the room at unit gain. kind stays \"bitstream\" because that is check_corpus.py's only hash-only, no-audio-parameters category, not because this file is one - see this list's own header comment and gen_object_scene_wav.py's module docstring."
+    },
+    {
+      "fixture": "reference_objects.wav",
+      "kind": "synthetic",
+      "channels": 5,
+      "sample_rate": 48000,
+      "bits": 16,
+      "duration_s": 2.0,
+      "sha256": "fd47941178a95db4dc8180d7e7f12b8c59ee3e8c5be7ad341f890e3c9ce92bc8",
+      "bytes": 960044,
+      "generator": "tools/generators/gen_object_scene_wav.py",
+      "note": "5-channel WAV, one mono object essence per channel (broadcast, comet, engine, pod-hi, pod-lo). Paired with reference_objects.paths (BITSTREAMS below, hash-only) which places each object in the room at unit gain - see this file's own module docstring for the scene."
+    },
+    {
       "fixture": "reference_stereo.wav",
       "kind": "synthetic",
       "channels": 2,
