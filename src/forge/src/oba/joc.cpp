@@ -459,10 +459,18 @@ namespace {
 
             // --- §6.6.6: this object's spectrum is a per-band linear
             // combination of the downmix's ---
-            for (int bin = 0; bin < 256; ++bin) {
-                const int subband = bin / 4;
+            //
+            // band (and therefore each channel's mixing coefficient m) is
+            // constant across the 4 MDCT bins one QMF subband covers - the
+            // interpolation/ramp state a bin's own coefficient depends on is
+            // keyed by (object, channel, subband), never by bin. The loop
+            // below computes each channel's m once per subband and reuses
+            // it across those 4 bins instead of recomputing an identical
+            // value 4 times; the per-bin summation itself (order, operands)
+            // is untouched, so this is the same arithmetic, done less often.
+            std::array<double, kMaxChannels> m{};
+            for (int subband = 0; subband < kQmfSubbands; ++subband) {
                 const int band = mapping[static_cast<std::size_t>(subband)];
-                double sum = 0.0;
                 for (int ch = 0; ch < channels; ++ch) {
                     const std::array<double, kMaxDataPoints> dq = {
                         params.at(object, 0, ch, band),
@@ -475,12 +483,18 @@ namespace {
                         static_cast<std::size_t>(subband);
                     const double previous =
                         has_ramp ? state.previous_matrix[previous_index] : dq[0];
-                    const double m =
+                    m[static_cast<std::size_t>(ch)] =
                         has_ramp ? interpolate(shape, previous, dq, ts)
                                  : dq[static_cast<std::size_t>(shape.data_points - 1)];
-                    sum += m * bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
                 }
-                object_mdct[static_cast<std::size_t>(bin)] = sum;
+                for (int bin = subband * 4; bin < subband * 4 + 4; ++bin) {
+                    double sum = 0.0;
+                    for (int ch = 0; ch < channels; ++ch) {
+                        sum += m[static_cast<std::size_t>(ch)] *
+                               bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
+                    }
+                    object_mdct[static_cast<std::size_t>(bin)] = sum;
+                }
             }
 
             // --- synthesize, same overlap-add eac3_decoder.cpp's own
