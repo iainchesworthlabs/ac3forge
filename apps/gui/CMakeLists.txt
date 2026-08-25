@@ -19,6 +19,10 @@ qt_add_executable(ac3gui
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
+    stream_player_controller.cpp
+    stream_player_controller.hpp
+    channel_geometry.cpp
+    channel_geometry.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
@@ -72,7 +76,8 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/AboutDialog.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/QcGateMeter.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/QcDialog.qml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/qml/ObjectInspectorDialog.qml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/ObjectInspectorDialog.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/StreamPlayerDialog.qml")
 
 foreach(qml_file IN LISTS AC3_QML_FILES)
     get_filename_component(qml_name "${qml_file}" NAME)

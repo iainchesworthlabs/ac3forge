@@ -85,22 +85,27 @@ ALSA still comes first](../building.md#why-alsa-still-comes-first).
 
 ### What has and has not been verified
 
-!!! warning "No Linux audio has been tried against real hardware"
-    Both backends were verified **headless only**, on WSL2 Ubuntu 26.04 with GCC 15.2 and Clang
-    22.1: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
+!!! note "ALSA is hardware-confirmed via Raspberry Pi; PipeWire is not, anywhere"
+    The development loop itself — WSL2 Ubuntu 26.04 with GCC 15.2 and Clang 22.1 — is still
+    headless: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
     PipeWire (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
     -DAC3FORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
     default. The full test suite passes in every configuration tried. ALSA's device-independent
     halves (device-name construction, channel-status derivation, negotiation, the render/capture
     threads, start/stop, error mapping) were additionally driven end to end against ALSA's
     software `null` PCM device. WSL2 has no sound devices, no kernel sound modules, and no
-    PipeWire session running at all, so nothing on either backend has ever been bitstreamed to a
-    real S/PDIF or HDMI output, no AV receiver has been asked to lock onto the result, and
-    PipeWire's own enumeration has only ever seen "no session" (`pw_context_connect()` failing
-    fast, not a real graph with real nodes) rather than a genuine node to negotiate a compressed
-    format against. This is a real, current gap, not a minor caveat — whether a given output
-    accepts a bitstream is per-device anyway, and `ac3cli outputs` probes each one and reports
-    what it finds.
+    PipeWire session running at all, so nothing built there has ever been bitstreamed to a real
+    S/PDIF or HDMI output from that environment, and PipeWire's own enumeration has only ever
+    seen "no session" (`pw_context_connect()` failing fast, not a real graph with real nodes)
+    rather than a genuine node to negotiate a compressed format against.
+
+    That gap is now closed for ALSA specifically, on real hardware elsewhere: see
+    [Raspberry Pi → Live HDMI passthrough to a real
+    receiver](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) for a Pi 4B bitstreaming
+    every AC-3/E-AC-3/Atmos shape tried to a real Atmos-capable AVR over HDMI, correctly
+    identified every time. PipeWire remains unconfirmed against real hardware on any platform —
+    this is a real, current gap, not a minor caveat — and whether a given output accepts a
+    bitstream is per-device anyway; `ac3cli outputs` probes each one and reports what it finds.
 
 ## GUI: opt-in, not on by default
 

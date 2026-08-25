@@ -281,12 +281,15 @@ constexpr std::array<Command, 39> kCommands{{
          return run_eac3_encode(x.str(1), x.str(2), x.u32(3, 192), x.str(4, "none"), x.str(5),
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
-    {"decode", 3, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir]",
+    {"decode", 3, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",
      "AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): "
-     "export each JOC-reconstructed object as its own object_NN.wav there",
+     "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
+     "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
+     "Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own "
+     "decoded OAMD",
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
-     [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3)); }},
+     [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},
     {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
      "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
      "tool usage and per-frame CRC - as a table, or as a documented JSON contract",

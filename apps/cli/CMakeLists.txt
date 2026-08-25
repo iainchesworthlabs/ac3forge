@@ -47,10 +47,10 @@ endif()
 # reasoning, including why this replaced an earlier #ifdef-based design once
 # tools/checks/check_platform_macros.ps1 was actually run against it.
 if(AC3FORGE_BUILD_ADM)
-    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp)
+    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp)
     target_link_libraries(ac3cli PRIVATE ac3adm::ac3adm ac3::admbridge)
 else()
-    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp)
+    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp adm/disabled/decode_adm.cpp)
 endif()
 
 # ac3::coverage (roadmap VX15) instruments this target's OWN sources. Linking
