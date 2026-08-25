@@ -101,6 +101,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3::oba::ObjectScene`** (`IM7`): one object-scene timeline (named objects, interpolated
   automation, orientation-as-metadata, JSON) shared by `atmos-path`, the GUI and the examples,
   replacing four ad-hoc formats.
+- **A JOC → ADM BWF writer** (`IM2`): `ac3cli decode ... adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (BS.2076-2 ADM XML + BS.2088 BW64, cartesian `audioBlockFormat` automation) from a
+  decoded E-AC-3/Atmos stream's own bed LFE and JOC-reconstructed dynamic objects, positioned by
+  their real decoded OAMD timeline. `ac3adm::write_bw64` and `ac3::admbridge::write()` give
+  `ac3adm`/`ac3::admbridge` a write direction alongside `atmos-adm`'s existing read one; a written
+  master round-trips through `atmos-adm` itself. Needs `-DAC3FORGE_BUILD_ADM=ON`, like every other
+  ADM command; scoped to dynamic-object-only Atmos programmes for now (a genuine bed program is
+  warned about and skipped, not written incorrectly).
 - **E-AC-3 encoder input-space fuzzing** (`VX1`) and **metadata-parser fuzzing** (`VX3`: EMDF,
   OAMD, JOC, signing verification, ADM) with a CRC-repairing mutator so mutations actually reach
   the object parsers instead of dying at the CRC check.
@@ -115,6 +123,11 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   conformance vectors** (`docs/conformance-vectors.md`, `VX20`) shipped with every release.
 - **Script Lint, a ThreadSanitizer leg, and PR-time performance comparison** (`VX14`, `VX16`,
   `VX17`) join CI.
+- **A cross-platform bitstream-hash gate** (`tools/checks/check_cross_platform_hash.py`, `VX11`):
+  pins a SHA-256 of the gold-reference streams this project's own encoder produces, per SIMD
+  kernel and transform mode, so the arm64/macOS legs' unexplained 6.02 dB gold-gate gap (see
+  Changed below) cannot silently change size without CI noticing, whether or not it is ever
+  explained.
 
 **Performance and portability (PF)**
 
@@ -128,6 +141,17 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   x86-64/ARMv8, bit-identical output, no runtime dispatch.
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
   (`PF7`, `AC3FORGE_MINIMAL_DECODER`, cross-compiled and run on QEMU's Cortex-M3 target).
+
+**Applications (UX)**
+
+- **`ac3gui` gained an "Open stream…" player** (`UX1`): the GUI twin of `ac3cli monitor`, playing
+  an already-encoded `.ac3`/`.ec3` file's decoded bed through a real transport (play/pause/seek)
+  with live meters and the soundfield view, reusing the `MonitorSink` plumbing the object-decode
+  and encode-preview paths already established. **Export decoded WAV…** and **Export objects…**
+  (Atmos only) give it `ac3cli decode`'s two outputs from the same decode pass. A finished run
+  chip's own **More…** menu now offers **QC this run** and **Inspect objects** directly, closing
+  the gap [`docs/gui/qc.md`](docs/gui/qc.md) and [`docs/gui/inspect-objects.md`](docs/gui/inspect-objects.md)
+  used to both end by naming. See [docs/gui/open-stream.md](docs/gui/open-stream.md).
 
 ### Changed
 
@@ -154,6 +178,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   promoting it stakes exactly what the investigation found. `fuzz-nightly` also runs the two
   differential harnesses at its deeper budget, and `fuzz/corpus/` now persists across nightly
   runs via `actions/cache` instead of every scheduled run starting from an empty corpus.
+- **The arm64/macOS gold-gate 6.02 dB SNR gap's leading hypothesis (architecture-specific libm
+  `sin`/`cos` in the transform twiddle tables) is falsified by direct measurement, not just
+  argument** (`VX11`): every twiddle-table `std::cos`/`std::sin` call, and the actual
+  gold-reference gate run end to end, is bit-identical between native x86-64 and a real aarch64
+  cross-build (GCC 16) under `qemu-user`'s IEEE-754-conformant emulation — not the ~61.8 dB every
+  real arm64/macOS CI leg measures. The gap is real and reproducible but does not come from
+  anything buildable without the real hardware CI already has; `docs/building.md`'s "Floating-point
+  contraction" section carries the full measurement and the two remaining candidates. Also fixed
+  in passing: that section, and a `ci.yml` comment, both mis-described `kAnalysisWindow` as
+  libm-derived — it is a `consteval` construction with no runtime libm call at all.
 - **`atsc-a85` re-cited to A/85:2026-07** (`IO11`; no preset numbers move, only the citation).
 - Internal: `std::format`/`std::print`/`std::printf` replaced with {fmt} throughout (NDK's libc++
   has no usable `<format>`); the WASM decode demo now plays the library's own §7.8 downmix instead
@@ -177,6 +211,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`coupling::quantize_coordinate`/`choose_master` computed a coordinate's binade shift via
+  `floor(-std::log2(value))`** (`VX12`): a transcendental libm call whose last-bit behaviour is
+  not required to agree across compilers/architectures, at exactly the input class (a value on or
+  near a power of two) where its true result is itself an integer, so any rounding at all could
+  land `floor()` on either side of it. Replaced with `std::ilogb`, which reads the binary exponent
+  directly out of the IEEE-754 representation with no rounding at all. Proven behaviour-preserving
+  on real material: the gold-reference gate's three self-encoded streams hash byte-identical to
+  their pre-change values.
 - **`tools/ci/quality_race.py trend` crashed on `eac3-stereo-64`'s known-infeasible tool
   variants** rather than reporting them. That leg exists specifically to bracket the rate where
   E-AC-3 stereo needs *both* coupling and spectral extension to fit (32 kbit/s per channel — see

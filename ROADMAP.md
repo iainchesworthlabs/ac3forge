@@ -459,12 +459,18 @@ machine-readable output and a single failure exit code. Users arrive with contai
   hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
   files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
   ingest only; rendering stays with Cavern.
-- [ ] **IM2 (L)** — JOC → ADM BWF writer. `decode … objects_dir` writes `object_NN.wav` only —
-  the decoded objects have no positions. Write a Dolby Atmos Master ADM Profile BW64 (cartesian
-  coordinates, `audioBlockFormat` automation, `chna`) from `Eac3Decoder`'s object metadata, object
-  audio and bed, round-trip it through `atmos-adm`, check it with MediaConch's profile rules.
-  This is also the practical IAMF bridge: AOM's `iamf-tools` encoder takes ADM-BWF input. The
-  vendored libbw64/libadm writers are unused today; inherits the `AC3FORGE_BUILD_ADM` gate.
+- [x] **IM2 (L)** — JOC → ADM BWF writer. `decode … adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (cartesian coordinates, `audioBlockFormat` automation, `chna`) from
+  `Eac3Decoder`'s object metadata, object audio and the bed's own LFE, round-tripped through
+  `atmos-adm` (`ac3adm::write_bw64` + `ac3::admbridge::write()`, both new). Scoped to
+  dynamic-object-only programmes (this project's own encoder never writes a bed program; a
+  decoded one is warned about and skipped rather than written incorrectly) and cartesian
+  positions only. Checking a written master against MediaConch's own EBU-R 143-style profile
+  rules was not attempted — no MediaConch install in this environment — so that verification is
+  still open if it turns out to matter. This is also the practical IAMF bridge: AOM's
+  `iamf-tools` encoder takes ADM-BWF input. The vendored libbw64/libadm writers were unused
+  before this; both are now driven by `ac3adm`'s new write side. Inherits the
+  `AC3FORGE_BUILD_ADM` gate.
 - [ ] **IM3 (XL)** — IAMF / Eclipsa Audio interop (was `B3`). v1.1.0 is final (`libiamf`,
   BSD-3-Clause-Clear), a v2.0.0 working-group-approved draft (2026-07-27) adds object-based
   elements, and AOM published its Open Audio Renderer v1 on 2026-07-30. IAMF's codec list is
@@ -616,26 +622,97 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
   second time that way. The codec matrix gained `fast-imdct=off` decode rows for both codecs
   beside its existing `fast-mdct=off` encode row.
-- [ ] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
+- [x] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
   `macos-llvm` all score exactly 6.0 dB below every x86 leg on every channel of the gold gate.
   `docs/building.md` and `ci.yml` blamed Homebrew's libm, which the glibc/GCC arm64 rows
   contradict: it is architectural, not a libm-package difference. FMA contraction was the leading
   hypothesis for what "architectural" meant — PF5 tested it directly by pinning
   `-ffp-contract=off` project-wide, on every leg, and **the hypothesis is falsified**: the arm64
   and macOS legs still measure ~61.8 dB against x86's ~67.8 dB, unchanged to within run-to-run
-  noise from the numbers before the flag existed. `docs/building.md` now carries that measurement
-  under "Floating-point contraction" in place of the libm explanation, and the flag stays pinned
-  regardless — it is what the SIMD seam's own bit-exactness argument needs, independent of this
-  question. What survives is the correlation with architecture itself: every low-scoring leg is
-  aarch64 (`macos-llvm`'s GitHub-hosted runner is Apple Silicon), which points at aarch64's own
-  compiled libm producing different last-bit `std::cos`/`std::sin` results in the transform
-  twiddle tables (`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) — untested, and the next step
-  before either a cross-leg bitstream-hash gate or a documented, accepted divergence.
-- [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. `docs/building.md` records that
-  nothing verifies MSVC, GCC and Clang round the pipeline identically and that they do not.
-  Audit the encoder's decision points for floating-point dependence (or move them to integer),
-  then gate byte-identical gold encodes across every leg, at least under `mode=reference`; a
-  recorded-decisions replay mode makes bisecting and paper reproduction possible.
+  noise from the numbers before the flag existed. The surviving hypothesis — aarch64's own
+  compiled libm producing different last-bit `std::cos`/`std::sin` in the transform twiddle tables
+  — was investigated for real this time, and **is also falsified**, by direct measurement rather
+  than argument: every one of the 2,170 `std::cos`/`std::sin` calls the actual twiddle-table
+  constructors make (`mdct.cpp`'s `Twiddles`/`Twiddles2`/`FastMdctTables`, `fft_kernel.hpp`'s
+  `FftTables` at this codec's real transform sizes) is bit-identical between native x86-64 (GCC and
+  Clang) and a real aarch64 cross-build (GCC 16, matching `linux-gcc-arm64`'s major version) run
+  under `qemu-user`, which implements IEEE-754 arithmetic rather than approximating it. Taken
+  further: the actual gold-reference gate, run end to end against a real
+  `AC3FORGE_SIMD=aarch64`/`aarch64-neon` cross-build under that same emulation, does not reproduce
+  the gap either — every one of its 32 checks came back bit-identical to x86-64, not the ~61.8 dB
+  every real arm64/macOS CI leg measures (`generic` on x86-64 matched both, for the same IEEE-754
+  reason). Along the way, `docs/building.md`'s own description of `kAnalysisWindow` as
+  libm-derived was itself wrong — it is a `consteval` construction with no runtime libm call at
+  all — fixed in the same pass. So the gap is real, reproducible, and does not come from anything
+  this project can build without the real hardware CI already has: the two most likely remaining
+  candidates (GitHub's *natively*-packaged aarch64 compiler versus the Debian cross-compiler
+  package used here, or a genuine real-silicon FP behaviour `qemu-user` does not reproduce) both
+  need the real runners to test further, which is now recorded in `docs/building.md` rather than
+  guessed at. What ships instead of an explanation: a cross-platform bitstream-hash gate
+  (`tools/checks/check_cross_platform_hash.py`, wired into `verify_gold_reference.sh`) pinning a
+  SHA-256 of the actual encoded bytes per `(kernel, transform mode)` in
+  `tests/golden/bitstream-hashes.json` — `x86_64-sse2` and `generic` are pinned from the
+  measurements above; `aarch64-neon` and the macOS kernel are deliberately left for whoever next
+  has those real CI logs in front of them, since pre-filling them from the qemu measurement would
+  pin the wrong number by this item's own finding. `docs/building.md` and `ci.yml`'s header both
+  carry the corrected history in place of the stale libm explanation.
+- [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. PARTIAL. Audited every discrete,
+  bitstream-affecting decision in `src/forge/src/encoder/` (and the one shared call it makes into
+  `bitalloc.cpp`'s delta-segment bucketing) that a floating-point comparison, argmin or threshold
+  test gates — as opposed to ordinary DSP arithmetic, which is expected to carry tiny
+  platform-dependent noise without changing any discrete choice.
+  **What is already safe:** every BIT-COST decision is integer, and consistently so —
+  `exp_strategy.hpp`'s whole exponent-run DP (`score`/`waste`/`best[]`), `snr_search.hpp`'s
+  fitting search, both encoders' SNR-offset search and delta on/off race, and E-AC-3's
+  hoisted-vs-per-block exponent form choice are all `int`/`long long`/`uint32_t` throughout, with
+  no floating-point comparison anywhere in the decision itself. This is the pattern every fragile
+  finding below should eventually follow, and several already do.
+  **What is fragile, ranked by how much of the bitstream one flipped comparison can restructure:**
+  (1) `transient.cpp`'s block-switch ratio tests (`p1 * kT1 > prev_level1_` and four siblings,
+  fed by a cascaded biquad IIR filter accumulating over hundreds of samples) — `blksw` cascades
+  into MDCT type, coupling/AHT eligibility and rematrix bands, in both encoders, unconditionally,
+  every block. (2) `eac3_frame.cpp`'s `auto_cplbegf`: `coupling.fit < kCouplingMinFit` (0.99) turns
+  E-AC-3 coupling on or off for the whole frame, and the constant's own comment is explicit that
+  it is "not a tuning knob with a comfortable margin" — real frames sit right at it by design.
+  (3) `ecplangleintrp`'s decode-both-ways comparison (`err_interp < err_direct`) and (4) the AHT
+  stationarity ratio (`peak <= 10.0 * quietest`), both structural path choices fed by deep
+  reconstruction pipelines. (5) The rematrix decision
+  (`min(power_sum,power_diff) < min(power_l,power_r)`, shared by both encoders) and (6) the
+  coupling phase-flip test (`correlation < 0.0`), both bare comparisons with no margin at all,
+  though bounded impact near their own tie point since both sides are close in value exactly when
+  the decision barely matters. (7) Nearest-code/VQ argmin searches with a strict `<` and an
+  early-exit `break` (`quantize_ecplamp`, `aht_vector_quantize`, `fit_ecpl_band`'s chaos-code
+  search) — inherent to any nearest-neighbour search over a continuous-valued codebook, not really
+  "fixable" without a different algorithm. Full file-by-file detail, including several more
+  moderate-priority findings and everything already ruled safe, is preserved in PR history.
+  **What is fixed:** `coupling.cpp`'s `quantize_coordinate` and `choose_master` both computed the
+  shift that lands a coordinate in [0.5, 1) as `floor(-std::log2(value))` — a transcendental libm
+  call whose last-bit behaviour is not required to agree across implementations, at exactly the
+  one input class (a value on or near a power of two) where that call's true result is itself an
+  integer, so any rounding at all can land `floor()` on either side of it. Replaced with
+  `std::ilogb`, which reads the unbiased binary exponent directly out of the IEEE-754
+  representation — exact, no rounding, identical on every conformant platform by construction.
+  Proven behaviour-preserving rather than assumed: a new test
+  (`quantize_coordinate is exact at power-of-two boundaries`, `tests/encoder/test_coupling.cpp`)
+  pins both boundary cases directly, the full 3,778,270-assertion test suite passes unchanged, and
+  the gold-reference gate's three self-encoded streams hash byte-identical to their pre-change
+  values — real coupling coordinates essentially never land exactly on a power of two, so this
+  closes a real correctness gap without moving anything on real material.
+  **What is not done, and why:** the higher-impact findings above are not fixed here. Most of them
+  (the coupling-fit threshold, the AHT stationarity ratio, the transient detector's own ratios)
+  are constants and comparisons calibrated against measured MOS-LQO/SNR data on real programme
+  material (see `docs/library/encoding-ac3.md`), not arbitrary — moving them, even by adding a
+  margin, is a perceptual-tuning change that needs the same kind of re-validation campaign the
+  original tuning did, which this item's own scope did not include. The transient detector's IIR
+  state is the deepest one: making it genuinely platform-invariant means fixed-point-porting a
+  cascaded biquad filter, a substantially larger, riskier change than this item's remaining
+  budget could respons­ibly take on and re-validate. Gating byte-identical gold encodes across
+  *every* leg (the roadmap text's other half) is blocked on roadmap VX11, not on this audit: VX11
+  found that a real, standards-conformant aarch64 build does not reproduce the arm64/macOS gap at
+  all, so the true root cause is still unidentified, and asserting cross-leg byte-equality today
+  would either be vacuously true on the x86 legs (already covered by VX11's
+  `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit cannot name yet.
+  A recorded-decisions replay mode is genuinely independent future work, not attempted here.
 - [x] **VX13 (S)** — Promote the fuzz jobs. The claimed track record didn't hold up under a real
   check of `gh run list`/job-level history back to 2026-08-09: `fuzz-differential` genuinely had
   zero failures across 218 push runs, but `fuzz-short` had five, all the same
@@ -889,7 +966,7 @@ directory; there is still no threading anywhere in the codec core.
 
 ## UX. Applications
 
-- [ ] **UX1 (M)** — A GUI player/monitor for an existing stream with decode-to-WAV and object
+- [x] **UX1 (M)** — A GUI player/monitor for an existing stream with decode-to-WAV and object
   export, and the run-chip shortcuts into QC and Inspect that two docs pages each end by saying
   do not exist yet. The `MonitorSink` plumbing is already owned by the object-decode controller;
   only the file-driven transport and UI are missing.

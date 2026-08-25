@@ -50,7 +50,22 @@ Coordinate quantize_coordinate(double value, int master, int mantissa_bits) {
     // Find the shift that lands the value in [0.5, 1), which is the range the
     // implicit-leading-one mantissa encodes. The master already contributes
     // 3 * master of that shift.
-    int shift = static_cast<int>(std::floor(-std::log2(value)));
+    //
+    // std::ilogb extracts the unbiased binary exponent directly from the
+    // IEEE-754 representation - exact, no rounding, and identical on every
+    // conformant platform by construction. floor(-std::log2(value)) computes
+    // the same integer through a transcendental libm call, whose last-bit
+    // behaviour is NOT required to be identical across implementations
+    // (roadmap VX12): for a value within a few ULPs of a power of two, one
+    // platform's log2 can round the wrong way across the boundary and shift
+    // lands one off from another platform's, silently taking a different
+    // exponent field for the same input. std::ilogb(value) == n for value in
+    // [2^n, 2^(n+1)), so the target shift is -(ilogb(value) + 1) - matching
+    // floor(-log2(value)) everywhere except exactly AT a power of two, where
+    // the mant > max_mant renormalisation below already corrects the
+    // one-off difference (this used to rely on that path to self-correct;
+    // now it simply never needs to).
+    int shift = -std::ilogb(value) - 1;
     shift = std::max(shift, 0);
     int exp = shift - 3 * master;
 
@@ -133,7 +148,12 @@ int choose_master(std::span<const double> values) {
     if (!(loudest > 0.0)) {
         return kMaxMaster;
     }
-    const int shift = std::max(0, static_cast<int>(std::floor(-std::log2(loudest))));
+    // Same shift as quantize_coordinate above, and for the same reason
+    // (roadmap VX12): std::ilogb rather than floor(-log2(...)), so the two
+    // functions agree exactly on what "the loudest value's own shift" means
+    // instead of merely agreeing up to a libm rounding difference at a
+    // power-of-two boundary.
+    const int shift = std::max(0, -std::ilogb(loudest) - 1);
     // master * 3 must not exceed the loudest value's own shift.
     return std::clamp(shift / 3, 0, kMaxMaster);
 }

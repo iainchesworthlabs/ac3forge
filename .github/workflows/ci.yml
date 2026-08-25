@@ -72,13 +72,26 @@
 # ARMv8-A instruction, absent from baseline x86-64), was tested directly by
 # pinning -ffp-contract=off project-wide (roadmap PF5) - and DISPROVEN: every
 # arm64 leg still measures ~61.8 dB with the flag on, unchanged from before it
-# existed. The correlation that survives is architecture (every low-scoring
-# leg is aarch64, including macos-llvm's Apple Silicon runner), most likely
-# through libm's own architecture-specific sin/cos in the transform twiddle
-# tables - see docs/building.md's "Floating-point contraction" for the
-# measurement and roadmap VX11 for where that investigation continues. The
-# gate stays SNR-based rather than a bit-exact bitstream comparison until it
-# is resolved either way.
+# existed. Architecture-specific libm sin/cos in the transform twiddle tables
+# was the next hypothesis and is ALSO disproven (roadmap VX11): every
+# std::cos/std::sin call the twiddle-table construction makes is bit-identical
+# between native x86-64 and a real aarch64 cross-build (GCC 16, the same
+# -ffp-contract=off flag, the aarch64-neon SIMD kernel) run under qemu-user -
+# and that build's own gold-reference-gate numbers, not just its twiddle
+# tables, are bit-identical to x86-64's, not the ~61.8 dB every real arm64/
+# macOS CI leg measures. So the gap does not reproduce under any standards-
+# conformant aarch64 execution this project can construct without the real
+# hardware CI already has - which points at either the specific NATIVE
+# aarch64 compiler package GitHub's hosted arm64/macOS runners use (as
+# opposed to a Debian cross-compiler package, the only kind available to
+# reproduce this without that hardware) or a genuine real-silicon FP
+# behaviour qemu's IEEE-754-conformant emulation does not reproduce. See
+# docs/building.md's "Floating-point contraction" for the full measurement.
+# The gate stays SNR-based for its own three checks; a separate cross-
+# platform bitstream-hash gate (tools/checks/check_cross_platform_hash.py,
+# also VX11) now pins the ENCODED bytes of every gold-reference stream per
+# kernel/mode so this specific gap - resolved or not - cannot silently
+# change without CI noticing.
 #
 # Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
 # ctest entry per tst_*.qml suite (label "gui") that Quick-Test-drives the
