@@ -171,6 +171,17 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`tools/checks/check_matrix_coverage.py`'s Annex E tools check false-failed on `numblkscod`**,
+  which `tools/ci/run_codec_matrix.sh` has exercised with real values (`numblkscod:0/1/2`, plus
+  `cpl+numblkscod:1`) since `EQ11`. `plan::kToolsSyntax` spells that entry `numblkscod:N` in its
+  primary token list — a literal placeholder, since unlike `cpl`/`spx`/`aht` it has no bare form
+  `parse_tools` accepts — but the check's own `matrix_tool_tokens()` already bares every
+  real `numblkscod:0`-shaped invocation down to `numblkscod` per its documented convention for
+  parameterised tokens; the canonical side never applied that same normalisation, so the two
+  spellings could never match regardless of what the matrix actually ran. Masked for a while by
+  an unrelated `run_codec_matrix.sh` abort earlier in the same job (fixed above); once that
+  stopped hiding it, the gap showed up on `main` as a "FFmpeg Validate" failure with no real
+  coverage gap behind it.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`

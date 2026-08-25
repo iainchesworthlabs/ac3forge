@@ -170,7 +170,13 @@ def tool_names(cli: str, tmp: Path) -> set[str]:
         raise SystemExit(f"could not parse a tool list from eac3-encode's error output:\n{err}")
     tokens = set()
     for token in m.group(1).split("|"):
-        tokens.add(token.split("(")[0].strip())
+        name = token.split("(")[0].strip()
+        # kToolsSyntax spells numblkscod's primary-list entry "numblkscod:N"
+        # (a literal placeholder, since unlike cpl/spx/aht it has no bare
+        # form parse_tools accepts) - bare it the same way
+        # matrix_tool_tokens() bares a real "numblkscod:0"/"numblkscod:1"
+        # invocation, or it can never match what the matrix actually runs.
+        tokens.add(name.split(":")[0])
     return tokens
 
 
