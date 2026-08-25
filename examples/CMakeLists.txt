@@ -84,11 +84,22 @@ if(AC3FORGE_BUILD_CAPI)
     enable_language(C)
     add_executable(capi_encode_decode capi_encode_decode.c)
     target_link_libraries(capi_encode_decode PRIVATE ac3::forge_c ac3::warnings)
-    set_target_properties(capi_encode_decode PROPERTIES FOLDER examples)
 
     add_executable(capi_encode_eac3 capi_encode_eac3.c)
     target_link_libraries(capi_encode_eac3 PRIVATE ac3::forge_c ac3::warnings)
-    set_target_properties(capi_encode_eac3 PROPERTIES FOLDER examples)
+
+    # AP4: pin the dialect rather than riding whatever the compiler defaults to
+    # (gnu17 on GCC/Clang, an unspecified MSVC default) - this is the project's
+    # one standing proof that ac3forge_c/ac3forge.h is valid strict C11 (with
+    # -Wpedantic from ac3::warnings above) on every desktop leg, not merely
+    # valid under whichever superset dialect happened to be the default.
+    foreach(capi_example IN ITEMS capi_encode_decode capi_encode_eac3)
+        set_target_properties(${capi_example} PROPERTIES
+            FOLDER examples
+            C_STANDARD 11
+            C_STANDARD_REQUIRED ON
+            C_EXTENSIONS OFF)
+    endforeach()
 
     if(AC3FORGE_BUILD_TESTS)
         add_test(NAME "example.capi_encode_decode" COMMAND capi_encode_decode)

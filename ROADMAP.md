@@ -942,10 +942,20 @@ directory; there is still no threading anywhere in the codec core.
   config aggregates stay value types on purpose — see `docs/library/index.md`'s new
   "pimpl" convention note for the growth-after-1.0 decision and why `EncoderConfig`'s
   `verify::FrameTrace*` (and its siblings) are not part of that promise.
-- [ ] **AP4 (M)** — An ABI gate: libabigail or abi-compliance-checker over the
-  `linux-llvm-shared` build against the last tag, advisory before 1.0 and required after; an
-  exported-symbol allowlist (visibility is already hidden everywhere); a `-std=c11 -Wpedantic`
-  compile of `ac3forge.h` on every leg.
+- [x] **AP4 (M)** — An ABI gate. Done: `abi-gate` in `ci.yml` builds `config-linux-llvm-shared`
+  at HEAD and at the last `v*` tag (a `git worktree`, mirroring `performance-compare`'s own
+  merge-base pattern) and runs `abidiff` across all six shared libraries, plus
+  `tools/ci/check_abi_symbols.py` — a checked-in `nm -D --defined-only` allowlist per library
+  under `tools/ci/abi-allowlist/` — advisory (`continue-on-error: true`) until `AP1`'s freeze,
+  at which point deleting that one line is the whole promotion. `examples/capi_encode_decode.c`
+  and `capi_encode_eac3.c` now pin `C_STANDARD 11`/`C_STANDARD_REQUIRED ON`/`C_EXTENSIONS OFF`
+  on top of the `-Wpedantic` they already got from `ac3::warnings`, so `ac3forge_c/ac3forge.h`
+  is proven strict-C11-clean on every desktop leg that already builds them, not a new leg.
+  Demonstrated locally (WSL2): a stray `AC3FORGE_EXPORT` added to
+  `ac3::internal::resolve_operating_mode` (an internal decoder helper, never meant to be
+  public) makes `check_abi_symbols.py` fail with `+
+  ac3::internal::resolve_operating_mode(ac3::DecoderConfig const&) (newly exported, not in
+  allowlist)`; reverted before merging.
 - [ ] **AP5 (L)** — C API completeness. ~~It has an AC-3 encoder, an Atmos encoder and both
   decoders, and no E-AC-3 encoder at all~~ `ac3forge_eac3_encoder_t`/
   `ac3forge_eac3_access_unit_encoder_t` now cover plain E-AC-3 and dependent-substream wide
