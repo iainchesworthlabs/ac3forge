@@ -220,8 +220,48 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
     return units;
 }
 
-FrameDecoder::FrameDecoder(const DecoderConfig& config)
-    : config_(internal::resolve_operating_mode(config)), output_(config.output) {}
+// Every private data member, following the same pimpl pattern as
+// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
+struct FrameDecoder::Impl {
+    DecoderConfig config_{};
+    std::array<std::array<double, 256>, 6> delay_{};  // overlap-add state
+    // §7.3.4 dither, persisting across frames like delay_ above so a long
+    // stream's substituted noise does not repeat every syncframe.
+    DitherGenerator dither_{};
+    // §7.8/§5.4.2.8, applied after the channels are reconstructed. Inert
+    // unless DecoderConfig::output asks for something.
+    OutputStage output_{};
+    // What §7.10 concealment reconstructs from: the metadata of the last
+    // frame that decoded, and the last BLOCK's windowed transform output per
+    // coded channel (the whole 512, not only the half delay_ keeps).
+    // Populated only while concealment is enabled, so a decoder configured
+    // the way every existing caller configures it carries none of it.
+    struct Retained {
+        DecodedFrame shape;
+        std::vector<std::array<double, 512>> last_block;
+        int nchans = 0;
+    };
+    std::optional<Retained> retained_ = std::nullopt;
+    // Where the block loop writes its last block while a frame is still in
+    // progress. Committed into retained_ only once the frame has decoded
+    // cleanly, so a frame that fails after five good blocks does not poison
+    // the material the NEXT loss is concealed from. Sized lazily at first
+    // use, so a decoder with concealment off never allocates it.
+    std::vector<std::array<double, 512>> conceal_scratch_;
+};
+
+FrameDecoder::FrameDecoder() : impl_(std::make_unique<Impl>()) {}
+
+FrameDecoder::~FrameDecoder() = default;
+FrameDecoder::FrameDecoder(FrameDecoder&&) noexcept = default;
+FrameDecoder& FrameDecoder::operator=(FrameDecoder&&) noexcept = default;
+
+int FrameDecoder::output_latency_samples() const { return impl_->output_.latency_samples(); }
+
+FrameDecoder::FrameDecoder(const DecoderConfig& config) : impl_(std::make_unique<Impl>()) {
+    impl_->config_ = internal::resolve_operating_mode(config);
+    impl_->output_ = OutputStage(config.output);
+}
 
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
     std::span<const std::byte> stream, int programme) {
@@ -291,13 +331,13 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
     // Nothing retained means this is the head of the stream: there is no
     // previous block to reconstruct from, and inventing one would be
     // substituting audio rather than concealing a gap in it.
-    if (config_.concealment == ConcealmentPolicy::kNone || !retained_) {
+    if (impl_->config_.concealment == ConcealmentPolicy::kNone || !impl_->retained_) {
         return std::nullopt;
     }
-    const bool repeat = config_.concealment == ConcealmentPolicy::kRepeatFade;
-    const int nchans = retained_->nchans;
+    const bool repeat = impl_->config_.concealment == ConcealmentPolicy::kRepeatFade;
+    const int nchans = impl_->retained_->nchans;
 
-    DecodedFrame out = retained_->shape;
+    DecodedFrame out = impl_->retained_->shape;
     // No word was transmitted, so none is reported - the persistence rule in
     // §7.7.1.2 is about blocks within a syncframe, not about a syncframe that
     // never arrived.
@@ -325,7 +365,7 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
     // which is what makes it join up at both ends. Under kRepeatFade each
     // block's transform output is the last good block's, decayed; under kMute
     // it is zero, and the first block still carries the previous frame's own
-    // window tail out of delay_ - so silence arrives as the codec's own
+    // window tail out of impl_->delay_ - so silence arrives as the codec's own
     // fade rather than as a cut.
     //
     // 20 dB across the frame: enough that a lost frame audibly steps back
@@ -337,8 +377,8 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
     double gain = kDecayPerBlock;
     for (int block = 0; block < kBlocksPerFrame; ++block) {
         for (int ch = 0; ch < nchans; ++ch) {
-            const auto& last = retained_->last_block[static_cast<std::size_t>(ch)];
-            auto& delay = delay_[static_cast<std::size_t>(ch)];
+            const auto& last = impl_->retained_->last_block[static_cast<std::size_t>(ch)];
+            auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
             const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
             for (int n = 0; n < 256; ++n) {
                 const auto un = static_cast<std::size_t>(n);
@@ -356,24 +396,24 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
         // forever, which is the one concealment artefact worse than the gap.
         const double carried = gain / kDecayPerBlock;
         for (int ch = 0; ch < nchans; ++ch) {
-            for (double& value : retained_->last_block[static_cast<std::size_t>(ch)]) {
+            for (double& value : impl_->retained_->last_block[static_cast<std::size_t>(ch)]) {
                 value *= carried;
             }
         }
     } else {
-        // kMute has already driven delay_ to zero; clearing the retained
+        // kMute has already driven impl_->delay_ to zero; clearing the retained
         // block keeps a later switch of policy from resurrecting audio from
         // before the dropout.
         for (int ch = 0; ch < nchans; ++ch) {
-            retained_->last_block[static_cast<std::size_t>(ch)].fill(0.0);
+            impl_->retained_->last_block[static_cast<std::size_t>(ch)].fill(0.0);
         }
     }
 
     const auto levels = mix_levels(out.cmixlev, out.surmixlev);
     if (external.empty()) {
-        output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm);
+        impl_->output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm);
     } else {
-        output_.apply(external.first(static_cast<std::size_t>(nchans)), out.acmod, out.lfe,
+        impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), out.acmod, out.lfe,
                       levels, out.dialnorm);
     }
     return out;
@@ -385,11 +425,11 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // Before the first early return, for the same reason FrameEncoder resets
     // its own: a caller reusing one trace across a file must never read a
     // previous frame's state out of a call that decoded nothing.
-    if (config_.trace != nullptr) {
-        config_.trace->reset();
+    if (impl_->config_.trace != nullptr) {
+        impl_->config_.trace->reset();
     }
-    if (config_.syntax != nullptr) {
-        config_.syntax->reset();
+    if (impl_->config_.syntax != nullptr) {
+        impl_->config_.syntax->reset();
     }
     // The direct-form (reference) transform is a CMake-selected translation
     // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
@@ -399,7 +439,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // arithmetic the spec writes down, and substituting a different one would
     // defeat the only reason to set it. Constant-folded away in every ordinary
     // build, where kReferenceTransformAvailable is true.
-    if (!config_.fast_imdct && !internal::kReferenceTransformAvailable) {
+    if (!impl_->config_.fast_imdct && !internal::kReferenceTransformAvailable) {
         return std::unexpected(DecodeError::kUnsupported);
     }
     if (frame.size() < 6) {
@@ -602,12 +642,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // them, otherwise vectors allocated into the result exactly as before.
     // Every sample of every coded channel is written below (six blocks of
     // 256 each), so external storage needs no pre-clearing.
-    // config_.skip_reconstruction leaves both forms untouched: nothing below
+    // impl_->config_.skip_reconstruction leaves both forms untouched: nothing below
     // writes PCM at all, so the value form allocates none (its `channels`
     // comes back empty, as that option's own comment promises) and the
     // decode_frame_into form simply never writes through the caller's spans.
     std::array<std::span<float>, 6> pcm_target{};
-    if (config_.skip_reconstruction) {
+    if (impl_->config_.skip_reconstruction) {
         // Nothing to point at.
     } else if (external.empty()) {
         out.channels.assign(static_cast<std::size_t>(nchans),
@@ -630,9 +670,9 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // entirely with concealment off - which is what keeps a decoder
     // configured the way every existing caller configures it from carrying
     // 24 KB it will never read.
-    const bool retain_last_block = config_.concealment != ConcealmentPolicy::kNone;
+    const bool retain_last_block = impl_->config_.concealment != ConcealmentPolicy::kNone;
     if (retain_last_block) {
-        conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
+        impl_->conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
     }
 
     // §7.7.1.2: an absent word inherits from the previous BLOCK, and block 0
@@ -681,9 +721,9 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // per-stream state once the allocation for the block exists - so that a
     // frame this decoder ends up REFUSING still leaves behind the offsets it
     // reached, which is what localises a desync to a block.
-    if (config_.trace != nullptr) {
-        config_.trace->fbw_channels = nfchans;
-        config_.trace->coded_channels = nchans;
+    if (impl_->config_.trace != nullptr) {
+        impl_->config_.trace->fbw_channels = nfchans;
+        impl_->config_.trace->coded_channels = nchans;
     }
     // The syntax trace's frame-wide shape (ac3/decoder/syntax_trace.hpp).
     // Every Annex E frame gate it carries stays false here: AC-3 has no
@@ -691,11 +731,11 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // do not exist, and every one of their per-block fields is unconditional
     // instead. per_block_exp_strategy is true for the same reason - Table
     // E2.10's hoisted frame codes are an Annex E addition.
-    if (config_.syntax != nullptr) {
-        config_.syntax->valid = true;
-        config_.syntax->fbw_channels = nfchans;
-        config_.syntax->lfe = lfe;
-        config_.syntax->block_count = kBlocksPerFrame;
+    if (impl_->config_.syntax != nullptr) {
+        impl_->config_.syntax->valid = true;
+        impl_->config_.syntax->fbw_channels = nfchans;
+        impl_->config_.syntax->lfe = lfe;
+        impl_->config_.syntax->block_count = kBlocksPerFrame;
     }
 
     // Per-block scratch, declared once ahead of the block loop rather than
@@ -716,13 +756,13 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
 
     for (int block = 0; block < kBlocksPerFrame; ++block) {
         AC3_ZONE_SCOPED_N("ac3_decode_block");
-        if (config_.trace != nullptr) {
-            auto& trace = config_.trace->blocks[static_cast<std::size_t>(block)];
+        if (impl_->config_.trace != nullptr) {
+            auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
             trace.entered = true;
             trace.bit_offset = r.bit_position();
         }
         BlockSyntax* syntax =
-            config_.syntax != nullptr ? &config_.syntax->blocks[static_cast<std::size_t>(block)]
+            impl_->config_.syntax != nullptr ? &impl_->config_.syntax->blocks[static_cast<std::size_t>(block)]
                                       : nullptr;
         if (syntax != nullptr) {
             syntax->entered = true;
@@ -1153,8 +1193,8 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 syntax->delta_bit_alloc = delta[static_cast<std::size_t>(stream)].deltnseg > 0;
             }
         }
-        if (config_.trace != nullptr) {
-            auto& trace = config_.trace->blocks[static_cast<std::size_t>(block)];
+        if (impl_->config_.trace != nullptr) {
+            auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
             trace.deltbaie = deltbaie;
             trace.streams.resize(static_cast<std::size_t>(streams));
             for (int s = 0; s < streams; ++s) {
@@ -1193,7 +1233,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     exps[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
                     coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                        dither_eligible ? dither_.next() / static_cast<double>(1u << exp) : 0.0;
+                        dither_eligible ? impl_->dither_.next() / static_cast<double>(1u << exp) : 0.0;
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
@@ -1261,7 +1301,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                             // formula a real coupling coefficient would use.
                             const double coeff =
                                 (cpl_bap[ubin] == 0 && ch_dither)
-                                    ? dither_.next() / static_cast<double>(1u << cpl_exps[ubin])
+                                    ? impl_->dither_.next() / static_cast<double>(1u << cpl_exps[ubin])
                                     : shared[ubin];
                             target[ubin] = coeff * coordinate * 8.0 * sign;
                         }
@@ -1300,8 +1340,8 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         for (int ch = 0; ch < nchans; ++ch) {
             const bool second_programme = acmod == Acmod::kDualMono && ch == 1;
             const double drc = second_programme
-                                    ? internal::block_gain(config_, dynrng2_word, compr2)
-                                    : internal::block_gain(config_, dynrng_word, compr);
+                                    ? internal::block_gain(impl_->config_, dynrng2_word, compr2)
+                                    : internal::block_gain(impl_->config_, dynrng_word, compr);
             if (drc != 1.0) {
                 for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
                     value *= drc;
@@ -1309,7 +1349,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             }
         }
         // Everything above this point read the wire; everything below turns
-        // what it read into audio. config_.skip_reconstruction stops here -
+        // what it read into audio. impl_->config_.skip_reconstruction stops here -
         // see its own comment for why an inspection pass wants exactly that
         // cut, and note that it is the LAST thing in the block: no field this
         // frame still has to read depends on it, so a parse that stops here
@@ -1319,16 +1359,16 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // where a decode frame spends most of its time, and the stage
         // DecoderConfig::fast_imdct's default switched under in 0.9.0. Skipped
         // (zone included) whenever the reconstruction itself is.
-        if (!config_.skip_reconstruction) {
+        if (!impl_->config_.skip_reconstruction) {
             AC3_ZONE_SCOPED_N("ac3_imdct_overlap");
             for (int ch = 0; ch < nchans; ++ch) {
                 if (ch < nfchans && blksw[static_cast<std::size_t>(ch)]) {
                     imdct256_pair_windowed(coeffs[static_cast<std::size_t>(ch)], x,
-                                           config_.fast_imdct);
+                                           impl_->config_.fast_imdct);
                 } else {
-                    imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x, config_.fast_imdct);
+                    imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x, impl_->config_.fast_imdct);
                 }
-                auto& delay = delay_[static_cast<std::size_t>(ch)];
+                auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
                 const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
                 for (int n = 0; n < 256; ++n) {
                     const auto sample = static_cast<std::size_t>(n);
@@ -1337,12 +1377,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     delay[sample] = x[static_cast<std::size_t>(256 + n)];
                 }
                 // §7.10's raw material, captured into scratch rather than
-                // straight into retained_: this frame may still be refused
+                // straight into impl_->retained_: this frame may still be refused
                 // below, and a refused frame must not become what the NEXT
                 // loss is reconstructed from.
                 if (retain_last_block && block == kBlocksPerFrame - 1) {
                     std::copy(x.begin(), x.end(),
-                             conceal_scratch_[static_cast<std::size_t>(ch)].begin());
+                             impl_->conceal_scratch_[static_cast<std::size_t>(ch)].begin());
                 }
             }
         }
@@ -1351,25 +1391,25 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         }
     }
     if (retain_last_block) {
-        if (!retained_) {
+        if (!impl_->retained_) {
             // Aggregate-initialised rather than emplace()d: Retained is an
             // aggregate, and libstdc++'s optional::emplace() goes through
             // is_constructible_v, which clang does not satisfy for an
             // aggregate with no constructor of its own. MSVC accepts the
             // emplace form, so this is exactly the kind of difference the
             // Linux legs exist to catch.
-            retained_ = Retained{};
+            impl_->retained_ = Impl::Retained{};
         }
-        retained_->nchans = nchans;
-        // A swap rather than a copy: the buffer retained_ was holding comes
+        impl_->retained_->nchans = nchans;
+        // A swap rather than a copy: the buffer impl_->retained_ was holding comes
         // back the other way and is re-zeroed at the top of the next frame,
         // so neither side ever allocates again.
-        retained_->last_block.swap(conceal_scratch_);
+        impl_->retained_->last_block.swap(impl_->conceal_scratch_);
         // Metadata only - the PCM belongs to this frame and would be a
         // per-frame copy of every channel if it were kept.
-        retained_->shape = out;
-        retained_->shape.channels.clear();
-        retained_->shape.concealed = std::nullopt;
+        impl_->retained_->shape = out;
+        impl_->retained_->shape.channels.clear();
+        impl_->retained_->shape.concealed = std::nullopt;
     }
     // §5.4.2.8/§7.8, last: everything above reconstructs the CODED channels,
     // which is what the decoder is a reference for. Whatever the caller
@@ -1379,12 +1419,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // form's `external` spans were never written through, and folding them
     // would read - and, for a caller who also asked for a downmix, silently
     // rewrite - buffers this call promised to leave untouched.
-    if (!config_.skip_reconstruction) {
+    if (!impl_->config_.skip_reconstruction) {
         const auto levels = mix_levels(cmixlev, surmixlev);
         if (external.empty()) {
-            output_.apply(out.channels, acmod, lfe, levels, dialnorm);
+            impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm);
         } else {
-            output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
+            impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
                           dialnorm);
         }
     }

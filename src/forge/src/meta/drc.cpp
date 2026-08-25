@@ -120,10 +120,25 @@ double smoothing_coeff(double time_ms, SampleRate rate) {
 
 }  // namespace
 
+struct RangeController::Impl {
+    Profile profile_;
+    double attack_coeff_;
+    double release_coeff_;
+    double gain_db_ = 0.0;
+};
+
 RangeController::RangeController(const Profile& config, SampleRate rate)
-    : profile_(config),
-      attack_coeff_(smoothing_coeff(config.attack_ms, rate)),
-      release_coeff_(smoothing_coeff(config.release_ms, rate)) {}
+    : impl_(std::make_unique<Impl>(Impl{
+          .profile_ = config,
+          .attack_coeff_ = smoothing_coeff(config.attack_ms, rate),
+          .release_coeff_ = smoothing_coeff(config.release_ms, rate),
+      })) {}
+
+RangeController::~RangeController() = default;
+RangeController::RangeController(RangeController&&) noexcept = default;
+RangeController& RangeController::operator=(RangeController&&) noexcept = default;
+
+double RangeController::gain_db() const { return impl_->gain_db_; }
 
 std::uint8_t RangeController::next(double level, int dialnorm) {
     // §7.6: dialnorm says dialogue sits dialnorm dB below full scale. Shifting
@@ -131,39 +146,53 @@ std::uint8_t RangeController::next(double level, int dialnorm) {
     // profile curves are drawn against, so a quiet master and a hot one get
     // the same treatment.
     const double referenced = level + static_cast<double>(dialnorm) - 31.0;
-    const double target = static_gain_db(profile_, referenced);
+    const double target = static_gain_db(impl_->profile_, referenced);
     // Attack is the direction that takes gain DOWN — a rising signal needing
     // more attenuation. Getting these the wrong way round is inaudible on a
     // steady tone and obvious on speech.
-    const double coeff = target < gain_db_ ? attack_coeff_ : release_coeff_;
-    gain_db_ += (target - gain_db_) * coeff;
-    return encode_dynrng(gain_db_);
+    const double coeff = target < impl_->gain_db_ ? impl_->attack_coeff_ : impl_->release_coeff_;
+    impl_->gain_db_ += (target - impl_->gain_db_) * coeff;
+    return encode_dynrng(impl_->gain_db_);
 }
 
+struct HeavyCompressor::Impl {
+    HeavyConfig config_;
+    double release_step_db_;
+    double gain_db_ = 0.0;
+    bool primed_ = false;
+};
+
 HeavyCompressor::HeavyCompressor(const HeavyConfig& config, SampleRate rate)
-    : config_(config) {
+    : impl_(std::make_unique<Impl>()) {
+    impl_->config_ = config;
     const double frame_s =
         static_cast<double>(kSamplesPerFrame) / static_cast<double>(sample_rate_hz(rate));
-    release_step_db_ = config.release_db_per_second * frame_s;
+    impl_->release_step_db_ = config.release_db_per_second * frame_s;
 }
+
+HeavyCompressor::~HeavyCompressor() = default;
+HeavyCompressor::HeavyCompressor(HeavyCompressor&&) noexcept = default;
+HeavyCompressor& HeavyCompressor::operator=(HeavyCompressor&&) noexcept = default;
+
+double HeavyCompressor::gain_db() const { return impl_->gain_db_; }
 
 std::uint8_t HeavyCompressor::next(double peak, int dialnorm) {
     // Two constraints, and the tighter one wins. The make-up brings dialogue
     // to the line-up level heavy compression exists to hit; the ceiling is the
     // guarantee, so it can only ever reduce the make-up, never raise it.
-    const double makeup = static_cast<double>(dialnorm) + config_.dialogue_target_dbfs;
-    const double allowed = config_.peak_ceiling_dbfs - peak;
+    const double makeup = static_cast<double>(dialnorm) + impl_->config_.dialogue_target_dbfs;
+    const double allowed = impl_->config_.peak_ceiling_dbfs - peak;
     const double target = std::min(makeup, allowed);
 
-    if (!primed_) {
-        gain_db_ = target;
-        primed_ = true;
-    } else if (target <= gain_db_) {
-        gain_db_ = target;  // instantaneous attack: the ceiling is a promise
+    if (!impl_->primed_) {
+        impl_->gain_db_ = target;
+        impl_->primed_ = true;
+    } else if (target <= impl_->gain_db_) {
+        impl_->gain_db_ = target;  // instantaneous attack: the ceiling is a promise
     } else {
-        gain_db_ = std::min(target, gain_db_ + release_step_db_);
+        impl_->gain_db_ = std::min(target, impl_->gain_db_ + impl_->release_step_db_);
     }
-    return encode_compr_at_most(gain_db_);
+    return encode_compr_at_most(impl_->gain_db_);
 }
 
 bool parse_profile(std::string_view name, ProfileId& out) {

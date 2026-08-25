@@ -117,74 +117,104 @@ double ChannelSummary::peak_db() const { return to_dbfs(peak); }
 
 double ChannelSummary::rms_db() const { return to_dbfs(rms()); }
 
+// Every private data member, following the same pimpl pattern as
+// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
+struct LevelMeter::Impl {
+    Acmod acmod_;
+    bool lfe_;
+    std::uint32_t sample_rate_;
+    MeterBallistics ballistics_;
+    std::vector<ChannelLevel> levels_;
+    std::vector<ChannelSummary> summary_;
+    std::vector<double> mean_square_;   // one-pole RMS state, linear power
+    std::vector<double> hold_elapsed_;  // seconds the hold marker has been parked
+};
+
+LevelMeter::~LevelMeter() = default;
+LevelMeter::LevelMeter(LevelMeter&&) noexcept = default;
+LevelMeter& LevelMeter::operator=(LevelMeter&&) noexcept = default;
+
+std::span<const ChannelLevel> LevelMeter::levels() const { return impl_->levels_; }
+std::span<const ChannelSummary> LevelMeter::summary() const { return impl_->summary_; }
+Acmod LevelMeter::acmod() const { return impl_->acmod_; }
+bool LevelMeter::lfe() const { return impl_->lfe_; }
+int LevelMeter::channel_count() const { return static_cast<int>(impl_->levels_.size()); }
+std::uint32_t LevelMeter::sample_rate() const { return impl_->sample_rate_; }
+
 LevelMeter::LevelMeter(Acmod acmod, bool lfe, std::uint32_t sample_rate,
                        const MeterBallistics& ballistics)
     : LevelMeter(acmod, lfe, sample_rate, analysis::channel_count(acmod, lfe), ballistics) {}
 
 LevelMeter::LevelMeter(Acmod acmod, bool lfe, std::uint32_t sample_rate, int channels,
                        const MeterBallistics& ballistics)
-    : acmod_(acmod),
-      lfe_(lfe),
-      sample_rate_(sample_rate == 0 ? 48000u : sample_rate),
-      ballistics_(ballistics),
-      levels_(static_cast<std::size_t>(
-          std::max(channels, analysis::channel_count(acmod, lfe)))),
-      summary_(levels_.size()),
-      mean_square_(levels_.size(), 0.0),
-      hold_elapsed_(levels_.size(), 0.0) {}
+    : impl_(std::make_unique<Impl>(Impl{
+          .acmod_ = acmod,
+          .lfe_ = lfe,
+          .sample_rate_ = sample_rate == 0 ? 48000u : sample_rate,
+          .ballistics_ = ballistics,
+          .levels_ = std::vector<ChannelLevel>(static_cast<std::size_t>(
+              std::max(channels, analysis::channel_count(acmod, lfe)))),
+          .summary_ = {},
+          .mean_square_ = {},
+          .hold_elapsed_ = {},
+      })) {
+    impl_->summary_.resize(impl_->levels_.size());
+    impl_->mean_square_.assign(impl_->levels_.size(), 0.0);
+    impl_->hold_elapsed_.assign(impl_->levels_.size(), 0.0);
+}
 
 void LevelMeter::reset() {
-    std::ranges::fill(levels_, ChannelLevel{});
-    std::ranges::fill(summary_, ChannelSummary{});
-    std::ranges::fill(mean_square_, 0.0);
-    std::ranges::fill(hold_elapsed_, 0.0);
+    std::ranges::fill(impl_->levels_, ChannelLevel{});
+    std::ranges::fill(impl_->summary_, ChannelSummary{});
+    std::ranges::fill(impl_->mean_square_, 0.0);
+    std::ranges::fill(impl_->hold_elapsed_, 0.0);
 }
 
 void LevelMeter::advance(std::size_t channel, double block_peak, double mean_square,
                          double seconds) {
-    auto& level = levels_[channel];
+    auto& level = impl_->levels_[channel];
 
     // Peak: instantaneous attack, constant-rate fallback. Starting from the
     // floor the decay term stays at the floor, so silence in never lifts the
     // needle.
     const double block_peak_db = to_dbfs(block_peak);
-    const double decayed = level.peak_db - ballistics_.peak_decay_db_per_s * seconds;
+    const double decayed = level.peak_db - impl_->ballistics_.peak_decay_db_per_s * seconds;
     level.peak_db = std::max({block_peak_db, decayed, kFloorDb});
 
     // Hold: parks on the maximum, then descends at the peak's rate but never
     // below it, so the marker rejoins the bar instead of vanishing.
     if (block_peak_db >= level.hold_db) {
         level.hold_db = block_peak_db;
-        hold_elapsed_[channel] = 0.0;
+        impl_->hold_elapsed_[channel] = 0.0;
     } else {
-        hold_elapsed_[channel] += seconds;
-        const double over = hold_elapsed_[channel] - ballistics_.peak_hold_ms / 1000.0;
+        impl_->hold_elapsed_[channel] += seconds;
+        const double over = impl_->hold_elapsed_[channel] - impl_->ballistics_.peak_hold_ms / 1000.0;
         if (over > 0.0) {
-            level.hold_db = std::max(level.peak_db,
-                                     level.hold_db - ballistics_.peak_decay_db_per_s * seconds);
+            level.hold_db = std::max(
+                level.peak_db, level.hold_db - impl_->ballistics_.peak_decay_db_per_s * seconds);
         }
     }
 
     // RMS: one-pole average of the block's mean square. Over a block longer
     // than the integration time alpha saturates at 1, which is the right
     // answer — the block already contains more history than the filter holds.
-    const double tau = ballistics_.rms_integration_ms / 1000.0;
+    const double tau = impl_->ballistics_.rms_integration_ms / 1000.0;
     const double alpha = tau > 0.0 ? -std::expm1(-seconds / tau) : 1.0;
-    mean_square_[channel] += alpha * (mean_square - mean_square_[channel]);
-    level.rms_db = to_dbfs(std::sqrt(mean_square_[channel]));
+    impl_->mean_square_[channel] += alpha * (mean_square - impl_->mean_square_[channel]);
+    level.rms_db = to_dbfs(std::sqrt(impl_->mean_square_[channel]));
 }
 
 void LevelMeter::process(std::span<const std::span<const float>> channels) {
     std::size_t length = 0;
-    for (std::size_t ch = 0; ch < levels_.size() && ch < channels.size(); ++ch) {
+    for (std::size_t ch = 0; ch < impl_->levels_.size() && ch < channels.size(); ++ch) {
         length = ch == 0 ? channels[ch].size() : std::min(length, channels[ch].size());
     }
     if (length == 0) {
         return;
     }
-    const double seconds = static_cast<double>(length) / sample_rate_;
+    const double seconds = static_cast<double>(length) / impl_->sample_rate_;
 
-    for (std::size_t ch = 0; ch < levels_.size(); ++ch) {
+    for (std::size_t ch = 0; ch < impl_->levels_.size(); ++ch) {
         double block_peak = 0.0;
         double sum_squares = 0.0;
         std::uint64_t clipped = 0;
@@ -196,12 +226,12 @@ void LevelMeter::process(std::span<const std::span<const float>> channels) {
                 clipped += std::abs(sample) >= kFullScale ? 1u : 0u;
             }
         }
-        auto& total = summary_[ch];
+        auto& total = impl_->summary_[ch];
         total.peak = std::max(total.peak, block_peak);
         total.sum_squares += sum_squares;
         total.samples += length;
         total.clipped_samples += clipped;
-        levels_[ch].clipped = levels_[ch].clipped || clipped > 0;
+        impl_->levels_[ch].clipped = impl_->levels_[ch].clipped || clipped > 0;
         advance(ch, block_peak, sum_squares / static_cast<double>(length), seconds);
     }
 }
@@ -214,9 +244,9 @@ void LevelMeter::process_interleaved(std::span<const float> samples, std::size_t
     if (length == 0) {
         return;
     }
-    const double seconds = static_cast<double>(length) / sample_rate_;
+    const double seconds = static_cast<double>(length) / impl_->sample_rate_;
 
-    for (std::size_t ch = 0; ch < levels_.size(); ++ch) {
+    for (std::size_t ch = 0; ch < impl_->levels_.size(); ++ch) {
         double block_peak = 0.0;
         double sum_squares = 0.0;
         std::uint64_t clipped = 0;
@@ -229,12 +259,12 @@ void LevelMeter::process_interleaved(std::span<const float> samples, std::size_t
                 clipped += std::abs(sample) >= kFullScale ? 1u : 0u;
             }
         }
-        auto& total = summary_[ch];
+        auto& total = impl_->summary_[ch];
         total.peak = std::max(total.peak, block_peak);
         total.sum_squares += sum_squares;
         total.samples += length;
         total.clipped_samples += clipped;
-        levels_[ch].clipped = levels_[ch].clipped || clipped > 0;
+        impl_->levels_[ch].clipped = impl_->levels_[ch].clipped || clipped > 0;
         advance(ch, block_peak, sum_squares / static_cast<double>(length), seconds);
     }
 }

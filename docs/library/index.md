@@ -149,3 +149,28 @@ calls — but separate instances share nothing and are independent.
 
 **Each `encode_frame` call takes exactly `ac3::kSamplesPerFrame` (1536) samples per channel.**
 Short-changing it is a programming error, not a runtime one.
+
+**Every class with non-trivial state hides it behind a pimpl.** `struct Impl;
+std::unique_ptr<Impl> impl_;` is the only private member on `FrameEncoder`
+(both codecs), `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`,
+`eac3::AccessUnitEncoder`, `meta::RangeController`/`HeavyCompressor`,
+`meta::LoudnessMeter`, `analysis::LevelMeter`, `iec61937::Eac3BurstPacker` and
+the three `io::Wav*` classes that started the pattern — adding a buffer or
+growing a scratch array changes only `Impl`, defined in the `.cpp`, so it is
+never an ABI break for a caller linking `ac3::forge_shared`. The five plain
+config aggregates (`EncoderConfig`, `DecoderConfig`, `AtmosConfig`,
+`FrameConfig`, `AccessUnitConfig`) are the deliberate exception: callers build
+them with designated initializers, so they stay ordinary value types rather
+than opaque handles, and that ergonomics is worth more than hiding four or
+five `double`s. Their layout is what `SameMajorVersion` actually has to
+promise once 1.0 ships: a config struct's fields are frozen at the release
+that adopts full-version `SOVERSION`, and a field added afterward needs either
+a major version bump or an additive extension point (a reserved trailing
+field, or a new sibling struct referenced by pointer) rather than an in-place
+insert, which would silently shift every later field's offset for anyone who
+has not recompiled. The `verify::*Trace*`/`FrameSyntax*` pointers a few of
+them carry (`EncoderConfig::trace`, `DecoderConfig::trace`/`eac3_trace`/
+`syntax`, `FrameConfig::trace`) are non-owning observers into internal
+instrumentation headers, not part of the frozen public surface themselves —
+adding, removing or retyping one of those pointers is not a promise this
+convention covers.
