@@ -146,6 +146,23 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
   (`PF7`, `AC3FORGE_MINIMAL_DECODER`, cross-compiled and run on QEMU's Cortex-M3 target).
 
+**API completeness (AP)**
+
+- **An E-AC-3 encoder in the C API** (`AP5`, partial): `ac3forge_eac3_encoder_t` mirrors
+  `ac3::eac3::FrameEncoder` and `ac3forge_eac3_access_unit_encoder_t` mirrors `AccessUnitEncoder`
+  — plain E-AC-3 and dependent-substream wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) with the Annex E
+  tools, including `auto`, are now producible from C. `AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM`/
+  `..._INVALID_CHANNEL_MAP` were already-numbered status codes with no code path that could raise
+  them until now. See [docs/library/c-api.md](docs/library/c-api.md#e-ac-3-encoding-multiple-substreams-annex-e-tools).
+- **An E-AC-3 encoder in the Python bindings** (`AP6`, partial): `ac3.eac3.FrameEncoder`/
+  `AccessUnitEncoder` wrap the same two C++ classes directly, in a real `ac3forge.eac3` submodule
+  rather than a flat name — `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` share a name across C++
+  namespaces (`AP2`, still open), so `ac3.FrameEncoder` vs `ac3.eac3.FrameEncoder` keeps that
+  collision out of the binding surface too. `ac3.eac3.access_unit_config_for_layout()` is the
+  named-layout convenience: a caller asks for `ac3.eac3.LayoutId.k71` and gets a ready
+  `AccessUnitConfig`, no hand-built `chanmap`. See
+  [docs/library/python-api.md](docs/library/python-api.md#encoding-e-ac-3).
+
 **Applications (UX)**
 
 - **`ac3gui` gained an "Open stream…" player** (`UX1`): the GUI twin of `ac3cli monitor`, playing
