@@ -72,13 +72,16 @@ namespace {
 struct Prober::Impl {
     ProbeOptions options;
     ProbeReport report;
+    // Declared ahead of ac3/eac3 below so its address is already valid (fully
+    // constructed, not just addressable) when their own member initializers
+    // run - see the constructor's own comment.
+    FrameSyntax syntax;
     // One decoder of each generation, kept across the whole walk: both carry
     // per-substream overlap-add and object state, and re-creating them per
     // frame would throw away exactly the continuity a stream depends on.
     // Neither reconstructs - see DecoderConfig::skip_reconstruction.
     FrameDecoder ac3;
     Eac3Decoder eac3;
-    FrameSyntax syntax;
     ProbeAccessUnit unit;
     std::uint64_t samples = 0;
     bool first_unit = true;
@@ -94,13 +97,17 @@ struct Prober::Impl {
     // exactly as scan() assumes it.
     std::uint16_t locations = 0;
 
-    explicit Impl(ProbeOptions opts) : options(std::move(opts)) {
-        DecoderConfig config;
-        config.skip_reconstruction = true;
-        config.syntax = &syntax;
-        ac3 = FrameDecoder{config};
-        eac3 = Eac3Decoder{config};
-    }
+    // ac3/eac3 are constructed directly from a DecoderConfig rather than
+    // default-constructed and reassigned: `ac3 = FrameDecoder{config};` (as
+    // this used to read) materialises a full temporary of the assigned-to
+    // type on the stack before the move-assignment - harmless for
+    // FrameDecoder, but Eac3Decoder's per-substream-identity state
+    // (decoder.hpp's own pending_ comment) makes that temporary 32 KB, which
+    // is this constructor's entire PREfast C6262 finding by itself.
+    explicit Impl(ProbeOptions opts)
+        : options(std::move(opts)),
+          ac3(DecoderConfig{.syntax = &syntax, .skip_reconstruction = true}),
+          eac3(DecoderConfig{.syntax = &syntax, .skip_reconstruction = true}) {}
 
     // One substream identity's row, created on first sight.
     ProbeSubstream& slot_for(const FrameHeader& header) {
