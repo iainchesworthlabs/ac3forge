@@ -362,6 +362,12 @@ struct Options {
     // every dependent substream's height/wide/rear channels included,
     // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
     bool qc_rendered_layout = false;
+    // 'qc' only: objects=<layout> (roadmap IO12). Set when the stream's
+    // dynamic objects should be re-rendered by their own OAMD position onto
+    // the named advanced sound system layout and metered through BS.1770-5
+    // Annex 4, instead of (or as well as - the two are independent switches)
+    // the channel-based measurement layout= above selects. See run_qc.
+    std::optional<ac3::plan::LayoutId> qc_objects_layout;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a

@@ -430,7 +430,7 @@ machine-readable output and a single failure exit code. Users arrive with contai
   `layout=rendered|bed`; `bed` stays the default and now says out loud when a stream's dependent
   substreams were left out. Annex 3's Table 5 gives a second check on every weight, and the
   meter was cross-checked against ffmpeg's `ebur128` on 5.1. BS.1770-5 Annex 4's object-based
-  algorithm is not implemented — see IO12.
+  rendering is IO12's.
 - [x] **IO11 (S)** — QC preset refresh. `atsc-a85` re-cited to A/85:2026-07 (approved
   2026-07-08), which restates −24 LKFS / ±2 dB / −2 dBTP unchanged; new `atsc-a85-streaming`
   from that revision's Annex L.5 (a −23…−27 LKFS band) and `apple-music-atmos` from Apple's
@@ -439,13 +439,27 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Netflix's Atmos Home Mix v2.3 and Amazon were checked and deliberately left out — the first
   two are numerically identical to presets already present and the third has no primary source
   that could be read; `qc.hpp` and `docs/cli/metadata-options.md` record why for each.
-- [ ] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 specifies a loudness
-  algorithm for object-based audio, and for a combination of channel- and object-based audio, in
-  which each object is weighted by its own OAMD position rather than by a fixed speaker slot.
-  IO10 implemented Annex 3 (channel-based, advanced sound systems) and left this half out.
-  `oba::DecodedProgram` already carries per-object position, and `DecodedAccessUnit` already
-  carries `object_audio` beside the rendered bed, so the inputs exist; what is missing is the
-  Annex 4 weighting itself and a `qc` mode that meters bed and objects together.
+- [x] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 covers object-based audio
+  (and a combination of channel- and object-based audio), in which each object is weighted by its
+  own OAMD position rather than by a fixed speaker slot. IO10 implemented Annex 3 (channel-based,
+  advanced sound systems) and left this half out. Annex 4 itself defines no new weighting table:
+  it says to render the object-based (or combined) audio to a real loudspeaker configuration
+  first and meter *that* through Annexes 1/3, and to report which configuration and rendering
+  algorithm did the rendering, since two reasonable choices can legitimately disagree by several
+  LU (its own worked example, Table 6). *Done: `qc ... objects=<layout>` (`51`/`71`/`512`/`514`/
+  `714`) re-renders a dynamic-object-only programme's objects by their own OAMD position onto the
+  named layout, via a new `ac3::spatial::pan_direction`/`direction_of`/`position_direction` (the
+  height-aware two-ring azimuth/elevation panner `ac3::plan`'s own layout-to-layout channel
+  renderer already used internally, promoted out of it rather than duplicated a third time), then
+  meters the result through the existing Annex 3 `LoudnessMeter`. Scoped to dynamic-object-only
+  programmes — the only shape `AtmosEncoder` produces, and what Dolby's own reference JOC streams
+  declare: for that shape the decoded bed already IS the objects' 5.1 VBAP fold
+  (`oba::oamd.hpp`'s own comment), so this starts every full-bandwidth target channel at silence
+  and sums each object's own recovered `object_audio` into it rather than adding to a bed that
+  already carries it and double-counting. A bed-and-objects programme (third-party content whose
+  bed may carry independent, non-object material this decoder cannot separate back out) is
+  refused with a pointer to `layout=rendered`/`layout=bed` instead, rather than risk silently
+  doubling or dropping content.
 
 ## IM. Immersive and other formats
 
@@ -622,21 +636,40 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
   second time that way. The codec matrix gained `fast-imdct=off` decode rows for both codecs
   beside its existing `fast-mdct=off` encode row.
-- [ ] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
+- [x] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
   `macos-llvm` all score exactly 6.0 dB below every x86 leg on every channel of the gold gate.
   `docs/building.md` and `ci.yml` blamed Homebrew's libm, which the glibc/GCC arm64 rows
   contradict: it is architectural, not a libm-package difference. FMA contraction was the leading
   hypothesis for what "architectural" meant — PF5 tested it directly by pinning
   `-ffp-contract=off` project-wide, on every leg, and **the hypothesis is falsified**: the arm64
   and macOS legs still measure ~61.8 dB against x86's ~67.8 dB, unchanged to within run-to-run
-  noise from the numbers before the flag existed. `docs/building.md` now carries that measurement
-  under "Floating-point contraction" in place of the libm explanation, and the flag stays pinned
-  regardless — it is what the SIMD seam's own bit-exactness argument needs, independent of this
-  question. What survives is the correlation with architecture itself: every low-scoring leg is
-  aarch64 (`macos-llvm`'s GitHub-hosted runner is Apple Silicon), which points at aarch64's own
-  compiled libm producing different last-bit `std::cos`/`std::sin` results in the transform
-  twiddle tables (`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) — untested, and the next step
-  before either a cross-leg bitstream-hash gate or a documented, accepted divergence.
+  noise from the numbers before the flag existed. The surviving hypothesis — aarch64's own
+  compiled libm producing different last-bit `std::cos`/`std::sin` in the transform twiddle tables
+  — was investigated for real this time, and **is also falsified**, by direct measurement rather
+  than argument: every one of the 2,170 `std::cos`/`std::sin` calls the actual twiddle-table
+  constructors make (`mdct.cpp`'s `Twiddles`/`Twiddles2`/`FastMdctTables`, `fft_kernel.hpp`'s
+  `FftTables` at this codec's real transform sizes) is bit-identical between native x86-64 (GCC and
+  Clang) and a real aarch64 cross-build (GCC 16, matching `linux-gcc-arm64`'s major version) run
+  under `qemu-user`, which implements IEEE-754 arithmetic rather than approximating it. Taken
+  further: the actual gold-reference gate, run end to end against a real
+  `AC3FORGE_SIMD=aarch64`/`aarch64-neon` cross-build under that same emulation, does not reproduce
+  the gap either — every one of its 32 checks came back bit-identical to x86-64, not the ~61.8 dB
+  every real arm64/macOS CI leg measures (`generic` on x86-64 matched both, for the same IEEE-754
+  reason). Along the way, `docs/building.md`'s own description of `kAnalysisWindow` as
+  libm-derived was itself wrong — it is a `consteval` construction with no runtime libm call at
+  all — fixed in the same pass. So the gap is real, reproducible, and does not come from anything
+  this project can build without the real hardware CI already has: the two most likely remaining
+  candidates (GitHub's *natively*-packaged aarch64 compiler versus the Debian cross-compiler
+  package used here, or a genuine real-silicon FP behaviour `qemu-user` does not reproduce) both
+  need the real runners to test further, which is now recorded in `docs/building.md` rather than
+  guessed at. What ships instead of an explanation: a cross-platform bitstream-hash gate
+  (`tools/checks/check_cross_platform_hash.py`, wired into `verify_gold_reference.sh`) pinning a
+  SHA-256 of the actual encoded bytes per `(kernel, transform mode)` in
+  `tests/golden/bitstream-hashes.json` — `x86_64-sse2` and `generic` are pinned from the
+  measurements above; `aarch64-neon` and the macOS kernel are deliberately left for whoever next
+  has those real CI logs in front of them, since pre-filling them from the qemu measurement would
+  pin the wrong number by this item's own finding. `docs/building.md` and `ci.yml`'s header both
+  carry the corrected history in place of the stale libm explanation.
 - [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. PARTIAL. Audited every discrete,
   bitstream-affecting decision in `src/forge/src/encoder/` (and the one shared call it makes into
   `bitalloc.cpp`'s delta-segment bucketing) that a floating-point comparison, argmin or threshold
@@ -694,10 +727,32 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   would either be vacuously true on the x86 legs (already covered by VX11's
   `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit cannot name yet.
   A recorded-decisions replay mode is genuinely independent future work, not attempted here.
-- [ ] **VX13 (S)** — Promote the fuzz jobs: make Fuzz Regress a required check, delete the
-  `continue-on-error` on `fuzz-short` and `fuzz-differential` (clean since 2026-08-09 and
-  2026-08-16), add the differential harnesses to nightly, persist the grown corpus as an
-  artifact. The ruleset edits are the repository admin's, not a PR's.
+- [x] **VX13 (S)** — Promote the fuzz jobs. The claimed track record didn't hold up under a real
+  check of `gh run list`/job-level history back to 2026-08-09: `fuzz-differential` genuinely had
+  zero failures across 218 push runs, but `fuzz-short` had five, all the same
+  `UndefinedBehaviorSanitizer` report in `fuzz_mp4_demux`, clustered in the 24 hours before this
+  item was picked up (first at 2026-08-24T10:42Z) rather than spread across the window — a live
+  regression, not pre-existing flakiness. Root cause: `mp4::Reader`'s box walk computed
+  `box_end = parse_pos + box.size` with no check that `box.size` (attacker-controlled up to
+  `UINT64_MAX` via ISOBMFF §4.2's 64-bit largesize escape) could be added without wrapping past
+  2^64; a box using it could send `parse_pos` backwards past the streaming reader's sliding
+  `window_pos`, and the next iteration's `parse_pos - window_pos` then underflowed to a
+  near-`SIZE_MAX` `std::size_t` that `read_box_header`'s own bounds check failed to catch for the
+  identical reason, indexing far past the buffer. Fixed with one bounds check on the addition
+  itself (`src/mp4/src/reader.cpp`), the same rejection `read_box_header` already gives a size
+  smaller than its own header; the crash minimised into
+  `fuzz/regressions/fuzz_mp4_demux/largesize-escape-wraps-parse-pos-overflow`. `fuzz-short` and
+  `fuzz-differential` both had their `continue-on-error` deleted in the same PR — the fix removes
+  the only failure `fuzz-short` had ever recorded, so promoting the job stakes exactly what the
+  investigation found rather than the roadmap's earlier, unverified claim. `fuzz-nightly` now
+  also runs the two differential harnesses at its deeper budget (they were never in `run.sh`'s
+  `BASE_TARGETS`, the same reason `fuzz-differential` is its own job), and `fuzz/corpus/` persists
+  across nightly runs via `actions/cache` (restore by prefix, save under a run-scoped key — cache
+  entries are immutable, so there is no in-place update) instead of every scheduled run mutating
+  from an empty corpus, which is what every job log up to this point actually showed. Making
+  `Fuzz Regress` a required check is a repository-admin ruleset edit
+  (`.github/branch-protection.md`), not something a PR can do — the one step this item leaves for
+  a human.
 - [x] **VX14 (S)** — Lint and scan the non-C++ code. A `script-lint` job runs `ruff` over every
   `.py` file (curated rule set in `ruff.toml`), `shellcheck` over `git ls-files '*.sh'` and
   `actionlint` over the workflows, all three hash-pinned in
@@ -888,26 +943,40 @@ directory; there is still no threading anywhere in the codec core.
   across namespaces; `iec61937` lives under `sinks/`; `FrameError` has no `describe()` while every
   other error type does (a Python `Ac3EncodeError`'s message is the enumerator's name). Record
   the codec-vs-codec-blind namespace split in `docs/library/index.md`.
-- [ ] **AP3 (L)** — Pimpl sweep. Only the three WAV classes hide their state; `FrameDecoder`,
-  `Eac3Decoder`, `AtmosEncoder`, `AccessUnitEncoder` and the meters expose their layout, both
-  `FrameEncoder`s are half-done, and `EncoderConfig` carries a raw `verify::FrameTrace*`. Decide
-  how the config aggregates grow after 1.0 without an ABI break.
+- [x] **AP3 (L)** — Pimpl sweep. Done: every `AC3FORGE_EXPORT` class with non-trivial state now
+  hides it behind `struct Impl; std::unique_ptr<Impl> impl_;`, the same pattern the three WAV
+  classes already used — `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` (finished from their
+  half-done `PlanScratch`/`FrameState`), `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`,
+  `eac3::AccessUnitEncoder`, `meta::RangeController`, `meta::HeavyCompressor`,
+  `meta::LoudnessMeter`, `analysis::LevelMeter` and `iec61937::Eac3BurstPacker`. The five plain
+  config aggregates stay value types on purpose — see `docs/library/index.md`'s new
+  "pimpl" convention note for the growth-after-1.0 decision and why `EncoderConfig`'s
+  `verify::FrameTrace*` (and its siblings) are not part of that promise.
 - [ ] **AP4 (M)** — An ABI gate: libabigail or abi-compliance-checker over the
   `linux-llvm-shared` build against the last tag, advisory before 1.0 and required after; an
   exported-symbol allowlist (visibility is already hidden everywhere); a `-std=c11 -Wpedantic`
   compile of `ac3forge.h` on every leg.
-- [ ] **AP5 (L)** — C API completeness. It has an AC-3 encoder, an Atmos encoder and both
-  decoders, and no E-AC-3 encoder at all — plain 7.1 or 5.1.4, VBR and the Annex E tools cannot
-  be produced from C. Also missing: `scan`/`ScannedStream` (only `stream_bsid` and `split_*`
-  exist), the caller-buffer `_into` decode forms the memory programme added for exactly the
-  real-time embedder the C API serves, and loudness/level/QC metering (`docs/library/c-api.md`
-  calls the custom DRC profile a deliberate omission — revisit at 1.0).
-- [ ] **AP6 (L)** — Python completeness. The same four classes; no E-AC-3 encoder, no `scan`, no
-  containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in `pyproject.toml`), no metering, no
-  signing. Zero-copy numpy in both directions (both paths `memcpy` today), a 2-D planar array
-  instead of a list, `decode_*_into(out=)`, a context manager that flushes `Eac3Decoder`;
-  `stubtest` in CI for the 241-line hand-written `.pyi`; manylinux aarch64 and macOS
-  x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
+- [ ] **AP5 (L)** — C API completeness. ~~It has an AC-3 encoder, an Atmos encoder and both
+  decoders, and no E-AC-3 encoder at all~~ `ac3forge_eac3_encoder_t`/
+  `ac3forge_eac3_access_unit_encoder_t` now cover plain E-AC-3 and dependent-substream wide
+  layouts (7.1/5.1.2/5.1.4/7.1.4) with the Annex E tools including `auto`, mirroring
+  `ac3::eac3::FrameEncoder`/`AccessUnitEncoder` — see `docs/library/c-api.md`'s "E-AC-3 encoding"
+  section for the fields deliberately left out of the C mirror (mixmdate/infomdat, VBR,
+  `numblkscod`). Still missing: `scan`/`ScannedStream` (only `stream_bsid` and `split_*` exist),
+  the caller-buffer `_into` decode forms the memory programme added for exactly the real-time
+  embedder the C API serves, and loudness/level/QC metering (`docs/library/c-api.md` calls the
+  custom DRC profile a deliberate omission — revisit at 1.0).
+- [ ] **AP6 (L)** — Python completeness. ~~The same four classes; no E-AC-3 encoder~~
+  `ac3.eac3.FrameEncoder`/`AccessUnitEncoder` now wrap the E-AC-3 encoder directly
+  (pybind11-direct, matching every other class here), with `ac3.eac3.access_unit_config_for_layout`
+  as the named-layout convenience over `ac3::plan::channel_plan_for` — see
+  `docs/library/python-api.md`'s "Encoding E-AC-3" section for what's mirrored and what's a real
+  gap there (mixmdate/infomdat, VBR/ABR, `additional` programmes) rather than a decision. Still
+  missing: `scan`, no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in
+  `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
+  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
+  that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
+  macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
 - [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile

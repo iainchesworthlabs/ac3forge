@@ -187,10 +187,8 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] std::expected<std::vector<std::byte>, FrameError> encode_frame(
         std::span<const std::span<const float>> channels);
 
-    [[nodiscard]] const EncoderConfig& config() const { return config_; }
-    [[nodiscard]] int channel_count() const {
-        return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
-    }
+    [[nodiscard]] const EncoderConfig& config() const;
+    [[nodiscard]] int channel_count() const;
 
     // Roadmap PF6. Constant for the life of the encoder - nothing in
     // EncoderConfig moves any term (see ac3/latency.hpp for what each one
@@ -209,94 +207,15 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
-    EncoderConfig config_;
-    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
-    // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
-    // across frames, like history_ above.
-    std::vector<TransientDetector> transient_detectors_;
-    // Per-(channel, block) scratch for the MDCT pass, reused rather than
-    // stack-declared inside encode_frame (PREfast's C6262 flagged the
-    // function's stack frame). Each is always fully overwritten before being
-    // read within one iteration, and the two loops that use them run to
-    // completion one after another - never interleaved or reentered - so
-    // reuse across iterations, and across calls on this instance, changes
-    // nothing observable. Not thread-safe for concurrent calls on the same
-    // instance, same as history_ and the other per-frame state above.
-    std::array<double, 512> time_scratch_{};
-    std::array<double, 512> windowed_scratch_{};
-    std::array<double, 128> half1_scratch_{};
-    std::array<double, 128> half2_scratch_{};
-    // Frame-lifetime work buffers, reused across encode_frame calls under
-    // the same reasoning (and the same single-instance contract) as the
-    // scratch arrays above: each is re-sized via assign()/resize() and fully
-    // re-written every frame before anything reads it, so reuse changes
-    // nothing observable - it only stops encode_frame from re-allocating
-    // them 31 times a second. coeffs_ is the per-(stream, block) MDCT
-    // spectrum set (~86 KB at 5.1+coupling); block_exps_ the per-slot raw
-    // exponent sets; fixed_/fixed_base_ the flattened fixed-point bins and
-    // their per-slot offsets; block_tokens_ each block's mantissa tokens,
-    // filled through MantissaBlockWriter::take_tokens_into so the token
-    // storage cycles between the writer and these slots without copies.
-    std::vector<std::array<double, 256>> coeffs_;
-    std::vector<std::int32_t> fixed_;
-    std::vector<std::size_t> fixed_base_;
-    std::vector<std::vector<std::uint8_t>> block_exps_;
-    std::array<std::vector<MantissaToken>, kBlocksPerFrame> block_tokens_;
-    // The SNR search's per-(stream, run) candidate allocations and the
-    // per-stream bap views the block cost sum reads through. Same contract
-    // as the buffers above: every (stream, run) slot in this frame's range
-    // is re-assign()ed by bits_at before anything reads it, so reuse
-    // (including a slot whose run count shrank) changes nothing observable.
-    std::vector<std::vector<std::vector<std::uint8_t>>> run_bap_;
-    std::vector<std::span<const std::uint8_t>> bap_views_;
-    // The rest of encode_frame's frame-lifetime scratch - the §8.2.8
-    // exponent-strategy plan and the coupling work buffers - whose types are
-    // encoder.cpp's own, held behind a pimpl so they need not move into
-    // this header: the same arrangement eac3_frame.hpp's FrameState uses,
-    // for the same reason. Same reuse contract as every buffer above.
-    struct PlanScratch;
-    std::unique_ptr<PlanScratch> scratch_;
-    std::uint64_t rate_accumulator_ = 0;  // ideal-bits Bresenham state
-    std::uint64_t words_emitted_ = 0;
-    // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
-    // state only: it changes how fast the search converges, never which
-    // offset it converges to. Negative until a frame has been encoded.
-    int snr_search_hint_ = -1;
-    // The previous frame's winning BitAllocCodes (EncoderConfig::search),
-    // unlike the hint above NOT performance-only: it is step 9a's incumbent
-    // for THIS frame's comparison, so which candidate wins can depend on it.
-    // Without this, every frame compared its six candidates against the same
-    // fixed default, with nothing that favoured staying where the PREVIOUS
-    // frame landed - and on material where two candidates measure within the
-    // switch margin of each other, that reproduces exactly the failure the
-    // margin exists to prevent: real material was measured switching on 156
-    // of 750 frames, 80 of them a single frame reverting the next. Carrying
-    // the winner forward as the incumbent gives "stay" a standing zero-cost
-    // option every frame (down to 123 of 750 with this in place), which is
-    // what turns the margin into real hysteresis instead of a per-frame coin
-    // flip that happens to be biased. This did not turn out to be the whole
-    // story behind the low-bitrate quality tradeoff documented at
-    // EncoderConfig::search - see that comment - but it is real, measured
-    // instability the margin was already supposed to prevent, independent of
-    // that finding. Meaningless, and never read, while EncoderConfig::search
-    // is kNone.
-    BitAllocCodes previous_codes_{.dbpbcod = 3};
-    // The chbwcod this encoder last transmitted, so the content-adaptive
-    // band edge can be rate-limited on the way DOWN (see encode_frame's
-    // bandwidth step). Unlike snr_search_hint_ above this is not a
-    // performance hint: it is part of the decision, and dropping it would
-    // change the bitstream. Negative until a frame has been encoded, which
-    // is what lets the first frame take the content's answer outright.
-    int chbwcod_state_ = -1;
-    // Both controllers smooth their gain over time, so they have to outlive a
-    // frame - a per-frame instance would restart the attack every 32 ms.
-    std::optional<meta::RangeController> range_;
-    std::optional<meta::HeavyCompressor> heavy_;
-    // Ch2's own controllers, present only when acmod is kDualMono. A shared
-    // instance would smooth one programme's gain history into the other's.
-    std::optional<meta::RangeController> range2_;
-    std::optional<meta::HeavyCompressor> heavy2_;
+    // Every private data member - the MDCT history/scratch, the §8.2.8
+    // exponent-strategy plan, the coupling work buffers, the DRC controllers,
+    // all of it - lives behind this one pimpl, following the same pattern as
+    // ac3::io::WavStreamReader/Writer. Impl is defined in encoder.cpp, so a
+    // dllexport class instantiating every implicit special member is why the
+    // destructor and moves above are declared (not defaulted inline) here:
+    // move-assignment's implicit reset() needs Impl complete.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace ac3

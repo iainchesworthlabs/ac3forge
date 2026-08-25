@@ -6,6 +6,8 @@
 #include <string>
 #include <string_view>
 
+#include "ac3/encoder/plan.hpp"
+
 // The measurement/transform commands that need no audio hardware: qc, levels, loudness, and
 // spdif/unspdif. spdif is not itself a measurement command, but by this point in the H4 split it sits
 // textually adjacent to loudness/levels/qc (the audio-hardware and container commands that used
@@ -48,8 +50,14 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
 // carries, which for a single-programme stream (all of them, before a second
 // independent substream is authored in) is the only one there is. Ignored for
 // AC-3, which has no substream layer.
+//
+// `objects_layout` is objects=<name> (roadmap IO12, see
+// Options::qc_objects_layout) - when set, dynamic objects are additionally
+// re-rendered by their own position onto that layout and metered through
+// BS.1770-5 Annex 4, independently of `rendered_layout` above.
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout, std::optional<int> want_programme = std::nullopt);
+           bool rendered_layout, std::optional<int> want_programme = std::nullopt,
+           std::optional<ac3::plan::LayoutId> objects_layout = std::nullopt);
 int run_levels(std::string_view in_path, std::optional<int> want_programme = std::nullopt);
 int run_loudness(std::string_view in_path);
 int run_spdif(std::string_view in_path, std::string_view out_path);

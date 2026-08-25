@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -105,6 +106,17 @@ class AC3FORGE_EXPORT LoudnessMeter {
     // place. 1+1 dual mono has no layout to pass here: it is two unrelated
     // programmes rather than one soundfield, so it keeps its own two meters.
     LoudnessMeter(SampleRate rate, const eac3::chanmap::Layout& layout);
+    // Declared (and defined in loudness.cpp, where Impl below is complete)
+    // rather than implicit: a dllexport class generates every implicit
+    // special member whether or not called, and the unique_ptr member makes
+    // the implicit copy deleted - which is fine - but move-assignment's
+    // implicit reset() needs Impl complete, so it cannot stay implicit once
+    // Impl is only forward-declared here.
+    ~LoudnessMeter();
+    LoudnessMeter(const LoudnessMeter&) = delete;
+    LoudnessMeter& operator=(const LoudnessMeter&) = delete;
+    LoudnessMeter(LoudnessMeter&&) noexcept;
+    LoudnessMeter& operator=(LoudnessMeter&&) noexcept;
 
     // Any number of samples; spans are the coded channels in AC-3 order with
     // LFE last, matching the encoder's own input convention.
@@ -146,7 +158,7 @@ class AC3FORGE_EXPORT LoudnessMeter {
     // has been pushed.
     [[nodiscard]] std::optional<double> true_peak_dbtp() const;
 
-    [[nodiscard]] int channel_count() const { return channels_; }
+    [[nodiscard]] int channel_count() const;
 
    private:
     // Both constructors, once each has decided which pushed channel slots
@@ -159,69 +171,12 @@ class AC3FORGE_EXPORT LoudnessMeter {
     void push_block();
     void push_true_peak(int channel, float sample);
 
-    // BS.1770 K-weighting: a high-shelf pre-filter then the RLB high-pass,
-    // both biquads, both per channel with their own state.
-    struct Biquad {
-        std::array<double, 3> b{};
-        std::array<double, 2> a{};  // a0 normalised out
-    };
-    struct State {
-        std::array<double, 2> x{};
-        std::array<double, 2> y{};
-    };
-
-    Biquad shelf_{};
-    Biquad highpass_{};
-    std::vector<State> shelf_state_;
-    std::vector<State> highpass_state_;
-    // The pushed channel slots that are terms in the loudness sum, and their
-    // Table 3 / Table 4 weights - parallel, both sized fullbw_. An LFE-type
-    // slot is in neither, since BS.1770 drops it from the sum rather than
-    // weighting it zero; true peak still reads it, straight out of `channels`
-    // by slot. Table 5.8's coded order and Table E2.5's bit order both put
-    // the LFE-type channels last, so loudness_slots_ is in practice the
-    // leading run 0..fullbw_-1 - but every loop below indexes through it
-    // rather than assuming that.
-    std::vector<int> loudness_slots_;
-    std::vector<double> weights_;
-    // Mean-square accumulator per channel over the current 100 ms step, plus
-    // the four most recent steps, which is how the 400 ms window with 75%
-    // overlap is built without buffering audio.
-    std::vector<double> step_sum_;
-    std::vector<std::array<double, 4>> recent_;
-    // Same idea as recent_, widened to a 3 s/30-step window for short-term
-    // loudness and (via short_term_power_history_ below) Loudness Range.
-    // EBU Tech 3342 §3.1 asks for at least 10 Hz sampling of the short-term
-    // series; the existing 100 ms step already gives exactly that, so no
-    // separate timer is needed.
-    std::vector<std::array<double, 30>> short_term_recent_;
-    // Weighted power sum of each gated 400 ms block. One double per 100 ms of
-    // programme is all the gating needs: the weights are constant, so the mean
-    // of the weighted sums equals the weighted sum of the means.
-    std::vector<double> block_power_;
-    // The whole-programme series of un-gated short-term (3 s) block power,
-    // one entry per 100 ms once the first 3 s has elapsed — loudness_range()
-    // applies Tech 3342's own gate to this at read time, since it is a
-    // different gate to the one block_power_ was already filtered through.
-    std::vector<double> short_term_power_history_;
-    double momentary_power_ = 0.0;
-    double short_term_power_ = 0.0;
-
-    // Per-channel delay line for the true-peak oversampler (BS.1770-4
-    // Annex 2), sized to channels_ (LFE included) rather than fullbw_.
-    std::vector<std::array<double, 12>> true_peak_history_;
-    double true_peak_abs_max_ = 0.0;
-    bool true_peak_seen_ = false;
-
-    // Every pushed channel, LFE-type included - the width true peak reads.
-    int channels_ = 0;
-    // How many of them are terms in the loudness sum, i.e. loudness_slots_'
-    // and weights_' shared length, and the width of every per-channel filter
-    // and accumulator above.
-    int fullbw_ = 0;
-    int step_samples_ = 0;
-    int step_filled_ = 0;
-    int steps_seen_ = 0;
+    // Every private data member - the K-weighting filter state, the
+    // loudness/true-peak accumulators, all of it - lives behind this one
+    // pimpl, following the same pattern as ac3::io::WavStreamReader/Writer
+    // and ac3::FrameEncoder. Impl is defined in loudness.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // §5.4.2.8: dialnorm is how many dB dialogue sits below digital 100%, valid
