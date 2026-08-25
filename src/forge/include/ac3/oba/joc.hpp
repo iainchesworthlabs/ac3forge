@@ -158,6 +158,64 @@ struct FrameParameters {
         return object_offset(objects);
     }
 
+    // A cursor into ONE object's slice of `matrix`.
+    //
+    // object_offset() is O(objects) - it sums every earlier object's size -
+    // and index_of()/at() call it on EVERY access, so sweeping one object's
+    // coefficients through at() costs O(objects) per coefficient and a whole
+    // frame O(objects^2). The reconstruction loops do exactly that sweep:
+    // 2 * channels * kQmfSubbands reads per object per block, each of which
+    // was re-walking the offset list. Measured before this existed, that walk
+    // (joc.hpp's lines 145-152 and 174) was ~44% of a 12-object
+    // joc-domain=mdct decode profile - more than every transform in the codec
+    // put together. A caller that is about to sweep an object takes a view
+    // ONCE and indexes straight off it instead.
+    //
+    // Pure index arithmetic: a view resolves to the same matrix element the
+    // same at() call would, so every value read through it is bit-identical
+    // by construction - there is no arithmetic here to round differently.
+    struct ObjectMatrixView {
+        const double* base = nullptr;
+        int channels = 0;
+        int bands = 0;
+
+        [[nodiscard]] double at(int data_point, int channel, int band) const {
+            return base[((static_cast<std::size_t>(data_point) *
+                              static_cast<std::size_t>(channels) +
+                          static_cast<std::size_t>(channel)) *
+                         static_cast<std::size_t>(bands)) +
+                        static_cast<std::size_t>(band)];
+        }
+    };
+
+    [[nodiscard]] ObjectMatrixView object_view(int object) const {
+        return ObjectMatrixView{.base = matrix.data() + object_offset(object),
+                                .channels = channels,
+                                .bands = shape(object).bands()};
+    }
+
+    // The write side of the same idea, for the parse and encode loops that
+    // FILL one object's slice band by band.
+    struct MutableObjectMatrixView {
+        double* base = nullptr;
+        int channels = 0;
+        int bands = 0;
+
+        [[nodiscard]] double& at(int data_point, int channel, int band) const {
+            return base[((static_cast<std::size_t>(data_point) *
+                              static_cast<std::size_t>(channels) +
+                          static_cast<std::size_t>(channel)) *
+                         static_cast<std::size_t>(bands)) +
+                        static_cast<std::size_t>(band)];
+        }
+    };
+
+    [[nodiscard]] MutableObjectMatrixView object_view_mut(int object) {
+        return MutableObjectMatrixView{.base = matrix.data() + object_offset(object),
+                                       .channels = channels,
+                                       .bands = shape(object).bands()};
+    }
+
     [[nodiscard]] std::size_t index_of(int object, int data_point, int channel, int band) const {
         const int object_bands = shape(object).bands();
         return object_offset(object) +

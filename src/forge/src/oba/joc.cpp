@@ -129,11 +129,13 @@ std::vector<std::byte> build_payload(const FrameParameters& params) {
     // itself and every later one is a step. Working modulo nquant means the
     // difference always fits the alphabet, however far apart two bands are.
     for (int object = 0; object < params.objects; ++object) {
+        // One offset walk per object, not one per coefficient encoded - see
+        // FrameParameters::ObjectMatrixView.
+        const auto view = params.object_view(object);
         for (int channel = 0; channel < params.channels; ++channel) {
             int previous = steps / 2;
             for (int band = 0; band < bands; ++band) {
-                const int code = quantize(params.at(object, channel, band),
-                                          params.fine_quant);
+                const int code = quantize(view.at(0, channel, band), params.fine_quant);
                 const int difference = ((code - previous) % steps + steps) % steps;
                 put_code(w, table[static_cast<std::size_t>(difference)]);
                 previous = code;
@@ -235,6 +237,11 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
         }
         const int steps = quant_steps(shape.fine_quant);
         const int bands = shape.bands();
+        // One offset walk per object rather than one per coefficient written
+        // - parse fills channels * bands * data_points of them, and at()
+        // re-walks every earlier object's sizes on each call. See
+        // FrameParameters::ObjectMatrixView.
+        const auto wview = params.object_view_mut(object);
         for (int dp = 0; dp < shape.data_points; ++dp) {
             if (shape.sparse) {
                 // §6.2.5: one raw 3-bit channel index for band 0, then a
@@ -266,7 +273,7 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
                                      : std::span<const HuffCode>{kVecCoarse};
                 for (int channel = 0; channel < channels; ++channel) {
                     for (int band = 0; band < bands; ++band) {
-                        params.at(object, dp, channel, band) =
+                        wview.at(dp, channel, band) =
                             dequantize(sparse_offset, shape.fine_quant);
                     }
                 }
@@ -298,7 +305,7 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
                         (previous[static_cast<std::size_t>(named)] + value) % steps;
                     previous.fill(sparse_offset);
                     previous[static_cast<std::size_t>(named)] = code;
-                    params.at(object, dp, named, band) = dequantize(code, shape.fine_quant);
+                    wview.at(dp, named, band) = dequantize(code, shape.fine_quant);
                 }
             } else {
                 // §6.6.2 Pseudocode 3 runs the differential the other way:
@@ -318,8 +325,7 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
                         }
                         const int code = (previous + difference) % steps;
                         previous = code;
-                        params.at(object, dp, channel, band) =
-                            dequantize(code, shape.fine_quant);
+                        wview.at(dp, channel, band) = dequantize(code, shape.fine_quant);
                     }
                 }
             }
@@ -493,6 +499,9 @@ namespace {
                 continue;
             }
             present[static_cast<std::size_t>(n_present++)] = object;
+            // One offset walk per object per block instead of one per
+            // coefficient read - see FrameParameters::ObjectMatrixView.
+            const auto view = params.object_view(object);
             const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
             // --- §6.6.6: this object's spectrum is a per-band linear
@@ -511,9 +520,8 @@ namespace {
                 const int band = mapping[static_cast<std::size_t>(subband)];
                 for (int ch = 0; ch < channels; ++ch) {
                     const std::array<double, kMaxDataPoints> dq = {
-                        params.at(object, 0, ch, band),
-                        shape.data_points > 1 ? params.at(object, 1, ch, band)
-                                              : params.at(object, 0, ch, band)};
+                        view.at(0, ch, band),
+                        shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
                     const std::size_t previous_index =
                         (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
                          static_cast<std::size_t>(ch)) *
@@ -597,6 +605,9 @@ namespace {
     for (int object = 0; object < objects; ++object) {
         const auto shape = params.shape(object);
         const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+        // One offset walk per object, not one per (channel, subband) -
+        // see FrameParameters::ObjectMatrixView.
+        const auto wb_view = params.object_view(object);
         for (int ch = 0; ch < channels; ++ch) {
             for (int subband = 0; subband < kQmfSubbands; ++subband) {
                 const std::size_t index =
@@ -605,8 +616,8 @@ namespace {
                         static_cast<std::size_t>(kQmfSubbands) +
                     static_cast<std::size_t>(subband);
                 state.previous_matrix[index] =
-                    shape.present ? params.at(object, shape.data_points - 1, ch,
-                                              mapping[static_cast<std::size_t>(subband)])
+                    shape.present ? wb_view.at(shape.data_points - 1, ch,
+                                               mapping[static_cast<std::size_t>(subband)])
                                   : 0.0;
             }
         }
@@ -720,6 +731,9 @@ namespace {
                 synth.pull(qmf.object_real, qmf.object_imag, emitted);
                 continue;
             }
+            // One offset walk per object per block instead of one per
+            // coefficient read - see FrameParameters::ObjectMatrixView.
+            const auto view = params.object_view(object);
             const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
             for (int k = 0; k < dsp::kQmfSubbands; ++k) {
@@ -737,9 +751,8 @@ namespace {
                     // ramp's ultimate fallback (no history at all) and as
                     // one endpoint of the current-frame segment below.
                     const std::array<double, kMaxDataPoints> dq = {
-                        params.at(object, 0, ch, band),
-                        shape.data_points > 1 ? params.at(object, 1, ch, band)
-                                              : params.at(object, 0, ch, band)};
+                        view.at(0, ch, band),
+                        shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
                     const double previous_val =
                         has_previous ? state.previous_matrix[index] : dq[0];
                     double m;
@@ -782,6 +795,9 @@ namespace {
     for (int object = 0; object < objects; ++object) {
         const auto shape = params.shape(object);
         const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+        // One offset walk per object, not one per (channel, subband) -
+        // see FrameParameters::ObjectMatrixView.
+        const auto wb_view = params.object_view(object);
         for (int ch = 0; ch < kNumChannels5X; ++ch) {
             for (int subband = 0; subband < kQmfSubbands; ++subband) {
                 const std::size_t index =
@@ -791,8 +807,8 @@ namespace {
                         static_cast<std::size_t>(kQmfSubbands) +
                     static_cast<std::size_t>(subband);
                 state.previous_matrix[index] =
-                    shape.present ? params.at(object, shape.data_points - 1, ch,
-                                              mapping[static_cast<std::size_t>(subband)])
+                    shape.present ? wb_view.at(shape.data_points - 1, ch,
+                                               mapping[static_cast<std::size_t>(subband)])
                                   : 0.0;
             }
         }
