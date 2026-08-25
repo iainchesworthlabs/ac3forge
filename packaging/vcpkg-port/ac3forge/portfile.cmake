@@ -9,7 +9,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO iainchesworthlabs/ac3forge
     REF "v${VERSION}"
-    SHA512 05e021523fc77c62ccae44279e6bb46bf9fd5685c0400e0fee4257f10465c21b0c75d419281599b1b49b8e862720b7375011db7a3edcee6e1bb9aadab7189649
+    SHA512 3faa29f76ffa9ff506a7e08c0e8b3287d5bab1c1d20bbe5c13c0c6a3cba06cff9d525186dbd034eb187d30206a6aec9d9e01f627b927d1088c9caa849e43d040
     HEAD_REF main
 )
 

@@ -53,6 +53,7 @@ apart.
 
 ## What it does not do
 
-This reads a stream that already exists; it has no connection to the workbench's own encode plan,
-the Objects tab, or the run strip. There is no way to jump from a finished Atmos run's own run chip
-straight into this dialog yet — open the file it wrote like any other.
+This reads a stream that already exists; it has no connection to the workbench's own encode plan
+or the Objects tab. Jumping straight into this dialog from a finished Atmos run no longer needs
+opening the file it wrote by hand, though: the run's own chip carries a **More…** menu with
+**Inspect objects**, doing exactly that — see [Open stream](open-stream.md#from-a-finished-run).

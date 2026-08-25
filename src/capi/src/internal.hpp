@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/oba/atmos.hpp"
@@ -57,6 +58,13 @@ static_assert(static_cast<int>(ac3::meta::ProfileId::kMusicStandard) ==
 static_assert(static_cast<int>(ac3::meta::ProfileId::kMusicLight) == AC3FORGE_DRC_MUSIC_LIGHT);
 static_assert(static_cast<int>(ac3::meta::ProfileId::kSpeech) == AC3FORGE_DRC_SPEECH);
 
+static_assert(static_cast<int>(ac3::eac3::StreamType::kIndependent) ==
+              AC3FORGE_STREAM_TYPE_INDEPENDENT);
+static_assert(static_cast<int>(ac3::eac3::StreamType::kDependent) == AC3FORGE_STREAM_TYPE_DEPENDENT);
+static_assert(static_cast<int>(ac3::eac3::StreamType::kConvertible) ==
+              AC3FORGE_STREAM_TYPE_CONVERTIBLE);
+static_assert(static_cast<int>(ac3::eac3::StreamType::kReserved) == AC3FORGE_STREAM_TYPE_RESERVED);
+
 static_assert(AC3FORGE_SAMPLES_PER_FRAME == ac3::kSamplesPerFrame);
 static_assert(AC3FORGE_BLOCKS_PER_FRAME == ac3::kBlocksPerFrame);
 static_assert(AC3FORGE_SAMPLES_PER_BLOCK == ac3::kSamplesPerBlock);
@@ -89,6 +97,12 @@ namespace ac3forge_c {
 }
 [[nodiscard]] inline ac3::meta::ProfileId to_cpp(ac3forge_drc_profile_t profile) {
     return static_cast<ac3::meta::ProfileId>(profile);
+}
+[[nodiscard]] inline ac3forge_stream_type_t from_cpp(ac3::eac3::StreamType type) {
+    return static_cast<ac3forge_stream_type_t>(type);
+}
+[[nodiscard]] inline ac3::eac3::StreamType to_cpp(ac3forge_stream_type_t type) {
+    return static_cast<ac3::eac3::StreamType>(type);
 }
 [[nodiscard]] inline ac3::meta::HeavyConfig to_cpp(const ac3forge_heavy_config_t& config) {
     return ac3::meta::HeavyConfig{.dialogue_target_dbfs = config.dialogue_target_dbfs,
@@ -193,6 +207,21 @@ struct ac3forge_decoded_access_unit {
 struct ac3forge_atmos_encoder {
     ac3forge_atmos_encoder(const ac3::oba::AtmosConfig& config, int objects) : impl(config, objects) {}
     ac3::oba::AtmosEncoder impl;
+};
+
+struct ac3forge_eac3_encoder {
+    explicit ac3forge_eac3_encoder(const ac3::eac3::FrameConfig& config) : impl(config) {}
+    ac3::eac3::FrameEncoder impl;
+};
+
+struct ac3forge_eac3_access_unit_encoder {
+    explicit ac3forge_eac3_access_unit_encoder(const ac3::eac3::AccessUnitConfig& config)
+        : impl(config) {}
+    ac3::eac3::AccessUnitEncoder impl;
+};
+
+struct ac3forge_eac3_access_unit {
+    ac3::eac3::AccessUnit data;
 };
 
 struct ac3forge_spans {

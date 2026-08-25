@@ -101,6 +101,7 @@ add_executable(ac3tests
     quality/test_distortion.cpp
     quality/test_perceptual.cpp
     quality/test_search.cpp
+    quality/test_eac3_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp
@@ -337,7 +338,8 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # it depends on ac3adm::ac3adm too, and src/admbridge is only add_subdirectory()'d from inside
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
-    target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp)
+    target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
+                                    admbridge/test_adm_bridge_write.cpp)
     target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
