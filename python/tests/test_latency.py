@@ -8,9 +8,8 @@ one term that is a sample-domain shift - that a round trip driven entirely
 from Python really does move the signal by exactly that many samples.
 """
 
-import numpy as np
-
 import ac3forge as ac3
+import numpy as np
 
 
 def _impulse(n, at, amplitude=0.9):
@@ -62,7 +61,8 @@ def test_atmos_object_path_costs_a_second_transform_overlap():
     encoder = ac3.AtmosEncoder(ac3.AtmosConfig(bitrate_kbps=448), 2)
     assert encoder.bed_latency.transform_samples == ac3.TRANSFORM_DELAY_SAMPLES
     assert encoder.latency.transform_samples == 2 * ac3.TRANSFORM_DELAY_SAMPLES
-    assert encoder.latency_samples == encoder.bed_latency.total_samples + ac3.TRANSFORM_DELAY_SAMPLES
+    assert (encoder.latency_samples
+            == encoder.bed_latency.total_samples + ac3.TRANSFORM_DELAY_SAMPLES)
 
     config = ac3.AtmosConfig(bitrate_kbps=448)
     config.emit_object_metadata = False
