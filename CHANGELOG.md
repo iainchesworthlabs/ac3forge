@@ -123,6 +123,11 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   conformance vectors** (`docs/conformance-vectors.md`, `VX20`) shipped with every release.
 - **Script Lint, a ThreadSanitizer leg, and PR-time performance comparison** (`VX14`, `VX16`,
   `VX17`) join CI.
+- **A cross-platform bitstream-hash gate** (`tools/checks/check_cross_platform_hash.py`, `VX11`):
+  pins a SHA-256 of the gold-reference streams this project's own encoder produces, per SIMD
+  kernel and transform mode, so the arm64/macOS legs' unexplained 6.02 dB gold-gate gap (see
+  Changed below) cannot silently change size without CI noticing, whether or not it is ever
+  explained.
 
 **Performance and portability (PF)**
 
@@ -167,6 +172,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   and hash-pinned) and **both 5.1 landscape legs have a DEE comparison again** (a per-channel-WAV
   input path avoids DEE's surround-left drop).
 - **The coverage gate covers `apps/cli` and `python/`, not just `src/`** (`VX15`).
+- **The arm64/macOS gold-gate 6.02 dB SNR gap's leading hypothesis (architecture-specific libm
+  `sin`/`cos` in the transform twiddle tables) is falsified by direct measurement, not just
+  argument** (`VX11`): every twiddle-table `std::cos`/`std::sin` call, and the actual
+  gold-reference gate run end to end, is bit-identical between native x86-64 and a real aarch64
+  cross-build (GCC 16) under `qemu-user`'s IEEE-754-conformant emulation — not the ~61.8 dB every
+  real arm64/macOS CI leg measures. The gap is real and reproducible but does not come from
+  anything buildable without the real hardware CI already has; `docs/building.md`'s "Floating-point
+  contraction" section carries the full measurement and the two remaining candidates. Also fixed
+  in passing: that section, and a `ci.yml` comment, both mis-described `kAnalysisWindow` as
+  libm-derived — it is a `consteval` construction with no runtime libm call at all.
 - **`atsc-a85` re-cited to A/85:2026-07** (`IO11`; no preset numbers move, only the citation).
 - Internal: `std::format`/`std::print`/`std::printf` replaced with {fmt} throughout (NDK's libc++
   has no usable `<format>`); the WASM decode demo now plays the library's own §7.8 downmix instead

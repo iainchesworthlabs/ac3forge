@@ -622,21 +622,40 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   suffixes its check labels so both runs' trend rows survive; the `linux-gcc` leg runs it a
   second time that way. The codec matrix gained `fast-imdct=off` decode rows for both codecs
   beside its existing `fast-mdct=off` encode row.
-- [ ] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
+- [x] **VX11 (S)** — Explain the 6.0 dB arm64 offset. `linux-gcc-arm64`, `linux-llvm-arm64` and
   `macos-llvm` all score exactly 6.0 dB below every x86 leg on every channel of the gold gate.
   `docs/building.md` and `ci.yml` blamed Homebrew's libm, which the glibc/GCC arm64 rows
   contradict: it is architectural, not a libm-package difference. FMA contraction was the leading
   hypothesis for what "architectural" meant — PF5 tested it directly by pinning
   `-ffp-contract=off` project-wide, on every leg, and **the hypothesis is falsified**: the arm64
   and macOS legs still measure ~61.8 dB against x86's ~67.8 dB, unchanged to within run-to-run
-  noise from the numbers before the flag existed. `docs/building.md` now carries that measurement
-  under "Floating-point contraction" in place of the libm explanation, and the flag stays pinned
-  regardless — it is what the SIMD seam's own bit-exactness argument needs, independent of this
-  question. What survives is the correlation with architecture itself: every low-scoring leg is
-  aarch64 (`macos-llvm`'s GitHub-hosted runner is Apple Silicon), which points at aarch64's own
-  compiled libm producing different last-bit `std::cos`/`std::sin` results in the transform
-  twiddle tables (`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) — untested, and the next step
-  before either a cross-leg bitstream-hash gate or a documented, accepted divergence.
+  noise from the numbers before the flag existed. The surviving hypothesis — aarch64's own
+  compiled libm producing different last-bit `std::cos`/`std::sin` in the transform twiddle tables
+  — was investigated for real this time, and **is also falsified**, by direct measurement rather
+  than argument: every one of the 2,170 `std::cos`/`std::sin` calls the actual twiddle-table
+  constructors make (`mdct.cpp`'s `Twiddles`/`Twiddles2`/`FastMdctTables`, `fft_kernel.hpp`'s
+  `FftTables` at this codec's real transform sizes) is bit-identical between native x86-64 (GCC and
+  Clang) and a real aarch64 cross-build (GCC 16, matching `linux-gcc-arm64`'s major version) run
+  under `qemu-user`, which implements IEEE-754 arithmetic rather than approximating it. Taken
+  further: the actual gold-reference gate, run end to end against a real
+  `AC3FORGE_SIMD=aarch64`/`aarch64-neon` cross-build under that same emulation, does not reproduce
+  the gap either — every one of its 32 checks came back bit-identical to x86-64, not the ~61.8 dB
+  every real arm64/macOS CI leg measures (`generic` on x86-64 matched both, for the same IEEE-754
+  reason). Along the way, `docs/building.md`'s own description of `kAnalysisWindow` as
+  libm-derived was itself wrong — it is a `consteval` construction with no runtime libm call at
+  all — fixed in the same pass. So the gap is real, reproducible, and does not come from anything
+  this project can build without the real hardware CI already has: the two most likely remaining
+  candidates (GitHub's *natively*-packaged aarch64 compiler versus the Debian cross-compiler
+  package used here, or a genuine real-silicon FP behaviour `qemu-user` does not reproduce) both
+  need the real runners to test further, which is now recorded in `docs/building.md` rather than
+  guessed at. What ships instead of an explanation: a cross-platform bitstream-hash gate
+  (`tools/checks/check_cross_platform_hash.py`, wired into `verify_gold_reference.sh`) pinning a
+  SHA-256 of the actual encoded bytes per `(kernel, transform mode)` in
+  `tests/golden/bitstream-hashes.json` — `x86_64-sse2` and `generic` are pinned from the
+  measurements above; `aarch64-neon` and the macOS kernel are deliberately left for whoever next
+  has those real CI logs in front of them, since pre-filling them from the qemu measurement would
+  pin the wrong number by this item's own finding. `docs/building.md` and `ci.yml`'s header both
+  carry the corrected history in place of the stale libm explanation.
 - [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. PARTIAL. Audited every discrete,
   bitstream-affecting decision in `src/forge/src/encoder/` (and the one shared call it makes into
   `bitalloc.cpp`'s delta-segment bucketing) that a floating-point comparison, argmin or threshold
