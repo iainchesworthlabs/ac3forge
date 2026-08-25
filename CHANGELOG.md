@@ -155,6 +155,13 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   used. A private-state change is no longer an ABI break for anyone linking `ac3::forge_shared`.
   `docs/library/index.md` records the one deliberate exception (the plain config aggregates) and
   how they are meant to grow after 1.0.
+- **An ABI-diff CI gate** (`AP4`): a new `abi-gate` job builds `config-linux-llvm-shared` at HEAD
+  and at the last release tag and runs `abidiff` across all six shared libraries, plus an
+  exported-symbol allowlist (`tools/ci/check_abi_symbols.py`) checked against `nm -D
+  --defined-only` — advisory (`continue-on-error: true`) until `AP1`'s freeze, at which point
+  removing that one line makes it required. Both C API examples now pin `C_STANDARD 11`, so
+  `ac3forge_c/ac3forge.h` is proven strict-C11-clean (plus `-Wpedantic`) on every desktop leg,
+  not just parseable-as-C++.
 - **An E-AC-3 encoder in the C API** (`AP5`, partial): `ac3forge_eac3_encoder_t` mirrors
   `ac3::eac3::FrameEncoder` and `ac3forge_eac3_access_unit_encoder_t` mirrors `AccessUnitEncoder`
   — plain E-AC-3 and dependent-substream wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) with the Annex E
