@@ -863,15 +863,14 @@ std::expected<void, DemuxError> walk(ReaderState& s, std::span<const std::byte> 
                 ok = parse_chunk_offsets(box.type, body, s.options, s.pending);
                 break;
             case kTrex:
+                // Body layout past the FullBox header (offset 0): track_ID(4),
+                // default_sample_description_index(8), default_sample_duration(12),
+                // default_sample_size(16), default_sample_flags(20) - ISO/IEC
+                // 14496-12 §8.8.3. Confirmed against this project's own writer
+                // (fragment.cpp's build_trex) and the reader test helper's
+                // independent read_trex().
                 if (body.size() >= 20) {
                     s.trex_track_id = get_u32(body, 4);
-                    // §8.8.3.1: track_ID(4) default_sample_description_index(4)
-                    // default_sample_duration(4) default_sample_size(4) - the
-                    // field this reader wants sits at offset 16, not 12 (that is
-                    // default_sample_duration's own offset). Never caught before:
-                    // this project's own fragment() writer always supplies an
-                    // explicit per-sample size in trun and leaves trex's default
-                    // at 0, so nothing here ever depended on the value read.
                     s.trex_default_sample_size = get_u32(body, 16);
                     s.have_trex = true;
                 }

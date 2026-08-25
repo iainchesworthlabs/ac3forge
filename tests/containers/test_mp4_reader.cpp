@@ -556,6 +556,91 @@ TEST_CASE("MP4 round-trips fragment()'s media segments", "[mp4][reader][fragment
     CHECK(read_in_chunks(whole, 97) == frames);
 }
 
+TEST_CASE("MP4 trun without explicit sizes falls back to trex's default_sample_size",
+          "[mp4][reader][fragment]") {
+    // §8.8.8.2: a trun with sample-size-present (0x000200) clear carries no
+    // per-sample size at all - every sample in the run is
+    // mvex/trex::default_sample_size (§8.8.3), which tfhd here does not
+    // override. This is the shape a real fragmented file uses when every
+    // sample happens to be the same size; fragment() never emits it (it
+    // always writes explicit per-sample sizes), so it has to be hand-built.
+    constexpr std::uint32_t kTrackId = 1;
+    constexpr std::uint32_t kDefaultSampleSize = 96;
+
+    // build_moov()'s body is exactly box("trak", trak) - reuse its trak
+    // (which is what makes track_found true) and add a real mvex/trex
+    // alongside it, since MoovSpec itself has no fragmented-track support.
+    // close_finished() calls build_sample_refs() on moov's own stbl
+    // unconditionally, regardless of a later moof - a non-empty sizes here
+    // would add a real (if fictitious) sample ahead of the fragmented ones.
+    const MoovSpec spec{.sizes = {}, .track_id = kTrackId};
+    const Bytes moov_box = build_moov(spec);
+    const std::span<const std::byte> trak_box(moov_box.data() + 8, moov_box.size() - 8);
+
+    Bytes trex_body;
+    put_u32(trex_body, kTrackId);              // track_ID
+    put_u32(trex_body, 1);                     // default_sample_description_index
+    put_u32(trex_body, 1536);                  // default_sample_duration
+    put_u32(trex_body, kDefaultSampleSize);    // default_sample_size
+    put_u32(trex_body, 0x02000000);            // default_sample_flags
+    const Bytes mvex = box("mvex", fullbox("trex", 0, 0, trex_body));
+
+    Bytes moov_body;
+    put_bytes(moov_body, trak_box);
+    put_bytes(moov_body, mvex);
+    const Bytes moov = box("moov", moov_body);
+
+    // tfhd: base-data-offset-present only, with a placeholder base offset
+    // patched in below once the mdat payload's absolute position is known.
+    // No default-sample-size-present, so trex's value must survive
+    // unmodified into parse_trun's fallback.
+    Bytes tfhd_body;
+    put_u32(tfhd_body, kTrackId);
+    put_u64(tfhd_body, 0);  // base_data_offset placeholder
+    const Bytes tfhd = fullbox("tfhd", 0, 0x000001, tfhd_body);
+
+    // trun: flags = 0, so no data-offset, no per-sample duration, size, or
+    // flags fields at all - just a bare sample_count.
+    Bytes trun_body;
+    put_u32(trun_body, 3);  // sample_count
+    const Bytes trun = fullbox("trun", 0, 0x000000, trun_body);
+
+    Bytes traf_body;
+    put_bytes(traf_body, tfhd);
+    put_bytes(traf_body, trun);
+    const Bytes moof = box("moof", box("traf", traf_body));
+
+    const std::vector<Bytes> expect{frame_of(kDefaultSampleSize, 0xB1),
+                                     frame_of(kDefaultSampleSize, 0xB2),
+                                     frame_of(kDefaultSampleSize, 0xB3)};
+    Bytes payload;
+    for (const auto& frame : expect) {
+        put_bytes(payload, frame);
+    }
+    const Bytes mdat = box("mdat", payload);
+
+    Bytes file = ftyp();
+    put_bytes(file, moov);
+    put_bytes(file, moof);
+    const std::size_t mdat_payload_offset = file.size() + 8;
+    put_bytes(file, mdat);
+
+    // Patch tfhd's base_data_offset placeholder now that mdat's absolute
+    // position is known - a fixed-width field, so this changes no box's
+    // declared size.
+    const std::size_t tfhd_base_offset_at =
+        ftyp().size() + moov.size() + 8 /* moof header */ + 8 /* traf header */ +
+        12 /* tfhd header: size+fourcc+version/flags */ + 4 /* track_ID */;
+    Bytes patched_offset;
+    put_u64(patched_offset, mdat_payload_offset);
+    std::copy(patched_offset.begin(), patched_offset.end(),
+              file.begin() + static_cast<std::ptrdiff_t>(tfhd_base_offset_at));
+
+    const auto out = mp4::demux(file);
+    REQUIRE(out.has_value());
+    CHECK(owned(out->samples) == expect);
+}
+
 TEST_CASE("MP4 Reader over arbitrary chunk boundaries matches demux()", "[mp4][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(3, 0x22), frame_of(1500, 0x33),
                                     frame_of(64, 0x44), frame_of(900, 0x55)};
