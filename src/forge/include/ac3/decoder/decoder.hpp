@@ -139,25 +139,51 @@ struct DecoderConfig {
     // because it exists to check what the encoder wrote, and a decoder that
     // silently rescales its output cannot be the reference for that.
     double drc_scale = 0.0;
+    // joc::reconstruct's forward-transform switch (see that function's own
+    // doc comment): the §7.9.4 fold for the per-block forward analysis of
+    // the five Atmos/JOC bed channels. Eac3Decoder passes this straight
+    // through to joc::reconstruct's fast_mdct parameter, which used to be
+    // hardcoded false regardless of this struct - ROADMAP PF8 measured that
+    // as ~3.5 s of a 4.83 s 30-second/15-object decode, almost all of
+    // kMdctBand's own cost, so leaving it permanently off left the fast
+    // path's own decode-side benefit on the table for every object stream.
+    // Default ON: this is mdct512_forward's own `fast` parameter (see that
+    // function's doc comment, mdct.hpp), the identical shared kernel every
+    // OTHER caller already defaults to fast - verified max relative error
+    // ~3e-12 against the direct form on random data and real audio
+    // (tests/core/test_mdct_fast.cpp). This flag was the one caller still
+    // hardcoding false rather than reading a config. Measured directly on a
+    // real 4-object atmos-encode round-trip (Domain::kMdctBand, this flag
+    // toggled alone, fast_imdct held at its own default): worst object 175.6
+    // dB SNR / 1.5e-8 max absolute sample error against the direct
+    // evaluation, best two objects 275-342 dB - lower than fast_imdct's own
+    // accepted 214.9/284.7 dB floor, but 30+ dB past 24-bit PCM's own noise
+    // floor, so inaudible and unmeasurable on any real playback chain. false
+    // selects the same direct evaluation joc::reconstruct's own tests
+    // validate the fast fold against; ac3cli's mode=performance|reference
+    // toggles this alongside fast_imdct, so both keep meaning "every
+    // transform" rather than one gaining a silent exception.
+    bool fast_mdct = true;
     // §7.9.4 step 3's complex transform evaluated via the same FFT core the
     // encoder's fast MDCT fold uses, instead of the pseudocode's direct
     // O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's
     // inverse doc comment. Applies to every inverse transform a DECODE
     // runs: both decoders' PCM reconstruction, the three per-block
     // inverses inside eac3::ecpl_channel_spectrum's enhanced-coupling
-    // reconstruction, and joc::reconstruct's per-object synthesis. It
-    // never reaches an encoder: the encoder-internal inverse uses
-    // (spx/ecpl copy-source reconstruction) read eac3::FrameConfig's own
-    // fast_mdct instead, so nothing about ENCODED output depends on this
-    // flag. Default ON since the owner accepted the quality evidence (the
-    // same gate EncoderConfig::fast_mdct passed through): worst
-    // transform-level relative error 7.8e-14 against the direct form, 180 s
-    // stream agreement 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3), decodes
-    // 4.5-4.7x faster. false selects the pseudocode's own direct evaluation
-    // - the REFERENCE form, and the oracle the fast path's tests validate
-    // against; ac3cli exposes the pair as mode=performance|reference for
-    // exactly the runs where bit-for-bit agreement with the spec's stated
-    // arithmetic matters more than speed.
+    // reconstruction, and joc::reconstruct's per-object synthesis (the
+    // OTHER half of that function's own pair - fast_mdct just above is its
+    // forward transform). It never reaches an encoder: the encoder-internal
+    // inverse uses (spx/ecpl copy-source reconstruction) read
+    // eac3::FrameConfig's own fast_mdct instead, so nothing about ENCODED
+    // output depends on this flag. Default ON since the owner accepted the
+    // quality evidence (the same gate EncoderConfig::fast_mdct passed
+    // through): worst transform-level relative error 7.8e-14 against the
+    // direct form, 180 s stream agreement 214.9 dB SNR (AC-3) / 284.7 dB
+    // (E-AC-3), decodes 4.5-4.7x faster. false selects the pseudocode's own
+    // direct evaluation - the REFERENCE form, and the oracle the fast path's
+    // tests validate against; ac3cli exposes the pair as
+    // mode=performance|reference for exactly the runs where bit-for-bit
+    // agreement with the spec's stated arithmetic matters more than speed.
     bool fast_imdct = true;
     // §7.7.2: prefer compr over dynrng wherever a compr word exists, which is
     // what a set-top box's RF mode does. §7.7.2.1 requires falling back on

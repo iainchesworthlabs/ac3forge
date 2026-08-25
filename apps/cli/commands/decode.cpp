@@ -316,6 +316,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                      ids->size(), format_programme_ids(*ids));
     }
     ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
+                             .fast_mdct = meta.fast_mdct,
                              .fast_imdct = meta.fast_imdct,
                              .heavy_compression = meta.p.heavy.has_value(),
                              .output = meta.output,
@@ -725,6 +726,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         return kExitInput;
     }
     ac3::FrameDecoder decoder{{.drc_scale = meta.drc_scale,
+                              .fast_mdct = meta.fast_mdct,
                               .fast_imdct = meta.fast_imdct,
                               .heavy_compression = meta.p.heavy.has_value(),
                               .output = meta.output,

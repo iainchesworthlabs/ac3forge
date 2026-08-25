@@ -461,19 +461,23 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
                      "default §7.9.4 fast path (identical streams to within ~1e-12 coefficient "
                      "error; the direct form is the validation oracle) - applies wherever this "
-                     "command encodes, incl. atmos/record/live/eac3-sine; eac3-encode alone has a "
-                     "[tools] positional argument whose bare nofastmdct token reaches the same "
-                     "field instead; bare fast-mdct (the old opt-in) is a no-op");
-        fmt::println("  mode=reference    force BOTH transforms onto the spec's own direct "
+                     "command encodes, incl. atmos/record/live/eac3-sine, and, via the same "
+                     "underlying kernel, to 'decode'/'live''s own JOC bed reconstruction for any "
+                     "object stream; eac3-encode alone has a [tools] positional argument whose "
+                     "bare nofastmdct token reaches the encode-side field instead; bare fast-mdct "
+                     "(the old opt-in) is a no-op");
+        fmt::println("  mode=reference    force every transform onto the spec's own direct "
                      "evaluations (the forms every fast-path test validates against): the §8.2.3.2 "
-                     "forward MDCT wherever this command encodes, and §7.9.4's step-3 inverse in "
-                     "'decode' - for runs where bit-for-bit agreement with the spec's stated "
-                     "arithmetic matters more than speed. mode=performance (the default) keeps "
-                     "both fast paths: 215-285 dB SNR against reference on 180 s programmes, "
-                     "4.5-4.7x faster decodes. Tokens apply in order, so a later fast-mdct=off / "
-                     "fast-imdct=off still adjusts one half on its own");
-        fmt::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
-                     "(mode=reference's decode half); bare fast-imdct names the default");
+                     "forward MDCT wherever this command encodes, 'decode'/'live''s JOC bed "
+                     "reconstruction fold for any object stream, and §7.9.4's step-3 inverse in "
+                     "'decode'/'live' - for runs where bit-for-bit agreement with the spec's "
+                     "stated arithmetic matters more than speed. mode=performance (the default) "
+                     "keeps every fast path: 215-285 dB SNR against reference on 180 s "
+                     "programmes, 4.5-4.7x faster decodes. Tokens apply in order, so a later "
+                     "fast-mdct=off / fast-imdct=off still adjusts one part on its own");
+        fmt::println("  fast-imdct=off    decode/live: force just the direct §7.9.4 step-3 "
+                     "inverse (mode=reference's decode-inverse half); bare fast-imdct names the "
+                     "default");
         fmt::println("  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction "
                      "matrix over 256 MDCT bins instead of the default §7.1 64-band complex QMF - "
                      "cheaper, and what this project did before it had a filterbank, but ~5 dB worse "
