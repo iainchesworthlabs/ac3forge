@@ -172,6 +172,12 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   and hash-pinned) and **both 5.1 landscape legs have a DEE comparison again** (a per-channel-WAV
   input path avoids DEE's surround-left drop).
 - **The coverage gate covers `apps/cli` and `python/`, not just `src/`** (`VX15`).
+- **`fuzz-short` and `fuzz-differential` are no longer `continue-on-error`** (`VX13`):
+  `fuzz-differential`'s job history was genuinely clean back to 2026-08-09; `fuzz-short`'s was
+  not, but its only failures trace to one now-fixed `mp4::Reader` bug (see Fixed below), so
+  promoting it stakes exactly what the investigation found. `fuzz-nightly` also runs the two
+  differential harnesses at its deeper budget, and `fuzz/corpus/` now persists across nightly
+  runs via `actions/cache` instead of every scheduled run starting from an empty corpus.
 - **The arm64/macOS gold-gate 6.02 dB SNR gap's leading hypothesis (architecture-specific libm
   `sin`/`cos` in the transform twiddle tables) is falsified by direct measurement, not just
   argument** (`VX11`): every twiddle-table `std::cos`/`std::sin` call, and the actual
@@ -301,6 +307,12 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   allocation, ADM parsing and signing verification, each with a reproducer under `fuzz/regressions/`.
 - **`dither=off`/`nodither`** pins `dithflag` at 0 for the one caller that needs bit-for-bit
   agreement between two decodes (`verify_gold_reference.sh`'s decoder-agreement gate).
+- **`mp4::Reader` could index far past its input buffer** on a fragmented box using ISOBMFF's
+  64-bit largesize escape to declare a size close to `UINT64_MAX`: the unchecked
+  `parse_pos + box.size` addition wrapped past 2^64, sending the parse position behind the
+  streaming reader's sliding window and underflowing the next offset computation into a
+  near-`SIZE_MAX` index. Found by `fuzz-short` (`VX13`); reproducer under
+  `fuzz/regressions/fuzz_mp4_demux/`.
 - **`build-footprint`'s minimum-footprint decoder image ceiling** (`PF7`) was stale: it and
   `docs/performance-trend.md`'s footprint table were measured early in PF6/PF7's own feature
   branch, before that branch's own later `develop` merges landed DC10's QMF-domain JOC
