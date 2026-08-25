@@ -368,6 +368,201 @@ AC3FORGEC_EXPORT int ac3forge_decoded_frame_block_switched(const ac3forge_decode
 AC3FORGEC_EXPORT void ac3forge_decoded_frame_destroy(ac3forge_decoded_frame_t* frame);
 
 /* --------------------------------------------------------------------- *
+ * E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder)
+ * --------------------------------------------------------------------- */
+
+/* Mirrors ac3::eac3::StreamType (Table E1.2, §E2.3.1.2). This encoder only
+ * ever emits kIndependent/kDependent; kConvertible/kReserved are accepted
+ * here for a faithful mirror but never produced by anything below, the same
+ * way ac3::eac3::FrameEncoder's own validate() refuses them. */
+typedef enum ac3forge_stream_type {
+    AC3FORGE_STREAM_TYPE_INDEPENDENT = 0,
+    AC3FORGE_STREAM_TYPE_DEPENDENT = 1,
+    AC3FORGE_STREAM_TYPE_CONVERTIBLE = 2,
+    AC3FORGE_STREAM_TYPE_RESERVED = 3
+} ac3forge_stream_type_t;
+
+typedef struct ac3forge_eac3_encoder ac3forge_eac3_encoder_t;
+typedef struct ac3forge_eac3_access_unit_encoder ac3forge_eac3_access_unit_encoder_t;
+
+/* Mirrors ac3::eac3::FrameConfig's core surface - the fields needed to
+ * produce a real E-AC-3 substream. `has_*` flags stand in for
+ * std::optional<T>, same convention as ac3forge_encoder_config_t. Not
+ * mirrored here: the mixmdate/infomdat metadata groups, dialnorm2/drc/heavy
+ * (dual mono and DRC are exactly as useful on this side as on AC-3's, but
+ * the broader Table E1.2 metadata surface is deliberately deferred - see
+ * docs/library/c-api.md's "What is deliberately out of scope"), vbr and
+ * numblkscod (CBR, six-block syncframes only), and the internal self-check
+ * `trace` hook. Call ac3forge_eac3_frame_config_init() first so every field
+ * this struct doesn't set explicitly carries the same default FrameConfig{}
+ * does. */
+typedef struct ac3forge_eac3_frame_config {
+    ac3forge_sample_rate_t sample_rate; /* includes the 3 fscod2 reduced rates */
+    uint32_t bitrate_kbps;
+    int dialnorm; /* 1..31, §5.4.2.8 */
+    ac3forge_acmod_t acmod;
+    int lfe;
+
+    /* --- Annex E coding tools ------------------------------------------- */
+    /* Hands the whole tool set (coupling/spx/aht below) to the encoder,
+     * chosen from the per-channel rate and the frame's own content instead of
+     * the flags below - it overrides them rather than combining with them
+     * (see docs/library/encoding-eac3.md's "How auto chooses"). cplbegf/
+     * spxbegf/gaqmod still steer the geometry of whatever it turns on. */
+    int auto_tools;
+    int coupling; /* §E3.3 */
+    int cplbegf;  /* -1 = auto */
+    int enhanced; /* §E3.5 enhanced coupling; only meaningful with coupling */
+    int spx;      /* §E3.6 spectral extension */
+    int spxbegf;  /* -1 = auto */
+    int spx_atten;
+    int spxattencod;        /* -1 = auto */
+    int aht;                /* §E3.4 adaptive hybrid transform */
+    int gaqmod;              /* -1 = auto, 0..3 otherwise */
+    int transient_prenoise; /* §3.7; the only tool that adds decoder hold-back */
+    int fast_mdct;
+
+    /* --- substream identity (Table E1.2) -------------------------------- *
+     * Meaningful when building a multi-substream access unit by hand out of
+     * several ac3forge_eac3_encoder_t instances.
+     * ac3forge_eac3_access_unit_encoder_t assigns these itself the way
+     * ac3::eac3::AccessUnitEncoder does, and does not read them from the
+     * configs passed to it (see ac3::eac3::AccessUnitConfig's own comment) -
+     * only chanmap/has_chanmap on a dependent matters there. */
+    ac3forge_stream_type_t strmtyp;
+    int substreamid;
+    int has_chanmap; /* dependent substreams only */
+    uint16_t chanmap; /* Table E2.5 bitmask; AC3FORGE_CHANMAP_* below name a few */
+} ac3forge_eac3_frame_config_t;
+
+AC3FORGEC_EXPORT void ac3forge_eac3_frame_config_init(ac3forge_eac3_frame_config_t* config);
+
+/* A few of Table E2.5's chanmap combinations, matching
+ * ac3::eac3::chanmap::k71Rear/k512Height/kTopQuad - what a dependent
+ * substream needs to widen a 5.1 bed. See docs/library/encoding-eac3.md's
+ * "Wide layouts" table. */
+#define AC3FORGE_CHANMAP_71_REAR 0x1A00u    /* Ls, Rs, Lrs, Rrs -> 7.1 */
+#define AC3FORGE_CHANMAP_512_HEIGHT 0x0010u /* Vhl, Vhr -> 5.1.2 */
+/* Vhl, Vhr, Lts, Rts -> 5.1.4 (or 7.1.4 with 71_REAR in a second dependent) */
+#define AC3FORGE_CHANMAP_TOP_QUAD 0x0014u
+
+/* Mirrors ac3::eac3::FrameMetadata - the §7.7 words for one frame, shared
+ * across every substream of one programme by
+ * ac3forge_eac3_access_unit_encoder_encode() so they never disagree (see
+ * ac3::eac3::FrameEncoder's own comment on why "measured per substream" and
+ * "shared across substreams" give different answers). */
+typedef struct ac3forge_eac3_frame_metadata {
+    uint8_t dynrng[AC3FORGE_BLOCKS_PER_FRAME];
+    int has_compr;
+    uint8_t compr;
+    /* Ch2's own words, meaningful only when acmod is AC3FORGE_ACMOD_DUAL_MONO. */
+    uint8_t dynrng2[AC3FORGE_BLOCKS_PER_FRAME];
+    int has_compr2;
+    uint8_t compr2;
+} ac3forge_eac3_frame_metadata_t;
+
+/* All-zero dynrng (§7.7.1's "no change"), no compr - same defaults an
+ * all-zero-initialized struct would already have, provided for symmetry with
+ * every other _init() function here. */
+AC3FORGEC_EXPORT void ac3forge_eac3_frame_metadata_init(ac3forge_eac3_frame_metadata_t* metadata);
+
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_encoder_create(
+    const ac3forge_eac3_frame_config_t* config, ac3forge_eac3_encoder_t** out_encoder);
+AC3FORGEC_EXPORT void ac3forge_eac3_encoder_destroy(ac3forge_eac3_encoder_t* encoder);
+
+/* Full-bandwidth channels (per config.acmod) plus, when config.lfe is set,
+ * the LFE channel last - the same count encode_frame() below expects. */
+AC3FORGEC_EXPORT size_t ac3forge_eac3_encoder_channel_count(const ac3forge_eac3_encoder_t* encoder);
+/* Always AC3FORGE_SAMPLES_PER_FRAME today (numblkscod is not exposed above,
+ * so every substream this API builds carries six blocks); exposed as its own
+ * accessor rather than assumed so a caller never has to special-case this
+ * encoder against the AC-3 one - ac3::eac3::FrameEncoder::samples_per_frame()
+ * genuinely varies once a caller reaches numblkscod, even though nothing
+ * here can ask for that yet. */
+AC3FORGEC_EXPORT size_t ac3forge_eac3_encoder_samples_per_frame(
+    const ac3forge_eac3_encoder_t* encoder);
+
+AC3FORGEC_EXPORT void ac3forge_eac3_encoder_latency(const ac3forge_eac3_encoder_t* encoder,
+                                                   ac3forge_latency_t* out_latency);
+AC3FORGEC_EXPORT int ac3forge_eac3_encoder_latency_samples(const ac3forge_eac3_encoder_t* encoder);
+
+/* channels: `channel_count` pointers (must equal
+ * ac3forge_eac3_encoder_channel_count(encoder)), each to exactly
+ * ac3forge_eac3_encoder_samples_per_frame(encoder) samples nominally in
+ * [-1, 1), in AC-3 channel order (Table 5.8) with LFE last. `metadata`, when
+ * non-NULL, supplies the §7.7 words explicitly (ac3::eac3::FrameEncoder's
+ * second encode_frame() overload) instead of measuring them from `channels`
+ * - the access-unit path needs this so every substream of one programme
+ * agrees; NULL measures internally, matching a standalone stream. `aux`/
+ * `aux_size` carry a caller-built EMDF container (ac3::emdf::build_container)
+ * in the frame's aux data, or NULL/0 for none. On success, *out_frame
+ * receives one complete syncframe; the caller must destroy it. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_encoder_encode_frame(
+    ac3forge_eac3_encoder_t* encoder, const float* const* channels, size_t channel_count,
+    size_t samples_per_channel, const ac3forge_eac3_frame_metadata_t* metadata,
+    const uint8_t* aux, size_t aux_size, ac3forge_bytes_t** out_frame);
+
+/* --- wide layouts: ac3::eac3::AccessUnitEncoder ------------------------- */
+
+/* An access unit's bytes plus per-substream boundaries - mirrors
+ * ac3::eac3::AccessUnit. Unlike ac3forge_atmos_encoder_encode_frame() (which
+ * always produces exactly one substream and so returns a plain
+ * ac3forge_bytes_t), a general access-unit encoder can produce several, and a
+ * caller re-deriving crc2 or demuxing substreams individually needs to know
+ * where each one starts. */
+typedef struct ac3forge_eac3_access_unit ac3forge_eac3_access_unit_t;
+
+AC3FORGEC_EXPORT const uint8_t* ac3forge_eac3_access_unit_data(
+    const ac3forge_eac3_access_unit_t* unit);
+AC3FORGEC_EXPORT size_t ac3forge_eac3_access_unit_size(const ac3forge_eac3_access_unit_t* unit);
+AC3FORGEC_EXPORT size_t ac3forge_eac3_access_unit_substream_count(
+    const ac3forge_eac3_access_unit_t* unit);
+/* Byte length of substream `index` (independent first); sums to
+ * ac3forge_eac3_access_unit_size(). */
+AC3FORGEC_EXPORT uint32_t ac3forge_eac3_access_unit_substream_bytes(
+    const ac3forge_eac3_access_unit_t* unit, size_t index);
+AC3FORGEC_EXPORT void ac3forge_eac3_access_unit_destroy(ac3forge_eac3_access_unit_t* unit);
+
+/* `independent` is the bed's config; `dependents`/`dependent_count` are the
+ * substreams that widen it (at most 8), in transmission order - see
+ * ac3::eac3::AccessUnitConfig. Every substream must agree on sample_rate;
+ * strmtyp/substreamid on `independent` and each of `dependents` are assigned
+ * by this call the way ac3::eac3::AccessUnitEncoder's constructor does, so
+ * whatever the caller set there is not read - only chanmap/has_chanmap on a
+ * dependent matters (Table E2.5; AC3FORGE_CHANMAP_* above name a few
+ * combinations). */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_access_unit_encoder_create(
+    const ac3forge_eac3_frame_config_t* independent, const ac3forge_eac3_frame_config_t* dependents,
+    size_t dependent_count, ac3forge_eac3_access_unit_encoder_t** out_encoder);
+AC3FORGEC_EXPORT void ac3forge_eac3_access_unit_encoder_destroy(
+    ac3forge_eac3_access_unit_encoder_t* encoder);
+
+/* Summed across every substream - the span count encode() below expects. */
+AC3FORGEC_EXPORT size_t ac3forge_eac3_access_unit_encoder_channel_count(
+    const ac3forge_eac3_access_unit_encoder_t* encoder);
+
+AC3FORGEC_EXPORT void ac3forge_eac3_access_unit_encoder_latency(
+    const ac3forge_eac3_access_unit_encoder_t* encoder, ac3forge_latency_t* out_latency);
+AC3FORGEC_EXPORT int ac3forge_eac3_access_unit_encoder_latency_samples(
+    const ac3forge_eac3_access_unit_encoder_t* encoder);
+
+/* channels: every channel of the access unit grouped by substream in
+ * transmission order - the independent's first (AC-3 order, LFE last), then
+ * each dependent's in the order its chanmap names them - channel_count()
+ * spans total, each AC3FORGE_SAMPLES_PER_FRAME samples. NULL is accepted when
+ * channel_count is 0, which happens when `independent`/`dependents` described
+ * a config ac3::eac3::AccessUnitEncoder's constructor could not build any
+ * substreams from (see ac3forge_eac3_access_unit_encoder_create()'s own
+ * comment) - calling this then reports the real reason as a status code
+ * rather than silently producing nothing. `aux`/`aux_size`: see
+ * ac3forge_eac3_encoder_encode_frame(). On success, *out_unit receives the
+ * whole access unit; the caller must destroy it. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
+    ac3forge_eac3_access_unit_encoder_t* encoder, const float* const* channels,
+    size_t channel_count, size_t samples_per_channel, const uint8_t* aux, size_t aux_size,
+    ac3forge_eac3_access_unit_t** out_unit);
+
+/* --------------------------------------------------------------------- *
  * E-AC-3 / Atmos decode (ac3::Eac3Decoder)
  * --------------------------------------------------------------------- */
 

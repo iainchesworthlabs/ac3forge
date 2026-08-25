@@ -403,6 +403,204 @@ TEST_CASE("E-AC-3 substreams round-trip through the C API across the Annex E too
     }
 }
 
+TEST_CASE("ac3forge_eac3_frame_config_init matches FrameConfig{}'s own defaults", "[capi][eac3]") {
+    ac3forge_eac3_frame_config_t config;
+    ac3forge_eac3_frame_config_init(&config);
+    CHECK(config.dialnorm == 31);
+    CHECK(config.acmod == AC3FORGE_ACMOD_2_0);
+    CHECK(config.fast_mdct == 1);
+    CHECK(config.auto_tools == 0);
+    CHECK(config.coupling == 0);
+    CHECK(config.spx == 0);
+    CHECK(config.aht == 0);
+    CHECK(config.transient_prenoise == 0);
+    CHECK(config.strmtyp == AC3FORGE_STREAM_TYPE_INDEPENDENT);
+    CHECK(config.substreamid == 0);
+    CHECK(config.has_chanmap == 0);
+}
+
+TEST_CASE("E-AC-3 encoder encode/decode round-trips through the C API", "[capi][eac3]") {
+    ac3forge_eac3_frame_config_t encoder_config;
+    ac3forge_eac3_frame_config_init(&encoder_config);
+    encoder_config.bitrate_kbps = 192;
+    encoder_config.acmod = AC3FORGE_ACMOD_2_0;
+
+    ac3forge_eac3_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_eac3_encoder_create(&encoder_config, &encoder) == AC3FORGE_OK);
+    REQUIRE(encoder != nullptr);
+    CHECK(ac3forge_eac3_encoder_channel_count(encoder) == 2);
+    CHECK(ac3forge_eac3_encoder_samples_per_frame(encoder) == AC3FORGE_SAMPLES_PER_FRAME);
+    CHECK(ac3forge_eac3_encoder_latency_samples(encoder) > 0);
+
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_eac3_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&decoder_config, &decoder) == AC3FORGE_OK);
+
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<std::vector<float>> rendered(2);
+
+    for (int frame = 0; frame < 8; ++frame) {
+        fill_tone(left.data(), 1000.0, frame, 48000.0);
+        fill_tone(right.data(), 800.0, frame, 48000.0);
+        const float* channels[2] = {left.data(), right.data()};
+
+        ac3forge_bytes_t* encoded = nullptr;
+        REQUIRE(ac3forge_eac3_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                                    nullptr, nullptr, 0, &encoded) == AC3FORGE_OK);
+        REQUIRE(encoded != nullptr);
+        REQUIRE(ac3forge_bytes_size(encoded) > 0);
+
+        ac3forge_decoded_substream_t* substream = nullptr;
+        REQUIRE(ac3forge_eac3_decoder_decode_substream(decoder, ac3forge_bytes_data(encoded),
+                                                        ac3forge_bytes_size(encoded),
+                                                        &substream) == AC3FORGE_OK);
+        ac3forge_bytes_destroy(encoded);
+        REQUIRE(substream != nullptr);
+
+        CHECK(ac3forge_decoded_substream_is_independent(substream) == 1);
+        CHECK(ac3forge_decoded_substream_acmod(substream) == AC3FORGE_ACMOD_2_0);
+        REQUIRE(ac3forge_decoded_substream_channel_count(substream) == 2);
+        for (std::size_t ch = 0; ch < 2; ++ch) {
+            const float* samples = ac3forge_decoded_substream_channel_samples(substream, ch);
+            REQUIRE(samples != nullptr);
+            rendered[ch].insert(rendered[ch].end(), samples, samples + AC3FORGE_SAMPLES_PER_FRAME);
+        }
+        ac3forge_decoded_substream_destroy(substream);
+    }
+
+    ac3forge_eac3_decoder_destroy(decoder);
+    ac3forge_eac3_encoder_destroy(encoder);
+}
+
+TEST_CASE("E-AC-3 access-unit encoder produces a 5.1.2 stream the C API can decode",
+          "[capi][eac3]") {
+    ac3forge_eac3_frame_config_t independent;
+    ac3forge_eac3_frame_config_init(&independent);
+    independent.bitrate_kbps = 448;
+    independent.acmod = AC3FORGE_ACMOD_3_2;
+    independent.lfe = 1;
+
+    ac3forge_eac3_frame_config_t dependent;
+    ac3forge_eac3_frame_config_init(&dependent);
+    dependent.bitrate_kbps = 192;
+    dependent.acmod = AC3FORGE_ACMOD_2_0;
+    dependent.has_chanmap = 1;
+    dependent.chanmap = AC3FORGE_CHANMAP_512_HEIGHT;
+
+    ac3forge_eac3_access_unit_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &encoder) ==
+            AC3FORGE_OK);
+    REQUIRE(encoder != nullptr);
+    REQUIRE(ac3forge_eac3_access_unit_encoder_channel_count(encoder) == 8);
+
+    const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
+    std::vector<std::vector<float>> block(8, std::vector<float>(AC3FORGE_SAMPLES_PER_FRAME));
+    std::vector<uint8_t> stream;
+    std::vector<std::size_t> unit_offsets;
+    for (int frame = 0; frame < 3; ++frame) {
+        const float* channels[8];
+        for (std::size_t ch = 0; ch < 8; ++ch) {
+            fill_tone(block[ch].data(), tones[ch], frame, 48000.0);
+            channels[ch] = block[ch].data();
+        }
+        ac3forge_eac3_access_unit_t* unit = nullptr;
+        REQUIRE(ac3forge_eac3_access_unit_encoder_encode(encoder, channels, 8,
+                                                          AC3FORGE_SAMPLES_PER_FRAME, nullptr, 0,
+                                                          &unit) == AC3FORGE_OK);
+        REQUIRE(unit != nullptr);
+        REQUIRE(ac3forge_eac3_access_unit_substream_count(unit) == 2);
+        const auto total = ac3forge_eac3_access_unit_size(unit);
+        std::uint64_t summed = 0;
+        for (std::size_t i = 0; i < ac3forge_eac3_access_unit_substream_count(unit); ++i) {
+            summed += ac3forge_eac3_access_unit_substream_bytes(unit, i);
+        }
+        CHECK(summed == total);
+
+        unit_offsets.push_back(stream.size());
+        const auto* data = ac3forge_eac3_access_unit_data(unit);
+        stream.insert(stream.end(), data, data + total);
+        ac3forge_eac3_access_unit_destroy(unit);
+    }
+    ac3forge_eac3_access_unit_encoder_destroy(encoder);
+
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_eac3_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&decoder_config, &decoder) == AC3FORGE_OK);
+
+    ac3forge_spans_t* units = nullptr;
+    REQUIRE(ac3forge_split_access_units(stream.data(), stream.size(), &units) == AC3FORGE_OK);
+    REQUIRE(ac3forge_spans_count(units) == 3);
+
+    for (std::size_t i = 0; i < ac3forge_spans_count(units); ++i) {
+        const auto span = ac3forge_spans_get(units, i);
+        ac3forge_decoded_access_unit_t* decoded = nullptr;
+        REQUIRE(ac3forge_eac3_decoder_decode_access_unit(
+                    decoder, stream.data() + span.offset, span.length, &decoded) == AC3FORGE_OK);
+        REQUIRE(decoded != nullptr);
+        CHECK(ac3forge_decoded_access_unit_acmod(decoded) == AC3FORGE_ACMOD_3_2);
+        REQUIRE(ac3forge_decoded_access_unit_channel_count(decoded) == 8);
+        ac3forge_decoded_access_unit_destroy(decoded);
+    }
+    ac3forge_spans_destroy(units);
+    ac3forge_eac3_decoder_destroy(decoder);
+}
+
+TEST_CASE("E-AC-3 C encode entry points surface the encoder's own error codes", "[capi][eac3]") {
+    ac3forge_eac3_frame_config_t config;
+    ac3forge_eac3_frame_config_init(&config);
+    config.acmod = AC3FORGE_ACMOD_2_0;
+    config.bitrate_kbps = 0;  // no such Annex E rate
+
+    ac3forge_eac3_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_eac3_encoder_create(&config, &encoder) == AC3FORGE_OK);
+
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_bytes_t* encoded = nullptr;
+
+    CHECK(ac3forge_eac3_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                              nullptr, nullptr, 0,
+                                              &encoded) == AC3FORGE_ERROR_ENCODE_INVALID_BITRATE);
+    CHECK(encoded == nullptr);
+    ac3forge_eac3_encoder_destroy(encoder);
+
+    // A dependent whose chanmap does not add up to its acmod/lfeon's coded
+    // channel count - AC3FORGE_CHANMAP_TOP_QUAD names four locations, but the
+    // dependent below is coded 2/0 (two channels).
+    ac3forge_eac3_frame_config_t independent;
+    ac3forge_eac3_frame_config_init(&independent);
+    independent.acmod = AC3FORGE_ACMOD_3_2;
+    independent.lfe = 1;
+    independent.bitrate_kbps = 448;
+
+    ac3forge_eac3_frame_config_t dependent;
+    ac3forge_eac3_frame_config_init(&dependent);
+    dependent.acmod = AC3FORGE_ACMOD_2_0;
+    dependent.bitrate_kbps = 192;
+    dependent.has_chanmap = 1;
+    dependent.chanmap = AC3FORGE_CHANMAP_TOP_QUAD;
+
+    ac3forge_eac3_access_unit_encoder_t* au_encoder = nullptr;
+    REQUIRE(ac3forge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &au_encoder) ==
+            AC3FORGE_OK);
+    // ac3::eac3::AccessUnitEncoder's own constructor validates eagerly and
+    // silently builds no substreams when a config is invalid - channel_count()
+    // is 0 rather than the 8 a caller might expect from acmod/lfe alone;
+    // encode() below is how the real reason (an invalid channel map) surfaces.
+    REQUIRE(ac3forge_eac3_access_unit_encoder_channel_count(au_encoder) == 0);
+
+    ac3forge_eac3_access_unit_t* unit = nullptr;
+    CHECK(ac3forge_eac3_access_unit_encoder_encode(au_encoder, nullptr, 0,
+                                                    AC3FORGE_SAMPLES_PER_FRAME, nullptr, 0,
+                                                    &unit) == AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP);
+    CHECK(unit == nullptr);
+    ac3forge_eac3_access_unit_encoder_destroy(au_encoder);
+}
+
 TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact",
           "[capi][eac3]") {
     // 5.1.2: a 3/2+LFE bed plus one dependent substream carrying Vhl/Vhr -

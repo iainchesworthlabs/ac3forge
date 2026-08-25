@@ -828,18 +828,27 @@ directory; there is still no threading anywhere in the codec core.
   `linux-llvm-shared` build against the last tag, advisory before 1.0 and required after; an
   exported-symbol allowlist (visibility is already hidden everywhere); a `-std=c11 -Wpedantic`
   compile of `ac3forge.h` on every leg.
-- [ ] **AP5 (L)** — C API completeness. It has an AC-3 encoder, an Atmos encoder and both
-  decoders, and no E-AC-3 encoder at all — plain 7.1 or 5.1.4, VBR and the Annex E tools cannot
-  be produced from C. Also missing: `scan`/`ScannedStream` (only `stream_bsid` and `split_*`
-  exist), the caller-buffer `_into` decode forms the memory programme added for exactly the
-  real-time embedder the C API serves, and loudness/level/QC metering (`docs/library/c-api.md`
-  calls the custom DRC profile a deliberate omission — revisit at 1.0).
-- [ ] **AP6 (L)** — Python completeness. The same four classes; no E-AC-3 encoder, no `scan`, no
-  containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in `pyproject.toml`), no metering, no
-  signing. Zero-copy numpy in both directions (both paths `memcpy` today), a 2-D planar array
-  instead of a list, `decode_*_into(out=)`, a context manager that flushes `Eac3Decoder`;
-  `stubtest` in CI for the 241-line hand-written `.pyi`; manylinux aarch64 and macOS
-  x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
+- [ ] **AP5 (L)** — C API completeness. ~~It has an AC-3 encoder, an Atmos encoder and both
+  decoders, and no E-AC-3 encoder at all~~ `ac3forge_eac3_encoder_t`/
+  `ac3forge_eac3_access_unit_encoder_t` now cover plain E-AC-3 and dependent-substream wide
+  layouts (7.1/5.1.2/5.1.4/7.1.4) with the Annex E tools including `auto`, mirroring
+  `ac3::eac3::FrameEncoder`/`AccessUnitEncoder` — see `docs/library/c-api.md`'s "E-AC-3 encoding"
+  section for the fields deliberately left out of the C mirror (mixmdate/infomdat, VBR,
+  `numblkscod`). Still missing: `scan`/`ScannedStream` (only `stream_bsid` and `split_*` exist),
+  the caller-buffer `_into` decode forms the memory programme added for exactly the real-time
+  embedder the C API serves, and loudness/level/QC metering (`docs/library/c-api.md` calls the
+  custom DRC profile a deliberate omission — revisit at 1.0).
+- [ ] **AP6 (L)** — Python completeness. ~~The same four classes; no E-AC-3 encoder~~
+  `ac3.eac3.FrameEncoder`/`AccessUnitEncoder` now wrap the E-AC-3 encoder directly
+  (pybind11-direct, matching every other class here), with `ac3.eac3.access_unit_config_for_layout`
+  as the named-layout convenience over `ac3::plan::channel_plan_for` — see
+  `docs/library/python-api.md`'s "Encoding E-AC-3" section for what's mirrored and what's a real
+  gap there (mixmdate/infomdat, VBR/ABR, `additional` programmes) rather than a decision. Still
+  missing: `scan`, no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in
+  `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
+  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
+  that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
+  macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
 - [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
