@@ -1,5 +1,6 @@
 #include "mdct_avx2.hpp"
 
+#include <cstdint>
 #include <utility>
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,45 @@ namespace ac3::internal::avx2 {
 
 void apply_analysis_window(std::span<const double, 512> /*x*/,
                            std::span<double, 512> /*windowed*/) {
+    std::unreachable();
+}
+
+void dct4_pre_twiddle(std::span<const double> /*u*/, std::span<const double> /*pre_re*/,
+                      std::span<const double> /*pre_im*/,
+                      std::span<const std::uint16_t> /*bitrev*/, std::span<double> /*z_re*/,
+                      std::span<double> /*z_im*/) {
+    std::unreachable();
+}
+
+void dct4_post_twiddle(std::span<const double> /*z_re*/, std::span<const double> /*z_im*/,
+                       std::span<const double> /*post_re*/, std::span<const double> /*post_im*/,
+                       double /*scale*/, std::span<double> /*out*/) {
+    std::unreachable();
+}
+
+void imdct512_pre_twiddle(std::span<const double> /*coeffs*/, std::span<const double> /*cos1*/,
+                          std::span<const double> /*sin1*/,
+                          std::span<const std::uint16_t> /*bitrev*/, std::span<double> /*z_re*/,
+                          std::span<double> /*z_im*/) {
+    std::unreachable();
+}
+
+void imdct512_negate_copy(std::span<const double> /*z_re*/, std::span<const double> /*z_im*/,
+                          std::span<double> /*t_re*/, std::span<double> /*t_im*/) {
+    std::unreachable();
+}
+
+void imdct512_post_twiddle(std::span<const double> /*cos1*/, std::span<const double> /*sin1*/,
+                           std::span<const double> /*t_re*/, std::span<const double> /*t_im*/,
+                           std::span<double> /*y_re*/, std::span<double> /*y_im*/) {
+    std::unreachable();
+}
+
+void imdct256_post_twiddle(std::span<const double> /*cos2*/, std::span<const double> /*sin2*/,
+                           std::span<const double> /*t1_re*/, std::span<const double> /*t1_im*/,
+                           std::span<const double> /*t2_re*/, std::span<const double> /*t2_im*/,
+                           std::span<double> /*y1_re*/, std::span<double> /*y1_im*/,
+                           std::span<double> /*y2_re*/, std::span<double> /*y2_im*/) {
     std::unreachable();
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <span>
 
 // ---------------------------------------------------------------------------
@@ -23,5 +25,55 @@ namespace ac3::internal::avx2 {
 // mdct.cpp's apply_analysis_window, four samples per iteration instead of
 // two. Unit stride throughout, nothing to gather or scatter.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed);
+
+// dct4_scaled<NLen>'s pre-twiddle (mdct.cpp), four m at a time instead of
+// two: gathers u at stride +-2, complex-multiplies by pre_re[m]/pre_im[m],
+// scatters the result to z_re[bitrev[m]]/z_im[bitrev[m]]. Not templated on
+// NLen - P (pre_re.size() == pre_im.size() == bitrev.size() ==
+// z_re.size() == z_im.size()) is a runtime span length instead, since a
+// template instantiated from mdct.cpp (no AVX2 flag) could not itself use
+// AVX2 intrinsics; P must be a multiple of 4 (true at both call sites, 128
+// and 64). u.size() must be 2*P (M).
+void dct4_pre_twiddle(std::span<const double> u, std::span<const double> pre_re,
+                      std::span<const double> pre_im, std::span<const std::uint16_t> bitrev,
+                      std::span<double> z_re, std::span<double> z_im);
+
+// dct4_scaled<NLen>'s post-twiddle: unit-stride read of z_re/z_im/post_re/
+// post_im (all P long), scaled complex multiply, scatter to out (2*P = M
+// long) at stride +-2. P must be a multiple of 4.
+void dct4_post_twiddle(std::span<const double> z_re, std::span<const double> z_im,
+                       std::span<const double> post_re, std::span<const double> post_im,
+                       double scale, std::span<double> out);
+
+// imdct512_windowed's step 2-3 pre-twiddle (fast branch), four k at a time:
+// gathers coeffs at two different descending/ascending stride-2 walks,
+// complex-multiplies by cos1[k]/sin1[k] with imdct512_windowed's OWN sign
+// convention (zi negated, NOT the same as dct4_pre_twiddle's), scatters to
+// z_re[bitrev[k]]/z_im[bitrev[k]]. kQuarter (cos1.size() == sin1.size() ==
+// bitrev.size() == z_re.size() == z_im.size()) is 128, a multiple of 4.
+// coeffs.size() must be kHalfN (512).
+void imdct512_pre_twiddle(std::span<const double> coeffs, std::span<const double> cos1,
+                          std::span<const double> sin1, std::span<const std::uint16_t> bitrev,
+                          std::span<double> z_re, std::span<double> z_im);
+
+// imdct512_windowed's post-FFT copy-and-negate (fast branch): t_re = z_re,
+// t_im = -z_im, unit stride, four at a time.
+void imdct512_negate_copy(std::span<const double> z_re, std::span<const double> z_im,
+                          std::span<double> t_re, std::span<double> t_im);
+
+// imdct512_windowed's step 4 post-twiddle: unit stride throughout (cos1,
+// sin1, t_re, t_im, y_re, y_im all kQuarter = 128 long), four at a time.
+void imdct512_post_twiddle(std::span<const double> cos1, std::span<const double> sin1,
+                           std::span<const double> t_re, std::span<const double> t_im,
+                           std::span<double> y_re, std::span<double> y_im);
+
+// imdct256_pair_windowed's step 4 post-twiddle: the same shape as
+// imdct512_post_twiddle but over BOTH half-block sets (1 and 2) at once,
+// unit stride throughout, kEighth = 64 long, four at a time.
+void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double> sin2,
+                           std::span<const double> t1_re, std::span<const double> t1_im,
+                           std::span<const double> t2_re, std::span<const double> t2_im,
+                           std::span<double> y1_re, std::span<double> y1_im,
+                           std::span<double> y2_re, std::span<double> y2_im);
 
 }  // namespace ac3::internal::avx2
