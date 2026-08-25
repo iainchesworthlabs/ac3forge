@@ -933,10 +933,15 @@ directory; there is still no threading anywhere in the codec core.
   across namespaces; `iec61937` lives under `sinks/`; `FrameError` has no `describe()` while every
   other error type does (a Python `Ac3EncodeError`'s message is the enumerator's name). Record
   the codec-vs-codec-blind namespace split in `docs/library/index.md`.
-- [ ] **AP3 (L)** — Pimpl sweep. Only the three WAV classes hide their state; `FrameDecoder`,
-  `Eac3Decoder`, `AtmosEncoder`, `AccessUnitEncoder` and the meters expose their layout, both
-  `FrameEncoder`s are half-done, and `EncoderConfig` carries a raw `verify::FrameTrace*`. Decide
-  how the config aggregates grow after 1.0 without an ABI break.
+- [x] **AP3 (L)** — Pimpl sweep. Done: every `AC3FORGE_EXPORT` class with non-trivial state now
+  hides it behind `struct Impl; std::unique_ptr<Impl> impl_;`, the same pattern the three WAV
+  classes already used — `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` (finished from their
+  half-done `PlanScratch`/`FrameState`), `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`,
+  `eac3::AccessUnitEncoder`, `meta::RangeController`, `meta::HeavyCompressor`,
+  `meta::LoudnessMeter`, `analysis::LevelMeter` and `iec61937::Eac3BurstPacker`. The five plain
+  config aggregates stay value types on purpose — see `docs/library/index.md`'s new
+  "pimpl" convention note for the growth-after-1.0 decision and why `EncoderConfig`'s
+  `verify::FrameTrace*` (and its siblings) are not part of that promise.
 - [ ] **AP4 (M)** — An ABI gate: libabigail or abi-compliance-checker over the
   `linux-llvm-shared` build against the last tag, advisory before 1.0 and required after; an
   exported-symbol allowlist (visibility is already hidden everywhere); a `-std=c11 -Wpedantic`

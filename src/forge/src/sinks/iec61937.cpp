@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -64,6 +65,16 @@ std::expected<std::vector<std::byte>, WrapError> wrap_frame(std::span<const std:
     return burst;
 }
 
+struct Eac3BurstPacker::Impl {
+    std::vector<std::byte> pending_;
+    int blocks_pending_ = 0;
+};
+
+Eac3BurstPacker::Eac3BurstPacker() : impl_(std::make_unique<Impl>()) {}
+Eac3BurstPacker::~Eac3BurstPacker() = default;
+Eac3BurstPacker::Eac3BurstPacker(Eac3BurstPacker&&) noexcept = default;
+Eac3BurstPacker& Eac3BurstPacker::operator=(Eac3BurstPacker&&) noexcept = default;
+
 std::expected<std::optional<std::vector<std::byte>>, WrapError> Eac3BurstPacker::push(
     std::span<const std::byte> access_unit) {
     if (access_unit.size() < 6 || (access_unit.size() & 1) != 0 ||
@@ -71,9 +82,9 @@ std::expected<std::optional<std::vector<std::byte>>, WrapError> Eac3BurstPacker:
         std::to_integer<std::uint8_t>(access_unit[1]) != 0x77) {
         return std::unexpected(WrapError::kNotAFrame);
     }
-    if (pending_.size() + access_unit.size() + 8 > kEac3BurstBytes) {
-        pending_.clear();
-        blocks_pending_ = 0;
+    if (impl_->pending_.size() + access_unit.size() + 8 > kEac3BurstBytes) {
+        impl_->pending_.clear();
+        impl_->blocks_pending_ = 0;
         return std::unexpected(WrapError::kFrameTooLarge);
     }
 
@@ -92,9 +103,9 @@ std::expected<std::optional<std::vector<std::byte>>, WrapError> Eac3BurstPacker:
                            ? eac3::blocks_per_syncframe(static_cast<int>(numblkscod))
                            : 6;
 
-    pending_.insert(pending_.end(), access_unit.begin(), access_unit.end());
-    blocks_pending_ += blocks;
-    if (blocks_pending_ < 6) {
+    impl_->pending_.insert(impl_->pending_.end(), access_unit.begin(), access_unit.end());
+    impl_->blocks_pending_ += blocks;
+    if (impl_->blocks_pending_ < 6) {
         return std::nullopt;
     }
 
@@ -103,11 +114,11 @@ std::expected<std::optional<std::vector<std::byte>>, WrapError> Eac3BurstPacker:
     put_word_le(burst, 0xF872);  // Pa
     put_word_le(burst, 0x4E1F);  // Pb
     put_word_le(burst, 0x0015);  // Pc: IEC61937_EAC3, no data-type-dependent bits
-    put_word_le(burst, static_cast<std::uint16_t>(pending_.size()));  // Pd: BYTES, not bits
-    pack_payload_words(burst, pending_, kEac3BurstBytes);
+    put_word_le(burst, static_cast<std::uint16_t>(impl_->pending_.size()));  // Pd: BYTES, not bits
+    pack_payload_words(burst, impl_->pending_, kEac3BurstBytes);
 
-    pending_.clear();
-    blocks_pending_ = 0;
+    impl_->pending_.clear();
+    impl_->blocks_pending_ = 0;
     return std::optional<std::vector<std::byte>>{std::move(burst)};
 }
 

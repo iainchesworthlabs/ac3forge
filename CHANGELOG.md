@@ -146,8 +146,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
   (`PF7`, `AC3FORGE_MINIMAL_DECODER`, cross-compiled and run on QEMU's Cortex-M3 target).
 
-**API completeness (AP)**
+**Library surface and v1.0 prep (AP)**
 
+- **A full pimpl sweep** (`AP3`): every `AC3FORGE_EXPORT` class with non-trivial state — both
+  `FrameEncoder`s, `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`, `eac3::AccessUnitEncoder`,
+  the DRC controllers, the loudness/level meters, `iec61937::Eac3BurstPacker` — now hides its
+  layout behind `struct Impl; std::unique_ptr<Impl> impl_;`, the pattern the WAV classes already
+  used. A private-state change is no longer an ABI break for anyone linking `ac3::forge_shared`.
+  `docs/library/index.md` records the one deliberate exception (the plain config aggregates) and
+  how they are meant to grow after 1.0.
 - **An E-AC-3 encoder in the C API** (`AP5`, partial): `ac3forge_eac3_encoder_t` mirrors
   `ac3::eac3::FrameEncoder` and `ac3forge_eac3_access_unit_encoder_t` mirrors `AccessUnitEncoder`
   — plain E-AC-3 and dependent-substream wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) with the Annex E
