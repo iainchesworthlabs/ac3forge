@@ -72,4 +72,21 @@ struct f64x4 {
     return f64x4{_mm256_xor_pd(a.v, _mm256_set1_pd(-0.0))};
 }
 
+// Broadcast-scalar multiply (ROADMAP PF5's batch-axis follow-on): a batched
+// transform's DATA is one f64x4 per lane-of-independent-transform-instances,
+// but its TWIDDLES are a plain `double` - identical for every instance in
+// the batch, since they only depend on which bin/stage, not which instance
+// - so fft_kernel.hpp's templated `VecType * double` twiddle multiplies
+// need this pair to compile at `VecType = f64x4`. Broadcasting into all 4
+// lanes and then multiplying is exactly the operation a scalar-times-vector
+// product already is, so this changes no result `f64x4::broadcast(s) * v`
+// would not already give - it exists only so callers don't have to spell
+// that out themselves at every twiddle multiply.
+[[nodiscard]] inline f64x4 operator*(f64x4 a, double b) {
+    return f64x4{_mm256_mul_pd(a.v, _mm256_set1_pd(b))};
+}
+[[nodiscard]] inline f64x4 operator*(double a, f64x4 b) {
+    return f64x4{_mm256_mul_pd(_mm256_set1_pd(a), b.v)};
+}
+
 }  // namespace ac3::internal::avx2

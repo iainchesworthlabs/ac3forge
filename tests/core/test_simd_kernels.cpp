@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "ac3/core/exponents.hpp"
+#include "ac3/core/mdct.hpp"
 #include "ac3/core/window.hpp"
 #include "ac3/internal/arch/simd.hpp"
 #include "cpu_features.hpp"
@@ -634,4 +635,56 @@ TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", 
 #else
     SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
+}
+
+TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-bit",
+         "[simd][avx2]") {
+    // Unlike the kernels above, this one is tested through the PUBLIC
+    // ac3::imdct512_windowed_batch4 (mdct.hpp) rather than
+    // ac3::internal::avx2:: directly: the low-level AVX2 body needs the
+    // twiddle/FFT tables mdct.cpp's own anonymous namespace holds
+    // (twiddles(), fast_mdct_tables<512>()), which are not visible outside
+    // that translation unit, so there is no way for a test to call it
+    // without going through the orchestrator that resolves them. The
+    // orchestrator itself checks has_avx2() internally and only takes the
+    // AVX2 path when it is true, so this is still only a meaningful check
+    // of the batched AVX2 kernel specifically on a machine that has one -
+    // guarded exactly like every other [avx2] case in this file, not run
+    // unconditionally.
+    if (!ac3::internal::cpu::has_avx2()) {
+        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+        INFO("this CPU does not report AVX2 support - nothing to execute here");
+        if (required) {
+            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+                "it exists to prove - pin this job to hardware that actually has AVX2");
+        }
+        SKIP("AVX2 not available on this CPU");
+    }
+
+    std::mt19937_64 rng(0x62617463'6834696dULL);
+    std::uniform_real_distribution<double> dist(-2.0e7, 2.0e7);
+    std::array<std::array<double, 256>, 4> coeffs{};
+    for (auto& one : coeffs) {
+        for (double& v : one) {
+            v = dist(rng);
+        }
+    }
+
+    std::array<std::array<double, 512>, 4> scalar_x{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        ac3::imdct512_windowed(coeffs[i], scalar_x[i], /*fast=*/true);
+    }
+
+    std::array<std::array<double, 512>, 4> batch_x{};
+    ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batch_x[0],
+                                  batch_x[1], batch_x[2], batch_x[3]);
+
+    std::size_t mismatches = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        if (!all_bits_equal(batch_x[i], scalar_x[i])) {
+            ++mismatches;
+        }
+    }
+    CHECK(mismatches == 0);
 }

@@ -443,6 +443,38 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     }
 }
 
+// ROADMAP PF5's batch-axis follow-on (docs/building.md's own section):
+// four independent imdct512_windowed(..., /*fast=*/true) calls, one object
+// per SIMD lane, instead of four separate ones - see mdct.hpp's own doc
+// comment for the shape and mdct_avx2.hpp's imdct512_windowed_batch4 for
+// the AVX2 body. tw/fft are exactly the tables imdct512_windowed's own
+// fast branch already looks up (twiddles(), fast_mdct_tables<512>().fft) -
+// this function is the one place outside that fast branch that needs
+// them, which is why the lookup is duplicated here rather than factored
+// out: the AVX2 body lives in a separate translation unit (mdct_avx2.cpp)
+// that cannot see this file's anonymous-namespace tables at all, so they
+// have to be resolved here and passed down as plain spans/a plain-old-data
+// reference, the same pattern every other AVX2 kernel call site in this
+// file already uses.
+void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
+                              std::span<const double, 256> coeffs1,
+                              std::span<const double, 256> coeffs2,
+                              std::span<const double, 256> coeffs3, std::span<double, 512> x0,
+                              std::span<double, 512> x1, std::span<double, 512> x2,
+                              std::span<double, 512> x3) {
+    if (internal::cpu::has_avx2()) {
+        const auto& tw = twiddles();
+        const auto& fft = fast_mdct_tables<512>().fft;
+        internal::avx2::imdct512_windowed_batch4(coeffs0, coeffs1, coeffs2, coeffs3, tw.cos1,
+                                                 tw.sin1, fft, x0, x1, x2, x3);
+        return;
+    }
+    imdct512_windowed(coeffs0, x0, /*fast=*/true);
+    imdct512_windowed(coeffs1, x1, /*fast=*/true);
+    imdct512_windowed(coeffs2, x2, /*fast=*/true);
+    imdct512_windowed(coeffs3, x3, /*fast=*/true);
+}
+
 void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
                             bool fast) {
     const auto& tw = twiddles2();
