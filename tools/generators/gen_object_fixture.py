@@ -36,7 +36,6 @@ Usage (repo root):  python tools/generators/gen_object_fixture.py
 """
 
 import os
-import struct
 import subprocess
 import sys
 import wave

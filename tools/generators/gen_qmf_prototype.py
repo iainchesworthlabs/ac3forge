@@ -66,8 +66,8 @@ def lattice(theta):
     """theta (..., 5) -> power-complementary pair a, b, each (..., 5)."""
     cos, sin = np.cos(theta), np.sin(theta)
     shape = theta.shape[:-1]
-    a = np.zeros(shape + (5,))
-    b = np.zeros(shape + (5,))
+    a = np.zeros((*shape, 5))
+    b = np.zeros((*shape, 5))
     a[..., 0] = cos[..., 0]
     b[..., 0] = sin[..., 0]
     for stage in range(1, 5):

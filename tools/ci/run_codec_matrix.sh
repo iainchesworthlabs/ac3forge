@@ -898,8 +898,8 @@ echo "[$count] fmp4 fallback-51 wrote both renditions into one group"
 grep -q 'CHANNELS="6"' fmp4_atmos_fallback/master.m3u8
 grep -q '/JOC"' fmp4_atmos_fallback/master.m3u8
 grep -q 'URI="bed51/audio.m3u8"' fmp4_atmos_fallback/master.m3u8
-cat fmp4_atmos_fallback/bed51/init.mp4 $(ls -v fmp4_atmos_fallback/bed51/segment*.m4s) \
-    > fmp4_bed51_combined.mp4
+mapfile -t fmp4_bed51_segments < <(printf '%s\n' fmp4_atmos_fallback/bed51/segment*.m4s | sort -V)
+cat fmp4_atmos_fallback/bed51/init.mp4 "${fmp4_bed51_segments[@]}" > fmp4_bed51_combined.mp4
 run_ffmpeg_check fmp4_bed51_combined.mp4
 run_ffmpeg_check fmp4_atmos_fallback/bed51/audio.m3u8
 

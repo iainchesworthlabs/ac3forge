@@ -130,7 +130,7 @@ def make_objects() -> list[list[float]]:
                 for tt in t]
     tremolo = [0.75 + 0.25 * math.sin(2 * math.pi * 3.1 * tt) for tt in t]
     broadcast = normalized([c * (1.0 + 0.35 * fo) * tr
-                            for c, fo, tr in zip(chord, formants, tremolo)], 0.26)
+                            for c, fo, tr in zip(chord, formants, tremolo, strict=True)], 0.26)
 
     # comet: band-limited hiss with a slow swell, the only moving object. Its
     # own envelope is deliberately smooth - a moving object whose level also
@@ -138,7 +138,7 @@ def make_objects() -> list[list[float]]:
     # gain interpolate".
     hiss = noise(0x0C0E7, N, 24)
     swell = [0.35 + 0.65 * math.sin(math.pi * tt / DURATION_S) for tt in t]
-    comet = normalized([h * s for h, s in zip(hiss, swell)], 0.22)
+    comet = normalized([h * s for h, s in zip(hiss, swell, strict=True)], 0.22)
 
     # engine: a low harmonic stack with a slow tremolo. Its energy sits below
     # everything else, which is what makes it the easiest object to pull back
@@ -147,7 +147,7 @@ def make_objects() -> list[list[float]]:
                  for k, f in enumerate((58.0, 116.0, 174.0, 232.0)))
              for tt in t]
     beat = [0.7 + 0.3 * math.sin(2 * math.pi * 1.7 * tt) for tt in t]
-    engine = normalized([s * b for s, b in zip(stack, beat)], 0.24)
+    engine = normalized([s * b for s, b in zip(stack, beat, strict=True)], 0.24)
 
     # pod-hi: a high whine cluster - two closely-spaced partials plus their
     # difference-tone beat, well above where coupling starts.
@@ -171,7 +171,7 @@ def make_objects() -> list[list[float]]:
     gate = smooth(gate, 256)
     carrier = [math.sin(2 * math.pi * 1420.0 * tt) + 0.45 * math.sin(2 * math.pi * 2130.0 * tt)
                for tt in t]
-    pod_lo = normalized([c * g for c, g in zip(carrier, gate)], 0.22)
+    pod_lo = normalized([c * g for c, g in zip(carrier, gate, strict=True)], 0.22)
 
     return [broadcast, comet, engine, pod_hi, pod_lo]
 
@@ -203,7 +203,7 @@ def write_wav(objects: list[list[float]]) -> None:
     for n in range(N):
         for essence in objects:
             v = max(-1.0, min(1.0, essence[n]))
-            frames += struct.pack("<h", int(round(v * 32767.0)))
+            frames += struct.pack("<h", round(v * 32767.0))
     WAV_OUT.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(WAV_OUT), "wb") as w:
         w.setnchannels(len(objects))
