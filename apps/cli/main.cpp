@@ -5,16 +5,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <fmt/base.h>
-#include <fmt/format.h>
 #include <span>
-#include <string>
 #include <string_view>
 #include <system_error>
 #include <vector>
 
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/meta/qc.hpp"
 #include "ac3/audio/audio_backend.hpp"
 #include "ac3/version.hpp"
 #include "adm/atmos_adm.hpp"
