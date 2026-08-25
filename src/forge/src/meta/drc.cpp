@@ -5,6 +5,7 @@
 #include <cmath>
 #include "ac3/core/tables.hpp"
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 

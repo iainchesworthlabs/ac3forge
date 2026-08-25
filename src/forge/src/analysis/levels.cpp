@@ -5,10 +5,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include "ac3/core/tables.hpp"
 #include "ac3/spatial/spatial.hpp"

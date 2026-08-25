@@ -22,6 +22,7 @@
 #include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/silent_frame.hpp"
+#include "ac3/encoder/transient.hpp"
 #include "ac3/internal/profiling.hpp"
 
 #include "ac3/meta/bsi.hpp"

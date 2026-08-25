@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <numbers>
 #include <numeric>
 #include "ac3/core/eac3_tables.hpp"

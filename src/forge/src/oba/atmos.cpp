@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/joc_tables.hpp"
 #include "ac3/oba/oamd.hpp"
