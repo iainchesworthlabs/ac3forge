@@ -86,36 +86,40 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
 // bins within a single object's own spectrum (contrast with
 // imdct512_pre_twiddle/imdct512_post_twiddle above, which batch ACROSS
 // bins of ONE transform; this batches ACROSS four INDEPENDENT transforms).
+// Every step in between the two layout seams (the FFT itself, the
+// negate-copy, the post-twiddle) is unit-stride f64x4 arithmetic with
+// nothing to gather or scatter, since the bin axis stays natural-order/
+// bitrev-permuted the whole way through exactly as it does for one object.
 //
-// A first version of this function took four SEPARATE per-object spans and
-// gathered/scattered between them and the f64x4-per-bin working arrays -
-// correct, but measurably SLOWER than four scalar calls (a real, measured
-// regression: docs/building.md's own "Runtime AVX2 dispatch" section, and
-// ROADMAP PF5's own history), because `f64x4::set` from four separate
-// scalar reads and `lane0()..lane3()` extraction back out are both several
-// real instructions apiece, run 128 and 512 times a call respectively -
-// overhead that swamped the vectorised arithmetic's own savings at this
-// transform size. `spectra`/`pcm_out` fix that by requiring the CALLER to
-// hold four objects' data already interleaved (four objects' values at
-// the same bin/sample index are four ADJACENT doubles), so both the
-// pre-twiddle gather and the step-5 scatter become a single f64x4 load/
-// store instead: `spectra` is row-major [256][stride], `pcm_out` row-major
-// [512][stride] - stride is the caller's own per-row width (its widest
-// legal value, not fixed to 4), and `group_start` (a multiple of 4, with
-// group_start + 4 <= stride) names which four ADJACENT columns this call
-// reads/writes; every other column is left untouched. spectra.size() must
-// be 256 * stride, pcm_out.size() 512 * stride.
+// The two seams themselves - object-major spans in, object-major spans out,
+// f64x4-per-bin in the middle - are paid in 4x4 block transposes (eight
+// shuffles per sixteen doubles, see simd_avx2.hpp's transpose4x4): the
+// spectra are interleaved once up front into an 8KB dense scratch, and the
+// step-5 windowing transposes each region's four consecutive output rows
+// straight into four contiguous per-object stores. This is the THIRD shape
+// this function has had, and the reason is measured, not aesthetic: the
+// first paid the seam in f64x4::set serial-insert gathers and
+// lane0()..lane3() extraction scatters inside the kernel (~1% over plain
+// scalar on a real joc-domain=mdct decode); the second moved the whole
+// interleaving out into ReconstructionState so the kernel boundary was
+// free, which made the kernel itself faster but the CALLER ~8% slower -
+// its accumulation and overlap-add passes then strode through [bin][slot]
+// memory at a cache line per double (net ~7% worse than the first). The
+// transposes keep the caller's layout natural AND the kernel boundary
+// cheap; git history holds both earlier designs and their numbers.
 //
-// cos1/sin1 are imdct512_windowed's own twiddle table (kQuarter = 128
-// long); fft is the P = 128 FFT table the long transform's own fast fold
-// already shares (fast_mdct_tables<512>().fft) - passed in rather than
-// looked up here because both live in mdct.cpp's anonymous namespace,
-// invisible outside that translation unit; this is a plain-old-data
-// struct (no AVX2 type), so passing a reference across the object-library
-// boundary is safe.
-void imdct512_windowed_batch4(std::span<const double> spectra, std::size_t stride,
-                              std::size_t group_start, std::span<const double> cos1,
-                              std::span<const double> sin1,
-                              const ac3::internal::FftTables<128>& fft, std::span<double> pcm_out);
+// coeffs0..3 and x0..3 are the same 256/512-long spans
+// ac3::imdct512_windowed itself takes; cos1/sin1 are imdct512_windowed's
+// own twiddle table (kQuarter = 128 long); fft is the P = 128 FFT table
+// the long transform's own fast fold already shares
+// (fast_mdct_tables<512>().fft) - passed in rather than looked up here
+// because both live in mdct.cpp's anonymous namespace, invisible outside
+// that translation unit; this is a plain-old-data struct (no AVX2 type),
+// so passing a reference across the object-library boundary is safe.
+void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const double> coeffs1,
+                              std::span<const double> coeffs2, std::span<const double> coeffs3,
+                              std::span<const double> cos1, std::span<const double> sin1,
+                              const ac3::internal::FftTables<128>& fft, std::span<double> x0,
+                              std::span<double> x1, std::span<double> x2, std::span<double> x3);
 
 }  // namespace ac3::internal::avx2

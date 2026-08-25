@@ -664,40 +664,25 @@ TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-b
 
     std::mt19937_64 rng(0x62617463'6834696dULL);
     std::uniform_real_distribution<double> dist(-2.0e7, 2.0e7);
-    constexpr std::size_t kStride = 4;
-    std::array<std::array<double, 256>, kStride> coeffs{};
+    std::array<std::array<double, 256>, 4> coeffs{};
     for (auto& one : coeffs) {
         for (double& v : one) {
             v = dist(rng);
         }
     }
 
-    std::array<std::array<double, 512>, kStride> scalar_x{};
-    for (std::size_t i = 0; i < kStride; ++i) {
+    std::array<std::array<double, 512>, 4> scalar_x{};
+    for (std::size_t i = 0; i < 4; ++i) {
         ac3::imdct512_windowed(coeffs[i], scalar_x[i], /*fast=*/true);
     }
 
-    // The batched entry point now requires the caller to hold the four
-    // objects' data already interleaved row-major [256][stride] (mdct.hpp's
-    // own doc comment on why - a second-pass redesign after the first,
-    // four-separate-span version measured slower than the scalar loop it
-    // replaced): object i's bin b sits at spectra[b * kStride + i].
-    std::array<double, 256 * kStride> spectra{};
-    for (std::size_t b = 0; b < 256; ++b) {
-        for (std::size_t i = 0; i < kStride; ++i) {
-            spectra[b * kStride + i] = coeffs[i][b];
-        }
-    }
-    std::array<double, 512 * kStride> pcm_out{};
-    ac3::imdct512_windowed_batch4(spectra, kStride, /*group_start=*/0, pcm_out);
+    std::array<std::array<double, 512>, 4> batch_x{};
+    ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batch_x[0],
+                                  batch_x[1], batch_x[2], batch_x[3]);
 
     std::size_t mismatches = 0;
-    for (std::size_t i = 0; i < kStride; ++i) {
-        std::array<double, 512> batch_x{};
-        for (std::size_t n = 0; n < 512; ++n) {
-            batch_x[n] = pcm_out[n * kStride + i];
-        }
-        if (!all_bits_equal(batch_x, scalar_x[i])) {
+    for (std::size_t i = 0; i < 4; ++i) {
+        if (!all_bits_equal(batch_x[i], scalar_x[i])) {
             ++mismatches;
         }
     }

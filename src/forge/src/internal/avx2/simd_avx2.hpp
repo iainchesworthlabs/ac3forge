@@ -89,4 +89,26 @@ struct f64x4 {
     return f64x4{_mm256_mul_pd(_mm256_set1_pd(a), b.v)};
 }
 
+// In-place 4x4 transpose: on return, r0 holds the four inputs' lane 0, r1
+// their lane 1, and so on. Eight shuffles for sixteen doubles - the whole
+// reason a batched kernel can afford to change data layout at its own
+// boundary instead of asking the caller to store everything interleaved:
+// f64x4::set from four scalar loads costs a serial insert chain per
+// vector, and lane0()..lane3() extraction the mirror image of one, so
+// moving 16 doubles across the layout seam that way is ~28 dependent
+// instructions where this is 8 independent ones (ROADMAP PF5's batch-axis
+// follow-on measured both earlier shapes losing to plain scalar because
+// of exactly that tax - see mdct_avx2.hpp's imdct512_windowed_batch4).
+// Pure data movement, no arithmetic, so it cannot perturb bit-exactness.
+inline void transpose4x4(f64x4& r0, f64x4& r1, f64x4& r2, f64x4& r3) {
+    const __m256d t0 = _mm256_unpacklo_pd(r0.v, r1.v);  // r0[0] r1[0] r0[2] r1[2]
+    const __m256d t1 = _mm256_unpackhi_pd(r0.v, r1.v);  // r0[1] r1[1] r0[3] r1[3]
+    const __m256d t2 = _mm256_unpacklo_pd(r2.v, r3.v);  // r2[0] r3[0] r2[2] r3[2]
+    const __m256d t3 = _mm256_unpackhi_pd(r2.v, r3.v);  // r2[1] r3[1] r2[3] r3[3]
+    r0.v = _mm256_permute2f128_pd(t0, t2, 0x20);        // r0[0] r1[0] r2[0] r3[0]
+    r1.v = _mm256_permute2f128_pd(t1, t3, 0x20);        // r0[1] r1[1] r2[1] r3[1]
+    r2.v = _mm256_permute2f128_pd(t0, t2, 0x31);        // r0[2] r1[2] r2[2] r3[2]
+    r3.v = _mm256_permute2f128_pd(t1, t3, 0x31);        // r0[3] r1[3] r2[3] r3[3]
+}
+
 }  // namespace ac3::internal::avx2

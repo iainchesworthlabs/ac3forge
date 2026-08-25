@@ -466,13 +466,6 @@ namespace {
                 continue;
             }
             present[static_cast<std::size_t>(n_present++)] = object;
-            // Slot = this object's position in `present`, not its own object
-            // index - object_mdct/x are now bin/sample-major, PRESENT-SLOT-
-            // minor (ROADMAP PF5's batch-axis follow-on, second pass; see
-            // joc.hpp's own doc comment on ReconstructionState), so every
-            // write below has to land in the slot column, not an
-            // object-indexed row.
-            const auto slot = static_cast<std::size_t>(n_present - 1);
             const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
             // --- §6.6.6: this object's spectrum is a per-band linear
@@ -511,7 +504,8 @@ namespace {
                         sum += m[static_cast<std::size_t>(ch)] *
                                bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
                     }
-                    object_mdct[static_cast<std::size_t>(bin)][slot] = sum;
+                    object_mdct[static_cast<std::size_t>(object)][static_cast<std::size_t>(bin)] =
+                        sum;
                 }
             }
         }
@@ -525,33 +519,27 @@ namespace {
         // batching only ever applies to the fast fold - fast_imdct==false
         // (mode=reference) always takes the one-at-a-time branch below, at
         // every present object, exactly as it always has.
-        // object_mdct/x are row-major [256][kMaxObjects] / [512][kMaxObjects]
-        // (bin/sample-major, slot-minor) - flattening them for
-        // imdct512_windowed_batch4's strided interface is safe because a
-        // std::array of std::array has no inter-row padding. `idx` here IS
-        // the slot index (pass 1 above captures slot = n_present - 1 at the
-        // same point `present` gets appended, in the same order this loop
-        // walks it), so group_start = idx needs no lookup through `present`.
-        const std::size_t stride = static_cast<std::size_t>(kMaxObjects);
-        const std::span<const double> spectra(object_mdct.front().data(), 256 * stride);
-        const std::span<double> pcm_out(x.front().data(), 512 * stride);
         int idx = 0;
         while (idx < n_present) {
             if (fast_imdct && idx + 4 <= n_present) {
-                imdct512_windowed_batch4(spectra, stride, static_cast<std::size_t>(idx), pcm_out);
+                const int o0 = present[static_cast<std::size_t>(idx)];
+                const int o1 = present[static_cast<std::size_t>(idx + 1)];
+                const int o2 = present[static_cast<std::size_t>(idx + 2)];
+                const int o3 = present[static_cast<std::size_t>(idx + 3)];
+                imdct512_windowed_batch4(object_mdct[static_cast<std::size_t>(o0)],
+                                         object_mdct[static_cast<std::size_t>(o1)],
+                                         object_mdct[static_cast<std::size_t>(o2)],
+                                         object_mdct[static_cast<std::size_t>(o3)],
+                                         x[static_cast<std::size_t>(o0)],
+                                         x[static_cast<std::size_t>(o1)],
+                                         x[static_cast<std::size_t>(o2)],
+                                         x[static_cast<std::size_t>(o3)]);
                 idx += 4;
                 continue;
             }
-            const auto slot = static_cast<std::size_t>(idx);
-            std::array<double, 256> coeffs{};
-            for (int bin = 0; bin < 256; ++bin) {
-                coeffs[static_cast<std::size_t>(bin)] = object_mdct[static_cast<std::size_t>(bin)][slot];
-            }
-            std::array<double, 512> xo{};
-            imdct512_windowed(coeffs, xo, fast_imdct);
-            for (int n = 0; n < 512; ++n) {
-                x[static_cast<std::size_t>(n)][slot] = xo[static_cast<std::size_t>(n)];
-            }
+            const int o = present[static_cast<std::size_t>(idx)];
+            imdct512_windowed(object_mdct[static_cast<std::size_t>(o)],
+                              x[static_cast<std::size_t>(o)], fast_imdct);
             ++idx;
         }
 
@@ -559,12 +547,11 @@ namespace {
             const int object = present[static_cast<std::size_t>(i)];
             auto& pcm = out[static_cast<std::size_t>(object)];
             auto& history = state.object_history[static_cast<std::size_t>(object)];
-            const auto slot = static_cast<std::size_t>(i);
+            const auto& xo = x[static_cast<std::size_t>(object)];
             for (int n = 0; n < kSamplesPerBlock; ++n) {
-                pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] =
-                    static_cast<float>(2.0 * (x[static_cast<std::size_t>(n)][slot] +
-                                              history[static_cast<std::size_t>(n)]));
-                history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)][slot];
+                pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
+                    2.0 * (xo[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
+                history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
             }
         }
     }

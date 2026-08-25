@@ -142,36 +142,48 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
     }
 }
 
-void imdct512_windowed_batch4(std::span<const double> spectra, std::size_t stride,
-                              std::size_t group_start, std::span<const double> cos1,
-                              std::span<const double> sin1,
-                              const ac3::internal::FftTables<128>& fft,
-                              std::span<double> pcm_out) {
+void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const double> coeffs1,
+                              std::span<const double> coeffs2, std::span<const double> coeffs3,
+                              std::span<const double> cos1, std::span<const double> sin1,
+                              const ac3::internal::FftTables<128>& fft, std::span<double> x0,
+                              std::span<double> x1, std::span<double> x2, std::span<double> x3) {
     constexpr std::size_t kQuarter = 128;
     constexpr std::size_t kEighth = 64;
-    constexpr std::size_t kHalfN = 256;  // spectra row count
+    constexpr std::size_t kHalfN = 256;  // coeffsN.size()
 
-    // spectra is row-major [256][stride]; row r's four batched objects are
-    // the CONTIGUOUS doubles spectra[r*stride+group_start ..
-    // +group_start+3], so a gather is a single f64x4::load rather than
-    // f64x4::set from four separate arrays - see this function's own doc
-    // comment (mdct_avx2.hpp) for why that distinction is the whole point
-    // of this layout.
-    const auto row = [&](std::size_t r) { return &spectra[r * stride + group_start]; };
+    // Layout seam, entry side: interleave the four objects' spectra into
+    // one f64x4 per bin, 4x4 blocks at a time - four contiguous vector
+    // loads (one per object) and eight shuffles per sixteen doubles, in
+    // place of the two f64x4::set serial-insert gathers per pre-twiddle
+    // iteration an earlier version of this function paid (see this
+    // function's own doc comment in mdct_avx2.hpp for the measured
+    // history). 8KB of dense scratch, L1-resident for the whole call.
+    std::array<f64x4, kHalfN> spectra{};
+    for (std::size_t bin = 0; bin < kHalfN; bin += 4) {
+        auto r0 = f64x4::load(&coeffs0[bin]);
+        auto r1 = f64x4::load(&coeffs1[bin]);
+        auto r2 = f64x4::load(&coeffs2[bin]);
+        auto r3 = f64x4::load(&coeffs3[bin]);
+        transpose4x4(r0, r1, r2, r3);
+        spectra[bin] = r0;
+        spectra[bin + 1] = r1;
+        spectra[bin + 2] = r2;
+        spectra[bin + 3] = r3;
+    }
 
     // Steps 2-3: pre-twiddle + in-place FFT, one f64x4 per bin (all four
     // objects' values for that bin) instead of one f64x2/f64x4 per group
     // of bins within one object. Same sign convention as
-    // imdct512_pre_twiddle above - the gather here walks the SAME bin
-    // index across four objects instead of four consecutive bins of one -
-    // and the same bitrev scatter target; that "scatter" is a single
-    // f64x4 store per bin (all four objects move together), since the
-    // destination is already f64x4-per-bin by construction.
+    // imdct512_pre_twiddle above - and, with spectra interleaved, both
+    // reads are plain indexed vector loads rather than gathers; the
+    // bitrev "scatter" is a single f64x4 store per bin (all four objects
+    // move together), since the destination is object-interleaved by
+    // construction.
     std::array<f64x4, kQuarter> z_re{};
     std::array<f64x4, kQuarter> z_im{};
     for (std::size_t k = 0; k < kQuarter; ++k) {
-        const auto a = f64x4::load(row(kHalfN - 2 * k - 1));
-        const auto b = f64x4::load(row(2 * k));
+        const auto a = spectra[kHalfN - 2 * k - 1];
+        const auto b = spectra[2 * k];
         const double c = cos1[k];
         const double sn = sin1[k];
         const auto zr = (a * c) - (b * sn);
@@ -203,24 +215,50 @@ void imdct512_windowed_batch4(std::span<const double> spectra, std::size_t strid
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field
-    // from imdct512_windowed's own step 5 (mdct.cpp). pcm_out is row-major
-    // [512][stride] the same way spectra is, so this is a single
-    // f64x4::store per formula - not the four-separate-destination,
-    // lane-by-lane scatter an earlier version of this function needed
-    // (see mdct_avx2.hpp's doc comment for why that mattered).
+    // from imdct512_windowed's own step 5 (mdct.cpp) - with the layout
+    // seam's exit side folded straight in. Each window region writes two
+    // consecutive output rows per n, so a PAIR of n makes four consecutive
+    // rows per region; transposing those four row-vectors (each holding
+    // all four objects at one row) turns them into four per-object runs of
+    // four contiguous samples, stored with one plain vector store each -
+    // in place of the lane0()..lane3() extraction scatter (four dependent
+    // extract+store chains per row, 512 rows a call) an earlier version of
+    // this function paid. The multiplies below are the identical
+    // operations imdct512_windowed's own step 5 performs, in the identical
+    // order - each formula is the original evaluated at n and n + 1 - and
+    // the transpose after them moves finished values only, so this stays
+    // bit-identical to four separate scalar calls.
     const auto& w = ac3::kAnalysisWindow;
     const auto yr = [&](std::size_t i) { return y_re[i]; };
     const auto yi = [&](std::size_t i) { return y_im[i]; };
-    const auto out_row = [&](std::size_t r) { return &pcm_out[r * stride + group_start]; };
-    for (std::size_t n = 0; n < kEighth; ++n) {
-        (-yi(kEighth + n) * w[2 * n]).store(out_row(2 * n));
-        (yr(kEighth - n - 1) * w[2 * n + 1]).store(out_row(2 * n + 1));
-        (-yr(n) * w[kQuarter + 2 * n]).store(out_row(kQuarter + 2 * n));
-        (yi(kQuarter - n - 1) * w[kQuarter + 2 * n + 1]).store(out_row(kQuarter + 2 * n + 1));
-        (-yr(kEighth + n) * w[kHalfN - 2 * n - 1]).store(out_row(kHalfN + 2 * n));
-        (yi(kEighth - n - 1) * w[kHalfN - 2 * n - 2]).store(out_row(kHalfN + 2 * n + 1));
-        (yi(n) * w[kQuarter - 2 * n - 1]).store(out_row(3 * kQuarter + 2 * n));
-        (-yr(kQuarter - n - 1) * w[kQuarter - 2 * n - 2]).store(out_row(3 * kQuarter + 2 * n + 1));
+    const auto store_run = [&](std::size_t base, f64x4 r0, f64x4 r1, f64x4 r2, f64x4 r3) {
+        transpose4x4(r0, r1, r2, r3);
+        r0.store(&x0[base]);
+        r1.store(&x1[base]);
+        r2.store(&x2[base]);
+        r3.store(&x3[base]);
+    };
+    for (std::size_t n = 0; n < kEighth; n += 2) {
+        store_run(2 * n,  //
+                  -yi(kEighth + n) * w[2 * n],  //
+                  yr(kEighth - n - 1) * w[2 * n + 1],
+                  -yi(kEighth + n + 1) * w[2 * n + 2],  //
+                  yr(kEighth - n - 2) * w[2 * n + 3]);
+        store_run(kQuarter + 2 * n,  //
+                  -yr(n) * w[kQuarter + 2 * n],  //
+                  yi(kQuarter - n - 1) * w[kQuarter + 2 * n + 1],
+                  -yr(n + 1) * w[kQuarter + 2 * n + 2],
+                  yi(kQuarter - n - 2) * w[kQuarter + 2 * n + 3]);
+        store_run(kHalfN + 2 * n,  //
+                  -yr(kEighth + n) * w[kHalfN - 2 * n - 1],
+                  yi(kEighth - n - 1) * w[kHalfN - 2 * n - 2],
+                  -yr(kEighth + n + 1) * w[kHalfN - 2 * n - 3],
+                  yi(kEighth - n - 2) * w[kHalfN - 2 * n - 4]);
+        store_run(3 * kQuarter + 2 * n,  //
+                  yi(n) * w[kQuarter - 2 * n - 1],  //
+                  -yr(kQuarter - n - 1) * w[kQuarter - 2 * n - 2],
+                  yi(n + 1) * w[kQuarter - 2 * n - 3],
+                  -yr(kQuarter - n - 2) * w[kQuarter - 2 * n - 4]);
     }
 }
 
