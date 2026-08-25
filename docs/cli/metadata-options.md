@@ -142,10 +142,10 @@ qc options (qc; any order, after the positional arguments):
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
 encoded), and bare `heavy` prefers `compr` where the stream carries it — the decode-time meaning
-of these two tokens is deliberately the mirror of their encode-time meaning. That applies to
-AC-3 decode only: those two tokens are silently inert on `.ec3` input. `fast-imdct=off` and
-`mode=` are the exception — they select the inverse transform's evaluation and apply to both
-codecs' decode alike.
+of these two tokens is deliberately the mirror of their encode-time meaning. Both apply to
+E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
+ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
+both codecs' decode alike.
 
 See [Metadata](../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto

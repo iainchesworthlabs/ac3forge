@@ -78,4 +78,13 @@ namespace ac3::admbridge {
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position adm_position_to_room(
     const ac3adm::Position& position);
 
+// The write-direction inverse of adm_cartesian_to_room() above, for roadmap item IM2 (the JOC ->
+// ADM BWF writer): x_adm = 2*x_room - 1, y_adm = 1 - 2*y_room, z_adm = z_room - the algebraic
+// inverse of the affine remap this header's own top comment derives, not a second, independently
+// checked formula. This writer only ever emits cartesian ADM (the Dolby Atmos Master ADM Profile's
+// own shape), so unlike the read side there is no matching room_to_adm_polar()/room_position_to_adm()
+// pair - a caller wanting a polar master would need one, and none of this project's own writers do.
+[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3adm::CartesianPosition room_to_adm_cartesian(
+    const ac3::oba::Position& room);
+
 }  // namespace ac3::admbridge
