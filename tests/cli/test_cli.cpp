@@ -2261,6 +2261,97 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
     CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
 }
 
+// Roadmap IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
+// only the flat 5.1 VBAP fold every dynamic object was panned into at encode
+// time - spatial.hpp's own "a raised object folds onto the ring... at full
+// level" - so an object authored at the ceiling measures no differently from
+// one on the ring. objects= re-renders each object by its own OAMD position
+// (including height) onto the named layout instead, which is what BS.1770-5
+// Annex 4 asks for.
+TEST_CASE("qc objects= re-renders an elevated object, layout=bed cannot see it",
+          "[cli][qc][objects]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_objects_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    // 2 s, the same "well past 3 real frames" duration the layout=rendered
+    // test above uses.
+    constexpr std::size_t kFrames = 96000;
+    const auto channels = make_tone_channels(2, kFrames, kRate);
+    REQUIRE(write_wav(wav_path, channels, kRate));
+
+    // Object 0 pinned at the ceiling directly overhead; object 1 pinned on
+    // the floor at the left wall - both static (one keyframe each is enough,
+    // see the atmos-encode keyframes test above for the file format).
+    const auto paths_path = dir / "qc_objects_paths.txt";
+    {
+        std::ofstream paths{paths_path};
+        REQUIRE(paths.is_open());
+        paths << "0 0.0  0.5 0.5 1.0  1.0 0.0\n";
+        paths << "1 0.0  0.0 0.5 0.0  1.0 0.0\n";
+    }
+
+    const auto ec3_path = dir / "qc_objects.ec3";
+    REQUIRE(run_cli("atmos-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 448 2 \"" + paths_path.string() + "\"",
+                    dir / "qc_objects_encode.log") == 0);
+
+    const auto bed_log = dir / "qc_objects_bed.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=bed", bed_log) == 0);
+    const auto bed_text = read_log(bed_log);
+
+    const auto objects_log = dir / "qc_objects_514.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" objects=514", objects_log) == 0);
+    const auto objects_text = read_log(objects_log);
+    INFO("bed:\n" << bed_text << "\nobjects=514:\n" << objects_text);
+
+    // Reports which configuration and rendering algorithm measured it, per
+    // Annex 4's own "should be reported" - see analysis.cpp's own comment.
+    const auto objects_section_at = objects_text.find("objects=5.1.4");
+    REQUIRE(objects_section_at != std::string::npos);
+    CHECK(objects_text.find("BS.1770-5 Annex 4") != std::string::npos);
+
+    // layout= and objects= are independent switches (this invocation asked
+    // for neither layout=bed nor layout=rendered explicitly, so the default
+    // layout=bed report comes first) - the objects= figures are read from
+    // after that landmark so a bare value_after does not just find the bed
+    // pass's own "integrated loudness" line again.
+    const auto objects_section = objects_text.substr(objects_section_at);
+
+    // The ceiling object's energy lands on a height pair layout=bed's flat
+    // 5.1 fold has no channel for at all (spatial::pan_room folds it onto the
+    // ring instead), so the two measurements must genuinely disagree - if
+    // objects= were quietly still metering the same flat bed, they would not.
+    const auto bed_lkfs = value_after(bed_text, "integrated loudness");
+    const auto objects_lkfs = value_after(objects_section, "integrated loudness");
+    REQUIRE(bed_lkfs.has_value());
+    REQUIRE(objects_lkfs.has_value());
+    CHECK(*objects_lkfs != Catch::Approx(*bed_lkfs).margin(0.05));
+}
+
+TEST_CASE("qc objects= refuses a programme with no dynamic-object-only OAMD",
+          "[cli][qc][objects]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_objects_bad_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 48000;
+    REQUIRE(write_wav(wav_path, {make_tone(0.4, 440.0, kFrames, kRate),
+                                  make_tone(0.4, 660.0, kFrames, kRate)},
+                      kRate));
+    // A plain channel-based E-AC-3 stream - no OAMD/JOC at all - is exactly
+    // what objects= cannot meter.
+    const auto ec3_path = dir / "qc_objects_bad.ec3";
+    REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 192 none 51",
+                    dir / "qc_objects_bad_encode.log") == 0);
+
+    const auto log = dir / "qc_objects_bad.log";
+    const auto rc = run_cli("qc \"" + ec3_path.string() + "\" objects=514", log);
+    CHECK(rc != 0);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(text.find("no dynamic-object-only OAMD") != std::string::npos);
+}
+
 TEST_CASE("qc layout= rejects anything but bed or rendered", "[cli][qc][layout]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "qc_layout_bad_in.wav";

@@ -323,7 +323,10 @@ void print_qc_topic() {
     fmt::println("       layout=bed (default) meters the independent substream's own Table 5.8");
     fmt::println("       bed (BS.1770 Annex 1); layout=rendered meters the whole assembled");
     fmt::println("       program, every dependent substream's height/wide/rear channels");
-    fmt::println("       included (BS.1770-5 Annex 3's extended algorithm).");
+    fmt::println("       included (BS.1770-5 Annex 3's extended algorithm). objects=<layout>");
+    fmt::println("       additionally re-renders the stream's dynamic objects by their own");
+    fmt::println("       OAMD position onto the named layout and meters that (BS.1770-5");
+    fmt::println("       Annex 4) - only for a dynamic-object-only programme.");
 }
 
 void print_probe_topic() {
@@ -564,6 +567,10 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  layout=rendered   meter the whole assembled program instead, every");
         fmt::println("                    dependent substream's height/wide/rear channels");
         fmt::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
+        fmt::println("  objects=<layout>  re-render dynamic objects by their own OAMD position");
+        fmt::println("                    onto <layout> (51|71|512|514|714) and meter that too");
+        fmt::println("                    (BS.1770-5 Annex 4); dynamic-object-only programmes");
+        fmt::println("                    only");
     }
     if ((mask & topic::kProbe) != 0) {
         fmt::println("");
