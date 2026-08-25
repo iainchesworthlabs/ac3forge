@@ -33,6 +33,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 #include "bit_reservoir.hpp"
 #include "dither.hpp"
@@ -118,6 +119,14 @@ constexpr BitAllocCodes kAllocCodes{.sdcycod = 2,
                                     .floorcod = 7,
                                     .fgaincod = kBamode0Codes.fgaincod};
 constexpr int kFrmfgaincode = 0;   // fgaincod defaults to 0x4, matching AC-3
+// EQ13's codes search (encode_frame, CBR only): the margin, in dB of mean
+// noise-to-signal, a candidate other than the incumbent must beat it by to
+// win - the same value and the same reason encoder.cpp's own step 9a uses
+// one: two candidates within a hundredth of a decibel of each other are
+// indistinguishable to a listener, and baie is transmitted every frame, so
+// a search that flips on noise alone would modulate the masking curve for
+// nothing.
+constexpr double kCodeSwitchMarginDb = 0.05;
 // Padding goes through auxbits. AC-3 cannot do that - §5.5 confines its aux
 // field to the final 3/8 of the frame, to protect the crc1-at-5/8 checkpoint -
 // but E-AC-3 has no crc1 and Annex E states no equivalent constraint, so
@@ -493,6 +502,12 @@ struct Payload {
     // Ch2's own words, present only when acmod is kDualMono.
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     std::optional<std::uint8_t> compr2 = std::nullopt;
+    // §7.2.2's transmitted bit allocation parameters, as actually written to
+    // baie this frame. Defaults to kAllocCodes - bamode == 1's fixed value
+    // before EQ13 - and only ever moves under FrameConfig::search (CBR only;
+    // see encode_frame's own codes-search block), to kBamode0Codes, the only
+    // other value baie can carry that this encoder ever chooses between.
+    BitAllocCodes codes = kAllocCodes;
 
     // Frame reuse, same every-field contract as the plans above: after this,
     // a reused Payload is indistinguishable from `Payload{}` except that its
@@ -524,6 +539,7 @@ struct Payload {
         compr = std::nullopt;
         dynrng2 = {};
         compr2 = std::nullopt;
+        codes = kAllocCodes;
     }
 };
 
@@ -2127,11 +2143,14 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         if constexpr (kBamode != 0) {
             w.put(first ? 1 : 0, 1);  // baie
             if (first) {
-                w.put(static_cast<std::uint32_t>(kAllocCodes.sdcycod), 2);
-                w.put(static_cast<std::uint32_t>(kAllocCodes.fdcycod), 2);
-                w.put(static_cast<std::uint32_t>(kAllocCodes.sgaincod), 2);
-                w.put(static_cast<std::uint32_t>(kAllocCodes.dbpbcod), 2);
-                w.put(static_cast<std::uint32_t>(kAllocCodes.floorcod), 3);
+                // payload.codes: kAllocCodes unless FrameConfig::search (EQ13,
+                // CBR only) chose kBamode0Codes instead for this frame - see
+                // encode_frame's own codes-search block.
+                w.put(static_cast<std::uint32_t>(payload.codes.sdcycod), 2);
+                w.put(static_cast<std::uint32_t>(payload.codes.fdcycod), 2);
+                w.put(static_cast<std::uint32_t>(payload.codes.sgaincod), 2);
+                w.put(static_cast<std::uint32_t>(payload.codes.dbpbcod), 2);
+                w.put(static_cast<std::uint32_t>(payload.codes.floorcod), 3);
             }
         }
         // snroffststr == 0: the offsets came from audfrm, so the block
@@ -2451,6 +2470,15 @@ struct FrameEncoder::Impl {
     // performance hint - the AC-3 FrameEncoder carries the same field for
     // the same reason. Negative until a frame has been encoded.
     int chbwcod_state_ = -1;
+    // FrameConfig::search's own incumbent (EQ13): the previous frame's
+    // winning BitAllocCodes, so a search judges each candidate against what
+    // the stream is actually carrying rather than against a fixed baseline
+    // that gives "stay where you were" no advantage - see the AC-3
+    // FrameEncoder's previous_codes_ for the same reasoning. Initialized to
+    // kAllocCodes (bamode == 1's own default) rather than BitAllocCodes'
+    // in-class default (Table E1.4's, dbpbcod 2), so the first frame's
+    // incumbent already matches what it actually transmits.
+    BitAllocCodes previous_codes_ = kAllocCodes;
     // Smoothed across frames: see the AC-3 FrameEncoder for why they cannot be
     // per-frame objects.
     std::optional<meta::RangeController> range_;
@@ -2494,6 +2522,11 @@ struct FrameEncoder::Impl {
     std::vector<double> spx_gains;
     std::vector<double> spx_synth;
     std::vector<double> spx_band_rms;
+    // EQ13's codes search (encode_frame, FrameConfig::search): one
+    // BandNoise accumulator per (stream, block), same reuse contract as
+    // every vector above - resize()d and every active slot reset() at the
+    // top of measure(), never read before that.
+    std::vector<quality::BandNoise> measured;
     // ABR's rate control - the sliding-window budget and the composite offset
     // it steers - engaged exactly when config_.vbr->abr is. Encoder-lifetime
     // state, NOT touched by reset_for_frame: the whole point is that what one
@@ -4208,7 +4241,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                             .snr_all_zero = composite == 0,
                                             .high_efficiency = plan.aht,
                                             .delta = run.delta};
-                compute_bit_allocation(run.decoded, impl_->config_.sample_rate, kAllocCodes,
+                compute_bit_allocation(run.decoded, impl_->config_.sample_rate, payload.codes,
                                        composite >> 4, composite & 15, run.bap, region);
             }
             if (plan.aht) {
@@ -4532,6 +4565,117 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (const auto min_words = vbr_min_words(vbr)) {
             words = std::max(words, *min_words);
         }
+    }
+
+    // --- 7a. EQ13: search payload.codes.dbpbcod against decoded-domain
+    // distortion (CBR only) -----------------------------------------------
+    // Mirrors encoder.cpp's own step 9a, narrowed to the one axis and the
+    // one rate-control mode FrameConfig::search actually covers here - see
+    // its own comment for why. `lo`/`fixed_budget` are already CBR's,
+    // settled above against payload.codes' default (kAllocCodes).
+    if (!impl_->config_.vbr && impl_->config_.search == quality::Criterion::kDistortion) {
+        AC3_ZONE_SCOPED_N("eac3_step7a_codes_search");
+        const auto slot_count = static_cast<std::size_t>(streams) * kBlocksPerFrame;
+        auto& measured = impl_->measured;
+        measured.resize(slot_count);
+        const auto slot_of = [&](int s, int blk) {
+            return static_cast<std::size_t>(s) * kBlocksPerFrame + static_cast<std::size_t>(blk);
+        };
+        // Returns how many non-AHT streams it measured, so score() can tell
+        // "nothing counted" apart from "everything counted and matched
+        // perfectly" the same way encoder.cpp's own step 9a does.
+        const auto measure = [&] {
+            for (auto& slot : measured) {
+                slot.reset();
+            }
+            int counted_streams = 0;
+            for (int s = 0; s < streams; ++s) {
+                const auto& plan = payload.chans[static_cast<std::size_t>(s)];
+                if (plan.aht) {
+                    continue;  // excluded - see FrameConfig::search's own comment
+                }
+                ++counted_streams;
+                for (int blk = 0; blk < nblks; ++blk) {
+                    const auto& run = plan.run_at(blk);
+                    const auto& block_fixed = fixed_at(s, blk);
+                    quality::accumulate_block(
+                        std::span<const std::int32_t>(block_fixed).subspan(
+                            static_cast<std::size_t>(plan.start),
+                            static_cast<std::size_t>(plan.endmant - plan.start)),
+                        run.decoded, run.bap, plan.start, plan.endmant,
+                        measured[slot_of(s, blk)]);
+                }
+            }
+            return counted_streams;
+        };
+        // Mean noise-to-signal in dB, per stream then averaged - the same
+        // "loud pays for quiet" avoidance encoder.cpp's own score() uses,
+        // for the same reason (rematrixing and coupling routinely leave one
+        // stream far quieter than another).
+        const auto score = [&]() -> double {
+            if (measure() == 0) {
+                return -quality::kMaxSnrDb;
+            }
+            double sum_ratio = 0.0;
+            int counted = 0;
+            for (int s = 0; s < streams; ++s) {
+                if (payload.chans[static_cast<std::size_t>(s)].aht) {
+                    continue;
+                }
+                double signal = 0.0;
+                double noise = 0.0;
+                for (int blk = 0; blk < nblks; ++blk) {
+                    const auto& slot = measured[slot_of(s, blk)];
+                    signal += slot.total_signal();
+                    noise += slot.total_noise();
+                }
+                if (signal > 0.0) {
+                    sum_ratio += noise / std::max(signal, 1e-300);
+                    ++counted;
+                }
+            }
+            if (counted == 0) {
+                return -quality::kMaxSnrDb;
+            }
+            return 10.0 * std::log10(sum_ratio / counted);
+        };
+
+        const BitAllocCodes defaults = payload.codes;  // kAllocCodes, already settled above
+        double best = score();
+        BitAllocCodes best_codes = defaults;
+        BitAllocCodes last_tried = defaults;
+
+        const BitAllocCodes incumbent = impl_->previous_codes_;
+        if (!(incumbent == defaults)) {
+            payload.codes = incumbent;
+            lo = search(fixed_budget);
+            last_tried = incumbent;
+            const double value = score();
+            if (value < best - kCodeSwitchMarginDb) {
+                best = value;
+                best_codes = incumbent;
+            }
+        }
+        if (!(kBamode0Codes == defaults) && !(kBamode0Codes == incumbent)) {
+            payload.codes = kBamode0Codes;
+            lo = search(fixed_budget);
+            last_tried = kBamode0Codes;
+            // Last candidate: `best` itself has no reader after this, only
+            // best_codes does - clang-analyzer's dead-store check is right
+            // that assigning it here would be dead.
+            if (score() < best - kCodeSwitchMarginDb) {
+                best_codes = kBamode0Codes;
+            }
+        }
+
+        payload.codes = best_codes;
+        if (!(last_tried == best_codes)) {
+            // bap/lo currently belong to last_tried, not the winner - see
+            // encoder.cpp's own step 9a for why re-settling is cheaper than
+            // keeping every candidate's allocation around.
+            lo = search(fixed_budget);
+        }
+        impl_->previous_codes_ = best_codes;
     }
 
     // Choosing the gain mode needs an allocation to choose against, and the

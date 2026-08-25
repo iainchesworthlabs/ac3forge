@@ -101,6 +101,7 @@ add_executable(ac3tests
     quality/test_distortion.cpp
     quality/test_perceptual.cpp
     quality/test_search.cpp
+    quality/test_eac3_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp

@@ -988,6 +988,9 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.fast_mdct = tools.fast_mdct;
     config.dither = tools.dither;
     config.numblkscod = tools.numblkscod;
+    // EQ13: CBR only, dbpbcod only - see FrameConfig::search's own comment
+    // for what search=distortion/perceptual actually do here.
+    config.search = tools.search;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its

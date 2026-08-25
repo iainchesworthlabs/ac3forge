@@ -26,10 +26,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   used to write one exponent set per frame for every channel; it now plans and writes per-channel
   or per-block strategies, and can emit 1/2/3-block syncframes with `convsync` for low-latency use.
   Closes a real quality gap versus AC-3 (spectral distance improves ~0.6 dB on transient material).
-- **`EncoderConfig::search`** (`EQ13`, AC-3 only): an optional per-frame search over
-  `dbpbcod`/`fgaincod` judged by a new decoded-domain distortion measure and psychoacoustic model
-  (`ac3::quality`). `search=distortion` is a real, measured win from 448 kbit/s up; `search=perceptual`
-  is not yet competitive and stays off by default. See [docs/library/quality.md](docs/library/quality.md).
+- **`EncoderConfig::search`** (`EQ13`): an optional per-frame search over `dbpbcod`/`fgaincod`
+  judged by a new decoded-domain distortion measure and psychoacoustic model (`ac3::quality`).
+  `search=distortion` is a real, measured win from 448 kbit/s up on AC-3; `search=perceptual`
+  is not yet competitive and stays off by default. `eac3::FrameConfig::search` now exists too
+  (CBR only, `kDistortion` only, `dbpbcod` alone - `fgaincod` isn't wired for E-AC-3 yet); measured
+  on real CC0 material its effect is negligible at every rate tried, a real answer rather than an
+  unfinished one - see [docs/library/quality.md](docs/library/quality.md) and
+  [docs/library/encoding-eac3.md](docs/library/encoding-eac3.md).
 - **Coupling-aware delta bit allocation, per-channel coupling membership, and `ecplangleintrp`**
   (`EQ5`, `EQ6`). Delta bit allocation is no longer skipped whenever coupling is active; `chincpl`
   is a per-channel decision rather than frame-wide; enhanced-coupling angle interpolation is

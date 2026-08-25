@@ -488,12 +488,14 @@ void print_option_blocks(std::uint32_t mask) {
                      "part of mode= either way: unlike the two transform switches, these are "
                      "different answers rather than the same one at different speed, and the "
                      "default is already the domain the clause states");
-        fmt::println("  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit "
-                     "allocation parameters per frame from the reconstruction error a decoder "
-                     "will produce, instead of the rate-derived defaults. distortion minimises "
-                     "that error; perceptual weights it by a tonality/masking model first. off "
-                     "(the default) keeps every release before this one's fixed values - costs "
-                     "encode time, see docs/library/quality.md for the measured figures");
+        fmt::println("  search=<what>     choose §7.2.2's transmitted bit allocation parameters "
+                     "per frame from the reconstruction error a decoder will produce, instead of "
+                     "the rate-derived defaults. distortion minimises that error; perceptual "
+                     "weights it by a tonality/masking model first. off (the default) keeps every "
+                     "release before this one's fixed values - costs encode time, see "
+                     "docs/library/quality.md for the measured figures. eac3-encode: CBR only "
+                     "(dbpbcod against kAllocCodes/Table E1.4's two values, EQ13's own scope "
+                     "note) - inert under vbr= and under perceptual, same as off");
         fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
                      "channel per block from content - applies wherever this command encodes, "
                      "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "

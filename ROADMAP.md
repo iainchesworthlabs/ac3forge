@@ -151,6 +151,14 @@ both encoders decide from content rather than from the bit rate.
   rather than a rate policy, and wants EQ1 and a listening test (VX9) before `auto` stops
   choosing it. Needs VX7's material and VX6's column in CI for any of this to be visible to the
   trend gate.
+
+  Third finding, same direction as the first two: EQ13's per-frame `dbpbcod` search, now wired for
+  E-AC-3 (see that entry), was measured directly against this gap on VX7's real stereo material -
+  `search=distortion` against `search=off`, `none` and `auto` tool sets, 96-640 kbit/s including
+  192. Effect negligible everywhere, most points inside the search's own switch margin. `dbpbcod`
+  is not the lever either; see EQ13's entry for why (E-AC-3's `fgaincod` axis, the search's other
+  half on the AC-3 side, is not wired at all yet - EQ7's own remaining gap). The gap stays
+  bit-allocation efficiency in a sense none of EQ2, EQ3 or now EQ13's dbpbcod axis reach.
 - [x] **EQ9 (L)** — Closed-loop tool decisions. `auto` chose cpl/spx/aht from the rate alone;
   two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
   region's fit against the decoder's own rank-one reconstruction, and the energy share above the
@@ -205,9 +213,41 @@ both encoders decide from content rather than from the bit rate.
   model is validated in isolation but not yet calibrated well enough to beat the fixed defaults
   on real material with rematrixing active. Both stay off by default. What's NOT done: neither
   criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet (only the two `BitAllocCodes` fields
-  the encoder's own dead-end comment named), E-AC-3 isn't wired (needs EQ3), and the perceptual
-  model needs further calibration before it is worth turning on. See
-  `docs/library/quality.md` and `docs/library/encoding-ac3.md`'s Decision search section.
+  the encoder's own dead-end comment named), and the perceptual model needs further calibration
+  before it is worth turning on. See `docs/library/quality.md` and
+  `docs/library/encoding-ac3.md`'s Decision search section.
+
+  **E-AC-3 wiring, attempted and measured (EQ3 landing unblocked it as the note above predicted).**
+  `eac3::FrameConfig::search` now exists (`ac3cli eac3-encode ... search=distortion`, and
+  `plan::apply_tools` reaches it the same way `fast-mdct=`/`dither=` already did), CBR only and
+  `kDistortion` only - narrower than AC-3's, on purpose, not as a placeholder:
+  - **CBR only.** VBR/ABR's own budget-fitting is a materially bigger unit to wrap in a candidate
+    loop than AC-3's `settle()` is - the delta-segment with/without comparison and ABR's stateful
+    reservoir both assume one committed `BitAllocCodes` per frame - and untangling that was scoped
+    out rather than rushed. `search=distortion` is silently inert under `vbr=`, the same documented
+    boundary EQ5 draws around AHT streams rather than a rejected configuration.
+  - **`kPerceptual` not offered for E-AC-3.** AC-3's own table above already shows it losing at
+    every rate tried; wiring `ac3::quality::PerceptualModel` a second time to chase a criterion
+    already known not to win was scoped out too. Accepted but inert if set, same reasoning as VBR
+    above.
+  - **`dbpbcod` only, not `fgaincod`.** E-AC-3 has no per-frame `fgaincod` to search AT ALL yet -
+    `frmfgaincode` stays 0 unconditionally, EQ7's own still-open E-AC-3 gap - so the candidate set
+    is `{kAllocCodes (3), Table E1.4's 2}`, one axis where AC-3's is two.
+  - **Measured, not assumed the answer would be no.** Real CC0 material (VX7's `programme_music_
+    stereo`/`programme_speech_stereo`), `search=distortion` against `search=off`, both `none` and
+    `auto` tool sets, 96-640 kbit/s: effect negligible everywhere tried, −0.06 to +0.29 dB, most
+    points within the search's own 0.05 dB switch margin of zero. This is a real answer, not a
+    failed attempt: EQ3's own sweep already found `dbpbcod` 3 wins every cell it swept on average,
+    so a per-frame search restricted to `{2, 3}` with no `fgaincod` to move alongside it has very
+    little left to find - the AC-3 search's real win comes from moving BOTH axes together, and
+    only one is wired here. `EQ8`'s own stereo/192 gap does not move either, confirming that gap
+    is not a `dbpbcod` problem - see its own entry.
+  - **What would actually test this properly:** wiring `frmfgaincode`'s per-channel path (EQ7)
+    first, so a real two-axis E-AC-3 candidate set exists to search over. Left for whoever picks
+    that up; this PR's own mirror-encoder test suite (`tests/quality/test_eac3_search.cpp`) is
+    ready to extend the same way `test_search.cpp`'s is once it does.
+
+  5.1 external-metric harness alignment: still open, not attempted this pass.
 
 ## DC. Decoder and consumer output
 
