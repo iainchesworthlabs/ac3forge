@@ -347,7 +347,7 @@ machine-readable output and a single failure exit code. Users arrive with contai
   docs/cli/commands.md. The HLS/DASH manifest check is NOT part of it and stays open: it is
   a consumer of this document rather than part of it, and IO5 already owns the `ceao`/JOC
   signalling half of the same question.
-- [ ] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
+- [x] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
   (`ac-3`/`ec-3` sample entries, `stco`/`stsz`, fragmented `moof`/`trun`), MPEG-TS (PAT/PMT,
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
@@ -356,8 +356,22 @@ machine-readable output and a single failure exit code. Users arrive with contai
   done** (`matroska::demux`/`Reader`, `mp4::demux`/`Reader` including the `dec3` parser and
   fragmented `moof`/`trun`, `mpegts::demux`/`Reader` reading DVB/ATSC/registration-descriptor
   signalling and all three packet grids, plus `ac3cli demux` and a fuzz harness per container).
-  Still open: widening `decode`/`qc`/`levels`/`play`/`monitor` and the GUI's QC/Inspect pickers
-  to accept containers directly, and container-to-container remux.
+  *Done: a new `apps/common/container_input.hpp` (`ac3::apps::sniff_container`/
+  `elementary_stream_from_bytes`) sniffs a file's own bytes for the three containers `demux`
+  already reads and, when it is one, batch-demuxes its first AC-3/E-AC-3 track (zero-copy for
+  Matroska/MP4, owned for MPEG-TS's PES reassembly) into a contiguous elementary stream —
+  compiled straight into both `ac3cli` (`support.cpp`'s `read_elementary_stream`, now what
+  `decode`/`qc`/`levels`/`play`/`monitor` call instead of a bare `read_all`) and `ac3gui`
+  (`qc_controller.cpp`/`object_decode_controller.cpp`, plus the QC/Inspect pickers' `nameFilters`
+  widened to the container extensions), the same shared-not-duplicated shape
+  `recording_sink.hpp`/`fmp4_folder_writer.hpp` already use — never in `ac3::forge` itself, which
+  stays free of a dependency the containers explicitly say they do not need in return. Remux is
+  `mkv`/`mp4`/`ts` themselves widened the identical way on their OWN input side (so
+  `ac3cli mp4 broken.mkv fixed.mp4` already works), plus a new `remux <in> <out> [dvb|atsc]`
+  command that picks the target by `out_path`'s extension for discoverability; the dec3-repair
+  case falls out for free since `run_mp4`'s `codec_config` was always built from the re-scanned
+  bitstream (`ac3::io::build_codec_config_box`), never from whatever the source container
+  declared.*
 - [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.

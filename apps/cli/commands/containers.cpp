@@ -23,6 +23,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/object_strip.hpp"
+#include "container_input.hpp"
 #include "matroska/matroska.hpp"
 #include "matroska/reader.hpp"
 #include "mp4/dash.hpp"
@@ -121,9 +122,16 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
 }  // namespace
 
 int run_mkv(std::string_view in_path, std::string_view out_path) {
-    const auto raw = read_all(in_path);
+    // read_elementary_stream (roadmap IO2) also accepts an MP4 or MPEG-TS
+    // input here, not just a raw .ac3/.ec3 - which is what makes this
+    // container-to-container remux (`ac3cli mkv broken.mp4 fixed.mkv`) rather
+    // than only ever an encode target. Nothing below has to know the
+    // difference: everything this container declares comes from ac3::io::
+    // scan(raw) a few lines down, never from whatever the SOURCE container
+    // declared - see run_mp4's own comment for the sharpest case of that,
+    // the dec3 box.
+    const auto raw = read_elementary_stream(in_path);
     if (raw.empty()) {
-        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     // Everything the container needs to declare comes out of the bitstream:
@@ -186,9 +194,16 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
 }
 
 int run_mp4(std::string_view in_path, std::string_view out_path) {
-    const auto raw = read_all(in_path);
+    // read_elementary_stream (roadmap IO2) also accepts a Matroska or
+    // MPEG-TS input here, so this doubles as container-to-container remux
+    // (`ac3cli mp4 broken.mkv fixed.mp4`). That is what makes it the
+    // dec3-repair case the old roadmap A1 cited: codec_config below is
+    // built by ac3::io::build_codec_config_box(*scanned), which reads the
+    // real bitstream ac3::io::scan just walked - never whatever dec3 (or
+    // its absence) the SOURCE container declared - so a source whose Atmos
+    // dec3 flag is wrong or missing comes out correct on the far side.
+    const auto raw = read_elementary_stream(in_path);
     if (raw.empty()) {
-        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
@@ -527,9 +542,11 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
         fmt::println(stderr, "error: unknown TS profile '{}' (expected dvb or atsc)", profile_name);
         return kExitUsage;
     }
-    const auto raw = read_all(in_path);
+    // read_elementary_stream (roadmap IO2) also accepts a Matroska or MP4
+    // input here - container-to-container remux, same as run_mkv/run_mp4
+    // above.
+    const auto raw = read_elementary_stream(in_path);
     if (raw.empty()) {
-        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
@@ -587,89 +604,14 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
 }
 
 // --- container input (ROADMAP.md's IO2) -------------------------------------
+//
+// ContainerKind/sniff_container used to live here alone; both are now
+// apps/common/container_input.hpp's, promoted so ac3cli's own
+// read_elementary_stream (support.cpp) and ac3gui's QC/Inspect pickers can
+// each sniff a file the same way this command does - see that header's own
+// comment for why apps/common rather than support.hpp itself or ac3::forge.
 
 namespace {
-
-// Which container a file actually is, decided by its first bytes rather than
-// its name. A rip is as likely to be called "title00.mkv" when it is not one
-// as it is to have no extension at all, and the failure a wrong guess
-// produces ("no EBML header") reads like a corrupt file rather than like the
-// wrong parser - so the name is never consulted.
-enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4, kMpegTs };
-
-// EBML's own magic: the four bytes of the EBML header id every Matroska and
-// WebM file opens with - the same kEbmlHeader constant
-// src/matroska/src/ebml_detail.hpp holds, written out big-endian.
-constexpr std::array<std::byte, 4> kEbmlMagic{std::byte{0x1A}, std::byte{0x45}, std::byte{0xDF},
-                                              std::byte{0xA3}};
-
-// ISOBMFF has no magic at offset 0 - it opens with a box, whose first four
-// bytes are a LENGTH. The type is what identifies it, four bytes in, and
-// 'ftyp' is what a well-formed file leads with (ISO/IEC 14496-12 4.3 says it
-// "should be placed as early as possible"). 'styp' is a bare CMAF media
-// segment, and a plain 'moov'/'mdat'/'moof' opener occurs in files written
-// by tools that skipped ftyp - all of them are what a reader is handed in
-// practice.
-constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "moov", "moof",
-                                                               "mdat"};
-
-[[nodiscard]] bool has_isobmff_box_at_start(std::span<const std::byte> head) {
-    if (head.size() < 8) {
-        return false;
-    }
-    const std::string_view type{reinterpret_cast<const char*>(head.data()) + 4, 4};
-    return std::ranges::find(kIsobmffLeadingTypes, type) != kIsobmffLeadingTypes.end();
-}
-
-// A transport stream has no header at all - it is a bare repeating grid of
-// 188-byte packets, each starting with 0x47, and a capture may begin
-// anywhere in it. So the test is the grid itself: a sync byte that recurs at
-// one of the three strides in the wild (188, M2TS's 192, or 204 with parity)
-// several times over. A lone 0x47 proves nothing; five in a row exactly a
-// stride apart is not a coincidence.
-//
-// Checked LAST, after the two formats that do have magic: an MP4 or Matroska
-// file can easily contain a 0x47 pattern by chance somewhere in its audio,
-// and the grid test is the loosest of the three.
-constexpr std::array<std::size_t, 3> kTsStrides{188, 192, 204};
-constexpr int kTsSyncRuns = 5;
-
-[[nodiscard]] bool has_ts_packet_grid(std::span<const std::byte> head) {
-    for (std::size_t at = 0; at < head.size(); ++at) {
-        if (std::to_integer<std::uint8_t>(head[at]) != 0x47) {
-            continue;
-        }
-        for (const auto stride : kTsStrides) {
-            int seen = 1;
-            for (int i = 1; i < kTsSyncRuns; ++i) {
-                const std::size_t next = at + (stride * static_cast<std::size_t>(i));
-                if (next >= head.size() ||
-                    std::to_integer<std::uint8_t>(head[next]) != 0x47) {
-                    break;
-                }
-                ++seen;
-            }
-            if (seen >= kTsSyncRuns) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-ContainerKind sniff_container(std::span<const std::byte> head) {
-    if (head.size() >= kEbmlMagic.size() &&
-        std::equal(kEbmlMagic.begin(), kEbmlMagic.end(), head.begin())) {
-        return ContainerKind::kMatroska;
-    }
-    if (has_isobmff_box_at_start(head)) {
-        return ContainerKind::kMp4;
-    }
-    if (has_ts_packet_grid(head)) {
-        return ContainerKind::kMpegTs;
-    }
-    return ContainerKind::kUnknown;
-}
 
 // How much of the file is read at a time. Big enough that a whole cluster
 // usually lands in one or two reads, small enough that this is the memory
@@ -702,8 +644,8 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     };
 
     const auto first = read_chunk();
-    const auto kind = sniff_container(first);
-    if (kind == ContainerKind::kUnknown) {
+    const auto kind = ac3::apps::sniff_container(first);
+    if (kind == ac3::apps::ContainerKind::kUnknown) {
         fmt::println(
             stderr,
             "error: {} is not a container this build reads (expected Matroska/WebM, MP4 or "
@@ -773,13 +715,13 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
         }
     };
 
-    if (kind == ContainerKind::kMatroska) {
+    if (kind == ac3::apps::ContainerKind::kMatroska) {
         matroska::Reader reader{};
         drive(reader, [](matroska::DemuxError e) { return matroska::describe(e); });
         codec_id = std::string{reader.track().codec_id};
         sample_rate = reader.track().sample_rate;
         channels = reader.track().channels;
-    } else if (kind == ContainerKind::kMp4) {
+    } else if (kind == ac3::apps::ContainerKind::kMp4) {
         mp4::Reader reader{};
         drive(reader, [](mp4::DemuxError e) { return mp4::describe(e); });
         codec_id = reader.track().codec_id;
@@ -821,6 +763,42 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
                        sink.frames(), codec_id, sink.total_bytes(), out_path);
     }
     return kExitOk;
+}
+
+namespace {
+
+// The extensions each target writer answers to. Matched case-sensitively
+// against std::filesystem::path::extension()'s own lowercase-preserving
+// behaviour - a caller on a case-sensitive filesystem gets an accurate
+// "unrecognised" error rather than a silent wrong guess.
+[[nodiscard]] bool has_extension(std::string_view out_path, std::span<const std::string_view> exts) {
+    const std::filesystem::path path{std::string{out_path}};
+    const auto ext = path.extension().string();
+    return std::ranges::any_of(exts, [&](std::string_view candidate) { return ext == candidate; });
+}
+
+}  // namespace
+
+int run_remux(std::string_view in_path, std::string_view out_path, std::string_view profile,
+              const Options& meta) {
+    constexpr std::array<std::string_view, 2> kMkvExts{".mkv", ".webm"};
+    constexpr std::array<std::string_view, 3> kMp4Exts{".mp4", ".m4a", ".mov"};
+    constexpr std::array<std::string_view, 2> kTsExts{".ts", ".m2ts"};
+
+    if (has_extension(out_path, kMkvExts)) {
+        return run_mkv(in_path, out_path);
+    }
+    if (has_extension(out_path, kMp4Exts)) {
+        return run_mp4(in_path, out_path);
+    }
+    if (has_extension(out_path, kTsExts)) {
+        return run_ts(in_path, out_path, profile, meta);
+    }
+    fmt::println(stderr,
+                 "error: {} does not name a container this build writes (expected .mkv/.webm, "
+                 ".mp4/.m4a/.mov or .ts/.m2ts)",
+                 out_path);
+    return kExitUsage;
 }
 
 }  // namespace ac3cli::commands

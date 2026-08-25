@@ -795,9 +795,8 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
 
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
            bool rendered_layout, std::optional<int> want_programme) {
-    const auto stream = read_all(in_path);
+    const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
-        fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
@@ -858,9 +857,13 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
 // What is actually in a file, channel by channel — the answer both front ends
 // are built to show, without having to encode anything to get it.
 int run_levels(std::string_view in_path, std::optional<int> want_programme) {
-    const auto bytes = read_all(in_path);
+    // read_elementary_stream leaves a WAV's own bytes untouched - its RIFF
+    // header sniffs as none of the three containers this build demuxes - so
+    // the syncframe-vs-WAV branch below still decides between exactly those
+    // two shapes, just with a Matroska/MP4/MPEG-TS input already reduced to
+    // its elementary stream first.
+    const auto bytes = read_elementary_stream(in_path);
     if (bytes.empty()) {
-        fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
     // A syncframe opens with 0x0B77 (§5.4.1.1); anything else is treated as a

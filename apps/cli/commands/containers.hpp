@@ -53,4 +53,16 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
 // as it comes out, so peak memory is a chunk plus a frame whatever the file's duration.
 int run_demux(std::string_view in_path, std::string_view out_path);
 
+// Container-to-container remux (ROADMAP.md's IO2): reads any of the three containers above (or a
+// bare elementary stream) and writes any of the three below, picking the target by `out_path`'s
+// extension since there is nothing else to pick it by - unlike sniffing the INPUT, a file that
+// does not exist yet has no bytes to identify it from. Everything the target container declares
+// still comes straight off the re-scanned bitstream (run_mkv/run_mp4/run_ts's own comments), never
+// off whatever the source container said, which is what makes this the dec3-repair case the old
+// roadmap A1 cited: a .mkv with a broken or missing Atmos dec3 flag remuxed to .mp4 gets a correct
+// one, because the target's dec3 was never read from the source at all. `profile` is passed
+// through to run_ts unchanged when the target is a Transport Stream and ignored otherwise.
+int run_remux(std::string_view in_path, std::string_view out_path, std::string_view profile,
+              const Options& meta);
+
 }  // namespace ac3cli::commands

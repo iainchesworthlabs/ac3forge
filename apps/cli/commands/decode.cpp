@@ -692,9 +692,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
 
 int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli::Options& meta,
                std::string_view objects_dir) {
-    const auto stream = read_all(in_path);
+    const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
-        fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
     if (!apply_object_verification(stream, meta)) {

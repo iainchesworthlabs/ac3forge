@@ -44,9 +44,8 @@ namespace ac3cli::commands {
 namespace plan = ac3::plan;
 
 int run_monitor(std::string_view in_path, int device_index, const Options& meta) {
-    const auto stream = read_all(in_path);
+    const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
-        fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
     if (!apply_object_verification(stream, meta)) {

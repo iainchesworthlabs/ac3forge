@@ -3370,6 +3370,130 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
     }
 }
 
+// Roadmap IO2's remaining half: decode/qc/levels (play/monitor share the same
+// read_elementary_stream call and need real audio hardware to exercise, so
+// are not re-tested here) all take a container in place of a raw .ac3/.ec3,
+// sniffed by content rather than by extension - exactly what demux already
+// does, reused via apps/common/container_input.hpp's
+// ac3::apps::elementary_stream_from_bytes rather than duplicated a third
+// time (support.cpp's own read_elementary_stream, and the GUI's
+// qc_controller.cpp/object_decode_controller.cpp).
+TEST_CASE("decode/qc/levels accept a container in place of a raw elementary stream",
+          "[cli][io2]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "io2_widen.log";
+
+    const auto es = dir / "io2_widen.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + es.string() + "\" 1 448 440 60 51", log) == 0);
+    const auto mkv = dir / "io2_widen.mkv";
+    REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+    const auto mp4 = dir / "io2_widen.mp4";
+    REQUIRE(run_cli("mp4 \"" + es.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+    const auto ts = dir / "io2_widen.ts";
+    REQUIRE(run_cli("ts \"" + es.string() + "\" \"" + ts.string() + "\"", log) == 0);
+
+    SECTION("decode") {
+        const auto read_bytes = [](const fs::path& path) {
+            std::ifstream in{path, std::ios::binary};
+            REQUIRE(in.is_open());
+            return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                     std::istreambuf_iterator<char>{}};
+        };
+        const auto from_es = dir / "io2_widen_from_es.wav";
+        REQUIRE(run_cli("decode \"" + es.string() + "\" \"" + from_es.string() + "\"", log) == 0);
+        const auto expected = read_bytes(from_es);
+        for (const auto& container : {mkv, mp4, ts}) {
+            CAPTURE(container);
+            const auto out = dir / (container.stem().string() + "_decoded.wav");
+            CHECK(run_cli("decode \"" + container.string() + "\" \"" + out.string() + "\"", log) ==
+                 0);
+            CHECK(read_bytes(out) == expected);
+        }
+    }
+
+    SECTION("qc") {
+        for (const auto& container : {mkv, mp4, ts}) {
+            CAPTURE(container);
+            CHECK(run_cli("qc \"" + container.string() + "\"", log) == 0);
+        }
+    }
+
+    SECTION("levels") {
+        for (const auto& container : {mkv, mp4, ts}) {
+            CAPTURE(container);
+            CHECK(run_cli("levels \"" + container.string() + "\"", log) == 0);
+        }
+    }
+}
+
+// --- remux (roadmap IO2) -----------------------------------------------------
+
+TEST_CASE("remux converts one container straight to another", "[cli][remux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "remux.log";
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    const auto es = dir / "remux_source.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + es.string() + "\" 1 448 440 60 51", log) == 0);
+    const auto mkv = dir / "remux_source.mkv";
+    REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+
+    // Matroska carries no dec3 box at all, so remuxing it to MP4 exercises
+    // exactly the claim run_mp4's own comment makes: codec_config is built
+    // from the re-scanned bitstream (ac3::io::build_codec_config_box), never
+    // from what the source container could or could not declare. If that
+    // ever regressed to reading a source-side box instead, this MP4 would
+    // have nothing to build one from and mp4::mux would refuse it outright -
+    // the round trip through demux below is what proves it wrote a coherent
+    // one rather than merely that it wrote *something*.
+    SECTION("Matroska to MP4 round-trips through demux") {
+        const auto mp4 = dir / "remux_mkv_to_mp4.mp4";
+        REQUIRE(run_cli("remux \"" + mkv.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+        const auto recovered = dir / "remux_mkv_to_mp4.ec3";
+        REQUIRE(run_cli("demux \"" + mp4.string() + "\" \"" + recovered.string() + "\"", log) ==
+               0);
+        CHECK(read_bytes(recovered) == read_bytes(es));
+    }
+
+    SECTION("MP4 to MPEG-TS round-trips through demux") {
+        const auto mp4 = dir / "remux_source.mp4";
+        REQUIRE(run_cli("mp4 \"" + es.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+        const auto ts = dir / "remux_mp4_to_ts.ts";
+        REQUIRE(run_cli("remux \"" + mp4.string() + "\" \"" + ts.string() + "\"", log) == 0);
+        const auto recovered = dir / "remux_mp4_to_ts.ec3";
+        REQUIRE(run_cli("demux \"" + ts.string() + "\" \"" + recovered.string() + "\"", log) == 0);
+        CHECK(read_bytes(recovered) == read_bytes(es));
+    }
+
+    SECTION("a bare elementary stream remuxes straight to a container too") {
+        const auto mp4 = dir / "remux_bare_to_mp4.mp4";
+        REQUIRE(run_cli("remux \"" + es.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+        const auto recovered = dir / "remux_bare_to_mp4.ec3";
+        REQUIRE(run_cli("demux \"" + mp4.string() + "\" \"" + recovered.string() + "\"", log) ==
+               0);
+        CHECK(read_bytes(recovered) == read_bytes(es));
+    }
+}
+
+TEST_CASE("remux refuses an output extension it does not write", "[cli][remux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "remux_bad.log";
+    const auto es = dir / "remux_bad_source.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + es.string() + "\" 1 448 440 60 51", log) == 0);
+    const auto mkv = dir / "remux_bad_source.mkv";
+    REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+
+    const auto rc = run_cli(
+        "remux \"" + mkv.string() + "\" \"" + (dir / "remux_bad.xyz").string() + "\"", log);
+    CHECK(rc != 0);
+    CHECK(read_log(log).find("does not name a container this build writes") != std::string::npos);
+}
+
 // --- unspdif (roadmap IO3) ---------------------------------------------------
 
 TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
