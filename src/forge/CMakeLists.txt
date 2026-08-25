@@ -143,6 +143,7 @@ target_sources(forge_objects
         src/encoder/encoder.cpp
         src/encoder/plan.cpp
         src/encoder/transient.cpp
+        src/internal/cpu/cpu_features.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
         src/io/metadata_edit.cpp
@@ -282,6 +283,170 @@ target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
 # For the configure summary at the end of the top-level CMakeLists.txt.
 set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
+
+# ---------------------------------------------------------------------------
+# Runtime CPU-feature detection (ROADMAP PF5's dynamic-dispatch follow-on).
+#
+# AC3FORGE_SIMD above is a compile-time choice: it bakes in exactly one of
+# SSE2/NEON/scalar, because those are architectural (guaranteed present, no
+# feature to ask about). AVX2 is not architectural - it is a real CPU
+# feature a build machine cannot know the DEPLOYMENT machine has - so it
+# needs an actual runtime answer instead. `AC3FORGE_AVX2` (default ON,
+# meaningful only on an x86_64 AC3FORGE_SIMD_RESOLVED) controls whether
+# forge_simd_avx2 (below) exists at all; the three-way switch here controls
+# how ac3::internal::cpu::has_avx2() answers "is it safe to run AVX2 on
+# THIS process's actual CPU" - one of src/internal/cpu/probe/{none,msvc,
+# builtin}/ goes on the include path, exactly the same directory-selection
+# mechanism as the SIMD arch tree above, so no translation unit ever asks
+# what it is being compiled for here either. See
+# src/internal/cpu/cpu_features.hpp for the full contract.
+#
+# msvc/ is shared by real MSVC AND clang-cl: clang-cl reports
+# CMAKE_CXX_COMPILER_ID "Clang" with CMAKE_CXX_COMPILER_FRONTEND_VARIANT
+# "MSVC" (the same distinction CompilerWarnings.cmake and the top-level
+# CMakeLists.txt's -ffp-contract policy already key on) - and although
+# clang-cl is Clang underneath, __builtin_cpu_supports needs compiler-rt's
+# cpu-model support linked in, which this project's clang-cl configuration
+# (MSVC-CRT-linked) does not guarantee. <intrin.h>'s CPUID/XGETBV
+# intrinsics have no such dependency on either compiler, so MSVC and
+# clang-cl share that path instead of the GCC/Clang/AppleClang builtin one.
+option(AC3FORGE_AVX2
+    "Compile an AVX2 SIMD tier (x86_64 only) alongside the baseline SSE2 one, selected at runtime"
+    ON)
+
+# Shared between the probe-directory choice just below and the AVX2 compile
+# flag further down - both need the same real-MSVC-or-clang-cl distinction,
+# and computing it once keeps the two decisions from ever being able to
+# silently disagree with each other.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
+   (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+    CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    set(AC3FORGE_IS_MSVC_LIKE TRUE)
+else()
+    set(AC3FORGE_IS_MSVC_LIKE FALSE)
+endif()
+
+if(NOT (AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2))
+    set(AC3FORGE_CPU_PROBE_DIR "none")
+elseif(AC3FORGE_IS_MSVC_LIKE)
+    set(AC3FORGE_CPU_PROBE_DIR "msvc")
+else()
+    set(AC3FORGE_CPU_PROBE_DIR "builtin")
+endif()
+
+# Two directories, not one: src/internal/cpu itself holds cpu_features.hpp
+# (bare-includable, unconditional - the same "just a directory on the path"
+# convention src/core/fft_kernel.hpp uses, since there is only ever one
+# copy of this file), and the resolved probe/<name>/ subdirectory holds the
+# one genuinely multi-variant piece, hardware_avx2.hpp, reached through the
+# "ac3/internal/cpu/hardware_avx2.hpp" spelling every probe/ variant shares
+# (the same convention the SIMD arch tree above uses, for the same reason:
+# the include spelling must not change depending on which directory
+# answered it).
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/${AC3FORGE_CPU_PROBE_DIR}")
+
+# tests/CMakeLists.txt compiles src/internal/cpu/cpu_features.cpp a SECOND
+# time, directly into ac3tests, against these same two directories - the
+# same white-box arrangement (and the same DLL-export reasoning) as
+# forge_simd_avx2's own PARENT_SCOPE variables further down. Exposed
+# unconditionally, not only when the AVX2 tier is active: has_avx2()
+# correctly answering "false" on a generic/AVX2-disabled build is exactly as
+# worth testing as it answering "true" where AVX2 is actually compiled in.
+set(AC3FORGE_CPU_FEATURES_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu" PARENT_SCOPE)
+set(AC3FORGE_CPU_PROBE_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/${AC3FORGE_CPU_PROBE_DIR}" PARENT_SCOPE)
+set(AC3FORGE_CPU_FEATURES_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/cpu_features.cpp" PARENT_SCOPE)
+set(AC3FORGE_IS_MSVC_LIKE "${AC3FORGE_IS_MSVC_LIKE}" PARENT_SCOPE)
+
+# getenv (AC3FORGE_SIMD_TIER's override, cpu_features.cpp) is flagged as
+# "unsafe" by MSVC's CRT (C4996, since it has no bounds to check the caller
+# did anything wrong with) - a real question for a caller-supplied buffer,
+# not for reading one environment variable into a function-local static at
+# process start. Scoped to this one file rather than /wd4996 on the whole
+# target, the same reasoning as forge_shared's /wd4251 further down: a
+# narrow, understood exception, not a blanket policy. Same-directory
+# CMakeLists.txt as the target_sources() call above that adds this file, so
+# the "silently no-ops from another directory" trap set_source_files_properties()
+# usually carries does not apply here.
+#
+# AC3FORGE_IS_MSVC_LIKE, not a $<CXX_COMPILER_ID:MSVC> generator expression:
+# clang-cl reports its own CXX_COMPILER_ID as "Clang" even in MSVC mode (the
+# same distinction this file's own AC3FORGE_IS_MSVC_LIKE computation exists
+# for), so a bare :MSVC genex here would miss it and clang-cl would hit the
+# same C4996-equivalent hard error real MSVC needs this suppression for -
+# confirmed by hand: it does.
+if(AC3FORGE_IS_MSVC_LIKE)
+    set_source_files_properties(src/internal/cpu/cpu_features.cpp PROPERTIES
+        COMPILE_OPTIONS "/wd4996")
+endif()
+
+# The one target in the whole build that ever sees an AVX2 compiler flag.
+# Object library, not folded into forge_objects: an AVX2 flag applied to
+# forge_objects would apply to every OTHER file in the codec core too,
+# which is exactly the "compiled with -march= for a feature the deployment
+# machine might not have" mistake ac3::internal::cpu::has_avx2() exists to
+# let this project avoid - see cpu_features.hpp. Right now this holds only
+# avx2_probe.cpp (ROADMAP PF5's dynamic-dispatch follow-on, phase one: prove
+# the whole build/link/dispatch/test pipeline before any real kernel joins
+# it); real AVX2 kernel implementations land here in a later phase.
+if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
+    add_library(forge_simd_avx2 OBJECT src/internal/avx2/avx2_probe.cpp)
+
+    target_include_directories(forge_simd_avx2 PRIVATE
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
+    target_compile_features(forge_simd_avx2 PRIVATE cxx_std_23)
+    target_link_libraries(forge_simd_avx2 PRIVATE "$<BUILD_INTERFACE:ac3::warnings>")
+
+    # /arch:AVX2 for MSVC and clang-cl, -mavx2 for GCC/Clang/AppleClang.
+    # Deliberately never -mfma alongside it: this project's own code must
+    # never call an FMA intrinsic regardless of what the flag would
+    # otherwise permit (see the top-level CMakeLists.txt's
+    # -ffp-contract=off comment - contraction is exactly what an AVX2
+    # kernel's bit-exactness argument cannot survive), and not requesting
+    # it keeps has_avx2()'s CPUID gate to the single AVX2 bit rather than
+    # needing a second, independent FMA capability check nothing here uses.
+    if(AC3FORGE_IS_MSVC_LIKE)
+        target_compile_options(forge_simd_avx2 PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(forge_simd_avx2 PRIVATE -mavx2)
+    endif()
+
+    set_target_properties(forge_simd_avx2 PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        # LTO/LTCG is the one mechanism that can hoist AVX2-flagged codegen
+        # across a translation-unit boundary into a caller that was never
+        # compiled with the flag - silently producing an illegal
+        # instruction on hardware has_avx2() would otherwise have refused
+        # to run it on. This line is a correctness requirement, not a
+        # tidiness one: it must stay off on this target regardless of
+        # whatever LTO policy the rest of the build ever adopts.
+        INTERPROCEDURAL_OPTIMIZATION OFF)
+
+    # forge_static/forge_shared already pull in forge_objects's object code
+    # this same way (top of this file) - an OBJECT library "links" into a
+    # STATIC/SHARED target by contributing its object files to the final
+    # archive/binary, not by needing anything from forge_objects itself, so
+    # this is independent of that link and just as safe to add here.
+    target_link_libraries(forge_static PUBLIC forge_simd_avx2)
+    target_link_libraries(forge_shared PUBLIC forge_simd_avx2)
+
+    # tests/CMakeLists.txt compiles avx2_probe.cpp a SECOND time, directly
+    # into ac3tests (the same white-box arrangement src/signing/src already
+    # has there) rather than calling into this object library's copy - that
+    # sidesteps needing AC3FORGE_EXPORT/dllimport treatment on internal
+    # build plumbing that would otherwise only matter for the
+    # config-linux-llvm-shared (BUILD_SHARED_LIBS=ON) leg. AC3FORGE_IS_MSVC_LIKE
+    # is already exposed PARENT_SCOPE further up this file (unconditionally,
+    # since cpu_features.cpp needs it too regardless of whether this AVX2
+    # tier exists at all).
+    set(AC3FORGE_AVX2_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2" PARENT_SCOPE)
+endif()
 
 target_compile_features(forge_objects PUBLIC cxx_std_23)
 

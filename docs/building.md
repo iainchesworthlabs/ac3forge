@@ -249,6 +249,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
 | `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from `CMAKE_SYSTEM_PROCESSOR` and falls back to `generic` everywhere else, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
+| `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_TRACY` | `OFF` | Tracy profiler instrumentation (`ac3::tracy` — see `cmake/Tracy.cmake`). Needs vcpkg's `profiling` manifest feature (`-DVCPKG_MANIFEST_FEATURES=profiling`), which supplies Tracy itself; off is a no-op. |
@@ -803,11 +804,15 @@ splitting a reduction into per-lane partial sums reassociates the additions — 
 result. Those paths are the normative oracle every fast path is validated against, so their
 numbers are not something to trade for speed. `band_energy`'s per-band accumulation is a reduction
 for the same reason (its cost is the MDCT inside it, which does get faster). Steps 1 and 5 of both
-inverses are permutation-dominated. On x86-64 nothing wider than SSE2 is used: AVX and FMA3 are
-CPU features rather than architecture, a compile-time `-march=` for them would produce a binary
-that faults on older hardware, and the runtime `cpuid` dispatch that would make them safe is not
-built. 128 bits is the native width of NEON and of WASM's `simd128` in any case, and those are the
-platforms with the least headroom.
+inverses are permutation-dominated. This seam itself stays SSE2-width on x86-64: AVX and FMA3 are
+CPU features rather than architecture, so a compile-time `-march=` for them would produce a binary
+that faults on older hardware. [Runtime AVX2 dispatch](#runtime-avx2-dispatch) below covers the
+`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — as of ROADMAP
+PF5's dynamic-dispatch follow-on it exists as infrastructure, proven end to end on a trivial probe
+function, and is not yet wired to any kernel in the table above. 128 bits is the native width of
+NEON and of WASM's `simd128` in any case, and those are the platforms with the least headroom —
+which is also why this dispatch mechanism is x86-64 only: NEON double-precision is mandatory
+ARMv8-A baseline, so aarch64 has no equivalent feature gap to close.
 
 **Why it is bit-exact.** Every operation in the seam is exactly one IEEE-754 add, subtract or
 multiply per lane, so a kernel written against `f64x2` performs precisely the operations, in
@@ -834,6 +839,76 @@ cmake -S . -B build/simd-generic -DAC3FORGE_SIMD=generic
 ```bash
 ./tools/ci/run_codec_matrix.sh build/config-linux-gcc/bin/ac3cli /tmp/mx-simd && ./tools/ci/run_codec_matrix.sh build/simd-generic/bin/ac3cli /tmp/mx-generic && diff <(cd /tmp/mx-simd && find . -type f | sort | xargs sha256sum) <(cd /tmp/mx-generic && find . -type f | sort | xargs sha256sum)
 ```
+
+## Runtime AVX2 dispatch
+
+`AC3FORGE_SIMD` above answers "which architecture" and is a compile-time question — SSE2, NEON and
+scalar are all guaranteed present on the architecture they target, so there is nothing to ask a
+running CPU. AVX2 is different: it is a real feature a deployment machine might not have, so the
+build machine cannot bake in a yes/no answer safely. `AC3FORGE_AVX2` (`ON` by default, x86_64 only)
+compiles a second, AVX2-flagged tier alongside the baseline one; `ac3::internal::cpu::has_avx2()`
+(`src/forge/src/internal/cpu/cpu_features.hpp`) decides at runtime, once per process, whether it is
+safe to use it on the machine actually running the binary.
+
+**Detection.** GCC/Clang/AppleClang use `__builtin_cpu_init()` + `__builtin_cpu_supports("avx2")`,
+which already performs both the CPUID check and the OS-support (XSAVE/XGETBV) check correctly.
+MSVC and clang-cl (sharing a path, keyed on `_MSC_VER` rather than compiler identity, since
+`__builtin_cpu_supports` needs compiler-rt support this project's clang-cl configuration does not
+guarantee) do it by hand with `<intrin.h>`: `__cpuid`/`__cpuidex` confirm CPUID leaf 7 exists and
+OSXSAVE+AVX are set (leaf 1, ECX bits 27 and 28), only then `_xgetbv(0)` confirms XCR0 enables both
+XMM and YMM state, only then a second `__cpuidex(_, 7, 0)` reads the actual AVX2 bit (EBX bit 5).
+That order is load-bearing — calling `_xgetbv` before confirming OSXSAVE can fault on hardware
+without XSAVE at all. The result is cached in a function-local `static const bool` (a C++11 magic
+static — thread-safe on every toolchain in the matrix), so the detection sequence runs once per
+process regardless of how many call sites ask.
+
+**`AC3FORGE_SIMD_TIER`** (environment variable, read once inside that same cached initialisation)
+overrides the answer: `sse2` always forces `has_avx2()` false, `avx2` forces it true — except when
+the hardware genuinely cannot run AVX2, where forcing up `std::abort()`s with a clear message
+rather than risk an illegal-instruction fault. `auto` (the default, same as unset) is the real
+detected answer. This is what makes cross-tier correctness checking possible without needing AVX2
+hardware physically present for the "does this at least build and dispatch correctly" half of the
+question, and what proves the "does it actually execute correctly" half wherever it does run.
+
+**Compilation.** The AVX2 tier is one CMake `OBJECT` library, `forge_simd_avx2` — the only target in
+the whole build that ever sees `/arch:AVX2` (MSVC/clang-cl) or `-mavx2` (GCC/Clang/AppleClang).
+Never `-mfma`: this project's code must not call an FMA intrinsic regardless of what the flag would
+otherwise permit — see [Floating-point contraction](#floating-point-contraction) — and not
+requesting it keeps the CPUID gate to the single AVX2 bit. `INTERPROCEDURAL_OPTIMIZATION` is forced
+`OFF` on this target specifically: LTO/LTCG is the one mechanism that could hoist AVX2-flagged
+codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it.
+
+**Testing — compile everywhere, execute only where capable.** `forge_simd_avx2` links into
+`ac3tests` on every x86_64 leg unconditionally, proving the AVX2 code is valid, compilable,
+linkable C++ on MSVC, clang-cl, GCC, Clang and AppleClang alike, with zero hardware dependency.
+`tests/core/test_simd_kernels.cpp`'s `[avx2]`-tagged cases go further and actually execute it —
+guarded by `has_avx2()`, with a loud, explicit `SKIP()` (never a silent pass) on hardware that
+genuinely lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
+run and self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
+host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead —
+set on the `linux-llvm-asan-ubsan` leg (`.github/workflows/_build.yml`), the one leg pinned to a
+GitHub-hosted (rather than the dynamic self-hosted/GitHub-hosted `matrix.runner`) label, so there is
+always at least one leg per PR where "the AVX2 path actually ran and passed" is a guaranteed, not
+aspirational, statement.
+
+`tools/ci/run_codec_matrix.sh`'s own `AC3FORGE_CROSS_TIER_CHECK=1` mode is the corpus-level
+analogue of the `AC3FORGE_SIMD=generic` cross-*build* check above, but cross-*tier* from the SAME
+binary: it runs the whole matrix twice, once under `AC3FORGE_SIMD_TIER=sse2` and once under `=avx2`,
+and byte-diffs the two output trees. Wired into the same `linux-llvm-asan-ubsan` leg for the same
+reason. On a host that cannot execute AVX2 (`/proc/cpuinfo` has no `avx2` flag) the second pass is
+skipped with an explicit message and the script still exits 0 — degrading to exactly today's
+guarantee, never silently claiming a check that did not run:
+
+```bash
+AC3FORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
+```
+
+As of ROADMAP PF5's dynamic-dispatch follow-on this whole mechanism is proven end to end against one
+trivial function (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
+of its own) rather than against a real kernel — deliberately, so the build/link/dispatch/test
+pipeline is proven before any kernel's correctness depends on it. None of the kernels in the table
+under [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree) dispatch
+through it yet.
 
 ## Floating-point contraction
 

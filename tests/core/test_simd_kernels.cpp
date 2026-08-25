@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <random>
 #include <span>
@@ -13,6 +15,11 @@
 
 #include "ac3/core/exponents.hpp"
 #include "ac3/internal/arch/simd.hpp"
+#include "cpu_features.hpp"
+
+#ifdef AC3FORGE_HAVE_AVX2_TIER
+#include "avx2_probe.hpp"
+#endif
 
 // ROADMAP PF5's correctness gate.
 //
@@ -249,4 +256,64 @@ TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]"
             CHECK(tail[i] == ac3::to_fixed25(values[i]));
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Runtime CPU-feature dispatch (ROADMAP PF5's dynamic-dispatch follow-on).
+//
+// Unlike the tests above, this is not about a compile-time-selected tier's
+// arithmetic - it is about whether the RUNTIME decision of which tier to
+// use is itself correct, and whether the AVX2 tier (when compiled in)
+// actually executes correctly on whatever machine happens to run this
+// binary. The two cannot be conflated: has_avx2() answering correctly and
+// the AVX2 code actually running correctly are two different claims, and
+// the compile-everywhere/execute-if-capable split below tests each one
+// where it can actually be tested.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("cpu::has_avx2 reports a stable answer for this process", "[simd][avx2]") {
+    // Not an assertion about which answer - a machine with no AVX2 is a
+    // legitimate, common case (has_avx2() answering false there is exactly
+    // correct), and even a build with AC3FORGE_AVX2=OFF or a non-x86_64
+    // target must still answer unconditionally false rather than fail to
+    // link or crash. Printed so a CI log records what the rest of this
+    // file's [avx2] cases actually exercised.
+    const bool avx2 = ac3::internal::cpu::has_avx2();
+    std::printf("cpu::has_avx2(): %s\n", avx2 ? "true" : "false");
+    // Resolved exactly once per process (a function-local static) - calling
+    // it twice must never disagree with itself.
+    CHECK(ac3::internal::cpu::has_avx2() == avx2);
+}
+
+TEST_CASE("AVX2 probe executes correctly where the CPU actually supports it",
+         "[simd][avx2]") {
+#ifdef AC3FORGE_HAVE_AVX2_TIER
+    // Compile-everywhere, execute-if-capable (docs/building.md): the AVX2
+    // TU above this test case in the same binary already proves the code
+    // compiles and links on every x86_64 leg, MSVC/clang-cl/GCC/Clang/
+    // AppleClang alike, with zero hardware dependency. This case proves the
+    // other half - that it actually EXECUTES correctly - which can only be
+    // checked on a machine that truly has AVX2. The four x86_64 CI legs
+    // resolve to self-hosted-or-GitHub-hosted dynamically per run and
+    // self-hosted CPU features are not documented anywhere in this repo,
+    // so this must never assume the current host qualifies.
+    if (!ac3::internal::cpu::has_avx2()) {
+        // A loud, explicit skip - never a silent pass - unless
+        // AC3FORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is
+        // what turns "the AVX2 path ran and passed" into a guaranteed,
+        // rather than aspirational, statement on whichever CI job sets it
+        // (see tools/ci/run_codec_matrix.sh and docs/building.md).
+        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+        INFO("this CPU does not report AVX2 support - nothing to execute here");
+        if (required) {
+            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+                "it exists to prove - pin this job to hardware that actually has AVX2");
+        }
+        SKIP("AVX2 not available on this CPU");
+    }
+    CHECK(ac3::internal::avx2::avx2_probe_matches_expected());
+#else
+    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+#endif
 }

@@ -42,6 +42,19 @@
 # non-zero on its own via -fno-sanitize-recover=all; this also catches a
 # plain crash, a refused command that should have succeeded, or an FFmpeg
 # decode that should have succeeded but didn't).
+#
+# AC3FORGE_CROSS_TIER_CHECK=1 switches this script into a different mode: run
+# the entire matrix below TWICE from the SAME binary, once with
+# AC3FORGE_SIMD_TIER=sse2 and once with =avx2 (see
+# src/forge/src/internal/cpu/cpu_features.hpp), then byte-diff the two output
+# trees. This is the runtime-dispatch analogue of the -DAC3FORGE_SIMD=generic
+# cross-build check documented above: that one proves two different binaries
+# (SIMD tier baked in at compile time) agree bit-for-bit; this one proves the
+# SAME binary agrees with itself across the two runtime code paths
+# cpu::has_avx2() switches between. A host that cannot execute AVX2 skips the
+# second pass with an explicit message and still exits 0 - degrading to
+# exactly today's guarantee, never silently claiming a check that did not
+# run.
 set -euo pipefail
 
 CLI="${1:?usage: run_codec_matrix.sh <path-to-ac3cli> [workdir]}"
@@ -52,6 +65,51 @@ case "$CLI" in
     /*) ;;
     *) CLI="$PWD/$CLI" ;;
 esac
+
+if [ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]; then
+    # This script's own path, resolved the same way FIXTURES below resolves
+    # its own - so re-invoking it works regardless of where THIS invocation
+    # was launched from.
+    self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    sse2_dir="$(mktemp -d)"
+    avx2_dir="$(mktemp -d)"
+
+    echo "cross-tier: pass 1/2, AC3FORGE_SIMD_TIER=sse2"
+    AC3FORGE_SIMD_TIER=sse2 AC3FORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$sse2_dir"
+
+    # ac3cli does not itself expose cpu::has_avx2() (Phase 2 wires the
+    # dispatch mechanism, not yet any real kernel - see the roadmap plan),
+    # so there is no CLI invocation whose exit code would tell us whether
+    # this host can run AVX2. /proc/cpuinfo is the direct answer instead;
+    # both of this script's CI callers only ever run this mode on Linux
+    # (grep this repo's workflows for AC3FORGE_CROSS_TIER_CHECK), so this
+    # does not need a portable fallback. Anywhere else - including a
+    # by-hand run on a platform without /proc/cpuinfo - this degrades to a
+    # skip, exactly like genuinely lacking AVX2 hardware would.
+    avx2_capable=0
+    if [ -r /proc/cpuinfo ] && grep -qw avx2 /proc/cpuinfo; then
+        avx2_capable=1
+    fi
+
+    if [ "$avx2_capable" != "1" ]; then
+        echo "cross-tier: this host does not report AVX2 in /proc/cpuinfo (or it cannot be read) - skipping the avx2 pass; the sse2 pass above still ran and passed"
+        rm -rf "$sse2_dir" "$avx2_dir"
+        exit 0
+    fi
+
+    echo "cross-tier: pass 2/2, AC3FORGE_SIMD_TIER=avx2"
+    AC3FORGE_SIMD_TIER=avx2 AC3FORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$avx2_dir"
+
+    echo "cross-tier: diffing $sse2_dir against $avx2_dir"
+    if diff -rq "$sse2_dir" "$avx2_dir"; then
+        echo "cross-tier: byte-identical across sse2/avx2 tiers"
+        rm -rf "$sse2_dir" "$avx2_dir"
+        exit 0
+    fi
+    echo "cross-tier: OUTPUT DIVERGED between the sse2 and avx2 tiers - see the diff above" >&2
+    exit 1
+fi
+
 # The golden fixtures are read from the repo, but every path below is used
 # after the `cd "$WORKDIR"` on the next lines. Resolve them now, from this
 # script's own location rather than $PWD, so it does not matter where the
