@@ -41,11 +41,16 @@ is deliberately explicit about the difference.
     let the ring buffer silently perform a partial write while reporting failure, and the live
     pipeline's Atmos metering step writing past the end of a buffer sized for the object count
     rather than the bed's fixed six channels. Both are fixed; see
-    `src/audio/src/backend/windows/monitor.cpp` and `run_live` in `apps/cli/main.cpp`.
+    `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
+    `apps/cli/commands/live_audio.cpp`.
 
-!!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver"
-    No S/PDIF or HDMI endpoint behind an actual AV receiver has been available during
-    development. `IsFormatSupported` correctly answers no everywhere it has been tried, for
+!!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver on Windows"
+    No S/PDIF or HDMI endpoint behind an actual AV receiver has been connected to a Windows
+    machine during development. A receiver is available now — the one used for [Raspberry Pi's
+    HDMI passthrough
+    validation](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — it just hasn't been
+    cabled to this workstation yet; see roadmap `DR9` for that as outstanding work.
+    `IsFormatSupported` correctly answers no everywhere it has been tried, for
     both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and `..._DOLBY_DIGITAL_PLUS`, and neither
     descriptor has been accepted by a real device. What *is* verified: the exclusive-mode path
     itself works (a Realtek endpoint accepts an exclusive PCM format), the AC-3 bursts are
