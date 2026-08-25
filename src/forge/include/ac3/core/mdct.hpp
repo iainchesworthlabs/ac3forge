@@ -65,20 +65,26 @@ AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
 // within-one-transform grouping in the FFT core; see fft_kernel.hpp). Safe
 // to call unconditionally, the same as every other transform in this file:
 // internally checks ac3::internal::cpu::has_avx2() and, when it is false,
-// falls back to four ordinary imdct512_windowed(coeffsN, xN,
-// /*fast=*/true) calls - so a caller (joc.cpp's object loop) only ever
-// needs to decide "are four objects ready to batch", never "is AVX2
-// available too". Always takes the fast N/4-FFT fold, the only form worth
-// batching; produces bit-identical results to four separate
-// `imdct512_windowed(coeffsN, xN, /*fast=*/true)` calls with the same
-// inputs either way (tests/core/test_simd_kernels.cpp's `[avx2]` case
-// checks exactly that against the AVX2 path specifically).
-AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
-                                              std::span<const double, 256> coeffs1,
-                                              std::span<const double, 256> coeffs2,
-                                              std::span<const double, 256> coeffs3,
-                                              std::span<double, 512> x0, std::span<double, 512> x1,
-                                              std::span<double, 512> x2, std::span<double, 512> x3);
+// de-interleaves into four ordinary imdct512_windowed(coeffsN, xN,
+// /*fast=*/true) calls and re-interleaves the results - so a caller
+// (joc.cpp's object loop) only ever needs to decide "are four objects
+// ready to batch", never "is AVX2 available too". Always takes the fast
+// N/4-FFT fold, the only form worth batching; produces bit-identical
+// results to four separate `imdct512_windowed(coeffsN, xN, /*fast=*/true)`
+// calls with the same inputs either way (tests/core/test_simd_kernels.cpp's
+// `[avx2]` case checks exactly that against the AVX2 path specifically).
+//
+// A first version of this function took four separate contiguous spans
+// per object; this one instead requires the CALLER to already hold four
+// objects' data interleaved (measured to matter - see mdct_avx2.hpp's own
+// doc comment on why the AVX2 kernel needs this shape, not just prefers
+// it): `spectra` is row-major [256][stride], `pcm_out` row-major
+// [512][stride], and `group_start` (a multiple of 4, group_start + 4 <=
+// stride) names which four ADJACENT columns of each this call reads/
+// writes - every other column is left untouched. spectra.size() must be
+// 256 * stride, pcm_out.size() 512 * stride.
+AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double> spectra, std::size_t stride,
+                                              std::size_t group_start, std::span<double> pcm_out);
 
 // The block-switched (short) transform pair (§7.9, blksw = 1): the usual
 // 512-sample windowed block split into two 256-sample halves, each

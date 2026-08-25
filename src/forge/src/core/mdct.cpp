@@ -456,23 +456,32 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
 // have to be resolved here and passed down as plain spans/a plain-old-data
 // reference, the same pattern every other AVX2 kernel call site in this
 // file already uses.
-void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
-                              std::span<const double, 256> coeffs1,
-                              std::span<const double, 256> coeffs2,
-                              std::span<const double, 256> coeffs3, std::span<double, 512> x0,
-                              std::span<double, 512> x1, std::span<double, 512> x2,
-                              std::span<double, 512> x3) {
+void imdct512_windowed_batch4(std::span<const double> spectra, std::size_t stride,
+                              std::size_t group_start, std::span<double> pcm_out) {
     if (internal::cpu::has_avx2()) {
         const auto& tw = twiddles();
         const auto& fft = fast_mdct_tables<512>().fft;
-        internal::avx2::imdct512_windowed_batch4(coeffs0, coeffs1, coeffs2, coeffs3, tw.cos1,
-                                                 tw.sin1, fft, x0, x1, x2, x3);
+        internal::avx2::imdct512_windowed_batch4(spectra, stride, group_start, tw.cos1, tw.sin1,
+                                                 fft, pcm_out);
         return;
     }
-    imdct512_windowed(coeffs0, x0, /*fast=*/true);
-    imdct512_windowed(coeffs1, x1, /*fast=*/true);
-    imdct512_windowed(coeffs2, x2, /*fast=*/true);
-    imdct512_windowed(coeffs3, x3, /*fast=*/true);
+    // No AVX2: de-interleave one object at a time into a contiguous
+    // scratch buffer, run the ordinary transform, re-interleave the
+    // result back. Slower than the AVX2 kernel's own direct f64x4
+    // load/store, but this path makes no performance claim of its own -
+    // only the bit-identical-results one, which four independent
+    // imdct512_windowed(..., /*fast=*/true) calls trivially satisfy.
+    for (std::size_t lane = 0; lane < 4; ++lane) {
+        std::array<double, 256> coeffs{};
+        for (std::size_t bin = 0; bin < 256; ++bin) {
+            coeffs[bin] = spectra[(bin * stride) + group_start + lane];
+        }
+        std::array<double, 512> x{};
+        imdct512_windowed(coeffs, x, /*fast=*/true);
+        for (std::size_t n = 0; n < 512; ++n) {
+            pcm_out[(n * stride) + group_start + lane] = x[n];
+        }
+    }
 }
 
 void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,

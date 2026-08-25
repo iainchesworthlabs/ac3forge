@@ -280,13 +280,22 @@ struct ReconstructionState {
     std::array<std::array<double, 256>, kMaxChannels> bed_mdct_scratch{};
     std::array<double, 512> time_scratch{};
     std::array<double, 512> windowed_scratch{};
-    // Per-object (ROADMAP PF5's batch-axis follow-on): every present
-    // object's spectrum/synthesis output now coexists, so the imdct pass
-    // can batch four objects at a time (ac3::imdct512_windowed_batch4)
-    // instead of running strictly one object at a time - see
-    // reconstruct_mdct_band's own object loop (joc.cpp).
-    std::array<std::array<double, 256>, kMaxObjects> object_mdct_scratch{};
-    std::array<std::array<double, 512>, kMaxObjects> synth_scratch{};
+    // Bin/sample-major, PRESENT-OBJECT-SLOT-minor (ROADMAP PF5's batch-axis
+    // follow-on, second pass): object_mdct_scratch[bin] and
+    // synth_scratch[n] are each kMaxObjects doubles wide, one per present
+    // object's own position in reconstruct_mdct_band's `present` list
+    // (0-based, NOT the object's own index) - four CONSECUTIVE slots are
+    // therefore four CONTIGUOUS doubles, loadable/storable with a single
+    // f64x4 vector load/store rather than the four-separate-array gather/
+    // lane-extract scatter an earlier version of this layout needed. The
+    // transpose from the first version (object-major, bin/sample-minor)
+    // costs nothing extra in total size - both are kMaxObjects*(256+512)
+    // doubles - only the access pattern changes, in exchange for turning
+    // the batched IMDCT kernel's own gather and step-5 scatter into plain
+    // contiguous loads/stores. See reconstruct_mdct_band's own object loop
+    // (joc.cpp) for how each pass populates/reads its own dimension.
+    std::array<std::array<double, kMaxObjects>, 256> object_mdct_scratch{};
+    std::array<std::array<double, kMaxObjects>, 512> synth_scratch{};
 
     // --- Domain::kQmf only -------------------------------------------------
 

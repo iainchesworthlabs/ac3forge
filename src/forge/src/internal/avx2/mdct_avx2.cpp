@@ -142,30 +142,36 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
     }
 }
 
-void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const double> coeffs1,
-                              std::span<const double> coeffs2, std::span<const double> coeffs3,
-                              std::span<const double> cos1, std::span<const double> sin1,
-                              const ac3::internal::FftTables<128>& fft, std::span<double> x0,
-                              std::span<double> x1, std::span<double> x2, std::span<double> x3) {
+void imdct512_windowed_batch4(std::span<const double> spectra, std::size_t stride,
+                              std::size_t group_start, std::span<const double> cos1,
+                              std::span<const double> sin1,
+                              const ac3::internal::FftTables<128>& fft,
+                              std::span<double> pcm_out) {
     constexpr std::size_t kQuarter = 128;
     constexpr std::size_t kEighth = 64;
-    constexpr std::size_t kHalfN = 256;  // coeffsN.size()
+    constexpr std::size_t kHalfN = 256;  // spectra row count
+
+    // spectra is row-major [256][stride]; row r's four batched objects are
+    // the CONTIGUOUS doubles spectra[r*stride+group_start ..
+    // +group_start+3], so a gather is a single f64x4::load rather than
+    // f64x4::set from four separate arrays - see this function's own doc
+    // comment (mdct_avx2.hpp) for why that distinction is the whole point
+    // of this layout.
+    const auto row = [&](std::size_t r) { return &spectra[r * stride + group_start]; };
 
     // Steps 2-3: pre-twiddle + in-place FFT, one f64x4 per bin (all four
     // objects' values for that bin) instead of one f64x2/f64x4 per group
-    // of bins within one object. Same sign convention and gather shape as
-    // imdct512_pre_twiddle above - the gather here walks the SAME index
-    // across four independent coefficient spans instead of four
-    // consecutive bins of one - and the same bitrev scatter target, except
-    // the "scatter" is a single f64x4 store per bin (all four objects move
-    // together) rather than four separate scalar stores, since the
-    // destination is already object-interleaved by construction.
+    // of bins within one object. Same sign convention as
+    // imdct512_pre_twiddle above - the gather here walks the SAME bin
+    // index across four objects instead of four consecutive bins of one -
+    // and the same bitrev scatter target; that "scatter" is a single
+    // f64x4 store per bin (all four objects move together), since the
+    // destination is already f64x4-per-bin by construction.
     std::array<f64x4, kQuarter> z_re{};
     std::array<f64x4, kQuarter> z_im{};
     for (std::size_t k = 0; k < kQuarter; ++k) {
-        const auto a = f64x4::set(coeffs0[kHalfN - 2 * k - 1], coeffs1[kHalfN - 2 * k - 1],
-                                  coeffs2[kHalfN - 2 * k - 1], coeffs3[kHalfN - 2 * k - 1]);
-        const auto b = f64x4::set(coeffs0[2 * k], coeffs1[2 * k], coeffs2[2 * k], coeffs3[2 * k]);
+        const auto a = f64x4::load(row(kHalfN - 2 * k - 1));
+        const auto b = f64x4::load(row(2 * k));
         const double c = cos1[k];
         const double sn = sin1[k];
         const auto zr = (a * c) - (b * sn);
@@ -197,38 +203,24 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field
-    // from imdct512_windowed's own step 5 (mdct.cpp) - the one place this
-    // function scatters out to four SEPARATE destinations, since x0..x3
-    // are four independent objects' own output buffers, not an
-    // object-interleaved one. `scatter4` is the one new piece: extracting
-    // all four lanes of one already-computed f64x4 result into the four
-    // outputs, rather than four independent scalar computations.
+    // from imdct512_windowed's own step 5 (mdct.cpp). pcm_out is row-major
+    // [512][stride] the same way spectra is, so this is a single
+    // f64x4::store per formula - not the four-separate-destination,
+    // lane-by-lane scatter an earlier version of this function needed
+    // (see mdct_avx2.hpp's doc comment for why that mattered).
     const auto& w = ac3::kAnalysisWindow;
     const auto yr = [&](std::size_t i) { return y_re[i]; };
     const auto yi = [&](std::size_t i) { return y_im[i]; };
-    const auto scatter4 = [](f64x4 v, double& p0, double& p1, double& p2, double& p3) {
-        p0 = v.lane0();
-        p1 = v.lane1();
-        p2 = v.lane2();
-        p3 = v.lane3();
-    };
+    const auto out_row = [&](std::size_t r) { return &pcm_out[r * stride + group_start]; };
     for (std::size_t n = 0; n < kEighth; ++n) {
-        scatter4(-yi(kEighth + n) * w[2 * n], x0[2 * n], x1[2 * n], x2[2 * n], x3[2 * n]);
-        scatter4(yr(kEighth - n - 1) * w[2 * n + 1], x0[2 * n + 1], x1[2 * n + 1], x2[2 * n + 1],
-                x3[2 * n + 1]);
-        scatter4(-yr(n) * w[kQuarter + 2 * n], x0[kQuarter + 2 * n], x1[kQuarter + 2 * n],
-                x2[kQuarter + 2 * n], x3[kQuarter + 2 * n]);
-        scatter4(yi(kQuarter - n - 1) * w[kQuarter + 2 * n + 1], x0[kQuarter + 2 * n + 1],
-                x1[kQuarter + 2 * n + 1], x2[kQuarter + 2 * n + 1], x3[kQuarter + 2 * n + 1]);
-        scatter4(-yr(kEighth + n) * w[kHalfN - 2 * n - 1], x0[kHalfN + 2 * n],
-                x1[kHalfN + 2 * n], x2[kHalfN + 2 * n], x3[kHalfN + 2 * n]);
-        scatter4(yi(kEighth - n - 1) * w[kHalfN - 2 * n - 2], x0[kHalfN + 2 * n + 1],
-                x1[kHalfN + 2 * n + 1], x2[kHalfN + 2 * n + 1], x3[kHalfN + 2 * n + 1]);
-        scatter4(yi(n) * w[kQuarter - 2 * n - 1], x0[3 * kQuarter + 2 * n],
-                x1[3 * kQuarter + 2 * n], x2[3 * kQuarter + 2 * n], x3[3 * kQuarter + 2 * n]);
-        scatter4(-yr(kQuarter - n - 1) * w[kQuarter - 2 * n - 2], x0[3 * kQuarter + 2 * n + 1],
-                x1[3 * kQuarter + 2 * n + 1], x2[3 * kQuarter + 2 * n + 1],
-                x3[3 * kQuarter + 2 * n + 1]);
+        (-yi(kEighth + n) * w[2 * n]).store(out_row(2 * n));
+        (yr(kEighth - n - 1) * w[2 * n + 1]).store(out_row(2 * n + 1));
+        (-yr(n) * w[kQuarter + 2 * n]).store(out_row(kQuarter + 2 * n));
+        (yi(kQuarter - n - 1) * w[kQuarter + 2 * n + 1]).store(out_row(kQuarter + 2 * n + 1));
+        (-yr(kEighth + n) * w[kHalfN - 2 * n - 1]).store(out_row(kHalfN + 2 * n));
+        (yi(kEighth - n - 1) * w[kHalfN - 2 * n - 2]).store(out_row(kHalfN + 2 * n + 1));
+        (yi(n) * w[kQuarter - 2 * n - 1]).store(out_row(3 * kQuarter + 2 * n));
+        (-yr(kQuarter - n - 1) * w[kQuarter - 2 * n - 2]).store(out_row(3 * kQuarter + 2 * n + 1));
     }
 }
 
