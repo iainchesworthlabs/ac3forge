@@ -9,6 +9,8 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
+
 namespace ac3::spatial {
 
 namespace {
