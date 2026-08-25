@@ -614,12 +614,20 @@ int main(int argc, char* argv[]) {
         const auto properties = trailing(3, in_path);
         return run_smoke_shot(engine, args[2], in_path, properties);
     }
-    if (args.size() == 2 && !args[1].startsWith(QLatin1Char('-'))) {
-        // Opening the app on a file is the same gesture as dropping one on
-        // it, and it is what makes the meters reachable from a script.
-        if (auto* controller =
-                engine.singletonInstance<EncoderController*>("Ac3Forge", "EncoderController")) {
-            controller->loadSourceFile(QUrl::fromLocalFile(args[1]));
+    if (args.size() >= 2 && !args[1].startsWith(QLatin1Char('-'))) {
+        // Opening the app on one or more files is the same gesture as
+        // dropping them on it (roadmap UX2's own DropArea), and both funnel
+        // through Main.qml's openDroppedFile() - a WAV becomes a source, an
+        // .ac3/.ec3 opens the stream player - so there is exactly one place
+        // that decides what a file argument means. Every positional here is
+        // treated as a file (none of the flag-prefixed modes above reach
+        // this branch), which is what makes `ac3gui *.wav` usable from a
+        // shell glob.
+        if (!engine.rootObjects().isEmpty()) {
+            auto* root = engine.rootObjects().first();
+            for (qsizetype i = 1; i < args.size(); ++i) {
+                QMetaObject::invokeMethod(root, "openDroppedFile", Q_ARG(QVariant, QVariant::fromValue(QUrl::fromLocalFile(args[i]))));
+            }
         }
     }
 

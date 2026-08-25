@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Roadmap UX2's macOS leg: a custom Info.plist (CMake's own default one,
+  MacOSXBundleInfo.plist.in, carries none of the document-type keys below,
+  and CFBundleDocumentTypes/UTExportedTypeDeclarations can only be added by
+  supplying a template of our own via MACOSX_BUNDLE_INFO_PLIST). Every
+  ${VAR}-style token here is one of CMake's own documented MACOSX_BUNDLE_*
+  variables, substituted the same way its default template substitutes
+  them - see apps/gui/CMakeLists.txt's APPLE branch for where each is set.
+
+  .ac3/.ec3 are not types macOS already knows, so this both DECLARES them
+  (UTExportedTypeDeclarations, conforming to public.audio so Spotlight/
+  Quick Look/other audio-aware tooling treats them as audio rather than
+  opaque data) and CLAIMS them (CFBundleDocumentTypes, LSHandlerRank Owner)
+  in the same file - a UTI with nothing to export it would leave the
+  extension unrecognised, and a document type with no UTI to name would have
+  nothing to claim.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+	<key>CFBundleGetInfoString</key>
+	<string>${MACOSX_BUNDLE_INFO_STRING}</string>
+	<key>CFBundleIconFile</key>
+	<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+	<key>CFBundleIdentifier</key>
+	<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleLongVersionString</key>
+	<string>${MACOSX_BUNDLE_LONG_VERSION_STRING}</string>
+	<key>CFBundleName</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+	<key>CSResourcesFileMapped</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>${MACOSX_BUNDLE_COPYRIGHT}</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>AC-3 Audio Stream</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ac3</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>E-AC-3 Audio Stream</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ec3</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ac3</string>
+			<key>UTTypeDescription</key>
+			<string>AC-3 Audio Stream</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ac3</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/ac3</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ec3</string>
+			<key>UTTypeDescription</key>
+			<string>E-AC-3 Audio Stream</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ec3</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/eac3</string>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

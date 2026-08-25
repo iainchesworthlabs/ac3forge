@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  shared-mime-info package fragment (roadmap UX2): declares audio/ac3 and
+  audio/eac3 (both registered IANA media types) with the *.ac3/*.ec3 globs
+  ac3gui.desktop's own MimeType= line names - a .desktop file can only
+  CLAIM a MIME type an installed package has DECLARED, and neither is
+  guaranteed present in a base freedesktop.org.xml install (audio/eac3
+  especially - Dolby Digital Plus has nowhere near AC-3's install-base).
+  update-mime-info merges this non-destructively alongside any system
+  definition that does already exist.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="audio/ac3">
+    <comment>AC-3 audio stream</comment>
+    <comment xml:lang="en">AC-3 audio stream</comment>
+    <glob pattern="*.ac3"/>
+  </mime-type>
+  <mime-type type="audio/eac3">
+    <comment>E-AC-3 (Dolby Digital Plus) audio stream</comment>
+    <comment xml:lang="en">E-AC-3 (Dolby Digital Plus) audio stream</comment>
+    <glob pattern="*.ec3"/>
+  </mime-type>
+</mime-info>

@@ -191,6 +191,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   chip's own **More…** menu now offers **QC this run** and **Inspect objects** directly, closing
   the gap [`docs/gui/qc.md`](docs/gui/qc.md) and [`docs/gui/inspect-objects.md`](docs/gui/inspect-objects.md)
   used to both end by naming. See [docs/gui/open-stream.md](docs/gui/open-stream.md).
+- **`ac3gui` gained desktop integration** (`UX2`): dropping a file onto the window now loads a WAV
+  as a source or opens an already-encoded `.ac3`/`.ec3` in the stream player, and `ac3gui
+  path/to/file` does the same at launch — both funnel through one dispatch function, so drag-and-drop
+  and the command line can never disagree about what a given file does. The Windows installer now
+  registers `.ac3`/`.ec3` (NSIS registry keys, reversed on uninstall); the macOS bundle declares
+  `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for both; and Linux packaging gained a
+  `.desktop` entry, AppStream metainfo, and a shared-mime-info fragment, so `ac3gui` now appears in
+  a desktop's application menu instead of being launch-only. See
+  [docs/gui/loading-a-source.md](docs/gui/loading-a-source.md).
 
 ### Changed
 

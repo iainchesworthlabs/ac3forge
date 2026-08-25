@@ -933,6 +933,27 @@ ApplicationWindow {
         ObjectDecodeController.inspectFile(runPathUrl(path));
     }
 
+    // Roadmap UX2's single entry point for "a file arrived from outside the
+    // app" - the rail's own DropArea (below) and `ac3gui <file...>`
+    // (main.cpp, via QMetaObject::invokeMethod on this window) both funnel
+    // through here, so there is exactly one place that decides what a
+    // dropped/opened file means rather than two copies of the same suffix
+    // check drifting apart. A WAV becomes a source the same way "+ Add
+    // files…" does - addSourceFile() already falls back to loadSourceFile()
+    // itself when nothing is loaded yet, so the first-file and
+    // add-another-source cases share the one call. An .ac3/.ec3 opens
+    // roadmap UX1's stream player on it instead, the same "play/export what
+    // already exists" path Open stream…'s own header button reaches.
+    function openDroppedFile(url) {
+        const path = url.toString().toLowerCase();
+        if (path.endsWith(".ac3") || path.endsWith(".ec3")) {
+            streamPlayerDialog.open();
+            StreamPlayerController.openFile(url);
+        } else {
+            EncoderController.addSourceFile(url);
+        }
+    }
+
     // The folder actually created once folderDialog accepts - see
     // saveFolderDialog/recordFolderDialog's own onAccepted.
     property string pendingOutputFolderName: ""
@@ -7052,6 +7073,25 @@ ApplicationWindow {
                         onClicked: window.startEncodeFlow()
                     }
                 }
+            }
+        }
+    }
+
+    // Roadmap UX2 - spans the whole window rather than just the rail, so a
+    // drop lands the same way whether or not a source has ever been chosen
+    // yet (the first-run screen above, or the rail once everHadSource is
+    // true, both sit under this). openDroppedFile() owns the actual
+    // WAV-vs-.ac3/.ec3 routing, shared with `ac3gui <file...>`'s own
+    // launch-time handling (main.cpp) - this handler's only job is turning a
+    // drop event into that same call, once per file.
+    DropArea {
+        objectName: "windowDropArea"
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+
+        onDropped: (drop) => {
+            for (const url of drop.urls) {
+                window.openDroppedFile(url);
             }
         }
     }
