@@ -1040,6 +1040,11 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         }
     }
     if (object_result) {
+        // object_result is only ever set a few lines up in the `if
+        // (objects_layout)` branch that calls measure_qc_eac3_objects, so
+        // objects_layout is engaged here too - the checker cannot see the
+        // correlation across the two separate optionals.
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         fmt::println("  objects={}  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD "
                      "position, via ac3::spatial's direction panner, then Annex 3)",
                      ac3::plan::layout(*objects_layout).label);

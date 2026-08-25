@@ -1252,7 +1252,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                              ac3::plan::layout_names());
                 return false;
             }
-            out.qc_objects_layout = *id;
+            out.qc_objects_layout = id;
             continue;
         }
         if (key == "layout") {

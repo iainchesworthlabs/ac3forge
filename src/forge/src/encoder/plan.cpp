@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iterator>
-#include <numbers>
 #include <numeric>
 #include <optional>
 #include <span>
