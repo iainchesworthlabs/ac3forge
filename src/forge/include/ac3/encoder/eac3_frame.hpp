@@ -9,6 +9,7 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/bitalloc.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/silent_frame.hpp"  // FrameError
@@ -18,6 +19,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 
 // E-AC-3 (Dolby Digital Plus) framing - ATSC A/52:2018 Annex E, bsid 16.
@@ -348,6 +350,40 @@ struct FrameConfig {
     // reference-mode encode direct end to end.
     bool fast_mdct = true;
 
+    // §7.2.2's transmitted bit allocation parameters (BitAllocCodes,
+    // ac3/core/bitalloc.hpp), searched per frame from the reconstruction
+    // error a decoder will produce, instead of the fixed dbpbcod == 3 EQ3
+    // measured its way to on average (roadmap EQ13; AC-3's own
+    // EncoderConfig::search, encoder.cpp's step 9a, is the model this
+    // mirrors). search=distortion minimises ac3::quality::accumulate_block's
+    // decoded-domain noise, per stream, over the frame's six blocks.
+    //
+    // search=perceptual is accepted but has no effect here: AC-3's own
+    // measurements found that criterion uncompetitive at every rate tried
+    // (docs/library/quality.md), so wiring ac3::quality::PerceptualModel a
+    // second time to chase a criterion already known not to win was scoped
+    // out rather than rushed.
+    //
+    // CBR only (config_.vbr unset): VBR/ABR's own budget-fitting search is a
+    // materially bigger unit to wrap in an outer candidate loop than AC-3's
+    // settle() is - the delta-segment with/without comparison and ABR's
+    // stateful reservoir both assume one committed codes value per frame -
+    // and untangling that was scoped out too; see ROADMAP.md EQ13. Silently
+    // inert under VBR, the same way delta bit allocation is silently inert
+    // on an AHT stream (EQ5) - a documented scope boundary, not a rejected
+    // configuration.
+    //
+    // Only dbpbcod varies, between kAllocCodes' 3 and Table E1.4's 2 (the
+    // only two values baie can carry that this encoder ever chooses
+    // between): fgaincod is the AC-3 search's other axis, and E-AC-3 has no
+    // per-frame fgaincod to search yet - frmfgaincode stays 0 unconditionally
+    // (EQ7's own remaining gap, a prerequisite this does not also solve).
+    // AHT streams are excluded from the measurement, on the same grounds
+    // EQ5 excludes them from delta bit allocation: the concentration AHT's
+    // own DCT performs reads as quantization error in accumulate_block's
+    // per-block model. Off by default, like every other decision knob here.
+    quality::Criterion search = quality::Criterion::kNone;
+
     // §7.3.4 dithflag, decided per channel per block from content (see
     // src/forge/src/encoder/dither.hpp) - on by default, matching every other
     // config field here, except a frame using spectral extension, which
@@ -554,6 +590,15 @@ class AC3FORGE_EXPORT FrameEncoder {
     // performance hint - the AC-3 FrameEncoder carries the same field for
     // the same reason. Negative until a frame has been encoded.
     int chbwcod_state_ = -1;
+    // FrameConfig::search's own incumbent (EQ13): the previous frame's
+    // winning BitAllocCodes, so a search judges each candidate against what
+    // the stream is actually carrying rather than against a fixed baseline
+    // that gives "stay where you were" no advantage - see the AC-3
+    // FrameEncoder's previous_codes_ for the same reasoning. Default-
+    // constructed to Table E1.4's values (dbpbcod 2), which is not what the
+    // first frame actually transmits (kAllocCodes' 3 is) but only ever
+    // matters as "not yet equal to either candidate", which it is either way.
+    BitAllocCodes previous_codes_;
     // Smoothed across frames: see the AC-3 FrameEncoder for why they cannot be
     // per-frame objects.
     std::optional<meta::RangeController> range_;
