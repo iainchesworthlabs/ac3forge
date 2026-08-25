@@ -4585,9 +4585,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             payload.codes = kBamode0Codes;
             lo = search(fixed_budget);
             last_tried = kBamode0Codes;
-            const double value = score();
-            if (value < best - kCodeSwitchMarginDb) {
-                best = value;
+            // Last candidate: `best` itself has no reader after this, only
+            // best_codes does - clang-analyzer's dead-store check is right
+            // that assigning it here would be dead.
+            if (score() < best - kCodeSwitchMarginDb) {
                 best_codes = kBamode0Codes;
             }
         }
