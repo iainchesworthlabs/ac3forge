@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/joc_tables.hpp"
 #include "ac3/oba/oamd.hpp"
@@ -168,60 +170,103 @@ void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t
     }
 }
 
-AtmosEncoder::AtmosEncoder(const AtmosConfig& config, int objects)
-    : config_(config),
-      objects_(objects),
-      program_{.dynamic_only = true, .lfe = true, .dynamic_objects = objects},
-      encoder_(eac3::AccessUnitConfig{
-          .independent = {.sample_rate = config.sample_rate,
-                          .bitrate_kbps = config.bitrate_kbps,
-                          .acmod = Acmod::k3_2,
-                          .lfe = true,
-                          .dialnorm = config.dialnorm,
-                          .fast_mdct = config.fast_mdct,
-                          // §8.3.1's flag_ec3_extension_type_a plus §8.3.2.2's
-                          // complexity index - the object count, bed included.
-                          // Only when the container is actually emitted: this
-                          // marker is what a reader keys "this stream has an
-                          // object layer" off (ac3::io::scan, the dec3 box's
-                          // Atmos extension, HLS CHANNELS=.../JOC, FFmpeg's
-                          // "Dolby Digital Plus + Dolby Atmos" profile), so
-                          // writing it into a bed51 stream would advertise
-                          // objects that were never encoded - the same
-                          // objects-or-nothing rule encode_frame() applies to
-                          // the container itself.
-                          .oba_complexity_index =
-                              config.emit_object_metadata
-                                  ? std::optional<int>{object_count(program_)}
-                                  : std::nullopt}}),
-      gains_(static_cast<std::size_t>(objects)),
-      lfe_gains_(static_cast<std::size_t>(objects), 0.0),
-      bed_(6, std::vector<float>(kSamplesPerFrame)) {
-    // §5.6.4.8 orders the program's objects bed-first, and the bed here is the
-    // LFE alone - so program object 0 is the LFE and the dynamic objects
-    // follow it. §6.3.2.2 bypasses the LFE rather than matrixing it, so it
-    // costs no JOC output and JOC object j is program object j + 1.
-    params_.objects = joc_object_count(program_);
-    params_.channels = kChannels;
-    params_.num_bands_idx = config.num_bands_idx;
-    params_.fine_quant = config.fine_quant;
-    params_.matrix.assign(params_.coefficient_count(), 0.0);
-    if (config.joc_domain == joc::Domain::kQmf) {
-        object_qmf_.resize(static_cast<std::size_t>(objects));
+// Every private data member, following the same pimpl pattern as
+// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
+struct AtmosEncoder::Impl {
+    AtmosConfig config_;
+    int objects_ = 0;
+    Program program_{};
+    eac3::AccessUnitEncoder encoder_;
+    joc::FrameParameters params_{};
+
+    // Per object, its bed gains in JOC channel order plus its LFE send. Kept
+    // between frames so the bed can ramp from where the last frame left off.
+    std::vector<std::array<double, joc::kNumChannels5X>> gains_;
+    std::vector<double> lfe_gains_;
+    bool primed_ = false;
+
+    std::vector<std::vector<float>> bed_;
+    // One analysis filterbank per object, for joc::Domain::kQmf's band
+    // energies. Left empty - and so free - under kMdctBand.
+    std::vector<dsp::QmfAnalysis> object_qmf_;
+    std::uint64_t frames_ = 0;
+
+    Impl(const AtmosConfig& config, int objects)
+        : config_(config),
+          objects_(objects),
+          program_{.dynamic_only = true, .lfe = true, .dynamic_objects = objects},
+          encoder_(eac3::AccessUnitConfig{
+              .independent = {.sample_rate = config.sample_rate,
+                              .bitrate_kbps = config.bitrate_kbps,
+                              .acmod = Acmod::k3_2,
+                              .lfe = true,
+                              .dialnorm = config.dialnorm,
+                              .fast_mdct = config.fast_mdct,
+                              // §8.3.1's flag_ec3_extension_type_a plus §8.3.2.2's
+                              // complexity index - the object count, bed included.
+                              // Only when the container is actually emitted: this
+                              // marker is what a reader keys "this stream has an
+                              // object layer" off (ac3::io::scan, the dec3 box's
+                              // Atmos extension, HLS CHANNELS=.../JOC, FFmpeg's
+                              // "Dolby Digital Plus + Dolby Atmos" profile), so
+                              // writing it into a bed51 stream would advertise
+                              // objects that were never encoded - the same
+                              // objects-or-nothing rule encode_frame() applies to
+                              // the container itself.
+                              .oba_complexity_index =
+                                  config.emit_object_metadata
+                                      ? std::optional<int>{object_count(program_)}
+                                      : std::nullopt}}),
+          gains_(static_cast<std::size_t>(objects)),
+          lfe_gains_(static_cast<std::size_t>(objects), 0.0),
+          bed_(6, std::vector<float>(kSamplesPerFrame)) {
+        // §5.6.4.8 orders the program's objects bed-first, and the bed here is
+        // the LFE alone - so program object 0 is the LFE and the dynamic
+        // objects follow it. §6.3.2.2 bypasses the LFE rather than matrixing
+        // it, so it costs no JOC output and JOC object j is program object
+        // j + 1.
+        params_.objects = joc_object_count(program_);
+        params_.channels = kChannels;
+        params_.num_bands_idx = config.num_bands_idx;
+        params_.fine_quant = config.fine_quant;
+        params_.matrix.assign(params_.coefficient_count(), 0.0);
+        if (config.joc_domain == joc::Domain::kQmf) {
+            object_qmf_.resize(static_cast<std::size_t>(objects));
+        }
     }
+};
+
+AtmosEncoder::~AtmosEncoder() = default;
+AtmosEncoder::AtmosEncoder(AtmosEncoder&&) noexcept = default;
+AtmosEncoder& AtmosEncoder::operator=(AtmosEncoder&&) noexcept = default;
+
+LatencyBudget AtmosEncoder::latency() const {
+    LatencyBudget budget = bed_latency();
+    if (impl_->config_.emit_object_metadata) {
+        budget.transform_samples += joc::reconstruction_delay(impl_->config_.joc_domain);
+    }
+    return budget;
 }
+LatencyBudget AtmosEncoder::bed_latency() const { return impl_->encoder_.latency(); }
+int AtmosEncoder::dynamic_object_count() const { return impl_->objects_; }
+const Program& AtmosEncoder::program() const { return impl_->program_; }
+std::span<const std::vector<float>> AtmosEncoder::bed() const { return impl_->bed_; }
+const joc::FrameParameters& AtmosEncoder::parameters() const { return impl_->params_; }
+
+AtmosEncoder::AtmosEncoder(const AtmosConfig& config, int objects)
+    : impl_(std::make_unique<Impl>(config, objects)) {}
 
 std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     std::span<const std::span<const float>> objects,
     std::span<const ObjectPlacement> placement) {
     AC3_ZONE_SCOPED_N("AtmosEncoder::encode_frame");
-    assert(static_cast<int>(objects.size()) == objects_);
-    assert(static_cast<int>(placement.size()) == objects_);
+    assert(static_cast<int>(objects.size()) == impl_->objects_);
+    assert(static_cast<int>(placement.size()) == impl_->objects_);
 
-    const auto count = static_cast<std::size_t>(objects_);
-    const int bands = params_.bands();
+    const auto count = static_cast<std::size_t>(impl_->objects_);
+    const int bands = impl_->params_.bands();
     const auto& mapping =
-        joc::kSubbandToBand[static_cast<std::size_t>(config_.num_bands_idx)];
+        joc::kSubbandToBand[static_cast<std::size_t>(impl_->config_.num_bands_idx)];
 
     // --- 1. Where each object ends the frame ------------------------------
     // Two matrices come out of this and they are deliberately different. The
@@ -248,10 +293,10 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
         scale[object] = place.gain;
         target_lfe[object] = place.lfe_send * place.gain;
     }
-    if (!primed_) {
-        gains_ = target;
-        lfe_gains_ = target_lfe;
-        primed_ = true;
+    if (!impl_->primed_) {
+        impl_->gains_ = target;
+        impl_->lfe_gains_ = target_lfe;
+        impl_->primed_ = true;
     }
 
     // --- 2. The bed ---------------------------------------------------------
@@ -262,19 +307,19 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // moved on a different schedule from the matrix that inverts it would
     // leave the reconstruction chasing the downmix.
     AC3_ZONE_BEGIN(zone_bed, "step2_bed_render");
-    for (auto& channel : bed_) {
+    for (auto& channel : impl_->bed_) {
         std::ranges::fill(channel, 0.0f);
     }
     for (std::size_t object = 0; object < count; ++object) {
         const auto& source = objects[object];
         assert(source.size() == kSamplesPerFrame);
         for (int channel = 0; channel < kChannels; ++channel) {
-            const double from = gains_[object][static_cast<std::size_t>(channel)];
+            const double from = impl_->gains_[object][static_cast<std::size_t>(channel)];
             const double to = target[object][static_cast<std::size_t>(channel)];
             if (from == 0.0 && to == 0.0) {
                 continue;
             }
-            auto& out = bed_[static_cast<std::size_t>(
+            auto& out = impl_->bed_[static_cast<std::size_t>(
                 kAc3FromJoc[static_cast<std::size_t>(channel)])];
             for (int n = 0; n < kSamplesPerFrame; ++n) {
                 const double g = from + (to - from) * (n + 1) / kSamplesPerFrame;
@@ -282,11 +327,11 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
                     g * static_cast<double>(source[static_cast<std::size_t>(n)]));
             }
         }
-        if (lfe_gains_[object] != 0.0 || target_lfe[object] != 0.0) {
-            auto& lfe = bed_[5];
+        if (impl_->lfe_gains_[object] != 0.0 || target_lfe[object] != 0.0) {
+            auto& lfe = impl_->bed_[5];
             for (int n = 0; n < kSamplesPerFrame; ++n) {
-                const double g = lfe_gains_[object] +
-                                 (target_lfe[object] - lfe_gains_[object]) *
+                const double g = impl_->lfe_gains_[object] +
+                                 (target_lfe[object] - impl_->lfe_gains_[object]) *
                                      (n + 1) / kSamplesPerFrame;
                 lfe[static_cast<std::size_t>(n)] += static_cast<float>(
                     g * static_cast<double>(source[static_cast<std::size_t>(n)]));
@@ -300,10 +345,10 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     for (std::size_t object = 0; object < count; ++object) {
         const auto slot = std::span{power}.subspan(
             object * static_cast<std::size_t>(bands), static_cast<std::size_t>(bands));
-        if (config_.joc_domain == joc::Domain::kQmf) {
-            qmf_band_energy(objects[object], mapping, slot, object_qmf_[object]);
+        if (impl_->config_.joc_domain == joc::Domain::kQmf) {
+            qmf_band_energy(objects[object], mapping, slot, impl_->object_qmf_[object]);
         } else {
-            band_energy(objects[object], mapping, slot, config_.fast_mdct);
+            band_energy(objects[object], mapping, slot, impl_->config_.fast_mdct);
         }
         // The signal being reconstructed is the object AT ITS GAIN, so its
         // power carries the gain squared and the geometry stays in `pan`.
@@ -369,7 +414,7 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
                 // here rather than letting quantize() do it silently keeps the
                 // transmitted matrix and the one this encoder believes it sent
                 // the same object.
-                params_.at(static_cast<int>(object), channel, band) =
+                impl_->params_.at(static_cast<int>(object), channel, band) =
                     std::clamp(value, -9.5, 9.4);
             }
         }
@@ -394,8 +439,8 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // §6.3.3.3: 0 marks the first frame, after which the counter runs 1..1023
     // and wraps to 1 rather than to 0 - a decoder reads 0 as a splice and
     // stops interpolating from a matrix that no longer means anything.
-    params_.seq_count =
-        frames_ == 0 ? 0 : static_cast<int>((frames_ - 1) % 1023 + 1);
+    impl_->params_.seq_count =
+        impl_->frames_ == 0 ? 0 : static_cast<int>((impl_->frames_ - 1) % 1023 + 1);
 
     // The container is what carries the objects - and, on a decoder that
     // validates the emdf_protection field, it is also what commits that decoder
@@ -404,16 +449,16 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // reject the whole access unit; there is no tolerant middle path that keeps
     // the bed. So a stream this encoder cannot make such a field validate for
     // either carries objects (and is refused by that decoder) or omits the
-    // container and plays as the 5.1 bed - never both. config_.emit_object_metadata
+    // container and plays as the 5.1 bed - never both. impl_->config_.emit_object_metadata
     // picks which, for the TS 103 420 §8.3.1 addbsi marker in the constructor as
     // well as for the container here: a bed51 stream advertises no object layer
     // either. The float bed built below (views) is identical regardless; the
     // encoded output is not bit-identical across the two, because dropping the
     // container hands its skip-field bytes back to the mantissas.
     std::vector<std::byte> container;
-    if (config_.emit_object_metadata) {
-        const auto oamd = build_payload(program_, described);
-        const auto joc_payload = joc::build_payload(params_);
+    if (impl_->config_.emit_object_metadata) {
+        const auto oamd = build_payload(impl_->program_, described);
+        const auto joc_payload = joc::build_payload(impl_->params_);
         const std::array<emdf::Payload, 2> payloads{{
             {.id = emdf::kPayloadIdOamd, .bytes = oamd},
             {.id = emdf::kPayloadIdJoc, .bytes = joc_payload},
@@ -424,16 +469,16 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // --- 6. The stream ------------------------------------------------------
     std::array<std::span<const float>, 6> views{};
     for (std::size_t channel = 0; channel < views.size(); ++channel) {
-        views[channel] = bed_[channel];
+        views[channel] = impl_->bed_[channel];
     }
-    auto unit = encoder_.encode_access_unit(views, container);
+    auto unit = impl_->encoder_.encode_access_unit(views, container);
     if (!unit) {
         return std::unexpected(unit.error());
     }
 
-    gains_ = target;
-    lfe_gains_ = target_lfe;
-    ++frames_;
+    impl_->gains_ = target;
+    impl_->lfe_gains_ = target_lfe;
+    ++impl_->frames_;
     return unit;
 }
 

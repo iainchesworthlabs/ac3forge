@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -229,18 +230,27 @@ inline constexpr std::string_view kProfileNames =
 class AC3FORGE_EXPORT RangeController {
    public:
     RangeController(const Profile& profile, SampleRate rate);
+    // Declared (and defined in drc.cpp, where Impl below is complete) rather
+    // than implicit: a dllexport class generates every implicit special
+    // member whether or not called, and the unique_ptr member makes the
+    // implicit copy deleted - which is fine - but move-assignment's implicit
+    // reset() needs Impl complete, so it cannot stay implicit once Impl is
+    // only forward-declared here.
+    ~RangeController();
+    RangeController(const RangeController&) = delete;
+    RangeController& operator=(const RangeController&) = delete;
+    RangeController(RangeController&&) noexcept;
+    RangeController& operator=(RangeController&&) noexcept;
 
     // level: the block's programme level in dBFS, from level_dbfs() above.
     // dialnorm re-references it onto the profile's −31 dBFS dialogue anchor.
     [[nodiscard]] std::uint8_t next(double level, int dialnorm);
 
-    [[nodiscard]] double gain_db() const { return gain_db_; }
+    [[nodiscard]] double gain_db() const;
 
    private:
-    Profile profile_;
-    double attack_coeff_;
-    double release_coeff_;
-    double gain_db_ = 0.0;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // §7.7.2. Every field is about the ceiling, because the ceiling is the only
@@ -272,17 +282,21 @@ struct HeavyConfig {
 class AC3FORGE_EXPORT HeavyCompressor {
    public:
     HeavyCompressor(const HeavyConfig& config, SampleRate rate);
+    // Same dllexport/unique_ptr reasoning as RangeController above.
+    ~HeavyCompressor();
+    HeavyCompressor(const HeavyCompressor&) = delete;
+    HeavyCompressor& operator=(const HeavyCompressor&) = delete;
+    HeavyCompressor(HeavyCompressor&&) noexcept;
+    HeavyCompressor& operator=(HeavyCompressor&&) noexcept;
 
     // peak: the frame's true peak of the §7.8 mono downmix, in dBFS.
     [[nodiscard]] std::uint8_t next(double peak, int dialnorm);
 
-    [[nodiscard]] double gain_db() const { return gain_db_; }
+    [[nodiscard]] double gain_db() const;
 
    private:
-    HeavyConfig config_;
-    double release_step_db_;
-    double gain_db_ = 0.0;
-    bool primed_ = false;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace ac3::meta

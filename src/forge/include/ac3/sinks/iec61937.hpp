@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -55,6 +56,21 @@ enum class WrapError : std::uint8_t {
 // same concatenation the elementary stream already uses.
 class AC3FORGE_EXPORT Eac3BurstPacker {
    public:
+    // Real work, not =default, because Impl below is incomplete here - same
+    // reason ac3::io::WavStreamReader's default ctor gives.
+    Eac3BurstPacker();
+    // Declared (and defined in iec61937.cpp, where Impl below is complete)
+    // rather than implicit: a dllexport class generates every implicit
+    // special member whether or not called, and the unique_ptr member makes
+    // the implicit copy deleted - which is fine - but move-assignment's
+    // implicit reset() needs Impl complete, so it cannot stay implicit once
+    // Impl is only forward-declared here.
+    ~Eac3BurstPacker();
+    Eac3BurstPacker(const Eac3BurstPacker&) = delete;
+    Eac3BurstPacker& operator=(const Eac3BurstPacker&) = delete;
+    Eac3BurstPacker(Eac3BurstPacker&&) noexcept;
+    Eac3BurstPacker& operator=(Eac3BurstPacker&&) noexcept;
+
     // Returns a completed burst once enough access units have accumulated to
     // cover six blocks, or std::nullopt if more are still needed. bsid, fscod
     // and numblkscod are read from the leading (independent) substream's
@@ -63,8 +79,8 @@ class AC3FORGE_EXPORT Eac3BurstPacker {
         std::span<const std::byte> access_unit);
 
    private:
-    std::vector<std::byte> pending_;
-    int blocks_pending_ = 0;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // Wrap a whole stream's worth of ALREADY-SPLIT units into one concatenated

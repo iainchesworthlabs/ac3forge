@@ -37,12 +37,18 @@ COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 # vary the way a lossy-vs-original comparison (see tools/ci/quality_race.py's
 # very different, much lower floors) legitimately does. Every real run
 # recorded in quality-history (docs/quality-trend.md) to date has landed
-# 61.8-67.9 dB, with the ~6 dB floor-to-floor spread being the known,
-# expected macOS-vs-Linux/Windows libm difference - not commit-to-commit
-# noise, which has stayed inside 0.02-0.08 dB. 55 leaves macOS's own ~61.8 dB
-# floor about 7 dB of headroom (comfortably above that noise) while catching
-# a regression more than an order of magnitude smaller than the previous
-# 30 dB floor ever could.
+# 61.8-67.9 dB, with the ~6 dB floor-to-floor spread being every arm64 and
+# macOS leg landing ~6.02 dB (one AC-3 exponent step) below every x86 leg -
+# NOT a libm-package difference (an earlier version of this comment blamed
+# "macOS-vs-Linux/Windows libm", which the glibc/GCC arm64 Linux legs added
+# later contradict outright), still unexplained after ruling out FMA
+# contraction and architecture-specific libm sin/cos by direct measurement -
+# see docs/building.md's "Floating-point contraction" and roadmap VX11. Not
+# commit-to-commit noise either way, which has stayed inside 0.02-0.08 dB.
+# 55 leaves the lowest-scoring legs' own ~61.8 dB floor about 7 dB of
+# headroom (comfortably above that noise) while catching a regression more
+# than an order of magnitude smaller than the previous 30 dB floor ever
+# could.
 MIN_SNR_DB="${MIN_SNR_DB:-55}"
 
 # Optional: when set, check_one also asks compare_wav.py to write a
@@ -399,5 +405,18 @@ for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do
     fi
 done
 check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "eac3" 192 25
+
+# --- Cross-platform bitstream-hash gate (roadmap VX11) ----------------------
+# Every check above compares two DECODES of the same bitstream, which cannot
+# see a divergence in the bitstream itself - the ~6.02 dB gap the arm64/macOS
+# legs measure against x86 on this same gate is exactly that kind of
+# divergence. This pins it instead: SHA-256 of the three streams this
+# project's own encoder just produced above (gold.ac3/gold.ec3/gold_cpl.ec3),
+# checked against tests/golden/bitstream-hashes.json. See
+# tools/checks/check_cross_platform_hash.py's own header for what a
+# not-yet-pinned kernel/mode key does (reported, not failed) versus a real
+# mismatch (failed, same as every other bit-exactness gate here).
+"$PYTHON" "$REPO_ROOT/tools/checks/check_cross_platform_hash.py" \
+    --cli "$CLI" --workdir "$WORKDIR" --label-suffix "$LABEL_SUFFIX"
 
 echo "gold reference gate: $count checks passed in $WORKDIR"
