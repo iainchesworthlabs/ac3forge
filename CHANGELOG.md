@@ -198,6 +198,11 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   allocation, ADM parsing and signing verification, each with a reproducer under `fuzz/regressions/`.
 - **`dither=off`/`nodither`** pins `dithflag` at 0 for the one caller that needs bit-for-bit
   agreement between two decodes (`verify_gold_reference.sh`'s decoder-agreement gate).
+- **`build-footprint`'s minimum-footprint decoder image ceiling** (`PF7`) was stale: it and
+  `docs/performance-trend.md`'s footprint table were measured early in PF6/PF7's own feature
+  branch, before that branch's own later `develop` merges landed DC10's QMF-domain JOC
+  reconstruction and other decode-path growth the profile genuinely needs. Re-measured and
+  re-based to the current 412,516-byte image (ceiling now 465,000).
 
 ## [0.9.0-beta.1] - 2026-08-22
 

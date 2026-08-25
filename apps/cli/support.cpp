@@ -33,8 +33,6 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -45,11 +43,8 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
-#include "matroska/matroska.hpp"
-#include "mp4/dash.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
 #include "platform/stdio_binary.hpp"
+#include "recording_sink.hpp"
 #include "usage.hpp"
 
 namespace ac3cli {
@@ -960,9 +955,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
-        if (key == "codec") {
-            // 'transcode' only. Named rather than inferred when out_path is
-            // "-" or has no .ac3/.ec3 suffix to read - see Options::codec.
+        if (key == "codec" && command == "transcode") {
+            // 'transcode' only - disambiguated from record/live's own codec=
+            // below the same way layout= is, a few blocks down. Named rather
+            // than inferred when out_path is "-" or has no .ac3/.ec3 suffix
+            // to read - see Options::codec.
             if (value == "ac3") {
                 out.codec = ac3::plan::Codec::kAc3;
             } else if (value == "eac3" || value == "ec3") {

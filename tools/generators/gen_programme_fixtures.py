@@ -156,11 +156,12 @@ SOURCES = [
 ]
 
 # The synthetic fixtures are listed in the manifest too. They are not produced
-# here (gen_gold_reference_wav.py and gen_stereo_reference_wav.py own them),
-# but a corpus that only describes half of what tests/golden/audio holds is
-# not a corpus - and check_corpus.py hashing them is what stops one being
-# regenerated with a different RNG and quietly shifting every historical
-# trend number out from under the series it belongs to.
+# here (gen_gold_reference_wav.py, gen_stereo_reference_wav.py and
+# gen_object_scene_wav.py own them), but a corpus that only describes half of
+# what tests/golden/audio holds is not a corpus - and check_corpus.py hashing
+# them is what stops one being regenerated with a different RNG and quietly
+# shifting every historical trend number out from under the series it
+# belongs to.
 SYNTHETIC = [
     {"fixture": "reference_51.wav", "kind": "synthetic",
      "generator": "tools/generators/gen_gold_reference_wav.py",
@@ -170,17 +171,36 @@ SYNTHETIC = [
      "generator": "tools/generators/gen_stereo_reference_wav.py",
      "note": "sin()/pseudo-random noise/boxcar FIR; flat noise plateau above "
              "12 kHz - see this file's own module docstring."},
+    {"fixture": "reference_objects.wav", "kind": "synthetic",
+     "generator": "tools/generators/gen_object_scene_wav.py",
+     "note": "5-channel WAV, one mono object essence per channel (broadcast, "
+             "comet, engine, pod-hi, pod-lo). Paired with "
+             "reference_objects.paths (BITSTREAMS below, hash-only) which "
+             "places each object in the room at unit gain - see this file's "
+             "own module docstring for the scene."},
 ]
 
 
-# Not audio material and not produced by any generator: a real FFmpeg-encoded
-# E-AC-3 bitstream, committed so tools/checks/verify_gold_reference.sh can
-# check this project's decoder against a third-party stream that sets
-# cplbndstrce == 0 (Annex E's default coupling band structure), which nothing
-# this project's own encoder emits ever does. It lives in the same directory
-# and its bytes matter for exactly the same reason the audio fixtures' do -
-# regenerating it silently would move a published floor - so it is in the
-# manifest too, hashed but with no audio parameters to check.
+# Not audio material, so check_corpus.py skips channel/rate/bit-depth
+# verification for everything here (kind == "bitstream" is its escape hatch)
+# and only hashes the bytes. That is still worth doing: a fixture with no
+# audio parameters to check is exactly as exposed to a silent, undetected
+# regeneration as one with them, so it still has to be in the manifest.
+#
+#   reference_51_eac3_448k_cplbndstrce0.ec3 - a real FFmpeg-encoded E-AC-3
+#   bitstream, committed so tools/checks/verify_gold_reference.sh can check
+#   this project's decoder against a third-party stream that sets
+#   cplbndstrce == 0 (Annex E's default coupling band structure), which
+#   nothing this project's own encoder emits ever does.
+#
+#   reference_objects.paths - not a coded stream at all: atmos-path's own
+#   plain-text keyframe-column format (docs/library/spatial-and-atmos.md),
+#   placing gen_object_scene_wav.py's five reference_objects.wav objects in
+#   the room at unit gain, and consumed as the scene argument
+#   tools/ci/quality_race.py's `objects` mode passes to `atmos-encode`. It
+#   is here, not SYNTHETIC, only because it is not audio to read channels/
+#   rate/bit-depth from - see gen_object_scene_wav.py's own module docstring
+#   for the scene itself.
 BITSTREAMS = [
     {"fixture": "reference_51_eac3_448k_cplbndstrce0.ec3", "kind": "bitstream",
      "note": "FFmpeg-encoded from reference_51.wav: `ffmpeg -y -i "
@@ -188,6 +208,15 @@ BITSTREAMS = [
              "(ffmpeg 8.0.1). Confirmed to set cplbndstrce == 0 with cplbegf == 12 "
              "in every block - see tools/checks/verify_gold_reference.sh for why "
              "cplbegf != 0 matters here."},
+    {"fixture": "reference_objects.paths", "kind": "bitstream",
+     "note": "Not a coded stream: atmos-path's plain-text keyframe-column "
+             "format, placing gen_object_scene_wav.py's five "
+             "reference_objects.wav objects (SYNTHETIC above) in the room at "
+             "unit gain. kind stays \"bitstream\" because that is "
+             "check_corpus.py's only hash-only, no-audio-parameters "
+             "category, not because this file is one - see this list's own "
+             "header comment and gen_object_scene_wav.py's module "
+             "docstring."},
 ]
 
 
