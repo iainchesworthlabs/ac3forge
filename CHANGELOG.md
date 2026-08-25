@@ -95,6 +95,10 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **Loudness of the rendered layout** (`IO10`): BS.1770-5 Annex 3 metering for 7.1/5.1.2/5.1.4/
   7.1.4, and `ac3cli qc layout=bed|rendered`.
 - **Two new QC presets** (`IO11`): `atsc-a85-streaming` and `apple-music-atmos`.
+- **Object-based loudness** (`IO12`): `ac3cli qc ... objects=<layout>` re-renders a
+  dynamic-object-only programme's objects by their own OAMD position (height included) onto a
+  named layout and meters that per ITU-R BS.1770-5 Annex 4, via a new height-aware
+  `ac3::spatial::pan_direction` promoted out of `ac3::plan`'s own channel-layout renderer.
 
 **Immersive formats (IM) and verification (VX)**
 

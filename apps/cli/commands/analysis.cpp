@@ -25,11 +25,14 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/sinks/iec61937.hpp"
+#include "ac3/spatial/spatial.hpp"
 
 namespace ac3cli::commands {
 
@@ -501,6 +504,176 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     return result;
 }
 
+// The Table E2.5 locations `id` renders, LFE included and last (the order
+// ac3::meta::LoudnessMeter's Annex 3 constructor and push() both expect).
+// Restricted to the layouts that add something beyond plain 5.1: an object
+// panned onto a target with no upper layer or wide pair could not measure any
+// differently from the flat bed pan_room already gives it (spatial.hpp's own
+// "a raised object folds onto the ring... at full level"), so mono/stereo/1+1
+// are not offered here at all - see ac3::plan::LayoutId for the full set
+// objects= validates against before this is reached.
+std::optional<ac3::eac3::chanmap::Layout> object_render_target(ac3::plan::LayoutId id) {
+    using ac3::eac3::chanmap::acmod_map;
+    using ac3::eac3::chanmap::expand;
+    using ac3::eac3::chanmap::k512Height;
+    using ac3::eac3::chanmap::k71Rear;
+    using ac3::eac3::chanmap::kTopQuad;
+    const auto base = acmod_map(ac3::Acmod::k3_2, /*lfe=*/true);
+    switch (id) {
+        case ac3::plan::LayoutId::k71:
+            return expand(static_cast<std::uint16_t>(base | k71Rear));
+        case ac3::plan::LayoutId::k512:
+            return expand(static_cast<std::uint16_t>(base | k512Height));
+        case ac3::plan::LayoutId::k514:
+            return expand(static_cast<std::uint16_t>(base | kTopQuad));
+        case ac3::plan::LayoutId::k714:
+            return expand(static_cast<std::uint16_t>(base | k71Rear | kTopQuad));
+        default:
+            return std::nullopt;
+    }
+}
+
+// objects=<layout> (roadmap IO12): BS.1770-5 Annex 4, which prescribes no
+// weighting table of its own - it says to render object-based (or combined
+// channel- and object-based) audio to a real loudspeaker configuration first,
+// meter THAT through Annexes 1/3 (measure_qc_eac3_rendered above is exactly
+// that meter), and report which configuration and rendering algorithm did the
+// rendering, since the two legitimately disagree (its own worked example,
+// Table 6, differs by several LU across renderers and layouts). Both are
+// reported below.
+//
+// Scoped to dynamic-object-only programmes - the only shape AtmosEncoder
+// produces, and what Dolby's own reference JOC streams declare
+// (oba::oamd.hpp's own comment on Program::dynamic_only). For those, the
+// decoded bed IS the objects' 5.1 VBAP fold - declaring it as channel content
+// too would render every object twice - so this starts every full-bandwidth
+// target channel at silence and sums each object's own recovered audio
+// (DecodedAccessUnit::object_audio) into it by the object's own OAMD
+// position, via ac3::spatial::pan_direction: the same height-aware geometry
+// ac3::plan's layout-to-layout renderer uses, so an object pans identically
+// here as it would if the encoder had targeted this layout directly. A
+// bed-and-objects programme (third-party content whose bed may carry
+// independent, non-object material this decoder cannot separate back out) is
+// refused rather than risk silently doubling or dropping content.
+std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::byte> stream,
+                                                          int programme,
+                                                          ac3::plan::LayoutId target_id) {
+    using ac3::eac3::chanmap::Location;
+
+    const auto target = object_render_target(target_id);
+    if (!target) {
+        fmt::println(stderr, "error: objects= needs an advanced sound system layout (71, 512, "
+                             "514 or 714)");
+        return std::nullopt;
+    }
+    const std::span<const Location> target_locations(target->begin(), target->end());
+    const auto pan_tgts = ac3::spatial::pan_targets(target_locations);
+
+    const auto units = ac3::split_access_units(stream);
+    if (!units || units->empty()) {
+        fmt::println(stderr, "error: not a valid E-AC-3 stream");
+        return std::nullopt;
+    }
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{.programme = programme});
+    std::optional<ac3::meta::LoudnessMeter> meter;
+    QcProgrammeResult result;
+    result.label = "objects";
+    bool have_first = false;
+
+    for (const auto& unit : *units) {
+        const auto decoded = decoder->decode_access_unit(unit);
+        if (!decoded) {
+            fmt::println(stderr, "error: decode failed (code {})",
+                         static_cast<int>(decoded.error()));
+            return std::nullopt;
+        }
+        if (!decoded->has_value()) {
+            continue;  // §3.7 hold-back, see measure_qc_eac3_rendered's own comment
+        }
+        const auto& out = **decoded;
+        if (!have_first) {
+            have_first = true;
+            if (!out.object_metadata || !out.object_metadata->program.dynamic_only) {
+                fmt::println(stderr,
+                             "error: programme {} carries no dynamic-object-only OAMD - "
+                             "objects= needs OAMD dynamic objects (try layout=rendered or "
+                             "layout=bed instead)",
+                             programme);
+                return std::nullopt;
+            }
+            meter.emplace(out.sample_rate, *target);
+            result.dialnorm = out.dialnorm;
+            result.compr = out.compr;
+        }
+        if (out.channels.empty()) {
+            continue;
+        }
+        const auto block_len = out.channels.front().size();
+        std::vector<std::vector<float>> buffers(
+            pan_tgts.locations.size(), std::vector<float>(block_len, 0.0f));
+        std::vector<float> lfe_buffer(block_len, 0.0f);
+        // A later unit's EMDF container can legitimately be absent even on a
+        // dynamic-object-only programme (§5.6.4.3's oa_element skip exists
+        // precisely because a payload need not repeat every frame) - treated
+        // as "no object update this unit" rather than the refusal the FIRST
+        // unit's absence gets above, since only the first unit decides what
+        // kind of programme this is.
+        if (out.object_metadata && out.object_metadata->program.lfe) {
+            const auto source_lfe = out.layout.index_of(Location::kLfe);
+            if (source_lfe >= 0 &&
+                static_cast<std::size_t>(source_lfe) < out.channels.size()) {
+                lfe_buffer = out.channels[static_cast<std::size_t>(source_lfe)];
+            }
+        }
+        const auto objects = out.object_metadata
+                                 ? ac3::oba::describe_objects(*out.object_metadata)
+                                 : std::vector<ac3::oba::DisplayObject>{};
+        const auto object_count = std::min(objects.size(), out.object_audio.size());
+        for (std::size_t i = 0; i < object_count; ++i) {
+            if (!objects[i].active) {
+                continue;
+            }
+            const auto& audio = out.object_audio[i];
+            const auto direction = ac3::spatial::position_direction(
+                objects[i].position.x, objects[i].position.y, objects[i].position.z);
+            std::vector<double> gains(pan_tgts.directions.size());
+            ac3::spatial::pan_direction(direction, pan_tgts.directions, gains);
+            const double linear_gain = std::pow(10.0, objects[i].gain_db / 20.0);
+            for (std::size_t ch = 0; ch < gains.size(); ++ch) {
+                if (gains[ch] <= 0.0) {
+                    continue;
+                }
+                const double g = gains[ch] * linear_gain;
+                auto& buffer = buffers[ch];
+                const auto samples = std::min(buffer.size(), audio.size());
+                for (std::size_t n = 0; n < samples; ++n) {
+                    buffer[n] += static_cast<float>(g * static_cast<double>(audio[n]));
+                }
+            }
+        }
+        std::vector<std::span<const float>> views;
+        views.reserve(buffers.size() + 1);
+        for (const auto& buffer : buffers) {
+            views.emplace_back(buffer);
+        }
+        views.emplace_back(lfe_buffer);
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        meter->push(views);
+    }
+
+    if (!have_first) {
+        fmt::println(stderr, "error: no decodable access units");
+        return std::nullopt;
+    }
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.integrated_lkfs = meter->integrated_lkfs();
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.lra_lu = meter->loudness_range();
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    result.true_peak_dbtp = meter->true_peak_dbtp();
+    return result;
+}
+
 // Prints one programme's measurement (the empty-label whole-programme case,
 // or "Ch1"/"Ch2" for 1+1 dual mono) and, if `preset_arg` names one (or
 // "all"), checks it against the requested preset(s). Returns true iff every
@@ -794,7 +967,8 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
 }
 
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout, std::optional<int> want_programme) {
+           bool rendered_layout, std::optional<int> want_programme,
+           std::optional<ac3::plan::LayoutId> objects_layout) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
@@ -806,6 +980,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         return kExitInput;
     }
     std::optional<QcResult> result;
+    std::optional<QcProgrammeResult> object_result;
     if (*bsid > 8) {
         // §E2.3.1.2: one programme is measured - see measure_qc_eac3_bed's own
         // ingest() for why folding two into one meter reports a loudness
@@ -825,8 +1000,20 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         }
         result = rendered_layout ? measure_qc_eac3_rendered(stream, *programme)
                                  : measure_qc_eac3_bed(stream, *programme);
+        if (objects_layout) {
+            object_result = measure_qc_eac3_objects(stream, *programme, *objects_layout);
+            if (!object_result) {
+                return kExitInput;
+            }
+        }
     } else {
         result = measure_qc_ac3(stream, rendered_layout);
+        if (objects_layout) {
+            // AC-3 (bsid <= 8) has no OAMD/EMDF container at all - objects=
+            // asked for a measurement this codec cannot carry.
+            fmt::println(stderr, "error: objects= needs an E-AC-3 stream with OAMD, not AC-3");
+            return kExitInput;
+        }
     }
     if (!result) {
         return kExitInput;
@@ -849,6 +1036,14 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
     bool all_pass = true;
     for (const auto& programme : result->programmes) {
         if (!report_qc_programme(programme, preset_arg)) {
+            all_pass = false;
+        }
+    }
+    if (object_result) {
+        fmt::println("  objects={}  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD "
+                     "position, via ac3::spatial's direction panner, then Annex 3)",
+                     ac3::plan::layout(*objects_layout).label);
+        if (!report_qc_programme(*object_result, preset_arg)) {
             all_pass = false;
         }
     }

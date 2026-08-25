@@ -1245,6 +1245,16 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
+        if (key == "objects" && command == "qc") {
+            const auto id = ac3::plan::parse_layout(value);
+            if (!id) {
+                fmt::println(stderr, "error: objects layout '{}' not recognised ({})", value,
+                             ac3::plan::layout_names());
+                return false;
+            }
+            out.qc_objects_layout = *id;
+            continue;
+        }
         if (key == "layout") {
             // record/live only. Validated where it is used rather than here:
             // whether a layout is legal depends on the codec, which codec=

@@ -430,7 +430,7 @@ machine-readable output and a single failure exit code. Users arrive with contai
   `layout=rendered|bed`; `bed` stays the default and now says out loud when a stream's dependent
   substreams were left out. Annex 3's Table 5 gives a second check on every weight, and the
   meter was cross-checked against ffmpeg's `ebur128` on 5.1. BS.1770-5 Annex 4's object-based
-  algorithm is not implemented — see IO12.
+  rendering is IO12's.
 - [x] **IO11 (S)** — QC preset refresh. `atsc-a85` re-cited to A/85:2026-07 (approved
   2026-07-08), which restates −24 LKFS / ±2 dB / −2 dBTP unchanged; new `atsc-a85-streaming`
   from that revision's Annex L.5 (a −23…−27 LKFS band) and `apple-music-atmos` from Apple's
@@ -439,13 +439,27 @@ machine-readable output and a single failure exit code. Users arrive with contai
   Netflix's Atmos Home Mix v2.3 and Amazon were checked and deliberately left out — the first
   two are numerically identical to presets already present and the third has no primary source
   that could be read; `qc.hpp` and `docs/cli/metadata-options.md` record why for each.
-- [ ] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 specifies a loudness
-  algorithm for object-based audio, and for a combination of channel- and object-based audio, in
-  which each object is weighted by its own OAMD position rather than by a fixed speaker slot.
-  IO10 implemented Annex 3 (channel-based, advanced sound systems) and left this half out.
-  `oba::DecodedProgram` already carries per-object position, and `DecodedAccessUnit` already
-  carries `object_audio` beside the rendered bed, so the inputs exist; what is missing is the
-  Annex 4 weighting itself and a `qc` mode that meters bed and objects together.
+- [x] **IO12 (M)** — Object-based loudness. ITU-R BS.1770-5 Annex 4 covers object-based audio
+  (and a combination of channel- and object-based audio), in which each object is weighted by its
+  own OAMD position rather than by a fixed speaker slot. IO10 implemented Annex 3 (channel-based,
+  advanced sound systems) and left this half out. Annex 4 itself defines no new weighting table:
+  it says to render the object-based (or combined) audio to a real loudspeaker configuration
+  first and meter *that* through Annexes 1/3, and to report which configuration and rendering
+  algorithm did the rendering, since two reasonable choices can legitimately disagree by several
+  LU (its own worked example, Table 6). *Done: `qc ... objects=<layout>` (`51`/`71`/`512`/`514`/
+  `714`) re-renders a dynamic-object-only programme's objects by their own OAMD position onto the
+  named layout, via a new `ac3::spatial::pan_direction`/`direction_of`/`position_direction` (the
+  height-aware two-ring azimuth/elevation panner `ac3::plan`'s own layout-to-layout channel
+  renderer already used internally, promoted out of it rather than duplicated a third time), then
+  meters the result through the existing Annex 3 `LoudnessMeter`. Scoped to dynamic-object-only
+  programmes — the only shape `AtmosEncoder` produces, and what Dolby's own reference JOC streams
+  declare: for that shape the decoded bed already IS the objects' 5.1 VBAP fold
+  (`oba::oamd.hpp`'s own comment), so this starts every full-bandwidth target channel at silence
+  and sums each object's own recovered `object_audio` into it rather than adding to a bed that
+  already carries it and double-counting. A bed-and-objects programme (third-party content whose
+  bed may carry independent, non-object material this decoder cannot separate back out) is
+  refused with a pointer to `layout=rendered`/`layout=bed` instead, rather than risk silently
+  doubling or dropping content.
 
 ## IM. Immersive and other formats
 

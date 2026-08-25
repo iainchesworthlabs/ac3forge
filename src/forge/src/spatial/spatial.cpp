@@ -166,6 +166,116 @@ PanGains pan_room(double x, double y) {
     return pan_azimuth(std::atan2(left, forward) / kDegToRad);
 }
 
+Direction direction_of(eac3::chanmap::Location location, bool has_rears, bool has_side_discrete) {
+    using Location = eac3::chanmap::Location;
+    switch (location) {
+        case Location::kLeft: return {30.0, 0.0};
+        case Location::kCentre: return {0.0, 0.0};
+        case Location::kRight: return {-30.0, 0.0};
+        case Location::kLeftSurround:
+            return {has_rears && !has_side_discrete ? 90.0 : 110.0, 0.0};
+        case Location::kRightSurround:
+            return {has_rears && !has_side_discrete ? -90.0 : -110.0, 0.0};
+        case Location::kLc: return {15.0, 0.0};
+        case Location::kRc: return {-15.0, 0.0};
+        case Location::kLrs: return {150.0, 0.0};
+        case Location::kRrs: return {-150.0, 0.0};
+        case Location::kCs: return {180.0, 0.0};
+        case Location::kTs: return {180.0, 90.0};
+        case Location::kLsd: return {90.0, 0.0};
+        case Location::kRsd: return {-90.0, 0.0};
+        case Location::kLw: return {60.0, 0.0};
+        case Location::kRw: return {-60.0, 0.0};
+        case Location::kVhl: return {45.0, kHeightElevationDeg};
+        case Location::kVhr: return {-45.0, kHeightElevationDeg};
+        case Location::kVhc: return {0.0, kHeightElevationDeg};
+        case Location::kLts: return {135.0, kHeightElevationDeg};
+        case Location::kRts: return {-135.0, kHeightElevationDeg};
+        case Location::kLfe:
+        case Location::kLfe2: return {0.0, 0.0};
+    }
+    return {};
+}
+
+PanTargets pan_targets(std::span<const eac3::chanmap::Location> locations) {
+    using Location = eac3::chanmap::Location;
+    const auto is_lfe = [](Location location) {
+        return location == Location::kLfe || location == Location::kLfe2;
+    };
+    const bool has_rears = std::ranges::find(locations, Location::kLrs) != locations.end();
+    const bool has_side_discrete =
+        std::ranges::find(locations, Location::kLsd) != locations.end();
+    PanTargets out;
+    for (const auto location : locations) {
+        if (is_lfe(location)) {
+            continue;
+        }
+        out.locations.push_back(location);
+        out.directions.push_back(direction_of(location, has_rears, has_side_discrete));
+    }
+    return out;
+}
+
+void pan_direction(Direction source, std::span<const Direction> targets,
+                   std::span<double> gains) {
+    std::ranges::fill(gains, 0.0);
+
+    std::vector<double> low_az;
+    std::vector<std::size_t> low_index;
+    std::vector<double> high_az;
+    std::vector<std::size_t> high_index;
+    for (std::size_t i = 0; i < targets.size(); ++i) {
+        if (targets[i].elevation_deg >= kHeightThresholdDeg) {
+            high_az.push_back(targets[i].azimuth_deg);
+            high_index.push_back(i);
+        } else {
+            low_az.push_back(targets[i].azimuth_deg);
+            low_index.push_back(i);
+        }
+    }
+
+    double weight_low = 1.0;
+    double weight_high = 0.0;
+    if (!high_az.empty() && !low_az.empty()) {
+        const double t = std::clamp(source.elevation_deg / kHeightElevationDeg, 0.0, 1.0);
+        weight_low = std::cos(t * std::numbers::pi / 2.0);
+        weight_high = std::sin(t * std::numbers::pi / 2.0);
+    } else if (low_az.empty()) {
+        weight_low = 0.0;
+        weight_high = 1.0;
+    }
+
+    if (weight_low > kNegligibleGain && !low_az.empty()) {
+        std::vector<double> ring(low_az.size());
+        pan_ring(source.azimuth_deg, low_az, ring);
+        for (std::size_t i = 0; i < ring.size(); ++i) {
+            gains[low_index[i]] += weight_low * ring[i];
+        }
+    }
+    if (weight_high > kNegligibleGain && !high_az.empty()) {
+        std::vector<double> ring(high_az.size());
+        pan_ring(source.azimuth_deg, high_az, ring);
+        for (std::size_t i = 0; i < ring.size(); ++i) {
+            gains[high_index[i]] += weight_high * ring[i];
+        }
+    }
+    for (auto& gain : gains) {
+        if (gain < kNegligibleGain) {
+            gain = 0.0;
+        }
+    }
+}
+
+Direction position_direction(double x, double y, double z) {
+    const double left = 0.5 - x;
+    const double forward = 0.5 - y;
+    const double horizontal = 2.0 * std::sqrt(left * left + forward * forward);
+    if (horizontal == 0.0 && z == 0.0) {
+        return {0.0, 0.0};
+    }
+    return {std::atan2(left, forward) / kDegToRad, std::atan2(z, horizontal) / kDegToRad};
+}
+
 std::size_t BedRenderer::add_object(const ObjectState& initial) {
     Slot slot;
     slot.target = initial;
