@@ -86,8 +86,13 @@ if(AC3FORGE_BUILD_CAPI)
     target_link_libraries(capi_encode_decode PRIVATE ac3::forge_c ac3::warnings)
     set_target_properties(capi_encode_decode PROPERTIES FOLDER examples)
 
+    add_executable(capi_encode_eac3 capi_encode_eac3.c)
+    target_link_libraries(capi_encode_eac3 PRIVATE ac3::forge_c ac3::warnings)
+    set_target_properties(capi_encode_eac3 PROPERTIES FOLDER examples)
+
     if(AC3FORGE_BUILD_TESTS)
         add_test(NAME "example.capi_encode_decode" COMMAND capi_encode_decode)
+        add_test(NAME "example.capi_encode_eac3" COMMAND capi_encode_eac3)
     endif()
 endif()
 
