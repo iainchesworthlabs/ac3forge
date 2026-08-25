@@ -603,10 +603,13 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
             return 1;
         }
     } else {
-        ac3::FrameDecoder decoder;
+        // Heap-allocated for the same C6262 reason the eac3_source branch's
+        // own decoder above gives: FrameDecoder carries ~12 KB of per-channel
+        // overlap-add state (decoder.hpp's own comment on it).
+        auto decoder = std::make_unique<ac3::FrameDecoder>();
         const auto order = ac3::io::wav_channel_order(loaded->scan.acmod, loaded->scan.lfe);
         for (const auto& frame : loaded->scan.access_units) {
-            const auto decoded = decoder.decode_frame(frame);
+            const auto decoded = decoder->decode_frame(frame);
             if (!decoded) {
                 fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
                 encoder.abort();

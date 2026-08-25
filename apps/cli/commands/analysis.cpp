@@ -633,11 +633,16 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
         fmt::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
                      ac3cli::format_programme_ids(*ids));
     }
-    ac3::Eac3Decoder decoder{{.programme = programme}};
+    // Both heap-allocated rather than stack locals: Eac3Decoder carries a
+    // per-substream-identity pending_ array (decoder.hpp's own comment on
+    // it) that alone makes the type too large for PREfast's C6262
+    // stack-usage gate, and DecodedAccessUnit adds enough on top of it to
+    // matter too.
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{.programme = programme});
     std::vector<ac3::analysis::ChannelSummary> totals;
-    ac3::DecodedAccessUnit first{};
+    auto first = std::make_unique<ac3::DecodedAccessUnit>();
     for (const auto& unit : *units) {
-        const auto decoded = decoder.decode_access_unit(unit);
+        const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
             fmt::println(stderr, "error: {}: decode failed (code {})", in_path,
                          static_cast<int>(decoded.error()));
@@ -652,7 +657,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
         }
         const auto& out = **decoded;
         if (totals.empty()) {
-            first = out;
+            *first = out;
             totals.resize(out.channels.size());
             fmt::println("{}: {} access units, {} substreams each, {} channels, {} Hz",
                          in_path, units->size(), out.substream_count,
@@ -678,12 +683,12 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     // Dual mono has no Table E2.5 location - `layout` is left empty for
     // exactly that case (see decode_access_unit) - so Ch1/Ch2 name themselves
     // by coded position instead of a speaker name that would not apply.
-    const bool dual_mono = first.acmod == ac3::Acmod::kDualMono;
+    const bool dual_mono = first->acmod == ac3::Acmod::kDualMono;
     for (std::size_t ch = 0; ch < totals.size(); ++ch) {
         const auto& stats = totals[ch];
         const std::string name = dual_mono ? fmt::format("Ch{}", ch + 1)
                                            : std::string{ac3::eac3::chanmap::name(
-                                                 first.layout[static_cast<int>(ch)])};
+                                                 first->layout[static_cast<int>(ch)])};
         fmt::println("  {:<6} {:>8.2f} {:>8.2f}  [{}] {}", name, stats.peak_db(),
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
                      stats.clipped_samples > 0 ? std::to_string(stats.clipped_samples) : "-");

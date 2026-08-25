@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -315,13 +316,17 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
                      ids->size(), format_programme_ids(*ids));
     }
-    ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
-                             .fast_imdct = meta.fast_imdct,
-                             .heavy_compression = meta.p.heavy.has_value(),
-                             .output = meta.output,
-                             .concealment = meta.concealment,
-                             .joc_domain = meta.joc_domain,
-                             .programme = programme}};
+    // Heap-allocated: Eac3Decoder carries a per-substream-identity pending_
+    // array (decoder.hpp's own comment on it) that alone makes the type too
+    // large for PREfast's C6262 stack-usage gate as a local.
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(
+        ac3::DecoderConfig{.drc_scale = meta.drc_scale,
+                           .fast_imdct = meta.fast_imdct,
+                           .heavy_compression = meta.p.heavy.has_value(),
+                           .output = meta.output,
+                           .concealment = meta.concealment,
+                           .joc_domain = meta.joc_domain,
+                           .programme = programme});
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
     // (the transient-pre-noise flush below).
@@ -349,7 +354,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         return true;
     };
     // JOC's reconstructed per-object audio - parallel to
-    // first.object_metadata->objects (same index, same object). With no
+    // first->object_metadata->objects (same index, same object). With no
     // objects_dir nothing keeps it: only the fact that some arrived matters
     // to the report. With one, each object streams to its own mono WAV. An
     // access unit whose object_audio size doesn't match the sinks is
@@ -404,7 +409,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
         return true;
     };
-    ac3::DecodedAccessUnit first{};
+    // Heap-allocated rather than a stack local: PREfast's C6262 flags this
+    // function's stack frame as excessive with DecodedAccessUnit inline.
+    auto first = std::make_unique<ac3::DecodedAccessUnit>();
     // What the independent (bed) substream actually carried, reported whether
     // or not it was applied - same convention as run_decode's own dynrng_min_db/
     // dynrng_max_db/compr_min_db/compr_max_db above, except both are seeded
@@ -447,7 +454,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     std::uint64_t units_done = 0;
     for (const auto& unit : *units) {
         progress.tick(++units_done);
-        const auto decoded = decoder.decode_access_unit(unit);
+        const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
             fmt::println(stderr, "error: decode failed (code {})",
                          static_cast<int>(decoded.error()));
@@ -462,8 +469,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
         const auto& out = **decoded;
         if (!sink.is_open()) {
-            first = out;
-            if (!open_sink(first, out.channels.size())) {
+            *first = out;
+            if (!open_sink(*first, out.channels.size())) {
                 return kExitOutput;
             }
         }
@@ -478,7 +485,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 return kExitOutput;
             }
         }
-        if (!append_objects(out.object_audio, sample_rate_hz(first.sample_rate))) {
+        if (!append_objects(out.object_audio, sample_rate_hz(first->sample_rate))) {
             abort_all();
             return kExitOutput;
         }
@@ -492,7 +499,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // a dependent carrying only its own smaller channel set does not, and
     // naively appending it by coded index corrupts already-established
     // channels (e.g. a bed's L/R) with a dependent's height audio instead.
-    const auto flushed = decoder.flush();
+    const auto flushed = decoder->flush();
     if (!flushed.empty()) {
         // §7.7 words are meaningful at this report's level only from the
         // independent (bed) substream - same convention as
@@ -505,7 +512,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 track_metadata(substream.dynrng, substream.numblkscod, substream.compr);
             }
         }
-        const bool dual_mono = sink.is_open() ? first.acmod == ac3::Acmod::kDualMono
+        const bool dual_mono = sink.is_open() ? first->acmod == ac3::Acmod::kDualMono
                                               : flushed.front().acmod == ac3::Acmod::kDualMono;
         if (dual_mono) {
             // No Table E2.5 location to place by - dual mono is always a
@@ -514,12 +521,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             // straight out in coded order, same as decode_access_unit.
             for (const auto& substream : flushed) {
                 if (!sink.is_open()) {
-                    first.acmod = ac3::Acmod::kDualMono;
-                    first.sample_rate = substream.sample_rate;
-                    first.dialnorm = substream.dialnorm;
-                    first.substream_count = 1;
-                    first.object_metadata = substream.object_metadata;
-                    if (!open_sink(first, substream.channels.size())) {
+                    first->acmod = ac3::Acmod::kDualMono;
+                    first->sample_rate = substream.sample_rate;
+                    first->dialnorm = substream.dialnorm;
+                    first->substream_count = 1;
+                    first->object_metadata = substream.object_metadata;
+                    if (!open_sink(*first, substream.channels.size())) {
                         return kExitOutput;
                     }
                 }
@@ -541,29 +548,27 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 for (const auto& substream : flushed) {
                     occupied = static_cast<std::uint16_t>(occupied | substream.location_map());
                 }
-                ac3::DecodedAccessUnit synthesized;
-                synthesized.sample_rate = flushed.front().sample_rate;
-                synthesized.acmod = flushed.front().acmod;
-                synthesized.dialnorm = flushed.front().dialnorm;
-                synthesized.substream_count = static_cast<int>(flushed.size());
-                synthesized.layout = ac3::eac3::chanmap::expand(occupied);
+                first->sample_rate = flushed.front().sample_rate;
+                first->acmod = flushed.front().acmod;
+                first->dialnorm = flushed.front().dialnorm;
+                first->substream_count = static_cast<int>(flushed.size());
+                first->layout = ac3::eac3::chanmap::expand(occupied);
                 // Object audio only ever rides in the bed (the independent
                 // substream) - see DecodedAccessUnit::object_metadata's own
                 // comment - so at most one flushed substream carries it.
                 for (const auto& substream : flushed) {
                     if (substream.object_metadata) {
-                        synthesized.object_metadata = substream.object_metadata;
+                        first->object_metadata = substream.object_metadata;
                         break;
                     }
                 }
-                first = synthesized;
-                if (!open_sink(first, static_cast<std::size_t>(first.layout.count))) {
+                if (!open_sink(*first, static_cast<std::size_t>(first->layout.count))) {
                     return kExitOutput;
                 }
             }
             // §E3.8.2 placement: each flushed substream's own channels land
             // at whichever slot their Table E2.5 location occupies in
-            // `first.layout`, mirroring decode_access_unit's own assembly
+            // `first->layout`, mirroring decode_access_unit's own assembly
             // loop. Different substreams may append different lengths to
             // different slots here; the sink's per-slot carry absorbs it.
             for (const auto& substream : flushed) {
@@ -585,7 +590,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 }
                 const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
                 for (int i = 0; i < locations.count; ++i) {
-                    const int slot = first.layout.index_of(locations[i]);
+                    const int slot = first->layout.index_of(locations[i]);
                     if (slot < 0) {
                         continue;
                     }
@@ -633,58 +638,58 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             return kExitOutput;        }
         ++objects_written;
     }
-    if (first.acmod == ac3::Acmod::kDualMono) {
+    if (first->acmod == ac3::Acmod::kDualMono) {
         status_println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
-                       units->size(), first.substream_count, out_path);
+                       units->size(), first->substream_count, out_path);
         status_println(status,
                        "  {} channels, {} Hz: Ch1 Ch2 (1+1 dual mono - two programmes, not a "
                        "soundfield)",
-                       sink_slots, sample_rate_hz(first.sample_rate));
+                       sink_slots, sample_rate_hz(first->sample_rate));
         print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                           compr_frames, meta);
-        if (first.info) {
-            print_bsi_summary(status, *first.info, first.acmod);
+        if (first->info) {
+            print_bsi_summary(status, *first->info, first->acmod);
         }
-        if (first.mixing) {
-            print_mix_summary(status, *first.mixing);
+        if (first->mixing) {
+            print_mix_summary(status, *first->mixing);
         }
         print_concealment_summary(status, concealed_units, units->size(), "access units");
-        return report_decoded_objects(status, first.object_metadata, have_object_audio,
+        return report_decoded_objects(status, first->object_metadata, have_object_audio,
                                       objects_written, objects_dir);
     }
     // The same WAV speaker order the encode side reads a file in, so a stream
     // decoded here and re-encoded lands every channel back where it started -
     // recomputed here only for the speaker-name report; the sink applied it.
     const auto map = plan::wav_order(
-        std::span{first.layout.items}.first(static_cast<std::size_t>(first.layout.count)));
+        std::span{first->layout.items}.first(static_cast<std::size_t>(first->layout.count)));
     std::string speakers;
     for (const auto index : map) {
-        speakers += ac3::eac3::chanmap::name(first.layout[static_cast<int>(index)]);
+        speakers += ac3::eac3::chanmap::name(first->layout[static_cast<int>(index)]);
         speakers += ' ';
     }
     status_println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
-                   units->size(), first.substream_count, out_path);
-    if (folding(meta, first.acmod)) {
+                   units->size(), first->substream_count, out_path);
+    if (folding(meta, first->acmod)) {
         // The rendered layout is still worth naming: it is what the fold was
         // taken FROM, and a 7.1.4 folded to stereo is a materially different
         // claim from a 5.1 folded to stereo.
         status_println(status, "  {} channels, {} Hz: {} -> {}", sink_slots,
-                       sample_rate_hz(first.sample_rate), speakers,
+                       sample_rate_hz(first->sample_rate), speakers,
                        fold_name(meta.output.target));
     } else {
         status_println(status, "  {} channels, {} Hz: {}", map.size(),
-                       sample_rate_hz(first.sample_rate), speakers);
+                       sample_rate_hz(first->sample_rate), speakers);
     }
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
-    if (first.info) {
-        print_bsi_summary(status, *first.info, first.acmod);
+    if (first->info) {
+        print_bsi_summary(status, *first->info, first->acmod);
     }
-    if (first.mixing) {
-        print_mix_summary(status, *first.mixing);
+    if (first->mixing) {
+        print_mix_summary(status, *first->mixing);
     }
     print_concealment_summary(status, concealed_units, units->size(), "access units");
-    return report_decoded_objects(status, first.object_metadata, have_object_audio,
+    return report_decoded_objects(status, first->object_metadata, have_object_audio,
                                   objects_written, objects_dir);
 }
 

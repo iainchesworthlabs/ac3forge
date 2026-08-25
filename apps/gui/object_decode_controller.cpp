@@ -8,6 +8,7 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <thread>
 #include <utility>
@@ -47,7 +48,11 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
         error = QStringLiteral("Not a valid E-AC-3 stream.");
         return std::nullopt;
     }
-    ac3::Eac3Decoder decoder;
+    // Heap-allocated rather than a stack local: Eac3Decoder carries a
+    // per-substream-identity pending_ array (decoder.hpp's own comment on
+    // it) that alone makes the type too large for PREfast's C6262
+    // stack-usage gate.
+    auto decoder = std::make_unique<ac3::Eac3Decoder>();
     RawResult result;
     result.codec_label = QStringLiteral("E-AC-3");
 
@@ -116,7 +121,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
     };
 
     for (const auto& frame : *frames) {
-        const auto decoded = decoder.decode_substream(frame);
+        const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
             error = QStringLiteral("Decode failed (code %1).")
                         .arg(static_cast<int>(decoded.error()));
@@ -126,7 +131,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
             ingest(**decoded);
         }
     }
-    for (const auto& sub : decoder.flush()) {
+    for (const auto& sub : decoder->flush()) {
         ingest(sub);
     }
 
