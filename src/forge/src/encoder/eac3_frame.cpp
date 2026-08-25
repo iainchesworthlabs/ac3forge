@@ -4271,11 +4271,23 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // AbrController::commit.
     bool clipped = false;
     int lo = 0;
-    // Set exactly when `lo` was chosen by search() against a fixed budget -
-    // CBR always, VBR only when a max_kbps bound was actually hit. The AHT
-    // pass below re-searches the same budget in that case, and otherwise
+    // fixed_budget_engaged is true exactly when `lo` was chosen by search()
+    // against a fixed budget - CBR always, VBR only when a max_kbps bound was
+    // actually hit - and fixed_budget then holds that budget. The AHT pass
+    // below re-searches the same budget in that case, and otherwise
     // re-derives the word count directly, matching how `lo` itself was found.
-    std::optional<std::uint32_t> fixed_budget;
+    //
+    // A plain bool/uint32_t pair rather than std::optional<std::uint32_t>:
+    // GCC 14 at -O1 and above (seen building the Python wheel's manylinux
+    // Release config, gcc-toolset-14) cannot prove every read of the
+    // optional's payload is preceded by an engaging write, across this
+    // function's many branches and lambda calls, and flags a false
+    // `-Werror=maybe-uninitialized` on the optional's internal storage. Every
+    // read here is in fact always preceded by a write - std::optional isn't
+    // buying any safety std::uint32_t plus an explicit bool doesn't already
+    // have - so this sidesteps the false positive instead of fighting it.
+    bool fixed_budget_engaged = false;
+    std::uint32_t fixed_budget = 0;
     if (!config_.vbr) {
         words = frame_words(config_.sample_rate, config_.bitrate_kbps);
         if (side_bits + kTailBits > words * 16 && drop_delta_and_remeasure()) {
@@ -4285,7 +4297,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             return std::unexpected(FrameError::kInvalidBitrate);
         }
         fixed_budget = words * 16 - side_bits - kTailBits;
-        lo = search(*fixed_budget);
+        fixed_budget_engaged = true;
+        lo = search(fixed_budget);
         if (any_delta_applied) {
             const int lo_with_delta = lo;
             snapshot_delta();
@@ -4298,7 +4311,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             } else {
                 restore_delta();
                 fixed_budget = words * 16 - side_bits - kTailBits;
-                lo = search(*fixed_budget);
+                lo = search(fixed_budget);
             }
         }
     } else {
@@ -4355,8 +4368,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // builds with -Werror, so emitting it here would fail every
             // non-MSVC leg. The C26829 code-scanning alert is dismissed
             // separately with this same justification instead.
-            fixed_budget = sized->fallback_budget;                    // NOLINT(bugprone-unchecked-optional-access)
-            lo = search(*fixed_budget);                               // NOLINT(bugprone-unchecked-optional-access)
+            fixed_budget = *sized->fallback_budget;                   // NOLINT(bugprone-unchecked-optional-access)
+            fixed_budget_engaged = true;
+            lo = search(fixed_budget);
             if (state_->abr) {
                 // Under ABR the operating point is deliberately NOT pulled
                 // onto `lo` by a delta re-optimization here: the ceiling that
@@ -4401,10 +4415,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (bare && !bare->fallback_budget) {
                     sized = bare;
                     lo = composite;
-                    fixed_budget = std::nullopt;
+                    fixed_budget_engaged = false;
                 } else {
                     const std::uint32_t bare_budget =
-                        bare ? *bare->fallback_budget : *fixed_budget;
+                        bare ? *bare->fallback_budget : fixed_budget;
                     const int lo_without_delta = search(bare_budget);
                     if (lo_without_delta > lo_with_delta) {
                         fixed_budget = bare_budget;
@@ -4414,8 +4428,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         }
                     } else {
                         restore_delta();
-                        fixed_budget = sized->fallback_budget;
-                        lo = search(*fixed_budget);
+                        fixed_budget = *sized->fallback_budget;
+                        lo = search(fixed_budget);
                     }
                 }
             }
@@ -4480,10 +4494,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 }
             }
         }
-        if (fixed_budget) {
+        if (fixed_budget_engaged) {
             // CBR, or a VBR frame already pinned to its ceiling: the word
             // count cannot move, only which offset fits it can.
-            lo = search(*fixed_budget);
+            lo = search(fixed_budget);
         } else {
             // Free-running VBR (or a bound it was naturally already under):
             // quality (lo) does not change, but the gain modes just chosen
@@ -4503,8 +4517,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             words = sized->words;
             clipped = sized->fallback_budget.has_value();
             if (sized->fallback_budget) {
-                fixed_budget = sized->fallback_budget;
-                lo = search(*fixed_budget);
+                // Nothing downstream reads fixed_budget_engaged after this
+                // point, so it is not set true here - see the dead-store
+                // finding this mirrors for `lo`/`words` a bit further up in
+                // this same VBR path.
+                fixed_budget = *sized->fallback_budget;
+                lo = search(fixed_budget);
             }
             if (const auto min_words = vbr_min_words(*config_.vbr)) {
                 words = std::max(words, *min_words);
