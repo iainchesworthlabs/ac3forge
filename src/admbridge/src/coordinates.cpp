@@ -25,6 +25,10 @@ ac3::oba::Position adm_cartesian_to_room(const ac3adm::CartesianPosition& cartes
             .z = cartesian.z};
 }
 
+ac3adm::CartesianPosition room_to_adm_cartesian(const ac3::oba::Position& room) {
+    return {.x = 2.0 * room.x - 1.0, .y = 1.0 - 2.0 * room.y, .z = room.z};
+}
+
 ac3::oba::Position adm_position_to_room(const ac3adm::Position& position) {
     return std::visit(
         [](const auto& p) -> ac3::oba::Position {

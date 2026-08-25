@@ -101,6 +101,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3::oba::ObjectScene`** (`IM7`): one object-scene timeline (named objects, interpolated
   automation, orientation-as-metadata, JSON) shared by `atmos-path`, the GUI and the examples,
   replacing four ad-hoc formats.
+- **A JOC → ADM BWF writer** (`IM2`): `ac3cli decode ... adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (BS.2076-2 ADM XML + BS.2088 BW64, cartesian `audioBlockFormat` automation) from a
+  decoded E-AC-3/Atmos stream's own bed LFE and JOC-reconstructed dynamic objects, positioned by
+  their real decoded OAMD timeline. `ac3adm::write_bw64` and `ac3::admbridge::write()` give
+  `ac3adm`/`ac3::admbridge` a write direction alongside `atmos-adm`'s existing read one; a written
+  master round-trips through `atmos-adm` itself. Needs `-DAC3FORGE_BUILD_ADM=ON`, like every other
+  ADM command; scoped to dynamic-object-only Atmos programmes for now (a genuine bed program is
+  warned about and skipped, not written incorrectly).
 - **E-AC-3 encoder input-space fuzzing** (`VX1`) and **metadata-parser fuzzing** (`VX3`: EMDF,
   OAMD, JOC, signing verification, ADM) with a CRC-repairing mutator so mutations actually reach
   the object parsers instead of dying at the CRC check.
