@@ -111,7 +111,8 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(std::is
         }
 
         IABitstreamFrame entry;
-        entry.preamble.assign(remaining.begin(), remaining.begin() + *preamble_length);  // §8.1.3
+        auto preamble_span = remaining.subspan(0, *preamble_length);  // §8.1.3
+        entry.preamble.assign(preamble_span.begin(), preamble_span.end());
         remaining = remaining.subspan(*preamble_length);
 
         if (remaining.size() < 5) {
