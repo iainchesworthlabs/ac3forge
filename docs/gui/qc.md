@@ -69,6 +69,6 @@ qc`'s own `preset=<name>|all` argument:
 ## What it does not do
 
 This reads a stream that already exists; it has no connection to the workbench's own encode
-plan, the loaded source, or the run strip. QC-ing the file a run just produced is a matter of
-choosing it from the file picker like any other — there is no shortcut yet from a finished run
-chip straight into this dialog.
+plan or the loaded source. QC-ing the file a run just produced no longer needs the file picker,
+though: a finished run's own chip carries a **More…** menu with **QC this run**, opening this
+dialog with that run's output already chosen — see [Open stream](open-stream.md#from-a-finished-run).
