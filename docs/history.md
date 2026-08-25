@@ -251,7 +251,7 @@ wrote a bed-metering step into the same `views` vector the encoder read object e
 sized to the object count (as few as one) rather than the bed's fixed six channels — an
 out-of-bounds heap write, surfacing as a crash partway through an otherwise-successful session.
 Both are fixed (see `MonitorSink::submit` in `src/audio/src/platform/windows/monitor.cpp` and
-`run_live`'s `bed_views` in `src/cli/main.cpp`).
+`run_live`'s `bed_views` in `apps/cli/commands/live_audio.cpp`).
 
 What that hardware testing did and did not confirm, precisely: `MonitorSink` played real
 microphone capture and real decoded AC-3/E-AC-3 (including an Atmos stream's 5.1 bed) through
