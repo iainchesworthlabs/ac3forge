@@ -116,10 +116,10 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
 (function () {
   const REPO = "iainchesworthlabs/ac3forge";
   const HISTORY_BRANCH = "quality-history";
-  const TRACKS = [
-    { branch: "develop", color: "#7c4dff" },
-    { branch: "main", color: "#00acc1" },
-  ];
+  const MAIN_COLOR = "#00acc1";
+  // Muted and dashed (see buildChart) rather than a third saturated colour -
+  // the historical track reads as archived, not as a second live series.
+  const HISTORICAL_COLOR = "#9e9e9e";
   // Mirrors tools/ci/append_object_quality_history.py's own constants - keep
   // these in sync if that script's thresholds change; this is a display-only
   // echo, not a second source of truth. Only the soft (non-failing) tier is
@@ -151,16 +151,22 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
 
   const state = {
     leg: "atmos-objects-448",
-    // "branch": one line per branch for a single focus object (the default).
-    // "object": one line per object for a single branch, un-folded. Never
-    // both as line dimensions at once - the same tradeoff the sibling trend
-    // pages make, for the same readability reason.
+    // "branch": one line for main's focus object, plus an optional second
+    // line for develop's frozen history (the default). "object": one line
+    // per object for a single track, un-folded. Never both as line
+    // dimensions at once - the same tradeoff the sibling trend pages make,
+    // for the same readability reason.
     chartMode: "branch",
     chartObject: "scene",
-    chartBranch: "develop",
+    // Which track's per-object lines are drawn in "object" mode. main by
+    // default, now that it is the only track still gaining commits.
+    chartBranch: "main",
     tableObjects: Object.fromEntries(ALL_OBJECTS.map((o) => [o, DEFAULT_TABLE_OBJECTS.includes(o)])),
-    branches: { main: true, develop: true },
-    developFullHistory: false,
+    // develop stopped moving on 2026-08-25's move to trunk-based
+    // development (see "Where the data lives" below) - kept, but no longer
+    // shown by default alongside main. Same reasoning as quality-trend.md's
+    // identical flag.
+    showHistorical: false,
   };
 
   function rawUrl(branch, file) {
@@ -224,27 +230,16 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
     return `https://github.com/${REPO}/commit/${sha}`;
   }
 
-  function mostRecentCommit(records) {
-    if (records.length === 0) return null;
-    return records.reduce((a, b) => (a.commit_date > b.commit_date ? a : b)).commit;
-  }
-
-  // "object" mode always looks at one branch's full leg history - the point
-  // is a per-object trend over many commits, so the develop-collapse and
-  // other-branch filters "branch" mode uses do not apply there.
+  // "object" mode always looks at one track's full leg history - the point
+  // is a per-object trend over many commits. "branch" mode scopes to main,
+  // plus develop's frozen history (in full - nothing to collapse) if asked
+  // for.
   function visibleRecords(allRecords) {
     const legRecords = allRecords.filter((r) => r.leg === state.leg);
     if (state.chartMode === "object") {
       return legRecords.filter((r) => r.branch === state.chartBranch);
     }
-    const latestDevelop = mostRecentCommit(legRecords.filter((r) => r.branch === "develop"));
-    return legRecords.filter((r) => {
-      if (!state.branches[r.branch]) return false;
-      if (r.branch === "develop" && !state.developFullHistory) {
-        return r.commit === latestDevelop;
-      }
-      return true;
-    });
+    return legRecords.filter((r) => r.branch === "main" || (state.showHistorical && r.branch === "develop"));
   }
 
   function chartSeries(records, object) {
@@ -301,7 +296,8 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
       if (pts.length === 0) continue;
       if (pts.length > 1) {
         const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(Date.parse(p.commit_date)).toFixed(1)},${y(p.snr_db).toFixed(1)}`).join(" ");
-        svg += `<path d="${path}" fill="none" stroke="${track.color}" stroke-width="2"/>`;
+        const dash = track.dashed ? ' stroke-dasharray="5,3"' : "";
+        svg += `<path d="${path}" fill="none" stroke="${track.color}" stroke-width="2"${dash}/>`;
       }
       pts.forEach((p) => {
         const cx = x(Date.parse(p.commit_date)).toFixed(1);
@@ -385,10 +381,10 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
           </select>
         </label>
         ${objectMode ? `
-          <label for="object-trend-chart-branch">Branch
+          <label for="object-trend-chart-branch">Track
             <select id="object-trend-chart-branch">
-              <option value="develop" ${state.chartBranch === "develop" ? "selected" : ""}>develop</option>
               <option value="main" ${state.chartBranch === "main" ? "selected" : ""}>main</option>
+              <option value="develop" ${state.chartBranch === "develop" ? "selected" : ""}>develop (historical, pre-2026-08-25)</option>
             </select>
           </label>
         ` : `
@@ -397,9 +393,7 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
               ${ALL_OBJECTS.map((o) => `<option value="${o}" ${state.chartObject === o ? "selected" : ""}>${o}</option>`).join("")}
             </select>
           </label>
-          <label><input type="checkbox" id="object-trend-branch-main" ${state.branches.main ? "checked" : ""}/> main</label>
-          <label><input type="checkbox" id="object-trend-branch-develop" ${state.branches.develop ? "checked" : ""}/> develop</label>
-          ${state.branches.develop ? `<label><input type="checkbox" id="object-trend-develop-history" ${state.developFullHistory ? "checked" : ""}/> develop: show full history</label>` : ""}
+          <label><input type="checkbox" id="object-trend-show-historical" ${state.showHistorical ? "checked" : ""}/> Show historical (develop, pre-2026-08-25)</label>
         `}
       </div>
       <div class="object-trend-object-filter">
@@ -432,24 +426,10 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
         render(allRecords, releasesBySha);
       });
     }
-    const mainToggle = document.getElementById("object-trend-branch-main");
-    if (mainToggle) {
-      mainToggle.addEventListener("change", (e) => {
-        state.branches.main = e.target.checked;
-        render(allRecords, releasesBySha);
-      });
-    }
-    const developToggle = document.getElementById("object-trend-branch-develop");
-    if (developToggle) {
-      developToggle.addEventListener("change", (e) => {
-        state.branches.develop = e.target.checked;
-        render(allRecords, releasesBySha);
-      });
-    }
-    const historyToggle = document.getElementById("object-trend-develop-history");
-    if (historyToggle) {
-      historyToggle.addEventListener("change", (e) => {
-        state.developFullHistory = e.target.checked;
+    const historicalToggle = document.getElementById("object-trend-show-historical");
+    if (historicalToggle) {
+      historicalToggle.addEventListener("change", (e) => {
+        state.showHistorical = e.target.checked;
         render(allRecords, releasesBySha);
       });
     }
@@ -461,6 +441,9 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
     });
   }
 
+  // Mirrors tool-comparison-trend.md's identical buildTracks: one track for
+  // main's focus object, plus develop's frozen history if asked for; object
+  // mode un-folds the single chartBranch into one track per object instead.
   function buildTracks(visible) {
     if (state.chartMode === "object") {
       return ALL_OBJECTS.map((o) => ({
@@ -470,12 +453,22 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
         points: chartSeries(visible, o),
       }));
     }
-    return TRACKS.map((t) => ({
-      key: t.branch,
-      label: t.branch === "develop" && !state.developFullHistory ? `${t.branch} (latest commit only)` : t.branch,
-      color: t.color,
-      points: state.branches[t.branch] ? chartSeries(visible.filter((r) => r.branch === t.branch), state.chartObject) : [],
-    }));
+    const tracks = [{
+      key: "main",
+      label: "main",
+      color: MAIN_COLOR,
+      points: chartSeries(visible.filter((r) => r.branch === "main"), state.chartObject),
+    }];
+    if (state.showHistorical) {
+      tracks.push({
+        key: "develop",
+        label: "develop (historical, pre-2026-08-25)",
+        color: HISTORICAL_COLOR,
+        dashed: true,
+        points: chartSeries(visible.filter((r) => r.branch === "develop"), state.chartObject),
+      });
+    }
+    return tracks;
   }
 
   function render(allRecords, releasesBySha) {
@@ -491,10 +484,11 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
     attachControlListeners(allRecords, releasesBySha);
   }
 
-  Promise.all([...TRACKS.map((t) => fetchTrack(t.branch)), fetchReleaseShaMap()]).then((results) => {
-    const releasesBySha = results.pop();
-    const allRecords = [];
-    TRACKS.forEach((t, i) => allRecords.push(...results[i]));
+  // Both files are always fetched - main to render, develop so the
+  // historical toggle above has something to show the instant it is
+  // checked, with no second round-trip.
+  Promise.all([fetchTrack("main"), fetchTrack("develop"), fetchReleaseShaMap()]).then(([mainRecords, developRecords, releasesBySha]) => {
+    const allRecords = [...mainRecords, ...developRecords];
     if (allRecords.length === 0) {
       root.innerHTML = '<p class="object-trend-status">No object-quality history yet - it is written by CI on the first push to main after this page landed.</p>';
       return;
@@ -514,9 +508,12 @@ branch into one line per object instead, which is how a single object
 drifting away from its four siblings becomes visible as its own line rather
 than something you would only find by cycling the focus selector.
 
-`develop` and `main` behave as on the sibling pages: separate tracks
-(`main` only advances on a release promotion), `develop` collapsed to its
-latest commit by default, and a 🏷 badge on a row whose commit was tagged.
+`develop` and `main` behave as on the sibling pages: `main`'s full history is
+the default view, `develop`'s frozen pre-2026-08-25 history is available as
+an explicitly-labelled historical track (dashed, muted) via the "Show
+historical" control, and a 🏷 badge marks a row whose commit was tagged. This
+page's own history is thin enough that the distinction barely shows yet —
+see "Where the data lives" below.
 
 **`scene`** is the plain mean of that leg's five objects, not a sixth object.
 It is the "did the object layer move" number; an object that collapsed on its
@@ -564,6 +561,14 @@ Same `quality-history` branch mechanism as
 `object-quality-<branch>.jsonl` this time, written by a job in `ci.yml`
 (`persist-object-quality-trend`) downstream of `ffmpeg-validate`'s
 compute-only `objects` step, on direct pushes to `main` only.
+
+Unlike its siblings, this page's history has no `develop` era to show yet:
+neither `object-quality-develop.jsonl` nor `object-quality-main.jsonl` had
+been written as of 2026-08-25's move to trunk-based development, so the
+"Show historical" control above currently has nothing to add — the job
+exists and is wired up, it simply had not landed a row on either branch
+before `develop` was retired. Going forward every row lands on `main` only,
+the same as its siblings.
 
 Reproduce any row locally, after building `ac3cli`:
 
