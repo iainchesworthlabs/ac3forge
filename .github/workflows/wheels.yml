@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m venv .pyvenv
-          .pyvenv/bin/python -m pip install --quiet --upgrade pip
+          .pyvenv/bin/python -m pip install --quiet "pip==24.3.1"
           .pyvenv/bin/python -m pip install --quiet --require-hashes \
             -r requirements/requirements-pytest.txt
           # --find-links, not `pip install wheelhouse/*.whl`: cibuildwheel
