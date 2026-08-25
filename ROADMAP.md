@@ -125,16 +125,18 @@ both encoders decide from content rather than from the bit rate.
   with mantissas for the same tight budget where they previously didn't get the chance to — the
   same dynamic EQ5's closed-loop delta decision exists to solve, not yet extended to coordinates.
   See the PR body for the full table.
-- [x] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Both encoders now
-  take the per-channel-rate curve as a ceiling and put the frame's own spectrum under it, band by
-  band against Table 7.15's hearing threshold, up to 128 kbit/s per channel; `fgaincod` follows a
-  measured line from 7 at 38 kbit/s per channel to 0 at 128, replacing §8.2.12's fixed 4. Both
-  decided on ViSQOL, because waveform SNR prefers the narrowest band and the highest `fgaincod`
-  at every rate on every material and so distinguishes nothing. The band-limited-fixture trap
-  turned out to understate itself: real programme material carries *less* energy above 14.7 kHz
-  than `reference_51.wav` does, so an SNR-led bandwidth rule narrows harder on real audio than on
-  the fixture. Measured locally on sourced CC0/public-domain material — VX7 still wants it
-  packaged.
+- [ ] **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Partly addressed:
+  both encoders now take the per-channel-rate curve as a ceiling and put the frame's own
+  spectrum under it, band by band against Table 7.15's hearing threshold, up to 128 kbit/s per
+  channel — decided on ViSQOL, because waveform SNR prefers the narrowest band at every rate on
+  every material and so distinguishes nothing. The band-limited-fixture trap turned out to
+  understate itself: real programme material carries *less* energy above 14.7 kHz than
+  `reference_51.wav` does, so an SNR-led bandwidth rule narrows harder on real audio than on the
+  fixture. `fgaincod` follows a measured line from 7 at 38 kbit/s per channel to 0 at 128,
+  replacing §8.2.12's fixed 4 — **AC-3 only** (`encoder.cpp`'s `fgaincod_for`). E-AC-3 still
+  writes `frmfgaincode = 0` unconditionally (`eac3_frame.cpp`'s `kFrmfgaincode`), so every
+  E-AC-3 channel gets the fixed default; the same rate-dependent curve has not been carried
+  across. Measured locally on sourced CC0/public-domain material — VX7 still wants it packaged.
 - [ ] **EQ8 (M)** — Close the E-AC-3 stereo/192 gap. Partly addressed: the coded bandwidth is
   no longer fixed at 60 there (EQ7), which is worth 1.2–2.7 dB SNR and up to +0.034 MOS on real
   programme material at that rate and improves the high-band ratio with it. What did not move is
