@@ -440,14 +440,24 @@ namespace {
         // compute, and atmos.cpp's own bed ramp still agrees with it.
         const int ts = (block + 1) * kQmfTimeslots / kBlocksPerFrame - 1;
 
+        // §6.6.6 spectrum accumulation, unchanged, but into
+        // object_mdct[object] rather than a single shared scratch: every
+        // present object's spectrum now coexists once this pass finishes,
+        // which is what lets the synthesis pass below batch four at a time
+        // instead of one at a time (ROADMAP PF5's batch-axis follow-on).
+        // Absent objects drain their overlap tail immediately here, same as
+        // before, and never enter `present` below - synthesis only ever
+        // runs on objects that actually have a spectrum to transform.
+        std::array<int, kMaxObjects> present{};
+        int n_present = 0;
         for (int object = 0; object < objects; ++object) {
             const auto shape = params.shape(object);
-            auto& pcm = out[static_cast<std::size_t>(object)];
-            auto& history = state.object_history[static_cast<std::size_t>(object)];
             if (!shape.present) {
                 // Nothing was coded for this object this frame. Its overlap
                 // tail still has to drain, or the next frame it reappears in
                 // would start from a stale one.
+                auto& pcm = out[static_cast<std::size_t>(object)];
+                auto& history = state.object_history[static_cast<std::size_t>(object)];
                 for (int n = 0; n < kSamplesPerBlock; ++n) {
                     pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] =
                         static_cast<float>(2.0 * history[static_cast<std::size_t>(n)]);
@@ -455,6 +465,7 @@ namespace {
                 }
                 continue;
             }
+            present[static_cast<std::size_t>(n_present++)] = object;
             const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
             // --- §6.6.6: this object's spectrum is a per-band linear
@@ -493,17 +504,54 @@ namespace {
                         sum += m[static_cast<std::size_t>(ch)] *
                                bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
                     }
-                    object_mdct[static_cast<std::size_t>(bin)] = sum;
+                    object_mdct[static_cast<std::size_t>(object)][static_cast<std::size_t>(bin)] =
+                        sum;
                 }
             }
+        }
 
-            // --- synthesize, same overlap-add eac3_decoder.cpp's own
-            // channel reconstruction uses ---
-            imdct512_windowed(object_mdct, x, fast_imdct);
+        // --- synthesize, same overlap-add eac3_decoder.cpp's own channel
+        // reconstruction uses --- four present objects at a time via
+        // imdct512_windowed_batch4 (ROADMAP PF5's batch-axis follow-on: it
+        // internally checks has_avx2() and falls back to four ordinary
+        // calls when there is no AVX2 tier, so this is bit-identical to the
+        // scalar loop either way, just potentially slower without AVX2),
+        // batching only ever applies to the fast fold - fast_imdct==false
+        // (mode=reference) always takes the one-at-a-time branch below, at
+        // every present object, exactly as it always has.
+        int idx = 0;
+        while (idx < n_present) {
+            if (fast_imdct && idx + 4 <= n_present) {
+                const int o0 = present[static_cast<std::size_t>(idx)];
+                const int o1 = present[static_cast<std::size_t>(idx + 1)];
+                const int o2 = present[static_cast<std::size_t>(idx + 2)];
+                const int o3 = present[static_cast<std::size_t>(idx + 3)];
+                imdct512_windowed_batch4(object_mdct[static_cast<std::size_t>(o0)],
+                                         object_mdct[static_cast<std::size_t>(o1)],
+                                         object_mdct[static_cast<std::size_t>(o2)],
+                                         object_mdct[static_cast<std::size_t>(o3)],
+                                         x[static_cast<std::size_t>(o0)],
+                                         x[static_cast<std::size_t>(o1)],
+                                         x[static_cast<std::size_t>(o2)],
+                                         x[static_cast<std::size_t>(o3)]);
+                idx += 4;
+                continue;
+            }
+            const int o = present[static_cast<std::size_t>(idx)];
+            imdct512_windowed(object_mdct[static_cast<std::size_t>(o)],
+                              x[static_cast<std::size_t>(o)], fast_imdct);
+            ++idx;
+        }
+
+        for (int i = 0; i < n_present; ++i) {
+            const int object = present[static_cast<std::size_t>(i)];
+            auto& pcm = out[static_cast<std::size_t>(object)];
+            auto& history = state.object_history[static_cast<std::size_t>(object)];
+            const auto& xo = x[static_cast<std::size_t>(object)];
             for (int n = 0; n < kSamplesPerBlock; ++n) {
                 pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
-                    2.0 * (x[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
-                history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                    2.0 * (xo[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
+                history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
             }
         }
     }

@@ -280,8 +280,13 @@ struct ReconstructionState {
     std::array<std::array<double, 256>, kMaxChannels> bed_mdct_scratch{};
     std::array<double, 512> time_scratch{};
     std::array<double, 512> windowed_scratch{};
-    std::array<double, 256> object_mdct_scratch{};
-    std::array<double, 512> synth_scratch{};
+    // Per-object (ROADMAP PF5's batch-axis follow-on): every present
+    // object's spectrum/synthesis output now coexists, so the imdct pass
+    // can batch four objects at a time (ac3::imdct512_windowed_batch4)
+    // instead of running strictly one object at a time - see
+    // reconstruct_mdct_band's own object loop (joc.cpp).
+    std::array<std::array<double, 256>, kMaxObjects> object_mdct_scratch{};
+    std::array<std::array<double, 512>, kMaxObjects> synth_scratch{};
 
     // --- Domain::kQmf only -------------------------------------------------
 
