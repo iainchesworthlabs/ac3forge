@@ -459,12 +459,18 @@ machine-readable output and a single failure exit code. Users arrive with contai
   hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
   files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
   ingest only; rendering stays with Cavern.
-- [ ] **IM2 (L)** — JOC → ADM BWF writer. `decode … objects_dir` writes `object_NN.wav` only —
-  the decoded objects have no positions. Write a Dolby Atmos Master ADM Profile BW64 (cartesian
-  coordinates, `audioBlockFormat` automation, `chna`) from `Eac3Decoder`'s object metadata, object
-  audio and bed, round-trip it through `atmos-adm`, check it with MediaConch's profile rules.
-  This is also the practical IAMF bridge: AOM's `iamf-tools` encoder takes ADM-BWF input. The
-  vendored libbw64/libadm writers are unused today; inherits the `AC3FORGE_BUILD_ADM` gate.
+- [x] **IM2 (L)** — JOC → ADM BWF writer. `decode … adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (cartesian coordinates, `audioBlockFormat` automation, `chna`) from
+  `Eac3Decoder`'s object metadata, object audio and the bed's own LFE, round-tripped through
+  `atmos-adm` (`ac3adm::write_bw64` + `ac3::admbridge::write()`, both new). Scoped to
+  dynamic-object-only programmes (this project's own encoder never writes a bed program; a
+  decoded one is warned about and skipped rather than written incorrectly) and cartesian
+  positions only. Checking a written master against MediaConch's own EBU-R 143-style profile
+  rules was not attempted — no MediaConch install in this environment — so that verification is
+  still open if it turns out to matter. This is also the practical IAMF bridge: AOM's
+  `iamf-tools` encoder takes ADM-BWF input. The vendored libbw64/libadm writers were unused
+  before this; both are now driven by `ac3adm`'s new write side. Inherits the
+  `AC3FORGE_BUILD_ADM` gate.
 - [ ] **IM3 (XL)** — IAMF / Eclipsa Audio interop (was `B3`). v1.1.0 is final (`libiamf`,
   BSD-3-Clause-Clear), a v2.0.0 working-group-approved draft (2026-07-27) adds object-based
   elements, and AOM published its Open Audio Renderer v1 on 2026-07-30. IAMF's codec list is
@@ -631,11 +637,63 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   compiled libm producing different last-bit `std::cos`/`std::sin` results in the transform
   twiddle tables (`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) — untested, and the next step
   before either a cross-leg bitstream-hash gate or a documented, accepted divergence.
-- [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. `docs/building.md` records that
-  nothing verifies MSVC, GCC and Clang round the pipeline identically and that they do not.
-  Audit the encoder's decision points for floating-point dependence (or move them to integer),
-  then gate byte-identical gold encodes across every leg, at least under `mode=reference`; a
-  recorded-decisions replay mode makes bisecting and paper reproduction possible.
+- [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. PARTIAL. Audited every discrete,
+  bitstream-affecting decision in `src/forge/src/encoder/` (and the one shared call it makes into
+  `bitalloc.cpp`'s delta-segment bucketing) that a floating-point comparison, argmin or threshold
+  test gates — as opposed to ordinary DSP arithmetic, which is expected to carry tiny
+  platform-dependent noise without changing any discrete choice.
+  **What is already safe:** every BIT-COST decision is integer, and consistently so —
+  `exp_strategy.hpp`'s whole exponent-run DP (`score`/`waste`/`best[]`), `snr_search.hpp`'s
+  fitting search, both encoders' SNR-offset search and delta on/off race, and E-AC-3's
+  hoisted-vs-per-block exponent form choice are all `int`/`long long`/`uint32_t` throughout, with
+  no floating-point comparison anywhere in the decision itself. This is the pattern every fragile
+  finding below should eventually follow, and several already do.
+  **What is fragile, ranked by how much of the bitstream one flipped comparison can restructure:**
+  (1) `transient.cpp`'s block-switch ratio tests (`p1 * kT1 > prev_level1_` and four siblings,
+  fed by a cascaded biquad IIR filter accumulating over hundreds of samples) — `blksw` cascades
+  into MDCT type, coupling/AHT eligibility and rematrix bands, in both encoders, unconditionally,
+  every block. (2) `eac3_frame.cpp`'s `auto_cplbegf`: `coupling.fit < kCouplingMinFit` (0.99) turns
+  E-AC-3 coupling on or off for the whole frame, and the constant's own comment is explicit that
+  it is "not a tuning knob with a comfortable margin" — real frames sit right at it by design.
+  (3) `ecplangleintrp`'s decode-both-ways comparison (`err_interp < err_direct`) and (4) the AHT
+  stationarity ratio (`peak <= 10.0 * quietest`), both structural path choices fed by deep
+  reconstruction pipelines. (5) The rematrix decision
+  (`min(power_sum,power_diff) < min(power_l,power_r)`, shared by both encoders) and (6) the
+  coupling phase-flip test (`correlation < 0.0`), both bare comparisons with no margin at all,
+  though bounded impact near their own tie point since both sides are close in value exactly when
+  the decision barely matters. (7) Nearest-code/VQ argmin searches with a strict `<` and an
+  early-exit `break` (`quantize_ecplamp`, `aht_vector_quantize`, `fit_ecpl_band`'s chaos-code
+  search) — inherent to any nearest-neighbour search over a continuous-valued codebook, not really
+  "fixable" without a different algorithm. Full file-by-file detail, including several more
+  moderate-priority findings and everything already ruled safe, is preserved in PR history.
+  **What is fixed:** `coupling.cpp`'s `quantize_coordinate` and `choose_master` both computed the
+  shift that lands a coordinate in [0.5, 1) as `floor(-std::log2(value))` — a transcendental libm
+  call whose last-bit behaviour is not required to agree across implementations, at exactly the
+  one input class (a value on or near a power of two) where that call's true result is itself an
+  integer, so any rounding at all can land `floor()` on either side of it. Replaced with
+  `std::ilogb`, which reads the unbiased binary exponent directly out of the IEEE-754
+  representation — exact, no rounding, identical on every conformant platform by construction.
+  Proven behaviour-preserving rather than assumed: a new test
+  (`quantize_coordinate is exact at power-of-two boundaries`, `tests/encoder/test_coupling.cpp`)
+  pins both boundary cases directly, the full 3,778,270-assertion test suite passes unchanged, and
+  the gold-reference gate's three self-encoded streams hash byte-identical to their pre-change
+  values — real coupling coordinates essentially never land exactly on a power of two, so this
+  closes a real correctness gap without moving anything on real material.
+  **What is not done, and why:** the higher-impact findings above are not fixed here. Most of them
+  (the coupling-fit threshold, the AHT stationarity ratio, the transient detector's own ratios)
+  are constants and comparisons calibrated against measured MOS-LQO/SNR data on real programme
+  material (see `docs/library/encoding-ac3.md`), not arbitrary — moving them, even by adding a
+  margin, is a perceptual-tuning change that needs the same kind of re-validation campaign the
+  original tuning did, which this item's own scope did not include. The transient detector's IIR
+  state is the deepest one: making it genuinely platform-invariant means fixed-point-porting a
+  cascaded biquad filter, a substantially larger, riskier change than this item's remaining
+  budget could respons­ibly take on and re-validate. Gating byte-identical gold encodes across
+  *every* leg (the roadmap text's other half) is blocked on roadmap VX11, not on this audit: VX11
+  found that a real, standards-conformant aarch64 build does not reproduce the arm64/macOS gap at
+  all, so the true root cause is still unidentified, and asserting cross-leg byte-equality today
+  would either be vacuously true on the x86 legs (already covered by VX11's
+  `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit cannot name yet.
+  A recorded-decisions replay mode is genuinely independent future work, not attempted here.
 - [ ] **VX13 (S)** — Promote the fuzz jobs: make Fuzz Regress a required check, delete the
   `continue-on-error` on `fuzz-short` and `fuzz-differential` (clean since 2026-08-09 and
   2026-08-16), add the differential harnesses to nightly, persist the grown corpus as an
@@ -872,7 +930,7 @@ directory; there is still no threading anywhere in the codec core.
 
 ## UX. Applications
 
-- [ ] **UX1 (M)** — A GUI player/monitor for an existing stream with decode-to-WAV and object
+- [x] **UX1 (M)** — A GUI player/monitor for an existing stream with decode-to-WAV and object
   export, and the run-chip shortcuts into QC and Inspect that two docs pages each end by saying
   do not exist yet. The `MonitorSink` plumbing is already owned by the object-decode controller;
   only the file-driven transport and UI are missing.
@@ -917,12 +975,16 @@ a draft with changes requested: every technical point was fixed, and the reviewe
 exception to the six-month maturity rule — the repository was created 2026-08-09, so not before
 about 2027-02. The winget submission is [microsoft/winget-pkgs#419594](https://github.com/microsoft/winget-pkgs/pull/419594),
 untouched since 2026-08-18 with `Needs-CLA` and a Defender validation error. ConanCenter was never
-submitted. All four staged manifests and the tap are at 0.8.0-beta.2 while v0.9.0-beta.1 shipped
-on 2026-08-22.
+submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1).
 
-- [ ] **DR1 (S)** — Bump the four manifests and the tap to v0.9.0-beta.1. `docs/releasing.md`'s
-  own rule says a release is not done until all four point at it; this is the second cycle in a
-  row they went stale.
+- [x] **DR1 (S)** — Bump the four manifests and the tap to v0.9.0-beta.1. Done: `vcpkg.json`'s
+  `version-semver` and `portfile.cmake`'s SHA512, the Homebrew formula's and cask's `url`/`sha256`/
+  `version`, `conandata.yml`'s `sources` entry, and a new `0.9.0-beta.1/` winget manifest directory
+  all point at the real release tarball/binary hashes (`sha256sum`/`sha512sum` against the
+  downloaded assets, cross-checked against the release's own published `SHA512SUMS`, not
+  fabricated); `tools/checks/check_packaging_versions.sh` passes. The live tap
+  (`iainchesworthlabs/homebrew-ac3forge`) is pushed to match. Still the second cycle in a row these
+  went stale — DR2 is the fix for that.
 - [ ] **DR2 (M)** — Post-release automation: release notes from the matching CHANGELOG section
   (`release.yml` still uses `--generate-notes`), a post-release job that computes the digests and
   opens the manifest-bump PR, and a latest-tag advisory extending
@@ -936,15 +998,23 @@ on 2026-08-22.
   likely cause — DR6), resubmit at the current release. ConanCenter: bump, run the three
   `conan create` validations `docs/releasing.md` lists, open the `conan-center-index` PR; expect
   pushback on the recipe's `cmake_find_mode = "none"`.
-- [ ] **DR5 (S)** — Fix the docs that shipped work made false. `docs/releasing.md`,
-  `wheels.yml` and the old `F2` text still say PyPI publishing is off until provisioned;
-  `releasing.md` and `README.md` still call the tap unpublished; `README.md` says macOS builds
-  the CLI only (the GUI leg has run since 0.8.0-beta.2); `docs/index.md` says the ADM bridge is
-  "not wired up yet"; `docs/cli/metadata-options.md` says the E-AC-3 DRC tokens are "silently
-  inert" (0.6.0 fixed that); `docs/gui/format-and-channels.md` says `mpegts::mux` has no
-  incremental writer (0.9.0 added one); two pages point at `run_live` in `apps/cli/main.cpp`
-  (now `commands/live_audio.cpp`); the `A1` justification cites a jellyfin-ffmpeg issue FFmpeg
-  has since fixed (trac #9996). And the DR9 contradiction below.
+- [x] **DR5 (S)** — Fix the docs that shipped work made false. Done: `docs/releasing.md` and
+  `wheels.yml`'s comments now say PyPI publishing is live, not off until provisioned;
+  `releasing.md` and `README.md` now call the Homebrew tap published/live rather than
+  pending/unpublished; `README.md` no longer says macOS builds the CLI only (the GUI leg has run
+  since 0.8.0-beta.2); `docs/index.md` now says `ac3::admbridge` wires the ADM object/bed graph
+  onto `ac3::oba::AtmosEncoder`, driven end to end by `ac3cli atmos-adm`, rather than "not wired up
+  yet"; `docs/cli/metadata-options.md` now says the E-AC-3 decode-time DRC tokens apply (0.6.0
+  fixed that) rather than "silently inert"; `docs/gui/format-and-channels.md` now lists MPEG-TS
+  beside fragmented MP4/CMAF as carrying over to a live session (0.9.0 added `mpegts::Writer`)
+  rather than falling back to the plain elementary stream; the two pages that pointed at `run_live`
+  in `apps/cli/main.cpp` (`docs/history.md`, `docs/platforms/windows.md`) now say
+  `commands/live_audio.cpp`; `docs/library/muxing-and-sinks.md`'s `A1` justification now says the
+  jellyfin-ffmpeg issue (upstream FFmpeg trac #9996) has since been fixed rather than presenting it
+  as an open bug. The DR9 contradiction below is fixed too: `docs/verification.md`,
+  `docs/platforms/linux.md`, `docs/platforms/windows.md` and the 0.9.0 CHANGELOG Known gaps section
+  all now reflect ALSA/Raspberry Pi's real HDMI-to-receiver confirmation instead of contradicting
+  it.
 - [ ] **DR6 (M, needs accounts)** — Code signing: Developer ID signing and notarisation of
   `ac3gui.app` and the `.dmg` (a Known gap in every release since 0.8.0-beta.2; Gatekeeper blocks
   it), Authenticode for the Windows binaries and installer. GPG and Sigstore satisfy neither OS.
@@ -961,10 +1031,8 @@ on 2026-08-22.
   - **Linux/ALSA: confirmed.** `docs/platforms/raspberry-pi.md` ("Live HDMI passthrough to a
     real receiver", 2026-08-20) records a Pi 4B driving an Atmos-capable AVR: every stream shape
     locked and was identified correctly, including signed Atmos with four height channels, at
-    zero underruns. Yet `docs/verification.md` still says "no downstream receiver in the loop",
-    `docs/platforms/linux.md` still warns "No Linux audio has been tried against real
-    hardware", the 0.9.0 Known gaps say "not confirmed on any platform", and
-    `docs/platforms/windows.md` says no receiver was available. Fix all four (S, with DR5).
+    zero underruns. `docs/verification.md`, `docs/platforms/linux.md`, the 0.9.0 Known gaps and
+    `docs/platforms/windows.md` all carried stale text contradicting this — fixed with DR5.
   - **Windows/WASAPI exclusive: unconfirmed** — only a Realtek analogue endpoint has been tried.
     The receiver exists now: cable the workstation's HDMI (or a USB S/PDIF for the AC-3 half)
     and run the Pi page's stream matrix (S, hardware).

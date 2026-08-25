@@ -545,8 +545,10 @@ covered where it's most relevant rather than repeated here:
   has ever run it.
 - [Raspberry Pi](platforms/raspberry-pi.md#verified-configuration) — real-hardware validation on
   a Pi 4B: the full suite on both compilers, ALSA device enumeration against the Pi's real
-  `vc4hdmi` HDMI outputs, and an inspected arm64 `.deb` — still with no downstream receiver in
-  the loop.
+  `vc4hdmi` HDMI outputs, an inspected arm64 `.deb`, and [live HDMI passthrough to a real
+  Atmos-capable AVR](platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — every
+  stream shape tried, including signed Atmos with height channels, locked correctly at zero
+  underruns.
 - [Android (Shield Atmos Demo)](platforms/android.md#what-has-and-has-not-been-verified) — the
   most thoroughly hardware-verified platform in the project: real E-AC-3/Atmos passthrough over
   HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned

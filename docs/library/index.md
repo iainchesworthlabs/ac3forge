@@ -3,9 +3,10 @@
 The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link
 `matroska::matroska` and/or `mp4::mp4` as well if you want a container writer, `ac3::signing` if
 you want to apply the EMDF object-signing tag (see [Object signing](signing.md)), or
-`ac3adm::ac3adm` if you want to read a professional ADM BWF master — the one module in this list
-that is a reader rather than a writer, and so does not need `ac3::forge` linked alongside it at
-all. Unlike every other module here, `ac3adm::ac3adm` is opt-in: it is only built with
+`ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
+`ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
+mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
+other module here, `ac3adm::ac3adm` is opt-in: it is only built with
 `-DAC3FORGE_BUILD_ADM=ON` (default off), and needs several Boost header libraries pulled in via
 `-DVCPKG_MANIFEST_FEATURES=adm` — see [ADM / BW64 reading](adm.md) for why.
 

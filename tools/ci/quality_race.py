@@ -1149,14 +1149,30 @@ TREND_LEGS = [
 ]
 
 
+# The encoder's own "header room" refusal (ac3::eac3's budget check - see
+# tools/ci/fuzz_eac3_encoder_space.py's REFUSALS, which names this exact
+# message): a legitimate outcome at the two crossover legs TREND_LEGS' own
+# comment added deliberately, not a defect. eac3-stereo-64's "none" row is
+# the known case - 32 kbit/s per channel fits only with both coupling and
+# spectral extension on, which "none" turns off - so _trend_encode reports
+# it rather than raising, and race_trend prints "n/a" for that cell instead
+# of aborting the whole trend run over an outcome the leg exists to show.
+_HEADER_ROOM_REFUSAL = "the encoder cannot express this configuration"
+
+
 def _trend_encode(wav, kbps, codec, tools, out):
     if codec == "ac3":
         run([CLI, "encode", str(wav), str(out), str(kbps)])
-    else:
-        cmd = [CLI, "eac3-encode", str(wav), str(out), str(kbps)]
-        if tools:
-            cmd.append(tools)
-        run(cmd)
+        return True
+    cmd = [CLI, "eac3-encode", str(wav), str(out), str(kbps)]
+    if tools:
+        cmd.append(tools)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        if _HEADER_ROOM_REFUSAL in result.stderr:
+            return False
+        raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
+    return True
 
 
 def race_trend(json_out=None):
@@ -1200,15 +1216,24 @@ def race_trend(json_out=None):
         for row_label, tools in rows:
             cache_key = tools if is_eac3 else None
             if cache_key in landscape_cache:
-                snr, lsd, hf, mos, kbps_measured = landscape_cache[cache_key]
+                scored = landscape_cache[cache_key]
             else:
                 coded = BUILD / f"trend_{name}_{row_label}.{ext[codec]}"
-                _trend_encode(wav, kbps, codec, tools, coded)
-                wav_scratch = BUILD / f"trend_{name}_{row_label}.wav"
-                snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch,
-                                                              perceptual=True)
-                kbps_measured = measured_kbps(coded, seconds)
-                landscape_cache[cache_key] = (snr, lsd, hf, mos, kbps_measured)
+                if _trend_encode(wav, kbps, codec, tools, coded):
+                    wav_scratch = BUILD / f"trend_{name}_{row_label}.wav"
+                    snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch,
+                                                                  perceptual=True)
+                    kbps_measured = measured_kbps(coded, seconds)
+                    scored = (snr, lsd, hf, mos, kbps_measured)
+                else:
+                    scored = None
+                landscape_cache[cache_key] = scored
+
+            if scored is None:
+                print(f"{name:<18} | {row_label:<10} | {'n/a':>7} | {'-':>6} | "
+                      f"{'-':>6} | {'-':>4} | {'-':>6}")
+                continue
+            snr, lsd, hf, mos, kbps_measured = scored
 
             lsd_out = float(lsd) if is_eac3 else None
             hf_out = float(hf) if is_eac3 else None

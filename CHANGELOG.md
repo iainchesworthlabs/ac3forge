@@ -101,6 +101,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3::oba::ObjectScene`** (`IM7`): one object-scene timeline (named objects, interpolated
   automation, orientation-as-metadata, JSON) shared by `atmos-path`, the GUI and the examples,
   replacing four ad-hoc formats.
+- **A JOC → ADM BWF writer** (`IM2`): `ac3cli decode ... adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (BS.2076-2 ADM XML + BS.2088 BW64, cartesian `audioBlockFormat` automation) from a
+  decoded E-AC-3/Atmos stream's own bed LFE and JOC-reconstructed dynamic objects, positioned by
+  their real decoded OAMD timeline. `ac3adm::write_bw64` and `ac3::admbridge::write()` give
+  `ac3adm`/`ac3::admbridge` a write direction alongside `atmos-adm`'s existing read one; a written
+  master round-trips through `atmos-adm` itself. Needs `-DAC3FORGE_BUILD_ADM=ON`, like every other
+  ADM command; scoped to dynamic-object-only Atmos programmes for now (a genuine bed program is
+  warned about and skipped, not written incorrectly).
 - **E-AC-3 encoder input-space fuzzing** (`VX1`) and **metadata-parser fuzzing** (`VX3`: EMDF,
   OAMD, JOC, signing verification, ADM) with a CRC-repairing mutator so mutations actually reach
   the object parsers instead of dying at the CRC check.
@@ -138,6 +146,17 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   used. A private-state change is no longer an ABI break for anyone linking `ac3::forge_shared`.
   `docs/library/index.md` records the one deliberate exception (the plain config aggregates) and
   how they are meant to grow after 1.0.
+
+**Applications (UX)**
+
+- **`ac3gui` gained an "Open stream…" player** (`UX1`): the GUI twin of `ac3cli monitor`, playing
+  an already-encoded `.ac3`/`.ec3` file's decoded bed through a real transport (play/pause/seek)
+  with live meters and the soundfield view, reusing the `MonitorSink` plumbing the object-decode
+  and encode-preview paths already established. **Export decoded WAV…** and **Export objects…**
+  (Atmos only) give it `ac3cli decode`'s two outputs from the same decode pass. A finished run
+  chip's own **More…** menu now offers **QC this run** and **Inspect objects** directly, closing
+  the gap [`docs/gui/qc.md`](docs/gui/qc.md) and [`docs/gui/inspect-objects.md`](docs/gui/inspect-objects.md)
+  used to both end by naming. See [docs/gui/open-stream.md](docs/gui/open-stream.md).
 
 ### Changed
 
@@ -181,6 +200,22 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`coupling::quantize_coordinate`/`choose_master` computed a coordinate's binade shift via
+  `floor(-std::log2(value))`** (`VX12`): a transcendental libm call whose last-bit behaviour is
+  not required to agree across compilers/architectures, at exactly the input class (a value on or
+  near a power of two) where its true result is itself an integer, so any rounding at all could
+  land `floor()` on either side of it. Replaced with `std::ilogb`, which reads the binary exponent
+  directly out of the IEEE-754 representation with no rounding at all. Proven behaviour-preserving
+  on real material: the gold-reference gate's three self-encoded streams hash byte-identical to
+  their pre-change values.
+- **`tools/ci/quality_race.py trend` crashed on `eac3-stereo-64`'s known-infeasible tool
+  variants** rather than reporting them. That leg exists specifically to bracket the rate where
+  E-AC-3 stereo needs *both* coupling and spectral extension to fit (32 kbit/s per channel — see
+  `TREND_LEGS`'s own comment); `none`/`cpl`/`aht`/`tpn` each turn off at least one of the two, so
+  the encoder correctly refuses with its own "header room" message (`ac3::eac3`'s budget check,
+  also named in `fuzz_eac3_encoder_space.py`'s `REFUSALS`) — a real outcome the trend run exists
+  to show, not a defect. `_trend_encode` now recognises that one specific refusal and reports
+  `n/a` for the cell instead of aborting the whole run; every other non-zero exit still raises.
 - **`python/tests/test_latency.py` asserted the wrong Atmos object-path latency, failing the
   `Python Wheels` workflow's `macos-latest` and `windows-latest` `pytest` steps.** The test
   claimed an `AtmosEncoder`'s `latency.transform_samples` was `2 * TRANSFORM_DELAY_SAMPLES`
@@ -212,6 +247,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   `5` (a runtime condition, not a usage error) rather than `1`, so it read as a hard failure
   instead of a recognised refusal. Fixed by matching the message on any non-zero exit rather than
   gating on a specific code, and pinned as a new `REGRESSION_SEEDS` entry.
+- **`tools/ci/fuzz_eac3_encoder_space.py`'s `classify()` had the same gap**, independently, for
+  its own `sub-gate loudness` and `unmeasurable loudness` entries (the latter is `atmos-encode`'s
+  own wording for the identical BS.1770-4 absolute-gate refusal, reached through `eac3-encode` or
+  `atmos-encode` rather than plain `encode`). Unlike the sibling harness, this one's exit-code
+  check exists for a real reason — the first defect it ever found was an `assert()` abort that a
+  blanket `!= 0` would have swallowed as a tolerated refusal — so the fix narrows rather than
+  removes it: `classify()` now checks `REFUSALS` on exit `1` *or* `5`, the CLI's own two
+  refusal-capable codes, while any other code (including the abort signatures the original check
+  was written to catch) still fails outright. Pinned two new `REGRESSION_SEEDS` entries, one per
+  wording.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`
@@ -256,6 +301,20 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   branch, before that branch's own later `develop` merges landed DC10's QMF-domain JOC
   reconstruction and other decode-path growth the profile genuinely needs. Re-measured and
   re-based to the current 412,516-byte image (ceiling now 465,000).
+- **Packaging manifests and the Homebrew tap caught up to v0.9.0-beta.1** (`DR1`): the vcpkg
+  port, Homebrew formula/cask, winget manifest and Conan recipe were still pinned to
+  v0.8.0-beta.2's tarball/binary hashes after the second release in a row; all four and the live
+  `iainchesworthlabs/homebrew-ac3forge` tap now point at the real v0.9.0-beta.1 release assets
+  (hashes computed directly against the downloaded assets and cross-checked against the release's
+  own published `SHA512SUMS`).
+- **Stale documentation corrected** (`DR5`): several pages still described shipped work as not
+  yet done — PyPI publishing and the Homebrew tap as pending/unpublished, macOS as CLI-only, the
+  ADM bridge and E-AC-3 decode-time DRC tokens as not wired up, MPEG-TS live sessions as
+  non-incremental, a stale pre-move `apps/cli/main.cpp` path, and a since-fixed FFmpeg bug
+  (upstream trac #9996) presented as an open one. Also fixes the `DR9` contradiction:
+  `docs/verification.md`, `docs/platforms/linux.md`, `docs/platforms/windows.md` and this file's
+  own 0.9.0-beta.1 Known gaps section below still described ALSA passthrough as unconfirmed
+  against real hardware after Raspberry Pi's HDMI-to-receiver validation had already confirmed it.
 
 ## [0.9.0-beta.1] - 2026-08-22
 
@@ -465,8 +524,11 @@ surface, and continued `apps/cli` command-group extraction.
   launch.
 - Objects still will not decode as *objects* in Dolby's own decoder or hardware — unchanged from
   0.6.0-beta.1; `verify-objects` checks a stream against its own signature, not Dolby's gate.
-- Exclusive-mode S/PDIF/HDMI passthrough has not been confirmed against real bitstreaming
-  hardware on any platform, ALSA, PipeWire or CoreAudio.
+- Exclusive-mode S/PDIF/HDMI passthrough has been confirmed against real bitstreaming hardware on
+  ALSA only, via a Raspberry Pi 4B to a real Atmos-capable AVR over HDMI (see
+  [docs/platforms/raspberry-pi.md](docs/platforms/raspberry-pi.md); this record corrected
+  post-release once that validation's own docs were reconciled). WASAPI exclusive mode, PipeWire
+  and CoreAudio remain unconfirmed against real bitstreaming hardware on any platform.
 - `fscod2` audio content has no external decode oracle at all — verified only by this project's
   own encoder/decoder round trip.
 

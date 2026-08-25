@@ -93,4 +93,47 @@ enum class AdmError : std::uint8_t {
 // directly.
 [[nodiscard]] AC3ADM_EXPORT std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in);
 
+// Roadmap item IM2 ("JOC -> ADM BWF writer"): the write-side counterpart of parse_bw64, using the
+// same two vendored libraries in the other direction - libadm's document-builder API
+// (adm::AudioObject::create() and friends, see src/ac3adm/src/adm_model.cpp) to turn an AdmModel
+// into a libadm adm::Document, adm::writeXml() to serialize it, and libbw64's Bw64Writer
+// (bw64::writeFile()) to write the BW64 container (<fmt >, <chna>, <axml>, <data>).
+enum class AdmWriteError : std::uint8_t {
+    kInvalidDocument,  // an AdmModel cross-reference (a *_refs entry, or an AdmDocument::chna
+                       // entry's uid) did not resolve to another element `document` itself
+                       // carries, or named an element type this writer does not support (Matrix/
+                       // HOA/Binaural channel/pack formats, nested audioObject/audioPackFormat
+                       // references, a block whose `position` is polar rather than cartesian -
+                       // this writer only emits the Dolby Atmos Master ADM Profile's cartesian
+                       // shape). A caller bug, not a hostile-input case: unlike parse_bw64's
+                       // AdmError, nothing here comes from an untrusted file.
+    kCannotOpen,       // the output path could not be opened for writing
+    kOther,            // any other failure surfaced by libbw64/libadm; see the exception message
+                       // this can't carry - kept broad deliberately, same reasoning as AdmError::
+                       // kOther above.
+};
+
+[[nodiscard]] AC3ADM_EXPORT std::string_view describe(AdmWriteError error);
+
+// Writes `document` to `path` as a BW64 file carrying an <axml> chunk (the ADM XML built from
+// `document.model`), a <chna> chunk (from `document.chna`) and the interleaved PCM `document.audio`
+// carries, at 24-bit PCM - the bit depth real-world ADM BWF masters (EBU Tech 3306) almost always
+// use, and the only integer width libbw64's own FormatInfoChunk accepts alongside 16/32 (it has no
+// IEEE-float write path at all, matching its own read-side refusal - see model.hpp's PcmAudio
+// comment).
+//
+// One asymmetry from the read side, worth stating plainly: `document.model`'s own ID strings
+// (AudioObject::id, AudioPackFormat::id, ChnaEntry::uid, ...) are used here ONLY as correlation
+// keys while this function wires the object graph together (matching a *_refs entry back to the
+// element it names) - they never appear literally in the written file. Real, BS.2076-2-formatted
+// IDs are assigned by libadm's own adm::reassignIds() once the whole graph is built, and it is
+// THOSE that end up in the XML and in <chna>'s own AudioId rows. A caller building the AdmModel to
+// pass here is therefore free to use any unique, stable strings it likes for `id`/`uid` fields -
+// "obj0", "pack3", whatever is convenient - not just the "AO_1001"-style strings parse_bw64 itself
+// produces. `ChnaEntry::track_ref`/`pack_ref` are read-path-only fields for this same reason: this
+// function derives the real trackRef/packRef strings itself from the resolved AudioTrackUid's own
+// references, so a caller populating an AdmDocument purely to write it may leave both empty.
+[[nodiscard]] AC3ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(const std::string& path,
+                                                                          const AdmDocument& document);
+
 }  // namespace ac3adm

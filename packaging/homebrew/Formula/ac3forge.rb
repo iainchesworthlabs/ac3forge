@@ -11,18 +11,18 @@
 # first tag whose macOS build actually contains ac3gui.app.
 #
 # Staged here (packaging/homebrew/Formula/ac3forge.rb) for local
-# `brew install --build-from-source` validation against this repo before
-# being copied into a personal tap (e.g. homebrew-ac3forge) as
-# Formula/ac3forge.rb - see docs/releasing.md.
+# `brew install --build-from-source` validation against this repo, and
+# copied into the live personal tap (iainchesworthlabs/homebrew-ac3forge) as
+# Formula/ac3forge.rb after each bump - see docs/releasing.md.
 class Ac3forge < Formula
   desc "Clean-room AC-3/E-AC-3 encoder, decoder and Atmos object-layer CLI"
   homepage "https://github.com/iainchesworthlabs/ac3forge"
-  url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.8.0-beta.2.tar.gz"
+  url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.9.0-beta.1.tar.gz"
   # Computed directly (sha256sum) from the same release tarball the vcpkg
   # port's portfile.cmake pins by SHA512 - see that file's comment. If
   # `brew install` reports a mismatch, trust brew's reported hash over this
   # one and update it here.
-  sha256 "2a070e423369a6f46d6245ab46c389fb2eeb27918198875766be1f8d6b06aa3c"
+  sha256 "1f8269ea4ede4aee8f6e869f2cbeb47720c3e09c031529d9a8eada580b874439"
   license "GPL-3.0-or-later"
   head "https://github.com/iainchesworthlabs/ac3forge.git", branch: "main"
 

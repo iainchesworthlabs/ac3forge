@@ -143,11 +143,13 @@ writes `ftyp`/`moov`/`mdat` for one audio track, one sample per chunk, `stts`/`s
 straight off the frame sizes handed in. No edit lists, no multiple tracks — those matter for
 large-file seeking and multi-track muxing, not for playing back what this project produces.
 
-Getting the `dec3`/`dac3` box right from the spec is the point: FFmpeg's own MKV→MP4 remux path
-is documented to silently drop or mis-signal the Atmos extension
-([jellyfin-ffmpeg#584](https://github.com/jellyfin/jellyfin-ffmpeg/issues/584)) — building it
-from `ac3::io::scan`'s own read of the bitstream, rather than by copying another tool's output,
-is what this module avoids that bug by construction rather than by patching it after the fact.
+Getting the `dec3`/`dac3` box right from the spec is the point: FFmpeg's MKV→MP4 remux path used
+to silently drop or mis-signal the Atmos extension
+([jellyfin-ffmpeg#584](https://github.com/jellyfin/jellyfin-ffmpeg/issues/584), upstream
+[FFmpeg trac #9996](https://trac.ffmpeg.org/ticket/9996), since fixed) — building it from
+`ac3::io::scan`'s own read of the bitstream, rather than by copying another tool's output, is
+what this module avoided that bug by construction rather than by patching it after the fact, and
+still does for any FFmpeg build older than the fix.
 
 ### Demuxing: `mp4::demux`, `mp4::Reader`
 
