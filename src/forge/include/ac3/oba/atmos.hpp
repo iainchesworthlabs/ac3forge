@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -134,11 +135,18 @@ struct ObjectPlacement {
 class AC3FORGE_EXPORT AtmosEncoder {
    public:
     AtmosEncoder(const AtmosConfig& config, int objects);
-    // Move-only: encoder_ below is, since eac3::FrameEncoder went move-only
-    // - see AccessUnitEncoder's own comment for the dllexport reason this
-    // must be spelled out.
-    AtmosEncoder(AtmosEncoder&&) noexcept = default;
-    AtmosEncoder& operator=(AtmosEncoder&&) noexcept = default;
+    // Declared (and defined in atmos.cpp, where Impl below is complete)
+    // rather than implicit/inline-defaulted: a dllexport class generates
+    // every implicit special member whether or not called, and the
+    // unique_ptr member makes the implicit copy deleted - which is fine -
+    // but move-assignment's implicit reset() needs Impl complete, so it
+    // cannot stay inline once Impl is only forward-declared here. Move-only,
+    // same as eac3::AccessUnitEncoder below, which Impl holds by value.
+    ~AtmosEncoder();
+    AtmosEncoder(const AtmosEncoder&) = delete;
+    AtmosEncoder& operator=(const AtmosEncoder&) = delete;
+    AtmosEncoder(AtmosEncoder&&) noexcept;
+    AtmosEncoder& operator=(AtmosEncoder&&) noexcept;
 
     // objects: one kSamplesPerFrame mono span per object, in the order the
     // encoder was constructed with. Returns one E-AC-3 access unit: a single
@@ -174,51 +182,35 @@ class AC3FORGE_EXPORT AtmosEncoder {
     // With emit_object_metadata off there is no container, no JOC and no
     // second transform of either kind - the stream is plain 5.1 - so the
     // budget collapses to bed_latency()'s.
-    [[nodiscard]] LatencyBudget latency() const {
-        LatencyBudget budget = bed_latency();
-        if (config_.emit_object_metadata) {
-            budget.transform_samples += joc::reconstruction_delay(config_.joc_domain);
-        }
-        return budget;
-    }
+    [[nodiscard]] LatencyBudget latency() const;
     [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
     // The 5.1 BED's budget: what a legacy decoder that ignores the container
     // hears, and the figure to use when the objects are not being
     // reconstructed. One transform overlap, like any other E-AC-3 stream.
-    [[nodiscard]] LatencyBudget bed_latency() const { return encoder_.latency(); }
+    [[nodiscard]] LatencyBudget bed_latency() const;
 
     // Dynamic objects only. The program has one more - the bed's LFE - which
     // is what the free object_count(Program) counts.
-    [[nodiscard]] int dynamic_object_count() const { return objects_; }
-    [[nodiscard]] const Program& program() const { return program_; }
+    [[nodiscard]] int dynamic_object_count() const;
+    [[nodiscard]] const Program& program() const;
 
     // The 5.1 bed the last frame encoded, in AC-3 coded order (L, C, R, Ls,
     // Rs, LFE). Exposed because it is what a legacy decoder hears, and that
     // is the thing most worth checking.
-    [[nodiscard]] std::span<const std::vector<float>> bed() const { return bed_; }
+    [[nodiscard]] std::span<const std::vector<float>> bed() const;
     // The reconstruction matrix the last frame transmitted, before
     // quantization. Its channel axis is JOC's order (Table 53), not AC-3's.
-    [[nodiscard]] const joc::FrameParameters& parameters() const { return params_; }
+    [[nodiscard]] const joc::FrameParameters& parameters() const;
 
    private:
-    AtmosConfig config_;
-    int objects_ = 0;
-    Program program_{};
-    eac3::AccessUnitEncoder encoder_;
-    joc::FrameParameters params_{};
-
-    // Per object, its bed gains in JOC channel order plus its LFE send. Kept
-    // between frames so the bed can ramp from where the last frame left off.
-    std::vector<std::array<double, joc::kNumChannels5X>> gains_;
-    std::vector<double> lfe_gains_;
-    bool primed_ = false;
-
-    std::vector<std::vector<float>> bed_;
-    // One analysis filterbank per object, for joc::Domain::kQmf's band
-    // energies. Left empty - and so free - under kMdctBand.
-    std::vector<dsp::QmfAnalysis> object_qmf_;
-    std::uint64_t frames_ = 0;
+    // Every private data member - config, the bed encoder, the per-object
+    // gain ramps, the QMF analysis filterbanks, all of it - lives behind
+    // this one pimpl, following the same pattern as
+    // ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. Impl is defined
+    // in atmos.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // Energy of one object per JOC parameter band, over the whole frame - the

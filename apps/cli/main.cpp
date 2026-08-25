@@ -335,12 +335,15 @@ constexpr std::array<Command, 38> kCommands{{
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
+    {"qc", 2,
+     "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] "
+     "[objects=<51|71|512|514|714>]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
-     "preset gate",
+     "preset gate, optional BS.1770-5 Annex 4 object re-render",
      topic::kQc | topic::kProgramme,
      Needs::kNothing, [](const Args& x) {
-         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme);
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme,
+                       x.meta.qc_objects_layout);
      }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", topic::kNone,
      Needs::kNothing,
