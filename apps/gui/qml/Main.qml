@@ -906,19 +906,16 @@ ApplicationWindow {
     // URL - QcController.measureFile/ObjectDecodeController.inspectFile both
     // take one, so the run strip's own "More…" menu needs this conversion
     // too. Same "file:///" + normalized-slashes convention outputFolderUrl()
-    // above already uses for exactly this reason.
+    // above uses, including its own leading-slash strip: on Unix `path` is
+    // already absolute ("/..."), so without stripping that slash first,
+    // "file:///" + "/..." carries a fourth slash past the standard three -
+    // QUrl(...).toLocalFile() then hands it straight back as a literal
+    // doubled leading slash rather than collapsing it, which is exactly the
+    // "//__w/..." tst_stream_player.qml's QcController.filePath comparison
+    // caught. Windows paths ("C:/...") have no leading slash to strip, so
+    // the replace is a no-op there.
     function runPathUrl(path) {
-        // A POSIX path already starts with "/" (e.g. "/home/user/x.ec3");
-        // a Windows one never does even after the backslash swap (e.g.
-        // "C:/x.ec3"). Only add the separating slash "file://" needs when
-        // it isn't already there - unconditionally prepending "file:///"
-        // doubled it on Linux/macOS, corrupting every run path into
-        // "//home/..." once round-tripped back through QUrl::toLocalFile().
-        let normalized = path.replace(/\\/g, "/");
-        if (!normalized.startsWith("/")) {
-            normalized = "/" + normalized;
-        }
-        return "file://" + normalized;
+        return "file:///" + path.replace(/\\/g, "/").replace(/^\//, "");
     }
 
     // The run strip's own "More…" menu items call these rather than

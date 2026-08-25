@@ -320,8 +320,23 @@ struct DecodedFrame {
 
 class AC3FORGE_EXPORT FrameDecoder {
    public:
-    FrameDecoder() = default;
+    // Real work, not =default, because Impl below is incomplete here - same
+    // reason ac3::io::WavStreamReader's default ctor gives. A default-
+    // constructed decoder is only ever a move-assignment target (see
+    // io::Prober::Impl), never decoded through directly, but it still needs
+    // a valid impl_ to be safely destructible and move-assignable.
+    FrameDecoder();
     explicit FrameDecoder(const DecoderConfig& config);
+    // Declared (and defined in decoder.cpp, where Impl below is complete)
+    // rather than implicit: a dllexport class generates every implicit
+    // special member whether or not called, and the unique_ptr member makes
+    // the implicit copy deleted - which is fine - but the moves must be
+    // spelled out or the declared destructor suppresses them.
+    ~FrameDecoder();
+    FrameDecoder(const FrameDecoder&) = delete;
+    FrameDecoder& operator=(const FrameDecoder&) = delete;
+    FrameDecoder(FrameDecoder&&) noexcept;
+    FrameDecoder& operator=(FrameDecoder&&) noexcept;
 
     // Decodes exactly one syncframe (the span must be exactly one frame).
     //
@@ -366,7 +381,7 @@ class AC3FORGE_EXPORT FrameDecoder {
     // The output stage's own added delay, in samples - see
     // OutputStage::latency_samples(). Zero for every configuration except
     // Lt/Rt with its phase shift left on.
-    [[nodiscard]] int output_latency_samples() const { return output_.latency_samples(); }
+    [[nodiscard]] int output_latency_samples() const;
 
    private:
     // Both public forms above: `channels` empty means allocate the PCM into
@@ -379,31 +394,12 @@ class AC3FORGE_EXPORT FrameDecoder {
     [[nodiscard]] std::optional<DecodedFrame> conceal(DecodeError error,
                                                       std::span<const std::span<float>> channels);
 
-    DecoderConfig config_{};
-    std::array<std::array<double, 256>, 6> delay_{};  // overlap-add state
-    // §7.3.4 dither, persisting across frames like delay_ above so a long
-    // stream's substituted noise does not repeat every syncframe.
-    DitherGenerator dither_{};
-    // §7.8/§5.4.2.8, applied after the channels are reconstructed. Inert
-    // unless DecoderConfig::output asks for something.
-    OutputStage output_{};
-    // What §7.10 concealment reconstructs from: the metadata of the last
-    // frame that decoded, and the last BLOCK's windowed transform output per
-    // coded channel (the whole 512, not only the half delay_ keeps).
-    // Populated only while concealment is enabled, so a decoder configured
-    // the way every existing caller configures it carries none of it.
-    struct Retained {
-        DecodedFrame shape;
-        std::vector<std::array<double, 512>> last_block;
-        int nchans = 0;
-    };
-    std::optional<Retained> retained_ = std::nullopt;
-    // Where the block loop writes its last block while a frame is still in
-    // progress. Committed into retained_ only once the frame has decoded
-    // cleanly, so a frame that fails after five good blocks does not poison
-    // the material the NEXT loss is concealed from. Sized lazily at first
-    // use, so a decoder with concealment off never allocates it.
-    std::vector<std::array<double, 512>> conceal_scratch_;
+    // Every private data member - config, overlap-add state, dither, the
+    // output stage, the §7.10 concealment buffers - lives behind this one
+    // pimpl, following the same pattern as ac3::io::WavStreamReader/Writer
+    // and ac3::FrameEncoder. Impl is defined in decoder.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // --- E-AC-3 ----------------------------------------------------------------
@@ -574,8 +570,18 @@ struct DecodedAccessUnit {
 
 class AC3FORGE_EXPORT Eac3Decoder {
    public:
-    Eac3Decoder() = default;
+    // Real work, not =default, because Impl below is incomplete here - same
+    // reason FrameDecoder's default ctor gives.
+    Eac3Decoder();
     explicit Eac3Decoder(const DecoderConfig& config);
+    // Declared (and defined in eac3_decoder.cpp, where Impl below is
+    // complete) rather than implicit - same dllexport/unique_ptr reasoning
+    // as FrameDecoder above.
+    ~Eac3Decoder();
+    Eac3Decoder(const Eac3Decoder&) = delete;
+    Eac3Decoder& operator=(const Eac3Decoder&) = delete;
+    Eac3Decoder(Eac3Decoder&&) noexcept;
+    Eac3Decoder& operator=(Eac3Decoder&&) noexcept;
 
     // Decodes one syncframe. Overlap-add state is kept per substream identity,
     // so the substreams of successive access units stay independent of each
@@ -681,7 +687,7 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // The output stage's own added delay, in samples - see
     // OutputStage::latency_samples(). Zero for every configuration except
     // Lt/Rt with its phase shift left on.
-    [[nodiscard]] int output_latency_samples() const { return output_.latency_samples(); }
+    [[nodiscard]] int output_latency_samples() const;
 
    private:
     // decode_substream without the §7.10 concealment wrapper around it.
@@ -707,174 +713,16 @@ class AC3FORGE_EXPORT Eac3Decoder {
     [[nodiscard]] std::expected<DecodedSubstream, DecodeError> decode_ac3_core(
         std::span<const std::byte> frame);
 
-    DecoderConfig config_{};
-    // §5.4.2.8/§7.8, applied to the assembled program rather than to each
-    // substream: a dependent on its own is half a soundfield, and folding it
-    // separately would mean folding something nobody was ever meant to hear.
-    // Inert unless DecoderConfig::output asks for something.
-    OutputStage output_{};
-    // apply_output's and flush()'s own views onto whichever channels are
-    // being folded. A member so a steady-state decode allocates nothing.
-    std::vector<std::span<float>> au_views_;
-
-    // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
-    // then the AC-3 bit stream shall be processed as an independent substream
-    // assigned substream ID 0." Such a frame is AC-3 syntax throughout, so an
-    // AC-3 decoder reads it and decode_ac3_core() presents the result as
-    // substream (kIndependent, 0) for §E3.8.2 to combine exactly as it
-    // combines an Annex E bed.
-    //
-    // One instance rather than a per-identity slot: a bitstream has exactly
-    // one independent substream 0, so there is only ever one core. Holding it
-    // here across calls is what gives the core's overlap-add and dither the
-    // same continuity delay_ gives every Annex E substream. Lazily allocated
-    // for the same reason delay_'s slots are - a FrameDecoder carries 12 KB
-    // of overlap-add state, and the streams that never contain a legacy core
-    // (every stream this project's own encoder produces) should not pay it.
-    std::unique_ptr<FrameDecoder> core_;
-
-    // Per-substream-identity state, indexed by strmtyp * 8 + substreamid: a
-    // dependent's id lives in its own numbering space (§E2.3.1.2), so id
-    // alone does not identify a substream. strmtyp is a 2-bit field and
-    // substreamid a 3-bit one, so the whole key space is [0, 32) and a flat
-    // 32-slot array replaces the std::map each of these used to be: O(1)
-    // indexing with no tree walk and no node allocation per identity, and -
-    // because slot order IS key order - the same ascending iteration
-    // flush() always had. The two heavy states stay lazily allocated behind
-    // unique_ptr exactly as the map's on-demand nodes were: a 5.1 stream
-    // has one identity, and 32 by-value delay slots would pin 384 KB.
-    static constexpr std::size_t kSubstreamSlots = 32;
-    // At most six coded channels each (3/2 plus LFE); value-initialized
-    // (zeroed) at first use, exactly as the map's operator[] created it.
-    std::array<std::unique_ptr<std::array<std::array<double, 256>, 6>>, kSubstreamSlots>
-        delay_;
-    // One per substream identity that has ever carried JOC:
-    // joc::reconstruct's own matrix-ramp and per-object/per-channel
-    // overlap-add state, so a moving object's audio and the frame-to-frame
-    // matrix interpolation both have real continuity instead of restarting
-    // cold every frame - see joc::ReconstructionState's own doc comment.
-    std::array<std::unique_ptr<joc::ReconstructionState>, kSubstreamSlots> joc_state_;
-    // A substream identity's slot engages the first time one of its frames
-    // sets transproce, and stays engaged (buffering one frame at a time)
-    // for the rest of the stream - see decode_substream's own doc comment.
-    std::array<std::optional<DecodedSubstream>, kSubstreamSlots> pending_;
-    // decode_access_unit's own assembly cache: a substream identity's
-    // RELEASED (by decode_substream) results, oldest first, waiting for
-    // every other identity the same call's frames named to also have one -
-    // see decode_access_unit's own doc comment. A queue rather than a single
-    // slot: one identity can release several times while another is still
-    // catching up (a dependent that never uses the tool releases every call,
-    // while the independent using it lags by one), and an already-queued,
-    // not-yet-assembled result must never be overwritten by a later one for
-    // the same identity - that would silently splice two different points
-    // in time into one access unit. A vector consumed from the front rather
-    // than a deque: the queue is at most a frame or two deep, and an empty
-    // vector - unlike some deques - allocates nothing, so 32 idle slots
-    // cost nothing.
-    std::array<std::vector<DecodedSubstream>, kSubstreamSlots> pending_au_parts_;
-
-    // decode_substream's own per-block IMDCT/enhanced-coupling scratch
-    // (PREfast's C6262, alert #63): reused across every (block, channel)
-    // iteration of a call instead of stack-declared per iteration, the same
-    // reasoning as FrameEncoder's MDCT scratch members. Each is fully
-    // overwritten before being read, so nothing needs to persist beyond one
-    // decode_substream call - unlike delay_ above, these don't need to be
-    // keyed by substream identity.
-    std::array<double, 512> imdct_scratch_{};
-    std::array<double, 256> ecpl_spectrum_real_{};
-    std::array<double, 256> ecpl_spectrum_imag_{};
-    // decode_substream's frame-lifetime coefficient buffers - the AHT
-    // stream store (§3.4: all six blocks decoded at block 0) and the
-    // enhanced-coupling channel store (§3.5.5.1: a block's reconstruction
-    // reads its neighbors). Owned here for the same reuse reasoning as the
-    // scratch above, with one extra property worth the wordier comment:
-    // both used to be heap-allocated and zeroed afresh on every call (98 KB
-    // per frame, the two largest per-frame heap costs in the decoder)
-    // whether or not the stream used either tool. They are sized lazily at
-    // first use instead - a stream using neither tool never allocates them
-    // - and every read of a reused buffer is made safe at the write site:
-    // an AHT stream's slot is cleared before its block-0 decode fills it
-    // (bins past its endmant must read zero), and enhanced-coupling reads
-    // are whole-array assignments from this call or gated by this call's
-    // ecpl_active flags, so a previous frame's contents are never visible.
-    std::vector<std::array<std::array<double, 256>, kBlocksPerFrame>> aht_coeffs_;
-    std::vector<std::array<double, 256>> ecpl_all_coeffs_;
-    // One entry per block: everything decode_substream's second pass (spx
-    // synthesis, rematrixing, IMDCT and PCM write) needs from pass one -
-    // the .cpp's comment at the use site explains why two passes exist at
-    // all. A member for the same churn reason as the buffers above: the
-    // per-block geometry copies (chincpl, spxco, the enhanced-coupling
-    // index sets...) land in vectors that keep their capacity across
-    // frames, and `coeffs` cycles storage with the parse loop by swap
-    // instead of forcing a fresh 14 KB allocation every block. The
-    // enhanced-coupling fields are only assigned under cplinu &&
-    // ecplinu_now and only read under the same guard - both flags ARE
-    // re-assigned every block - so a reused entry's stale conditional
-    // fields are never visible.
-    struct BlockTail {
-        std::vector<std::array<double, 256>> coeffs;  // per stream; decoupled where standard
-        std::vector<bool> chincpl;
-        bool cplinu = false;
-        bool ecplinu_now = false;
-        // Standard coupling (valid when cplinu && !ecplinu_now): decoupling
-        // already ran inline in pass one, so `coeffs` is final for these
-        // channels and nothing further is needed here.
-        //
-        // Enhanced coupling (valid when cplinu && ecplinu_now):
-        int firstchincpl = -1;
-        bool ecplangleintrp = false;
-        int ecpl_begin_subbnd = 0;
-        int ecpl_end_subbnd = 0;
-        std::array<bool, eac3::kEcplSubBands> ecpl_structure{};
-        std::vector<std::vector<int>> ecplamp_raw;    // [ch][band]
-        std::vector<std::vector<int>> ecplangle_raw;  // [ch][band]
-        std::vector<std::vector<int>> ecplchaos_raw;  // [ch][band]
-        std::vector<bool> ecpltrans;                  // [ch]
-        int cplstrtmant = 0;
-        int cplendmant = 0;
-        // spx (§3.6)
-        bool spxinu = false;
-        std::vector<bool> chinspx;
-        eac3::BandLayout spx_bands{};
-        std::vector<std::vector<double>> spxco;
-        std::vector<int> spxblnd;
-        int spx_startmant = 0;
-        int spx_endmant = 0;
-        int spx_copystart = 0;
-        // rematrixing (§7.5.4, 2/0 only) and block switching
-        std::array<bool, 4> rematflg{};
-        std::array<bool, eac3::chanmap::kMaxSubstreamFullbw> blksw{};
-        // One slot per coded channel plus the shared coupling stream.
-        std::array<int, eac3::chanmap::kMaxSubstreamChannels + 1> endmant{};
-    };
-    std::vector<BlockTail> tails_;
-    // §7.10's raw material, per substream identity: the metadata of the last
-    // frame of that identity that decoded, and its last BLOCK's windowed
-    // transform output per coded channel. Lazily allocated behind unique_ptr
-    // for the same reason delay_ is - 32 by-value slots would pin 768 KB for
-    // a stream that has one identity and (usually) no concealment at all.
-    struct RetainedSubstream {
-        DecodedSubstream shape;
-        std::array<std::array<double, 512>, 6> last_block{};
-        int nchans = 0;
-    };
-    std::array<std::unique_ptr<RetainedSubstream>, kSubstreamSlots> retained_;
-    // Where the block loop writes its last block while a frame is still in
-    // progress, committed into retained_ only once the frame has decoded
-    // cleanly - see FrameDecoder's own conceal_scratch_ for why. Sized lazily,
-    // so a decoder with concealment off never allocates it.
-    std::vector<std::array<double, 512>> conceal_scratch_;
-    // The identity of the last frame that decoded, for the one concealment
-    // case that cannot name its own: a frame damaged so far forward that even
-    // strmtyp/substreamid cannot be trusted. -1 until something decodes.
-    int last_identity_ = -1;
-
-    // §7.3.4 dither (Annex E's dithflag[ch]/dithflage), shared across every
-    // substream identity decode_substream ever sees - nothing about §7.3.4
-    // requires per-identity separation, only that simultaneous channels'
-    // noise stay uncorrelated, which independent draws from one sequential
-    // generator already give.
-    DitherGenerator dither_{};
+    // Every private data member - config, the output stage, the per-
+    // substream-identity delay/JOC/pending state, the decode scratch, the
+    // §7.10 concealment buffers, all of it - lives behind this one pimpl,
+    // following the same pattern as ac3::io::WavStreamReader/Writer and
+    // ac3::FrameEncoder. Impl is defined in eac3_decoder.cpp. The lazy
+    // per-substream-slot unique_ptr arrays (delay/JOC/retained state) stay
+    // exactly as they were - that is a laziness optimization independent of
+    // this pimpl, not something the sweep should flatten.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // Split a raw elementary stream into syncframes by sync word and declared
