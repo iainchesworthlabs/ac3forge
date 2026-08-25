@@ -16,8 +16,11 @@
 #include <string_view>
 #include <utility>
 
+#include <adm/adm.hpp>
 #include <adm/errors.hpp>
 #include <adm/parse.hpp>
+#include <adm/utilities/id_assignment.hpp>
+#include <adm/write.hpp>
 #include <bw64/bw64.hpp>
 
 #include "adm_model.hpp"
@@ -394,6 +397,107 @@ std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in) {
     std::error_code remove_error;
     std::filesystem::remove(temp_path, remove_error);  // best-effort cleanup
     return result;
+}
+
+std::string_view describe(AdmWriteError error) {
+    switch (error) {
+        case AdmWriteError::kInvalidDocument: return "AdmModel has an unresolved reference or an unsupported element type";
+        case AdmWriteError::kCannotOpen: return "cannot open path for writing";
+        case AdmWriteError::kOther: return "unexpected failure writing the BW64/ADM file";
+    }
+    return "unknown error";
+}
+
+namespace {
+
+// 24-bit: the only integer width libbw64's FormatInfoChunk validates that real ADM BWF masters
+// actually use (EBU Tech 3306 §2's own PCM-only framing settles for 16- or 24-bit; 24 keeps
+// headroom this project's own float32 pipeline already exceeds). libbw64's writer has no
+// IEEE-float path at all - see this file's own is_ieee_float_wave() comment on the matching
+// read-side refusal - so 32 here would mean 32-bit INTEGER, a worse choice than 24 for no benefit.
+constexpr std::uint16_t kWriteBitDepth = 24;
+
+std::vector<float> interleave(const PcmAudio& audio) {
+    const auto frame_count = audio.frame_count();
+    const auto channel_count = audio.channels.size();
+    std::vector<float> interleaved(frame_count * channel_count);
+    for (std::size_t frame = 0; frame < frame_count; ++frame) {
+        for (std::size_t channel = 0; channel < channel_count; ++channel) {
+            interleaved[frame * channel_count + channel] = audio.channels[channel][frame];
+        }
+    }
+    return interleaved;
+}
+
+// Resolves one ChnaEntry's `uid` (an AdmModel-level correlation key, per ac3adm.hpp's own
+// write_bw64 doc comment) to the bw64::AudioId it describes: the REAL, reassignIds()-assigned
+// AudioTrackUidId, plus the real AudioTrackFormatId/AudioPackFormatId of whichever of the two
+// (or neither, for a plain-PCM-shortcut AudioTrackUid) that track uid ended up referencing.
+std::expected<bw64::AudioId, AdmWriteError> to_audio_id(
+    const ChnaEntry& entry, const std::unordered_map<std::string, std::shared_ptr<adm::AudioTrackUid>>& track_uids_by_key) {
+    const auto it = track_uids_by_key.find(entry.uid);
+    if (it == track_uids_by_key.end()) {
+        return std::unexpected(AdmWriteError::kInvalidDocument);
+    }
+    const auto& track_uid = it->second;
+    std::string track_ref;
+    if (const auto track_format = track_uid->getReference<adm::AudioTrackFormat>()) {
+        track_ref = adm::formatId(track_format->get<adm::AudioTrackFormatId>());
+    }
+    std::string pack_ref;
+    if (const auto pack_format = track_uid->getReference<adm::AudioPackFormat>()) {
+        pack_ref = adm::formatId(pack_format->get<adm::AudioPackFormatId>());
+    }
+    return bw64::AudioId(entry.track_index, adm::formatId(track_uid->get<adm::AudioTrackUidId>()), track_ref, pack_ref);
+}
+
+}  // namespace
+
+std::expected<void, AdmWriteError> write_bw64(const std::string& path, const AdmDocument& document) {
+    auto built = detail::build_libadm_document(document.model);
+    if (!built) {
+        return std::unexpected(built.error());
+    }
+    // reassignIds() BEFORE resolving chna: it is the source of every real, final ID this
+    // function (and the AudioId rows it builds below) reports - see ac3adm.hpp's own write_bw64
+    // doc comment on why the caller's own AdmModel ID strings never appear in the written file.
+    adm::reassignIds(built->document);
+
+    std::vector<bw64::AudioId> audio_ids;
+    audio_ids.reserve(document.chna.size());
+    for (const auto& entry : document.chna) {
+        auto audio_id = to_audio_id(entry, built->track_uids_by_key);
+        if (!audio_id) {
+            return std::unexpected(audio_id.error());
+        }
+        audio_ids.push_back(std::move(*audio_id));
+    }
+    auto chna_chunk = std::make_shared<bw64::ChnaChunk>(std::move(audio_ids));
+
+    std::ostringstream xml;
+    adm::writeXml(xml, built->document);
+    auto axml_chunk = std::make_shared<bw64::AxmlChunk>(xml.str());
+
+    if (document.audio.channels.empty()) {
+        return std::unexpected(AdmWriteError::kInvalidDocument);
+    }
+    try {
+        // bw64::Bw64Writer's own constructor takes sampleRate as uint16_t (writer.hpp) - a real
+        // limit of libbw64 0.10.0's API, harmless here since it still comfortably covers every
+        // AC-3/E-AC-3 rate this project ever decodes (max 48 kHz, well under 65536).
+        auto writer = bw64::writeFile(path, static_cast<std::uint16_t>(document.audio.channels.size()),
+                                      static_cast<std::uint16_t>(document.audio.sample_rate), kWriteBitDepth, chna_chunk,
+                                      axml_chunk);
+        auto interleaved = interleave(document.audio);
+        writer->write(interleaved.data(), document.audio.frame_count());
+        // ~Bw64Writer (writer's destructor, at scope exit) finalizes the file: writes the <axml>
+        // chunk queued above, then patches the RIFF/data chunk sizes now that every sample has
+        // gone out - the same "close on scope exit" shape ac3::io::WavStreamWriter's own callers
+        // rely on elsewhere in this project.
+    } catch (const std::exception&) {
+        return std::unexpected(AdmWriteError::kOther);
+    }
+    return {};
 }
 
 }  // namespace ac3adm

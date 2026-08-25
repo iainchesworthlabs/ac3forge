@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -9,6 +10,7 @@
 
 #include "ac3/admbridge/export.hpp"
 #include "ac3/oba/motion.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3adm/model.hpp"
 
 // Roadmap item B1 phase 2 of 3 ("ADM BWF reader feeding the JOC encoder", see ROADMAP.md): maps
@@ -93,6 +95,9 @@ enum class BridgeError : std::uint8_t {
                             // enforce this, so it is checked here rather than assumed
     kTooManyChannels,       // more bed + dynamic-object channels than AtmosEncoder supports - see
                             // build()'s own comment for the exact cap and its citation
+    kEmptyInput,            // write() only: WriteInput::channels was empty, or a dynamic-object
+                            // channel's `updates` was empty (every channel needs at least one
+                            // DynamicObject state to place it, even a static, never-moving one)
 };
 
 [[nodiscard]] AC3ADMBRIDGE_EXPORT std::string_view describe(BridgeError error);
@@ -193,5 +198,64 @@ struct BridgeResult {
 // run_atmos_path already enforce for the same reason, reused here rather than re-derived.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<BridgeResult, BridgeError> build(
     const ac3adm::AdmDocument& document, std::string_view programme_id = {});
+
+// --- Write direction: roadmap item IM2 ("JOC -> ADM BWF writer") ---------------------------
+//
+// The mirror image of build() above: instead of mapping an already-parsed ac3adm::AdmDocument
+// onto AtmosEncoder's input shape, this maps a DECODED E-AC-3/Atmos programme's own bed/object
+// PCM and OAMD automation onto an ac3adm::AdmDocument, ready for ac3adm::write_bw64(). Still the
+// one place ac3adm and ac3::forge/ac3::oba are allowed to meet - see this header's own top
+// comment - just travelling the other way.
+//
+// Scope is deliberately narrower than build()'s own read-side generality, matching what this
+// project's OWN decoder (the only source this writer has) ever actually produces: one dynamic-
+// object-only-or-single-bed-instance programme (Eac3Decoder never emits ISF objects, several bed
+// instances or non-standard Table 13 assignments - oamd.hpp's own Program comment), no nested
+// audioObjects, cartesian positions only (this writer never emits polar). A programme this
+// restrictive to READ would refuse real third-party content; a programme this restrictive to
+// WRITE only ever has to describe what THIS decoder decoded, which is a much smaller shape.
+
+// One OAMD update to a dynamic object's DynamicObject state, timestamped in absolute samples from
+// the start of the whole decode (not the access unit it arrived in) - the flattened form of
+// ac3::oba::DecodedProgram::UpdateBlock (oamd.hpp) a caller assembles by walking every decoded
+// access unit's own object_metadata->blocks in file order and adding each block's own
+// sample_offset to a running total of samples already emitted.
+struct AC3ADMBRIDGE_EXPORT WriteObjectUpdate {
+    std::uint64_t sample_offset = 0;
+    // ac3::oba::UpdateBlock::ramp_duration verbatim - samples, or -1 for the one
+    // ramp_duration_bits codeword TS 103 420's own table does not name (oamd.hpp's own comment);
+    // build_block_formats() (bridge.cpp) treats a negative value as an instant jump (ramp 0).
+    int ramp_duration_samples = 0;
+    ac3::oba::DynamicObject state;
+};
+
+// One channel to write into the master. A bed channel (`bed_label` set) is written as a static
+// DirectSpeakers channel pinned at its own room position (ac3::oba::bed_label_position) - `updates`
+// is ignored for these, the same "a bed channel has no direction to pin, `force_lfe` discards it
+// entirely" convention build_channel_path's own doc comment states for the read direction. A
+// dynamic object (`bed_label` empty) is written as an Objects channel whose audioBlockFormat
+// sequence comes from `updates`, which must be non-empty and in strictly increasing
+// `sample_offset` order (a caller emitting them in decode order already satisfies this; see
+// build_block_formats()'s own comment on why a non-increasing entry is folded into its
+// predecessor rather than rejected).
+struct AC3ADMBRIDGE_EXPORT WriteChannel {
+    std::string name;
+    std::span<const float> pcm;                       // this channel's whole-file mono audio
+    std::optional<ac3::oba::BedLabel> bed_label{};     // set: bed/LFE channel; empty: dynamic object
+    std::span<const WriteObjectUpdate> updates{};      // dynamic objects only
+};
+
+struct AC3ADMBRIDGE_EXPORT WriteInput {
+    std::uint32_t sample_rate = 0;
+    std::vector<WriteChannel> channels;
+};
+
+// Builds one ac3adm::AdmDocument programme -> content -> {one audioObject per channel}, cartesian
+// positions throughout, ready for ac3adm::write_bw64(). `input.channels[i].pcm` is copied into the
+// returned document's own `audio.channels[i]` (unlike build()'s own BridgeResult::pcm, which
+// borrows - there is no caller-owned buffer here for the result to borrow from once this function
+// returns, since the document is the thing about to be written to disk).
+[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<ac3adm::AdmDocument, BridgeError> write(
+    const WriteInput& input);
 
 }  // namespace ac3::admbridge

@@ -1,20 +1,19 @@
-# ADM / BW64 reading: `ac3adm::ac3adm`
+# ADM / BW64 reading and writing: `ac3adm::ac3adm`
 
 `ac3adm/ac3adm.hpp`, library `ac3adm::ac3adm`. A standalone BW64/RF64 + Audio Definition Model
-(ADM) parser: the professional delivery format Netflix's and Apple's own Atmos ingest pipelines
-require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing from
-`ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist. It differs from
-those three in one way: they are container **writers**, this is a container **reader**, because
-that's the direction a professional master needs to travel to reach this project's own encoder
-in the first place.
+(ADM) parser and writer: the professional delivery format Netflix's and Apple's own Atmos ingest
+pipelines require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing
+from `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
-Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` is a separate module,
-[`ac3::admbridge`](adm-bridge.md) (done); driving the two together end to end — a real ADM BWF
-master straight to a DD+ JOC E-AC-3 stream — is also done: `ac3cli atmos-adm` (see
-[Commands](../cli/commands.md)) and
+Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` (ADM → encode) or building it
+from a decoded `ac3::Eac3Decoder` programme (decode → ADM, roadmap item IM2) is a separate module,
+[`ac3::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
+straight to a DD+ JOC E-AC-3 stream — is `ac3cli atmos-adm`, and the write direction is
+`ac3cli decode ... adm_out` (see [Commands](../cli/commands.md)) and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp). This page and
-[`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) only demonstrate this module's own API — opening a file and walking the
-parsed graph; `encode_adm.cpp` is the one that shows the full pipeline.
+[`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) only demonstrate this module's own read-side API — opening a file and walking the
+parsed graph; `encode_adm.cpp` is the one that shows the full read-direction pipeline. See
+"Writing" below for `write_bw64()`.
 
 **Opt-in, unlike every other module in this library.** `AC3FORGE_BUILD_ADM` defaults **off**, and
 turning it on additionally needs `-DVCPKG_MANIFEST_FEATURES=adm` (see
@@ -90,6 +89,53 @@ module (see below) report almost everything through one broad exception family e
 real failures currently surface as `kCannotOpen` (bad/truncated container), `kMalformedXml` (axml
 isn't well-formed XML) or `kMalformedAdm` (well-formed XML that isn't a valid ADM document) — see
 [`src/ac3adm/src/adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/adm.cpp)'s own comments for exactly which library exception maps to which `AdmError`.
+
+## Writing
+
+`write_bw64(path, document)` is the read side's mirror image: it turns an `AdmModel` (the same
+plain-data graph `parse_bw64` produces) into a libadm `adm::Document` (a new translator,
+`build_libadm_document()` in `src/ac3adm/src/adm_model.cpp`, alongside the existing read-side
+`build_adm_model()`), serializes it with `adm::writeXml()`, and writes the BW64 container
+(`<fmt >`/`<chna>`/`<axml>`/`<data>`) with libbw64's `Bw64Writer` (`bw64::writeFile()`) — the same
+two vendored libraries as the read side, in the other direction. Always 24-bit integer PCM
+(`EBU Tech 3306`'s own framing; libbw64's writer has no IEEE-float path at all, matching its
+reader's refusal — see "PCM formats" below).
+
+```cpp
+ac3adm::AdmDocument document;
+// ... populate document.model / document.chna / document.audio ...
+const auto written = ac3adm::write_bw64(path, document);
+if (!written) {
+    fmt::printf("write_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(written.error()).size()),
+                ac3adm::describe(written.error()).data());
+    return 1;
+}
+```
+
+One asymmetry from the read side: `AdmModel`'s own ID strings (`AudioObject::id`,
+`ChnaEntry::uid`, ...) are used only as correlation keys while the object graph is wired together
+— they never appear literally in the written file. Real, BS.2076-2-formatted IDs come from
+libadm's own `adm::reassignIds()`, called once the whole graph is built; `write_bw64` reads those
+back to build `<chna>`'s `AudioId` rows. A caller is therefore free to use any unique, stable
+strings for `id`/`uid` fields, not just the `"AO_1001"`-style ones `parse_bw64` itself produces.
+`ChnaEntry::track_ref`/`pack_ref` are consequently read-path-only fields — `write_bw64` derives
+the real `trackRef`/`packRef` strings itself, so a caller building a document purely to write it
+may leave both empty.
+
+`write_bw64`'s own translator supports exactly the element shapes [ADM → Atmos bridging](adm-bridge.md)'s
+write direction (`ac3::admbridge::write()`) produces: `audioProgramme` → `audioContent` →
+`audioObject` (no nesting) → `audioPackFormat` (`Objects` or `DirectSpeakers`, no nesting) →
+`audioChannelFormat` (cartesian `audioBlockFormat`s only) → `audioStreamFormat` → `audioTrackFormat`
+→ `audioTrackUID`. `ac3::admbridge::write()` always populates the full `audioStreamFormat`/
+`audioTrackFormat` chain rather than BS.2076-2's plain-PCM shortcut (`audioTrackUID` referencing
+`audioPackFormat`/`audioChannelFormat` directly, with no stream/track format at all) — libadm's own
+`adm::reassignIds()` zeroes out any `audioChannelFormat` no `audioStreamFormat` references ("get an
+Id with the value zero and are thereby marked as ADM elements which should be ignored" -
+`adm/utilities/id_assignment.hpp`'s own doc comment), which the shortcut alone triggers; every
+channel this writer produced collapsed to the same `AC_00000000` id before this chain was added.
+`AdmWriteError::kInvalidDocument` covers every case outside that shape: an unresolved `*_refs`
+entry, Matrix/HOA/Binaural pack or channel types, nested references, or a block whose position is
+polar rather than cartesian.
 
 ## Built on the EBU's own reference implementations
 

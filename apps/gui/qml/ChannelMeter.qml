@@ -10,7 +10,15 @@ import Ac3Forge
 RowLayout {
     id: root
 
-    // One entry of EncoderController.channelLevels; empty while no layout is
+    // Which controller's meterFloorDb/clearClipLatch back this row - every
+    // existing caller (the encode workbench's own meter grid) leaves this at
+    // its default, so EncoderController stays the implicit owner unless a
+    // caller says otherwise; StreamPlayerDialog.qml is the one caller that
+    // does, since its levels/CLIP latches live on StreamPlayerController
+    // instead.
+    property QtObject controller: EncoderController
+
+    // One entry of controller.channelLevels; empty while no layout is
     // loaded, hence the defaults on every read below. The row's own identity
     // (its name, whether the routing feeds it) comes from channelMeta via
     // the two properties beneath, which only change when the layout does.
@@ -79,7 +87,7 @@ RowLayout {
             width: 2
             height: parent.height
             color: root.barColor
-            visible: root.fed && root.peakDb > EncoderController.meterFloorDb
+            visible: root.fed && root.peakDb > root.controller.meterFloorDb
         }
 
         // The hold marker lags the peak down, so the loudest moment of the
@@ -92,13 +100,13 @@ RowLayout {
             color: Theme.text
             visible: root.fed
                      && (root.level.holdDb !== undefined ? root.level.holdDb : -120)
-                        > EncoderController.meterFloorDb
+                        > root.controller.meterFloorDb
         }
     }
 
     Text {
         Layout.preferredWidth: 50
-        text: !root.fed || root.peakDb <= EncoderController.meterFloorDb
+        text: !root.fed || root.peakDb <= root.controller.meterFloorDb
               ? "-∞" : root.peakDb.toFixed(1)
         color: root.clipped ? Theme.accent700 : Theme.text
         opacity: root.fed ? 1.0 : 0.45
@@ -137,7 +145,7 @@ RowLayout {
             anchors.fill: parent
             enabled: root.fed && root.clipped
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: EncoderController.clearClipLatch(root.channelIndex)
+            onClicked: root.controller.clearClipLatch(root.channelIndex)
         }
     }
 }

@@ -22,7 +22,7 @@ Usage:
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source; programme2= adds a second independent substream)
-  ac3cli decode        <in.ac3|in.ec3> <out.wav> [objects_dir] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there)
+  ac3cli decode        <in.ac3|in.ec3> <out.wav> [objects_dir] [adm_out] (AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there, roadmap IM2)
   ac3cli probe         <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
   ac3cli metadata      <in.ac3|in.ec3> <out.ac3|out.ec3>      (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
@@ -31,7 +31,7 @@ Usage:
   ac3cli cat           <out.ac3|out.ec3> <in1> <in2> [in3...] (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
   ac3cli levels        <in.wav|in.ac3|in.ec3>                 (per-channel peak/RMS report)
   ac3cli loudness      <in.wav>                               (BS.1770-4 loudness -> dialnorm)
-  ac3cli qc            <in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate)
+  ac3cli qc            <in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] [objects=<51|71|512|514|714>] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate, optional BS.1770-5 Annex 4 object re-render)
   ac3cli spdif         <in.ac3> <out.wav>                     (IEC 61937 wrap as playable PCM16 WAV)
   ac3cli unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|->  (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file)
@@ -222,11 +222,11 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there |
+| `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1` |
 | `levels` | Per-channel peak/RMS report — takes a WAV or an encoded stream |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
-| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream, measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, or the whole rendered program with `layout=rendered` — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
+| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream, measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
 
 ```bash
 ac3cli decode out.ec3 out.wav
@@ -258,6 +258,15 @@ For an Atmos stream, add `objects_dir` to also export each object's reconstructe
 
 ```bash
 ac3cli decode atmos.ec3 bed.wav objects/
+```
+
+Or add a fourth argument (`objects_dir` empty or not) to write a real ADM BWF master instead —
+positions come from the stream's own decoded OAMD, so `master.wav` round-trips through
+`ac3cli atmos-adm` (roadmap IM2, needs `-DAC3FORGE_BUILD_ADM=ON`; without it, decode still runs
+and prints a clear warning rather than failing the whole command):
+
+```bash
+ac3cli decode atmos.ec3 bed.wav "" master.wav
 ```
 
 That works for a bed programme too, which is what channel-based-immersive third-party content
@@ -497,7 +506,7 @@ dialnorm check:
   measurement-derived dialnorm would be 23, not 24
 ```
 
-Add `preset=<name>` (or `preset=all`) to gate that same measurement against a named delivery spec instead of just reporting it — see [Options & grammars](metadata-options.md#qc-options-qc-preset-layout) for the exact preset numbers and the primary source cited for each, and this page's own exit-code note below. The presets are `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix` and `apple-music-atmos`; each verdict prints the document version and date it was judged against.
+Add `preset=<name>` (or `preset=all`) to gate that same measurement against a named delivery spec instead of just reporting it — see [Options & grammars](metadata-options.md#qc-options-qc-preset-layout-objects) for the exact preset numbers and the primary source cited for each, and this page's own exit-code note below. The presets are `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix` and `apple-music-atmos`; each verdict prints the document version and date it was judged against.
 
 `layout=` chooses which soundfield is metered. The default, `layout=bed`, measures the independent substream's own Table 5.8 bed through BS.1770 Annex 1's basic algorithm — which is all `qc` has ever measured, and on an Atmos or 7.1.4 stream that leaves every dependent substream's height, wide and rear channel out. It now says so rather than reporting the bed as though it were the whole programme. `layout=rendered` measures the assembled program instead, through BS.1770-5 (11/2023) Annex 3's extended algorithm, which weights each channel by its position and so has a weight for every Table E2.5 location:
 
@@ -511,6 +520,22 @@ qc: atmos.ec3 (E-AC-3, L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE, 48000 Hz, 62 acc
 ```
 
 For a plain 5.1 stream both settings give the same number, by construction — see [Options & grammars](metadata-options.md#layoutbed-default-and-layoutrendered) for the weighting table and the one Table 5.8 layout where the two algorithms genuinely disagree.
+
+Neither `layout=` setting sees a dynamic object's own *position* — both meter channels, and this project's own encoder folds every object onto the flat 5.1 ring at encode time regardless of where it was authored. `objects=<layout>` (roadmap IO12) re-renders a dynamic-object-only programme's objects by their own OAMD position instead, onto a chosen layout, per ITU-R BS.1770-5 Annex 4:
+
+```bash
+ac3cli qc atmos.ec3 objects=514
+```
+
+```text
+qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+  ...
+  objects=5.1.4  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD
+  position, via ac3::spatial's direction panner, then Annex 3)
+```
+
+See [Options & grammars](metadata-options.md#objectslayout) for why this needs a dynamic-object-only programme and what a bed-and-objects one gets instead.
 
 `qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` is non-zero solely on a genuine input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
 

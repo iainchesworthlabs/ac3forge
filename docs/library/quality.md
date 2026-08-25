@@ -5,9 +5,12 @@ instruments. They answer two questions an encoder has to be able to answer befor
 anything: **how much error will the decoder reconstruct**, and **how much of that error can the
 signal hide**.
 
-Nothing here is on by default. `EncoderConfig::search` is the only thing in the library that
-reads them, and it is `kNone` unless a caller asks — see
-[Encoding AC-3 § Decision search](encoding-ac3.md#decision-search).
+Nothing here is on by default. `EncoderConfig::search` and its E-AC-3 counterpart,
+`eac3::FrameConfig::search`, are the only things in the library that read them, and both are
+`kNone` unless a caller asks — see [Encoding AC-3 § Decision
+search](encoding-ac3.md#decision-search) and [Encoding E-AC-3](encoding-eac3.md)'s own `search`
+row, which is narrower (CBR only, `kDistortion` only, one axis rather than two — see its own
+entry for why).
 
 ## Why this exists
 
@@ -120,13 +123,20 @@ field, because it is a convention rather than a measurement.
 
 ## Validation
 
-`EncoderConfig::search` is where these two measures meet the encoder - see
+`EncoderConfig::search` is where these two measures meet the AC-3 encoder - see
 [Encoding AC-3 § Decision search](encoding-ac3.md#decision-search) for what it chooses between and
 the measured before/after table. In short: `kDistortion` is a real, repeatable win at 448 kbit/s
 and above; at 192 kbit/s its own criterion still improves but external metrics (log-spectral
 distance, ViSQOL) show it trading SNR against per-band spectral shape. `kPerceptual`
 currently loses at every rate tested - a real finding about the model's calibration on real
 material, not a claim this page is hiding.
+
+`eac3::FrameConfig::search` (roadmap EQ13) is the E-AC-3 side, narrower on purpose: CBR only,
+`kDistortion` only, and one axis (`dbpbcod`) rather than the two AC-3's search has, because
+E-AC-3 has no per-frame `fgaincod` to search yet. Measured on real CC0 stereo material, its effect
+is negligible at every rate tried - see [Encoding E-AC-3](encoding-eac3.md)'s own `search` row and
+ROADMAP.md's EQ13/EQ8 entries for the numbers and why a single-axis search over an already-tuned
+default has little left to find.
 
 Reproducing the numbers needs material this project does not check in (the committed fixtures are
 narrow-band synthesized noise, exactly the trap `encoder.cpp`'s `chbwcod` comment warns about) and

@@ -22,6 +22,7 @@
 #include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/silent_frame.hpp"
+#include "ac3/encoder/transient.hpp"
 #include "ac3/internal/profiling.hpp"
 
 #include "ac3/meta/bsi.hpp"
@@ -188,7 +189,7 @@ struct SnrSearchResult {
 // nested member type of an exported class cannot be defined there (the
 // C2911/C2888 lesson eac3_frame.cpp's FrameState already carries), and the
 // defaulted special members below need it complete at their definitions.
-struct FrameEncoder::PlanScratch {
+struct FrameEncoder::Impl {
     struct ExponentRun {
         int start_block = 0;
         ExpStrategy strategy = ExpStrategy::kD15;
@@ -207,9 +208,91 @@ struct FrameEncoder::PlanScratch {
         std::vector<ExponentRun> runs;
     };
 
+    EncoderConfig config_;
+    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
+    // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
+    // across frames, like history_ above.
+    std::vector<TransientDetector> transient_detectors_;
+    // Per-(channel, block) scratch for the MDCT pass, reused rather than
+    // stack-declared inside encode_frame (PREfast's C6262 flagged the
+    // function's stack frame). Each is always fully overwritten before being
+    // read within one iteration, and the two loops that use them run to
+    // completion one after another - never interleaved or reentered - so
+    // reuse across iterations, and across calls on this instance, changes
+    // nothing observable. Not thread-safe for concurrent calls on the same
+    // instance, same as history_ and the other per-frame state above.
+    std::array<double, 512> time_scratch_{};
+    std::array<double, 512> windowed_scratch_{};
+    std::array<double, 128> half1_scratch_{};
+    std::array<double, 128> half2_scratch_{};
+    // Frame-lifetime work buffers, reused across encode_frame calls under
+    // the same reasoning (and the same single-instance contract) as the
+    // scratch arrays above: each is re-sized via assign()/resize() and fully
+    // re-written every frame before anything reads it, so reuse changes
+    // nothing observable - it only stops encode_frame from re-allocating
+    // them 31 times a second. coeffs_ is the per-(stream, block) MDCT
+    // spectrum set (~86 KB at 5.1+coupling); block_exps_ the per-slot raw
+    // exponent sets; fixed_/fixed_base_ the flattened fixed-point bins and
+    // their per-slot offsets; block_tokens_ each block's mantissa tokens,
+    // filled through MantissaBlockWriter::take_tokens_into so the token
+    // storage cycles between the writer and these slots without copies.
+    std::vector<std::array<double, 256>> coeffs_;
+    std::vector<std::int32_t> fixed_;
+    std::vector<std::size_t> fixed_base_;
+    std::vector<std::vector<std::uint8_t>> block_exps_;
+    std::array<std::vector<MantissaToken>, kBlocksPerFrame> block_tokens_;
+    // The SNR search's per-(stream, run) candidate allocations and the
+    // per-stream bap views the block cost sum reads through. Same contract
+    // as the buffers above: every (stream, run) slot in this frame's range
+    // is re-assign()ed by bits_at before anything reads it, so reuse
+    // (including a slot whose run count shrank) changes nothing observable.
+    std::vector<std::vector<std::vector<std::uint8_t>>> run_bap_;
+    std::vector<std::span<const std::uint8_t>> bap_views_;
+    std::uint64_t rate_accumulator_ = 0;  // ideal-bits Bresenham state
+    std::uint64_t words_emitted_ = 0;
+    // The previous frame's converged SNR-offset composite, warm-starting the
+    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
+    // state only: it changes how fast the search converges, never which
+    // offset it converges to. Negative until a frame has been encoded.
+    int snr_search_hint_ = -1;
+    // The previous frame's winning BitAllocCodes (EncoderConfig::search),
+    // unlike the hint above NOT performance-only: it is step 9a's incumbent
+    // for THIS frame's comparison, so which candidate wins can depend on it.
+    // Without this, every frame compared its six candidates against the same
+    // fixed default, with nothing that favoured staying where the PREVIOUS
+    // frame landed - and on material where two candidates measure within the
+    // switch margin of each other, that reproduces exactly the failure the
+    // margin exists to prevent: real material was measured switching on 156
+    // of 750 frames, 80 of them a single frame reverting the next. Carrying
+    // the winner forward as the incumbent gives "stay" a standing zero-cost
+    // option every frame (down to 123 of 750 with this in place), which is
+    // what turns the margin into real hysteresis instead of a per-frame coin
+    // flip that happens to be biased. This did not turn out to be the whole
+    // story behind the low-bitrate quality tradeoff documented at
+    // EncoderConfig::search - see that comment - but it is real, measured
+    // instability the margin was already supposed to prevent, independent of
+    // that finding. Meaningless, and never read, while EncoderConfig::search
+    // is kNone.
+    BitAllocCodes previous_codes_{.dbpbcod = 3};
+    // The chbwcod this encoder last transmitted, so the content-adaptive
+    // band edge can be rate-limited on the way DOWN (see encode_frame's
+    // bandwidth step). Unlike snr_search_hint_ above this is not a
+    // performance hint: it is part of the decision, and dropping it would
+    // change the bitstream. Negative until a frame has been encoded, which
+    // is what lets the first frame take the content's answer outright.
+    int chbwcod_state_ = -1;
+    // Both controllers smooth their gain over time, so they have to outlive a
+    // frame - a per-frame instance would restart the attack every 32 ms.
+    std::optional<meta::RangeController> range_;
+    std::optional<meta::HeavyCompressor> heavy_;
+    // Ch2's own controllers, present only when acmod is kDualMono. A shared
+    // instance would smooth one programme's gain history into the other's.
+    std::optional<meta::RangeController> range2_;
+    std::optional<meta::HeavyCompressor> heavy2_;
+
     // encode_frame's remaining frame-lifetime buffers, reused across calls
-    // under the same fully-rewritten-before-read contract as the members in
-    // encoder.hpp. blksw/cpl_* are re-assign()ed to the value a fresh
+    // under the same fully-rewritten-before-read contract as the members
+    // above. blksw/cpl_* are re-assign()ed to the value a fresh
     // zero-initialized vector held; plan's slots are rebuilt in place, every
     // ExponentRun field explicitly re-set (the branch-not-taken exponent set
     // and the LFE's absent delta included, since a stream index's role can
@@ -226,13 +309,13 @@ struct FrameEncoder::PlanScratch {
     // --- step 9a's decision search (EncoderConfig::search) ------------------
     // All unused, and the model unconstructed, when the search is off.
     //
-    // The model is here rather than in encoder.hpp because it carries state
-    // ACROSS frames - its tonality estimate extrapolates from the previous
-    // two blocks, and the previous frame's last two blocks are what make
-    // blocks 0 and 1 of this one as good as the rest. std::optional because
-    // it needs the sample rate and a channel count to construct, which
-    // FrameEncoder's constructor has, and because a config that never asks
-    // for the search should never pay for its tables.
+    // The model carries state ACROSS frames - its tonality estimate
+    // extrapolates from the previous two blocks, and the previous frame's
+    // last two blocks are what make blocks 0 and 1 of this one as good as
+    // the rest. std::optional because it needs the sample rate and a channel
+    // count to construct, which FrameEncoder's constructor has, and because
+    // a config that never asks for the search should never pay for its
+    // tables.
     std::optional<quality::PerceptualModel> perceptual;
     // Whether the frame the model last saw was a coupling frame. cplinu is
     // not stable across frames (§8.2.4.1 excludes a block-switched channel,
@@ -257,28 +340,33 @@ FrameEncoder::~FrameEncoder() = default;
 FrameEncoder::FrameEncoder(FrameEncoder&&) noexcept = default;
 FrameEncoder& FrameEncoder::operator=(FrameEncoder&&) noexcept = default;
 
-FrameEncoder::FrameEncoder(const EncoderConfig& config)
-    : config_(config), scratch_(std::make_unique<PlanScratch>()) {
-    if (config_.drc) {
-        range_.emplace(*config_.drc, config_.sample_rate);
+const EncoderConfig& FrameEncoder::config() const { return impl_->config_; }
+int FrameEncoder::channel_count() const {
+    return fullbw_channel_count(impl_->config_.acmod) + (impl_->config_.lfe ? 1 : 0);
+}
+
+FrameEncoder::FrameEncoder(const EncoderConfig& config) : impl_(std::make_unique<Impl>()) {
+    impl_->config_ = config;
+    if (impl_->config_.drc) {
+        impl_->range_.emplace(*impl_->config_.drc, impl_->config_.sample_rate);
     }
     // Ch2's controller is built from drc2/heavy2, never drc/heavy - the two
     // programmes are unrelated, and dialnorm2's existing all-or-nothing rule
     // (§5.4.2.16, checked below in encode_frame) is the precedent for not
     // inheriting one programme's setting into the other's.
-    if (config_.acmod == Acmod::kDualMono && config_.drc2) {
-        range2_.emplace(*config_.drc2, config_.sample_rate);
+    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.drc2) {
+        impl_->range2_.emplace(*impl_->config_.drc2, impl_->config_.sample_rate);
     }
-    if (config_.heavy) {
-        heavy_.emplace(*config_.heavy, config_.sample_rate);
+    if (impl_->config_.heavy) {
+        impl_->heavy_.emplace(*impl_->config_.heavy, impl_->config_.sample_rate);
     }
-    if (config_.acmod == Acmod::kDualMono && config_.heavy2) {
-        heavy2_.emplace(*config_.heavy2, config_.sample_rate);
+    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.heavy2) {
+        impl_->heavy2_.emplace(*impl_->config_.heavy2, impl_->config_.sample_rate);
     }
-    const int nfchans = fullbw_channel_count(config_.acmod);
-    transient_detectors_.reserve(static_cast<std::size_t>(nfchans));
+    const int nfchans = fullbw_channel_count(impl_->config_.acmod);
+    impl_->transient_detectors_.reserve(static_cast<std::size_t>(nfchans));
     for (int i = 0; i < nfchans; ++i) {
-        transient_detectors_.emplace_back(config_.sample_rate);
+        impl_->transient_detectors_.emplace_back(impl_->config_.sample_rate);
     }
 }
 
@@ -288,42 +376,42 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // Before the first early return below, so a caller that keeps one trace
     // across a whole file never reads the previous frame's state back out of
     // a call that produced no frame at all.
-    if (config_.trace != nullptr) {
-        config_.trace->reset();
+    if (impl_->config_.trace != nullptr) {
+        impl_->config_.trace->reset();
     }
-    const auto index = bitrate_index(config_.bitrate_kbps);
+    const auto index = bitrate_index(impl_->config_.bitrate_kbps);
     if (!index) {
         return std::unexpected(FrameError::kInvalidBitrate);
     }
     // fscod2 is an Annex E (E-AC-3) concept; classic AC-3 has no frmsizecod
     // row for a reduced rate.
-    if (is_reduced_rate(config_.sample_rate)) {
+    if (is_reduced_rate(impl_->config_.sample_rate)) {
         return std::unexpected(FrameError::kInvalidBitrate);
     }
-    if (config_.dialnorm < 1 || config_.dialnorm > 31) {
+    if (impl_->config_.dialnorm < 1 || impl_->config_.dialnorm > 31) {
         return std::unexpected(FrameError::kInvalidDialnorm);
     }
-    const bool dual_mono = config_.acmod == Acmod::kDualMono;
+    const bool dual_mono = impl_->config_.acmod == Acmod::kDualMono;
     if (dual_mono &&
-        (!config_.dialnorm2 || *config_.dialnorm2 < 1 || *config_.dialnorm2 > 31)) {
+        (!impl_->config_.dialnorm2 || *impl_->config_.dialnorm2 < 1 || *impl_->config_.dialnorm2 > 31)) {
         return std::unexpected(FrameError::kInvalidDialnorm);
     }
-    if (!meta::valid_bsi_info(config_.info)) {
+    if (!meta::valid_bsi_info(impl_->config_.info)) {
         return std::unexpected(FrameError::kInvalidBsi);
     }
-    if (config_.alternate_bsi) {
-        if (!meta::valid_alternate_bsi(*config_.alternate_bsi)) {
+    if (impl_->config_.alternate_bsi) {
+        if (!meta::valid_alternate_bsi(*impl_->config_.alternate_bsi)) {
             return std::unexpected(FrameError::kInvalidBsi);
         }
         // §D1: the alternate syntax lives IN the two timecod fields. Asking
         // for both is asking for 56 bits where the frame has 28, and quietly
         // dropping one of them would leave the caller believing a time code
         // went out that never did.
-        if (config_.info.timecod1 || config_.info.timecod2) {
+        if (impl_->config_.info.timecod1 || impl_->config_.info.timecod2) {
             return std::unexpected(FrameError::kInvalidBsi);
         }
     }
-    const int nfchans = fullbw_channel_count(config_.acmod);
+    const int nfchans = fullbw_channel_count(impl_->config_.acmod);
     const int nchans = channel_count();
     assert(static_cast<int>(channels.size()) == nchans);
     for (const auto& channel : channels) {
@@ -346,7 +434,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     dynrng.fill(meta::kDynrngUnity);
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     dynrng2.fill(meta::kDynrngUnity);
-    if (range_) {
+    if (impl_->range_) {
         std::array<std::span<const float>, 5> block_view{};
         const int level_chans = dual_mono ? 1 : nfchans;
         for (int block = 0; block < kBlocksPerFrame; ++block) {
@@ -359,41 +447,41 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             const double level = meta::level_dbfs(
                 std::span{block_view}.first(static_cast<std::size_t>(level_chans)));
             dynrng[static_cast<std::size_t>(block)] =
-                range_->next(level, config_.dialnorm);
+                impl_->range_->next(level, impl_->config_.dialnorm);
         }
     }
-    if (dual_mono && range2_) {
+    if (dual_mono && impl_->range2_) {
         std::array<std::span<const float>, 1> block_view{};
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             block_view[0] = channels[1].subspan(
                 static_cast<std::size_t>(block) * kSamplesPerBlock, kSamplesPerBlock);
             const double level = meta::level_dbfs(std::span{block_view});
             dynrng2[static_cast<std::size_t>(block)] =
-                range2_->next(level, *config_.dialnorm2);
+                impl_->range2_->next(level, *impl_->config_.dialnorm2);
         }
     }
     std::uint8_t compr = meta::kComprUnity;
     std::uint8_t compr2 = meta::kComprUnity;
-    if (heavy_) {
+    if (impl_->heavy_) {
         // §7.7.2 bounds the MONO DOWNMIX, so that is what gets measured - the
-        // loudest single channel is not the constraint, the sum is. history_
+        // loudest single channel is not the constraint, the sum is. impl_->history_
         // still holds the previous frame's tail at this point, which is exactly
         // the extra 256 samples this frame's block 0 codes. Dual mono has no
         // downmix at all - §7.7.2.2 says compr bounds Ch1's own signal - so
         // that channel's true peak is measured directly instead.
         const double peak =
             dual_mono
-                ? meta::channel_peak_dbfs(std::span{history_[0]}, channels[0])
+                ? meta::channel_peak_dbfs(std::span{impl_->history_[0]}, channels[0])
                 : meta::mono_downmix_peak_dbfs(
-                      std::span{history_}.first(static_cast<std::size_t>(nfchans)),
-                      channels.first(static_cast<std::size_t>(nfchans)), config_.acmod,
-                      meta::coefficient(config_.cmixlev),
-                      meta::coefficient(config_.surmixlev));
-        compr = heavy_->next(peak, config_.dialnorm);
+                      std::span{impl_->history_}.first(static_cast<std::size_t>(nfchans)),
+                      channels.first(static_cast<std::size_t>(nfchans)), impl_->config_.acmod,
+                      meta::coefficient(impl_->config_.cmixlev),
+                      meta::coefficient(impl_->config_.surmixlev));
+        compr = impl_->heavy_->next(peak, impl_->config_.dialnorm);
     }
-    if (dual_mono && heavy2_) {
-        const double peak2 = meta::channel_peak_dbfs(std::span{history_[1]}, channels[1]);
-        compr2 = heavy2_->next(peak2, *config_.dialnorm2);
+    if (dual_mono && impl_->heavy2_) {
+        const double peak2 = meta::channel_peak_dbfs(std::span{impl_->history_[1]}, channels[1]);
+        compr2 = impl_->heavy2_->next(peak2, *impl_->config_.dialnorm2);
     }
     AC3_ZONE_END(zone_metadata);
 
@@ -407,7 +495,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // whole frame, because this encoder only ever sends coupling strategy
     // (and with it chincpl) in block 0.
     AC3_ZONE_BEGIN(zone_transients, "step0_transient_detect");
-    auto& blksw = scratch_->blksw;
+    auto& blksw = impl_->blksw;
     blksw.assign(static_cast<std::size_t>(nfchans), {});
     // AC-3's widest acmod (3/2) codes five full-bandwidth channels.
     std::array<bool, 5> switched{};
@@ -423,7 +511,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             const std::span<const float, kSamplesPerBlock> segment{
                 pcm.data() + static_cast<std::size_t>(block) * kSamplesPerBlock,
                 kSamplesPerBlock};
-            const bool sw = transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
+            const bool sw = impl_->transient_detectors_[static_cast<std::size_t>(ch)].detect(segment);
             blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] = sw;
             switched[static_cast<std::size_t>(ch)] =
                 switched[static_cast<std::size_t>(ch)] || sw;
@@ -444,7 +532,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // turns out there is one - the coupling slot sits at index nchans, past
     // everything written here, so growing the vector leaves every existing
     // index where it was.
-    auto& coeffs = coeffs_;
+    auto& coeffs = impl_->coeffs_;
     coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
     const auto coeffs_at = [&](int s, int block) -> std::array<double, 256>& {
         return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
@@ -452,19 +540,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     };
     for (int ch = 0; ch < nchans; ++ch) {
         for (int block = 0; block < kBlocksPerFrame; ++block) {
-            auto& time = time_scratch_;
+            auto& time = impl_->time_scratch_;
             AC3_ZONE_BEGIN(zone_gather, "step1_gather");
             for (int n = 0; n < 512; ++n) {
                 const int pos = block * 256 - 256 + n;
                 time[static_cast<std::size_t>(n)] =
-                    pos < 0 ? history_[static_cast<std::size_t>(ch)]
+                    pos < 0 ? impl_->history_[static_cast<std::size_t>(ch)]
                                       [static_cast<std::size_t>(pos + 256)]
                             : static_cast<double>(
                                   channels[static_cast<std::size_t>(ch)]
                                           [static_cast<std::size_t>(pos)]);
             }
             AC3_ZONE_END(zone_gather);
-            auto& windowed = windowed_scratch_;
+            auto& windowed = impl_->windowed_scratch_;
             AC3_ZONE_BEGIN(zone_window, "step1_window");
             apply_analysis_window(time, windowed);
             AC3_ZONE_END(zone_window);
@@ -474,21 +562,21 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // here on, exponent/bitalloc/mantissa code cannot tell this
                 // block apart from a long one.
                 const std::span<const double, 512> full(windowed);
-                auto& first = half1_scratch_;
-                auto& second = half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, config_.fast_mdct);
+                auto& first = impl_->half1_scratch_;
+                auto& second = impl_->half2_scratch_;
+                mdct256_forward_first(full.first<256>(), first, impl_->config_.fast_mdct);
+                mdct256_forward_second(full.last<256>(), second, impl_->config_.fast_mdct);
                 auto& out = coeffs_at(ch, block);
                 for (int k = 0; k < 128; ++k) {
                     out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
                     out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
                 }
             } else {
-                mdct512_forward(windowed, coeffs_at(ch, block), config_.fast_mdct);
+                mdct512_forward(windowed, coeffs_at(ch, block), impl_->config_.fast_mdct);
             }
         }
         for (int n = 0; n < 256; ++n) {
-            history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
+            impl_->history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
                 static_cast<double>(
                     channels[static_cast<std::size_t>(ch)][static_cast<std::size_t>(1280 + n)]);
         }
@@ -542,7 +630,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // while the rest of the spectrum is short of them). Narrowing is
     // rate-limited so a quiet passage cannot pump the band edge; widening is
     // immediate.
-    int chbwcod = config_.chbwcod;
+    int chbwcod = impl_->config_.chbwcod;
     if (chbwcod < 0) {
         std::array<std::uint8_t, 253> peak_exponents{};
         peak_exponents.fill(static_cast<std::uint8_t>(kMaxExponent));
@@ -551,9 +639,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 encoder::accumulate_peak_exponents(coeffs_at(ch, block), peak_exponents);
             }
         }
-        chbwcod = encoder::choose_chbwcod(config_.bitrate_kbps, nfchans, peak_exponents,
-                                          config_.sample_rate, chbwcod_state_);
-        chbwcod_state_ = chbwcod;
+        chbwcod = encoder::choose_chbwcod(impl_->config_.bitrate_kbps, nfchans, peak_exponents,
+                                          impl_->config_.sample_rate, impl_->chbwcod_state_);
+        impl_->chbwcod_state_ = chbwcod;
     }
     assert(chbwcod >= 0 && chbwcod <= 60);
     const int chbw_endmant = ((chbwcod + 12) * 3) + 37;
@@ -576,7 +664,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // necessarily one value for the pair) well defined.
     std::array<bool, 5> chincpl{};
     int coupled_count = 0;
-    if (config_.coupling && nfchans >= 2 && !dual_mono) {
+    if (impl_->config_.coupling && nfchans >= 2 && !dual_mono) {
         for (int ch = 0; ch < nfchans; ++ch) {
             chincpl[static_cast<std::size_t>(ch)] = !switched[static_cast<std::size_t>(ch)];
             coupled_count += chincpl[static_cast<std::size_t>(ch)] ? 1 : 0;
@@ -595,14 +683,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::array<bool, coupling::kSubBands> cplbndstrc{};
     coupling::BandLayout cplbands{};
     if (cplinu) {
-        cplendf = config_.cplendf >= 0 ? config_.cplendf
+        cplendf = impl_->config_.cplendf >= 0 ? impl_->config_.cplendf
                                        : default_cplendf(chbw_endmant);
         cplendf = std::clamp(cplendf, 0, 15);
         // The default start never runs past the end; an explicit one is
         // caught by the sub-band count below.
-        cplbegf = config_.cplbegf >= 0
-                      ? config_.cplbegf
-                      : std::min(default_cplbegf(config_.bitrate_kbps, nfchans),
+        cplbegf = impl_->config_.cplbegf >= 0
+                      ? impl_->config_.cplbegf
+                      : std::min(default_cplbegf(impl_->config_.bitrate_kbps, nfchans),
                                  cplendf + 2);
         cplbegf = std::clamp(cplbegf, 0, 15);
         // cplendf is read by adding 3, so the coded region must extend past
@@ -639,15 +727,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // --- Frame size via the CBR accumulator --------------------------------
     const std::uint64_t ideal_bits_num =
-        static_cast<std::uint64_t>(config_.bitrate_kbps) * 1000 * kSamplesPerFrame;
+        static_cast<std::uint64_t>(impl_->config_.bitrate_kbps) * 1000 * kSamplesPerFrame;
     const std::uint64_t denom =
-        static_cast<std::uint64_t>(sample_rate_hz(config_.sample_rate)) * 16;
-    rate_accumulator_ += ideal_bits_num;
-    const std::uint64_t words64 = rate_accumulator_ / denom - words_emitted_;
-    words_emitted_ += words64;
+        static_cast<std::uint64_t>(sample_rate_hz(impl_->config_.sample_rate)) * 16;
+    impl_->rate_accumulator_ += ideal_bits_num;
+    const std::uint64_t words64 = impl_->rate_accumulator_ / denom - impl_->words_emitted_;
+    impl_->words_emitted_ += words64;
     const auto words = static_cast<std::uint32_t>(words64);
     const std::uint32_t base_words =
-        *frame_size_words(config_.sample_rate, config_.bitrate_kbps, false);
+        *frame_size_words(impl_->config_.sample_rate, impl_->config_.bitrate_kbps, false);
     assert(words == base_words || words == base_words + 1);
     const bool pad = words != base_words;
     const std::uint32_t total_bytes = words * 2;
@@ -707,7 +795,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // rate-adaptive curve above is the no-search default either way; the
     // search (when on) tries kCodeCandidates around it and keeps whichever
     // measures better, dbpbcod included.
-    BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(config_, nfchans)};
+    BitAllocCodes codes{.dbpbcod = 3, .fgaincod = fgaincod_for(impl_->config_, nfchans)};
 
     // --- 2. Coupling: form the shared channel and its coordinates ----------
     // The coupling channel is one more stream on the end, so its coefficient
@@ -736,11 +824,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // the coupling loops below rely on writing before reading rather than
     // on any particular starting value - so the reused storage is put back
     // to exactly the state the fresh vector had.
-    auto& master = scratch_->cpl_master;
+    auto& master = impl_->cpl_master;
     master.assign(static_cast<std::size_t>(kBlocksPerFrame) *
                       static_cast<std::size_t>(std::max(nfchans, 1)),
                   0);
-    auto& coords = scratch_->cpl_coords;
+    auto& coords = impl_->cpl_coords;
     coords.assign(static_cast<std::size_t>(kBlocksPerFrame) *
                       static_cast<std::size_t>(std::max(nfchans, 1)) *
                       static_cast<std::size_t>(std::max(cplbands.count, 1)),
@@ -774,7 +862,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // pays nothing for it beyond the one gating bit.
     std::array<bool, coupling::kSubBands> phsflg{};
     bool phsflginu = false;
-    if (cplinu && config_.acmod == Acmod::k2_0) {
+    if (cplinu && impl_->config_.acmod == Acmod::k2_0) {
         for (int bnd = 0; bnd < cplbands.count; ++bnd) {
             const int low = cplbands.start[static_cast<std::size_t>(bnd)];
             const int high =
@@ -801,7 +889,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     if (cplinu) {
         AC3_ZONE_SCOPED_N("step2_coupling");
-        auto& values = scratch_->cpl_values;
+        auto& values = impl_->cpl_values;
         values.assign(static_cast<std::size_t>(cplbands.count), 0.0);
 
         // The decoder computes
@@ -928,7 +1016,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // --- 3. Rematrixing (2/0 only, §7.5.3) ---------------------------------
     std::array<std::array<bool, 4>, kBlocksPerFrame> rematflg{};
-    const bool rematrixing = config_.acmod == Acmod::k2_0;
+    const bool rematrixing = impl_->config_.acmod == Acmod::k2_0;
     const int nrematbd = rematrix_band_count(cplinu, cplbegf);
     if (rematrixing) {
         AC3_ZONE_SCOPED_N("step3_rematrix");
@@ -970,7 +1058,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // --- 4. Fixed point + per-block raw exponents --------------------------
     AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
-    auto& fixed = fixed_;
+    auto& fixed = impl_->fixed_;
     {
         // Sized once, up front: the exact total across ~10k bins is knowable
         // before the loop, and the phase-5 Tracy zones put this stage second
@@ -993,12 +1081,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         fixed.resize(total);
     }
-    auto& fixed_base = fixed_base_;
+    auto& fixed_base = impl_->fixed_base_;
     fixed_base.assign(static_cast<std::size_t>(streams) * kBlocksPerFrame, 0);
     // resize(), not assign(): every slot in range is itself resized and
     // fully overwritten in the loop below, and plain resize keeps each
     // inner vector's capacity where assign would discard it.
-    auto& block_exps = block_exps_;
+    auto& block_exps = impl_->block_exps_;
     block_exps.resize(static_cast<std::size_t>(streams) * kBlocksPerFrame);
     // Where the next slot starts in `fixed`, now that the vector is sized up
     // front and its size no longer tracks how much has been written.
@@ -1044,16 +1132,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // is indistinguishable from a fresh one. resize() may keep slots from a
     // frame with more streams alive but unread; the loop bounds are what
     // decide which slots exist this frame.
-    auto& plan = scratch_->plan;
+    auto& plan = impl_->plan;
     plan.resize(static_cast<std::size_t>(streams));
     // Shared across the per-stream iterations below, re-assign()ed at each
     // use: `starts` (run boundaries), `raw` (a run's min-exponent set) and
     // `peak_mag` (§7.2.2.6's per-bin maxima) were each freshly allocated
     // per stream or per run - ~70 small allocations a frame for buffers
     // whose contents never outlive one iteration.
-    auto& starts = scratch_->starts;
-    auto& raw = scratch_->raw;
-    auto& peak_mag = scratch_->peak_mag;
+    auto& starts = impl_->starts;
+    auto& raw = impl_->raw;
+    auto& peak_mag = impl_->peak_mag;
     for (int s = 0; s < streams; ++s) {
         auto& p = plan[static_cast<std::size_t>(s)];
         const bool is_lfe = s < nchans && s >= nfchans;
@@ -1137,7 +1225,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             if (p.runs.size() == used_runs) {
                 p.runs.emplace_back();
             }
-            PlanScratch::ExponentRun& entry = p.runs[used_runs];
+            Impl::ExponentRun& entry = p.runs[used_runs];
             ++used_runs;
             entry.start_block = first;
             entry.strategy = strategy;
@@ -1325,16 +1413,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // frame that states its own starting gain is easier to reason about
         // from a capture.
         const bool send_dynrng =
-            config_.drc.has_value() &&
+            impl_->config_.drc.has_value() &&
             (first || dynrng[static_cast<std::size_t>(block)] !=
                           dynrng[static_cast<std::size_t>(block) - 1]);
         w.put(send_dynrng ? 1 : 0, 1);  // dynrnge
         if (send_dynrng) {
             w.put(dynrng[static_cast<std::size_t>(block)], 8);
         }
-        if (config_.acmod == Acmod::kDualMono) {
+        if (impl_->config_.acmod == Acmod::kDualMono) {
             const bool send_dynrng2 =
-                config_.drc.has_value() &&
+                impl_->config_.drc.has_value() &&
                 (first || dynrng2[static_cast<std::size_t>(block)] !=
                               dynrng2[static_cast<std::size_t>(block) - 1]);
             w.put(send_dynrng2 ? 1 : 0, 1);  // dynrng2e
@@ -1353,7 +1441,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     // carries its own high band instead.
                     w.put(chincpl[static_cast<std::size_t>(ch)] ? 1 : 0, 1);  // chincpl[ch]
                 }
-                if (config_.acmod == Acmod::k2_0) {
+                if (impl_->config_.acmod == Acmod::k2_0) {
                     w.put(phsflginu ? 1 : 0, 1);  // phsflginu
                 }
                 w.put(static_cast<std::uint32_t>(cplbegf), 4);
@@ -1433,7 +1521,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                 : ExpStrategy::kReuse),
                   2);
         }
-        if (config_.lfe) {
+        if (impl_->config_.lfe) {
             w.put(fresh(nfchans) ? 1 : 0, 1);  // lfeexpstr
         }
         // §5.4.3.8: chbwcod exists only for a channel NOT in coupling -
@@ -1471,7 +1559,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
             w.put(0, 2);  // gainrng
         }
-        if (config_.lfe && fresh(nfchans)) {
+        if (impl_->config_.lfe && fresh(nfchans)) {
             const auto& p = plan[static_cast<std::size_t>(nfchans)];
             const auto& run = p.runs[static_cast<std::size_t>(
                 p.run_of_block[static_cast<std::size_t>(block)])];
@@ -1500,7 +1588,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 w.put(static_cast<std::uint32_t>(fsnroffst), 4);
                 w.put(static_cast<std::uint32_t>(codes.fgaincod), 3);
             }
-            if (config_.lfe) {
+            if (impl_->config_.lfe) {
                 w.put(static_cast<std::uint32_t>(lfe_fine(csnroffst * 16 + fsnroffst)),
                       4);                                            // lfefsnroffst
                 w.put(static_cast<std::uint32_t>(codes.fgaincod), 3);  // lfefgaincod
@@ -1640,25 +1728,25 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // timecod2e, or Annex D's xbsi1e and xbsi2e - the same two bits either
         // way, which is exactly the property §D3.2 relies on) and addbsie.
         std::uint32_t bsi = 25;
-        if (has_three_front(config_.acmod)) bsi += 2;  // cmixlev
-        if (has_surround(config_.acmod)) bsi += 2;     // surmixlev
-        if (config_.acmod == Acmod::k2_0) bsi += 2;    // dsurmod
-        if (config_.heavy) bsi += 8;                   // compr (§5.4.2.10)
-        if (config_.info.langcod) bsi += 8;            // langcod (§5.4.2.12)
-        if (config_.info.audprod) bsi += 5 + 2;        // mixlevel, roomtyp
+        if (has_three_front(impl_->config_.acmod)) bsi += 2;  // cmixlev
+        if (has_surround(impl_->config_.acmod)) bsi += 2;     // surmixlev
+        if (impl_->config_.acmod == Acmod::k2_0) bsi += 2;    // dsurmod
+        if (impl_->config_.heavy) bsi += 8;                   // compr (§5.4.2.10)
+        if (impl_->config_.info.langcod) bsi += 8;            // langcod (§5.4.2.12)
+        if (impl_->config_.info.audprod) bsi += 5 + 2;        // mixlevel, roomtyp
         if (dual_mono) {
             bsi += 5 + 1 + 1 + 1;  // dialnorm2, compr2e, langcod2e, audprodi2e
-            if (config_.heavy2) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
-            if (config_.info.langcod2) bsi += 8;
-            if (config_.info.audprod2) bsi += 5 + 2;
+            if (impl_->config_.heavy2) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
+            if (impl_->config_.info.langcod2) bsi += 8;
+            if (impl_->config_.info.audprod2) bsi += 5 + 2;
         }
-        if (config_.alternate_bsi) {
-            if (config_.alternate_bsi->mix) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
+        if (impl_->config_.alternate_bsi) {
+            if (impl_->config_.alternate_bsi->mix) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
             // dsurexmod, dheadphonmod, adconvtyp, xbsi2, encinfo.
-            if (config_.alternate_bsi->extended) bsi += 2 + 2 + 1 + 8 + 1;
+            if (impl_->config_.alternate_bsi->extended) bsi += 2 + 2 + 1 + 8 + 1;
         } else {
-            if (config_.info.timecod1) bsi += 14;
-            if (config_.info.timecod2) bsi += 14;
+            if (impl_->config_.info.timecod1) bsi += 14;
+            if (impl_->config_.info.timecod2) bsi += 14;
         }
         bits += bsi;
         BitWriter counter;
@@ -1711,13 +1799,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     // --- 9. SNR-offset search ----------------------------------------------
     AC3_ZONE_BEGIN(zone_snr_search, "step9_snr_search");
-    auto& run_bap = run_bap_;
+    auto& run_bap = impl_->run_bap_;
     run_bap.resize(static_cast<std::size_t>(streams));
     for (int s = 0; s < streams; ++s) {
         run_bap[static_cast<std::size_t>(s)].resize(
             plan[static_cast<std::size_t>(s)].runs.size());
     }
-    auto& bap_views = bap_views_;
+    auto& bap_views = impl_->bap_views_;
     bap_views.assign(static_cast<std::size_t>(streams), {});
 
     const auto bits_at = [&](int composite) {
@@ -1738,7 +1826,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                             .delta = p.runs[run].delta};
                 auto& bap = run_bap[static_cast<std::size_t>(s)][run];
                 bap.assign(p.runs[run].decoded.size(), 0);
-                compute_bit_allocation(p.runs[run].decoded, config_.sample_rate, codes,
+                compute_bit_allocation(p.runs[run].decoded, impl_->config_.sample_rate, codes,
                                        composite >> 4, fine, bap, region);
             }
         }
@@ -1768,7 +1856,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         int last_eval = -1;
         std::uint32_t last_bits = 0;
         const int found =
-            internal::search_max_fitting(1023, snr_search_hint_, [&](int composite) {
+            internal::search_max_fitting(1023, impl_->snr_search_hint_, [&](int composite) {
                 last_eval = composite;
                 last_bits = bits_at(composite);
                 return last_bits <= search_budget;
@@ -1890,7 +1978,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // values once, from the bit rate, on measurements averaged over whole
     // files; this asks the same question of THIS frame and answers it from
     // the error the decoder will reconstruct.
-    if (config_.search != quality::Criterion::kNone) {
+    if (impl_->config_.search != quality::Criterion::kNone) {
         AC3_ZONE_SCOPED_N("step9a_codes_search");
         // Per (stream, block), not per stream. Masking is a within-block
         // phenomenon, and a frame-summed threshold would let a loud block's
@@ -1898,7 +1986,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // noise_to_mask avoids across bands and the per-stream split avoids
         // across channels.
         const auto slot_count = static_cast<std::size_t>(streams) * kBlocksPerFrame;
-        auto& measured = scratch_->measured;
+        auto& measured = impl_->measured;
         measured.resize(slot_count);
         const auto slot_of = [&](int s, int block) {
             return static_cast<std::size_t>(s) * kBlocksPerFrame +
@@ -1934,22 +2022,22 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // codes changes that. This is the whole reason the psychoacoustic
         // analysis is affordable here at all - it is fixed overhead against
         // a variable-length search, not a per-candidate cost.
-        auto& thresholds = scratch_->thresholds;
-        if (config_.search == quality::Criterion::kPerceptual) {
+        auto& thresholds = impl_->thresholds;
+        if (impl_->config_.search == quality::Criterion::kPerceptual) {
             AC3_ZONE_SCOPED_N("step9a_perceptual");
-            if (!scratch_->perceptual.has_value()) {
+            if (!impl_->perceptual.has_value()) {
                 // nchans + 1: every coded stream, with the coupling channel's
                 // slot present whether or not this frame uses it.
-                scratch_->perceptual.emplace(config_.sample_rate, nchans + 1);
+                impl_->perceptual.emplace(impl_->config_.sample_rate, nchans + 1);
             }
-            auto& model = *scratch_->perceptual;
-            if (cplinu != scratch_->coupled_last_frame && cpl_stream >= 0) {
+            auto& model = *impl_->perceptual;
+            if (cplinu != impl_->coupled_last_frame && cpl_stream >= 0) {
                 model.reset(cpl_stream);
             }
-            scratch_->coupled_last_frame = cplinu;
+            impl_->coupled_last_frame = cplinu;
 
             thresholds.assign(slot_count, {});
-            auto& analysis = scratch_->analysis;
+            auto& analysis = impl_->analysis;
             // Block-outer, stream-inner: analyse() advances one channel's
             // history by exactly one block, so each stream's calls have to
             // arrive in block order.
@@ -1968,7 +2056,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // 0.05 dB margin is then about 1.2% either way.
         const auto score = [&]() -> double {
             measure();
-            if (config_.search == quality::Criterion::kDistortion) {
+            if (impl_->config_.search == quality::Criterion::kDistortion) {
                 // Per STREAM, mean of the ratios - not one ratio of pooled
                 // power across every stream. Rematrixing and coupling both
                 // routinely leave one stream far quieter than another (a
@@ -2017,7 +2105,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         };
 
         // The incumbent is the PREVIOUS FRAME's winning codes, not the fixed
-        // defaults `codes` currently holds - see previous_codes_'s own
+        // defaults `codes` currently holds - see impl_->previous_codes_'s own
         // comment on FrameEncoder for why: comparing every frame against the
         // same fixed baseline gives "stay where you were" no advantage over
         // switching, which turns the margin below into real hysteresis
@@ -2026,7 +2114,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // ran above this point, so the extra settlement below runs only when
         // the previous frame actually chose something else.
         const BitAllocCodes defaults = codes;
-        const BitAllocCodes incumbent = previous_codes_;
+        const BitAllocCodes incumbent = impl_->previous_codes_;
         codes = incumbent;
         if (!(incumbent == defaults)) {
             seed_coupling_leaks();
@@ -2090,12 +2178,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             seed_coupling_leaks();
             settlement = settle();
         }
-        previous_codes_ = best_codes;
+        impl_->previous_codes_ = best_codes;
     }
 
     const int lo = settlement.composite;
     const std::uint32_t mantissa_bits = settlement.mantissa_bits;
-    snr_search_hint_ = lo;
+    impl_->snr_search_hint_ = lo;
     csnroffst = lo >> 4;
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);
@@ -2115,13 +2203,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // whose zero-bap bins the decoder dithers per RECEIVING channel (§7.3.4's
     // "uncorrelated" requirement) and therefore under this channel's flag.
     //
-    // config_.dither is on by default; the whole loop below is skipped when
+    // impl_->config_.dither is on by default; the whole loop below is skipped when
     // it is not, leaving dithflag at its all-false default - the
     // deterministic behaviour from before this feature existed, for a caller
     // that needs bit-for-bit agreement with an external decoder more than it
     // needs the flag itself (see EncoderConfig::dither's own comment).
     AC3_ZONE_BEGIN(zone_dither, "step9a_dither_flags");
-    for (int ch = 0; ch < nfchans && config_.dither; ++ch) {
+    for (int ch = 0; ch < nfchans && impl_->config_.dither; ++ch) {
         const auto& p = plan[static_cast<std::size_t>(ch)];
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto run = static_cast<std::size_t>(
@@ -2156,10 +2244,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // channel's inserted right after the FIRST coupled channel, then the LFE.
     // One writer for all six blocks and member-owned token slots: reset()
     // and take_tokens_into() cycle the token storage between the writer and
-    // block_tokens_, so at steady state this step neither copies tokens nor
+    // impl_->block_tokens_, so at steady state this step neither copies tokens nor
     // allocates - a fresh writer per block re-grew its buffer every time
     // and tokens() copied ~10 KB per block out of it.
-    auto& block_tokens = block_tokens_;
+    auto& block_tokens = impl_->block_tokens_;
     MantissaBlockWriter writer;
     // maybe_unused: only the assert below reads this, and NDEBUG removes it.
     [[maybe_unused]] std::size_t token_bits_total = 0;
@@ -2197,7 +2285,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 emitted_coupling = true;
             }
         }
-        if (config_.lfe) {
+        if (impl_->config_.lfe) {
             emit_stream(nfchans);
         }
         writer.finish_block();
@@ -2215,28 +2303,28 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     w.reserve(total_bytes);
     w.put(kSyncWord, 16);
     w.put(0, 16);  // crc1, patched below
-    w.put(static_cast<std::uint32_t>(config_.sample_rate), 2);
+    w.put(static_cast<std::uint32_t>(impl_->config_.sample_rate), 2);
     w.put(static_cast<std::uint32_t>(*index) * 2 + (pad ? 1u : 0u), 6);
 
     // §D2.1: bsid 6 IS the announcement that the alternate syntax is in use.
     // Everything up to origbs is identical either way (Table D2.1 restates
     // §5.4.2 verbatim to that point); only the last 28 bits differ.
-    w.put(config_.alternate_bsi ? 6 : 8, 5);  // bsid
-    w.put(static_cast<std::uint32_t>(config_.info.bsmod), 3);
-    w.put(static_cast<std::uint32_t>(config_.acmod), 3);
-    if (has_three_front(config_.acmod)) {
-        w.put(static_cast<std::uint32_t>(config_.cmixlev), 2);
+    w.put(impl_->config_.alternate_bsi ? 6 : 8, 5);  // bsid
+    w.put(static_cast<std::uint32_t>(impl_->config_.info.bsmod), 3);
+    w.put(static_cast<std::uint32_t>(impl_->config_.acmod), 3);
+    if (has_three_front(impl_->config_.acmod)) {
+        w.put(static_cast<std::uint32_t>(impl_->config_.cmixlev), 2);
     }
-    if (has_surround(config_.acmod)) {
-        w.put(static_cast<std::uint32_t>(config_.surmixlev), 2);
+    if (has_surround(impl_->config_.acmod)) {
+        w.put(static_cast<std::uint32_t>(impl_->config_.surmixlev), 2);
     }
-    if (config_.acmod == Acmod::k2_0) {
-        w.put(static_cast<std::uint32_t>(config_.info.dsurmod), 2);
+    if (impl_->config_.acmod == Acmod::k2_0) {
+        w.put(static_cast<std::uint32_t>(impl_->config_.info.dsurmod), 2);
     }
-    w.put(config_.lfe ? 1 : 0, 1);
-    w.put(static_cast<std::uint32_t>(config_.dialnorm), 5);
-    w.put(config_.heavy ? 1 : 0, 1);  // compre
-    if (config_.heavy) {
+    w.put(impl_->config_.lfe ? 1 : 0, 1);
+    w.put(static_cast<std::uint32_t>(impl_->config_.dialnorm), 5);
+    w.put(impl_->config_.heavy ? 1 : 0, 1);  // compre
+    if (impl_->config_.heavy) {
         w.put(compr, 8);
     }
     // §5.4.2.12: langcod carries no information any more - the language table
@@ -2257,25 +2345,25 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // E-AC-3's infomdat and Annex D's xbsi2 carry that field.
         }
     };
-    emit_langcod(config_.info.langcod);
-    emit_audprod(config_.info.audprod);
+    emit_langcod(impl_->config_.info.langcod);
+    emit_audprod(impl_->config_.info.audprod);
     if (dual_mono) {
-        w.put(static_cast<std::uint32_t>(*config_.dialnorm2), 5);
+        w.put(static_cast<std::uint32_t>(*impl_->config_.dialnorm2), 5);
         // compr2e is Ch2's OWN flag (§5.4.2.11 mirrors §5.4.2.10 for the
         // second programme) - it does not piggyback on Ch1's compre, or a
         // 1+1 stream with only Ch1 heavy-compressed would wrongly claim a
         // compr2 word it never computed.
-        w.put(config_.heavy2 ? 1 : 0, 1);  // compr2e
-        if (config_.heavy2) {
+        w.put(impl_->config_.heavy2 ? 1 : 0, 1);  // compr2e
+        if (impl_->config_.heavy2) {
             w.put(compr2, 8);
         }
-        emit_langcod(config_.info.langcod2);
-        emit_audprod(config_.info.audprod2);
+        emit_langcod(impl_->config_.info.langcod2);
+        emit_audprod(impl_->config_.info.audprod2);
     }
-    w.put(config_.info.copyrightb ? 1 : 0, 1);  // copyrightb
-    w.put(config_.info.origbs ? 1 : 0, 1);      // origbs
-    if (config_.alternate_bsi) {
-        const auto& alternate = *config_.alternate_bsi;
+    w.put(impl_->config_.info.copyrightb ? 1 : 0, 1);  // copyrightb
+    w.put(impl_->config_.info.origbs ? 1 : 0, 1);      // origbs
+    if (impl_->config_.alternate_bsi) {
+        const auto& alternate = *impl_->config_.alternate_bsi;
         w.put(alternate.mix ? 1 : 0, 1);  // xbsi1e
         if (alternate.mix) {
             // Table D2.1's field order, which is NOT Table E1.2's: Annex D
@@ -2297,16 +2385,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             w.put(alternate.extended->encinfo ? 1 : 0, 1);
         }
     } else {
-        w.put(config_.info.timecod1 ? 1 : 0, 1);  // timecod1e
-        if (config_.info.timecod1) {
-            const auto& t = *config_.info.timecod1;
+        w.put(impl_->config_.info.timecod1 ? 1 : 0, 1);  // timecod1e
+        if (impl_->config_.info.timecod1) {
+            const auto& t = *impl_->config_.info.timecod1;
             w.put(static_cast<std::uint32_t>(t.hours), 5);
             w.put(static_cast<std::uint32_t>(t.minutes), 6);
             w.put(static_cast<std::uint32_t>(t.eight_seconds), 3);
         }
-        w.put(config_.info.timecod2 ? 1 : 0, 1);  // timecod2e
-        if (config_.info.timecod2) {
-            const auto& t = *config_.info.timecod2;
+        w.put(impl_->config_.info.timecod2 ? 1 : 0, 1);  // timecod2e
+        if (impl_->config_.info.timecod2) {
+            const auto& t = *impl_->config_.info.timecod2;
             w.put(static_cast<std::uint32_t>(t.seconds), 3);
             w.put(static_cast<std::uint32_t>(t.frames), 5);
             w.put(static_cast<std::uint32_t>(t.sixty_fourths), 6);
@@ -2324,15 +2412,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // emit_block_side_info would be wrong on both counts - that lambda also
     // runs into measure_side_bits' throwaway counter, before those passes have
     // settled.
-    if (config_.trace != nullptr) {
-        config_.trace->fbw_channels = nfchans;
-        config_.trace->coded_channels = nchans;
+    if (impl_->config_.trace != nullptr) {
+        impl_->config_.trace->fbw_channels = nfchans;
+        impl_->config_.trace->coded_channels = nchans;
     }
 
     for (int block = 0; block < kBlocksPerFrame; ++block) {
         verify::BlockTrace* trace = nullptr;
-        if (config_.trace != nullptr) {
-            trace = &config_.trace->blocks[static_cast<std::size_t>(block)];
+        if (impl_->config_.trace != nullptr) {
+            trace = &impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
             trace->entered = true;
             trace->bit_offset = w.bit_count();
             trace->streams.resize(static_cast<std::size_t>(streams));

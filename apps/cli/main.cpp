@@ -281,12 +281,14 @@ constexpr std::array<Command, 38> kCommands{{
          return run_eac3_encode(x.str(1), x.str(2), x.u32(3, 192), x.str(4, "none"), x.str(5),
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
-    {"decode", 3, "<in.ac3|in.ec3> <out.wav> [objects_dir]",
+    {"decode", 3, "<in.ac3|in.ec3> <out.wav> [objects_dir] [adm_out]",
      "AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each "
-     "JOC-reconstructed object as its own object_NN.wav there",
+     "JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object "
+     "Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 "
+     "there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own decoded OAMD",
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
-     [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3)); }},
+     [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},
     {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
      "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
      "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
@@ -333,12 +335,15 @@ constexpr std::array<Command, 38> kCommands{{
     {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
-    {"qc", 2, "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered]",
+    {"qc", 2,
+     "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] "
+     "[objects=<51|71|512|514|714>]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
-     "preset gate",
+     "preset gate, optional BS.1770-5 Annex 4 object re-render",
      topic::kQc | topic::kProgramme,
      Needs::kNothing, [](const Args& x) {
-         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme);
+         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme,
+                       x.meta.qc_objects_layout);
      }},
     {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", topic::kNone,
      Needs::kNothing,
