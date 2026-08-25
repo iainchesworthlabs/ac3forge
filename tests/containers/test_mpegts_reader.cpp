@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mpegts/mpegts.hpp"
@@ -542,4 +543,392 @@ TEST_CASE("MPEG-TS describe() names every demux error", "[mpegts][reader]") {
         CHECK_FALSE(mpegts::describe(error).empty());
         CHECK(mpegts::describe(error) != "unknown error");
     }
+    // DemuxError has an explicit uint8_t underlying type, so a value outside
+    // every enumerator is well-defined to construct and switch on - describe()'s
+    // fallthrough is reachable this way without invoking any UB to get there.
+    CHECK(mpegts::describe(static_cast<mpegts::DemuxError>(200)) == "unknown error");
+}
+
+// --- error-path and less-common-shape coverage -----------------------------
+//
+// Everything below builds a transport stream by hand (bypassing mux()/
+// Writer, and often build_stream()'s own PMT/PES shortcuts) to reach a
+// hostile-or-merely-unusual layout the round-trip and "reads every way a PMT
+// names the codec" tests above never touch.
+
+TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpegts][reader]") {
+    const std::vector<Bytes> frames{frame_of(200, 0x81)};
+
+    SECTION("a PMT section too short to hold its own fixed fields") {
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(1, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        Bytes short_body{std::byte{0x00}, std::byte{0x01}};
+        Bytes section;
+        put_u8(section, 0x02);
+        put_u16(section, static_cast<std::uint16_t>(0xB000U | ((short_body.size() + 4) & 0x0FFFU)));
+        put_bytes(section, short_body);
+        append_crc(section);
+        const auto pmt = psi_packet(0x1000, pmt_cc, section);
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        const auto out = mpegts::demux(file);
+        REQUIRE_FALSE(out.has_value());
+        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+    }
+
+    SECTION("a private-data stream with a descriptor tag this reader does not know") {
+        Bytes descriptors;
+        put_u8(descriptors, 0x9B);  // not the AC-3/Enhanced-AC-3 tag
+        put_u8(descriptors, 1);
+        put_u8(descriptors, 0x00);
+        const std::array<EsSpec, 1> streams{
+            EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
+        const auto out = mpegts::demux(build_stream(streams, frames));
+        REQUIRE_FALSE(out.has_value());
+        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+    }
+
+    SECTION("a registration descriptor shorter than a 4-byte format_identifier") {
+        // stream_type 0x06 (private data), not an ATSC one - 0x81/0x87 would
+        // match on stream_type alone before the descriptor loop is ever
+        // reached, making the malformed descriptor below irrelevant.
+        Bytes descriptors;
+        put_u8(descriptors, 0x05);
+        put_u8(descriptors, 2);
+        put_u8(descriptors, 'A');
+        put_u8(descriptors, 'C');
+        const std::array<EsSpec, 1> streams{
+            EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
+        const auto out = mpegts::demux(build_stream(streams, frames));
+        REQUIRE_FALSE(out.has_value());
+        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+    }
+
+    SECTION("a registration descriptor naming a format this reader does not recognise") {
+        Bytes descriptors;
+        put_u8(descriptors, 0x05);
+        put_u8(descriptors, 4);
+        for (const char c : std::string{"MPGA"}) {
+            put_u8(descriptors, static_cast<std::uint8_t>(c));
+        }
+        const std::array<EsSpec, 1> streams{
+            EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
+        const auto out = mpegts::demux(build_stream(streams, frames));
+        REQUIRE_FALSE(out.has_value());
+        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+    }
+
+    SECTION("options.program_number rejects a PMT whose own section disagrees with the PAT") {
+        // The PAT names programme 5 at pid 0x1000 (matching options below),
+        // but the PMT section actually sitting at 0x1000 declares itself
+        // programme 7 - select_from_pmt's own check catches what the PAT
+        // upstream could not.
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(5, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x81, .pid = 0x0100, .descriptors = {}}};
+        const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(7, streams));
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        const auto out = mpegts::demux(file, mpegts::ReadOptions{.program_number = 5});
+        REQUIRE_FALSE(out.has_value());
+        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+    }
+}
+
+TEST_CASE("MPEG-TS select_from_pat handles more than one programme entry", "[mpegts][reader]") {
+    std::uint8_t pat_cc = 0;
+    std::uint8_t pmt_cc = 0;
+    std::uint8_t es_cc = 0;
+    Bytes body;
+    put_u16(body, 1);
+    put_u8(body, 0xC1);
+    put_u8(body, 0x00);
+    put_u8(body, 0x00);
+    put_u16(body, 0);          // program_number 0: the network_PID, not a programme
+    put_u16(body, 0xE0AB);     // network_PID, irrelevant to a reader
+    put_u16(body, 3);          // program_number 3
+    put_u16(body, 0xE000U | 0x1000U);
+    Bytes section;
+    put_u8(section, 0x00);
+    put_u16(section, static_cast<std::uint16_t>(0xB000U | ((body.size() + 4) & 0x0FFFU)));
+    put_bytes(section, body);
+    append_crc(section);
+
+    Bytes file;
+    const auto pat = psi_packet(0x0000, pat_cc, section);
+    file.insert(file.end(), pat.begin(), pat.end());
+    const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x81, .pid = 0x0100, .descriptors = {}}};
+    const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(3, streams));
+    file.insert(file.end(), pmt.begin(), pmt.end());
+    const std::vector<Bytes> frames{frame_of(200, 0x91)};
+    emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
+
+    const auto out = mpegts::demux(file);
+    REQUIRE(out.has_value());
+    CHECK(out->stream.program_number == 3);
+    CHECK(concat(out->payloads) == concat(frames));
+}
+
+TEST_CASE("MPEG-TS parse_packet drops what it cannot use without losing the rest",
+         "[mpegts][reader]") {
+    const auto with_extra_packet_before = [](Bytes extra) {
+        const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = {}}};
+        const std::vector<Bytes> frames{frame_of(200, 0xA1)};
+        auto file = build_stream(streams, frames);
+        extra.insert(extra.end(), file.begin(), file.end());
+        return std::pair{extra, frames};
+    };
+
+    SECTION("a null-PID packet is skipped") {
+        std::uint8_t cc = 0;
+        auto [file, frames] = with_extra_packet_before(ts_packet(0x1FFF, false, cc, frame_of(184, 0xFF)));
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("an adaptation-field-only packet (no payload) is skipped") {
+        Bytes pkt;
+        put_u8(pkt, 0x47);
+        put_u16(pkt, 0x0000);
+        put_u8(pkt, 0x20);  // adaptation_field_control = 0b10: adaptation only
+        put_u8(pkt, 183);   // adaptation_length fills the rest of the packet
+        put_u8(pkt, 0x00);
+        Bytes stuffing(182, std::byte{0xFF});
+        pkt.insert(pkt.end(), stuffing.begin(), stuffing.end());
+        REQUIRE(pkt.size() == 188);
+        auto [file, frames] = with_extra_packet_before(pkt);
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("an adaptation_length that runs off the packet is dropped") {
+        Bytes pkt;
+        put_u8(pkt, 0x47);
+        put_u16(pkt, 0x0000);
+        put_u8(pkt, 0x30);  // adaptation_field_control = 0b11: both
+        put_u8(pkt, 250);   // far past what 188 bytes can hold
+        Bytes rest(183, std::byte{0x00});
+        pkt.insert(pkt.end(), rest.begin(), rest.end());
+        REQUIRE(pkt.size() == 188);
+        auto [file, frames] = with_extra_packet_before(pkt);
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("an adaptation field that consumes the whole packet leaves no payload") {
+        Bytes pkt;
+        put_u8(pkt, 0x47);
+        put_u16(pkt, 0x0000);
+        put_u8(pkt, 0x30);
+        put_u8(pkt, 183);  // 5 + 183 == 188: no room left for a payload byte
+        Bytes rest(183, std::byte{0x00});
+        pkt.insert(pkt.end(), rest.begin(), rest.end());
+        REQUIRE(pkt.size() == 188);
+        auto [file, frames] = with_extra_packet_before(pkt);
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("a packet whose sync byte has slipped is dropped, not fatal") {
+        // Still a full 188 bytes (a genuinely wrong-sized slice can't reach
+        // parse_packet at all - walk() only ever hands it a fixed-size
+        // window), just with byte 0 corrupted, so the grid stays aligned
+        // for every packet after it.
+        std::uint8_t cc = 0;
+        auto slipped = ts_packet(0x0100, false, cc, frame_of(184, 0x00));
+        slipped[0] = std::byte{0x00};
+        auto [file, frames] = with_extra_packet_before(slipped);
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+}
+
+TEST_CASE("MPEG-TS PES reassembly handles a malformed or empty start", "[mpegts][reader]") {
+    const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = {}}};
+
+    SECTION("a PES payload under 6 bytes at unit_start carries no start code to check") {
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        std::uint8_t es_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(1, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(1, streams));
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        const auto short_start = ts_packet(0x0100, true, es_cc, frame_of(3, 0x00));
+        file.insert(file.end(), short_start.begin(), short_start.end());
+        const std::vector<Bytes> frames{frame_of(200, 0xB1)};
+        emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
+
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("a payload_unit_start packet without a real PES start code is dropped") {
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        std::uint8_t es_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(1, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(1, streams));
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        const auto bad_start = ts_packet(0x0100, true, es_cc, frame_of(184, 0xEE));
+        file.insert(file.end(), bad_start.begin(), bad_start.end());
+        const std::vector<Bytes> frames{frame_of(200, 0xB2)};
+        emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
+
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("a non-unit-start packet before any PES has opened is dropped") {
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        std::uint8_t es_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(1, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(1, streams));
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        const auto stray = ts_packet(0x0100, false, es_cc, frame_of(184, 0xDD));
+        file.insert(file.end(), stray.begin(), stray.end());
+        const std::vector<Bytes> frames{frame_of(200, 0xB3)};
+        emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
+
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+
+    SECTION("a PES that never reaches its own 9-byte header before the stream ends") {
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        std::uint8_t es_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(1, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(1, streams));
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        // Exactly 6 bytes: enough to pass the start-code check and open a
+        // PES (unbounded form, PES_packet_length == 0), but nowhere near
+        // emit_pes's own 9-byte minimum header - the stream simply ends
+        // with the PES still open and too short to say anything about.
+        Bytes truncated_pes{std::byte{0x00}, std::byte{0x00}, std::byte{0x01},
+                            std::byte{0xBD}, std::byte{0x00}, std::byte{0x00}};
+        const auto pkt = ts_packet(0x0100, true, es_cc, truncated_pes);
+        file.insert(file.end(), pkt.begin(), pkt.end());
+
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(out->payloads.empty());
+    }
+
+    SECTION("a PES header whose own fields fill the packet leaves no payload") {
+        std::uint8_t pat_cc = 0;
+        std::uint8_t pmt_cc = 0;
+        std::uint8_t es_cc = 0;
+        Bytes file;
+        const auto pat = psi_packet(0x0000, pat_cc, pat_section(1, 0x1000));
+        file.insert(file.end(), pat.begin(), pat.end());
+        const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(1, streams));
+        file.insert(file.end(), pmt.begin(), pmt.end());
+        // PES_packet_length == 3, header_data_length == 0: the declared
+        // length (9 bytes total: the 6 fixed bytes + this 3) is exactly the
+        // fixed header's own size, so pes_want is reached the instant the
+        // header itself arrives and emit_pes finds nothing past offset 9.
+        Bytes header_only{std::byte{0x00}, std::byte{0x00}, std::byte{0x01}, std::byte{0xBD},
+                          std::byte{0x00}, std::byte{0x03}, std::byte{0x84}, std::byte{0x00},
+                          std::byte{0x00}};
+        const auto pkt = ts_packet(0x0100, true, es_cc, header_only);
+        file.insert(file.end(), pkt.begin(), pkt.end());
+        const std::vector<Bytes> frames{frame_of(200, 0xB4)};
+        emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
+
+        const auto out = mpegts::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(concat(out->payloads) == concat(frames));
+    }
+}
+
+TEST_CASE("MPEG-TS finish_verdict distinguishes no-PAT from a PAT naming no programme",
+         "[mpegts][reader]") {
+    // A PAT that parses fine (real CRC, table_id) but whose only entry is
+    // program_number 0 (the network_PID, not a programme) - saw_pat becomes
+    // true without ever setting have_pmt_pid, unlike the "no PAT at all"
+    // case in the "refuses what it cannot read" TEST_CASE above.
+    std::uint8_t pat_cc = 0;
+    Bytes body;
+    put_u16(body, 1);
+    put_u8(body, 0xC1);
+    put_u8(body, 0x00);
+    put_u8(body, 0x00);
+    put_u16(body, 0);       // program_number 0
+    put_u16(body, 0xE0AB);  // network_PID
+    Bytes section;
+    put_u8(section, 0x00);
+    put_u16(section, static_cast<std::uint16_t>(0xB000U | ((body.size() + 4) & 0x0FFFU)));
+    put_bytes(section, body);
+    append_crc(section);
+
+    Bytes file;
+    const auto pat = psi_packet(0x0000, pat_cc, section);
+    file.insert(file.end(), pat.begin(), pat.end());
+    // find_sync needs at least two packets on the grid to lock at all (see
+    // the "very short capture" test below) - one more filler packet, not a
+    // second PAT, so the ONLY thing that ever set saw_pat is the section above.
+    std::uint8_t filler_cc = 0;
+    const auto filler = ts_packet(0x2000, false, filler_cc, frame_of(184, 0x5A));
+    file.insert(file.end(), filler.begin(), filler.end());
+
+    const auto out = mpegts::demux(file);
+    REQUIRE_FALSE(out.has_value());
+    CHECK(out.error() == mpegts::DemuxError::kNoProgramme);
+}
+
+TEST_CASE("MPEG-TS find_sync locks onto a very short capture", "[mpegts][reader]") {
+    // Fewer than kSyncConfirmations (5) packets are present - only 3 here -
+    // which is still believed once at least two lined up.
+    std::uint8_t cc = 0;
+    Bytes file;
+    for (int i = 0; i < 3; ++i) {
+        const auto pkt = ts_packet(0x0100, false, cc, frame_of(184, 0x33));
+        file.insert(file.end(), pkt.begin(), pkt.end());
+    }
+    const auto out = mpegts::demux(file);
+    // No PAT ever arrives, but sync itself must have locked (not
+    // kNotTransportStream) for the verdict to reach the programme check.
+    REQUIRE_FALSE(out.has_value());
+    CHECK(out.error() == mpegts::DemuxError::kNoProgramme);
+}
+
+TEST_CASE("MPEG-TS gives up on a sync search past its own budget", "[mpegts][reader]") {
+    Bytes file(2048, std::byte{0x00});  // no 0x47 anywhere
+    const auto out = mpegts::demux(file, mpegts::ReadOptions{.max_sync_search_bytes = 512});
+    REQUIRE_FALSE(out.has_value());
+    CHECK(out.error() == mpegts::DemuxError::kNotTransportStream);
+}
+
+TEST_CASE("MPEG-TS Reader surfaces a walk error directly from push()", "[mpegts][reader]") {
+    // walk() always keeps a 204*kSyncConfirmations (1020-byte) tail that
+    // might still hold the start of a grid, counting only what it drops
+    // beyond that against the search budget - so the pushed chunk has to be
+    // bigger than that tail for one push() to exceed a small budget outright.
+    mpegts::Reader reader{mpegts::ReadOptions{.max_sync_search_bytes = 64}};
+    const Bytes garbage(1200, std::byte{0x00});  // no 0x47 anywhere
+    const auto sink = [](std::span<const std::byte>) {};
+    const auto pushed = reader.push(garbage, sink);
+    REQUIRE_FALSE(pushed.has_value());
+    CHECK(pushed.error() == mpegts::DemuxError::kNotTransportStream);
 }
