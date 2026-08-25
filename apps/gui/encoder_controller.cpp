@@ -46,6 +46,7 @@
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
 #include "mpegts/mpegts.hpp"
+#include "channel_geometry.hpp"
 #include "fmp4_folder_writer.hpp"
 #include "recording_sink.hpp"
 
@@ -332,49 +333,12 @@ QString bed_channel_names(ac3::Acmod acmod) {
     return names.join(QStringLiteral(" "));
 }
 
-// ---------------------------------------------------------------------------
-// Where a Table E2.5 location sits on the soundfield plans. This is a GUI-
-// only convention - nothing about encoding reads it - extending the ITU-R
-// BS.775 ring ac3::spatial::kSpeakerAzimuthDeg already fixes for the bed's
-// five positions (L +30, C 0, R -30, Ls +110, Rs -110, degrees CCW from
-// front) to the wider set of channels the general channel model can carry.
-// Without this, a plan wider than a plain 5.1 bed had no way to place its
-// extra channels at all: channel_azimuth_deg(acmod, lfe, index) only ever
-// knew about indices inside the BED's own acmod, so a dependent substream's
-// channels always came back non-directional and simply never appeared on the
-// ring, ceiling or otherwise. LFE/LFE2 stay non-directional; every other
-// location gets a plausible placement instead of vanishing.
-// ---------------------------------------------------------------------------
-
-std::optional<double> location_azimuth_deg(ac3::eac3::chanmap::Location location) {
-    using ac3::eac3::chanmap::Location;
-    switch (location) {
-        case Location::kLeft: return 30.0;
-        case Location::kCentre: return 0.0;
-        case Location::kRight: return -30.0;
-        case Location::kLeftSurround: return 110.0;
-        case Location::kRightSurround: return -110.0;
-        case Location::kLc: return 15.0;
-        case Location::kRc: return -15.0;
-        case Location::kLrs: return 135.0;
-        case Location::kRrs: return -135.0;
-        case Location::kCs: return 180.0;
-        case Location::kTs: return 180.0;    // ceiling: overhead-rear
-        case Location::kLsd: return 90.0;
-        case Location::kRsd: return -90.0;
-        case Location::kLw: return 60.0;
-        case Location::kRw: return -60.0;
-        case Location::kVhl: return 45.0;    // ceiling: front height
-        case Location::kVhr: return -45.0;   // ceiling: front height
-        case Location::kVhc: return 0.0;     // ceiling: centre height
-        case Location::kLts: return 110.0;   // ceiling: rear height
-        case Location::kRts: return -110.0;  // ceiling: rear height
-        case Location::kLfe2:
-        case Location::kLfe:
-            return std::nullopt;
-    }
-    return std::nullopt;
-}
+// Where a Table E2.5 location sits on the soundfield plans - shared with
+// StreamPlayerController (channel_geometry.hpp/cpp carries the full "why",
+// including why this extends past ac3::spatial::kSpeakerAzimuthDeg's plain
+// five-position bed) now that a decode-side controller needs the identical
+// ring geometry an authoring-side one already had.
+using ac3gui::location_azimuth_deg;
 
 // Where a bed-pinned object sits in the room so that pan_room() lands its
 // energy on exactly that speaker. pan_room reads azimuth as
@@ -478,20 +442,8 @@ LivePassthroughOpen open_live_passthrough(const ac3::audio::RenderDeviceInfo& re
 
 // The two soundfield rings: everything overhead goes on the ceiling plan,
 // everything else - however far back or wide - stays on the ear-level one.
-bool is_ceiling_location(ac3::eac3::chanmap::Location location) {
-    using ac3::eac3::chanmap::Location;
-    switch (location) {
-        case Location::kTs:
-        case Location::kVhl:
-        case Location::kVhr:
-        case Location::kVhc:
-        case Location::kLts:
-        case Location::kRts:
-            return true;
-        default:
-            return false;
-    }
-}
+// Shared with StreamPlayerController - see channel_geometry.hpp.
+using ac3gui::is_ceiling_location;
 
 // Interleaves `channels` (one vector per decoded channel, AC-3/E-AC-3 coded
 // order) into WAV/Windows speaker order for playback, reading order[i] as

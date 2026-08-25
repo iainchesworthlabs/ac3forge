@@ -16,6 +16,8 @@
 #include <system_error>
 #include <vector>
 
+#include "../adm/atmos_adm.hpp"
+#include "../adm/decode_adm.hpp"
 #include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
@@ -283,7 +285,11 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
 }
 
 int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path,
-                     const ac3cli::Options& meta, std::string_view objects_dir) {
+                     const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
+    if (!adm_out.empty() && !ac3cli::adm_capability().available) {
+        fmt::println(stderr, "error: {}", ac3cli::adm_capability().reason);
+        return kExitInput;
+    }
     // §E2.3.1.2: one programme is decoded, never a fold of several. A stream
     // carrying a second independent substream carries an ALTERNATIVE - a
     // second language, an audio description - so writing both into one WAV
@@ -316,11 +322,11 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                      ids->size(), format_programme_ids(*ids));
     }
     ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
-                             .fast_mdct = meta.fast_mdct,
                              .fast_imdct = meta.fast_imdct,
                              .heavy_compression = meta.p.heavy.has_value(),
                              .output = meta.output,
                              .concealment = meta.concealment,
+                             .fast_mdct = meta.fast_mdct,
                              .joc_domain = meta.joc_domain,
                              .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the
@@ -405,6 +411,83 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
         return true;
     };
+    // Roadmap IM2: the ADM master accumulates in memory across the whole decode (the bed's own
+    // LFE channel plus each JOC-reconstructed dynamic object's full-duration PCM, and every OAMD
+    // update block's absolute-sample-timestamped position/gain) and is written once, after the
+    // decode loop below finishes - unlike the streaming per-object WAVs objects_dir writes above,
+    // the ADM master's own <axml> chunk needs every dynamic object's own final duration known
+    // before it can be built at all (ac3::admbridge::write() computes each audioBlockFormat's
+    // duration from it - see bridge.cpp's own build_block_formats).
+    const bool have_adm_output = !adm_out.empty();
+    ac3cli::AdmMasterInput adm_input;
+    bool adm_input_ready = false;
+    bool adm_bed_warned = false;
+    std::uint64_t adm_samples_emitted = 0;
+    const auto accumulate_adm = [&](const std::vector<std::vector<float>>& object_audio,
+                                    const std::optional<ac3::oba::DecodedProgram>& object_metadata,
+                                    std::span<const std::vector<float>> channels,
+                                    ac3::eac3::chanmap::Layout layout, std::uint32_t sample_rate) {
+        if (!have_adm_output || object_audio.empty() || !object_metadata) {
+            return;
+        }
+        const auto& program = object_metadata->program;
+        if (!program.dynamic_only) {
+            // A genuine bed program (third-party channel-based-immersive content, oamd.hpp's
+            // own Program comment) is out of this writer's current scope - see
+            // ac3::admbridge::WriteInput's own doc comment. Warned once; the WAV/objects_dir
+            // outputs this decode already produces are unaffected.
+            if (!adm_bed_warned) {
+                fmt::println(stderr,
+                             "warning: {} only supports dynamic-object-only Atmos programmes "
+                             "today; this stream carries a bed program, no ADM master written",
+                             adm_out);
+                adm_bed_warned = true;
+            }
+            return;
+        }
+        const int lfe_slot = layout.index_of(ac3::eac3::chanmap::Location::kLfe);
+        const bool have_lfe =
+            program.lfe && lfe_slot >= 0 && static_cast<std::size_t>(lfe_slot) < channels.size();
+        if (!adm_input_ready) {
+            adm_input.sample_rate = sample_rate;
+            adm_input.channels.resize(object_audio.size() + (have_lfe ? 1 : 0));
+            for (std::size_t i = 0; i < object_audio.size(); ++i) {
+                adm_input.channels[i].name = fmt::format("Object {}", i + 1);
+            }
+            if (have_lfe) {
+                adm_input.channels.back().name = "LFE";
+                adm_input.channels.back().bed_label = ac3::oba::BedLabel::kLfe;
+            }
+            adm_input_ready = true;
+        }
+        if (object_audio.size() + (have_lfe ? 1 : 0) != adm_input.channels.size()) {
+            return;  // shape mismatch: skipped, same convention as append_objects above
+        }
+        for (std::size_t i = 0; i < object_audio.size(); ++i) {
+            auto& pcm = adm_input.channels[i].pcm;
+            pcm.insert(pcm.end(), object_audio[i].begin(), object_audio[i].end());
+        }
+        if (have_lfe) {
+            auto& pcm = adm_input.channels.back().pcm;
+            const auto& lfe_channel = channels[static_cast<std::size_t>(lfe_slot)];
+            pcm.insert(pcm.end(), lfe_channel.begin(), lfe_channel.end());
+        }
+        // §5.6.2.1: sample_offset is already in samples from THIS access unit's own first
+        // sample - adm_samples_emitted (bumped at the bottom of this lambda by exactly the
+        // number of samples object_audio just contributed) turns it into an absolute offset
+        // from the start of the whole decode, which is what ac3::admbridge::WriteObjectUpdate
+        // wants (bridge.hpp's own doc comment).
+        for (const auto& block : object_metadata->blocks) {
+            const auto sample_offset =
+                adm_samples_emitted + static_cast<std::uint64_t>(std::max(block.sample_offset, 0));
+            for (std::size_t i = 0; i < block.objects.size() && i < object_audio.size(); ++i) {
+                adm_input.channels[i].updates.push_back({.sample_offset = sample_offset,
+                                                          .ramp_duration_samples = block.ramp_duration,
+                                                          .state = block.objects[i]});
+            }
+        }
+        adm_samples_emitted += object_audio.front().size();
+    };
     ac3::DecodedAccessUnit first{};
     // What the independent (bed) substream actually carried, reported whether
     // or not it was applied - same convention as run_decode's own dynrng_min_db/
@@ -483,6 +566,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             abort_all();
             return kExitOutput;
         }
+        accumulate_adm(out.object_audio, out.object_metadata, out.channels, out.layout,
+                       sample_rate_hz(first.sample_rate));
     }
     // Whatever transient pre-noise processing was still holding back at
     // end-of-stream. flush() returns raw per-substream results rather than
@@ -608,6 +693,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 abort_all();
                 return kExitOutput;
             }
+            accumulate_adm(substream.object_audio, substream.object_metadata, substream.channels,
+                           ac3::eac3::chanmap::expand(substream.location_map()),
+                           sample_rate_hz(substream.sample_rate));
         }
     }
     progress.finish();
@@ -633,6 +721,19 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             fmt::println(stderr, "error: {}", ac3::io::describe(closed.error()));
             return kExitOutput;        }
         ++objects_written;
+    }
+    if (have_adm_output) {
+        if (!adm_input_ready) {
+            fmt::println(stderr, "warning: {} given but no dynamic-object-only Atmos programme was decoded",
+                         adm_out);
+        } else {
+            const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
+            if (!written_adm) {
+                fmt::println(stderr, "error: {}", written_adm.error());
+                return kExitOutput;
+            }
+            status_println(status, "  wrote ADM master ({} objects) to {}", adm_input.channels.size(), adm_out);
+        }
     }
     if (first.acmod == ac3::Acmod::kDualMono) {
         status_println(status, "decoded {} E-AC-3 access units ({} substreams each) -> {}",
@@ -692,7 +793,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
 }  // namespace
 
 int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli::Options& meta,
-               std::string_view objects_dir) {
+               std::string_view objects_dir, std::string_view adm_out) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
@@ -713,12 +814,15 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // the stream is not: an AC-3 bed with Annex E dependents extending it goes
     // down the access-unit path too, which reads the core natively.
     if (*bsid > 8 || ac3::has_eac3_extension_substreams(stream)) {
-        return run_decode_eac3(stream, out_path, meta, objects_dir);
+        return run_decode_eac3(stream, out_path, meta, objects_dir, adm_out);
     }
     if (!objects_dir.empty()) {
         fmt::println(stderr,
                      "warning: objects_dir given but {} is plain AC-3 - it has no object layer",
                      in_path);
+    }
+    if (!adm_out.empty()) {
+        fmt::println(stderr, "warning: {} given but {} is plain AC-3 - it has no object layer", adm_out, in_path);
     }
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
@@ -726,7 +830,6 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         return kExitInput;
     }
     ac3::FrameDecoder decoder{{.drc_scale = meta.drc_scale,
-                              .fast_mdct = meta.fast_mdct,
                               .fast_imdct = meta.fast_imdct,
                               .heavy_compression = meta.p.heavy.has_value(),
                               .output = meta.output,

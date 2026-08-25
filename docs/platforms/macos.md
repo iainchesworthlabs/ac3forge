@@ -111,6 +111,13 @@ macOS packages included. `cmake/Packaging.cmake` needed no change for `ac3gui` t
 unconditional on `APPLE`, GUI or not. No stable (non-beta) release has been tagged yet. See
 [Packaging](../building.md#packaging).
 
+The `.app` bundle also declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3`
+and `.ec3` — a custom `Info.plist.in` rather than CMake's default template, since neither
+extension is a system-known UTI and each needs its own `UTTypeConformsTo: public.audio`
+declaration tying it to `audio/ac3`/`audio/eac3`. Configure/build-verified only, like the rest of
+this file's GUI coverage below — nobody has opened a real `.ac3` file from Finder on real hardware
+yet.
+
 ## CI: what has and has not been verified
 
 Build, `ctest` (see [Verified configuration](../building.md#verified-configuration) for how the

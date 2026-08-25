@@ -732,7 +732,7 @@ def race_vbr(original, source, seconds, json_out=None):
         # duration, but the encoder pads the last frame out to a whole 1536
         # samples, so a stream already pinned to 1024 kbit/s measures a
         # fraction of a per cent above it and CBR has no legal frame that big.
-        cbr_kbps = min(VBR_FORMAT_MAX_KBPS, max(32, int(round(kbps))))
+        cbr_kbps = min(VBR_FORMAT_MAX_KBPS, max(32, round(kbps)))
         cbr = BUILD / f"vbr_cbr{cbr_kbps}.ec3"
         _encode_eac3(source, cbr, cbr_kbps)
         cbr_snr, cbr_lsd, _cbr_hf, cbr_mos = decode_scores(
@@ -1149,14 +1149,30 @@ TREND_LEGS = [
 ]
 
 
+# The encoder's own "header room" refusal (ac3::eac3's budget check - see
+# tools/ci/fuzz_eac3_encoder_space.py's REFUSALS, which names this exact
+# message): a legitimate outcome at the two crossover legs TREND_LEGS' own
+# comment added deliberately, not a defect. eac3-stereo-64's "none" row is
+# the known case - 32 kbit/s per channel fits only with both coupling and
+# spectral extension on, which "none" turns off - so _trend_encode reports
+# it rather than raising, and race_trend prints "n/a" for that cell instead
+# of aborting the whole trend run over an outcome the leg exists to show.
+_HEADER_ROOM_REFUSAL = "the encoder cannot express this configuration"
+
+
 def _trend_encode(wav, kbps, codec, tools, out):
     if codec == "ac3":
         run([CLI, "encode", str(wav), str(out), str(kbps)])
-    else:
-        cmd = [CLI, "eac3-encode", str(wav), str(out), str(kbps)]
-        if tools:
-            cmd.append(tools)
-        run(cmd)
+        return True
+    cmd = [CLI, "eac3-encode", str(wav), str(out), str(kbps)]
+    if tools:
+        cmd.append(tools)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        if _HEADER_ROOM_REFUSAL in result.stderr:
+            return False
+        raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
+    return True
 
 
 def race_trend(json_out=None):
@@ -1200,15 +1216,24 @@ def race_trend(json_out=None):
         for row_label, tools in rows:
             cache_key = tools if is_eac3 else None
             if cache_key in landscape_cache:
-                snr, lsd, hf, mos, kbps_measured = landscape_cache[cache_key]
+                scored = landscape_cache[cache_key]
             else:
                 coded = BUILD / f"trend_{name}_{row_label}.{ext[codec]}"
-                _trend_encode(wav, kbps, codec, tools, coded)
-                wav_scratch = BUILD / f"trend_{name}_{row_label}.wav"
-                snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch,
-                                                              perceptual=True)
-                kbps_measured = measured_kbps(coded, seconds)
-                landscape_cache[cache_key] = (snr, lsd, hf, mos, kbps_measured)
+                if _trend_encode(wav, kbps, codec, tools, coded):
+                    wav_scratch = BUILD / f"trend_{name}_{row_label}.wav"
+                    snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch,
+                                                                  perceptual=True)
+                    kbps_measured = measured_kbps(coded, seconds)
+                    scored = (snr, lsd, hf, mos, kbps_measured)
+                else:
+                    scored = None
+                landscape_cache[cache_key] = scored
+
+            if scored is None:
+                print(f"{name:<18} | {row_label:<10} | {'n/a':>7} | {'-':>6} | "
+                      f"{'-':>6} | {'-':>4} | {'-':>6}")
+                continue
+            snr, lsd, hf, mos, kbps_measured = scored
 
             lsd_out = float(lsd) if is_eac3 else None
             hf_out = float(hf) if is_eac3 else None
@@ -1405,8 +1430,8 @@ OBJECT_NAMES = ["broadcast", "comet", "engine", "pod-hi", "pod-lo"]
 # 9.6-18.6 dB at 256, 11.9-22.7 dB at 448. A regression in bit allocation
 # moves the first far more than the second; one in the JOC matrix moves both.
 OBJECT_LEGS = [
-    dict(name="atmos-objects-256", kbps=256),
-    dict(name="atmos-objects-448", kbps=448),
+    {"name": "atmos-objects-256", "kbps": 256},
+    {"name": "atmos-objects-448", "kbps": 448},
 ]
 
 # joc::reconstruct is a DELAYED identity, not an instantaneous one: two
@@ -1503,7 +1528,7 @@ def object_spectral_scores(o, d):
     leak = (None if occupied.all()
             else 10 * np.log10(max(band_d[~occupied].sum(), 1e-30) /
                                max(band_o[occupied].sum(), 1e-30)))
-    for (lo, hi), inside in zip(BANDS, occupied):
+    for (lo, hi), inside in zip(BANDS, occupied, strict=True):
         if not inside:
             continue
         eo = so[loud, lo:hi].sum(axis=1) + 1e-12
@@ -1586,9 +1611,9 @@ def race_objects(json_out=None):
             snr, lsd, leak, mos = object_scores(np.ascontiguousarray(source[:, index]),
                                                 np.ascontiguousarray(recovered),
                                                 perceptual=True)
-            rows.append(dict(leg=name, bitrate_kbps=kbps, variant=object_name, snr_db=snr,
-                             lsd_db=lsd, leak_db=leak, mos_lqo=mos,
-                             measured_kbps=float(kbps_measured)))
+            rows.append({"leg": name, "bitrate_kbps": kbps, "variant": object_name, "snr_db": snr,
+                        "lsd_db": lsd, "leak_db": leak, "mos_lqo": mos,
+                        "measured_kbps": float(kbps_measured)})
 
         # Every mean is taken over `objects` rather than over `rows`, which
         # the scene row is about to join: averaging a list while appending
@@ -1597,18 +1622,18 @@ def race_objects(json_out=None):
         objects = list(rows)
         every_mos = [r["mos_lqo"] for r in objects]
         every_leak = [r["leak_db"] for r in objects if r["leak_db"] is not None]
-        rows.append(dict(
-            leg=name, bitrate_kbps=kbps, variant="scene",
-            snr_db=float(np.mean([r["snr_db"] for r in objects])),
-            lsd_db=float(np.mean([r["lsd_db"] for r in objects])),
+        rows.append({
+            "leg": name, "bitrate_kbps": kbps, "variant": "scene",
+            "snr_db": float(np.mean([r["snr_db"] for r in objects])),
+            "lsd_db": float(np.mean([r["lsd_db"] for r in objects])),
             # Averaged over the objects that HAVE a leakage figure: an
             # object occupying every band contributes no measurement rather
             # than a floor value that would drag the scene mean down by
             # hundreds of dB (see object_spectral_scores).
-            leak_db=(float(np.mean(every_leak)) if every_leak else None),
-            mos_lqo=(None if any(m is None for m in every_mos)
-                     else float(np.mean(every_mos))),
-            measured_kbps=float(kbps_measured)))
+            "leak_db": (float(np.mean(every_leak)) if every_leak else None),
+            "mos_lqo": (None if any(m is None for m in every_mos)
+                        else float(np.mean(every_mos))),
+            "measured_kbps": float(kbps_measured)})
 
         for row in rows:
             print(f"{row['leg']:<18} | {row['variant']:<10} | {row['snr_db']:>7.2f} | "

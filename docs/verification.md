@@ -193,14 +193,32 @@ against an external decoder, or isolating a suspected transform defect — and `
 `fast-imdct=off` adjust one half at a time; see
 [Options & grammars](cli/metadata-options.md#command-specific-notes) for the full token
 semantics. At the library level the same pair is `EncoderConfig::fast_mdct` /
-`eac3::FrameConfig::fast_mdct` and `DecoderConfig::fast_imdct`.
+`eac3::FrameConfig::fast_mdct` for the forward transform and `DecoderConfig::fast_imdct` for the
+inverse.
 
-Encoded output never depends on the decode-side switch. An enhanced-coupling encode does run an
+Encoded output never depends on `DecoderConfig`. An enhanced-coupling encode does run an
 inverse transform of its own — `ecpl_channel_spectrum` reconstructs the spectrum the decoder
 will hold — and that one follows `eac3::FrameConfig::fast_mdct`, which makes that field the
 encoder's fast-transform switch in both directions and keeps `mode=reference` direct end to
 end. It is byte-identical either way on the encode corpus at the tolerances above, so it is a
-speed choice, not an output one; `DecoderConfig::fast_imdct` reaches no encoder at all.
+speed choice, not an output one.
+
+One decode-side case runs the FORWARD transform too: JOC's own bed analysis under
+`joc-domain=mdct` (PF8) has to re-express the decoded bed in the same 256-bin MDCT domain the
+transmitted matrix was estimated in before it can apply §6.6.6's per-band combination — the one
+place a decode ever needs the fold `mode=`/`fast-mdct=off` otherwise only reach on the encode
+side. `DecoderConfig::fast_mdct` carries it (`joc::reconstruct`'s own `fast_mdct` parameter,
+threaded from `decode`/`monitor`/`live`), defaulted ON by the same evidence gate as every other
+fast path here: 1.3e-13 worst relative error at the transform level (the same forward kernel
+`EncoderConfig::fast_mdct` already validates), full `joc::reconstruct` output agreeing
+321-325 dB SNR against the direct form over three real encoded-and-decoded objects
+(`tests/oba/test_atmos.cpp`), and the bed analysis kernel itself — isolated from object
+synthesis, which this switch does not touch — measured 11.0x, 238 to 2628 microseconds per
+block's five-channel analysis on a release build (`ac3kernelbench`'s
+`joc_reconstruct_mdct_4obj`/`_direct`): a fixed ~2.4 ms saved per frame regardless of object
+count, ~2.2 s over a 30 s `kMdctBand` decode. It has no effect under the default
+`joc-domain=qmf`, whose filterbank has only the one evaluation, and — like
+`DecoderConfig::fast_imdct` — never reaches an encoder.
 
 ## Test suite
 
@@ -289,7 +307,20 @@ codec-config box is defined for the arrangement (`build_codec_config_box` return
 it), so container muxing refuses it explicitly rather than emit a `dac3`/`dec3` box that
 contradicts its own `mdat`; `ac3cli decode` remains the way to read one.
 
-Three divergences are recorded rather than resolved:
+One more divergence was found and fixed rather than recorded:
+
+- **`wav_channel_order` used to write acmods 2/1 and 3/1 in bitstream order** (L C R S), on the
+  stated grounds that no WAV convention claims a mono-surround slot, while FFmpeg mapped 3/1 onto
+  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and wrote L R C S. That premise was wrong:
+  `WAVE_FORMAT_EXTENSIBLE` does define `SPEAKER_BACK_CENTER` (`0x100`), which is exactly FFmpeg's
+  mono-surround slot for both 2/1 and 3/1. `wav_channel_order` now places every acmod by WAV
+  speaker position rather than bitstream order — the practical effect is C swapping with R and
+  the LFE moving up to fourth, on top of the mono-surround fix — and the FATE sample that
+  exercises 3/1 (`millers_crossing_4.0.ac3`) went from decode-and-parse-only to a compared sample
+  once the two decoders' channel orders agreed: channel 0 (L) at 48.93 dB, and a near-silent
+  surround channel gated on absolute difference at a −46.0 dBFS floor (measured −55.31 dBFS).
+
+Two divergences are recorded rather than resolved:
 
 - **FFmpeg fails frame 0 of DEE's stereo E-AC-3 stream.** Exactly one frame, from cold, with
   `exponent 25 is out-of-range`; the other 93 read cleanly, and FFmpeg conceals the failure by
@@ -301,11 +332,6 @@ Three divergences are recorded rather than resolved:
   the source WAV instead. (`manifest.json`'s 33.32 dB for the same leg is *not* in conflict with
   this: `quality_race.py`'s `score_fixed` skips the first 0.2 s, which is exactly where the
   failing frame sits — see `tools/generators/gen_external_baseline.py`'s module docstring.)
-- **`wav_channel_order` writes acmods 2/1 and 3/1 in bitstream order** (L C R S), on the stated
-  grounds that no WAV convention claims a mono-surround slot, while FFmpeg maps 3/1 onto
-  `WAVEFORMATEXTENSIBLE`'s FL/FR/FC/BC and writes L R C S. The audio agrees — channel 0 at
-  48.93 dB, and channels 1 and 2 swapped — but the files cannot be diffed as they stand, so the
-  FATE sample that exercises 3/1 is decode-and-parse only.
 - **`the_great_wall_7.1.eac3`'s OAMD payload does not decode.** FFmpeg reports the file as
   "Dolby Digital Plus + Dolby Atmos", and its arrangement is the real Annex E structure
   described above, but `ac3::oba::parse_payload` refuses several `object_element` fields
@@ -537,8 +563,10 @@ covered where it's most relevant rather than repeated here:
   has ever run it.
 - [Raspberry Pi](platforms/raspberry-pi.md#verified-configuration) — real-hardware validation on
   a Pi 4B: the full suite on both compilers, ALSA device enumeration against the Pi's real
-  `vc4hdmi` HDMI outputs, and an inspected arm64 `.deb` — still with no downstream receiver in
-  the loop.
+  `vc4hdmi` HDMI outputs, an inspected arm64 `.deb`, and [live HDMI passthrough to a real
+  Atmos-capable AVR](platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — every
+  stream shape tried, including signed Atmos with height channels, locked correctly at zero
+  underruns.
 - [Android (Shield Atmos Demo)](platforms/android.md#what-has-and-has-not-been-verified) — the
   most thoroughly hardware-verified platform in the project: real E-AC-3/Atmos passthrough over
   HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned

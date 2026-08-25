@@ -952,13 +952,46 @@ still measure 61.83–61.87 dB against 67.73–67.90 dB on x86 — the same numb
 run-to-run noise, as before the flag existed. Contraction is therefore ruled out, not confirmed,
 as the explanation for this gap; the correlation that matters is architecture (aarch64 in all
 three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compiler family or libm
-package. The most likely remaining cause is aarch64's own compiled `libm` (glibc ships an
-architecture-specific `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean
-bit-identical machine code) producing different last-bit results in the transform twiddle tables
-(`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) that are all built from `std::cos`/`std::sin` —
-untested as of this change, and the natural next step.
+package.
 
-The flag stays pinned regardless of that result, for an unrelated and unconditional reason: it is
+**Architecture-specific libm `sin`/`cos` — tested directly (roadmap VX11), also ruled out.** The
+standing hypothesis was aarch64's own compiled `libm` (glibc ships an architecture-specific
+`sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean bit-identical machine
+code) producing different last-bit results in the transform twiddle tables. Two things needed
+correcting before that hypothesis could even be tested precisely: `kAnalysisWindow` is not built
+from `std::cos`/`std::sin` at all — it is a `consteval` construction (`ac3/core/window.hpp`) using
+a hand-written `bessel_i0`/`constexpr_sqrt`, evaluated entirely by the compiler's own constant
+interpreter at compile time, so it cannot carry a *runtime* libm difference between architectures
+by construction; the real runtime `std::cos`/`std::sin` call sites are `mdct.cpp`'s `Twiddles`,
+`Twiddles2` and `FastMdctTables` and `fft_kernel.hpp`'s `FftTables`, all `static const` objects
+built once on first use.
+
+Measured (WSL2, real x86-64 hardware; aarch64 via `gcc-16-aarch64-linux-gnu` cross-compiling GCC
+16 — the same major version `linux-gcc-arm64` uses — and `qemu-user`, which implements IEEE-754
+arithmetic in software rather than approximating it): every one of the 2,170 `std::cos`/`std::sin`
+calls those table constructors make at this codec's actual transform sizes (P = 64/128/512, the
+QMF fold at 128) is **bit-identical**, x86-64 GCC to x86-64 Clang to aarch64 GCC under emulation —
+zero differing values, not "close." Going one step further, the real `gold-reference gate` itself
+was run end to end against a real `AC3FORGE_SIMD=aarch64` cross-build (same `-ffp-contract=off`
+flag, same GCC 16, the actual `aarch64-neon` kernel real CI selects) under that same emulation, and
+every one of its 32 checks' SNR numbers — not just the twiddle tables — came back bit-identical to
+the native x86-64 build's, including the three streams this project's own encoder produces
+(channel 4: 67.80/67.82/67.76 dB, matching x86-64 to the reported precision, not the ~61.8 dB every
+real arm64/macOS CI leg measures). A `generic` (scalar reference kernel) build on the same x86-64
+hardware matched both, for the same reason: IEEE-754 correctly-rounded arithmetic has no room for
+two conforming implementations to disagree on `+`, `-`, `*`, or a `round()` pinned bit-exact by its
+own test (`tests/core/test_simd_kernels.cpp`).
+
+So the 6.02 dB gap does **not** reproduce under any standards-conformant aarch64 execution this
+project can construct without the real hardware CI already has. That rules out "the aarch64
+instruction set" as an explanation in the abstract, and narrows what is left to two candidates
+neither locally reproducible: the specific *natively*-packaged aarch64 compiler GitHub's hosted
+arm64/macOS runners use (as opposed to a Debian **cross**-compiler package, the only kind available
+without that hardware — a native package can carry different default codegen/tuning even with
+identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
+`qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
+
+The flag stays pinned regardless of either result, for an unrelated and unconditional reason: it is
 what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
 IEEE-754 add, subtract or multiply so a vectorised kernel is bit-identical to the scalar loop it
 replaced, and that only holds if the scalar loop is not silently getting a fused form the
@@ -969,9 +1002,19 @@ also explains the gold-gate gap, which it turns out not to.
 Measured cost: none on x86-64, where the flag is a no-op because baseline x86-64 has no FMA
 instruction to emit — proven, not assumed, by the corpus comparison above coming out
 byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
-inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers. ROADMAP
-VX11 stays open: the contraction hypothesis is now closed out, and the libm hypothesis above is
-where it picks up.
+inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers.
+
+ROADMAP VX11's mystery therefore stays open — both hypotheses proposed for it are now closed out
+by direct measurement rather than by argument — but it is no longer *unwatched*: a cross-platform
+bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
+[the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
+bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so this specific
+divergence — resolved or not — cannot silently change size without a CI failure pointing straight
+at it. `x86_64-sse2` and `generic` are pinned from the measurements above; `aarch64-neon` and the
+macOS kernel are deliberately left unpinned rather than pre-filled from the qemu measurement, since
+that measurement is exactly the evidence that an emulated cross-build is not equivalent to a real
+CI leg — the next person with those CI logs in front of them should pin what the real hardware
+actually produces.
 
 ## Gold-reference correctness gate
 
@@ -985,11 +1028,15 @@ strict-decode the result with FFmpeg (`-err_detect crccheck+bitstream+buffer+exp
 via stderr content rather than exit code — confirmed locally that ffmpeg's own process exits 0
 even on a CRC mismatch), decode it again with ac3cli's own decoder, and assert the two decodes
 agree via `tools/checks/compare_wav.py`'s delay-compensated SNR (stdlib-only Python, no numpy — every
-CI-hosted runner already ships Python 3, so this needs no new provisioning). The gate is
-perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing in this
-project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
+CI-hosted runner already ships Python 3, so this needs no new provisioning). The gate's own three
+checks are perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing
+in this project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
 pipeline identically, and the real numbers above show they in fact do not, by a small but
-measurable margin.
+measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after (roadmap
+VX11) and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
+encoded bytes rather than a cross-leg equality assertion — see
+[Floating-point contraction](#floating-point-contraction) above for why the latter cannot pass
+today.
 
 This is a narrow, cross-platform *quality* check — one sample, two codecs, every OS — not a
 conformance sweep. `tools/checks/check_matrix_coverage.py`, `tools/ci/quality_race.py`'s `ci` mode and the

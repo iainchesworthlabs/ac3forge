@@ -239,7 +239,7 @@ def markdown_abx(rows, listeners):
     out = ["| Leg | System | Correct | Trials | Proportion | 95% CI | p |",
            "|---|---|---|---|---|---|---|"]
     for r in rows:
-        ci = "—" if r["ci_low"] is None else f"{r['ci_low']:.2f}–{r['ci_high']:.2f}"
+        ci = "—" if r["ci_low"] is None else f"{r['ci_low']:.2f}-{r['ci_high']:.2f}"
         p = f"{r['p']:.4f}" if r["p"] >= 0.0001 else "<0.0001"
         out.append(f"| `{r['leg']}` | `{r['condition']}` | {r['correct']} | {r['n']} | "
                    f"{r['proportion']:.2f} | {ci} | {p} |")

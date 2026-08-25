@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ac3gui
+GenericName=AC-3 / E-AC-3 Encoder
+Comment=Clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit
+Exec=ac3gui %F
+Icon=ac3gui
+Terminal=false
+Categories=AudioVideo;Audio;
+MimeType=audio/ac3;audio/eac3;
+StartupNotify=true

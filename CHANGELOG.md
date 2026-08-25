@@ -26,10 +26,14 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   used to write one exponent set per frame for every channel; it now plans and writes per-channel
   or per-block strategies, and can emit 1/2/3-block syncframes with `convsync` for low-latency use.
   Closes a real quality gap versus AC-3 (spectral distance improves ~0.6 dB on transient material).
-- **`EncoderConfig::search`** (`EQ13`, AC-3 only): an optional per-frame search over
-  `dbpbcod`/`fgaincod` judged by a new decoded-domain distortion measure and psychoacoustic model
-  (`ac3::quality`). `search=distortion` is a real, measured win from 448 kbit/s up; `search=perceptual`
-  is not yet competitive and stays off by default. See [docs/library/quality.md](docs/library/quality.md).
+- **`EncoderConfig::search`** (`EQ13`): an optional per-frame search over `dbpbcod`/`fgaincod`
+  judged by a new decoded-domain distortion measure and psychoacoustic model (`ac3::quality`).
+  `search=distortion` is a real, measured win from 448 kbit/s up on AC-3; `search=perceptual`
+  is not yet competitive and stays off by default. `eac3::FrameConfig::search` now exists too
+  (CBR only, `kDistortion` only, `dbpbcod` alone - `fgaincod` isn't wired for E-AC-3 yet); measured
+  on real CC0 material its effect is negligible at every rate tried, a real answer rather than an
+  unfinished one - see [docs/library/quality.md](docs/library/quality.md) and
+  [docs/library/encoding-eac3.md](docs/library/encoding-eac3.md).
 - **Coupling-aware delta bit allocation, per-channel coupling membership, and `ecplangleintrp`**
   (`EQ5`, `EQ6`). Delta bit allocation is no longer skipped whenever coupling is active; `chincpl`
   is a per-channel decision rather than frame-wide; enhanced-coupling angle interpolation is
@@ -95,12 +99,24 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **Loudness of the rendered layout** (`IO10`): BS.1770-5 Annex 3 metering for 7.1/5.1.2/5.1.4/
   7.1.4, and `ac3cli qc layout=bed|rendered`.
 - **Two new QC presets** (`IO11`): `atsc-a85-streaming` and `apple-music-atmos`.
+- **Object-based loudness** (`IO12`): `ac3cli qc ... objects=<layout>` re-renders a
+  dynamic-object-only programme's objects by their own OAMD position (height included) onto a
+  named layout and meters that per ITU-R BS.1770-5 Annex 4, via a new height-aware
+  `ac3::spatial::pan_direction` promoted out of `ac3::plan`'s own channel-layout renderer.
 
 **Immersive formats (IM) and verification (VX)**
 
 - **`ac3::oba::ObjectScene`** (`IM7`): one object-scene timeline (named objects, interpolated
   automation, orientation-as-metadata, JSON) shared by `atmos-path`, the GUI and the examples,
   replacing four ad-hoc formats.
+- **A JOC → ADM BWF writer** (`IM2`): `ac3cli decode ... adm_out` writes a Dolby Atmos Master ADM
+  Profile BW64 (BS.2076-2 ADM XML + BS.2088 BW64, cartesian `audioBlockFormat` automation) from a
+  decoded E-AC-3/Atmos stream's own bed LFE and JOC-reconstructed dynamic objects, positioned by
+  their real decoded OAMD timeline. `ac3adm::write_bw64` and `ac3::admbridge::write()` give
+  `ac3adm`/`ac3::admbridge` a write direction alongside `atmos-adm`'s existing read one; a written
+  master round-trips through `atmos-adm` itself. Needs `-DAC3FORGE_BUILD_ADM=ON`, like every other
+  ADM command; scoped to dynamic-object-only Atmos programmes for now (a genuine bed program is
+  warned about and skipped, not written incorrectly).
 - **E-AC-3 encoder input-space fuzzing** (`VX1`) and **metadata-parser fuzzing** (`VX3`: EMDF,
   OAMD, JOC, signing verification, ADM) with a CRC-repairing mutator so mutations actually reach
   the object parsers instead of dying at the CRC check.
@@ -115,6 +131,11 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   conformance vectors** (`docs/conformance-vectors.md`, `VX20`) shipped with every release.
 - **Script Lint, a ThreadSanitizer leg, and PR-time performance comparison** (`VX14`, `VX16`,
   `VX17`) join CI.
+- **A cross-platform bitstream-hash gate** (`tools/checks/check_cross_platform_hash.py`, `VX11`):
+  pins a SHA-256 of the gold-reference streams this project's own encoder produces, per SIMD
+  kernel and transform mode, so the arm64/macOS legs' unexplained 6.02 dB gold-gate gap (see
+  Changed below) cannot silently change size without CI noticing, whether or not it is ever
+  explained.
 
 **Performance and portability (PF)**
 
@@ -124,10 +145,65 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   remainder of the last encoder profile.
 - **The fast IMDCT reaches enhanced coupling and JOC, and the FFT core is radix-4** (`PF3`, `PF4`):
   a 30 s 15-object decode drops from 6.5 s to under 3 s combined.
+- **The decoder's JOC bed analysis now has a fast forward transform too** (`PF8`,
+  `DecoderConfig::fast_mdct`, default ON): 11.0x on the bed analysis kernel itself under
+  `joc-domain=mdct`, agreeing 321-325 dB SNR against the direct form it replaces. No effect
+  under the default `joc-domain=qmf`.
 - **SIMD kernels selected by CMake, not `#ifdef`** (`PF5`): 128-bit vectorised hot paths on
   x86-64/ARMv8, bit-identical output, no runtime dispatch.
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
   (`PF7`, `AC3FORGE_MINIMAL_DECODER`, cross-compiled and run on QEMU's Cortex-M3 target).
+
+**Library surface and v1.0 prep (AP)**
+
+- **A full pimpl sweep** (`AP3`): every `AC3FORGE_EXPORT` class with non-trivial state — both
+  `FrameEncoder`s, `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`, `eac3::AccessUnitEncoder`,
+  the DRC controllers, the loudness/level meters, `iec61937::Eac3BurstPacker` — now hides its
+  layout behind `struct Impl; std::unique_ptr<Impl> impl_;`, the pattern the WAV classes already
+  used. A private-state change is no longer an ABI break for anyone linking `ac3::forge_shared`.
+  `docs/library/index.md` records the one deliberate exception (the plain config aggregates) and
+  how they are meant to grow after 1.0.
+- **An ABI-diff CI gate** (`AP4`): a new `abi-gate` job builds `config-linux-llvm-shared` at HEAD
+  and at the last release tag and runs `abidiff` across all six shared libraries, plus an
+  exported-symbol allowlist (`tools/ci/check_abi_symbols.py`) checked against `nm -D
+  --defined-only` — advisory (`continue-on-error: true`) until `AP1`'s freeze, at which point
+  removing that one line makes it required. Both C API examples now pin `C_STANDARD 11`, so
+  `ac3forge_c/ac3forge.h` is proven strict-C11-clean (plus `-Wpedantic`) on every desktop leg,
+  not just parseable-as-C++.
+- **An E-AC-3 encoder in the C API** (`AP5`, partial): `ac3forge_eac3_encoder_t` mirrors
+  `ac3::eac3::FrameEncoder` and `ac3forge_eac3_access_unit_encoder_t` mirrors `AccessUnitEncoder`
+  — plain E-AC-3 and dependent-substream wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) with the Annex E
+  tools, including `auto`, are now producible from C. `AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM`/
+  `..._INVALID_CHANNEL_MAP` were already-numbered status codes with no code path that could raise
+  them until now. See [docs/library/c-api.md](docs/library/c-api.md#e-ac-3-encoding-multiple-substreams-annex-e-tools).
+- **An E-AC-3 encoder in the Python bindings** (`AP6`, partial): `ac3.eac3.FrameEncoder`/
+  `AccessUnitEncoder` wrap the same two C++ classes directly, in a real `ac3forge.eac3` submodule
+  rather than a flat name — `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` share a name across C++
+  namespaces (`AP2`, still open), so `ac3.FrameEncoder` vs `ac3.eac3.FrameEncoder` keeps that
+  collision out of the binding surface too. `ac3.eac3.access_unit_config_for_layout()` is the
+  named-layout convenience: a caller asks for `ac3.eac3.LayoutId.k71` and gets a ready
+  `AccessUnitConfig`, no hand-built `chanmap`. See
+  [docs/library/python-api.md](docs/library/python-api.md#encoding-e-ac-3).
+
+**Applications (UX)**
+
+- **`ac3gui` gained an "Open stream…" player** (`UX1`): the GUI twin of `ac3cli monitor`, playing
+  an already-encoded `.ac3`/`.ec3` file's decoded bed through a real transport (play/pause/seek)
+  with live meters and the soundfield view, reusing the `MonitorSink` plumbing the object-decode
+  and encode-preview paths already established. **Export decoded WAV…** and **Export objects…**
+  (Atmos only) give it `ac3cli decode`'s two outputs from the same decode pass. A finished run
+  chip's own **More…** menu now offers **QC this run** and **Inspect objects** directly, closing
+  the gap [`docs/gui/qc.md`](docs/gui/qc.md) and [`docs/gui/inspect-objects.md`](docs/gui/inspect-objects.md)
+  used to both end by naming. See [docs/gui/open-stream.md](docs/gui/open-stream.md).
+- **`ac3gui` gained desktop integration** (`UX2`): dropping a file onto the window now loads a WAV
+  as a source or opens an already-encoded `.ac3`/`.ec3` in the stream player, and `ac3gui
+  path/to/file` does the same at launch — both funnel through one dispatch function, so drag-and-drop
+  and the command line can never disagree about what a given file does. The Windows installer now
+  registers `.ac3`/`.ec3` (NSIS registry keys, reversed on uninstall); the macOS bundle declares
+  `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for both; and Linux packaging gained a
+  `.desktop` entry, AppStream metainfo, and a shared-mime-info fragment, so `ac3gui` now appears in
+  a desktop's application menu instead of being launch-only. See
+  [docs/gui/loading-a-source.md](docs/gui/loading-a-source.md).
 
 ### Changed
 
@@ -148,6 +224,22 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   and hash-pinned) and **both 5.1 landscape legs have a DEE comparison again** (a per-channel-WAV
   input path avoids DEE's surround-left drop).
 - **The coverage gate covers `apps/cli` and `python/`, not just `src/`** (`VX15`).
+- **`fuzz-short` and `fuzz-differential` are no longer `continue-on-error`** (`VX13`):
+  `fuzz-differential`'s job history was genuinely clean back to 2026-08-09; `fuzz-short`'s was
+  not, but its only failures trace to one now-fixed `mp4::Reader` bug (see Fixed below), so
+  promoting it stakes exactly what the investigation found. `fuzz-nightly` also runs the two
+  differential harnesses at its deeper budget, and `fuzz/corpus/` now persists across nightly
+  runs via `actions/cache` instead of every scheduled run starting from an empty corpus.
+- **The arm64/macOS gold-gate 6.02 dB SNR gap's leading hypothesis (architecture-specific libm
+  `sin`/`cos` in the transform twiddle tables) is falsified by direct measurement, not just
+  argument** (`VX11`): every twiddle-table `std::cos`/`std::sin` call, and the actual
+  gold-reference gate run end to end, is bit-identical between native x86-64 and a real aarch64
+  cross-build (GCC 16) under `qemu-user`'s IEEE-754-conformant emulation — not the ~61.8 dB every
+  real arm64/macOS CI leg measures. The gap is real and reproducible but does not come from
+  anything buildable without the real hardware CI already has; `docs/building.md`'s "Floating-point
+  contraction" section carries the full measurement and the two remaining candidates. Also fixed
+  in passing: that section, and a `ci.yml` comment, both mis-described `kAnalysisWindow` as
+  libm-derived — it is a `consteval` construction with no runtime libm call at all.
 - **`atsc-a85` re-cited to A/85:2026-07** (`IO11`; no preset numbers move, only the citation).
 - Internal: `std::format`/`std::print`/`std::printf` replaced with {fmt} throughout (NDK's libc++
   has no usable `<format>`); the WASM decode demo now plays the library's own §7.8 downmix instead
@@ -171,6 +263,63 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`coupling::quantize_coordinate`/`choose_master` computed a coordinate's binade shift via
+  `floor(-std::log2(value))`** (`VX12`): a transcendental libm call whose last-bit behaviour is
+  not required to agree across compilers/architectures, at exactly the input class (a value on or
+  near a power of two) where its true result is itself an integer, so any rounding at all could
+  land `floor()` on either side of it. Replaced with `std::ilogb`, which reads the binary exponent
+  directly out of the IEEE-754 representation with no rounding at all. Proven behaviour-preserving
+  on real material: the gold-reference gate's three self-encoded streams hash byte-identical to
+  their pre-change values.
+- **`tools/ci/quality_race.py trend` crashed on `eac3-stereo-64`'s known-infeasible tool
+  variants** rather than reporting them. That leg exists specifically to bracket the rate where
+  E-AC-3 stereo needs *both* coupling and spectral extension to fit (32 kbit/s per channel — see
+  `TREND_LEGS`'s own comment); `none`/`cpl`/`aht`/`tpn` each turn off at least one of the two, so
+  the encoder correctly refuses with its own "header room" message (`ac3::eac3`'s budget check,
+  also named in `fuzz_eac3_encoder_space.py`'s `REFUSALS`) — a real outcome the trend run exists
+  to show, not a defect. `_trend_encode` now recognises that one specific refusal and reports
+  `n/a` for the cell instead of aborting the whole run; every other non-zero exit still raises.
+- **`python/tests/test_latency.py` asserted the wrong Atmos object-path latency, failing the
+  `Python Wheels` workflow's `macos-latest` and `windows-latest` `pytest` steps.** The test
+  claimed an `AtmosEncoder`'s `latency.transform_samples` was `2 * TRANSFORM_DELAY_SAMPLES`
+  (512); the real, correct figure — matched by `tests/decoder/test_latency.cpp` (the C++ ground
+  truth the test's own docstring says it mirrors), `tests/capi/test_capi.cpp`, and
+  `docs/library/decoding.md` — is `TRANSFORM_DELAY_SAMPLES` plus the §7.1 QMF filterbank's own
+  analysis+synthesis delay (`dsp::kQmfDelay`, 576 samples, not exposed through the Python
+  bindings), 832 total: JOC reconstruction pulls objects back out of the decoded bed in a
+  64-band complex QMF domain, not the MDCT's. No encoder defect — the Python test alone had
+  drifted from the C++ side it was meant to track. Not caught by `ubuntu-latest`'s wheel job,
+  which fails earlier at an unrelated C++ build step, nor by `ci.yml`'s C++ matrix, which never
+  runs `python/tests/`.
+- **`tools/checks/check_matrix_coverage.py`'s Annex E tools check false-failed on `numblkscod`**,
+  which `tools/ci/run_codec_matrix.sh` has exercised with real values (`numblkscod:0/1/2`, plus
+  `cpl+numblkscod:1`) since `EQ11`. `plan::kToolsSyntax` spells that entry `numblkscod:N` in its
+  primary token list — a literal placeholder, since unlike `cpl`/`spx`/`aht` it has no bare form
+  `parse_tools` accepts — but the check's own `matrix_tool_tokens()` already bares every
+  real `numblkscod:0`-shaped invocation down to `numblkscod` per its documented convention for
+  parameterised tokens; the canonical side never applied that same normalisation, so the two
+  spellings could never match regardless of what the matrix actually ran. Masked for a while by
+  an unrelated `run_codec_matrix.sh` abort earlier in the same job (fixed above); once that
+  stopped hiding it, the gap showed up on `main` as a "FFmpeg Validate" failure with no real
+  coverage gap behind it.
+- **`tools/ci/fuzz_encoder_space.py`'s `classify()` false-failed the sub-gate-loudness refusal**
+  (`dialnorm=auto` correctly declining to measure BS.1770-4 loudness on generated audio entirely
+  below the -70 LKFS absolute gate — see `REFUSALS`'s own comment on why the generator produces
+  that material on purpose). The check only looked for a `REFUSALS` message when the encoder
+  exited `1`; the CLI's own structured exit codes (roadmap `IO8`) put this specific refusal on
+  `5` (a runtime condition, not a usage error) rather than `1`, so it read as a hard failure
+  instead of a recognised refusal. Fixed by matching the message on any non-zero exit rather than
+  gating on a specific code, and pinned as a new `REGRESSION_SEEDS` entry.
+- **`tools/ci/fuzz_eac3_encoder_space.py`'s `classify()` had the same gap**, independently, for
+  its own `sub-gate loudness` and `unmeasurable loudness` entries (the latter is `atmos-encode`'s
+  own wording for the identical BS.1770-4 absolute-gate refusal, reached through `eac3-encode` or
+  `atmos-encode` rather than plain `encode`). Unlike the sibling harness, this one's exit-code
+  check exists for a real reason — the first defect it ever found was an `assert()` abort that a
+  blanket `!= 0` would have swallowed as a tolerated refusal — so the fix narrows rather than
+  removes it: `classify()` now checks `REFUSALS` on exit `1` *or* `5`, the CLI's own two
+  refusal-capable codes, while any other code (including the abort signatures the original check
+  was written to catch) still fails outright. Pinned two new `REGRESSION_SEEDS` entries, one per
+  wording.
 - **`ac3::verify`'s E-AC-3 mirror self-check false-failed on a real, correctly-decoded
   coupling-channel delta correction.** The decoder's own bitstream parsing read `cpldeltbae`
   correctly throughout; only its self-check trace was wrong, hardcoding an empty `DeltaSegments`
@@ -210,11 +359,31 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   allocation, ADM parsing and signing verification, each with a reproducer under `fuzz/regressions/`.
 - **`dither=off`/`nodither`** pins `dithflag` at 0 for the one caller that needs bit-for-bit
   agreement between two decodes (`verify_gold_reference.sh`'s decoder-agreement gate).
+- **`mp4::Reader` could index far past its input buffer** on a fragmented box using ISOBMFF's
+  64-bit largesize escape to declare a size close to `UINT64_MAX`: the unchecked
+  `parse_pos + box.size` addition wrapped past 2^64, sending the parse position behind the
+  streaming reader's sliding window and underflowing the next offset computation into a
+  near-`SIZE_MAX` index. Found by `fuzz-short` (`VX13`); reproducer under
+  `fuzz/regressions/fuzz_mp4_demux/`.
 - **`build-footprint`'s minimum-footprint decoder image ceiling** (`PF7`) was stale: it and
   `docs/performance-trend.md`'s footprint table were measured early in PF6/PF7's own feature
   branch, before that branch's own later `develop` merges landed DC10's QMF-domain JOC
   reconstruction and other decode-path growth the profile genuinely needs. Re-measured and
   re-based to the current 412,516-byte image (ceiling now 465,000).
+- **Packaging manifests and the Homebrew tap caught up to v0.9.0-beta.1** (`DR1`): the vcpkg
+  port, Homebrew formula/cask, winget manifest and Conan recipe were still pinned to
+  v0.8.0-beta.2's tarball/binary hashes after the second release in a row; all four and the live
+  `iainchesworthlabs/homebrew-ac3forge` tap now point at the real v0.9.0-beta.1 release assets
+  (hashes computed directly against the downloaded assets and cross-checked against the release's
+  own published `SHA512SUMS`).
+- **Stale documentation corrected** (`DR5`): several pages still described shipped work as not
+  yet done — PyPI publishing and the Homebrew tap as pending/unpublished, macOS as CLI-only, the
+  ADM bridge and E-AC-3 decode-time DRC tokens as not wired up, MPEG-TS live sessions as
+  non-incremental, a stale pre-move `apps/cli/main.cpp` path, and a since-fixed FFmpeg bug
+  (upstream trac #9996) presented as an open one. Also fixes the `DR9` contradiction:
+  `docs/verification.md`, `docs/platforms/linux.md`, `docs/platforms/windows.md` and this file's
+  own 0.9.0-beta.1 Known gaps section below still described ALSA passthrough as unconfirmed
+  against real hardware after Raspberry Pi's HDMI-to-receiver validation had already confirmed it.
 
 ## [0.9.0-beta.1] - 2026-08-22
 
@@ -424,8 +593,11 @@ surface, and continued `apps/cli` command-group extraction.
   launch.
 - Objects still will not decode as *objects* in Dolby's own decoder or hardware — unchanged from
   0.6.0-beta.1; `verify-objects` checks a stream against its own signature, not Dolby's gate.
-- Exclusive-mode S/PDIF/HDMI passthrough has not been confirmed against real bitstreaming
-  hardware on any platform, ALSA, PipeWire or CoreAudio.
+- Exclusive-mode S/PDIF/HDMI passthrough has been confirmed against real bitstreaming hardware on
+  ALSA only, via a Raspberry Pi 4B to a real Atmos-capable AVR over HDMI (see
+  [docs/platforms/raspberry-pi.md](docs/platforms/raspberry-pi.md); this record corrected
+  post-release once that validation's own docs were reconciled). WASAPI exclusive mode, PipeWire
+  and CoreAudio remain unconfirmed against real bitstreaming hardware on any platform.
 - `fscod2` audio content has no external decode oracle at all — verified only by this project's
   own encoder/decoder round trip.
 

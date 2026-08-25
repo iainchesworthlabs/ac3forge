@@ -6,9 +6,9 @@
 #
 # The build job runs continuously (every push/PR touching python/**) and always uploads wheels as
 # an artifact - "buildable and testable" is checked the same way _build.yml's continuous
-# windows-msvc packaging smoke test checks "packageable". Publishing to PyPI is a second, gated
-# job - see docs/releasing.md's "Publishing to PyPI" for what has to be provisioned before it can
-# run at all.
+# windows-msvc packaging smoke test checks "packageable". Publishing to PyPI is a second job,
+# gated on a v* tag push - see docs/releasing.md's "Publishing to PyPI" for how it's provisioned
+# (already done; ac3forge is live on PyPI).
 name: Python Wheels
 
 on:
@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m venv .pyvenv
-          .pyvenv/bin/python -m pip install --quiet --upgrade pip
+          .pyvenv/bin/python -m pip install --quiet "pip==24.3.1"
           .pyvenv/bin/python -m pip install --quiet --require-hashes \
             -r requirements/requirements-pytest.txt
           # --find-links, not `pip install wheelhouse/*.whl`: cibuildwheel
@@ -144,10 +144,9 @@ jobs:
           .pyvenv/bin/python -m pytest python/tests \
             --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
 
-  # Off until a maintainer provisions PyPI trusted publishing and creates the `pypi` GitHub
-  # environment this job targets - see docs/releasing.md. Until then this job's environment
-  # reference has nothing to authorize against and the run fails cleanly at that step; the build
-  # job above and its wheel artifacts are unaffected either way.
+  # Publishes via PyPI trusted publishing (OIDC) against the `pypi` GitHub environment - both are
+  # provisioned; see docs/releasing.md's "Publishing to PyPI". Gated on a v* tag push, same as
+  # release.yml; the build job above and its wheel artifacts run on every push regardless.
   publish:
     name: Publish to PyPI
     needs: build

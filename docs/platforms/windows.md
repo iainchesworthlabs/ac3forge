@@ -41,11 +41,16 @@ is deliberately explicit about the difference.
     let the ring buffer silently perform a partial write while reporting failure, and the live
     pipeline's Atmos metering step writing past the end of a buffer sized for the object count
     rather than the bed's fixed six channels. Both are fixed; see
-    `src/audio/src/backend/windows/monitor.cpp` and `run_live` in `apps/cli/main.cpp`.
+    `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
+    `apps/cli/commands/live_audio.cpp`.
 
-!!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver"
-    No S/PDIF or HDMI endpoint behind an actual AV receiver has been available during
-    development. `IsFormatSupported` correctly answers no everywhere it has been tried, for
+!!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver on Windows"
+    No S/PDIF or HDMI endpoint behind an actual AV receiver has been connected to a Windows
+    machine during development. A receiver is available now — the one used for [Raspberry Pi's
+    HDMI passthrough
+    validation](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — it just hasn't been
+    cabled to this workstation yet; see roadmap `DR9` for that as outstanding work.
+    `IsFormatSupported` correctly answers no everywhere it has been tried, for
     both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and `..._DOLBY_DIGITAL_PLUS`, and neither
     descriptor has been accepted by a real device. What *is* verified: the exclusive-mode path
     itself works (a Realtek endpoint accepts an exclusive PCM format), the AC-3 bursts are
@@ -131,6 +136,12 @@ the clang-cl equivalent. `windows-msvc` is the only leg packaged continuously �
 every push and uploads the result as a workflow artifact, a standing smoke test of the packaging
 path; tagged releases package all four `release_package` legs (Windows, Linux x64/arm64, macOS).
 See [Packaging](../building.md#packaging).
+
+The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
+`shell\open\command` at the installed `ac3gui.exe` and nudging Explorer to pick up the change with
+`SHChangeNotify`, and reverses both keys on uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/
+`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. Configure/build-verified only: no `makensis`
+locally to actually run the installer and double-click a `.ac3` file afterwards.
 
 ## CI
 

@@ -231,18 +231,18 @@ Roadmap **F2**: Python bindings (`python/`, see
 for Windows, macOS and Linux built by `.github/workflows/wheels.yml` via `cibuildwheel`. That
 workflow's `build` job runs continuously (every push/PR touching `python/**`, same "buildable is
 checked continuously" reasoning as `windows-msvc`'s packaging smoke test above) and always
-uploads the wheels it builds as a workflow artifact — that part needs no provisioning and already
-works today.
+uploads the wheels it builds as a workflow artifact.
 
-**Publishing them to PyPI is off until a maintainer provisions it**, the same shape as GPG signing
-and the Android release keystore below: `wheels.yml`'s `publish` job is gated on both a `v*` tag
-push and the `pypi` GitHub environment existing, and uses
+**Publishing to PyPI is live**: the `pypi` GitHub environment is provisioned and
+[`ac3forge`](https://pypi.org/project/ac3forge/) is a real published package. `wheels.yml`'s
+`publish` job is gated on both a `v*` tag push and the `pypi` environment, and uses
 [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) rather than a stored
 API token — there is no `PYPI_API_TOKEN` secret to leak in the first place. **Nobody should ever
 generate a long-lived PyPI API token and paste it into a chat with an agent or into a GitHub
 secret** — trusted publishing exists specifically so that never has to happen.
 
-One-time setup, done by a maintainer directly on pypi.org and on GitHub:
+The one-time setup that provisioned it, for reference (done by a maintainer directly on pypi.org
+and on GitHub, and not something a future release needs to repeat):
 
 1. On PyPI, either publish the very first `ac3forge` release by hand (`python -m build python/`
    then `twine upload`, using a temporary scoped token deleted immediately after) to create the
@@ -257,17 +257,17 @@ One-time setup, done by a maintainer directly on pypi.org and on GitHub:
    to request the OIDC token from. Optionally add required reviewers on the environment for a
    manual approval gate before a publish actually runs.
 
-Once both sides are set up, pushing a `v*` tag (the same tag that triggers `release.yml`, see
-[Option A](#option-a-tag-based-release-the-normal-path) above) also triggers `wheels.yml`'s
-`publish` job for that tag. Until then, the job's `environment: pypi` reference simply has
-nowhere to authorize against and the workflow run for that job fails cleanly at the permission
-check — the `build` job (and its artifact) is unaffected either way.
+Pushing a `v*` tag (the same tag that triggers `release.yml`, see
+[Option A](#option-a-tag-based-release-the-normal-path) above) triggers `wheels.yml`'s `publish`
+job for that tag, which requests an OIDC token against the `pypi` environment and uploads the
+built wheels — the `build` job (and its artifact) runs on every push regardless.
 
 ## Homebrew formula and cask
 
 A Homebrew formula for `ac3cli` is staged in-tree at
 [`packaging/homebrew/Formula/ac3forge.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Formula/ac3forge.rb)
-and is pending publication to a personal tap (`homebrew-ac3forge`) - see
+and published to the live personal tap
+[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge) - see
 [`packaging/homebrew/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/README.md)
 for why a personal tap rather than a `homebrew-core` submission. Unlike the vcpkg port, this
 packages the CLI (`ac3cli`), not the library: `AC3FORGE_BUILD_CLI=ON` with GUI/tests/examples/

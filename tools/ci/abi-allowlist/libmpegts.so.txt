@@ -1,0 +1,31 @@
+bool std::__equal_aux1<unsigned char const*, unsigned char const*>(unsigned char const*, unsigned char const*, unsigned char const*)
+bool std::operator==<unsigned char, 4ul>(std::array<unsigned char, 4ul> const&, std::array<unsigned char, 4ul> const&)
+int std::__memcmp<unsigned char, unsigned char>(unsigned char const*, unsigned char const*, unsigned long)
+mpegts::Reader::Reader(mpegts::ReadOptions const&)
+mpegts::Reader::Reader(mpegts::Reader&&)
+mpegts::Reader::finish(std::function<void (std::span<std::byte const, 18446744073709551615ul>)> const&)
+mpegts::Reader::operator=(mpegts::Reader&&)
+mpegts::Reader::payloads_read() const
+mpegts::Reader::push(std::span<std::byte const, 18446744073709551615ul>, std::function<void (std::span<std::byte const, 18446744073709551615ul>)> const&)
+mpegts::Reader::stream() const
+mpegts::Reader::stream_found() const
+mpegts::Reader::~Reader()
+mpegts::Writer::Writer(mpegts::AudioTrack, mpegts::MuxOptions, std::vector<std::byte, std::allocator<std::byte> >, std::vector<std::byte, std::allocator<std::byte> >)
+mpegts::Writer::create(mpegts::AudioTrack const&, mpegts::MuxOptions const&)
+mpegts::Writer::finalize()
+mpegts::Writer::push(std::span<std::byte const, 18446744073709551615ul>)
+mpegts::demux(std::span<std::byte const, 18446744073709551615ul>, mpegts::ReadOptions const&)
+mpegts::describe(mpegts::DemuxError)
+mpegts::describe(mpegts::MuxError)
+mpegts::mux(mpegts::AudioTrack const&, std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, mpegts::MuxOptions const&)
+mpegts::mux(mpegts::AudioTrack const&, std::span<std::vector<std::byte, std::allocator<std::byte> > const, 18446744073709551615ul>, mpegts::MuxOptions const&)
+std::__size_to_integer(unsigned long)
+std::in_place
+std::nullopt
+std::ranges::_Cpo::data
+std::ranges::_Cpo::iter_move
+std::ranges::_Cpo::size
+std::ranges::distance
+unsigned int const& std::max<unsigned int>(unsigned int const&, unsigned int const&)
+unsigned long const& std::max<unsigned long>(unsigned long const&, unsigned long const&)
+unsigned long const& std::min<unsigned long>(unsigned long const&, unsigned long const&)

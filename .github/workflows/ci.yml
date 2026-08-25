@@ -72,13 +72,26 @@
 # ARMv8-A instruction, absent from baseline x86-64), was tested directly by
 # pinning -ffp-contract=off project-wide (roadmap PF5) - and DISPROVEN: every
 # arm64 leg still measures ~61.8 dB with the flag on, unchanged from before it
-# existed. The correlation that survives is architecture (every low-scoring
-# leg is aarch64, including macos-llvm's Apple Silicon runner), most likely
-# through libm's own architecture-specific sin/cos in the transform twiddle
-# tables - see docs/building.md's "Floating-point contraction" for the
-# measurement and roadmap VX11 for where that investigation continues. The
-# gate stays SNR-based rather than a bit-exact bitstream comparison until it
-# is resolved either way.
+# existed. Architecture-specific libm sin/cos in the transform twiddle tables
+# was the next hypothesis and is ALSO disproven (roadmap VX11): every
+# std::cos/std::sin call the twiddle-table construction makes is bit-identical
+# between native x86-64 and a real aarch64 cross-build (GCC 16, the same
+# -ffp-contract=off flag, the aarch64-neon SIMD kernel) run under qemu-user -
+# and that build's own gold-reference-gate numbers, not just its twiddle
+# tables, are bit-identical to x86-64's, not the ~61.8 dB every real arm64/
+# macOS CI leg measures. So the gap does not reproduce under any standards-
+# conformant aarch64 execution this project can construct without the real
+# hardware CI already has - which points at either the specific NATIVE
+# aarch64 compiler package GitHub's hosted arm64/macOS runners use (as
+# opposed to a Debian cross-compiler package, the only kind available to
+# reproduce this without that hardware) or a genuine real-silicon FP
+# behaviour qemu's IEEE-754-conformant emulation does not reproduce. See
+# docs/building.md's "Floating-point contraction" for the full measurement.
+# The gate stays SNR-based for its own three checks; a separate cross-
+# platform bitstream-hash gate (tools/checks/check_cross_platform_hash.py,
+# also VX11) now pins the ENCODED bytes of every gold-reference stream per
+# kernel/mode so this specific gap - resolved or not - cannot silently
+# change without CI noticing.
 #
 # Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
 # ctest entry per tst_*.qml suite (label "gui") that Quick-Test-drives the
@@ -351,7 +364,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m venv .lintvenv
-          .lintvenv/bin/python -m pip install --quiet --upgrade pip
+          .lintvenv/bin/python -m pip install --quiet "pip==24.3.1"
           .lintvenv/bin/python -m pip install --quiet --require-hashes \
             -r requirements/requirements-lint.txt
           .lintvenv/bin/ruff --version
@@ -1061,6 +1074,143 @@ jobs:
             --base-dir perf-results/base \
             --head-dir perf-results/head \
             --base-ref "merge base $BASE_SHORT"
+
+  # Roadmap AP4: an ABI-diff gate for the shared libraries, over the
+  # linux-llvm-shared build against the last release tag. Advisory pre-1.0
+  # (continue-on-error: true - there is no ABI-compatibility promise yet to
+  # enforce; see docs/library/index.md's pimpl/config-growth note) and meant
+  # to become required once AP1's freeze ships - deleting that one line is
+  # the whole promotion, the same pattern _build.yml's own matrix.experimental
+  # flag already documents. Mirrors performance-compare's shape above: a
+  # comparison ref (here, the last tag rather than the PR's merge base) built
+  # in a git worktree alongside HEAD, in the same job, so nothing has to be
+  # published or downloaded from anywhere else.
+  #
+  # Two independent checks, both against config-linux-llvm-shared (already
+  # Debug - has DWARF - and BUILD_SHARED_LIBS=ON):
+  #   - abidiff: does this PR change anything abigail can see in the
+  #     public interface of a library that already existed at the last tag.
+  #   - check_abi_symbols.py: does the actual dynamic-symbol export set
+  #     (nm -D --defined-only - exactly what CXX_VISIBILITY_PRESET hidden
+  #     leaves reachable) still match the checked-in allowlist, catching an
+  #     accidentally-exported internal symbol even on a brand first release
+  #     with no tag yet to abidiff against.
+  abi-gate:
+    name: ABI diff vs last release
+    needs: [changes, toolchain-versions]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    continue-on-error: true
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            abigail-tools build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3 software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the last release tag (and its history, for the
+      # worktree below) is in the object store - the default shallow clone
+      # has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/03-llvm-toolchain.sh
+          else bash .github/toolchain/03-llvm-toolchain.sh; fi
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Resolve the last release tag
+        id: last_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          tag="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+          if [ -z "$tag" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No v* tag found yet - nothing to diff against."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "Comparing HEAD against $tag"
+          fi
+
+      - name: Build HEAD (config-linux-llvm-shared)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-llvm-shared
+          cmake --build build/config-linux-llvm-shared -- -k 0
+
+      # A worktree, exactly like performance-compare's own base build: leaves
+      # this checkout's build tree alone and gives the tag its own source
+      # dir, so config-linux-llvm-shared's ${sourceDir}/build/... path never
+      # collides between the two.
+      - name: Build the last release tag (config-linux-llvm-shared)
+        if: steps.last_tag.outputs.skip == 'false'
+        shell: bash
+        env:
+          LAST_TAG: ${{ steps.last_tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../abi-base "$LAST_TAG"
+          pushd ../abi-base >/dev/null
+          cmake --preset config-linux-llvm-shared
+          cmake --build build/config-linux-llvm-shared -- -k 0
+          popd >/dev/null
+
+      - name: abidiff each shared library against the last release
+        if: steps.last_tag.outputs.skip == 'false'
+        shell: bash
+        env:
+          LAST_TAG: ${{ steps.last_tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## ABI diff vs $LAST_TAG (advisory pre-1.0)"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          status=0
+          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
+                     libmatroska.so libmp4.so libmpegts.so; do
+            head_lib="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
+            base_lib="$(find ../abi-base/build/config-linux-llvm-shared -name "$lib" -print -quit)"
+            echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            if [ -z "$head_lib" ]; then
+              echo "(not built at HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
+            elif [ -z "$base_lib" ]; then
+              echo "(not present at $LAST_TAG - new library)" | tee -a "$GITHUB_STEP_SUMMARY"
+            elif ! abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"; then
+              status=1
+            fi
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit "$status"
+
+      - name: Exported-symbol allowlist check
+        shell: bash
+        run: |
+          set -euo pipefail
+          libs=()
+          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
+                     libmatroska.so libmp4.so libmpegts.so; do
+            found="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
+            [ -n "$found" ] && libs+=(--lib "$found")
+          done
+          python3 tools/ci/check_abi_symbols.py \
+            --allowlist-dir tools/ci/abi-allowlist "${libs[@]}"
 
   # FFmpeg as an independent oracle (CONTRIBUTING.md's "Oracles" list, #2),
   # automated - previously a manual/developer-only practice. Builds ac3cli

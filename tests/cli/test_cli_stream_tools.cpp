@@ -36,8 +36,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path() -
+// see tests/CMakeLists.txt's comment on that define for why.
 fs::path scratch_dir() {
-    auto dir = fs::temp_directory_path() / "ac3forge_cli_stream_tool_tests";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli_stream_tools";
     fs::create_directories(dir);
     return dir;
 }

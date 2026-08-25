@@ -11,29 +11,27 @@
 # bundled .app), not a replacement for the Formula.
 #
 # Staged here (packaging/homebrew/Casks/ac3gui.rb), the same way the Formula
-# was, for validation against a real release before being copied into a
-# personal tap (homebrew-ac3forge) as Casks/ac3gui.rb - see
-# packaging/homebrew/README.md. Copying it into the tap and pushing there is
-# a separate, manual step - not done as part of landing this file.
+# was, for validation against a real release, and copied into the live
+# personal tap (iainchesworthlabs/homebrew-ac3forge) as Casks/ac3gui.rb after
+# each bump - see packaging/homebrew/README.md.
 #
-# v0.8.0-beta.2 is the first tagged release whose macos-llvm leg builds
-# AC3FORGE_BUILD_GUI=ON (see docs/platforms/macos.md#gui-on-macos), so it is
-# the first release whose ac3forge-*-Darwin.dmg actually contains
-# ac3gui.app - version/sha256 below are real values pinned from that
-# release, not placeholders. **Every release tag** after this one still
-# needs the same follow-up update "Every release tag" in
-# docs/releasing.md#homebrew-formula-and-cask already documents for the
-# sibling Formula: bump version, recompute sha256 from that release's own
-# ac3forge-*-Darwin.dmg, validate locally, then copy into the tap.
+# v0.8.0-beta.2 was the first tagged release whose macos-llvm leg builds
+# AC3FORGE_BUILD_GUI=ON (see docs/platforms/macos.md#gui-on-macos), so it was
+# the first release whose ac3forge-*-Darwin.dmg actually contained
+# ac3gui.app. **Every release tag** needs the same follow-up update "Every
+# release tag" in docs/releasing.md#homebrew-formula-and-cask already
+# documents for the sibling Formula: bump version, recompute sha256 from
+# that release's own ac3forge-*-Darwin.dmg, validate locally, then copy into
+# the tap.
 cask "ac3gui" do
-  version "0.8.0-beta.2"
-  # Pinned from v0.8.0-beta.2's actual release asset (GitHub's own reported
-  # digest for ac3forge-0.8.0-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
+  version "0.9.0-beta.1"
+  # Pinned from v0.9.0-beta.1's actual release asset (GitHub's own reported
+  # digest for ac3forge-0.9.0-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
   # SHA512 cmake/Packaging.cmake also computes and publishes alongside it,
   # just a different digest algorithm; Homebrew Casks pin sha256). If
   # `brew install` reports a mismatch, trust brew's reported hash over this
   # one and update it here.
-  sha256 "1a18bac9ffecc1e5e57ea665d8ee1b307b950d3df1b35847db54052c82012bec"
+  sha256 "fa79d65a560d2c662698a73e0bb88f09bf91970cabfc937c406f783482f3a596"
 
   # CPack's dmg filename carries only MAJOR.MINOR.PATCH
   # (cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME), dropping any

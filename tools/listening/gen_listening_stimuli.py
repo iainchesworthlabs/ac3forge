@@ -186,7 +186,7 @@ def ffmpeg_decode(coded, wav, channels=None):
     if channels is not None:
         cmd += ["-ac", str(channels)]
     cmd += ["-c:a", "pcm_f32le", str(wav)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"ffmpeg failed on {coded}:\n{result.stderr}")
     # One line per distinct complaint, deduplicated - FFmpeg repeats the same
@@ -216,7 +216,7 @@ def encode_ours(source_wav, coded, codec, kbps):
         cmd = [CLI, "encode", str(source_wav), str(coded), str(kbps)]
     else:
         cmd = [CLI, "eac3-encode", str(source_wav), str(coded), str(kbps), "auto"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"ac3cli failed:\n{result.stderr}")
 
@@ -556,9 +556,9 @@ def main() -> int:
         print("stream, not the encoder's quality - see this script's own header.")
 
     print(f"\nwrote the {args.method} stimulus set to {args.out}")
-    print(f"  trials.csv               the key: which label is which condition")
-    print(f"  responses_template.csv   fill one copy in per listener")
-    print(f"  session.json             seed, render mode, baseline version")
+    print("  trials.csv               the key: which label is which condition")
+    print("  responses_template.csv   fill one copy in per listener")
+    print("  session.json             seed, render mode, baseline version")
     return 0
 
 

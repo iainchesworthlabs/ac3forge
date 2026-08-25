@@ -225,27 +225,34 @@ struct Options {
     // per invocation rather than as a standing preference - see
     // write_partial_output.
     bool keep_partial = false;
-    // The §7.9.4 fast forward MDCT (plan::Tools::fast_mdct), on by default
-    // like the library configs it feeds; fast-mdct=off forces the direct
-    // §8.2.3.2 reference form wherever this command encodes (encode/sine and
-    // the atmos/record/live session builders), the same key=off shape
-    // surmixlev=/lfemix= already use. E-AC-3's own tools= string reaches the
-    // same field with its own tokens ("nofastmdct" to force direct, matching
-    // "noatten"; the old opt-in "fastmdct" parses as a no-op) - AC-3 has no
-    // tools= string to extend, so this option is its equivalent, the same
-    // relationship 'couple' has to cpl/cpl:N. The bare word 'fast-mdct'
-    // (the opt-in spelling from when this defaulted off) stays accepted and
-    // now names what already happens.
+    // The §7.9.4 fast forward MDCT, on by default like the library configs
+    // it feeds; fast-mdct=off forces the direct §8.2.3.2 reference form
+    // wherever this command encodes (encode/sine and the atmos/record/live
+    // session builders, via plan::Tools::fast_mdct) AND wherever it decodes
+    // JOC's own bed analysis under joc-domain=mdct (via
+    // DecoderConfig::fast_mdct, PF8 - a decode's only forward transform,
+    // reached from 'decode'/'monitor'/'live'; QMF-domain reconstruction,
+    // the default, has no forward/direct choice to make). Same key=off
+    // shape surmixlev=/lfemix= already use. E-AC-3's own tools= string
+    // reaches the encode-side field with its own tokens ("nofastmdct" to
+    // force direct, matching "noatten"; the old opt-in "fastmdct" parses as
+    // a no-op) - AC-3 has no tools= string to extend, so this option is its
+    // equivalent, the same relationship 'couple' has to cpl/cpl:N. The bare
+    // word 'fast-mdct' (the opt-in spelling from when this defaulted off)
+    // stays accepted and now names what already happens.
     bool fast_mdct = true;
-    // The decode-side counterpart: §7.9.4 step 3's complex transform via
-    // the radix-2 FFT instead of the pseudocode's direct sum
-    // (DecoderConfig::fast_imdct - see its own comment for the accepted
-    // quality evidence). On by default like the library config it feeds;
-    // fast-imdct=off - or mode=reference, which turns this AND fast_mdct
-    // off together - forces the direct evaluation for runs where agreement
-    // with the spec's stated arithmetic matters more than speed. 'decode'
-    // reads it; the QC/levels/playback decoders stay on the library
-    // default, where a ~1e-12 difference cannot move a reported figure.
+    // The decode-side counterpart for INVERSE transforms: §7.9.4 step 3's
+    // complex transform via the radix-2 FFT instead of the pseudocode's
+    // direct sum (DecoderConfig::fast_imdct - see its own comment for the
+    // accepted quality evidence). Covers PCM reconstruction, enhanced
+    // coupling and JOC object synthesis; fast_mdct above is the one FORWARD
+    // exception (JOC bed analysis). On by default like the library config
+    // it feeds; fast-imdct=off - or mode=reference, which turns this AND
+    // fast_mdct off together - forces the direct evaluation for runs where
+    // agreement with the spec's stated arithmetic matters more than speed.
+    // 'decode' reads it; the QC/levels/playback decoders stay on the
+    // library default, where a ~1e-12 difference cannot move a reported
+    // figure.
     bool fast_imdct = true;
     // The two verbosity tokens, recorded here as well as in the file-scope
     // flags set_verbosity settles (see above): a command that wants to reason
@@ -355,6 +362,12 @@ struct Options {
     // every dependent substream's height/wide/rear channels included,
     // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
     bool qc_rendered_layout = false;
+    // 'qc' only: objects=<layout> (roadmap IO12). Set when the stream's
+    // dynamic objects should be re-rendered by their own OAMD position onto
+    // the named advanced sound system layout and metered through BS.1770-5
+    // Annex 4, instead of (or as well as - the two are independent switches)
+    // the channel-based measurement layout= above selects. See run_qc.
+    std::optional<ac3::plan::LayoutId> qc_objects_layout;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a

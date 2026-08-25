@@ -134,14 +134,18 @@ qc options (qc; any order, after the positional arguments):
   layout=rendered   meter the whole assembled program instead, every
                     dependent substream's height/wide/rear channels
                     included (BS.1770-5 Annex 3's extended algorithm)
+  objects=<layout>  re-render dynamic objects by their own OAMD position
+                    onto <layout> (51|71|512|514|714) and meter that too
+                    (BS.1770-5 Annex 4); dynamic-object-only programmes
+                    only
 ```
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
 encoded), and bare `heavy` prefers `compr` where the stream carries it — the decode-time meaning
-of these two tokens is deliberately the mirror of their encode-time meaning. That applies to
-AC-3 decode only: those two tokens are silently inert on `.ec3` input. `fast-imdct=off` and
-`mode=` are the exception — they select the inverse transform's evaluation and apply to both
-codecs' decode alike.
+of these two tokens is deliberately the mirror of their encode-time meaning. Both apply to
+E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
+ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
+both codecs' decode alike.
 
 See [Metadata](../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
@@ -803,7 +807,7 @@ refused, not invented.
 override the value carried from the source, and `dialnorm=auto` measures the *source* the same
 way an encode from a WAV would.
 
-## Qc options (`qc`): `preset=`, `layout=`
+## Qc options (`qc`): `preset=`, `layout=`, `objects=`
 
 ```text
 qc options (qc; any order, after the positional arguments):
@@ -816,6 +820,10 @@ qc options (qc; any order, after the positional arguments):
   layout=rendered   meter the whole assembled program instead, every
                     dependent substream's height/wide/rear channels
                     included (BS.1770-5 Annex 3's extended algorithm)
+  objects=<layout>  re-render dynamic objects by their own OAMD position
+                    onto <layout> (51|71|512|514|714) and meter that too
+                    (BS.1770-5 Annex 4); dynamic-object-only programmes
+                    only
 ```
 
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
@@ -913,6 +921,53 @@ sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes n
 layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
 meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
 a rear centre at M+180, at unity.
+
+### `objects=<layout>`
+
+`layout=` above meters *channels* — the bed, or the whole assembled program with every dependent's channels
+laid over it. Neither sees a dynamic object's own position: this project's own encoder pans every object onto
+the flat 5.1 ring at encode time (`ac3::spatial::pan_room`'s own "a raised object folds onto the ring... at
+full level"), so an object authored directly overhead measures no differently from one on the ring — the bed
+a legacy 5.1 decoder plays has nowhere else to put it.
+
+ITU-R BS.1770-5 (11/2023) Annex 4 covers this: it defines no weighting table of its own, and instead says to
+render object-based (or combined channel- and object-based) audio to a real loudspeaker configuration first,
+then meter *that* through Annexes 1/3 — and to report which configuration and rendering algorithm did the
+rendering, since two reasonable choices can legitimately disagree by several LU (Annex 4's own worked example,
+its Table 6, does exactly that across renderers and layouts). `objects=<layout>` is that: it re-renders each
+dynamic object by its own OAMD position — including height — onto the named layout (`51`, `71`, `512`, `514`
+or `714`) via `ac3::spatial`'s direction-based panner (the same height-aware geometry `ac3::plan`'s
+layout-to-layout channel renderer uses internally), then meters the result through the Annex 3 algorithm
+`layout=rendered` already implements:
+
+```text
+$ ac3cli qc atmos.ec3 objects=514
+qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+  ...
+  objects=5.1.4  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD
+  position, via ac3::spatial's direction panner, then Annex 3)
+  objects: measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):
+  ...
+```
+
+`layout=`/`layout=rendered` and `objects=<layout>` are independent switches — `objects=` adds a third,
+separately-labelled report rather than replacing either of the other two.
+
+Restricted to a **dynamic-object-only** programme — the only shape `atmos-encode` produces, and what Dolby's
+own reference JOC test streams declare. For that shape the decoded bed already IS the objects' 5.1 VBAP fold
+(`oba/oamd.hpp`'s own comment: "the 5.1 downmix IS the objects' VBAP render"), so `objects=` starts every
+full-bandwidth target channel at silence and sums each object's own recovered audio
+(`DecodedAccessUnit::object_audio`) into it, rather than adding to a bed that already carries it and
+double-counting. A bed-and-objects programme — third-party content whose bed may carry independent,
+non-object material this decoder cannot separate back out — is refused rather than risk silently doubling or
+dropping content:
+
+```text
+$ ac3cli qc plain_channel_based.ec3 objects=514
+error: programme 0 carries no dynamic-object-only OAMD - objects= needs OAMD dynamic
+objects (try layout=rendered or layout=bed instead)
+```
 
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the

@@ -137,11 +137,11 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         // pattern as PR #50.
         auto decoder = std::make_unique<ac3::Eac3Decoder>(
             ac3::DecoderConfig{.drc_scale = meta.drc_scale,
-                               .fast_mdct = meta.fast_mdct,
                                .fast_imdct = meta.fast_imdct,
                                .heavy_compression = meta.p.heavy.has_value(),
                                .output = output,
-                               .concealment = meta.concealment});
+                               .concealment = meta.concealment,
+                               .fast_mdct = meta.fast_mdct});
         std::vector<std::size_t> order;
         for (const auto& unit : *units) {
             const auto decoded = decoder->decode_access_unit(unit);
@@ -220,7 +220,6 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         }
         ac3::FrameDecoder decoder{
             ac3::DecoderConfig{.drc_scale = meta.drc_scale,
-                               .fast_mdct = meta.fast_mdct,
                                .fast_imdct = meta.fast_imdct,
                                .heavy_compression = meta.p.heavy.has_value(),
                                .output = output,

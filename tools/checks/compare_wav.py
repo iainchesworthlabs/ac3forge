@@ -136,7 +136,7 @@ def diff_rms_dbfs(reference: list[float], actual: list[float]) -> float:
     only on the way into JSON, same as snr_db's +inf."""
     if not reference:
         return -math.inf
-    power = sum((r - a) ** 2 for r, a in zip(reference, actual)) / len(reference)
+    power = sum((r - a) ** 2 for r, a in zip(reference, actual, strict=True)) / len(reference)
     if power <= 1e-30:
         return -math.inf
     return 10.0 * math.log10(power)

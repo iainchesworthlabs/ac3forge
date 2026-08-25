@@ -143,7 +143,7 @@ struct FrameParameters {
         }
         std::size_t offset = 0;
         for (int i = 0; i < object; ++i) {
-            const auto earlier = shapes[static_cast<std::size_t>(i)];
+            const auto& earlier = shapes[static_cast<std::size_t>(i)];
             if (!earlier.present) {
                 continue;
             }
