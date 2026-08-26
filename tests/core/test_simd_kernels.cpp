@@ -639,6 +639,7 @@ TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", 
 
 TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit",
          "[simd][avx2]") {
+#ifdef AC3FORGE_HAVE_AVX2_TIER
     // Same shape, and for the same reason, as the inverse case below: the
     // low-level AVX2 body needs FastMdctTables<512>, private to mdct.cpp,
     // so this goes through the PUBLIC ac3::mdct512_forward_batch4, which
@@ -680,10 +681,14 @@ TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit
         }
     }
     CHECK(mismatches == 0);
+#else
+    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+#endif
 }
 
 TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-bit",
          "[simd][avx2]") {
+#ifdef AC3FORGE_HAVE_AVX2_TIER
     // Unlike the kernels above, this one is tested through the PUBLIC
     // ac3::imdct512_windowed_batch4 (mdct.hpp) rather than
     // ac3::internal::avx2:: directly: the low-level AVX2 body needs the
@@ -732,4 +737,7 @@ TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-b
         }
     }
     CHECK(mismatches == 0);
+#else
+    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+#endif
 }
