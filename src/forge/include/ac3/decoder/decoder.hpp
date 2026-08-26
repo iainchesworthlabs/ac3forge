@@ -146,20 +146,19 @@ struct DecoderConfig {
     // inverse doc comment. Applies to every inverse transform a DECODE
     // runs: both decoders' PCM reconstruction, the three per-block
     // inverses inside eac3::ecpl_channel_spectrum's enhanced-coupling
-    // reconstruction, and joc::reconstruct's per-object synthesis (the
-    // OTHER half of that function's own pair - fast_mdct just above is its
-    // forward transform). It never reaches an encoder: the encoder-internal
-    // inverse uses (spx/ecpl copy-source reconstruction) read
-    // eac3::FrameConfig's own fast_mdct instead, so nothing about ENCODED
-    // output depends on this flag. Default ON since the owner accepted the
-    // quality evidence (the same gate EncoderConfig::fast_mdct passed
-    // through): worst transform-level relative error 7.8e-14 against the
-    // direct form, 180 s stream agreement 214.9 dB SNR (AC-3) / 284.7 dB
-    // (E-AC-3), decodes 4.5-4.7x faster. false selects the pseudocode's own
-    // direct evaluation - the REFERENCE form, and the oracle the fast path's
-    // tests validate against; ac3cli exposes the pair as
-    // mode=performance|reference for exactly the runs where bit-for-bit
-    // agreement with the spec's stated arithmetic matters more than speed.
+    // reconstruction, and oba::joc::reconstruct's per-object synthesis. It
+    // never reaches an encoder: the encoder-internal inverse uses
+    // (spx/ecpl copy-source reconstruction) read eac3::FrameConfig's own
+    // fast_mdct instead, so nothing about ENCODED output depends on this
+    // flag. Default ON since the owner accepted the quality evidence (the
+    // same gate EncoderConfig::fast_mdct passed through): worst
+    // transform-level relative error 7.8e-14 against the direct form, 180 s
+    // stream agreement 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3), decodes
+    // 4.5-4.7x faster. false selects the pseudocode's own direct evaluation
+    // - the REFERENCE form, and the oracle the fast path's tests validate
+    // against; ac3cli exposes the pair as mode=performance|reference for
+    // exactly the runs where bit-for-bit agreement with the spec's stated
+    // arithmetic matters more than speed.
     bool fast_imdct = true;
     // §7.7.2: prefer compr over dynrng wherever a compr word exists, which is
     // what a set-top box's RF mode does. §7.7.2.1 requires falling back on
@@ -179,7 +178,7 @@ struct DecoderConfig {
     // error, exactly as before. See ConcealmentPolicy.
     ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
     // §7.9.4's forward MDCT fold, for JOC bed analysis under
-    // joc::Domain::kMdctBand only (PF8) - the one place a DECODE ever runs a
+    // oba::joc::Domain::kMdctBand only (PF8) - the one place a DECODE ever runs a
     // forward transform. §6.6.6's per-band matrix combines the transmitted
     // coefficients against the BED re-expressed in the same spectral domain
     // the matrix was estimated in, so reconstruct() must forward-transform
@@ -189,7 +188,7 @@ struct DecoderConfig {
     // Default ON, the same evidence and margin fast_imdct's own default
     // rests on: worst transform-level relative error 1.3e-13 (the same
     // forward kernel mdct512_forward's own fast-path tests already pin),
-    // full joc::reconstruct output agreeing 321-325 dB SNR against the
+    // full oba::joc::reconstruct output agreeing 321-325 dB SNR against the
     // direct form over three objects (tests/oba/test_atmos.cpp), and the
     // bed analysis' own kernel cost (isolated from object synthesis, which
     // this does not touch) measured 11.0x - 238 to 2628 microseconds per
@@ -197,28 +196,28 @@ struct DecoderConfig {
     // joc_reconstruct_mdct_4obj[_direct] - a fixed ~2.4 ms saved per frame
     // regardless of object count, ~2.2 s over a 30 s kMdctBand decode (see
     // ROADMAP.md PF8). false selects the direct §8.2.3.2 form -
-    // joc::reconstruct's own default, and what every fast-path test
+    // oba::joc::reconstruct's own default, and what every fast-path test
     // validates against. joc.hpp's reconstruct() doc comment names this
     // field for its first bool parameter, the way it already
     // named fast_imdct for the second.
     bool fast_mdct = true;
     // Which domain JOC object reconstruction applies §6.6.6's matrix in.
-    // joc::Domain::kQmf is what the clause describes and what a licensed
+    // oba::joc::Domain::kQmf is what the clause describes and what a licensed
     // decoder runs: §7.1's 64-band complex QMF, ac3::dsp::QmfAnalysis.
-    // joc::Domain::kMdctBand is the cheaper approximation over 256 MDCT
+    // oba::joc::Domain::kMdctBand is the cheaper approximation over 256 MDCT
     // bins that predates this tree having a filterbank at all - correct
     // only for a stream whose matrix was estimated the same way, which in
     // practice means one this project's own encoder produced with
     // AtmosConfig::joc_domain to match. Note the two domains do not have
     // the same latency: object audio lags the bed by
-    // joc::reconstruction_delay(domain), 256 samples against 576.
+    // oba::joc::reconstruction_delay(domain), 256 samples against 576.
     //
     // Default kQmf: it is both what the clause says and, measured, the
     // cheaper of the two here - 0.70 ms/frame against 0.88 for four
     // objects, because the MDCT path's inverse is deliberately pinned to
     // §7.9.4's direct form while the filterbank has only the one
     // evaluation.
-    joc::Domain joc_domain = joc::Domain::kQmf;
+    oba::joc::Domain joc_domain = oba::joc::Domain::kQmf;
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // The decoder's half of EncoderConfig::trace: when set, decode_frame()
     // records the same per-block, per-stream state it derived from the wire,

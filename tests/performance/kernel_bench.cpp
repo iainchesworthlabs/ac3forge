@@ -373,7 +373,7 @@ int main(int argc, char** argv) {
 
     // --- band_energy (one real 5.1 frame, default 9-band JOC layout) ---------
     const auto frame0 = audio.channel(0).subspan(0, static_cast<std::size_t>(ac3::kSamplesPerFrame));
-    const auto& mapping = ac3::joc::kSubbandToBand[4];  // idx 4 -> 9 bands, AtmosConfig's default
+    const auto& mapping = ac3::oba::joc::kSubbandToBand[4];  // idx 4 -> 9 bands, AtmosConfig's default
     results.push_back(time_kernel("band_energy", [&] {
         std::array<double, 9> energy{};
         ac3::oba::band_energy(frame0, mapping, energy, /*fast=*/false);
@@ -387,7 +387,7 @@ int main(int argc, char** argv) {
         g_sink += energy[0];
     }));
 
-    // --- the QMF-domain siblings (joc::Domain::kQmf) --------------------------
+    // --- the QMF-domain siblings (oba::joc::Domain::kQmf) --------------------------
     // Same frame, same band layout, read off §7.1's 64 complex subbands
     // instead of 256 MDCT bins. The filterbank rows underneath it are the
     // per-timeslot primitives both sides are built from - a frame is 24 of
@@ -418,12 +418,12 @@ int main(int argc, char** argv) {
         g_sink += static_cast<double>(out[3]);
     }));
 
-    // --- joc::reconstruct, both domains, one whole 4-object frame -------------
+    // --- oba::joc::reconstruct, both domains, one whole 4-object frame -------------
     // The decode-side cost the WASM demo and the Android app actually pay:
     // five downmix channels analysed and four objects synthesised, per frame.
     {
         std::vector<std::vector<float>> bed_storage(
-            static_cast<std::size_t>(ac3::joc::kNumChannels5X),
+            static_cast<std::size_t>(ac3::oba::joc::kNumChannels5X),
             std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
         for (std::size_t ch = 0; ch < bed_storage.size(); ++ch) {
             const auto source =
@@ -435,7 +435,7 @@ int main(int argc, char** argv) {
         for (const auto& channel : bed_storage) {
             bed.emplace_back(channel);
         }
-        ac3::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 5};
+        ac3::oba::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 5};
         params.matrix.assign(params.coefficient_count(), 0.0);
         for (int object = 0; object < params.objects; ++object) {
             for (int channel = 0; channel < params.channels; ++channel) {
@@ -445,10 +445,10 @@ int main(int argc, char** argv) {
             }
         }
         results.push_back(time_kernel("joc_reconstruct_mdct_4obj", [&] {
-            static ac3::joc::ReconstructionState state;
+            static ac3::oba::joc::ReconstructionState state;
             const auto out =
-                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
-                                      /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
+                ac3::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                                      /*fast_imdct=*/true, ac3::oba::joc::Domain::kMdctBand);
             g_sink += static_cast<double>(out[0][128]);
         }));
         // PF8: bed analysis' own forward transform, isolated from the object
@@ -456,17 +456,17 @@ int main(int argc, char** argv) {
         // Eac3Decoder's real default) - what DecoderConfig::fast_mdct now
         // switches, against the direct §8.2.3.2 form it replaced.
         results.push_back(time_kernel("joc_reconstruct_mdct_4obj_direct", [&] {
-            static ac3::joc::ReconstructionState state;
+            static ac3::oba::joc::ReconstructionState state;
             const auto out =
-                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/false,
-                                      /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
+                ac3::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/false,
+                                      /*fast_imdct=*/true, ac3::oba::joc::Domain::kMdctBand);
             g_sink += static_cast<double>(out[0][128]);
         }));
         results.push_back(time_kernel("joc_reconstruct_qmf_4obj", [&] {
-            static ac3::joc::ReconstructionState state;
+            static ac3::oba::joc::ReconstructionState state;
             const auto out =
-                ac3::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
-                                      /*fast_imdct=*/true, ac3::joc::Domain::kQmf);
+                ac3::oba::joc::reconstruct(bed, params, state, /*fast_mdct=*/true,
+                                      /*fast_imdct=*/true, ac3::oba::joc::Domain::kQmf);
             g_sink += static_cast<double>(out[0][128]);
         }));
 

@@ -1128,11 +1128,21 @@ directory; there is still no threading anywhere in the codec core.
   `ac4::`) so they never enter the frozen surface; release criteria against the standing Known
   gaps; and a cadence/governance statement — the vcpkg reviewer cited "all releases are
   prereleases" alongside the maturity rule.
-- [ ] **AP2 (M)** — Naming and error-type sweep before the freeze. `ac3/oba/joc.hpp` declares
-  `ac3::joc`, not `ac3::oba`; `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` share a name
-  across namespaces; `iec61937` lives under `sinks/`; `FrameError` has no `describe()` while every
-  other error type does (a Python `Ac3EncodeError`'s message is the enumerator's name). Record
-  the codec-vs-codec-blind namespace split in `docs/library/index.md`.
+- [x] **AP2 (M)** — Naming and error-type sweep before the freeze. Done, three real fixes and one
+  deliberate non-fix: `ac3/oba/joc.hpp`/`joc_tables.hpp` now declare `ac3::oba::joc`, matching the
+  path (source- and ABI-breaking — every in-repo caller, the two ABI allowlists and
+  `tools/generators/gen_joc_tables.py` moved with it); `ac3/sinks/` — a directory that only ever
+  held one file, and that file was never a `Sink` type in the first place, `ac3::audio`'s
+  `PassthroughSink`/`MonitorSink` are the real ones — is now `ac3/iec61937/`, header path only,
+  the `ac3::iec61937` namespace was already correctly named (source-breaking for the `#include`
+  path; ABI unaffected since mangled names carry the namespace, not the directory); `FrameError`
+  gained `describe()` (`src/forge/src/encoder/silent_frame.cpp`), and the Python binding's
+  `EncodeFailure` now builds `Ac3EncodeError`'s message from it instead of the enumerator's own
+  name. `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` sharing a name across namespaces is left
+  alone — it is the same base-case-in-the-bare-namespace, extension-in-a-nested-one split the
+  Python bindings already mirror with a real `ac3.eac3` submodule, not an inconsistency — and is
+  now written down as a convention in `docs/library/index.md` alongside the codec-vs-codec-blind
+  namespace split.
 - [x] **AP3 (L)** — Pimpl sweep. Done: every `AC3FORGE_EXPORT` class with non-trivial state now
   hides it behind `struct Impl; std::unique_ptr<Impl> impl_;`, the same pattern the three WAV
   classes already used — `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` (finished from their

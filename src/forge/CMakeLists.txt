@@ -143,7 +143,9 @@ target_sources(forge_objects
         src/encoder/eac3_tools.cpp
         src/encoder/encoder.cpp
         src/encoder/plan.cpp
+        src/encoder/silent_frame.cpp
         src/encoder/transient.cpp
+        src/iec61937/iec61937.cpp
         src/internal/cpu/cpu_features.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
@@ -168,7 +170,6 @@ target_sources(forge_objects
         src/oba/scene_text.cpp
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
-        src/sinks/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/eac3_mirror.cpp
         src/verify/eac3_selfcheck.cpp
