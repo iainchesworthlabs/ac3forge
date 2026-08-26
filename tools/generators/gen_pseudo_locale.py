@@ -76,7 +76,11 @@ def pseudo_localize(source: str) -> str:
     decorated_pieces = [piece.translate(_VOWEL_ACCENTS) for piece in pieces]
 
     decorated = decorated_pieces[0]
-    for placeholder, piece in zip(placeholders, decorated_pieces[1:]):
+    # strict=True documents the real invariant here, not just satisfies the
+    # linter: re.split() on a pattern with N matches always yields N + 1
+    # pieces, so placeholders and decorated_pieces[1:] are the same length
+    # by construction - a mismatch would mean that invariant broke.
+    for placeholder, piece in zip(placeholders, decorated_pieces[1:], strict=True):
         decorated += placeholder + piece
 
     padding_len = max(1, round(len(source) * 0.4))

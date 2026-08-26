@@ -451,14 +451,22 @@ jobs:
       # see that file's own header. qt6-declarative-dev-tools/qt6-base-dev-tools
       # pull in qmlcachegen and the other build-time QML tooling
       # qt_add_qml_module needs; without them the GUI configure step fails
-      # rather than quietly building without AOT-compiled QML.
+      # rather than quietly building without AOT-compiled QML. qt6-l10n-tools
+      # (roadmap UX3) is the separate Debian/Ubuntu package carrying lupdate/
+      # lrelease and Qt6LinguistToolsConfig.cmake - apps/gui/CMakeLists.txt's
+      # find_package(Qt6 ... COMPONENTS ... LinguistTools) fails outright
+      # without it, which - since the whole find_package call is REQUIRED -
+      # is reported as "no prebuilt Qt6 kit found" (cmake/FindQt6.cmake's own
+      # generic REQUIRED-failure message) rather than naming the missing
+      # component specifically.
       - name: Install Qt6 (Linux GUI)
         if: matrix.gui && runner.os == 'Linux'
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq --no-install-recommends \
-            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools
 
       # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
       # split qt6-base-dev/qt6-declarative-dev): one install pulls in
