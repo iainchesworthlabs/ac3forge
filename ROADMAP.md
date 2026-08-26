@@ -599,9 +599,12 @@ machine-readable output and a single failure exit code. Users arrive with contai
   snap, zone gains and spread, AudioDataDLC/PCM essence), and DTS publishes an MIT-licensed
   parser and validator (`DTSProAudio/iab-validator`) to check against. Phase 1 (L): an
   `ac3iab::` bitstream reader in the `ac3adm::` mould, PCM essence first (the DLC coder is the
-  hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
-  files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
-  ingest only; rendering stays with Cavern.
+  hard part), tested against the validator. **Done.** Phase 2: minimal MXF KLV extraction for IAB
+  track files — `ac3iab::parse_mxf_iab` (`mxf.hpp`), governed by SMPTE ST 2067-201, a separate and
+  much shorter standard than ST 2098-2 itself; its own §5.5 clip-wraps the whole bitstream as a
+  single KLV, so extraction needs none of the base MXF standards' Header Metadata object graph or
+  Index Tables. **Done.** Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer.
+  Reader and ingest only; rendering stays with Cavern.
   *Phase 1 done: `ac3iab::` (`src/ac3iab`) parses the full §7/§8 Preamble+IAFrame segment
   framing and every element in §9's Table 4 tree — IAFrame, BedDefinition (+ recursive
   BedDefinition/BedRemap children), ObjectDefinition (+ recursive ObjectDefinition/
