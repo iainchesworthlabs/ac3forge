@@ -1339,6 +1339,56 @@ jobs:
           CI: "1"
         run: npm test
 
+  # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
+  # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
+  # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
+  # of the `build` matrix's steps apply (no ctest suite, no cpack package, no gold-reference
+  # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
+  # ac3::forge_c_shared rather than reusing a desktop preset.
+  #
+  # Linux-only for this first pass, matching build-wasm/build-footprint each being single-OS
+  # too: build.rs links libac3forge_c.so dynamically and copies it next to cargo's own build
+  # output (see rust/README.md's "how linking works") - a real CI run on the simplest platform
+  # first, before widening to the Windows/macOS legs that approach hasn't been proven on yet.
+  #
+  # No toolchain-selection step: rustup (preinstalled on this runner image) auto-detects and
+  # installs rust/rust-toolchain.toml's pinned channel plus its clippy/rustfmt components the
+  # moment `cargo`/`rustup` is invoked from inside rust/ - one canonical version pin, not one
+  # duplicated into this file too, the same "no second copy of a version string" reasoning
+  # _toolchain-versions.yml's own header states for the C/C++ toolchains.
+  build-rust:
+    name: Rust bindings (ac3forge-sys, ac3forge)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Install pinned Rust toolchain
+        working-directory: rust
+        run: rustup show
+
+      - name: cargo build
+        working-directory: rust
+        run: cargo build --workspace --locked
+
+      - name: cargo test
+        working-directory: rust
+        run: cargo test --workspace --locked
+
+      - name: cargo clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # Mirrors ac3::warnings' project-wide "warnings are errors" stance (clippy above) and
+      # .clang-format's "checked in, run it" rule (rustfmt here).
+      - name: cargo fmt --check
+        working-directory: rust
+        run: cargo fmt --check
+
   # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
   # operating system, no filesystem and no hardware floating point. Its own job

@@ -119,7 +119,7 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
 
-**Library, C API and Python**
+**Library, C API, Python and Rust**
 
 - **A pimpl sweep across the exported surface**, so a private-state change is no longer an ABI
   break for anyone linking the shared libraries. [Library overview](docs/library/index.md) records
@@ -127,6 +127,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **An E-AC-3 encoder in the C API and in Python**, covering plain E-AC-3 and the wide
   dependent-substream layouts with the Annex E tools. See [C API](docs/library/c-api.md) and
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
+- **A first Rust binding over the C API**: `ac3forge-sys` (raw, `bindgen`-generated against the C
+  header at build time) plus a safe `ac3forge` wrapper covering AC-3 and E-AC-3 encode/decode. The
+  C API had never crossed a real FFI boundary before — building this found and fixed two real
+  header defects (a missing `ac3forge_object_placement_init()`, undocumented pointer lifetimes on
+  four decoded-audio accessors). See [Rust bindings](docs/library/rust-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
 

@@ -1165,9 +1165,33 @@ directory; there is still no threading anywhere in the codec core.
   — today a `develop` docs change is invisible until a release). Note in `header-map.md` that
   `ac3/audio` is not installed.
 - [ ] **AP9 (L)** — A first non-Python binding over the C API: a Rust `-sys` crate plus a safe
-  wrapper. The C API has no consumer but its own test and example — Python is pybind11-direct,
+  wrapper. ~~The C API has no consumer but its own test and example — Python is pybind11-direct,
   WASM is Embind, Android is app-specific JNI over C++ — so the ABI has never crossed a real FFI
-  boundary. .NET, Node N-API and a reusable Android AAR follow the same header.
+  boundary~~ it now has: `rust/ac3forge-sys` (`bindgen`-generated against
+  `src/capi/include/ac3forge_c/ac3forge.h` at build time, so header drift is caught on every PR
+  rather than discovered later) plus `rust/ac3forge`, a safe wrapper covering AC-3 and E-AC-3
+  encode/decode (single substream) with real round-trip tests against synthesized audio. In-tree
+  at `rust/` — never `add_subdirectory()`'d from the root `CMakeLists.txt`, same shape
+  `apps/android`'s Gradle build already established for a second build system living alongside
+  CMake — with its own CI job (`build-rust` in `_build.yml`, Linux-only for this first pass).
+  `ac3forge-sys` links `forge_c_shared` specifically (not `forge_c_static`): that variant exists
+  precisely so a non-CMake consumer links exactly one library instead of independently
+  rediscovering the codec core's transitive static dependencies. Three real header findings, the
+  actual point of this item: `ac3forge_object_placement_t` had no `_init()` unlike every sibling
+  config struct, so a zero-initialized one silently encoded a muted object (fixed,
+  `ac3forge_object_placement_init()` added); four decoded-audio accessors were missing the
+  pointer-lifetime documentation their AC-3 sibling has (fixed, doc-only); and no status/enum in
+  the header says whether it may gain new values in a future minor release, which the Rust
+  wrapper answers by treating `ac3forge_status_t` as an open set (`Error::Other(i32)`) rather
+  than a closed one that would have to panic or misreport on a code from a newer library — see
+  `rust/README.md`'s own "Header defects found" section for the full detail, including what a
+  future .NET, Node N-API or Android AAR binding over the same header would need to answer for
+  itself. **Not done**: `ac3forge_eac3_access_unit_encoder_t` (wide layouts), the Atmos encoder
+  and OAMD/JOC object-audio decode accessors, the stream-framing helpers
+  (`split_frames`/`split_access_units`/`stream_bsid`), and Windows/macOS CI legs — recorded, not
+  silently missing, in the same README. AP5's still-open C API gap (`scan`, caller-buffer `_into`
+  decode forms, metering) needs no design change here: `bindgen` picks up new declarations the
+  moment they land.
 - [ ] **AP10 (L)** — An out-of-tree GStreamer element or FFmpeg external-encoder wrapper over
   the C API, as the way >5.1 and JOC encode reach the transcode ecosystem: FFmpeg's E-AC-3
   encoder has been 5.1-max since [trac #3595](https://trac.ffmpeg.org/ticket/3595) (2014) and
