@@ -75,21 +75,21 @@ built here yet, for reasons that are not about API unfamiliarity:
   for a different reason once this exists.
 - That prompt is tied to the *requesting binary's own code-signing identity*, and every real-world
   report surveyed while writing this page says it simply never fires for an unsigned binary.
-  `ac3gui`/`ac3cli` ship unsigned today (see [DR6 in ROADMAP.md](../../ROADMAP.md) — blocked on
-  certificates, not on code) — so even a finished tap implementation could not obtain the
-  permission it would ask for, on this project's current release artifacts.
-- Most fundamentally: [DR9 in ROADMAP.md](../../ROADMAP.md) records that no real Mac has ever run
-  this backend at all. A permission dialog, a denial path and a live tap's actual behaviour are
-  exactly the kind of thing that cannot be told apart from "written wrong" without a real user, a
-  real machine and a real signed-or-unsigned binary in front of it.
+  `ac3gui`/`ac3cli` ship unsigned today (see ROADMAP.md's DR6 — blocked on certificates, not on
+  code) — so even a finished tap implementation could not obtain the permission it would ask for,
+  on this project's current release artifacts.
+- Most fundamentally: ROADMAP.md's DR9 records that no real Mac has ever run this backend at all.
+  A permission dialog, a denial path and a live tap's actual behaviour are exactly the kind of
+  thing that cannot be told apart from "written wrong" without a real user, a real machine and a
+  real signed-or-unsigned binary in front of it.
 
 What *is* implemented, and needs none of the above to be true: `ac3::coreaudio::system_audio_tap_api_available()`
 (`src/audio/src/backend/macos/coreaudio_names.hpp`) is a pure macOS-version gate — no permission
 requested, no device touched — that a future implementation should refuse on before ever
 constructing a `CATapDescription`. It is exercised for real on every macOS CI run
 (`tests/backend/macos/test_macos_support.cpp`), the same as the rest of this backend's device-free
-logic; only the tap itself, and the permission flow around it, waits on real hardware. See UX7 in
-[ROADMAP.md](../../ROADMAP.md) for the full item.
+logic; only the tap itself, and the permission flow around it, waits on real hardware. See
+ROADMAP.md's UX7 entry for the full item.
 
 ## Building
 
