@@ -11,6 +11,8 @@ import android.util.AttributeSet
 import android.view.Choreographer
 import android.view.View
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * The v1 room visualization: a plain [View], not a `SurfaceView` - the plan's
@@ -118,6 +120,13 @@ class RoomView @JvmOverloads constructor(
         style = Paint.Style.FILL
         color = Theme.colorTextSecondary
     }
+    // The soundfield arrow - where the ENCODED bed's energy actually sits, as
+    // opposed to where the demo asked the object to be. Warm, like the mode
+    // readout, so it never reads as another object dot.
+    private val soundfieldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Theme.colorWarn
+    }
     private val modePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Theme.colorWarn
         textSize = 19f
@@ -212,6 +221,13 @@ class RoomView @JvmOverloads constructor(
         while (leadHistory.size > MAX_HISTORY) {
             leadHistory.removeFirst()
         }
+        // Where the ENCODED bed's energy actually sits, for the top-down
+        // panel's arrow - see NativeBridge.nativeGetSoundfieldVector.
+        val soundfield = try {
+            NativeBridge.nativeGetSoundfieldVector()
+        } catch (e: UnsatisfiedLinkError) {
+            null
+        }
         val leadFuture = try {
             NativeBridge.nativeGetFutureLeadTrajectory(FUTURE_SECONDS, FUTURE_SAMPLES)
         } catch (e: UnsatisfiedLinkError) {
@@ -261,6 +277,11 @@ class RoomView @JvmOverloads constructor(
         val modeText = inputController?.let { controller ->
             if (controller.axisMode == InputController.AxisMode.XY) "D-PAD → DEPTH" else "D-PAD → HEIGHT"
         }
+        val loudnessText = try {
+            NativeBridge.nativeGetLoudnessText().ifEmpty { null }
+        } catch (e: UnsatisfiedLinkError) {
+            null
+        }
 
         draw3DView(canvas, 0f, leftTop, leftSize, leftTop + leftSize, state, objectCount, leadFuture, statsText)
 
@@ -289,6 +310,7 @@ class RoomView @JvmOverloads constructor(
 
             verticalIsHeight = false,
             showTrajectoryGuide = true,
+            soundfield = soundfield,
         )
         drawPanel(
             canvas,
@@ -299,14 +321,19 @@ class RoomView @JvmOverloads constructor(
             // "Side" dropped (was "Side elevation (X/Z)"): shorter title,
             // more headroom for whatever width this card ends up with.
             title = "Elevation (X/Z)",
-            status = null,
-            statusPaint = null,
+            // This header was empty, and the measured loudness has nowhere
+            // else to go: the 3D panel's own header is already full, and the
+            // top-down panel's carries the axis mode. Blank until the meter's
+            // first gated 400ms block has passed - see nativeGetLoudnessText.
+            status = loudnessText,
+            statusPaint = statsPaint,
             state = state,
             objectCount = objectCount,
             horizontal = { i -> state[i * 4] },           // x
             vertical = { i -> (state[i * 4 + 2] + 1f) / 2f }, // z in [-1,1] -> [0,1]
             verticalIsHeight = true,
             showTrajectoryGuide = false,
+            soundfield = null,
         )
     }
 
@@ -527,6 +554,9 @@ class RoomView @JvmOverloads constructor(
         vertical: (Int) -> Float,
         verticalIsHeight: Boolean,
         showTrajectoryGuide: Boolean,
+        // (azimuthDegrees, magnitude) or null for a panel this means nothing
+        // on - the elevation panel plots height, and an azimuth has no height.
+        soundfield: FloatArray?,
     ) {
         val content = drawCard(canvas, left, top, right, bottom, title, status, statusPaint)
         if (content.right <= content.left || content.bottom <= content.top) return
@@ -586,6 +616,35 @@ class RoomView @JvmOverloads constructor(
                 close()
             }
             canvas.drawPath(path, listenerPaint)
+
+            // The energy vector, drawn from the listener outward: which way a
+            // 5.1 decoder's own speakers are actually pushing the soundfield,
+            // and how strongly. It should track the lead object's dot - seeing
+            // the two agree is what shows the panning is real rather than
+            // asserted, and it comes from the encoded bed, not the room maths.
+            if (soundfield != null && soundfield.size >= 2 && soundfield[1] > 0.02f) {
+                val azimuthRad = Math.toRadians(soundfield[0].toDouble())
+                // Azimuth runs counterclockwise from front, and front is up on
+                // this panel: +30 degrees is the L speaker, which belongs on
+                // the LEFT of the screen, hence the negated sine.
+                val dx = -sin(azimuthRad).toFloat()
+                val dy = -cos(azimuthRad).toFloat()
+                val reach = (roomSize * 0.34f) * soundfield[1].coerceIn(0f, 1f)
+                val tipX = lx + dx * reach
+                val tipY = ly + dy * reach
+                // A tapered triangle rather than a line-plus-head: fewer
+                // strokes, and it stays legible when the magnitude is small
+                // and the arrow is only a few pixels long.
+                val halfBase = radius * 0.45f
+                val arrow = Path().apply {
+                    moveTo(tipX, tipY)
+                    lineTo(lx - dy * halfBase, ly + dx * halfBase)
+                    lineTo(lx + dy * halfBase, ly - dx * halfBase)
+                    close()
+                }
+                soundfieldPaint.alpha = (90 + 165 * soundfield[1].coerceIn(0f, 1f)).toInt()
+                canvas.drawPath(arrow, soundfieldPaint)
+            }
         }
 
         for (i in 0 until objectCount) {

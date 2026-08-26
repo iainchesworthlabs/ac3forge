@@ -749,7 +749,8 @@ class MainActivity : Activity() {
         val controls = "Stick/D-pad: push the lead object off its course, it drifts back " +
             "when you let go   •   Right stick / L1+R1: height   •   Press A/center: " +
             "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
-            "lead   •   Play: bring the ambient tones back   •   Info: About\n"
+            "lead   •   Play: bring the ambient tones back   •   X/Menu: OBJECTS OFF " +
+            "(watch the receiver drop to DD+)   •   Info: About\n"
         val legendLead = "● lead (yours to push around)   "
         val legendAmbient = "● ● two ambient tones, always on their own course"
         val text = SpannableString(controls + legendLead + legendAmbient)

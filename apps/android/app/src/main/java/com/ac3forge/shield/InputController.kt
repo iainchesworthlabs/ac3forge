@@ -77,6 +77,13 @@ class InputController {
     @Volatile private var ambientMuted = false
 
     /**
+     * OBJECTS OFF - see [NativeBridge.nativeSetObjectsOff]. Bound to BUTTON_X
+     * on a controller and MENU on a remote, the two free keys both device
+     * types actually have; every other key on both is already spoken for.
+     */
+    @Volatile private var objectsOff = false
+
+    /**
      * Invoked once per handled input event (stick motion, D-pad, buttons) -
      * never for events this controller doesn't recognize. Set by
      * MainActivity to dismiss the first-launch orientation cue on first real
@@ -325,6 +332,16 @@ class InputController {
             // held media key - these are handled here, on the down event,
             // rather than onKeyUp, so the mute/unmute takes effect the
             // instant the button is pressed rather than on release.
+            // Toggled on the DOWN event and only on the first of a held
+            // press, same as the media keys below - this drives a real change
+            // in the transmitted bitstream, so key repeat must not chatter it.
+            KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_MENU -> {
+                if (event.repeatCount == 0) {
+                    objectsOff = !objectsOff
+                    NativeBridge.nativeSetObjectsOff(objectsOff)
+                }
+                true
+            }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                 if (event.repeatCount == 0) {
                     ambientMuted = !ambientMuted
@@ -378,7 +395,8 @@ class InputController {
             // so the system's own (unused - this app has no MediaSession)
             // default key handling never sees them either.
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PAUSE,
-            KeyEvent.KEYCODE_MEDIA_PLAY -> true
+            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_BUTTON_X,
+            KeyEvent.KEYCODE_MENU -> true
             else -> false
         }
     }

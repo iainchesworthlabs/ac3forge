@@ -162,6 +162,40 @@ object NativeBridge {
     external fun nativeGetFutureLeadTrajectory(secondsAhead: Float, samples: Int): FloatArray
 
     /**
+     * OBJECTS OFF: strips the object layer out of every access unit before it
+     * is wrapped for output, live, leaving everything else about the stream
+     * alone (`ac3::io::strip_objects`). The bed decodes identically - it is
+     * the same coded bed either way - so what changes is that a licensed
+     * decoder stops seeing an object programme and drops to plain DD+.
+     *
+     * Only does anything on a build carrying the signing key: without one the
+     * encoder emits no object container at all, so there is nothing to strip
+     * and the toggle is a visible no-op. See shield_signing_hook.hpp.
+     */
+    external fun nativeSetObjectsOff(off: Boolean)
+    external fun nativeGetObjectsOff(): Boolean
+
+    /**
+     * Two floats: the energy vector's azimuth (degrees counterclockwise from
+     * front) and its magnitude in [0,1], over the REAL encoded 5.1 bed
+     * (`ac3::analysis::energy_vector`).
+     *
+     * Distinct from the object positions [nativeGetObjectState] reports: those
+     * are where the demo asked the object to go, this is where a 5.1 decoder's
+     * own speakers will actually put the energy. Seeing the two agree is the
+     * point.
+     */
+    external fun nativeGetSoundfieldVector(): FloatArray
+
+    /**
+     * The bed's measured BS.1770 integrated loudness and the dialnorm it
+     * implies, preformatted. Empty until the meter's first gated 400ms block
+     * has passed - and empty is the correct thing to show for silence, not a
+     * fabricated number.
+     */
+    external fun nativeGetLoudnessText(): String
+
+    /**
      * Diagnostic-only: streams a real, already-encoded AC-3/E-AC-3 file
      * (e.g. an audio track pulled from a commercial Dolby Atmos demo MKV,
      * unmodified) through the same PassthroughSink path the live cursor

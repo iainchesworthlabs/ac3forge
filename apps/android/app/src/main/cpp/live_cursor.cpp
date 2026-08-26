@@ -54,8 +54,11 @@
 #include <thread>
 #include <vector>
 
+#include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/io/object_strip.hpp"
 #include "ac3/latency.hpp"
+#include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "ac3/audio/passthrough.hpp"
@@ -310,6 +313,27 @@ struct StreamStats {
     std::atomic<float> object_latency_ms{0.0F};
     std::atomic<float> bed_latency_ms{0.0F};
 
+    // Where the bed's energy actually sits on the loudspeaker ring - Gerzon's
+    // energy vector over the REAL encoded bed, not the room-position maths.
+    // That distinction is the whole point: the room panels plot where the
+    // demo asked the object to be, and this shows where a 5.1 decoder's own
+    // speakers will actually put it. Azimuth is degrees counterclockwise from
+    // front; magnitude runs 1 (all energy at one speaker) to 0 (no direction).
+    std::atomic<float> energy_azimuth_deg{0.0F};
+    std::atomic<float> energy_magnitude{0.0F};
+
+    // BS.1770 integrated loudness of the bed, and the dialnorm it implies.
+    // Measured and DISPLAYED only - see the loudness block in run_loop() for
+    // why this stream is deliberately not patched with it.
+    std::atomic<float> integrated_lkfs{0.0F};
+    std::atomic_bool loudness_valid{false};
+    std::atomic<int> implied_dialnorm{0};
+
+    // OBJECTS OFF: strips the object layer out of every access unit before it
+    // is wrapped, live. See the strip block in run_loop().
+    std::atomic_bool objects_off{false};
+    std::atomic<std::uint32_t> stripped_bytes_per_frame{0};
+
     // Zeroes everything a *previous* run left behind. Without this, a stopped
     // loop froze its last values on screen rather than going dark: the meters
     // held whatever the final frame happened to be, the frame/burst counters
@@ -325,6 +349,15 @@ struct StreamStats {
         encode_ms.store(0.0F, std::memory_order_relaxed);
         object_latency_ms.store(0.0F, std::memory_order_relaxed);
         bed_latency_ms.store(0.0F, std::memory_order_relaxed);
+        energy_azimuth_deg.store(0.0F, std::memory_order_relaxed);
+        energy_magnitude.store(0.0F, std::memory_order_relaxed);
+        integrated_lkfs.store(0.0F, std::memory_order_relaxed);
+        loudness_valid.store(false, std::memory_order_relaxed);
+        implied_dialnorm.store(0, std::memory_order_relaxed);
+        stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
+        // objects_off is deliberately NOT reset, for the same reason
+        // ambient_muted is not: it is a control the presenter set, not a
+        // measurement of this run.
         for (auto& level : channel_levels) {
             level.store(0.0F, std::memory_order_relaxed);
         }
@@ -509,6 +542,29 @@ void run_loop() {
         return;
     }
 
+    // A real programme meter over the encoded bed, replacing an `rms * 4.0`
+    // clamp whose only justification was "without some boost the meter would
+    // barely move". This is dB-scaled with PPM ballistics and a peak hold, so
+    // the bars mean the same thing the desktop tools' bars mean.
+    //
+    // rms_integration_ms is shortened well below the 300ms default: 300ms is
+    // roughly ten frames at 32ms, and the soundfield arrow computed from these
+    // levels would visibly trail a fast pan - the exact opposite of the cue it
+    // exists to give. 80ms still reads as a level rather than a twitch.
+    ac3::analysis::LevelMeter level_meter(ac3::Acmod::k3_2, /*lfe=*/true,
+                                          static_cast<std::uint32_t>(kSampleRate),
+                                          ac3::analysis::MeterBallistics{
+                                              .rms_integration_ms = 80.0,
+                                          });
+    // BS.1770 over the same bed. Measured for display only - see where it is
+    // published below.
+    ac3::meta::LoudnessMeter loudness_meter(ac3::SampleRate::k48000, ac3::Acmod::k3_2,
+                                            /*lfe=*/true);
+    // Reused every frame for both meters rather than rebuilt: bed() hands back
+    // a span of vectors, and both meters want a span of spans.
+    std::vector<std::span<const float>> bed_views;
+    bed_views.reserve(6);
+
     ac3::iec61937::Eac3BurstPacker packer;
     std::array<std::vector<float>, kObjects> tones;
     for (auto& tone : tones) {
@@ -653,15 +709,38 @@ void run_loop() {
         // barely move) - visual only, has no effect on the encoded audio.
         {
             const auto bed = encoder.bed();
+            bed_views.clear();
             for (std::size_t ch = 0; ch < bed.size() && ch < 6; ++ch) {
-                double sum_sq = 0.0;
-                for (const float sample : bed[ch]) {
-                    sum_sq += static_cast<double>(sample) * static_cast<double>(sample);
-                }
-                const double rms =
-                    bed[ch].empty() ? 0.0 : std::sqrt(sum_sq / static_cast<double>(bed[ch].size()));
-                const float level = static_cast<float>(std::clamp(rms * 4.0, 0.0, 1.0));
-                stream_stats().channel_levels[ch].store(level, std::memory_order_relaxed);
+                bed_views.emplace_back(bed[ch]);
+            }
+            level_meter.process(bed_views);
+            loudness_meter.push(bed_views);
+
+            // meter_fraction puts a dB level on the same 0..1 scale the bars
+            // already draw, and on the same scale the desktop meters use.
+            const auto levels = level_meter.levels();
+            for (std::size_t ch = 0; ch < levels.size() && ch < 6; ++ch) {
+                const auto fraction = ac3::analysis::meter_fraction(levels[ch].rms_db);
+                stream_stats().channel_levels[ch].store(static_cast<float>(fraction),
+                                                        std::memory_order_relaxed);
+            }
+
+            const auto vector = ac3::analysis::energy_vector(levels, ac3::Acmod::k3_2);
+            stream_stats().energy_azimuth_deg.store(static_cast<float>(vector.azimuth_deg),
+                                                    std::memory_order_relaxed);
+            stream_stats().energy_magnitude.store(static_cast<float>(vector.magnitude),
+                                                  std::memory_order_relaxed);
+
+            // Integrated loudness is cheap to read (it is accumulated by
+            // push() above); loudness_range() is NOT - it allocates and sorts
+            // on every call - so it is deliberately not asked for here, on the
+            // encode thread, on every frame.
+            if (const auto lkfs = loudness_meter.integrated_lkfs()) {
+                stream_stats().integrated_lkfs.store(static_cast<float>(*lkfs),
+                                                     std::memory_order_relaxed);
+                stream_stats().implied_dialnorm.store(ac3::meta::dialnorm_from_lkfs(*lkfs),
+                                                      std::memory_order_relaxed);
+                stream_stats().loudness_valid.store(true, std::memory_order_relaxed);
             }
         }
 
@@ -680,7 +759,43 @@ void run_loop() {
         // blocks each (kSamplesPerFrame/256), so in practice one push() per
         // encode_frame() yields one burst immediately, not an accumulation
         // across several frames.
-        const auto push_result = packer.push(unit->bytes);
+        // OBJECTS OFF: strip the object layer out of this access unit before
+        // it is wrapped, live, while everything else about the stream stays
+        // put. What the receiver does with that is the point of the whole
+        // demo - a licensed decoder drops from Atmos to plain DD+ on its own
+        // front panel and back again, on a toggle, with the per-frame byte
+        // cost of the object layer on screen next to it.
+        //
+        // AFTER signing, not before: the signature covers the container this
+        // removes, so stripping first would leave a signature over bytes that
+        // are no longer there. Removing the whole container outright is the
+        // safe direction - an unsigned-but-present container is the hard
+        // refusal case AtmosConfig::emit_object_metadata warns about.
+        //
+        // A strip failure falls back to the UNSTRIPPED unit rather than
+        // `break`ing the loop the way the surrounding error paths do: this is
+        // a presentation toggle, and the correct response to "could not strip"
+        // is to keep playing the stream we already have.
+        std::span<const std::byte> unit_bytes{unit->bytes};
+        std::vector<std::byte> stripped_storage;
+        if (stream_stats().objects_off.load(std::memory_order_relaxed)) {
+            auto stripped = ac3::io::strip_objects(unit->bytes);
+            if (stripped) {
+                stream_stats().stripped_bytes_per_frame.store(
+                    static_cast<std::uint32_t>(stripped->bytes_removed),
+                    std::memory_order_relaxed);
+                stripped_storage = std::move(stripped->bytes);
+                unit_bytes = stripped_storage;
+            } else if (frames % 96 == 0) {  // ~3s apart, not once per frame
+                __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                    "strip_objects failed (%s) - sending the unstripped unit",
+                                    std::string(ac3::io::describe(stripped.error())).c_str());
+            }
+        } else {
+            stream_stats().stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
+        }
+
+        const auto push_result = packer.push(unit_bytes);
         if (!push_result) {
             __android_log_print(ANDROID_LOG_ERROR, kLogTag, "iec61937 wrap failed: %d",
                                 static_cast<int>(push_result.error()));
@@ -938,6 +1053,49 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
     return result;
 }
 
+// OBJECTS OFF, from the remote/controller. See the strip block in run_loop().
+extern "C" JNIEXPORT void JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeSetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/,
+                                                            jboolean off) {
+    stream_stats().objects_off.store(off == JNI_TRUE, std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return stream_stats().objects_off.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Two floats: the energy vector's azimuth in degrees counterclockwise from
+// front, and its magnitude in [0,1]. For the top-down panel's soundfield
+// arrow - see StreamStats::energy_azimuth_deg.
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetSoundfieldVector(JNIEnv* env, jclass /*clazz*/) {
+    auto& s = stream_stats();
+    const std::array<jfloat, 2> flat{s.energy_azimuth_deg.load(std::memory_order_relaxed),
+                                     s.energy_magnitude.load(std::memory_order_relaxed)};
+    jfloatArray result = env->NewFloatArray(2);
+    if (result == nullptr) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(result, 0, 2, flat.data());
+    return result;
+}
+
+// The measured BS.1770 loudness of the bed, and the dialnorm it implies.
+// Empty until the meter's first gated 400ms block has passed.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetLoudnessText(JNIEnv* env, jclass /*clazz*/) {
+    auto& s = stream_stats();
+    if (!s.loudness_valid.load(std::memory_order_relaxed)) {
+        return env->NewStringUTF("");
+    }
+    char buf[96];
+    std::snprintf(buf, sizeof buf, "%.1f LKFS  ->  dialnorm %d",
+                  static_cast<double>(s.integrated_lkfs.load(std::memory_order_relaxed)),
+                  s.implied_dialnorm.load(std::memory_order_relaxed));
+    return env->NewStringUTF(buf);
+}
+
 // For the on-screen stats overlay (RoomView.kt) - a single formatted line
 // rather than several numeric fields, since there is exactly one caller and
 // building the string here avoids Kotlin needing its own copy of the same
@@ -967,9 +1125,17 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
     // queue and the receiver's own decode add more, and silently correcting
     // for one term of three would be a different kind of wrong.
     const auto object_lat_ms = s.object_latency_ms.load(std::memory_order_relaxed);
-    char buf[224];
+
+    // What the object layer is costing, only while it is being taken away -
+    // the number is meaningless otherwise, and the line has no width to spare.
+    char strip_buf[40] = "";
+    if (s.objects_off.load(std::memory_order_relaxed)) {
+        std::snprintf(strip_buf, sizeof strip_buf, " | OBJECTS OFF (-%u B/frame)",
+                      s.stripped_bytes_per_frame.load(std::memory_order_relaxed));
+    }
+    char buf[288];
     std::snprintf(buf, sizeof buf,
-                  "bursts %llu/%llu%s | encode %.1f/32ms | enc lat %.0fms | %s%s",
+                  "bursts %llu/%llu%s | encode %.1f/32ms | enc lat %.0fms | %s%s%s",
                   static_cast<unsigned long long>(s.bursts_rendered.load(std::memory_order_relaxed)),
                   static_cast<unsigned long long>(s.bursts_submitted.load(std::memory_order_relaxed)),
                   loss_buf,
@@ -977,7 +1143,8 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
                   static_cast<double>(object_lat_ms),
                   s.signed_stream.load(std::memory_order_relaxed) ? "Atmos (signed)"
                                                                    : "5.1 bed (unsigned)",
-                  s.ambient_muted.load(std::memory_order_relaxed) ? " | ambient muted" : "");
+                  s.ambient_muted.load(std::memory_order_relaxed) ? " | ambient muted" : "",
+                  strip_buf);
     return env->NewStringUTF(buf);
 }
 
