@@ -8,6 +8,7 @@
 #include <fmt/format.h>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <string>

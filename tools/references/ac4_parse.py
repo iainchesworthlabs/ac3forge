@@ -47,10 +47,15 @@ CHANNEL_MODE_V1.update({
     0b111111100: ('9.0.4', 13), 0b111111101: ('9.1.4', 14),
     0b111111110: ('22.2', 15),
 })
-# Table 90 (TS 103 190-1 §4.3.3.7.5): bitrate_indicator -> kbit/s per channel.
+# Table 90 (TS 103 190-1 §4.3.3.7.5): brate_ind (0..11) -> kbit/s per channel.
+# Keyed by the table's own brate_ind column, not its "Value of
+# bitrate_indicator" bit-pattern column - see _read_bitrate_indicator()
+# below for why the latter is ambiguous as a plain integer. brate_ind
+# 12..19 ("Unlimited") is deliberately absent; BITRATE_KBPS.get() returning
+# None covers it.
 BITRATE_KBPS = {
-    0b000: 16, 0b010: 20, 0b100: 24, 0b110: 28, 0b00100: 32, 0b00101: 40,
-    0b00110: 48, 0b00111: 56, 0b01100: 64, 0b01101: 80, 0b01110: 96, 0b01111: 112,
+    0: 16, 1: 20, 2: 24, 3: 28, 4: 32, 5: 40,
+    6: 48, 7: 56, 8: 64, 9: 80, 10: 96, 11: 112,
 }
 
 
@@ -261,13 +266,18 @@ def parse_substream_info_v0(r, fs_index, frame_rate_factor):
 
 
 def _read_bitrate_indicator(r):
-    """Table 90's code is 3 bits unless the top two bits are both set, in
-    which case it extends to 5 - the same variable-width shape channel_mode
-    uses, just with its own prefix set."""
+    """Returns Table 90's own brate_ind (0..19), not the raw transmitted bit
+    pattern: a 3-bit code with LSB 0 is terminal (brate_ind = v // 2, 0-3);
+    LSB 1 extends to 5 bits, continuing the same sequence (prefix 001 ->
+    4-7, 011 -> 8-11, 101 -> 12-15, 111 -> 16-19 - the last two are the
+    table's combined "Unlimited" row). The raw bit pattern can't be used as
+    a lookup key directly: 0b100/0b110 (terminal, 4/6) and 0b00100/0b00110
+    (extended, also 4/6) are the same Python int once read."""
     v = r.bits(3)
-    if v in (0b001, 0b011, 0b101, 0b111):
-        v = (v << 2) | r.bits(2)
-    return v
+    if not (v & 1):
+        return v // 2
+    extra = r.bits(2)
+    return 4 + (v // 2) * 4 + extra
 
 
 # --- §6.3.2.7 ac4_substream_info_chan (presentation_version 1 channel_mode) -
@@ -365,7 +375,8 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
                 parse_presentation_config_ext_info(r)
             else:
                 for i, role in enumerate(roles):
-                    substreams.append((role, parse_substream_info_v0(r, fs_index, frame_rate_factor)))
+                    substreams.append(
+                        (role, parse_substream_info_v0(r, fs_index, frame_rate_factor)))
                     if i == 0 and b_hsf_ext:
                         parse_hsf_ext_substream_info(r)
         b_pre_virtualized = r.bits(1)
@@ -376,7 +387,8 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
                 n = variable_bits(r, 2) + 4
             for _ in range(n):
                 emdf_substreams.append(parse_emdf_info(r))
-        return {'presentation_version': presentation_version, 'presentation_config': presentation_config,
+        return {'presentation_version': presentation_version,
+                'presentation_config': presentation_config,
                 'md_compat': md_compat, 'presentation_id': presentation_id, 'emdf': emdf,
                 'substreams': substreams, 'emdf_substreams': emdf_substreams,
                 'b_pre_virtualized': bool(b_pre_virtualized)}
@@ -385,7 +397,8 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
         n = variable_bits(r, 2) + 4
     for _ in range(n):
         emdf_substreams.append(parse_emdf_info(r))
-    return {'presentation_version': presentation_version, 'presentation_config': presentation_config,
+    return {'presentation_version': presentation_version,
+            'presentation_config': presentation_config,
             'substreams': [], 'emdf_substreams': emdf_substreams}
 
 
@@ -472,29 +485,31 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
         md_compat = None
         if bitstream_version != 1:
             md_compat = r.bits(3)
-        presentation_id = None
         if r.bits(1):  # b_presentation_id
-            presentation_id = variable_bits(r, 2)
+            variable_bits(r, 2)  # presentation_id, unused downstream
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
         parse_frame_rate_fractions_info(r, frame_rate_index, frame_rate_factor)
-        emdf = parse_emdf_info(r)
+        parse_emdf_info(r)
         b_enable_presentation = None
         if r.bits(1):  # b_presentation_filter
             b_enable_presentation = bool(r.bits(1))
         if b_single_substream_group:
-            group_refs.append(parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+            group_refs.append(
+                parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
         else:
             r.bits(1)  # b_multi_pid
             n_groups = _V1_CONFIG_GROUP_COUNTS.get(presentation_config)
             if n_groups is not None:
                 for _ in range(n_groups):
-                    group_refs.append(parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+                    group_refs.append(
+                        parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
             elif presentation_config == 5:
                 n = r.bits(2) + 2
                 if n == 5:
                     n += variable_bits(r, 2)
                 for _ in range(n):
-                    group_refs.append(parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+                    group_refs.append(
+                        parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
             else:
                 parse_presentation_config_ext_info(r)
         r.bits(1)  # b_pre_virtualized
@@ -590,8 +605,9 @@ def parse_ac4_toc(r):
             uuid = r.bits(16 * 8) if r.bits(1) else None  # b_program_uuid_present
             program_id = {'short_program_id': short_id, 'uuid': uuid}
         toc['program_id'] = program_id
-        presentations = [parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
-                          for _ in range(n_presentations)]
+        presentations = [
+            parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
+            for _ in range(n_presentations)]
         toc['presentations'] = presentations
         # §6.3.2.1.8: total_n_substream_groups is derived, not transmitted -
         # 1 + the highest group_index any ac4_sgi_specifier() referenced.
@@ -663,8 +679,8 @@ def parse_raw_frame(raw):
         audio_size = None
         if index in chan_indices and len(payload) >= 3:
             audio_size = parse_substream_header(Reader(payload))
-        substreams.append({'offset': offset, 'size': size, 'is_channel_audio': index in chan_indices,
-                            'audio_size': audio_size})
+        substreams.append({'offset': offset, 'size': size,
+                            'is_channel_audio': index in chan_indices, 'audio_size': audio_size})
         offset += size
     return toc, substreams
 
@@ -686,7 +702,7 @@ def main():
     try:
         toc, substreams = parse_raw_frame(raw)
     except (ObjectCodedGroup, ValueError) as exc:
-        raise SystemExit(f'REFUSED: {exc}')
+        raise SystemExit(f'REFUSED: {exc}') from exc
 
     print(f"  bitstream_version={toc['bitstream_version']} "
           f"sequence_counter={toc['sequence_counter']} "
