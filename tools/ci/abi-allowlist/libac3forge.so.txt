@@ -88,6 +88,7 @@ ac3::decode_coupling_exponents(unsigned char, std::span<unsigned char const, 184
 ac3::decode_exponents(unsigned char, std::span<unsigned char const, 18446744073709551615ul>, ac3::ExpStrategy, std::span<unsigned char, 18446744073709551615ul>)
 ac3::dequantize_mantissa(unsigned int, int)
 ac3::describe(ac3::DecodeError)
+ac3::describe(ac3::DiagnosticEvent)
 ac3::dft512(std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double, 512ul>, std::span<double, 512ul>)
 ac3::dsp::Biquad::process(float)
 ac3::dsp::Biquad::reset()
