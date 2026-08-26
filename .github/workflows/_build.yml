@@ -508,6 +508,21 @@ jobs:
       # 26.04 archive carries (see toolchain-versions.json's own comment), so
       # both LLVM legs are on one version. Chocolatey is deliberately avoided:
       # its llvm package tracks whatever is newest and would drift off the pin.
+      #
+      # Checks the installed version before downloading anything: GitHub-hosted
+      # windows-latest is always a fresh VM (never a match, always installs),
+      # but a self-hosted runner's own Packer template now bakes this exact
+      # pinned version in (see ci-runners' scripts/windows/03-llvm-toolchain.ps1)
+      # and a prior job on that same long-lived box may already have installed
+      # it too - either way, a match means this step can skip the ~10+ minute
+      # download+install outright. A mismatch (wrong version, or nothing
+      # installed) removes any existing C:\Program Files\LLVM first, so the
+      # installer always writes into an empty directory - NSIS `/S` overwrites
+      # same-named files but never uninstalls first, so installing straight
+      # over a *different* version can leave stale compiler-rt builtins/libs
+      # behind that silently break linking far downstream (see
+      # iainchesworthlabs/ci-runners#9, which hit exactly this on a long-lived
+      # self-hosted runner after a toolchain version bump).
       - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }} (Windows)
         if: matrix.llvm && runner.os == 'Windows'
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
@@ -521,12 +536,32 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = $env:LLVM_WINDOWS_VERSION
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
-          $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
-          Invoke-WebRequest -Uri $url -OutFile $exe
-          # NSIS installer; /S is a silent install into the default location.
-          Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow
-          "$env:ProgramFiles\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $llvmDir = "$env:ProgramFiles\LLVM"
+          $clangCl = "$llvmDir\bin\clang-cl.exe"
+
+          $alreadyCurrent = $false
+          if (Test-Path $clangCl) {
+            $verLine = & $clangCl --version 2>&1 | Select-Object -First 1
+            if ($verLine -match 'version (\S+)' -and $matches[1] -eq $version) {
+              $alreadyCurrent = $true
+            }
+          }
+
+          if ($alreadyCurrent) {
+            Write-Host "LLVM $version already installed at $clangCl - skipping download/install"
+          } else {
+            if (Test-Path $llvmDir) {
+              Write-Host "Existing LLVM install does not match $version - removing before reinstalling"
+              Remove-Item -Path $llvmDir -Recurse -Force
+            }
+            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
+            $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
+            Invoke-WebRequest -Uri $url -OutFile $exe
+            # NSIS installer; /S is a silent install into the default location.
+            Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow
+          }
+
+          "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       # Homebrew's core "llvm" formula has no versioned sibling the way
       # apt.llvm.org or the official win64 installer do (there is no "llvm@21"
