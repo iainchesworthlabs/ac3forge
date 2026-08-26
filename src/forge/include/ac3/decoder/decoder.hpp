@@ -13,6 +13,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
@@ -277,6 +278,15 @@ struct DecoderConfig {
     // subsequent field depends on them - a "parse" that skipped those would
     // not be parsing the same stream.
     bool skip_reconstruction = false;
+    // --- diagnostics (ac3/decoder/diagnostics.hpp) --------------------------
+    // A recoverable, informational event the decode does not otherwise
+    // surface - see DiagnosticEvent. Null by default, at the same
+    // one-branch-per-occurrence cost `trace`/`syntax` above already set the
+    // precedent for. `diagnostics_context` is passed through unchanged as
+    // the callback's second argument - a caller with no use for it leaves it
+    // null too.
+    DiagnosticSink diagnostics = nullptr;
+    void* diagnostics_context = nullptr;
 };
 
 struct DecodedFrame {

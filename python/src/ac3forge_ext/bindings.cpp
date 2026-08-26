@@ -350,9 +350,12 @@ PYBIND11_MODULE(_ac3forge, m) {
     // --- free functions ----------------------------------------------------
     m.def("fullbw_channel_count", &ac3::fullbw_channel_count, py::arg("acmod"));
     m.def("sample_rate_hz", &ac3::sample_rate_hz, py::arg("sample_rate"));
-    // Two overloads of the same C++ name (ac3::describe(DecodeError) and, since AP2's
-    // FrameError::describe(), ac3::describe(FrameError)) - &ac3::describe alone is now
-    // ambiguous, so each is cast to its own function-pointer type before binding.
+    // Three overloads of the same C++ name now (ac3::describe(DecodeError),
+    // ac3::describe(FrameError) since AP2's FrameError::describe(), and
+    // ac3::describe(DiagnosticEvent), roadmap AP11's ac3/decoder/diagnostics.hpp) -
+    // &ac3::describe alone is ambiguous, so each bound overload is cast to its own
+    // function-pointer type. DiagnosticEvent's overload is not surfaced to Python at
+    // all (see docs/library/python-api.md's "What isn't exposed").
     m.def("describe", static_cast<std::string_view (*)(ac3::DecodeError)>(&ac3::describe),
           py::arg("error"), "Text for a DecodeError value");
     m.def("describe", static_cast<std::string_view (*)(ac3::FrameError)>(&ac3::describe),

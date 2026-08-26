@@ -3,8 +3,9 @@
 The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link any of
 `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts` as well if you want a container writer,
 `ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),
-`ac3iab::ac3iab` if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream (it links nothing
-from `ac3::forge` and knows nothing about AC-3 — roadmap IM1 phase 1), or
+[`ac3iab::ac3iab`](iab.md) if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream, a bare
+elementary `.iab` file or a real MXF Track File alike (it links nothing from `ac3::forge` and knows
+nothing about AC-3 — roadmap IM1 phases 1-2), or
 `ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
 `ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
 mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
@@ -116,6 +117,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   (`mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`), metering, the IEC 61937/passthrough/monitor
   sinks, and capture.
 - [File I/O](file-io.md) — reading and writing WAV.
+- [IAB (SMPTE ST 2098-2) reading](iab.md) — `ac3iab::ac3iab`, a standalone Immersive Audio
+  Bitstream reader, elementary `.iab` files and MXF Track Files alike (on by default).
 - [ADM / BW64 reading](adm.md) — `ac3adm::ac3adm`, a standalone BW64/RF64 + Audio Definition Model
   parser (opt-in, `-DAC3FORGE_BUILD_ADM=ON`).
 - [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, mapping the parsed ADM graph onto
