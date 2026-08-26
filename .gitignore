@@ -15,6 +15,14 @@ CMakeUserPresets.json
 .cache/
 *.user
 
+# apps/wasm/tests' Playwright harness (roadmap VX18a). package-lock.json IS
+# committed (npm ci's own integrity-hash pinning, this project's equivalent
+# of requirements/*.txt's --require-hashes); only the installed tree and
+# Playwright's own run output are not.
+apps/wasm/tests/node_modules/
+apps/wasm/tests/test-results/
+apps/wasm/tests/playwright-report/
+
 # Python tooling for golden-vector generation, and the python/ bindings package (build/ above
 # already covers python/build/; __pycache__/ already covers every test/tool's bytecode cache)
 __pycache__/

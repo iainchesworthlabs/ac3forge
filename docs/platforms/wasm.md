@@ -130,9 +130,20 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     object's own `object_audio`, (b) differs from every other object's audio, and (c) differs from the
     bed downmix — not just "some audio plays," the *correct* isolated object's audio plays.
 
+!!! note "Automated in CI (roadmap VX18a)"
+    `apps/wasm/tests/` is a small Playwright harness `build-wasm` now runs on every push, right
+    after the demo artifact upload: it serves the just-built `wasm_decode_demo/` directory,
+    loads `index.html` in a real headless Chromium, and drives the `WasmDecoder` Embind API
+    directly (the same calls `demo.js` makes) to decode the bundled fixture and assert on the
+    real values the note above once had to be checked by eye — `E-AC-3, 48000 Hz, 6 channels, 3
+    Atmos objects, 8.0s`, and that the same object's decoded position genuinely differs between
+    its first and last frame. A regression in any of those numbers now fails CI rather than
+    waiting for the next manual pass.
+
 !!! warning "Not yet verified"
     Built and tested on a Windows host only — the toolchain file itself makes no Windows-specific
     assumption, and CI's `build-wasm`/`docs.yml` jobs both run on `ubuntu-latest`, but no macOS run
-    has been attempted anywhere. No automated *browser* test runs this in CI — `build-wasm` proves it
-    compiles, not that it decodes/plays/renders correctly; every functional claim above is manual
-    verification across this PR's sessions, not a repeatable check.
+    has been attempted anywhere. The CI browser test above covers the decode itself, not the page
+    around it: real audio playback (`AudioContext.currentTime` advancing), the speaker-ring and
+    room-view visualizations, the seek bar, and the "Solo object N" buttons' own audio-isolation
+    claim are still manual verification only, not a repeatable check.

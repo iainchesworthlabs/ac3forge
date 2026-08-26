@@ -243,6 +243,15 @@ REGRESSION_SEEDS = {
         "the encoder correctly exits 5 (a runtime refusal, not a usage error) "
         "for the sub-gate-loudness case - classify() only checked REFUSALS on "
         "exit code 1, so this legitimate refusal counted as a failure",
+    3600083275727211684:
+        "1+1 48 kbit/s @ 48 kHz, steady/inverted audio: AC-3 at this rate "
+        "codes exactly 192-byte frames - one of MPEG-TS's own three packet "
+        "strides - and the low-entropy signal makes the encoder produce "
+        "near-identical bytes every frame, so 'decode' (roadmap IO2's "
+        "container-sniffing widening) misdetected this perfectly ordinary "
+        "elementary stream as an MPEG-TS capture and refused it; sniff_container "
+        "must check for a valid AC-3/E-AC-3 frame header before trusting the "
+        "packet-grid heuristic, not after",
 }
 
 

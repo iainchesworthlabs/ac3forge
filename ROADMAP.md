@@ -387,7 +387,7 @@ machine-readable output and a single failure exit code. Users arrive with contai
   docs/cli/commands.md. The HLS/DASH manifest check is NOT part of it and stays open: it is
   a consumer of this document rather than part of it, and IO5 already owns the `ceao`/JOC
   signalling half of the same question.
-- [ ] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
+- [x] **IO2 (XL)** — Container readers: Matroska (EBML walk, `A_AC3`/`A_EAC3` blocks), MP4
   (`ac-3`/`ec-3` sample entries, `stco`/`stsz`, fragmented `moof`/`trun`), MPEG-TS (PAT/PMT,
   stream types 0x81/0x87, PES reassembly), each yielding an elementary stream for `scan`. Then
   `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's QC/Inspect pickers (filtered to
@@ -396,8 +396,22 @@ machine-readable output and a single failure exit code. Users arrive with contai
   done** (`matroska::demux`/`Reader`, `mp4::demux`/`Reader` including the `dec3` parser and
   fragmented `moof`/`trun`, `mpegts::demux`/`Reader` reading DVB/ATSC/registration-descriptor
   signalling and all three packet grids, plus `ac3cli demux` and a fuzz harness per container).
-  Still open: widening `decode`/`qc`/`levels`/`play`/`monitor` and the GUI's QC/Inspect pickers
-  to accept containers directly, and container-to-container remux.
+  *Done: a new `apps/common/container_input.hpp` (`ac3::apps::sniff_container`/
+  `elementary_stream_from_bytes`) sniffs a file's own bytes for the three containers `demux`
+  already reads and, when it is one, batch-demuxes its first AC-3/E-AC-3 track (zero-copy for
+  Matroska/MP4, owned for MPEG-TS's PES reassembly) into a contiguous elementary stream —
+  compiled straight into both `ac3cli` (`support.cpp`'s `read_elementary_stream`, now what
+  `decode`/`qc`/`levels`/`play`/`monitor` call instead of a bare `read_all`) and `ac3gui`
+  (`qc_controller.cpp`/`object_decode_controller.cpp`, plus the QC/Inspect pickers' `nameFilters`
+  widened to the container extensions), the same shared-not-duplicated shape
+  `recording_sink.hpp`/`fmp4_folder_writer.hpp` already use — never in `ac3::forge` itself, which
+  stays free of a dependency the containers explicitly say they do not need in return. Remux is
+  `mkv`/`mp4`/`ts` themselves widened the identical way on their OWN input side (so
+  `ac3cli mp4 broken.mkv fixed.mp4` already works), plus a new `remux <in> <out> [dvb|atsc]`
+  command that picks the target by `out_path`'s extension for discoverability; the dec3-repair
+  case falls out for free since `run_mp4`'s `codec_config` was always built from the re-scanned
+  bitstream (`ac3::io::build_codec_config_box`), never from whatever the source container
+  declared.*
 - [x] **IO3 (M)** — IEC 61937 de-framing: a burst parser (`Pa/Pb/Pc/Pd`, data types 0x01/0x15,
   E-AC-3's 4× carrier) and `unspdif`, then capture-side recognition so an HDMI/S/PDIF capture
   device or a loopback of a bitstreaming player records the elementary stream rather than PCM.
@@ -513,6 +527,21 @@ machine-readable output and a single failure exit code. Users arrive with contai
   hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
   files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
   ingest only; rendering stays with Cavern.
+  *Phase 1 done: `ac3iab::` (`src/ac3iab`) parses the full §7/§8 Preamble+IAFrame segment
+  framing and every element in §9's Table 4 tree — IAFrame, BedDefinition (+ recursive
+  BedDefinition/BedRemap children), ObjectDefinition (+ recursive ObjectDefinition/
+  ObjectZoneDefinition19 children) and AudioDataPCM, all fully decoded (positions/spreads/
+  snap tolerance resolved via §5.4's DistanceXY/DistanceZ formulas, gains via §5.5, zone gains
+  via their own separate linear §10.5.14/§10.6.3 formula — the two are easy to conflate and an
+  early draft did). AudioDataDLC is read by identity only (AudioDataID, the opaque coded
+  residual as a byte span) per this phase's own scope; Annex B's lossless predictor/entropy
+  coder is undecoded and stays a documented follow-up. Validated against
+  `DTSProAudio/iab-validator`'s own real sample corpus (`test/bitstreams/*.iab`, MIT) as an
+  external oracle, not vendored into this repo per the project's spec-PDF convention: this
+  reader's parsed header (SampleRate/BitDepth/FrameRate/FrameCount/MaxRendered) matches that
+  tool's own reference JSON exactly on all 10 streams sampled, and every frame across all ten
+  streams parses without error (one stream alone carries 720 real AudioDataDLC elements and 240
+  ObjectDefinitions). Phases 2 (MXF/KLV) and 3 (`atmos-iab`/`admbridge`) are unstarted.*
 - [x] **IM2 (L)** — JOC → ADM BWF writer. `decode … adm_out` writes a Dolby Atmos Master ADM
   Profile BW64 (cartesian coordinates, `audioBlockFormat` automation, `chna`) from
   `Eac3Decoder`'s object metadata, object audio and the bed's own LFE, round-tripped through
@@ -826,9 +855,20 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   times, and posts a delta table to the job summary using the same soft/hard tiers
   `append_performance_history.py` applies — imported from it, not restated. Non-blocking by
   design and absent from `CI Status`; the trend-branch append stays push-only.
-- [ ] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
+- [x] **VX18 (M)** — Automated tests for the app tier: a headless browser test of the WASM demo
   (`docs/platforms/wasm.md`: "every functional claim above is manual verification") and an
-  instrumented test for the Android bridge's device-free paths.
+  instrumented test for the Android bridge's device-free paths. `apps/wasm/tests/` is a small
+  Playwright harness `build-wasm` now runs against every build: it serves the just-built demo
+  directory and drives the real `WasmDecoder` Embind API to decode the bundled fixture, asserting
+  the channel count/sample rate/object count/duration/moving-object-position values that page's
+  own docs previously recorded as manual-only. `apps/android/app/src/androidTest/` adds
+  `NativeBridgeInstrumentedTest`/`PassthroughBridgeInstrumentedTest`, run by `build-android` via
+  `connectedDebugAndroidTest` against a GitHub-hosted x86_64 emulator (KVM acceleration is
+  x86/x86_64-only on these runners, so the debug build type now also targets x86_64 alongside the
+  real device's arm64-v8a — release stays arm64-v8a-only) — every case is a "no receiver attached"
+  contract check (JNI round trip and `AudioTrack`/`AudioFormat` calls fail safely rather than
+  throwing or hanging), not the real-hardware passthrough path `docs/platforms/android.md` still
+  covers as manual verification only.
 - [x] **VX19 (S)** — A threat model for untrusted input: what is untrusted, the memory-safety
   posture, per-access-unit allocation caps and decode resource limits — what a media server
   wants to read before linking a decoder against internet input.
@@ -846,18 +886,31 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   and a derived FFmpeg-readability column; `docs/conformance-vectors.md` is the usage page and
   the release workflow attaches the bundle beside the SBOM and attestations. Hashes are
   per-toolchain until VX11/VX12; the source material stays synthetic until VX7.
-- [ ] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
+- [x] **VX21 (S)** — CodeQL for `java-kotlin`, as a step inside `_build.yml`'s existing
   `build-android` job rather than a leg in `codeql.yml`. The extractor needs a real Gradle build
   (measured: `build-mode: none` extracts nothing from a 100%-Kotlin app and fails as a
   configuration error), and that job already provisions JDK 17, the pinned NDK and the signing
-  key material. Split out of VX14.
-- [ ] **VX22 (S)** — CLI tests for the container commands. `apps/cli/commands/containers.cpp`
+  key material. `init`/`analyze` (the same pinned `codeql-action` SHA `codeql.yml` uses) now
+  bracket `build-android`'s existing `assembleDebug` step, `languages: java-kotlin`, `build-mode:
+  manual` — no separate build invocation, the job's own debug build already is one. Needed
+  `security-events: write` raised on `build-android`'s job permissions and on both reusable-workflow
+  callers (`ci.yml`'s `build-and-test`, `release.yml`'s `build-packages`) — a callee job cannot
+  request a permission its caller did not grant, and neither call site passed it before. Split out
+  of VX14.
+- [x] **VX22 (S)** — CLI tests for the container commands. `apps/cli/commands/containers.cpp`
   (`mkv`, `mp4`, `fmp4`, `ts`) measured 0.0% line coverage when VX15 first pointed the gate at
   `apps/`; re-measured at 30.4% after roadmap `IO2`'s container-reader/`probe` work landed in the
   same window and incidentally exercised some of it, but still well under `apps/cli`'s 54.0%
   aggregate. Unlike `audio_io`/`live_audio` nothing about these commands needs a device — they are
   fully testable headless, and the library-level container tests do not exercise the CLI paths
-  that wrap them. Split out of VX15.
+  that wrap them. `tests/cli/test_cli_containers.cpp` adds direct assertions on `mkv`/`mp4`'s own
+  success output (including the Atmos-complexity annotation), the base `fmp4` DASH/HLS path with
+  no `fallback-51` companion, `demux`'s per-container status line (sample rate present vs. the
+  MPEG-TS "PES payloads, no rate" branch), and three refusal branches nothing had ever reached in
+  either direction: `reject_legacy_core` (an AC-3-core-with-Annex-E-extension fixture, built the
+  same header-level way `tests/io/test_elementary.cpp`'s own does), the non-uniform-access-unit
+  refusal (a spliced three-block/six-block E-AC-3 fixture), and `mkv`'s multi-programme warning
+  (via `eac3-encode`'s `programme2=` tokens). Split out of VX15.
 
 ## PF. Performance and portability
 

@@ -77,9 +77,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3cli probe`** (`IO1`): what a stream declares — layout, substream map, tools used, metadata,
   CRC validity — without decoding audio. Human table by default, `json=1` for a versioned schema.
   `detail=frames`/`detail=blocks` add per-unit and per-block dumps.
-- **Container readers for Matroska, MP4 and MPEG-TS** (`IO2`): `demux()`/`Reader` for all three,
-  plus `ac3cli demux`. Each reads real third-party shapes this project's own writers never emit
-  (all lacing forms, fragmented `moof`/`trun`, ATSC/registration-descriptor signalling).
+- **Container readers for Matroska, MP4 and MPEG-TS, and full container widening** (`IO2`):
+  `demux()`/`Reader` for all three, plus `ac3cli demux`. Each reads real third-party shapes this
+  project's own writers never emit (all lacing forms, fragmented `moof`/`trun`, ATSC/
+  registration-descriptor signalling). `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's
+  QC/Inspect pickers now accept a container directly in place of a bare elementary stream, and
+  `mkv`/`mp4`/`ts` accept one as input too — which, together with a new `remux <in> <out>`
+  command, makes container-to-container remux work (the `dec3`-repair case: a `.mkv` with a
+  broken or missing Atmos `dec3` flag comes out correct after a remux to `.mp4`, since the target
+  never reads the source's box).
 - **IEC 61937 de-framing and passthrough capture** (`IO3`): `ac3::iec61937::BurstReader` plus
   `ac3cli unspdif`, and capture-side recognition so a bitstreamed source records the elementary
   stream instead of encoding noise.
@@ -109,6 +115,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3::oba::ObjectScene`** (`IM7`): one object-scene timeline (named objects, interpolated
   automation, orientation-as-metadata, JSON) shared by `atmos-path`, the GUI and the examples,
   replacing four ad-hoc formats.
+- **`ac3iab::`, a standalone reader for SMPTE ST 2098-2's Immersive Audio Bitstream** (`IM1`
+  phase 1 of 3): the Preamble+IAFrame segment framing, and every element in the format's
+  Table 4 tree — IAFrame, BedDefinition/BedRemap, ObjectDefinition/ObjectZoneDefinition19 and
+  AudioDataPCM — fully decoded (positions, spreads and gains resolved through the spec's own
+  distance and gain formulas). AudioDataDLC's lossless coder is read by identity only, not
+  decoded, and stays a documented follow-up. Validated against `DTSProAudio/iab-validator`'s
+  own real sample corpus as an external oracle: this reader's parsed header matches that tool's
+  reference output exactly across every stream sampled. Container extraction (MXF/KLV) and the
+  `atmos-iab` bridge onto `ac3::admbridge` are unstarted (phases 2 and 3).
 - **A JOC → ADM BWF writer** (`IM2`): `ac3cli decode ... adm_out` writes a Dolby Atmos Master ADM
   Profile BW64 (BS.2076-2 ADM XML + BS.2088 BW64, cartesian `audioBlockFormat` automation) from a
   decoded E-AC-3/Atmos stream's own bed LFE and JOC-reconstructed dynamic objects, positioned by
@@ -131,6 +146,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   conformance vectors** (`docs/conformance-vectors.md`, `VX20`) shipped with every release.
 - **Script Lint, a ThreadSanitizer leg, and PR-time performance comparison** (`VX14`, `VX16`,
   `VX17`) join CI.
+- **CodeQL now scans the Android app's Kotlin** (`VX21`), as a step inside `build-android`'s own
+  Gradle build rather than a fifth `codeql.yml` leg — the `java-kotlin` extractor has no buildless
+  mode. **CLI container-command tests** (`VX22`) close a real gap: `mkv`/`mp4`/`ts`/`fmp4` had
+  0.0% line coverage when the `apps/cli` gate first landed, and were still only reached
+  incidentally, never asserted on their own output or refusal paths. **Headless-browser coverage
+  for the WASM decode demo, and instrumented tests for the Android bridge's device-free paths**
+  (`VX18`): the demo's channel count/sample rate/object count/duration/moving-object-position
+  claims and the Kotlin↔JNI↔C++ round trip with no receiver attached are now asserted in CI rather
+  than checked by eye.
 - **A cross-platform bitstream-hash gate** (`tools/checks/check_cross_platform_hash.py`, `VX11`):
   pins a SHA-256 of the gold-reference streams this project's own encoder produces, per SIMD
   kernel and transform mode, so the arm64/macOS legs' unexplained 6.02 dB gold-gate gap (see
@@ -278,6 +302,16 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 
 ### Fixed
 
+- **`ac3.FrameEncoder.encode_frame`/`ac3.AtmosEncoder.encode_frame` segfaulted the Python
+  interpreter instead of raising when called with the wrong *number* of channel/object arrays**
+  (as opposed to the wrong per-channel sample length, which was already checked).
+  `bindings.cpp`'s `extract_channels()` validated each array's sample length against
+  `expected_len` but never validated `py::len(channels)` against the encoder's actual
+  `channel_count()`/`dynamic_object_count()`; the underlying C++ guard is a plain `assert()`,
+  compiled out in the Release build these wheels use, so a mismatched span count read out of
+  bounds instead of failing cleanly. Both entry points now check the sequence length up front
+  and raise `py::value_error`, matching the check `ac3.eac3.FrameEncoder`/`AccessUnitEncoder`
+  already had.
 - **`coupling::quantize_coordinate`/`choose_master` computed a coordinate's binade shift via
   `floor(-std::log2(value))`** (`VX12`): a transcendental libm call whose last-bit behaviour is
   not required to agree across compilers/architectures, at exactly the input class (a value on or

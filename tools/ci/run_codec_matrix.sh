@@ -1028,4 +1028,26 @@ cmp -s atmos_4.ec3 demux_ts_atmos.ec3 || {
 }
 run_ffmpeg_check demux_ts_atmos.ec3
 
+# remux (roadmap IO2) is mkv/mp4/ts themselves accepting a container as their
+# own input, so it is checked the same way demux above is: byte-identical
+# through a demux on the far side, not just a clean exit. Two container hops
+# rather than one, since remux's whole point is skipping the raw elementary
+# stream in between - Matroska in, MP4 out, with nothing this script wrote
+# by hand at either end.
+run remux enc_51.mkv remux_51.mp4
+run demux remux_51.mp4 remux_51.ac3
+cmp -s enc_51.ac3 remux_51.ac3 || {
+    echo "remux enc_51.mkv -> .mp4 did not round-trip enc_51.ac3 byte for byte" >&2
+    exit 1
+}
+# MP4 to MPEG-TS with the Atmos stream: the harder pair in both directions -
+# an indexed sample table in, a PES-reassembled read out.
+run remux atmos_4.mp4 remux_atmos.ts
+run demux remux_atmos.ts remux_atmos.ec3
+cmp -s atmos_4.ec3 remux_atmos.ec3 || {
+    echo "remux atmos_4.mp4 -> .ts did not round-trip atmos_4.ec3 byte for byte" >&2
+    exit 1
+}
+run_ffmpeg_check remux_atmos.ec3
+
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

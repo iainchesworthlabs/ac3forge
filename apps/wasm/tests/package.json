@@ -1,0 +1,14 @@
+{
+  "name": "ac3forge-wasm-decode-demo-tests",
+  "version": "0.0.0",
+  "description": "Headless Playwright coverage for the WASM decode demo (roadmap VX18a)",
+  "private": true,
+  "type": "commonjs",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

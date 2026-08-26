@@ -88,7 +88,13 @@ Dialog {
     FileDialog {
         id: objFileDialog
         title: qsTr("Choose an E-AC-3 stream")
-        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
+        // roadmap IO2: a Matroska/MP4/MPEG-TS container works too -
+        // ObjectDecodeController sniffs the actual bytes rather than
+        // trusting the extension, so this list is a convenience for the
+        // picker only.
+        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
+                     qsTr("Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)"),
+                     qsTr("All files (*)")]
         onAccepted: ObjectDecodeController.inspectFile(selectedFile)
     }
 

@@ -27,6 +27,8 @@ qt_add_executable(ac3gui
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
     ../common/recording_sink.hpp
+    ../common/container_input.cpp
+    ../common/container_input.hpp
     system_theme.cpp
     system_theme.hpp)
 
@@ -40,7 +42,9 @@ qt_add_executable(ac3gui
 # always was (the source lines above); apps/common has no CMakeLists.txt and
 # no library target of its own, because a two-class static library shared by
 # exactly two executables in the same build would be more machinery than the
-# thing it wraps.
+# thing it wraps. container_input.cpp (roadmap IO2) joined it the same way,
+# for the QC/Inspect pickers below to accept a container in place of a bare
+# elementary stream the same way ac3cli's decode/qc/levels/play/monitor do.
 target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # The QML lives in qml/ on disk but belongs at the root of the QML module, so

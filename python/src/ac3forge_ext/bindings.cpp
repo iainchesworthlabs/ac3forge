@@ -571,6 +571,11 @@ PYBIND11_MODULE(_ac3forge, m) {
             "encode_frame",
             [](ac3::FrameEncoder& self, const py::sequence& channels) {
                 auto owned = extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+                    throw py::value_error("expected " + std::to_string(self.channel_count()) +
+                                          " channels (self.channel_count), got " +
+                                          std::to_string(owned.size()));
+                }
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;
@@ -779,6 +784,11 @@ PYBIND11_MODULE(_ac3forge, m) {
                std::vector<ac3::oba::ObjectPlacement> placement) {
                 auto owned =
                     extract_channels(objects, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (owned.size() != static_cast<std::size_t>(self.dynamic_object_count())) {
+                    throw py::value_error("expected " + std::to_string(self.dynamic_object_count()) +
+                                          " objects (self.dynamic_object_count), got " +
+                                          std::to_string(owned.size()));
+                }
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;

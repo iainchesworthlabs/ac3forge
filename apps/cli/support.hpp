@@ -606,6 +606,25 @@ std::vector<float> interleave_reordered(std::span<const std::vector<float>> chan
 
 std::vector<std::byte> read_all(std::string_view path);
 
+// The elementary stream at `in_path`: `in_path`'s own bytes verbatim if it is
+// already one, or (roadmap IO2) the first AC-3/E-AC-3 track demuxed out of a
+// recognised Matroska/MP4/MPEG-TS container, via apps/common/
+// container_input.hpp's ac3::apps::elementary_stream_from_bytes - the same
+// three readers `ac3cli demux` already streams through, run here in their
+// batch/zero-copy form since every caller has the file resident anyway.
+// `decode`, `qc`, `levels`, `play` and `monitor` all used to call
+// read_all(path) directly and now call this instead, so all five accept a
+// container in place of a raw .ac3/.ec3 with no other change to how they
+// work.
+//
+// Prints its own error and returns empty on ANY failure - a missing file, an
+// unreadable one, or a recognised container with no AC-3/E-AC-3 track - so a
+// caller's own "cannot read" message is not also needed; every existing
+// caller's `if (stream.empty()) { ...; return kExitInput; }` guard already
+// does the right thing with an empty result regardless of which of those it
+// was.
+[[nodiscard]] std::vector<std::byte> read_elementary_stream(std::string_view in_path);
+
 // Wraps ac3::io::read_wav to honor the "-" stdin convention (is_stdio_path
 // above): "-" reads the WAV from stdin, binary mode set first, instead of
 // opening a file with that literal name.

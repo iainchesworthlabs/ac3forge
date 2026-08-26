@@ -64,6 +64,7 @@ if(AC3FORGE_INSTALL_BOTH_LINKAGES)
     set(_ac3forge_matroska_install_targets matroska_objects matroska_static matroska_shared)
     set(_ac3forge_mp4_install_targets mp4_objects mp4_static mp4_shared)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_static mpegts_shared)
+    set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_static ac3iab_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static forge_c_shared)
 elseif(BUILD_SHARED_LIBS)
     # ac3::forge_c (src/capi/CMakeLists.txt) statically embeds ac3::forge_static PRIVATE
@@ -84,6 +85,7 @@ elseif(BUILD_SHARED_LIBS)
     set(_ac3forge_matroska_install_targets matroska_objects matroska_shared)
     set(_ac3forge_mp4_install_targets mp4_objects mp4_shared)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_shared)
+    set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_shared)
 else()
     set(_ac3forge_forge_install_targets forge_objects forge_static)
@@ -91,6 +93,7 @@ else()
     set(_ac3forge_matroska_install_targets matroska_objects matroska_static)
     set(_ac3forge_mp4_install_targets mp4_objects mp4_static)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_static)
+    set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_static)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static)
 endif()
 
@@ -231,6 +234,27 @@ if(AC3FORGE_BUILD_MPEGTS)
         COMPONENT library)
 endif()
 
+# ac3iab::ac3iab is an optional component (AC3FORGE_BUILD_IAB, see the root CMakeLists.txt) -
+# same shape as matroska::matroska/mp4::mp4/mpegts::mpegts above, a reader rather than a
+# writer. No vcpkg feature of its own yet - new in this PR, following ac3::forge_c's own
+# precedent of installing/exporting from day one but waiting to add a vcpkg feature until it
+# is formally documented (see packaging/vcpkg-port/ac3forge/portfile.cmake's header comment).
+if(AC3FORGE_BUILD_IAB)
+    install(TARGETS ${_ac3forge_iab_install_targets}
+        EXPORT iabTargets
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
+
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/ac3iab/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        COMPONENT library)
+
+    install(FILES "${CMAKE_BINARY_DIR}/src/ac3iab/generated/ac3iab/export.hpp"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac3iab"
+        COMPONENT library)
+endif()
+
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, see the root CMakeLists.txt) - same
 # shape as matroska::matroska/mp4::mp4/mpegts::mpegts above. Roadmap item F1's whole point is a
 # stable C-callable surface for OTHER toolchains, so its header (ac3forge_c/ac3forge.h) installs
@@ -312,6 +336,14 @@ if(AC3FORGE_BUILD_MPEGTS)
     install(EXPORT mpegtsTargets
         FILE mpegtsTargets.cmake
         NAMESPACE mpegts::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        COMPONENT library)
+endif()
+
+if(AC3FORGE_BUILD_IAB)
+    install(EXPORT iabTargets
+        FILE iabTargets.cmake
+        NAMESPACE ac3iab::
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
         COMPONENT library)
 endif()
