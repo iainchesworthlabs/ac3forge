@@ -554,9 +554,8 @@ int run_outputs() {
 }
 
 int run_play(std::string_view in_path, int device_index) {
-    const auto stream = read_all(in_path);
+    const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
-        fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);

@@ -170,13 +170,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 38 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
+// 39 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
 // ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
 // run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
 // never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 38> kCommands{{
+constexpr std::array<Command, 39> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -281,11 +281,12 @@ constexpr std::array<Command, 38> kCommands{{
          return run_eac3_encode(x.str(1), x.str(2), x.u32(3, 192), x.str(4, "none"), x.str(5),
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
-    {"decode", 3, "<in.ac3|in.ec3> <out.wav> [objects_dir] [adm_out]",
-     "AC-3 or E-AC-3; bsid decides. objects_dir (E-AC-3 Atmos only): export each "
-     "JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object "
-     "Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 "
-     "there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own decoded OAMD",
+    {"decode", 3, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",
+     "AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): "
+     "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
+     "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
+     "Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own "
+     "decoded OAMD",
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},
@@ -328,7 +329,7 @@ constexpr std::array<Command, 38> kCommands{{
          const auto inputs = x.tail(2);
          return run_cat(x.str(1), inputs);
      }},
-    {"levels", 2, "<in.wav|in.ac3|in.ec3>", "per-channel peak/RMS report",
+    {"levels", 2, "<in.wav|in.ac3|in.ec3|in.mkv|in.mp4|in.ts>", "per-channel peak/RMS report",
      topic::kProgramme,
      Needs::kNothing,
      [](const Args& x) { return run_levels(x.str(1), x.meta.programme); }},
@@ -336,7 +337,7 @@ constexpr std::array<Command, 38> kCommands{{
      Needs::kNothing,
      [](const Args& x) { return run_loudness(x.str(1)); }},
     {"qc", 2,
-     "<in.ac3|in.ec3> [preset=<name>|all] [layout=bed|rendered] "
+     "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] "
      "[objects=<51|71|512|514|714>]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate, optional BS.1770-5 Annex 4 object re-render",
@@ -376,19 +377,26 @@ constexpr std::array<Command, 38> kCommands{{
      "identified by its own magic bytes, not by the file name",
      topic::kNone,
      Needs::kNothing, [](const Args& x) { return run_demux(x.str(1), x.str(2)); }},
+    {"remux", 3, "<in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc]",
+     "container-to-container: the input is identified by its magic bytes, the output by its "
+     "extension, and everything either declares is re-derived from the bitstream - the dec3-repair "
+     "case",
+     topic::kTs | topic::kMeta,
+     Needs::kNothing,
+     [](const Args& x) { return run_remux(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"devices", 1, "", "input and loopback capture endpoints", topic::kNone,
      Needs::kCapture,
      [](const Args&) { return run_devices(); }},
     {"outputs", 1, "", "render endpoints + AC-3/E-AC-3 passthrough support", topic::kNone,
      Needs::kPassthrough,
      [](const Args&) { return run_outputs(); }},
-    {"play", 2, "<in.ac3|in.ec3> [device_index]",
+    {"play", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
      "exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3", topic::kNone,
      Needs::kPassthrough,
      // -1, not 0: run_play reads a negative index as "the default endpoint",
      // where 0 names the first one 'outputs' lists and demands passthrough of it.
      [](const Args& x) { return run_play(x.str(1), x.i32(2, -1)); }},
-    {"monitor", 2, "<in.ac3|in.ec3> [device_index]",
+    {"monitor", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
      "decode and play on an ordinary (non-bitstreamed) output", topic::kDecode | topic::kObjects,
      Needs::kMonitor,
      [](const Args& x) { return run_monitor(x.str(1), x.i32(2, -1), x.meta); }},

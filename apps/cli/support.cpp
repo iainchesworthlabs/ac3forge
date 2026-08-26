@@ -43,6 +43,7 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "container_input.hpp"
 #include "platform/stdio_binary.hpp"
 #include "recording_sink.hpp"
 #include "usage.hpp"
@@ -1919,6 +1920,20 @@ std::vector<std::byte> read_all(std::string_view path) {
         return {};
     }
     return bytes;
+}
+
+std::vector<std::byte> read_elementary_stream(std::string_view in_path) {
+    auto bytes = read_all(in_path);
+    if (bytes.empty()) {
+        fmt::println(stderr, "error: cannot read {}", in_path);
+        return {};
+    }
+    auto result = ac3::apps::elementary_stream_from_bytes(bytes);
+    if (!result.error.empty()) {
+        fmt::println(stderr, "error: {} is a {}", in_path, result.error);
+        return {};
+    }
+    return std::move(result.bytes);
 }
 
 std::expected<ac3::io::WavData, ac3::io::WavError> read_wav_arg(std::string_view path) {

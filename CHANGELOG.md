@@ -77,9 +77,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
 - **`ac3cli probe`** (`IO1`): what a stream declares — layout, substream map, tools used, metadata,
   CRC validity — without decoding audio. Human table by default, `json=1` for a versioned schema.
   `detail=frames`/`detail=blocks` add per-unit and per-block dumps.
-- **Container readers for Matroska, MP4 and MPEG-TS** (`IO2`): `demux()`/`Reader` for all three,
-  plus `ac3cli demux`. Each reads real third-party shapes this project's own writers never emit
-  (all lacing forms, fragmented `moof`/`trun`, ATSC/registration-descriptor signalling).
+- **Container readers for Matroska, MP4 and MPEG-TS, and full container widening** (`IO2`):
+  `demux()`/`Reader` for all three, plus `ac3cli demux`. Each reads real third-party shapes this
+  project's own writers never emit (all lacing forms, fragmented `moof`/`trun`, ATSC/
+  registration-descriptor signalling). `decode`, `qc`, `levels`, `play`, `monitor` and the GUI's
+  QC/Inspect pickers now accept a container directly in place of a bare elementary stream, and
+  `mkv`/`mp4`/`ts` accept one as input too — which, together with a new `remux <in> <out>`
+  command, makes container-to-container remux work (the `dec3`-repair case: a `.mkv` with a
+  broken or missing Atmos `dec3` flag comes out correct after a remux to `.mp4`, since the target
+  never reads the source's box).
 - **IEC 61937 de-framing and passthrough capture** (`IO3`): `ac3::iec61937::BurstReader` plus
   `ac3cli unspdif`, and capture-side recognition so a bitstreamed source records the elementary
   stream instead of encoding noise.
