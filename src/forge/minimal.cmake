@@ -60,6 +60,7 @@ target_sources(forge_minimal
         src/internal/avx2/none/mdct_avx2.cpp
         # --- decode ------------------------------------------------------
         src/decoder/decoder.cpp             # AC-3, plus split_frames/split_access_units
+        src/decoder/diagnostics.cpp         # DecoderConfig::diagnostics' describe() (AP11)
         src/decoder/eac3_decoder.cpp        # Annex E, every tool
         src/decoder/output.cpp              # OutputStage::apply/mix_levels - both decoders'
                                             # own OutputStage member is called unconditionally

@@ -127,6 +127,7 @@ target_sources(forge_objects
         src/core/mdct.cpp
         src/core/transform/reference/reference_transform.cpp
         src/decoder/decoder.cpp
+        src/decoder/diagnostics.cpp
         src/decoder/eac3_decoder.cpp
         src/decoder/output.cpp
         src/decoder/transient_prenoise.cpp
