@@ -1106,6 +1106,7 @@ jobs:
       # matrix's "Report and assert toolchain versions" step) rather than
       # pinning CMake's own version exactly.
       - name: Install CMake
+        shell: bash
         env:
           CMAKE_MIN: ${{ needs.toolchain-versions.outputs.cmake_min }}
         run: |
@@ -1146,6 +1147,7 @@ jobs:
       # runner-specific path cmake/FindQt6.cmake's own local search roots
       # don't cover.
       - name: Configure
+        shell: bash
         env:
           VERSION_TAG_INPUT: ${{ inputs.version_tag }}
         run: |
@@ -1178,6 +1180,7 @@ jobs:
       # ldd rather than just assumed, so a future default flip doesn't
       # silently ship an AppImage missing a .so it now needs.
       - name: Install into AppDir
+        shell: bash
         run: |
           set -euo pipefail
           cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component runtime
@@ -1213,6 +1216,7 @@ jobs:
       # here - if either upstream asset ever changes, this fails loudly
       # instead of silently building with different bytes.
       - name: Download linuxdeploy tools
+        shell: bash
         env:
           LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
           LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
@@ -1249,6 +1253,7 @@ jobs:
       # guaranteed to reach those child processes too - this runner has no
       # FUSE, same as every other container leg in this file.
       - name: Build the AppImage
+        shell: bash
         run: |
           set -euo pipefail
           version="$(build/config-linux-gcc/bin/ac3cli --version | head -1 | awk '{print $NF}')"
@@ -1267,6 +1272,7 @@ jobs:
       # product a SHA512 side-car for free; the AppImage isn't a CPack
       # product; so it gets one the same way by hand, for parity.
       - name: Checksum the AppImage
+        shell: bash
         run: |
           set -euo pipefail
           appimage="$(ls ac3gui-*.AppImage)"
@@ -1311,6 +1317,7 @@ jobs:
       # debian:12-slim is a different distro family entirely, satisfying
       # (a), with a glibc new enough to satisfy (b) too.
       - name: Smoke test on a distro that never had Qt installed
+        shell: bash
         run: |
           set -euo pipefail
           appimage="$(ls ac3gui-*.AppImage)"
