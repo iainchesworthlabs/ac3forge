@@ -114,9 +114,9 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 !!! note "Verified in a real browser"
     Both `cmake --preset config-wasm-emscripten` and the full desktop presets configure and build
     clean from the same source tree (confirmed repeatedly across this PR's history, including after
-    merging `develop` and merging #169's own branch in directly). A real Chromium instance loading
-    the built page — both standalone and embedded in the actual `mkdocs build --strict`-built docs
-    site — genuinely decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
+    merging in the then-current integration branch and #169's own branch directly). A real
+    Chromium instance loading the built page — both standalone and embedded in the actual
+    `mkdocs build --strict`-built docs site — genuinely decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
     (`E-AC-3, 48000 Hz, 6 ch (L, C, R, Ls, Rs, LFE), 3 Atmos object(s), 8.0s`, matching what was
     encoded), plays real audio with `AudioContext.currentTime` genuinely advancing, and paints a
     speaker-ring visualization driven by real, time-varying per-channel RMS (confirmed non-degenerate

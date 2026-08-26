@@ -35,7 +35,7 @@ adb -s <shield-ip>:5555 shell am start -n com.ac3forge.shield/.MainActivity
 platform-independent and is linked into the app **unmodified**, via a thin wrapper
 `CMakeLists.txt` (`apps/android/app/src/main/cpp/CMakeLists.txt`) that `add_subdirectory()`s
 the real repo root rather than duplicating its target definitions. `ac3::audio` (`src/audio/`)
-gains a fifth backend, `src/audio/src/backend/android/`, alongside `windows`/`alsa`/
+gains its own backend, `src/audio/src/backend/android/`, alongside `windows`/`alsa`/`pipewire`/
 `posix`/`macos`, selected by CMake's own `ANDROID` variable (set by the NDK toolchain file, a peer check
 to the existing `WIN32`/`LINUX`/`APPLE` blocks in `src/audio/CMakeLists.txt`) — no `#ifdef`
 anywhere, per the project's
@@ -452,13 +452,27 @@ every other required leg.
     safe public default actually takes effect, not just compiles. `build-android` has itself now run
     green three consecutive times on GitHub's hosted runners — see [Release / CI](#release-ci) above.
 
+!!! note "Automated in CI (roadmap VX18b)"
+    `apps/android/app/src/androidTest/` adds `NativeBridgeInstrumentedTest` and
+    `PassthroughBridgeInstrumentedTest`, which `build-android` runs on every build via
+    `./gradlew :app:connectedDebugAndroidTest` against a GitHub-hosted API-30 x86_64 emulator
+    (KVM acceleration is x86/x86_64-only on those runners, so the debug build type targets
+    x86_64 alongside the real device's arm64-v8a; release stays arm64-v8a-only). Before this,
+    nothing ran any Kotlin-level test at all — only `tests/backend/android/`'s C++-side
+    device-free logic (burst sizing, carrier rate, render-device construction) on the ordinary
+    desktop-hosted CTest suite. Every emulator case is a **"no receiver attached" contract
+    check**: the emulator runs `-noaudio`, which makes `isDirectPlaybackSupported` deterministically
+    false, so what these assert is that the JNI round trip and the `AudioTrack`/`AudioFormat`
+    calls fail safely rather than throwing or hanging.
+
 !!! warning "Not yet verified"
-    `tests/backend/android/` covers only the device-free logic (burst sizing, carrier rate,
-    render-device construction), built and run on the normal desktop-hosted CTest suite — there is
-    no automated on-device or instrumented test for anything in this section; every claim above is
-    manual verification on one specific Shield + receiver pair, not a repeatable check. Other Android
-    TV hardware (a different SoC, a different receiver's own EDID/HDMI behavior) is untested. This
-    is also the only platform page in the project where anything has actually run on real target
-    hardware with a real receiver attached — a platform's CI legs passing (Linux's `alsa` backend
-    included) is a materially different claim than this page's "installed and run on a real device"
-    one, and should not be read as implying the latter.
+    The emulator tests above cover the device-free contract, not the passthrough path itself:
+    everything this section claims about a receiver actually locking on — the format negotiation,
+    the Atmos indicator, the HDMI resilience scenarios — is manual verification on one specific
+    Shield + receiver pair, not a repeatable check. Other Android TV hardware (a different SoC, a
+    different receiver's own EDID/HDMI behavior) is untested. Along with
+    [Raspberry Pi](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), which drives a real
+    Atmos AVR from a Pi 4B, this is one of only two platform pages in the project where anything
+    has run on real target hardware with a real receiver attached — a platform's CI legs passing
+    (Linux's `alsa` backend included) is a materially different claim than "installed and run on a
+    real device", and should not be read as implying it.

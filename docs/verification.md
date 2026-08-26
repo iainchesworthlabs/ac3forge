@@ -224,16 +224,20 @@ count, ~2.2 s over a 30 s `kMdctBand` decode. It has no effect under the default
 
 The Catch2 suites (`ac3tests` plus the `ac3perf` throughput suite) plus one `ctest` entry per
 example program, run per platform. The GUI's Qt Quick Test harness (`ac3gui_qmltests`) adds one
-entry on a GUI-enabled build, and the ALSA backend's `tests/backend/alsa/` adds 14 on a Linux
-build with libasound present; `ctest` runs whatever the configuration registered:
+entry per `tst_*.qml` suite under `apps/gui/tests/qml/` (21 today) on a GUI-enabled build, and the
+ALSA backend's `tests/backend/alsa/` adds 15 on a Linux build with libasound present — or
+`tests/backend/pipewire/`'s 5, on a build that selected PipeWire instead; `ctest` runs whatever
+the configuration registered:
 
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
 
-The three documented library examples (`wav_roundtrip`, `read_adm`, `encode_adm`) are each their
-own `ctest` case and write scratch files under a name unique to that run, not a fixed name in the
-OS temp directory — two checkouts running `ctest` at once would otherwise read and delete each
+`examples/CMakeLists.txt` registers 21 example programs as their own `ctest` cases, plus
+`read_adm`/`encode_adm` under `AC3FORGE_BUILD_ADM` and the two C-API examples under
+`AC3FORGE_BUILD_CAPI`. The ones that touch the filesystem (`wav_roundtrip`, `read_adm`,
+`encode_adm`) write scratch files under a name unique to that run, not a fixed name in the OS
+temp directory — two checkouts running `ctest` at once would otherwise read and delete each
 other's fixture.
 
 ## Third-party bitstreams
@@ -247,11 +251,16 @@ attached to it, not a conformance suite.
 
 Two tiers, both gated in CI:
 
-- **Committed** — `tests/golden/external-baseline/` holds six streams from Dolby Encoding Engine
-  6.5.4 and FFmpeg 8.0.1, each encoded from this repository's own source WAVs (see
-  `tools/generators/gen_external_baseline.py`). `tools/checks/verify_gold_reference.sh` decodes
-  all six with `ac3cli` on every gold-reference leg and diffs each against FFmpeg's own decode,
-  with per-fixture floors quoted beside the measured numbers in the script. They also seed the
+- **Committed** — `tests/golden/external-baseline/` holds 14 streams from Dolby Encoding Engine
+  6.5.4 and FFmpeg 8.0.1 across 8 codec/layout/bitrate legs (`manifest.json`, `baseline_version`
+  2), each encoded from this repository's own source WAVs (see
+  `tools/generators/gen_external_baseline.py`) and each carrying the DEE, FFmpeg and
+  ours-at-baseline-time scores it was measured at. `tools/checks/verify_gold_reference.sh` gates
+  on a six-stream subset of that: it decodes all six with `ac3cli` on every gold-reference leg and
+  diffs each against FFmpeg's own decode, with per-fixture floors quoted beside the measured
+  numbers in the script. The other eight are not gated:
+  `tools/ci/append_external_comparison_history.py` walks every leg in the manifest for the
+  [tool-comparison trend](tool-comparison-trend.md). They also seed the
   decoder fuzzers, so mutation starts from third-party structure rather than only from this
   project's own encoder output.
 - **Fetched** — `tools/checks/verify_fate_interop.py` pulls eight SHA-256-pinned samples from
@@ -533,11 +542,17 @@ FFmpeg decodes the audio, `header_only` for the `fscod2` rates, `none` for 7.1.4
 coupling / transient pre-noise processing.
 
 Two limits are worth stating on this page rather than only in the bundle: the source material is
-synthetic (roadmap VX7 is what changes that), and the hashes are per-toolchain — encoded output
-is not yet bit-identical across compilers or architectures (roadmap VX11/VX12), so a bundle
-regenerated elsewhere differs from the published one for the same correct streams. Regenerating
-with the toolchain the manifest names reproduces every hash exactly, and the generator asserts
-that with `--check-determinism` rather than assuming it.
+synthetic, and the hashes are per-toolchain. On the first — roadmap VX7 has landed and the CC0
+speech and music fixtures are committed (`tests/golden/audio/programme_{speech,music}_stereo.flac`),
+but the vector generator was never pointed at them: `tools/generators/gen_conformance_vectors.py`
+still synthesizes its own sources and marks the spot where those files would join the set. Wiring
+this bundle to that material is outstanding work, not a pending roadmap item. On the second —
+encoded output is not bit-identical across compilers or architectures, so a bundle regenerated
+elsewhere differs from the published one for the same correct streams. VX11 closed without
+explaining the 6.02 dB arm64 offset (both hypotheses it proposed were falsified by direct
+measurement); VX12, gating byte-identical encodes across every leg, is the one still open.
+Regenerating with the toolchain the manifest names reproduces every hash exactly, and the
+generator asserts that with `--check-determinism` rather than assuming it.
 
 See [Conformance vectors](conformance-vectors.md).
 

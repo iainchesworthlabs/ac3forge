@@ -3,8 +3,9 @@
 Every program in [`examples/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/examples)
 builds by default (`AC3FORGE_BUILD_EXAMPLES=ON`) and registers as a `ctest` entry named
 `example.<name>`, so "the examples still work" is checked by the same command as everything else
-(`read_adm` additionally needs `-DAC3FORGE_BUILD_ADM=ON`). These programs are also the source
-the library pages excerpt from — each page's "Full program" link lands on one of them.
+(`read_adm` and `encode_adm` additionally need `-DAC3FORGE_BUILD_ADM=ON`). These programs are
+also the source the library pages excerpt from — each page's "Full program" link lands on one of
+them.
 
 ## Encoding
 
@@ -52,6 +53,7 @@ the library pages excerpt from — each page's "Full program" link lands on one 
 |---|---|---|
 | [`wav_roundtrip`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/wav_roundtrip.cpp) | Real WAV in → encode → decode → WAV out, crossing the WAV↔A/52 channel order both ways. | [File I/O](file-io.md) |
 | [`read_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) | Open an ADM BW64 file and print the parsed graph — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM / BW64 reading](adm.md) |
+| [`encode_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp) | The whole read direction end to end: `parse_bw64` → `admbridge::build` → `AtmosEncoder`, an ADM BWF master out to a DD+ JOC elementary stream. The one example needing `ac3::forge` and the ADM modules together — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md) |
 
 ## C API
 

@@ -186,9 +186,16 @@ doc comments already say no caller outside the library should need them directly
 `ac3forge_eac3_frame_config_t` likewise trims `ac3::eac3::FrameConfig`: the `mixmdate`/`infomdat`
 metadata groups, `dialnorm2`/`drc`/`heavy` (dual mono and DRC would reuse the same presets the AC-3
 encoder already exposes, but the broader Table E1.2 metadata surface those two groups sit inside is
-deferred), `vbr` (CBR only), and `numblkscod` (six-block syncframes only) are not mirrored — a
-config built from `ac3forge_eac3_frame_config_init()` and read back always agrees with a default
-`FrameConfig{}` on every field this struct doesn't carry.
+deferred), `vbr` (CBR only), `numblkscod` (six-block syncframes only), `search`/`dither` (both
+decision knobs stay at their defaults — content-decided dither on, no per-frame bit-allocation
+codes search), `chbwcod`/`fgaincod` (auto-from-bitrate only, unlike the AC-3 struct's own
+`chbwcod`), `oba_complexity_index` (the TS 103 420 object-count marker, which
+`ac3forge_atmos_encoder_t` sets for the streams it builds) and `last_dependent` (§E3.8.5's
+end-of-programme marker — part of the substream identity
+`ac3forge_eac3_access_unit_encoder_t` assigns itself, and readable back through
+`ac3forge_decoded_substream_last_dependent()`) are not mirrored — a config built from
+`ac3forge_eac3_frame_config_init()` and read back always agrees with a default `FrameConfig{}` on
+every field this struct doesn't carry.
 
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not

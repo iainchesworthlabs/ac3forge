@@ -103,8 +103,8 @@ cpack --preset pack-macos-llvm
 Produces a DragNDrop image on top of a plain ZIP when the packaging tool is found, the same way
 NSIS is on Windows and DEB/RPM are on Linux. `macos-llvm` is one of the four `release_package`
 legs (alongside `windows-msvc`, `linux-gcc` and `linux-gcc-arm64`) that package on a real tagged
-release (`release.yml`, `do_package: true`). That path has been exercised for real: four beta
-releases, v0.2.0-beta.1 through v0.5.0-beta.1, have shipped through the tag-triggered workflow,
+release (`release.yml`, `do_package: true`). That path has been exercised for real: nine beta
+releases, v0.2.0-beta.1 through v0.9.0-beta.1, have shipped through the tag-triggered workflow,
 macOS packages included. `cmake/Packaging.cmake` needed no change for `ac3gui` to join that
 `.dmg`: which targets end up in a package is decided entirely by which `install()` rules ran, and
 `ac3gui`'s already runs whenever `AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop generator itself is

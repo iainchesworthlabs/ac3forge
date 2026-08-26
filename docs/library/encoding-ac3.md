@@ -47,6 +47,7 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `cplbegf`, `cplendf` | -1, -1 | Sub-band indices; -1 lets the encoder choose from the per-channel rate. |
 | `fgaincod` | -1 | §7.2.2.4 fast gain, Table 7.11. -1 takes the encoder's rate-dependent choice; 0–7 pins it. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation (~25× on the long-transform kernel, identical streams to within ~3e-12 coefficient error). `false` forces the direct reference form, kept as the validation oracle — the CLI spells that `fast-mdct=off`. |
+| `dither` | `true` | §7.3.4 `dithflag`, decided per channel per block from the content — see below. `false` pins it at 0 in every block, which is what a bit-for-bit comparison against a second decoder needs, since dither values are decoder-defined; the CLI spells that `dither=off`. |
 | `drc` | none | `std::optional<meta::Profile>`. Absent leaves `dynrnge` clear in every block. |
 | `heavy` | none | `std::optional<meta::HeavyConfig>`. Independent of `drc`. |
 | `drc2` | none | `std::optional<meta::Profile>`. Ch2's own DRC, meaningful only under `kDualMono` — no fallback to `drc` when unset (see below). |
@@ -206,12 +207,19 @@ See `docs/library/quality.md` for
 the model and the reproduction commands.
 
 Frame sizes are unaffected — every one of these codes is a fixed-width field, so no candidate can
-cost or save a byte. E-AC-3 does not have this: it sends `bamode = 0`, which pins `dbpbcod`, so
-carrying per-frame codes at all needs syntax the E-AC-3 encoder does not emit yet.
+cost or save a byte. E-AC-3 has the same search, through `eac3::FrameConfig::search`: Annex E's
+`bamode = 1` — which this encoder writes — states the allocation parameters in the frame's own
+`baie` element, so the codes are per-frame there too. Its second axis is not free the way AC-3's
+is: `baie` carries no `fgaincod` at all, so a non-default fast gain has to open the per-block
+`fgaincode` element (roadmap EQ7/EQ13), which is why the candidates are scored after a refit
+against their own side-info cost. See [Encoding E-AC-3](encoding-eac3.md).
 
 ### Dither substitution
 
-Automatic as well (§7.3.4) — no config field. `dithflag` is one bit per full-bandwidth channel
+Content-decided by default (§7.3.4), through `EncoderConfig::dither` — `false` pins `dithflag`
+at 0 unconditionally, which is what `tools/checks/verify_gold_reference.sh` needs, since real
+dither values are decoder-defined and two spec-correct decoders diverge in the dithered bins by
+design. The CLI spells that `dither=off`. `dithflag` is one bit per full-bandwidth channel
 per block and is transmitted whichever way it reads, so the decision costs nothing; what it
 decides is what the decoder puts in the bins the allocator gave no bits to. Per channel per
 block, the encoder sums the real coefficient energy over those bins and compares it against the

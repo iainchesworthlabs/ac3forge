@@ -83,11 +83,13 @@ codecs; there is no Atmos-specific signaling on this path — DVB's descriptors 
 marker, unlike MP4's dec3 box or fMP4's HLS playlist above. Honestly two commands here too
 (`ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts`).
 
-Of the four containers above, **fragmented MP4/CMAF** and **MPEG-TS** carry over to a **live
-session** the way Matroska does — fMP4 gained an incremental writer (`mp4::FragmentWriter`) and
-MPEG-TS gained one of its own (`mpegts::Writer`), with `ac3cli live` taking `container=fmp4` and
-`container=ts` to match. S/PDIF and plain MP4 still fall back to writing the plain elementary
-stream when a live session starts, the same file Elementary stream itself would produce live; see
+Of the four containers above, only **fragmented MP4/CMAF** carries over to a **live session** the
+way Matroska does: `EncoderController::openLiveOutputWriters` wires exactly two incremental
+writers, `matroska::Writer` and `mp4::FragmentWriter`, and **MP4**, **S/PDIF** and **MPEG-TS** all
+fall through to writing the plain elementary stream when a live session starts — the same file
+Elementary stream itself would produce live. That is a limit of the live path, not of the
+containers: a **recording** (the Record button's capture-to-file take) goes through
+`RecordingSink` instead, which does write S/PDIF and MPEG-TS properly. See
 [Live capture & session → Take durability](live-session.md#take-durability) for what separates
 them.
 

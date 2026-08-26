@@ -30,8 +30,12 @@ on the spot) and a one-sentence tour of the window:
 
 Any of those, plus dragging a file onto the window or launching `ac3gui path/to/file` from a
 shell, works from the first-run screen or the workbench alike — a WAV becomes a source, an
-already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. See [Loading a
-source](loading-a-source.md#01-input).
+already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. An installed
+`ac3gui` also claims `.ac3`/`.ec3` as a file association on Linux (`ac3gui.desktop`'s
+`MimeType=audio/ac3;audio/eac3` plus the `ac3gui-mime.xml` shared-mime-info fragment that declares
+them) and on macOS (`Info.plist`'s `CFBundleDocumentTypes`/`UTExportedTypeDeclarations`, roadmap
+UX2), so opening one from the file manager arrives here the same way the command line does; there
+is no Windows leg. See [Loading a source](loading-a-source.md#01-input).
 
 ## The window
 

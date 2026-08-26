@@ -26,7 +26,11 @@ not just the rail. Drop an already-encoded `.ac3`/`.ec3` file instead and it doe
 source at all: it opens in the [stream player](open-stream.md) for playback/export, the same as
 picking it from **Open stream…**. `ac3gui` also accepts a file path on the command line
 (`ac3gui recording.wav`, `ac3gui mix.ec3`) and applies the identical WAV-vs-stream distinction at
-launch.
+launch. An installed build registers `.ac3`/`.ec3` as its own on Linux and macOS too (roadmap UX2
+— `apps/gui/packaging/linux/ac3gui.desktop` plus the `ac3gui-mime.xml` fragment declaring
+`audio/ac3`/`audio/eac3`, and `Info.plist`'s `CFBundleDocumentTypes`/`UTExportedTypeDeclarations`
+with `LSHandlerRank Owner`), so double-clicking one in the file manager takes the same path as the
+command-line argument; Windows has no equivalent registration.
 
 The row reports the channel *count*, not a layout name — the output layout is chosen
 independently on the [Format tab](format-and-channels.md) and need not match the source. A source
