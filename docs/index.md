@@ -137,6 +137,13 @@ codec's own window — instead of leaving a hard discontinuity in the PCM, with 
 reported on the result. For E-AC-3, an access unit whose *dependent* substream will not decode
 renders its bed rather than failing outright.
 
+`DecoderConfig::diagnostics` is a **consumer-facing diagnostic sink** — a plain function pointer,
+no allocation, usable from the minimum-footprint decoder profile — for the recoverable events
+that concealment's own return value does not carry: a CRC that failed (reported the moment the
+check runs, whether or not concealment goes on to recover the frame) and an EMDF payload id this
+decoder does not interpret (§H.2.2, skipped without failing the frame). Null by default, at the
+cost of one branch per occurrence when it is not set.
+
 ### Inspection
 
 Decoding a stream and *describing* one are different jobs. `ac3::io::probe` (`ac3cli probe`)
@@ -173,6 +180,7 @@ produces it.
 | `mp4::mp4` | A standalone MP4/ISOBMFF muxer, same shape as `matroska::matroska`. `ac3::io::build_codec_config_box` builds a spec-correct `dac3`/`dec3` sample-entry box (ETSI TS 102 366 Annex F), Dolby Atmos extension included, straight off the bitstream. |
 | `mpegts::mpegts` | A standalone MPEG-2 Transport Stream muxer (PAT + PMT + one PES-wrapped elementary stream), identifying AC-3/E-AC-3 per either broadcast profile: DVB's ETSI EN 300 468 Annex D descriptors, or ATSC's `stream_type` 0x81/0x87 with A/52 Annex A and Annex G's own. Both descriptors' identification fields are filled in from what `ac3::io::scan` reads off the bitstream. Links nothing from `ac3::forge` beyond the A/52 field values it is handed. |
 | `ac3::io::strip_objects` | Removes the JOC/OAMD object layer from a Dolby Digital Plus stream at the bitstream level — no decode, no re-encode, bit-identical bed audio — turning a DD+ JOC stream into the plain DD+ 5.1 rendition HLS delivery wants beside it. `ac3cli strip-objects`. |
+| `ac3iab::ac3iab` | A standalone reader for SMPTE ST 2098-2's Immersive Audio Bitstream (IAB) — the format Dolby Atmos cinema masters carry, and that Netflix's IMF pipeline delivers inside MXF track files (SMPTE ST 2067-201). Reads a bare elementary `.iab` file or a real MXF Track File alike; its lossless coder (Annex B) is read by identity only. Links nothing from `ac3::forge` and knows nothing about AC-3 — on by default, no third-party dependency. See [IAB reading](library/iab.md). |
 | `ac3adm::ac3adm` | A standalone BW64/RF64 + Audio Definition Model reader (container and metadata parsing only — codec-blind by design). Parses the container (ITU-R BS.2088-1) and the ADM XML graph (ITU-R BS.2076-2) on top of the vendored libbw64/libadm (github.com/ebu); links nothing from `ac3::forge` and knows nothing about AC-3. `ac3::admbridge` maps its object/bed graph onto `ac3::oba::AtmosEncoder`'s input shape, driven end to end by `ac3cli atmos-adm` — see [ADM bridging](library/adm-bridge.md). Opt-in (`-DAC3FORGE_BUILD_ADM=ON`, needs Boost) — the one component in this project with a third-party dependency. |
 | `mp4::fragment` + `mp4/hls.hpp` + `mp4/dash.hpp` | Fragmented MP4/CMAF segmenting (init segment + media segments, ISO/IEC 14496-12 §8.8 / ISO/IEC 23000-19) plus HLS media/master playlist and DASH `AdaptationSet` signaling helpers for the same segments — correct `CODECS`/`codecs` (RFC 6381) and, for Dolby Atmos, HLS's `CHANNELS="<N>/JOC"` (Apple's HLS Authoring Specification), with a multi-rendition master playlist for the paired 5.1 fallback that specification asks for. `ac3cli fmp4` wraps the whole thing. |
 | `ac3::iec61937` | S/PDIF burst packing: AC-3 byte-exact against FFmpeg's `spdif` muxer; E-AC-3 (`Eac3BurstPacker`) verified against FFmpeg's `spdif_header_eac3` and Microsoft's own IEC 61937 documentation (both independently fetched, not recalled — see the caveats below). |
