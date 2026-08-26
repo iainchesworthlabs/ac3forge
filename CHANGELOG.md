@@ -109,6 +109,10 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`record` and `live` reach parity with the GUI session**: any layout up to 7.1.4, either codec,
   `container=raw|mkv|ts|spdif|fmp4` written incrementally, a capture-silence watchdog, an object
   slot budget for `mode=atmos`, and a parallel 5.1 leg for an AC-3-only endpoint.
+- **`play` follows the sink**: it reads what a chosen receiver actually accepts (EDID short audio
+  descriptors on ALSA; a live probe elsewhere) and adapts instead of refusing — a source format the
+  sink can't bitstream is transcoded to AC-3 or decoded to PCM automatically, so the "no 5.1 PCM
+  over optical" case now takes one command instead of two. `follow=off` restores the old refusal.
 - **A GUI stream player** — the twin of `ac3cli monitor` — with transport, live meters, the
   soundfield view, and WAV/object export from the same decode pass. A finished run offers **QC
   this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).

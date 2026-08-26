@@ -664,6 +664,20 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
+        if (key == "follow") {
+            // 'play' only: the sink-following fallback (roadmap UX9) toggle.
+            // Unlike downmix=, no other command reads this key, so there is
+            // no value space to disambiguate against.
+            if (value == "on") {
+                out.follow_sink = true;
+            } else if (value == "off") {
+                out.follow_sink = false;
+            } else {
+                fmt::println(stderr, "error: follow is 'on'/'off' (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
         if (key == "ltrt-phase") {
             // The 90-degree shift on Lt/Rt's surround sum is what §7.8.2
             // describes and costs a fixed delay on the whole output; 'off'

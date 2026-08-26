@@ -53,6 +53,16 @@ with none, format matching, sample conversion — run under `ac3tests` on the ho
 as everywhere else without real hardware, but no real Mac has ever run this code against an
 actual digital output, and no receiver has been asked to lock onto its output.
 
+**No EDID/ELD backend here either (roadmap UX9).** `ac3cli play` asks a chosen sink what it
+actually accepts before committing to a format (see
+[CLI → Following the sink](../cli/commands.md#following-the-sink)), and that read
+(`ac3::audio::sink_capabilities`) is real today only on ALSA (see
+[Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9)). CoreAudio's device properties and
+IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861
+Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
+output has no display EDID to read in the first place. `play` falls back to the live
+`enumerate_render_devices()` probe here, the same as before this roadmap item existed.
+
 ## Building
 
 ```bash

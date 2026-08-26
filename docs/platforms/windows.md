@@ -64,6 +64,17 @@ is deliberately explicit about the difference.
     itself); the same trick now exists for E-AC-3 (`ac3cli spdif`/`monitor`/`live`, branching on
     bsid) but has not itself been tried against a receiver either.
 
+!!! note "No EDID/ELD backend on Windows (roadmap UX9)"
+    `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
+    see [CLI → Following the sink](../cli/commands.md#following-the-sink) — and that read
+    (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
+    [Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9)). WASAPI answers "will this
+    endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
+    uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
+    user-mode code — the driver consumes them internally to decide what to offer and no
+    documented public API was found that hands the source data back. `play` falls back to the
+    same `IsFormatSupported` probe here, exactly as it always has.
+
 ### Passthrough capture
 
 The reverse direction — a WASAPI endpoint *delivering* IEC 61937 rather than PCM, which is what
