@@ -183,6 +183,33 @@ struct FrameConfig {
     // chbwcod is not transmitted at all (§E3.3.3).
     int chbwcod = -1;
 
+    // §7.2.2.4 fast gain, Table 7.11 — roadmap EQ7's E-AC-3 half.
+    //
+    // -1 (the default) leaves Table E1.4's implied 0x4 in place: frmfgaincode
+    // stays 0, no fgaincode element is written, and the frame costs exactly
+    // what it did before this option existed. 0..7 pins the code instead,
+    // which opens the element in every block.
+    //
+    // Not defaulted to AC-3's rate-adaptive curve, though
+    // ac3::rate_adaptive_fgaincod() is the same measured line and is right
+    // here for the same reasons — because E-AC-3 charges for it and AC-3
+    // does not. AC-3 hangs fgaincod off the snroffst element it already
+    // sends every block (§5.4.3.x), so moving the code is free; E-AC-3's
+    // baie does not carry fgaincod at all, so a non-default code needs the
+    // separate per-block fgaincode element, and that element has no
+    // persistence rule — a block that omits it reverts to 0x4 rather than
+    // keeping the last value, so the code is paid for in all six blocks.
+    // At 5.1 with coupling that is 132 bits a frame, about 1.1% of a
+    // 384 kbit/s one: real mantissa precision traded for a better masking
+    // curve, which is a measurement rather than an assertion.
+    //
+    // Two ways to make that measurement: pin it here and sweep, or set
+    // `search` (below), whose candidate set now moves fgaincod alongside
+    // dbpbcod against real decoded-domain distortion. Until one of them says
+    // the curve wins on real programme material, the default stays where
+    // §8.2.12 put it.
+    int fgaincod = -1;
+
     // --- substream identity (Table E1.2) -----------------------------------
     // The defaults describe the lone independent substream this encoder has
     // always emitted, so existing callers keep their exact bit layout.
@@ -373,11 +400,22 @@ struct FrameConfig {
     // on an AHT stream (EQ5) - a documented scope boundary, not a rejected
     // configuration.
     //
-    // Only dbpbcod varies, between kAllocCodes' 3 and Table E1.4's 2 (the
-    // only two values baie can carry that this encoder ever chooses
-    // between): fgaincod is the AC-3 search's other axis, and E-AC-3 has no
-    // per-frame fgaincod to search yet - frmfgaincode stays 0 unconditionally
-    // (EQ7's own remaining gap, a prerequisite this does not also solve).
+    // Two axes, since roadmap EQ7's E-AC-3 half landed. dbpbcod varies
+    // between kAllocCodes' 3 and Table E1.4's 2 - the only two values baie
+    // can carry that this encoder chooses between - and fgaincod varies
+    // between §8.2.12's implied 0x4 and ac3::rate_adaptive_fgaincod()'s
+    // measured value for this frame's rate, the AC-3 search's other axis.
+    //
+    // The two are not symmetric in cost and the search is what settles that.
+    // A dbpbcod candidate is free: baie is transmitted every frame anyway.
+    // An fgaincod candidate is not, because baie does not carry fgaincod at
+    // all - it opens the per-block fgaincode element, in all six blocks (see
+    // FrameConfig::fgaincod for the arithmetic). So each candidate is scored
+    // after a REFIT against its own side-info cost, not against the
+    // incumbent's: the two are not competing for the same number of mantissa
+    // bits. `fgaincod` set explicitly pins the code and takes it out of the
+    // candidate set entirely.
+    //
     // AHT streams are excluded from the measurement, on the same grounds
     // EQ5 excludes them from delta bit allocation: the concentration AHT's
     // own DCT performs reads as quantization error in accumulate_block's

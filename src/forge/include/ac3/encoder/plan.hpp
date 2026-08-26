@@ -261,9 +261,11 @@ struct Tools {
     // not a coding tool that changes the bitstream's SYNTAX, so it is
     // likewise not part of any(); unlike fast_mdct it does change which
     // codes a frame carries. kNone by default, matching the library config
-    // it feeds. AC-3 only so far: the E-AC-3 encoder's own step 9 has a
-    // different shape (Table E2.10 strategies hoisted to audfrm, snroffststr
-    // never exercised) and wiring it is EQ1/EQ2 work, not this.
+    // it feeds. Reaches both encoders now, on deliberately different terms:
+    // AC-3 searches dbpbcod and fgaincod under either criterion, E-AC-3
+    // searches the same two under kDistortion and CBR only - see
+    // eac3::FrameConfig::search for the scope and why kPerceptual and VBR
+    // are accepted but inert there.
     quality::Criterion search = quality::Criterion::kNone;
 
     // §7.3.4 dithflag, per-channel-per-block content decision - likewise not

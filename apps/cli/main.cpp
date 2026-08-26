@@ -411,7 +411,7 @@ constexpr std::array<Command, 39> kCommands{{
 }};
 
 // kCommands as usage.hpp sees it: no handler, no Needs, and this build's own
-// answer to "can it run here" already resolved. Rebuilt on every call - 33
+// answer to "can it run here" already resolved. Rebuilt on every call - 39
 // rows of string_view, so there is nothing worth caching and nothing that can
 // go stale between the table and what gets printed.
 std::vector<CommandInfo> command_infos() {

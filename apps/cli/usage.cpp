@@ -69,7 +69,7 @@ constexpr std::array<OptionToken, 55> kOptionTokens{{
     {"mode=", "performance (default) or reference - both transforms at once"},
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
-    {"search=", "AC-3 encode: distortion or perceptual bit-allocation search, off (default)"},
+    {"search=", "AC-3 encode, and eac3-encode under CBR: bit-allocation search, off (default)"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
     {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
     {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},

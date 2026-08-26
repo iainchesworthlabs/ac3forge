@@ -26,8 +26,19 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   used to write one exponent set per frame for every channel; it now plans and writes per-channel
   or per-block strategies, and can emit 1/2/3-block syncframes with `convsync` for low-latency use.
   Closes a real quality gap versus AC-3 (spectral distance improves ~0.6 dB on transient material).
+- **`eac3::FrameConfig::fgaincod`** (`EQ7`): §7.2.2.4 fast gain is now settable on E-AC-3, which
+  means writing Table E1.4's per-block `fgaincode` element (`frmfgaincode`) — a path this
+  encoder had never emitted. `-1`, the default, leaves §8.2.12's implied `0x4` and writes no
+  element at all, so an existing stream is byte-for-byte unchanged. Not defaulted to AC-3's
+  rate-adaptive curve because E-AC-3 charges for it and AC-3 does not: `baie` carries every
+  other allocation parameter but not this one, and the element has no persistence rule, so a
+  held code is paid for in all six blocks (132 bits a frame at coupled 5.1). `EncoderConfig`'s
+  own curve moved to `ac3::rate_adaptive_fgaincod` so both encoders read one definition.
 - **`EncoderConfig::search`** (`EQ13`): an optional per-frame search over `dbpbcod`/`fgaincod`
   judged by a new decoded-domain distortion measure and psychoacoustic model (`ac3::quality`).
+  E-AC-3's half of it now moves both axes rather than `dbpbcod` alone, scoring each candidate
+  after a refit against that candidate's own side-info cost — the two axes are not equally
+  priced there, so they are not competing for the same number of mantissa bits.
   `search=distortion` is a real, measured win from 448 kbit/s up on AC-3; `search=perceptual`
   is not yet competitive and stays off by default. `eac3::FrameConfig::search` now exists too
   (CBR only, `kDistortion` only, `dbpbcod` alone - `fgaincod` isn't wired for E-AC-3 yet); measured
