@@ -60,7 +60,7 @@ In rough order of strength:
    job adds a bounded mutation budget on pushes.
 
    The object and metadata layer is driven directly rather than through the decoder: separate
-   harnesses over `emdf::parse_container`, `oba::parse_payload`, `joc::parse_payload`,
+   harnesses over `emdf::parse_container`, `oba::parse_payload`, `oba::joc::parse_payload`,
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
    seeded from the real payloads inside this project's own Atmos streams. A sixth,
    `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
@@ -214,10 +214,10 @@ One decode-side case runs the FORWARD transform too: JOC's own bed analysis unde
 `joc-domain=mdct` (PF8) has to re-express the decoded bed in the same 256-bin MDCT domain the
 transmitted matrix was estimated in before it can apply §6.6.6's per-band combination — the one
 place a decode ever needs the fold `mode=`/`fast-mdct=off` otherwise only reach on the encode
-side. `DecoderConfig::fast_mdct` carries it (`joc::reconstruct`'s own `fast_mdct` parameter,
+side. `DecoderConfig::fast_mdct` carries it (`oba::joc::reconstruct`'s own `fast_mdct` parameter,
 threaded from `decode`/`monitor`/`live`), defaulted ON by the same evidence gate as every other
 fast path here: 1.3e-13 worst relative error at the transform level (the same forward kernel
-`EncoderConfig::fast_mdct` already validates), full `joc::reconstruct` output agreeing
+`EncoderConfig::fast_mdct` already validates), full `oba::joc::reconstruct` output agreeing
 321-325 dB SNR against the direct form over three real encoded-and-decoded objects
 (`tests/oba/test_atmos.cpp`), and the bed analysis kernel itself — isolated from object
 synthesis, which this switch does not touch — measured 11.0x, 238 to 2628 microseconds per

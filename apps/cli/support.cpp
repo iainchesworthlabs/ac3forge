@@ -502,11 +502,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "joc-domain") {
             if (value == "qmf") {
-                out.joc_domain = ac3::joc::Domain::kQmf;
+                out.joc_domain = ac3::oba::joc::Domain::kQmf;
                 continue;
             }
             if (value == "mdct") {
-                out.joc_domain = ac3::joc::Domain::kMdctBand;
+                out.joc_domain = ac3::oba::joc::Domain::kMdctBand;
                 continue;
             }
             fmt::println(stderr,

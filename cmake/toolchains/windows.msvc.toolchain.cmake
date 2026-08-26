@@ -11,17 +11,41 @@ message(STATUS "Configuring Windows Toolchain (MSVC Variant)")
 
 include("${CMAKE_CURRENT_LIST_DIR}/windows.msvc.environment.cmake")
 
-set(_MSVC_BIN_DIR "${AC3_MSVC_TOOLS_DIR}/bin/Hostx64/x64")
+# AC3_MSVC_TARGET_ARCH ("x64" or "arm64") is resolved by
+# windows.msvc.environment.cmake, shared with windows.llvm.toolchain.cmake, so
+# the vcvarsall import above and the compiler/linker directories picked below
+# always agree on which architecture they mean.
+#
+# x64 is a single candidate, unchanged from before this file supported more
+# than one target: Hostx64/x64 must resolve exactly as it did previously, so
+# the other three Windows CI legs (windows-msvc[-debug], windows-llvm) don't
+# regress. arm64 is new and, at authoring time, genuinely unconfirmed against
+# real hardware: it is unknown whether GitHub's hosted windows-11-arm runner's
+# VS Build Tools install ships a native Hostarm64/arm64 toolset, only the
+# cross Hostx64/arm64 one, or both - see docs/platforms/windows.md's ARM64
+# section for what a real CI run found. find_program tries each PATHS entry
+# in the order given and returns the first match, so listing the native
+# directory first gets it for free when it exists, without a separate EXISTS
+# probe - try native first (no emulation), fall back to cross.
+if(AC3_MSVC_TARGET_ARCH STREQUAL "arm64")
+    set(CMAKE_SYSTEM_PROCESSOR "ARM64")
+    set(_MSVC_BIN_CANDIDATES
+        "${AC3_MSVC_TOOLS_DIR}/bin/Hostarm64/arm64"
+        "${AC3_MSVC_TOOLS_DIR}/bin/Hostx64/arm64")
+else()
+    set(CMAKE_SYSTEM_PROCESSOR "AMD64")
+    set(_MSVC_BIN_CANDIDATES "${AC3_MSVC_TOOLS_DIR}/bin/Hostx64/x64")
+endif()
 
 find_program(CMAKE_C_COMPILER
     NAMES cl.exe
-    PATHS "${_MSVC_BIN_DIR}"
+    PATHS ${_MSVC_BIN_CANDIDATES}
     NO_DEFAULT_PATH
     REQUIRED)
 
 find_program(CMAKE_CXX_COMPILER
     NAMES cl.exe
-    PATHS "${_MSVC_BIN_DIR}"
+    PATHS ${_MSVC_BIN_CANDIDATES}
     NO_DEFAULT_PATH
     REQUIRED)
 
@@ -30,11 +54,13 @@ find_program(CMAKE_CXX_COMPILER
 # that shadows it whenever Git's tools are earlier on PATH.
 find_program(CMAKE_LINKER
     NAMES link.exe
-    PATHS "${_MSVC_BIN_DIR}"
+    PATHS ${_MSVC_BIN_CANDIDATES}
     NO_DEFAULT_PATH
     REQUIRED)
 
-unset(_MSVC_BIN_DIR)
+message(STATUS "Target architecture: ${CMAKE_SYSTEM_PROCESSOR} (resolved MSVC tools directory: ${CMAKE_C_COMPILER})")
+
+unset(_MSVC_BIN_CANDIDATES)
 
 # This toolchain is only selected when MSVC is the active compiler for both
 # languages, so the flags apply unconditionally rather than behind a redundant

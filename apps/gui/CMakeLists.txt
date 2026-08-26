@@ -397,7 +397,19 @@ if(WIN32 OR APPLE)
         TARGET ac3gui
         OUTPUT_SCRIPT AC3_GUI_DEPLOY_SCRIPT
         NO_UNSUPPORTED_PLATFORM_ERROR)
-    install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}")
+    # COMPONENT runtime, not left implicit: install(SCRIPT) with no COMPONENT
+    # is filed under CPack's own "Unspecified" component, which only runs
+    # during a full (non-component-filtered) install - exactly what `cpack`
+    # always does here (CPACK_MONOLITHIC_INSTALL for DragNDrop, and the
+    # archive/DEB/RPM generators install every requested component in one
+    # pass), so this went unnoticed until something did a real
+    # component-scoped `cmake --install --component runtime` - .github/
+    # workflows/_build.yml's package-macos-universal job, which needs just
+    # the runtime component's tree, including this script's copied Qt
+    # Frameworks/PlugIns/QML, to lipo-merge against the other architecture's.
+    # Without this, that install would silently skip the whole deploy step
+    # and stage an ac3gui.app with no Qt inside it.
+    install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
 endif()
 
 # ---------------------------------------------------------------------------
