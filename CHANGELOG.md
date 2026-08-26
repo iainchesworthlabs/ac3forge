@@ -140,6 +140,15 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   conformance vectors** (`docs/conformance-vectors.md`, `VX20`) shipped with every release.
 - **Script Lint, a ThreadSanitizer leg, and PR-time performance comparison** (`VX14`, `VX16`,
   `VX17`) join CI.
+- **CodeQL now scans the Android app's Kotlin** (`VX21`), as a step inside `build-android`'s own
+  Gradle build rather than a fifth `codeql.yml` leg — the `java-kotlin` extractor has no buildless
+  mode. **CLI container-command tests** (`VX22`) close a real gap: `mkv`/`mp4`/`ts`/`fmp4` had
+  0.0% line coverage when the `apps/cli` gate first landed, and were still only reached
+  incidentally, never asserted on their own output or refusal paths. **Headless-browser coverage
+  for the WASM decode demo, and instrumented tests for the Android bridge's device-free paths**
+  (`VX18`): the demo's channel count/sample rate/object count/duration/moving-object-position
+  claims and the Kotlin↔JNI↔C++ round trip with no receiver attached are now asserted in CI rather
+  than checked by eye.
 - **A cross-platform bitstream-hash gate** (`tools/checks/check_cross_platform_hash.py`, `VX11`):
   pins a SHA-256 of the gold-reference streams this project's own encoder produces, per SIMD
   kernel and transform mode, so the arm64/macOS legs' unexplained 6.02 dB gold-gate gap (see
