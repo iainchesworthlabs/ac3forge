@@ -609,6 +609,7 @@ ac3::quality::noise_to_mask(ac3::quality::BandNoise const&, std::span<double con
 ac3::quality::reconstruction_error(int, int, int)
 ac3::quality::snr_db(ac3::quality::BandNoise const&)
 ac3::quantize_mantissa(int, int)
+ac3::rate_adaptive_fgaincod(int, int)
 ac3::slow_gain(int)
 ac3::spatial::BedRenderer::Slot* std::__relocate_a<ac3::spatial::BedRenderer::Slot*, ac3::spatial::BedRenderer::Slot*, std::allocator<ac3::spatial::BedRenderer::Slot> >(ac3::spatial::BedRenderer::Slot*, ac3::spatial::BedRenderer::Slot*, ac3::spatial::BedRenderer::Slot*, std::allocator<ac3::spatial::BedRenderer::Slot>&)
 ac3::spatial::BedRenderer::Slot* std::__relocate_a_1<ac3::spatial::BedRenderer::Slot*, ac3::spatial::BedRenderer::Slot*, std::allocator<ac3::spatial::BedRenderer::Slot> >(ac3::spatial::BedRenderer::Slot*, ac3::spatial::BedRenderer::Slot*, ac3::spatial::BedRenderer::Slot*, std::allocator<ac3::spatial::BedRenderer::Slot>&)
@@ -1025,6 +1026,7 @@ std::span<float, 18446744073709551615ul>* std::__relocate_a_1<std::span<float, 1
 std::span<float, 18446744073709551615ul>::__v<0ul>
 std::span<int const, 18446744073709551615ul>::__v<1ul>
 std::span<int const, 18446744073709551615ul>::__v<253ul>
+std::span<int const, 18446744073709551615ul>::__v<256ul>
 std::span<int const, 18446744073709551615ul>::__v<2ul>
 std::span<int const, 18446744073709551615ul>::__v<3ul>
 std::span<int, 18446744073709551615ul>::__v<253ul>
