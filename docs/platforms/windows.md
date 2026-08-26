@@ -132,10 +132,11 @@ cpack --preset pack-windows-msvc
 ```
 
 Produces a ZIP, plus an NSIS installer on top if `makensis` is on `PATH`. `pack-windows-llvm` is
-the clang-cl equivalent. `windows-msvc` is the only leg packaged continuously — CI packages it on
-every push and uploads the result as a workflow artifact, a standing smoke test of the packaging
-path; tagged releases package all four `release_package` legs (Windows, Linux x64/arm64, macOS).
-See [Packaging](../building.md#packaging).
+the clang-cl equivalent, and `pack-windows-msvc-arm64` the ARM64 one (below). `windows-msvc` is
+the only leg packaged continuously — CI packages it on every push and uploads the result as a
+workflow artifact, a standing smoke test of the packaging path; tagged releases package every
+`release_package` leg (Windows x64/arm64, Linux x64/arm64, macOS). See
+[Packaging](../building.md#packaging).
 
 The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
 `shell\open\command` at the installed `ac3gui.exe` and nudging Explorer to pick up the change with
@@ -143,9 +144,63 @@ The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointi
 `_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. Configure/build-verified only: no `makensis`
 locally to actually run the installer and double-click a `.ac3` file afterwards.
 
+## ARM64 (roadmap DR8)
+
+A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-arm` runner — real
+ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only the
+vcpkg triplet and the resolved MSVC tools directory differ.
+
+**Toolchain.** `cmake/vcpkg/triplets/arm64-windows-msvc.cmake` sets `VCPKG_TARGET_ARCHITECTURE
+arm64` (same CRT/library linkage policy as `x64-windows-msvc.cmake`).
+`cmake/toolchains/windows.msvc.toolchain.cmake` resolves the target-appropriate MSVC tools
+subdirectory the same way `linux.gcc.toolchain.cmake`/`macos.llvm.toolchain.cmake` already resolve
+their own arm64 legs — generically, not hardcoded — and, for the arm64 case specifically, tries
+more than one candidate directory: `bin/Hostarm64/arm64` (a native ARM64-hosted toolset) first,
+falling back to `bin/Hostx64/arm64` (the older x64-hosted cross toolset, which still produces
+ARM64 binaries, just via x64 tools running under Windows' x64 emulation). Which one this runner's
+VS Build Tools install actually ships was genuinely unconfirmed when this leg was written — it
+needed a real CI run to answer, the same "confirmed empirically, not assumed" standard the rest of
+this codebase holds itself to (see e.g. `cmake/vcpkg/triplets/arm64-linux-gcc.cmake`'s own
+`VCPKG_FORCE_SYSTEM_BINARIES` comment). `cmake/toolchains/windows.msvc.environment.cmake`'s
+`vcvarsall.bat` bootstrap and `.github/actions/setup-msvc-env`'s CI-side environment loader probe
+the equivalent pair of `vcvarsall.bat` arguments (`arm64` native, then `amd64_arm64` cross) for the
+same reason — the target architecture's CRT/Windows SDK library directories have to match whichever
+compiler actually got picked, or linking fails outright with a machine-type mismatch.
+
+**CLI-only, for now.** Unlike every other packageable Windows/Linux/macOS leg, `windows-msvc-arm64`
+does not build `ac3gui` — `AC3FORGE_BUILD_GUI` is off in `CMakePresets.json`'s
+`windows-msvc-arm64` preset. Qt's only Windows ARM64 kit for the pinned 6.8.3 (the first Qt LTS
+with official Windows ARM64 support at all) is `win64_msvc2022_arm64_cross_compiled` — a
+cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its host build
+tools (`moc`/`uic`/`rcc`), and `aqtinstall`/`jurplel/install-qt-action` have a documented CI bug
+against exactly that combination (`qtpaths.bat` pointing at the wrong x64 setup). That is real
+complexity a *native*-ARM64-host build does not actually need to take on for a first pass, so this
+leg stays CLI-only, the same deliberately-scoped shape `linux-llvm-asan-ubsan` already uses
+elsewhere in the matrix for a different reason. Revisiting this is a natural fast-follow once Qt
+ships a genuinely native-hosted ARM64 Windows kit.
+
+**Gold-reference gate.** `choco`'s `ffmpeg` package is x64-only, so this leg installs a static
+`win-arm64` FFmpeg build from
+[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest) instead of
+`choco install ffmpeg` — see the "Install ffmpeg (Windows ARM64)" step in `_build.yml`.
+
+**Status.** New and `experimental: true` (`continue-on-error`) in `_build.yml` until it has proven
+green over real runs, the same promotion path `macos-llvm` and the Android leg both went through —
+see that file's own header comment for the mechanics. If it never picks up a runner at all rather
+than failing normally, that means the `windows-11-arm` label is not yet enabled for this
+repository/org, which is a GitHub-settings question rather than a code one.
+
+**Unsigned binaries.** Like every other Windows binary this project ships today, this leg's output
+is unsigned — Authenticode signing (roadmap `DR6`) is blocked project-wide on acquiring a
+certificate, not on code, and that applies here exactly as it does to the x64 legs. It is worth
+stating plainly for ARM64 specifically: SmartScreen will warn on install, and an ARM64 user has
+fewer alternative trusted sources to fall back on than an x64 user does.
+
 ## CI
 
-Both Windows legs — `windows-msvc` and `windows-llvm` — run on every push and are **required**,
-alongside every other required leg — see the full matrix in [Verified
-configuration](../building.md#verified-configuration), including the Linux and macOS legs and
-the coverage/FFmpeg-validation legs. CI runs the CLI and GUI on both Windows legs.
+All three Windows legs — `windows-msvc`, `windows-llvm` and (experimentally) `windows-msvc-arm64`
+— run on every push; the first two are **required**, alongside every other required leg — see the
+full matrix in [Verified configuration](../building.md#verified-configuration), including the
+Linux and macOS legs and the coverage/FFmpeg-validation legs. CI runs the CLI and GUI on both x64
+Windows legs; the ARM64 leg runs the CLI only (see above) and does not yet block the build while it
+proves itself out.

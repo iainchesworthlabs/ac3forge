@@ -1275,8 +1275,12 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
   then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
 - [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
-  the distro's Qt 6 and `qml6-module-*` packages); a Windows ARM64 leg on the hosted
-  `windows-11-arm` runner; macOS universal binaries are a separate decision (the Cask is
+  the distro's Qt 6 and `qml6-module-*` packages); ~~a Windows ARM64 leg on the hosted
+  `windows-11-arm` runner~~ `windows-msvc-arm64` builds and tests `ac3cli` on real ARM64 hardware
+  (CLI-only — no resolvable Qt6 ARM64 Windows kit for the pinned version yet, see
+  `docs/platforms/windows.md`'s ARM64 section) and packages a `win-arm64` release archive;
+  `experimental: true` until it proves itself green over real runs, the same promotion path
+  `macos-llvm` went through. macOS universal binaries are a separate decision (the Cask is
   arm64-only and Intel demand is doubtful).
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:

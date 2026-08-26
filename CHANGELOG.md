@@ -146,6 +146,9 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   comparison, an advisory ABI diff against the last release, CodeQL over the Android app's Kotlin,
   container-command tests, a headless browser test of the WASM demo, and instrumented tests for
   the Android bridge's device-free paths.
+- **A Windows ARM64 CI leg** on GitHub's hosted `windows-11-arm` runner, building and testing
+  `ac3cli` on real ARM64 hardware and packaging a `win-arm64` release archive — CLI-only for now
+  (no resolvable prebuilt Qt6 ARM64 kit yet) and experimental until proven green over real runs.
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
 
