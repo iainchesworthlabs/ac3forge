@@ -188,7 +188,8 @@ std::expected<SpatialDeviceCapability, SpatialError> probe_spatial_capability(
     if (FAILED((*client)->GetMaxDynamicObjectCount(&max_objects))) {
         return std::unexpected(SpatialError::kComFailure);
     }
-    SpatialDeviceCapability cap{.available = true, .max_dynamic_objects = max_objects};
+    SpatialDeviceCapability cap{
+        .available = true, .max_dynamic_objects = max_objects, .reason = {}};
     if (max_objects == 0) {
         cap.reason = std::string{describe(SpatialError::kNoSpatialFormat)};
     }
