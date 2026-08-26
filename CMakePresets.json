@@ -47,6 +47,21 @@
       }
     },
     {
+      "name": "windows-msvc-arm64",
+      "hidden": true,
+      "description": "Windows/MSVC toolchain selection, arm64 target (roadmap DR8, GitHub's hosted windows-11-arm runner). Same chainloaded toolchain file as windows-msvc - cmake/toolchains/windows.msvc.toolchain.cmake resolves the target-appropriate MSVC tools subdirectory from AC3_MSVC_TARGET_ARCH the same way linux.gcc.toolchain.cmake/macos.llvm.toolchain.cmake already resolve their own arm64 legs from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. AC3FORGE_BUILD_GUI is OFF here, unlike windows-msvc: not because ac3gui cannot be built for arm64, but because at authoring time Qt's only Windows arm64 kit for the pinned 6.8.3 (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit expecting a paired win64_msvc2022_64 install for its host tools, and aqtinstall has a documented CI bug against exactly that combination - real complexity this leg's native-arm64-host build doesn't need to take on for a first pass. The same 'Qt kit not assumed present' shape linux-gcc/linux-llvm/macos-llvm already use, not a new pattern - see those presets' own descriptions and docs/platforms/windows.md's ARM64 section.",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-windows-msvc",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/windows.msvc.toolchain.cmake",
+        "AC3FORGE_BUILD_GUI": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "windows-llvm",
       "hidden": true,
       "description": "Windows/clang-cl toolchain selection. clang-cl is MSVC-ABI compatible, so it links the same vcpkg packages and the same prebuilt msvc2022_64 Qt kit as the MSVC presets.",
@@ -127,6 +142,21 @@
       "description": "macOS (Apple Silicon)/Homebrew LLVM toolchain selection. Verified via CI only (this project has no local macOS host) - see docs/building.md's Verified configuration section. GUI off by default for the same reason as linux-gcc - not because it cannot be built, but because a Qt kit is not assumed present on every Mac. CI's macos-llvm leg installs Homebrew's qt formula and passes -DAC3FORGE_BUILD_GUI=ON, the same opt-in shape as the four Linux build legs.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-macos-llvm",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
+        "AC3FORGE_BUILD_GUI": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "macos-llvm-x64",
+      "hidden": true,
+      "description": "macOS (Intel)/Homebrew LLVM toolchain selection, x86_64. Same toolchain file and reasoning as macos-llvm - cmake/toolchains/macos.llvm.toolchain.cmake already resolves x64 vs arm64 from VCPKG_TARGET_ARCHITECTURE, falling back to uname -m outside a vcpkg port-build context - only the vcpkg triplet differs, same shape as linux-gcc-arm64 next to linux-gcc. Verified via CI only, on GitHub's macos-15-intel runner (real native Intel hardware, not Rosetta emulation - see .github/workflows/_build.yml's matrix entry). GUI off by default for the same reason as macos-llvm.",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-macos-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
         "AC3FORGE_BUILD_GUI": "OFF"
       },
@@ -222,6 +252,16 @@
       "displayName": "Windows MSVC Debug"
     },
     {
+      "name": "config-windows-msvc-arm64",
+      "inherits": [ "release", "windows-msvc-arm64", "core" ],
+      "displayName": "Windows MSVC Release (arm64)"
+    },
+    {
+      "name": "config-windows-msvc-arm64-debug",
+      "inherits": [ "debug", "windows-msvc-arm64", "core" ],
+      "displayName": "Windows MSVC Debug (arm64)"
+    },
+    {
       "name": "config-windows-llvm",
       "inherits": [ "release", "windows-llvm", "core" ],
       "displayName": "Windows LLVM Release (clang-cl)"
@@ -280,6 +320,16 @@
       "name": "config-macos-llvm-debug",
       "inherits": [ "debug", "macos-llvm", "core" ],
       "displayName": "macOS LLVM Debug"
+    },
+    {
+      "name": "config-macos-llvm-x64",
+      "inherits": [ "release", "macos-llvm-x64", "core" ],
+      "displayName": "macOS LLVM x64 Release"
+    },
+    {
+      "name": "config-macos-llvm-x64-debug",
+      "inherits": [ "debug", "macos-llvm-x64", "core" ],
+      "displayName": "macOS LLVM x64 Debug"
     },
     {
       "name": "config-wasm-emscripten",
@@ -342,6 +392,16 @@
       "displayName": "Windows MSVC Debug"
     },
     {
+      "name": "build-windows-msvc-arm64",
+      "configurePreset": "config-windows-msvc-arm64",
+      "displayName": "Windows MSVC Release (arm64)"
+    },
+    {
+      "name": "build-windows-msvc-arm64-debug",
+      "configurePreset": "config-windows-msvc-arm64-debug",
+      "displayName": "Windows MSVC Debug (arm64)"
+    },
+    {
       "name": "build-windows-llvm",
       "configurePreset": "config-windows-llvm",
       "displayName": "Windows LLVM Release"
@@ -402,6 +462,16 @@
       "displayName": "macOS LLVM Debug"
     },
     {
+      "name": "build-macos-llvm-x64",
+      "configurePreset": "config-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Release"
+    },
+    {
+      "name": "build-macos-llvm-x64-debug",
+      "configurePreset": "config-macos-llvm-x64-debug",
+      "displayName": "macOS LLVM x64 Debug"
+    },
+    {
       "name": "build-wasm-emscripten",
       "configurePreset": "config-wasm-emscripten",
       "displayName": "Emscripten/WASM Release (browser decode demo)"
@@ -460,6 +530,18 @@
       "name": "test-windows-msvc-debug",
       "configurePreset": "config-windows-msvc-debug",
       "displayName": "Windows MSVC Debug Tests",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-windows-msvc-arm64",
+      "configurePreset": "config-windows-msvc-arm64",
+      "displayName": "Windows MSVC Release Tests (arm64)",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-windows-msvc-arm64-debug",
+      "configurePreset": "config-windows-msvc-arm64-debug",
+      "displayName": "Windows MSVC Debug Tests (arm64)",
       "inherits": "test-base"
     },
     {
@@ -535,6 +617,18 @@
       "inherits": "test-base"
     },
     {
+      "name": "test-macos-llvm-x64",
+      "configurePreset": "config-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Release Tests",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-macos-llvm-x64-debug",
+      "configurePreset": "config-macos-llvm-x64-debug",
+      "displayName": "macOS LLVM x64 Debug Tests",
+      "inherits": "test-base"
+    },
+    {
       "name": "test-linux-llvm-asan-ubsan",
       "configurePreset": "config-linux-llvm-asan-ubsan",
       "displayName": "Linux LLVM ASan+UBSan Tests",
@@ -590,6 +684,12 @@
       "inherits": "package-base"
     },
     {
+      "name": "pack-windows-msvc-arm64",
+      "displayName": "Windows MSVC Package (arm64)",
+      "configurePreset": "config-windows-msvc-arm64",
+      "inherits": "package-base"
+    },
+    {
       "name": "pack-windows-llvm",
       "displayName": "Windows LLVM Package",
       "configurePreset": "config-windows-llvm",
@@ -624,6 +724,12 @@
       "displayName": "macOS LLVM Package",
       "configurePreset": "config-macos-llvm",
       "inherits": "package-base"
+    },
+    {
+      "name": "pack-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Package",
+      "configurePreset": "config-macos-llvm-x64",
+      "inherits": "package-base"
     }
   ],
 
@@ -635,6 +741,15 @@
         { "type": "configure", "name": "config-windows-msvc" },
         { "type": "build", "name": "build-windows-msvc" },
         { "type": "test", "name": "test-windows-msvc" }
+      ]
+    },
+    {
+      "name": "ci-windows-msvc-arm64",
+      "displayName": "Windows MSVC arm64 CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-windows-msvc-arm64" },
+        { "type": "build", "name": "build-windows-msvc-arm64" },
+        { "type": "test", "name": "test-windows-msvc-arm64" }
       ]
     },
     {
@@ -689,6 +804,15 @@
         { "type": "configure", "name": "config-macos-llvm" },
         { "type": "build", "name": "build-macos-llvm" },
         { "type": "test", "name": "test-macos-llvm" }
+      ]
+    },
+    {
+      "name": "ci-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-macos-llvm-x64" },
+        { "type": "build", "name": "build-macos-llvm-x64" },
+        { "type": "test", "name": "test-macos-llvm-x64" }
       ]
     },
     {

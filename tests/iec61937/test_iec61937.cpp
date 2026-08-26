@@ -17,7 +17,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/io/wav.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 
 // Byte-level regression for the IEC 61937 packers. AC-3's wrap_frame had no
 // dedicated test file at all before this one - the CLI/GUI exercised it, but
