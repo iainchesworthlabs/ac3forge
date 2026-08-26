@@ -113,21 +113,6 @@ enum class CodingType : std::uint8_t { kLpcm, kAc3, kEac3, kOther };
     }
 }
 
-// One line's key ("sad0_coding_type") and the rest of the line as-is, split
-// on the first run of whitespace. `line` is a single line, no trailing '\n'.
-[[nodiscard]] inline std::pair<std::string_view, std::string_view> split_eld_line(
-    std::string_view line) {
-    const auto key_end = line.find_first_of(" \t");
-    if (key_end == std::string_view::npos) {
-        return {line, {}};
-    }
-    const auto value_start = line.find_first_not_of(" \t", key_end);
-    if (value_start == std::string_view::npos) {
-        return {line.substr(0, key_end), {}};
-    }
-    return {line.substr(0, key_end), line.substr(value_start)};
-}
-
 // The SAD index a "sad<N>_<field>" key names, and the field name past it -
 // e.g. "sad12_channels" -> (12, "channels"). Neither part of a pair when
 // `key` does not start with "sad" followed by at least one digit.
@@ -151,6 +136,21 @@ enum class CodingType : std::uint8_t { kLpcm, kAc3, kEac3, kOther };
 }
 
 }  // namespace detail
+
+// One line's key ("sad0_coding_type") and the rest of the line as-is, split
+// on the first run of whitespace. `line` is a single line, no trailing '\n'.
+[[nodiscard]] inline std::pair<std::string_view, std::string_view> split_eld_line(
+    std::string_view line) {
+    const auto key_end = line.find_first_of(" \t");
+    if (key_end == std::string_view::npos) {
+        return {line, {}};
+    }
+    const auto value_start = line.find_first_not_of(" \t", key_end);
+    if (value_start == std::string_view::npos) {
+        return {line.substr(0, key_end), {}};
+    }
+    return {line.substr(0, key_end), line.substr(value_start)};
+}
 
 [[nodiscard]] inline std::expected<ac3::audio::SinkAudioCapabilities, ac3::audio::EdidError>
 parse_eld_proc_text(std::string_view contents) {
