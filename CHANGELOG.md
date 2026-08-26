@@ -97,7 +97,10 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
-  sample corpus. Container extraction and the bridge onto the ADM layer are not started.
+  sample corpus. **Now also reads real MXF IAB Track Files** (`ac3iab::parse_mxf_iab`), not just a
+  bare elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
+  which clip-wraps the whole bitstream as a single KLV. The bridge onto the ADM/Atmos layer is not
+  started.
 - **One object-scene timeline type** (`ac3::oba::ObjectScene`) shared by `atmos-path`, the GUI and
   the examples, replacing four ad-hoc formats.
 - **Object extent, channel lock and zone constraints on encode**, mapped from the ADM bridge.
