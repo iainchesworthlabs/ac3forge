@@ -1081,6 +1081,19 @@ jobs:
       # internally for its own system dependencies - already running as
       # root makes every sudo call here a no-op passthrough, so installing
       # the package is the whole fix.
+      #
+      # Prepending /usr/bin to PATH here matters for a second, less obvious
+      # reason: a GitHub-hosted runner pre-populates PATH with a Python from
+      # its own hosted tool cache (bind-mounted into this container from the
+      # host, not part of the ubuntu:22.04 image at all) ahead of /usr/bin,
+      # and that Python is linked against a newer glibc than this
+      # DELIBERATELY older container ships - the same class of "too new for
+      # this floor" problem this whole job exists to avoid, just hitting the
+      # tooling instead of the product. install-qt-action's aqtinstall step
+      # (action/src/main.ts, pinned commit) shells out to a bare `python3`
+      # resolved by PATH search, not a fixed absolute path, so putting the
+      # apt-installed, container-glibc-linked python3 ahead of the hosted
+      # one on PATH is the whole fix - no env var to override.
       - name: Bootstrap container
         run: |
           set -eu
@@ -1090,6 +1103,7 @@ jobs:
             build-essential ca-certificates curl file git gnupg \
             libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip \
             software-properties-common sudo tar unzip wget zip
+          echo "/usr/bin" >> "$GITHUB_PATH"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
