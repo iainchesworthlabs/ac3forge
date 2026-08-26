@@ -574,7 +574,12 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
     }
 }
 
-TEST_CASE("fgaincod= pins §7.2.2.4's fast gain on both codecs", "[cli][fgaincod]") {
+// The name spells "section" rather than using §: CTest passes a test
+// name straight through argv as a Catch2 filter, and this repo has twice
+// had a Windows leg fail with "No test cases matched" because the
+// runner's argv encoding mangled U+00A7. Comments and the body are fine -
+// only the NAME round-trips through argv.
+TEST_CASE("fgaincod= pins section 7.2.2.4's fast gain on both codecs", "[cli][fgaincod]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "fgaincod_in.wav";
     const auto channels = make_tone_channels(2, 4000, 48000);
