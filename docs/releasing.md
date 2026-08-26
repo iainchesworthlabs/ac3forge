@@ -404,22 +404,37 @@ tarball) to validate a CMake option added since the last tag.
 ## What gets published
 
 One package per OS **and architecture**, not one per compiler-toolchain leg: `_build.yml`'s matrix
-builds and tests both Windows toolchains (MSVC, clang-cl) and both Linux toolchains (GCC, Clang) - on
-both x64 and arm64 for Linux - on every push, but only the leg marked `release_package: true` per
-OS/arch actually packages for a release - windows-msvc, linux-gcc, linux-gcc-arm64 and macos-llvm.
-windows-llvm, linux-llvm and linux-llvm-arm64 still catch compiler-specific bugs in full, every push;
-they just don't produce a second, redundantly canonical archive that a downloader would have no way
-to choose between. `cmake/Packaging.cmake` arch-qualifies the Linux archive filename
-(`ac3forge-X.Y.Z-Linux-x86_64.tar.gz` vs. `...-Linux-aarch64.tar.gz`) specifically so the two Linux
-architectures' TGZ/ZIP downloads never collide; DEB/RPM already carry their arch in their own
-filenames.
+builds and tests both Windows toolchains (MSVC, clang-cl), both Linux toolchains (GCC, Clang) - on
+both x64 and arm64 - and, since DR8, both macOS architectures (arm64 and x86_64) on every push. For
+Windows and Linux, only the leg marked `release_package: true` per OS/arch actually packages for a
+release - windows-msvc, linux-gcc and linux-gcc-arm64. windows-llvm, linux-llvm and
+linux-llvm-arm64 still catch compiler-specific bugs in full, every push; they just don't produce a
+second, redundantly canonical archive that a downloader would have no way to choose between.
+`cmake/Packaging.cmake` arch-qualifies the Linux archive filename (`ac3forge-X.Y.Z-Linux-x86_64.tar.gz`
+vs. `...-Linux-aarch64.tar.gz`) specifically so the two Linux architectures' TGZ/ZIP downloads never
+collide; DEB/RPM already carry their arch in their own filenames.
+
+macOS doesn't fit the "one `release_package` leg" shape at all: neither `macos-llvm` (arm64) nor
+`macos-llvm-x64` (x86_64, on GitHub's native-Intel `macos-15-intel` runner - real hardware, not
+Rosetta) carries `release_package`. A separate `package-macos-universal` job instead
+`cmake --install`s each leg's `runtime` component, `lipo -create`s every Mach-O file the two trees
+have in common (`ac3cli`, `ac3gui`, and every dylib/framework binary
+`qt_generate_deploy_qml_app_script` copies into `ac3gui.app/Contents/Frameworks/`), and packages the
+merged tree with `hdiutil` directly - the same call CPack's own DragNDrop generator makes under the
+hood. So there is still exactly one macOS end-user package per release, just built from two legs'
+output rather than one leg's own `cpack` run - which is also why it ships as a `.dmg` only, not the
+`.zip` a single-arch leg's own `cpack --preset pack-macos-llvm` also produces alongside its `.dmg`:
+nothing merges a second, redundant plain-archive form of the same universal binary today. The
+matching `ac3forge-dev-*` library archive is attempted the same way (`library`/`libruntime`
+components instead of `runtime`) but is best-effort - see `package-macos-universal`'s own comment in
+`_build.yml` - so it may be missing from a given release; check that job's log if it's absent.
 
 | Platform | Arch | Leg | End-user packages | Library (`ac3forge-dev-*`) |
 |---|---|---|---|---|
 | Windows | x64 | windows-msvc | `.zip`, `.exe` (NSIS, if `makensis` is on the runner) | `.zip` |
 | Linux | x86_64 | linux-gcc | `.tar.gz`, `.deb`, `.rpm` | `.tar.gz`, plus real system packages: `libac3forge0`/`ac3forge-devel` (RPM) and `libac3forge0`/`libac3forge-dev` (DEB) |
 | Linux | aarch64 (Raspberry Pi 4/5 and other arm64 targets) | linux-gcc-arm64 | `.tar.gz`, `.deb`, `.rpm` | same split as x86_64, above |
-| macOS | arm64 (Apple Silicon) | macos-llvm | `.tar.gz`, `.dmg` | `.tar.gz` |
+| macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
 The end-user packages are `ac3cli`/`ac3gui` (CPack's `runtime` component) on desktop, or the
