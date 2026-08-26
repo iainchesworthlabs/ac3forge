@@ -21,6 +21,7 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
@@ -472,6 +473,14 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     const std::uint32_t words = *expected_bytes / 2;
     const std::uint32_t words58 = frame_size_58_words(words);
     if (crc16(frame.subspan(2, 2 * words58 - 2)) != 0 || crc16(frame.subspan(2)) != 0) {
+        // Reported here rather than only via the returned error: with
+        // DecoderConfig::concealment set, this same call goes on to return a
+        // SUCCESSFUL result (DecodedFrame::concealed), and this is the only
+        // signal a caller not polling that field on every call gets.
+        if (impl_->config_.diagnostics != nullptr) {
+            impl_->config_.diagnostics({.event = DiagnosticEvent::kCrcMismatch},
+                                       impl_->config_.diagnostics_context);
+        }
         return std::unexpected(DecodeError::kBadCrc);
     }
 
