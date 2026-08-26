@@ -13,20 +13,21 @@
 # ---------------------------------------------------------------------------
 # On `experimental: true`
 # ---------------------------------------------------------------------------
-# Every leg but one is proven green now (exact test counts per leg drift as
+# Every leg but two is proven green now (exact test counts per leg drift as
 # features land - see ci.yml's own status comment rather than trusting a
 # number repeated here; the sanitizer leg also runs the codec-matrix script's
-# full layout/tool/atmos sweep) and required. macos-llvm was the last of
-# those promoted: its first-ever real run surfaced a genuine, fully-understood
-# issue (Homebrew's unpinned LLVM formula flagging Catch2's __COUNTER__ usage
-# under -Wc2y-extensions - see cmake/CompilerWarnings.cmake), fixed in one
-# commit, followed by two consecutive clean runs including the gold-reference
-# gate (tools/checks/verify_gold_reference.sh) at real SNR numbers (60-80s dB) -
-# not just "it compiled." See the table in ci.yml. macos-llvm-x64 is the
-# current experimental leg (DR8): brand new, on a runner label
-# (macos-15-intel) nothing here has used before, so it stays continue-on-error
-# until it has shown the same thing macos-llvm did - a real build+test+
-# gold-reference pass, not just a green checkmark on the first attempt.
+# full layout/tool/atmos sweep) and required. macos-llvm was promoted first:
+# its first-ever real run surfaced a genuine, fully-understood issue
+# (Homebrew's unpinned LLVM formula flagging Catch2's __COUNTER__ usage under
+# -Wc2y-extensions - see cmake/CompilerWarnings.cmake), fixed in one commit,
+# followed by two consecutive clean runs including the gold-reference gate
+# (tools/checks/verify_gold_reference.sh) at real SNR numbers (60-80s dB) -
+# not just "it compiled." See the table in ci.yml. The two current
+# experimental legs, both DR8, are on runner labels nothing here had used
+# before authoring time and stay continue-on-error until each has shown the
+# same thing macos-llvm did - a real build+test+gold-reference pass, not just
+# a green checkmark on the first attempt: macos-llvm-x64 (macos-15-intel) and
+# windows-msvc-arm64 (windows-11-arm).
 #
 # Experimental legs run with continue-on-error, which reports their real
 # status without making the default branch red on every push. As each one is
@@ -294,6 +295,58 @@ jobs:
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
             llvm: true
             packageable: true
+            gold_reference: true
+
+          # ARM64 - GitHub's hosted windows-11-arm runner (roadmap DR8). Real
+          # ARM64 hardware, not emulation. Deliberately NOT routed through
+          # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
+          # outputs the two legs above use) - that logic is sized for exactly
+          # those two existing x64 Windows legs, and there is no self-hosted
+          # ARM64 Windows capacity to fan out to; the literal runner label is
+          # used directly instead.
+          #
+          # experimental: true, the same promotion path macos-llvm and
+          # build-android both went through (see this file's own header) -
+          # this leg's first real runs are exactly what confirms or corrects
+          # the toolchain/vcvarsall/Qt/ffmpeg choices made without hosted-
+          # runner access at authoring time. Delete this line once a run has
+          # gone green for real.
+          #
+          # msvc_arch: arm64 threads through to the "Setup MSVC environment"
+          # step, which otherwise always loads the x64 developer environment
+          # (see .github/actions/setup-msvc-env/action.yml) - every other
+          # matrix.msvc leg omits it and gets the action's own x64 default.
+          #
+          # No gui: true, unlike every other packageable leg. At authoring
+          # time, Qt's only Windows ARM64 kit for the pinned 6.8.3
+          # (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit that
+          # expects a paired win64_msvc2022_64 install for its host tools, and
+          # aqtinstall has a documented CI bug against exactly that
+          # combination (qtpaths.bat pointing at the wrong x64 setup) - real
+          # complexity this leg's native-ARM64-host build doesn't need to
+          # take on for a first pass. CMakePresets.json's windows-msvc-arm64
+          # preset defaults AC3FORGE_BUILD_GUI off for exactly this reason
+          # (see its own description) - the same "Qt kit not assumed present"
+          # shape linux-gcc/linux-llvm/macos-llvm already use below, not a new
+          # pattern. See docs/platforms/windows.md's ARM64 section.
+          #
+          # gold_reference: true - choco's ffmpeg package is x64-only, so this
+          # leg installs BtbN's static win-arm64 ffmpeg build instead (see the
+          # dedicated install step below).
+          #
+          # release_package: true, not just packageable: a genuinely new
+          # architecture earns its own canonical release artifact, the same
+          # precedent linux-gcc-arm64 already set sitting next to linux-gcc -
+          # not a redundant same-arch compiler variant like windows-llvm
+          # above (which stays non-canonical: no release_package there).
+          - name: "Windows MSVC (arm64)"
+            runner: '["windows-11-arm"]'
+            preset: windows-msvc-arm64
+            experimental: true
+            msvc: true
+            msvc_arch: arm64
+            packageable: true
+            release_package: true
             gold_reference: true
 
           # gui: true builds ac3gui too (the linux-gcc/linux-llvm presets
@@ -604,9 +657,34 @@ jobs:
         run: apt-get install -y -qq --no-install-recommends ffmpeg
 
       - name: Install ffmpeg (Windows)
-        if: matrix.gold_reference && runner.os == 'Windows'
+        if: matrix.gold_reference && runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         shell: bash
         run: choco install ffmpeg -y --no-progress --requirechecksums
+
+      # choco's ffmpeg package is x64-only (Chocolatey packages here are
+      # typically x64 binaries) - there is no arm64 equivalent to install the
+      # same way. BtbN/FFmpeg-Builds publishes static win-arm64 GPL builds
+      # instead (confirmed for real - see the release page's asset list under
+      # the "latest" tag); the n8.1 release build is used rather than the
+      # "master" one for the same reason choco's package tracks an actual
+      # FFmpeg release rather than a git snapshot. The zip's ffmpeg.exe is
+      # nested under a versioned subfolder that can drift between builds, so
+      # this searches for it instead of hardcoding that path.
+      - name: Install ffmpeg (Windows ARM64)
+        if: matrix.gold_reference && matrix.preset == 'windows-msvc-arm64'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
+          $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
+          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest
+          $exe = Get-ChildItem -Path $dest -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
+          if (-not $exe) {
+              throw "ffmpeg.exe not found anywhere under $dest after extracting $zip"
+          }
+          Write-Host "Found ffmpeg.exe at $($exe.FullName)"
+          $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install ffmpeg (macOS)
         if: matrix.gold_reference && runner.os == 'macOS'
@@ -617,6 +695,8 @@ jobs:
       - name: Setup MSVC environment
         if: matrix.msvc
         uses: ./.github/actions/setup-msvc-env
+        with:
+          arch: ${{ matrix.msvc_arch || 'x64' }}
 
       - name: Install Ninja
         if: ${{ !matrix.container }}
@@ -640,8 +720,10 @@ jobs:
       # pinned action itself is CountdownSolver's own precedent
       # (R:\CountdownSolver\.github\workflows\release.yml), the other
       # project sharing this same "prebuilt Qt, never vcpkg" convention.
+      # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
+      # matrix comment above), so there is no Qt kit to install for it here.
       - name: Install Qt (prebuilt)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
         with:
           version: ${{ needs.toolchain-versions.outputs.qt_version }}
@@ -681,11 +763,26 @@ jobs:
                           clang++ --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang ${LLVM_VERSION}"; exit 1; } ;;
             windows-llvm) clang-cl --version | head -1
                           clang-cl --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang-cl ${LLVM_VERSION}"; exit 1; } ;;
-            windows-msvc) echo "MSVC toolset: ${VCToolsVersion:-unknown}"
+            windows-msvc)
+                          echo "MSVC toolset: ${VCToolsVersion:-unknown}"
                           case "${VCToolsVersion:-}" in
                             ${MSVC_TOOLSET}*) ;;
                             *) echo "::error::expected an MSVC ${MSVC_TOOLSET}x toolset, got '${VCToolsVersion:-unset}'"; exit 1 ;;
                           esac ;;
+            # Report-only, unlike windows-msvc above - confirmed empirically on
+            # a real windows-11-arm run (2026-08-26): the hosted ARM64 image
+            # ships an older VS Build Tools generation (14.44.35207, VS2022
+            # ~17.14) than windows-latest's x64 image (14.5x, "VS 2026"/18.x),
+            # so the ${MSVC_TOOLSET} pin - resolved against the x64 image - does
+            # not hold here. The two runner images are maintained on separate
+            # GitHub-side update cadences; asserting they stay in lockstep
+            # isn't realistic yet. Same shape as macos-llvm's own case arm
+            # below, and the same reasoning: report whatever toolset this
+            # runner actually has rather than failing a leg still proving out
+            # its own baseline. Revisit once GitHub's ARM64 image catches up -
+            # or drops far enough behind to need its own pin.
+            windows-msvc-arm64)
+                          echo "MSVC toolset: ${VCToolsVersion:-unknown}" ;;
             # No hard version assert here unlike the other LLVM legs: Homebrew's
             # llvm formula has no versioned pin to check against (see the
             # install step's own comment), so this reports whatever it finds
@@ -731,7 +828,13 @@ jobs:
         run: |
           set -euo pipefail
           extra_args=()
-          if [ "$RUNNER_OS" = "Windows" ]; then
+          # QT_ROOT_DIR is only set when the "Install Qt (prebuilt)" step ran
+          # (every Windows leg except windows-msvc-arm64, which has no Qt kit
+          # to point at - see that step's own comment) - guarded rather than
+          # unconditional on "$RUNNER_OS" = "Windows" alone, because
+          # referencing an unset variable under this script's `set -u` would
+          # otherwise fail the Configure step outright on that leg.
+          if [ "$RUNNER_OS" = "Windows" ] && [ -n "${QT_ROOT_DIR:-}" ]; then
             extra_args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
           fi
           if [ "${{ matrix.gui }}" = "true" ]; then
