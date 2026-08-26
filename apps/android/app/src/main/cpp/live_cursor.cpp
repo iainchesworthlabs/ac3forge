@@ -43,8 +43,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
@@ -55,8 +57,11 @@
 #include <thread>
 #include <vector>
 
+#include <sys/resource.h>
+
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/io/object_strip.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/meta/loudness.hpp"
@@ -246,6 +251,103 @@ constexpr int kMaxRecordFrames = 3750;
 constexpr double kFrameSeconds = static_cast<double>(ac3::kSamplesPerFrame) / kSampleRate;
 
 enum class RecordState : std::int32_t { kIdle = 0, kRecording = 1, kPlaying = 2 };
+
+// --- the wire trace -------------------------------------------------------
+//
+// A second thread parses back the EXACT access units this loop hands to the
+// burst packer - post-signing, post-strip, the bytes going out of HDMI - and
+// reports what a decoder finds in them.
+//
+// What this is honestly good for, and what it is not:
+//
+//   * It is NOT a measurement of reconstruction quality. Both ends run the
+//     same non-normative QMF prototype (dsp/qmf.hpp: "The prototype is NOT
+//     Dolby's"), so a per-object SNR here would hold constant precisely the
+//     variable most likely to explain a disagreement with a real decoder.
+//     Nothing of the kind is computed.
+//   * The decoded POSITION is an algebraic identity, not a discovery -
+//     tests/oba/test_atmos.cpp asserts decoded == the encoder's own
+//     quantize_xy/quantize_z of the intended position. It is shown because
+//     the QUANTISER is the interesting part: height travels in 16 steps and
+//     left/right in 63, which is visible as a staircase against a smooth
+//     intended line and is a fact about the format rather than a claim about
+//     this encoder.
+//   * What IS falsifiable: that the container survives on the wire at all,
+//     and that OBJECTS OFF really removes it - a decoder reading the
+//     post-strip bytes and reporting zero objects is independent of the byte
+//     counter that claims it.
+//
+// `skip_reconstruction` is what makes this safe rather than merely cheap. It
+// returns before the IMDCT, the overlap-add and JOC reconstruction, so no
+// cross-frame state is carried and frames are mutually INDEPENDENT: the ring
+// below may drop under load without corrupting anything that is drawn. A full
+// decode could not - its IMDCT delay lines and joc::ReconstructionState
+// history mean a dropped frame silently poisons every frame after it, and
+// there is no reset() on the public surface to recover with.
+constexpr int kTraceSlots = 64;
+constexpr std::size_t kTraceSlotBytes = 2048;  // 448kbps/32ms = 1792 bytes
+constexpr int kTracePoints = 240;              // ~7.7s of history at 32ms/frame
+
+struct TraceSlot {
+    std::array<std::byte, kTraceSlotBytes> bytes{};
+    std::uint32_t size = 0;
+    // The placement that PRODUCED this unit, captured with it rather than
+    // read live by the monitor. Not optional: the lead moves ~0.0075 room
+    // units per frame against an x/y quantiser step of ~0.016, so even two
+    // frames of pipeline lag against a live snapshot() would manufacture most
+    // of a quantiser step of error and the trace would be showing the ring's
+    // latency rather than the format's.
+    float intended_x = 0.0F;
+    float intended_y = 0.0F;
+    float intended_z = 0.0F;
+};
+
+// Single producer (the encode loop), single consumer (the monitor). The
+// producer never blocks and never allocates; on a full ring it drops the
+// frame and counts it, which parse-only decoding makes harmless.
+struct TraceRing {
+    std::array<TraceSlot, kTraceSlots> slots{};
+    alignas(64) std::atomic<std::uint64_t> written{0};
+    alignas(64) std::atomic<std::uint64_t> read{0};
+};
+
+TraceRing& trace_ring() {
+    static TraceRing ring;
+    return ring;
+}
+
+// What the monitor publishes for the UI. A plain mutex rather than atomics:
+// this is written ~31 times a second and read once per vsync, which is not a
+// contended path by any measure, and a whole coherent history is wanted
+// rather than fields that might disagree with each other.
+struct TraceHistory {
+    mutable std::mutex mutex;
+    std::array<float, kTracePoints> intended{};
+    std::array<float, kTracePoints> decoded{};
+    std::array<std::uint8_t, kTracePoints> valid{};
+    std::size_t head = 0;   // next slot to write
+    std::size_t count = 0;  // how many are populated
+
+    void push(float intended_z, float decoded_z, bool has_objects) {
+        std::lock_guard lock(mutex);
+        intended[head] = intended_z;
+        decoded[head] = decoded_z;
+        valid[head] = has_objects ? 1U : 0U;
+        head = (head + 1) % kTracePoints;
+        if (count < kTracePoints) ++count;
+    }
+
+    void clear() {
+        std::lock_guard lock(mutex);
+        head = 0;
+        count = 0;
+    }
+};
+
+TraceHistory& trace_history() {
+    static TraceHistory history;
+    return history;
+}
 
 // 0 at the start of a blend, 1 at the end, with the ends eased so the
 // transition neither starts nor stops abruptly.
@@ -495,6 +597,25 @@ struct StreamStats {
     std::atomic_bool objects_off{false};
     std::atomic<std::uint32_t> stripped_bytes_per_frame{0};
 
+    // --- the wire trace (see TraceRing) ---
+    // How long ONE WHOLE loop iteration took, as distinct from encode_ms,
+    // which brackets encode_frame() alone. Everything else in the iteration -
+    // tone synthesis and the limiter, the level and loudness meters, signing,
+    // stripping, the burst packer and the JNI submit - was never measured, so
+    // the frame slot's real occupancy was unknown and every headroom claim
+    // rested on a figure that did not include most of the frame.
+    std::atomic<float> loop_ms{0.0F};
+    // Wall time for one parse-only decode on the monitor thread. The repo has
+    // no decode measurement on any ARM device; this is the first.
+    std::atomic<float> decode_ms{0.0F};
+    // How many objects a decoder finds in the bytes on the wire. Independent
+    // of stripped_bytes_per_frame: this is the object layer being ABSENT,
+    // observed, rather than a count of bytes claimed to have been removed.
+    std::atomic<int> decoded_objects{-1};  // -1 = nothing decoded yet
+    std::atomic<std::uint64_t> trace_frames{0};
+    std::atomic<std::uint64_t> trace_dropped{0};
+    std::atomic<std::uint64_t> trace_errors{0};
+
     // Zeroes everything a *previous* run left behind. Without this, a stopped
     // loop froze its last values on screen rather than going dark: the meters
     // held whatever the final frame happened to be, the frame/burst counters
@@ -516,6 +637,12 @@ struct StreamStats {
         loudness_valid.store(false, std::memory_order_relaxed);
         implied_dialnorm.store(0, std::memory_order_relaxed);
         stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
+        loop_ms.store(0.0F, std::memory_order_relaxed);
+        decode_ms.store(0.0F, std::memory_order_relaxed);
+        decoded_objects.store(-1, std::memory_order_relaxed);
+        trace_frames.store(0, std::memory_order_relaxed);
+        trace_dropped.store(0, std::memory_order_relaxed);
+        trace_errors.store(0, std::memory_order_relaxed);
         // objects_off is deliberately NOT reset, for the same reason
         // ambient_muted is not: it is a control the presenter set, not a
         // measurement of this run.
@@ -733,6 +860,100 @@ LiveCursorState& live_cursor_state() {
     return state;
 }
 
+// Nice values. Android's own audio threads sit at -16; background work sits
+// well above 0. Set explicitly because nothing here ever did: the encode
+// worker simply inherited whatever the Java thread that started it had, which
+// gave the scheduler no reason at all to prefer the thread with the deadline
+// over the one merely watching it.
+constexpr int kEncodeNice = -16;
+constexpr int kMonitorNice = 10;
+
+void set_thread_nice(int nice, const char* what) {
+    // who == 0 is the calling thread: Linux nice is per-task, and this is
+    // what Android's own Process.setThreadPriority ends up calling.
+    if (setpriority(PRIO_PROCESS, 0, nice) != 0) {
+        // Not fatal, and not silent. An app is normally allowed to lower its
+        // own threads' nice values, but if the platform refuses, the timing
+        // numbers on screen should be read knowing it.
+        __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                            "could not set %s thread nice to %d (errno %d) - "
+                            "scheduling is whatever this process inherited",
+                            what, nice, errno);
+    }
+}
+
+// The monitor: parses back what the encode loop put on the wire. Never touches
+// JNI, never blocks the producer, and may lag real time freely - it publishes
+// into trace_history() and the UI reads that at its own pace.
+void trace_loop() {
+    set_thread_nice(kMonitorNice, "trace monitor");
+
+    // Heap, not stack: the decoder's Impl is large, and both examples/
+    // atmos_objects.cpp and the CLI's live_audio path allocate it for exactly
+    // that reason.
+    const ac3::DecoderConfig config{.skip_reconstruction = true};
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(config);
+
+    auto& ring = trace_ring();
+    std::vector<std::byte> unit;
+    unit.reserve(kTraceSlotBytes);
+
+    while (!g_stop_requested.load(std::memory_order_acquire)) {
+        const auto read_index = ring.read.load(std::memory_order_relaxed);
+        if (read_index == ring.written.load(std::memory_order_acquire)) {
+            // Nothing waiting. A frame is 32ms; waking at 4ms keeps the trace
+            // close to live without spinning.
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            continue;
+        }
+
+        const auto& slot = ring.slots[read_index % kTraceSlots];
+        unit.assign(slot.bytes.begin(),
+                    slot.bytes.begin() + static_cast<std::ptrdiff_t>(slot.size));
+        const float intended_z = slot.intended_z;
+        // Only now is the slot free for the producer to overwrite.
+        ring.read.store(read_index + 1, std::memory_order_release);
+
+        const auto started = std::chrono::steady_clock::now();
+        const auto decoded = decoder->decode_access_unit(unit);
+        const auto elapsed_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
+                .count();
+        stream_stats().decode_ms.store(static_cast<float>(elapsed_ms), std::memory_order_relaxed);
+
+        if (!decoded) {
+            stream_stats().trace_errors.fetch_add(1, std::memory_order_relaxed);
+            continue;
+        }
+        // std::nullopt is "nothing assembled from this unit", not an error.
+        if (!decoded->has_value()) {
+            continue;
+        }
+
+        const auto& unit_out = **decoded;
+        int object_count = 0;
+        float decoded_z = 0.0F;
+        if (unit_out.object_metadata) {
+            const auto& objects = unit_out.object_metadata->objects;
+            object_count = static_cast<int>(objects.size());
+            if (!objects.empty()) {
+                // objects[i] is parallel to the placement[i] the encoder was
+                // handed - see tests/oba/test_atmos.cpp's round-trip - so
+                // index 0 is the interactive lead.
+                decoded_z = static_cast<float>(objects[0].position.z);
+            }
+        }
+        stream_stats().decoded_objects.store(object_count, std::memory_order_relaxed);
+        stream_stats().trace_frames.fetch_add(1, std::memory_order_relaxed);
+        trace_history().push(intended_z, decoded_z, object_count > 0);
+    }
+
+    // Nothing is held back by a parse-only decode, but flush() is the
+    // documented way to end a stream and costs nothing here.
+    (void)decoder->flush();
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "trace monitor stopped");
+}
+
 void run_loop() {
     // Every counter and level below belongs to THIS run - see
     // StreamStats::reset(). Must happen before signed_stream is set a few
@@ -844,6 +1065,25 @@ void run_loop() {
             .count(),
         std::memory_order_relaxed);
 
+    // This thread has the deadline; say so before the first frame.
+    set_thread_nice(kEncodeNice, "encode");
+
+    trace_history().clear();
+    trace_ring().read.store(0, std::memory_order_relaxed);
+    trace_ring().written.store(0, std::memory_order_relaxed);
+    // Only run the monitor when there is an object layer for it to find. On a
+    // keyless build the encoder emits no container at all, so the trace would
+    // be a panel of gaps saying nothing, and a core would be spent producing
+    // it. Not started means nativeGetWireTrace stays empty and the elevation
+    // panel keeps its whole area - the pre-existing behaviour, exactly.
+    std::thread trace_thread;
+    if (emit_objects) {
+        trace_thread = std::thread(trace_loop);
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                            "wire trace not started: this build emits no object container");
+    }
+
     g_running.store(true, std::memory_order_release);
     __android_log_print(ANDROID_LOG_INFO, kLogTag, "encode loop started (%d interactive + %d ambient objects)",
                         kInteractiveObjects, kAmbientObjects);
@@ -858,8 +1098,9 @@ void run_loop() {
         // this loop iteration encodes should be timestamped from the START
         // of the work it does, not after several hundred microseconds of
         // sample generation have already elapsed.
+        const auto iteration_start = std::chrono::steady_clock::now();
         const double time_s =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
+            std::chrono::duration<double>(iteration_start - start_time).count();
 
         // A scene change starts a blend from wherever the objects currently
         // are. Changing again mid-blend restarts from the scene being left
@@ -1067,6 +1308,30 @@ void run_loop() {
             stream_stats().stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
         }
 
+        // Hand the monitor a copy of exactly these bytes - after signing,
+        // after any strip - with the placement that produced them. One
+        // ~1792-byte memcpy, next to the 24576-byte burst copy the submit
+        // path already does every frame.
+        {
+            auto& ring = trace_ring();
+            const auto write_index = ring.written.load(std::memory_order_relaxed);
+            const auto read_index = ring.read.load(std::memory_order_acquire);
+            if (write_index - read_index < static_cast<std::uint64_t>(kTraceSlots) &&
+                unit_bytes.size() <= kTraceSlotBytes) {
+                auto& slot = ring.slots[write_index % kTraceSlots];
+                std::memcpy(slot.bytes.data(), unit_bytes.data(), unit_bytes.size());
+                slot.size = static_cast<std::uint32_t>(unit_bytes.size());
+                slot.intended_x = static_cast<float>(placement[0].position.x);
+                slot.intended_y = static_cast<float>(placement[0].position.y);
+                slot.intended_z = static_cast<float>(placement[0].position.z);
+                ring.written.store(write_index + 1, std::memory_order_release);
+            } else {
+                // The monitor fell behind, or a unit somehow exceeded the slot.
+                // Dropping is safe precisely because the decode is parse-only.
+                stream_stats().trace_dropped.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
         const auto push_result = packer.push(unit_bytes);
         if (!push_result) {
             __android_log_print(ANDROID_LOG_ERROR, kLogTag, "iec61937 wrap failed: %d",
@@ -1130,8 +1395,23 @@ void run_loop() {
                                 static_cast<unsigned long long>(frames));
             next_deadline = now;
         }
+        // The whole iteration, not just the encode - see StreamStats::loop_ms.
+        // Measured before the sleep, so it is work rather than wall clock.
+        stream_stats().loop_ms.store(
+            static_cast<float>(std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - iteration_start)
+                                   .count()),
+            std::memory_order_relaxed);
+
         next_deadline += frame_period;
         std::this_thread::sleep_until(next_deadline);
+    }
+
+    // Joined before anything else is torn down: the monitor owns a decoder
+    // and reads the ring, both of which outlive this scope only if it does.
+    // It watches the same g_stop_requested this loop just left.
+    if (trace_thread.joinable()) {
+        trace_thread.join();
     }
 
     sink.stop();
@@ -1329,6 +1609,59 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
     return result;
 }
 
+// The wire trace's history: kTracePoints * 3 floats, oldest first - intended
+// z, decoded z, and 1/0 for whether a decoder found any objects in that
+// frame's bytes at all. Empty until the monitor has parsed something.
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetWireTrace(JNIEnv* env, jclass /*clazz*/) {
+    auto& history = trace_history();
+    std::vector<jfloat> flat;
+    {
+        std::lock_guard lock(history.mutex);
+        if (history.count == 0) {
+            return env->NewFloatArray(0);
+        }
+        flat.resize(history.count * 3);
+        // head is the NEXT slot to write, so the oldest entry is head-count.
+        const std::size_t oldest =
+            (history.head + kTracePoints - history.count) % kTracePoints;
+        for (std::size_t i = 0; i < history.count; ++i) {
+            const std::size_t at = (oldest + i) % kTracePoints;
+            flat[i * 3 + 0] = history.intended[at];
+            flat[i * 3 + 1] = history.decoded[at];
+            flat[i * 3 + 2] = history.valid[at] != 0U ? 1.0F : 0.0F;
+        }
+    }
+    jfloatArray result = env->NewFloatArray(static_cast<jsize>(flat.size()));
+    if (result == nullptr) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(result, 0, static_cast<jsize>(flat.size()), flat.data());
+    return result;
+}
+
+// One line about the trace, for the panel header: how many objects a decoder
+// actually finds on the wire, and what one parse-only decode costs.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetWireTraceText(JNIEnv* env, jclass /*clazz*/) {
+    auto& s = stream_stats();
+    const int objects = s.decoded_objects.load(std::memory_order_relaxed);
+    if (objects < 0) {
+        return env->NewStringUTF("");
+    }
+    const auto dropped = s.trace_dropped.load(std::memory_order_relaxed);
+    char drop_buf[32] = "";
+    if (dropped > 0) {
+        std::snprintf(drop_buf, sizeof drop_buf, " | %llu dropped",
+                      static_cast<unsigned long long>(dropped));
+    }
+    char buf[128];
+    std::snprintf(buf, sizeof buf, "decoder sees %d object%s | %.1fms/frame%s", objects,
+                  objects == 1 ? "" : "s",
+                  static_cast<double>(s.decode_ms.load(std::memory_order_relaxed)), drop_buf);
+    return env->NewStringUTF(buf);
+}
+
 // Whether the ambient voices are muted. A getter as well as a setter because
 // three places now change it - the remote's transport keys, the settings
 // panel and the phone remote - and a mirror of this in Kotlin would drift the
@@ -1485,10 +1818,11 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
     }
     char buf[288];
     std::snprintf(buf, sizeof buf,
-                  "bursts %llu/%llu%s | encode %.1f/32ms | enc lat %.0fms | %s%s%s%s",
+                  "bursts %llu/%llu%s | frame %.1f/32ms (enc %.1f) | enc lat %.0fms | %s%s%s%s",
                   static_cast<unsigned long long>(s.bursts_rendered.load(std::memory_order_relaxed)),
                   static_cast<unsigned long long>(s.bursts_submitted.load(std::memory_order_relaxed)),
                   loss_buf,
+                  static_cast<double>(s.loop_ms.load(std::memory_order_relaxed)),
                   static_cast<double>(s.encode_ms.load(std::memory_order_relaxed)),
                   static_cast<double>(object_lat_ms),
                   s.signed_stream.load(std::memory_order_relaxed) ? "Atmos (signed)"

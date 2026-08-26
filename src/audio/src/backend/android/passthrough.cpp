@@ -105,23 +105,46 @@ jmethodID g_mid_open = nullptr;                 // boolean open(int, boolean)
 jmethodID g_mid_submit = nullptr;               // int submit(ByteBuffer, int)
 jmethodID g_mid_close = nullptr;                // void close()
 
-// Attaches the calling thread to the JVM if it is not already, returning the
-// JNIEnv and whether THIS call attached it (so the caller knows whether to
-// detach when done - only threads WE attached should ever be detached; the
-// thread JNI_OnLoad/registerBridge run on is already attached by the JVM).
-JNIEnv* attach_current_thread(bool& did_attach) {
-    did_attach = false;
+// Detaches a thread WE attached, when that thread exits.
+//
+// A thread that attached to the JVM must detach before it exits or the VM
+// aborts, which is what the previous attach-then-detach-per-call shape was
+// really guarding against. The cost of that shape landed on the worst
+// possible thread: submit() is called once per 32ms audio frame from the
+// encode loop's real-time worker, so a deadline thread registered itself with
+// ART, walked its thread list, and unregistered again, every single frame,
+// for the life of the stream.
+//
+// A thread_local with a destructor gets the same guarantee for free: it is
+// constructed on the call that actually attaches, and its destructor runs
+// when the thread exits, however it exits.
+struct JvmThreadAttachment {
+    bool attached = false;
+    ~JvmThreadAttachment() {
+        if (attached && g_vm != nullptr) {
+            g_vm->DetachCurrentThread();
+        }
+    }
+};
+
+// The JNIEnv for the calling thread, attaching it once if needed. Callers do
+// no detach bookkeeping - see JvmThreadAttachment.
+JNIEnv* jni_env() {
     if (g_vm == nullptr) {
         return nullptr;
     }
     JNIEnv* env = nullptr;
+    // Already attached: either a JVM-owned thread (the one JNI_OnLoad and
+    // registerBridge run on), or one this function attached earlier.
     if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
         return env;
     }
+    // Constructed on this path only, which is exactly the path that attaches.
+    thread_local JvmThreadAttachment attachment;
     if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
         return nullptr;
     }
-    did_attach = true;
+    attachment.attached = true;
     return env;
 }
 
@@ -170,8 +193,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
                             "NativeBridge.registerPassthroughBridge run?");
         return std::unexpected(PassthroughError::kNoBackend);
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return std::unexpected(PassthroughError::kComFailure);
     }
@@ -216,9 +238,6 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
         devices.push_back(android_audio::make_render_device_info(ac3_ok, eac3_ok, pcm_ok));
     }
 
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
     return devices;
 }
 
@@ -278,8 +297,7 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
     if (!running() || burst.size() != impl_->burst_bytes || !bridge_ready()) {
         return false;
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return false;
     }
@@ -346,9 +364,6 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
         // retries.
     }
 
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
     if (ok) {
         impl_->submitted.fetch_add(1, std::memory_order_relaxed);
         impl_->rendered.fetch_add(1, std::memory_order_relaxed);
@@ -366,8 +381,7 @@ void PassthroughSink::stop() {
     if (!bridge_ready()) {
         return;
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return;
     }
@@ -384,9 +398,6 @@ void PassthroughSink::stop() {
             }
         }
     }
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
 }
 
 std::expected<void, PassthroughError> PassthroughSink::start(const std::string& /*device_id*/,
@@ -402,8 +413,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (!bridge_ready()) {
         return std::unexpected(PassthroughError::kNoBackend);
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return std::unexpected(PassthroughError::kComFailure);
     }
@@ -429,9 +439,6 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                     env->DeleteGlobalRef(impl_->direct_buffers[j]);
                     impl_->direct_buffers[j] = nullptr;
                 }
-                if (did_attach) {
-                    g_vm->DetachCurrentThread();
-                }
                 return std::unexpected(PassthroughError::kComFailure);
             }
             impl_->direct_buffers[i] = env->NewGlobalRef(direct);
@@ -452,9 +459,6 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         }
     }
 
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
     if (!opened) {
         __android_log_print(ANDROID_LOG_WARN, kLogTag,
                             "start: PassthroughBridge.open(%u Hz carrier, eac3=%d) returned "
@@ -480,7 +484,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 //
 // JNI_OnLoad is defined here, not in the app's own native code
 // (apps/android/app/src/main/cpp/), because capturing the JavaVM is
-// ac3::audio's own concern (attach_current_thread() above needs it) and a
+// ac3::audio's own concern (jni_env() above needs it) and a
 // process may load exactly one JNI_OnLoad per shared object - this is the
 // only translation unit in ac3forge_jni.so that needs it.
 

@@ -330,6 +330,79 @@ own phone with no pairing and no explaining.
     trade for a sideloaded personal demo on a home network, and it is exactly
     why it does not start by itself.
 
+## The wire trace: a decoder reading back what went out
+
+A second thread parses back the **exact access units** this app hands to the burst packer —
+post-signing, post-strip, the bytes going out of HDMI — and reports what a decoder finds in them.
+The lower part of the elevation card becomes the lead object's height over the last few seconds:
+the intended line, and the line a decoder read back off the wire.
+
+**What it is honestly good for, and what it is not.** This is the part worth reading before
+believing anything the panel says.
+
+- **It is not a measurement of reconstruction quality, and deliberately computes none.** Both ends
+  run the same non-normative QMF prototype — `dsp/qmf.hpp` says outright that "The prototype is
+  NOT Dolby's. §7.1 fixes the filterbank's shape and does not publish its coefficients". A
+  per-object SNR here would hold constant precisely the variable most likely to explain a
+  disagreement with a real decoder, which is worse than useless: it would look like evidence.
+- **The decoded position is an algebraic identity, not a discovery.** `tests/oba/test_atmos.cpp`
+  asserts that the decoded position equals the encoder's own `quantize_xy`/`quantize_z` of the
+  intended one, exactly. It cannot surprise unless the bitstream is broken.
+- **So what is it showing?** The **quantiser**. Height is sent as a sign bit plus four bits of
+  magnitude — sixteen steps — and left/right as six bits over 62. Against a smooth intended
+  line the decoded height is a visible staircase. That is a fact about the format, not a claim about
+  this encoder, and it is the one thing on the dashboard that shows the wire format's own resolution
+  rather than the demo's intent.
+- **What is genuinely falsifiable:** that the container survives on the wire at all, and that
+  [OBJECTS OFF](#objects-off-taking-the-object-layer-away-live) really removes it. A decoder reading
+  the post-strip bytes and reporting zero objects is independent of the byte counter that claims the
+  removal. Frames with no object layer are drawn as a **gap** with a baseline marker, never as zero
+  — "the decoder found nothing here", not "the object dropped to the floor".
+
+**`skip_reconstruction` is what makes it safe, not merely cheap.** `DecoderConfig::skip_reconstruction`
+returns before the IMDCT, the overlap-add and JOC reconstruction, so no cross-frame state is carried
+and frames are mutually **independent**. The ring between the two threads may therefore drop under
+load without corrupting anything drawn. A full decode could not: its per-identity IMDCT delay lines
+and `joc::ReconstructionState` history mean one dropped frame silently poisons every frame after it,
+and there is no `reset()` on the public decoder surface to recover with. A monitor that can quietly
+start lying under exactly the load you built it to observe is not a monitor.
+
+**The plumbing.** A 64-slot single-producer/single-consumer ring of 2 KB slots (one access unit at
+448 kbit/s is 1792 bytes). The producer copies the unit **and the placement that produced it** —
+not optional: the lead moves about 0.0075 room units per frame against an x/y quantiser step of
+about 0.016, so even two frames of lag against a live position snapshot would manufacture most of a
+quantiser step of error, and the trace would be showing the ring's latency rather than the format's.
+The producer never blocks and never allocates; a full ring drops the frame and counts it.
+
+**It runs only when there is an object layer to find.** On a keyless build the encoder emits no
+container, so the monitor is never started, the trace stays empty, and the elevation panel keeps its
+whole area — exactly the behaviour that was there before. Like OBJECTS OFF, this feature is
+visible only on a key-bearing build.
+
+### Two measurements that came with it
+
+- **`frame X.X/32ms (enc Y.Y)`.** The status line used to show `encode` alone, which brackets
+  `encode_frame()` and nothing else — not the tone synthesis and limiter, the level and loudness
+  meters, signing, stripping, the burst packer, or the JNI submit. The frame slot's real occupancy
+  was never measured, so every headroom claim rested on a figure that excluded most of the frame.
+  Now both are shown, and `frame` is the one that matters.
+- **A decode cost on ARM.** The repo has no decode measurement on any ARM device. The trace panel's
+  header carries one.
+
+### Thread priorities
+
+Nothing in this app ever set one: the encode worker simply inherited whatever the Java thread that
+started it had, which gave the scheduler no reason to prefer the thread with a 32 ms deadline over
+anything else. The encode worker is now put in the audio nice band and the monitor in the background
+band, both explicitly, and a failure to do so is logged rather than silently accepted — the
+timing figures on screen should be read knowing whether the platform honoured the request.
+
+Relatedly, `PassthroughSink::submit` used to attach the calling thread to the JVM and detach it
+again **on every call**, which meant the real-time encode thread registered with ART, walked its
+thread list and unregistered, once every 32 ms for the life of the stream. It now attaches once per
+thread, with a `thread_local` destructor doing the detach at thread exit — the same guarantee
+without the per-frame cost.
+
 ## OBJECTS OFF: taking the object layer away, live
 
 **X** on a controller, **MENU** on a remote, runs every access unit through
@@ -748,6 +821,15 @@ every other required leg.
       logged at startup for exactly that reason.
     - **The phone remote.** Never loaded from a real phone, and the Shield's
       own network behaviour on the port is unverified.
+    - **The wire trace, and everything it measures.** The decode has never run on ARM at all, so
+      `dec` ms/frame is unknown; the whole feature rests on it being small next to what `frame`
+      ms/32ms turns out to be. Watch ring drops: a count that climbs steadily over twenty minutes
+      is DVFS sag under sustained two-core load, and would mean the monitor does not ship.
+    - **`frame` ms/32ms itself.** The 24.6 ms figure everyone has been quoting is `encode` alone.
+      Real slot occupancy has never been measured, and this is the first build that reports it.
+    - **The thread nice values.** An app is normally permitted to lower its own threads' priority,
+      but if the platform refuses, the warning is in logcat and the timing numbers should be read
+      with that in mind.
     - **The partial-write fix.** The path it corrects is the one that had never been observed
       firing; the change makes a short write resumable rather than duplicating bytes. Whether short
       writes happen at all on this device is still unknown — the first one now logs.

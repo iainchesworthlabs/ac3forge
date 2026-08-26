@@ -167,6 +167,28 @@ object NativeBridge {
     external fun nativeGetFutureLeadTrajectory(secondsAhead: Float, samples: Int): FloatArray
 
     /**
+     * The wire trace: `points * 3` floats, oldest first — the lead object's
+     * INTENDED height, the height a decoder read back out of the bytes that
+     * actually went to HDMI, and 1/0 for whether that frame's bytes carried
+     * any object layer at all. Empty until the monitor thread has parsed
+     * something.
+     *
+     * The two height lines are not independent measurements: the decoded one
+     * is the intended one put through the format's own quantiser, and
+     * `tests/oba/test_atmos.cpp` asserts exactly that. What is worth seeing is
+     * the QUANTISER — height travels in 16 steps against a smooth intended
+     * line — and, when OBJECTS OFF is engaged, the third value going to zero,
+     * which is a decoder independently confirming the object layer is no
+     * longer on the wire.
+     *
+     * See live_cursor.cpp's TraceRing for why the decode is parse-only.
+     */
+    external fun nativeGetWireTrace(): FloatArray
+
+    /** One line for the trace panel: objects a decoder sees, and decode cost. */
+    external fun nativeGetWireTraceText(): String
+
+    /**
      * Path recording, cycling idle -> recording -> playing -> idle and
      * returning the new state (see [RECORD_IDLE]/[RECORD_RECORDING]/
      * [RECORD_PLAYING]).
