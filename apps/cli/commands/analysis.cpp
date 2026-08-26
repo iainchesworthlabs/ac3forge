@@ -518,7 +518,7 @@ std::optional<ac3::eac3::chanmap::Layout> object_render_target(ac3::plan::Layout
     using ac3::eac3::chanmap::k512Height;
     using ac3::eac3::chanmap::k71Rear;
     using ac3::eac3::chanmap::kTopQuad;
-    const auto base = acmod_map(ac3::Acmod::k3_2, /*lfe=*/true);
+    constexpr auto base = acmod_map(ac3::Acmod::k3_2, /*lfe=*/true);
     switch (id) {
         case ac3::plan::LayoutId::k71:
             return expand(static_cast<std::uint16_t>(base | k71Rear));
