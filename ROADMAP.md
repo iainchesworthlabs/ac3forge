@@ -1292,8 +1292,8 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   single-arch leg's own `cpack` output ships as the release artifact any more, a deliberate change
   from before. The Homebrew Cask dropped its `depends_on arch: :arm64`. `macos-llvm-x64` stays
   `experimental: true` until proven green the same way `macos-llvm` was; see
-  [docs/platforms/macos.md](docs/platforms/macos.md#universal-binaries-dr8) and
-  [docs/releasing.md](docs/releasing.md#what-gets-published). The AppImage/Flatpak and Windows
+  [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) and
+  [docs/releasing.md](releasing.md#what-gets-published). The AppImage/Flatpak and Windows
   ARM64 halves of this item are unrelated, separate pieces of work and remain open.
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:
