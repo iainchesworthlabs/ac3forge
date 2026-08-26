@@ -1177,8 +1177,16 @@ directory; there is still no threading anywhere in the codec core.
   [HandBrake #1085](https://github.com/HandBrake/HandBrake/issues/1085) has been open since 2017.
   Out of tree, over the C API only, GPL-3 framed (`--enable-gpl --enable-version3`); FFmpeg stays
   an oracle for the codec itself. Needs AP5.
-- [ ] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
+- [x] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
   "CRC failed at frame N" or "unknown EMDF payload skipped". Tracy is profiling, not diagnostics.
+  Done: `DecoderConfig::diagnostics` (`ac3/decoder/diagnostics.hpp`) — a plain function pointer
+  plus an opaque context, following `trace`/`syntax`/`concealment`'s own null-by-default pointer
+  convention rather than `std::function`, so it costs no allocation and needs no exceptions/RTTI,
+  usable from `AC3FORGE_MINIMAL_DECODER`. Fires for `DiagnosticEvent::kCrcMismatch` at the moment
+  the check fails — the only signal a caller gets once `ConcealmentPolicy` turns the same call
+  into a successful, concealed result — and `kUnknownEmdfPayload` when a block's EMDF container
+  carries a payload id this decoder does not interpret (anything but OAMD/JOC), which previously
+  left no trace anywhere at all. Null by default on both decoders.
 - [x] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
   mask curves as CSV/JSON/Parquet from the trace (both codecs carry one since `VX2`),
   reachable from Python. Done: the trace (`ac3::verify::FrameTrace`/`Eac3AccessUnitTrace`) already

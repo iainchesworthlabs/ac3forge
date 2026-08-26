@@ -23,6 +23,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
@@ -377,7 +378,13 @@ PYBIND11_MODULE(_ac3forge, m) {
     // --- free functions ----------------------------------------------------
     m.def("fullbw_channel_count", &ac3::fullbw_channel_count, py::arg("acmod"));
     m.def("sample_rate_hz", &ac3::sample_rate_hz, py::arg("sample_rate"));
-    m.def("describe", &ac3::describe, py::arg("error"), "Text for a DecodeError value");
+    // Cast to the specific overload: ac3::describe(DiagnosticEvent) (roadmap
+    // AP11, ac3/decoder/diagnostics.hpp) makes the bare &ac3::describe below
+    // ambiguous - a second overload in the same namespace, not something
+    // AP11's Python bindings surface at all (see docs/library/python-api.md's
+    // "What isn't exposed").
+    m.def("describe", static_cast<std::string_view (*)(ac3::DecodeError)>(&ac3::describe),
+          py::arg("error"), "Text for a DecodeError value");
     m.def(
         "profile_for", [](ac3::meta::ProfileId id) { return ac3::meta::profile(id); },
         py::arg("id"), "The ac3.Profile for one of the conventional ac3.ProfileId presets");
