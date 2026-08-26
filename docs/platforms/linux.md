@@ -168,6 +168,75 @@ types against `*.ac3`/`*.ec3` — `apps/gui/packaging/linux/`, wired into `insta
 resulting `.deb`/`.rpm` on a real desktop and double-clicked an `.ac3` file to confirm the
 launcher fires.
 
+## AppImage
+
+The `.deb`/`.rpm` above are only as portable as the host distro's own Qt 6 packaging: a distro
+whose Qt is too old for this project's `find_package(Qt6 6.5 REQUIRED ...)` floor, or whose
+`qml6-module-*` split doesn't match what `qt6-declarative-dev`/`qt6-declarative-dev-tools` expect
+(roadmap DR8), simply cannot install one of them. `ac3gui` also ships as a self-contained
+AppImage that carries its own Qt 6 and QML modules, so that gap doesn't apply — the two package
+kinds are complementary, not a replacement for each other.
+
+**AppImage, not Flatpak, and this is a settled decision, not an open question.** `ac3gui`'s whole
+reason to exist is `ac3::audio`'s IEC 61937 passthrough — locking a device in exclusive/hog mode
+and writing a raw compressed bitstream straight to an AVR, over ALSA's `iec958:...,AES0=0x06`
+device arguments or PipeWire's native `SPA_MEDIA_SUBTYPE_iec958` (see [Why ALSA still comes
+first](#why-alsa-still-comes-first) above). That is exactly the kind of raw device access
+Flatpak's sandbox exists to take away by default; getting it back would mean either a portal that
+doesn't speak this vocabulary or blanket `--device=all`/`--filesystem=host` opt-outs that defeat
+the sandbox for no real benefit here, on top of a Flathub review process and a second (KDE) Qt 6
+runtime to track alongside this project's own pinned Qt version. AppImage carries no sandbox at
+all, so ALSA/PipeWire device access from inside one works exactly like it does from a normally
+installed binary — no portal, no opt-out flags, nothing to maintain going forward.
+
+### Build recipe
+
+```bash
+cmake --preset config-linux-gcc -DAC3FORGE_BUILD_GUI=ON
+cmake --build --preset build-linux-gcc
+cmake --install build/config-linux-gcc --prefix AppDir/usr --component runtime
+# plus --component library/libruntime too, only if `ldd` on the built ac3gui binary
+# shows it dynamically linking a project .so (BUILD_SHARED_LIBS=ON) - see the
+# linux-appimage CI job for the check.
+linuxdeploy-x86_64.AppImage --appdir AppDir \
+  --executable AppDir/usr/bin/ac3gui \
+  --desktop-file AppDir/usr/share/applications/ac3gui.desktop \
+  --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ac3gui.png \
+  --plugin qt --output appimage
+```
+
+The `apps/gui/CMakeLists.txt` `if(LINUX)` block described above already installs exactly the
+XDG-shaped layout [linuxdeploy](https://github.com/linuxdeploy/linuxdeploy) expects for an
+AppDir — the `--install --component runtime` line is the whole of the CMake side of this, no
+extra packaging target needed.
+
+### The actual glibc floor
+
+CI builds the AppImage in an `ubuntu:22.04` container — deliberately *older* than the
+`ubuntu:26.04` every other Linux CI leg uses — because an AppImage's whole purpose is running on
+a distro older than, or differently put together from, the one that built it; compiling it
+against 26.04's much newer glibc would make the result *less* portable than the `.deb`/`.rpm` it
+exists to supplement. Ubuntu 22.04 ships glibc 2.35 (`ldd --version`), so that is the floor this
+AppImage carries: it needs at least glibc 2.35 on the machine that runs it, and nothing older.
+`.github/toolchain/02-gcc-toolchain.sh`'s existing archive-then-PPA fallback (see that script's
+own header) reaches GCC 16 on 22.04's older archive with no changes needed; Qt comes from
+`jurplel/install-qt-action` rather than `apt`, decoupling the Qt version entirely from the base
+image's age, the same way the Windows CI leg already does.
+
+### How this is verified
+
+Configure/build/package-verified in CI (the `linux-appimage` job in `.github/workflows/_build.yml`,
+which runs on every push, the same "standing smoke test of the packaging path" reasoning
+[windows.md](windows.md#packaging) gives for why `windows-msvc` packages continuously) — and, one
+step further than a plain `.deb`/`.rpm` gets, actually run: the same job then launches the built
+AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
+container that never had Qt or a single build tool installed** — `debian:12-slim`, reached via
+`docker run` against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That
+is the concrete answer to "does this actually run on a distro whose own Qt packages were never
+installed", not just "did packaging exit 0". No real desktop has installed the produced
+`.AppImage` and double-clicked an `.ac3` file, the same caveat the `.deb`/`.rpm` packaging above
+carries.
+
 ## CI
 
 `linux-gcc` and `linux-llvm` both run on every push and are **required**; both install a Qt6 kit
@@ -182,6 +251,11 @@ Two more legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on 
 (GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation) — see
 [Raspberry Pi](raspberry-pi.md), which is the hardware this arch target is validated
 against.
+
+A fifth Linux leg, `linux-appimage`, is separate from all of the above: an `ubuntu:22.04`
+container (deliberately older than `ubuntu:26.04`) building `ac3gui`'s AppImage and then
+launching it inside a second container that never had Qt installed at all — see
+[AppImage](#appimage) above for what it builds and why.
 
 The ALSA backend adds 15 tests of its own (`tests/backend/alsa/`) on top of the base suite: a
 Linux build with the GUI on and `libasound2-dev` absent runs the same suite as Windows, and ALSA

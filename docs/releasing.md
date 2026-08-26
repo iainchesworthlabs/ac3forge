@@ -422,6 +422,13 @@ filenames.
 | macOS | arm64 (Apple Silicon) | macos-llvm | `.tar.gz`, `.dmg` | `.tar.gz` |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
+Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
+`linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product
+at all, so it sits outside this table's "one canonical leg per OS/arch" framing, but it runs on
+every push the same continuous-packaging way `windows-msvc` does and lands in every real release
+alongside the row above. See [docs/platforms/linux.md](platforms/linux.md#appimage) for why it
+exists and how it's built.
+
 The end-user packages are `ac3cli`/`ac3gui` (CPack's `runtime` component) on desktop, or the
 Shield app's `.apk` on Android. The library packages are a second, independent download for a
 third party consuming `ac3::forge`/`matroska::matroska` via `find_package(ac3forge)` (see

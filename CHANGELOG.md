@@ -114,6 +114,9 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).
 - **Desktop integration**: drag-and-drop, `ac3gui <file>`, and `.ac3`/`.ec3` file associations on
   Windows, macOS and Linux, so the app appears in application menus instead of being launch-only.
+- **A self-contained Linux AppImage for `ac3gui`**, bundling its own Qt 6 instead of depending on
+  the host distro's own `qt6-base-dev`/`qml6-module-*` split, alongside the existing `.deb`/`.rpm`.
+  See [Linux](docs/platforms/linux.md#appimage).
 - **Loudness of the rendered layout and of objects.** Metering follows BS.1770-5's extended
   algorithm for advanced sound systems, weighting channels by position, and can re-render an
   object programme onto a named layout by its own positions before metering. `qc` gained

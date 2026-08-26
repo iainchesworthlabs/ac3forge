@@ -287,7 +287,7 @@ jobs:
           shopt -s nullglob
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
           if [ ${#artifacts[@]} -eq 0 ]; then
             echo "::error::no package artifacts were downloaded - every platform failed to build"
             exit 1
@@ -356,7 +356,7 @@ jobs:
           shopt -s nullglob
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
 
           sign() {
             gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --armor \
@@ -395,6 +395,7 @@ jobs:
             release-artifacts/*.zip
             release-artifacts/*.exe
             release-artifacts/*.dmg
+            release-artifacts/*.AppImage
             release-artifacts/*.apk
 
       # The attestation above is real and independently verifiable
@@ -416,7 +417,7 @@ jobs:
           shopt -s nullglob
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
           for f in "${artifacts[@]}"; do
             name="$(basename "$f")"
             workdir="$(mktemp -d)"
@@ -444,6 +445,7 @@ jobs:
             release-artifacts/*.zip
             release-artifacts/*.exe
             release-artifacts/*.dmg
+            release-artifacts/*.AppImage
             release-artifacts/*.apk
           sbom-path: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
 

@@ -1274,10 +1274,20 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
 - [ ] **DR7 (S)** — The Windows installer. `Packaging.cmake`'s NSIS block is silently skipped
   because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
   then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
-- [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
-  the distro's Qt 6 and `qml6-module-*` packages); a Windows ARM64 leg on the hosted
-  `windows-11-arm` runner; macOS universal binaries are a separate decision (the Cask is
-  arm64-only and Intel demand is doubtful).
+- [ ] **DR8 (M)** — Reach, restated per sub-item now that one of the three has actually landed:
+  - **AppImage: done.** `ac3gui` ships as a self-contained AppImage (`linuxdeploy` +
+    `linuxdeploy-plugin-qt`, built in an `ubuntu:22.04` container deliberately older than every
+    other Linux CI leg's `ubuntu:26.04`, so its glibc floor stays lower) alongside the existing
+    `.deb`/`.rpm`, so a distro whose own Qt 6/`qml6-module-*` split is too old or cut differently
+    no longer blocks running `ac3gui` at all. `linux-appimage` in `.github/workflows/_build.yml`
+    builds it on every push and then launches it inside a second container that never had Qt
+    installed, proving the claim rather than just the build. Flatpak was decided against outright
+    rather than deferred — `ac3gui`'s own reason to exist is `ac3::audio`'s exclusive-mode ALSA/
+    PipeWire passthrough, which needs exactly the raw device access a Flatpak sandbox exists to
+    take away — see `docs/platforms/linux.md`'s own AppImage section for the full reasoning.
+  - **Windows ARM64**, on the hosted `windows-11-arm` runner — landing separately.
+  - **macOS universal binaries** are a separate decision (the Cask is arm64-only and Intel demand
+    is doubtful) — landing separately.
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:
   - **Linux/ALSA: confirmed.** `docs/platforms/raspberry-pi.md` ("Live HDMI passthrough to a
