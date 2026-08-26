@@ -53,6 +53,14 @@ if(AC3FORGE_BUILD_IAMF)
     list(APPEND AC3FORGE_EXAMPLES mux_iamf)
 endif()
 
+# read_iab demonstrates ac3iab::ac3iab (src/ac3iab), roadmap IM1 phases 1-2 - "standalone" meaning
+# zero dependency on ac3::forge, the same shape read_adm has for ac3adm::ac3adm above. Unlike
+# AC3FORGE_BUILD_ADM (default OFF), AC3FORGE_BUILD_IAB defaults ON, so this is unconditional like
+# mux_mkv rather than gated in the foreach below.
+if(AC3FORGE_BUILD_IAB)
+    list(APPEND AC3FORGE_EXAMPLES read_iab)
+endif()
+
 foreach(example IN LISTS AC3FORGE_EXAMPLES)
     add_executable(${example} "${example}.cpp")
     if(example STREQUAL "read_adm")
@@ -67,6 +75,10 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
                                                   ac3::warnings ac3::fmt)
     elseif(example STREQUAL "mux_iamf")
         target_link_libraries(${example} PRIVATE ac3::forge iamf::iamf ac3::warnings ac3::fmt)
+    elseif(example STREQUAL "read_iab")
+        # No ac3::forge here either - src/ac3iab is deliberately independent of it (see
+        # src/ac3iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
+        target_link_libraries(${example} PRIVATE ac3iab::ac3iab ac3::warnings ac3::fmt)
     else()
         target_link_libraries(${example} PRIVATE ac3::forge ac3::warnings ac3::fmt)
     endif()
