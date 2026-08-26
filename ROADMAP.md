@@ -599,9 +599,12 @@ machine-readable output and a single failure exit code. Users arrive with contai
   snap, zone gains and spread, AudioDataDLC/PCM essence), and DTS publishes an MIT-licensed
   parser and validator (`DTSProAudio/iab-validator`) to check against. Phase 1 (L): an
   `ac3iab::` bitstream reader in the `ac3adm::` mould, PCM essence first (the DLC coder is the
-  hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
-  files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
-  ingest only; rendering stays with Cavern.
+  hard part), tested against the validator. **Done.** Phase 2: minimal MXF KLV extraction for IAB
+  track files — `ac3iab::parse_mxf_iab` (`mxf.hpp`), governed by SMPTE ST 2067-201, a separate and
+  much shorter standard than ST 2098-2 itself; its own §5.5 clip-wraps the whole bitstream as a
+  single KLV, so extraction needs none of the base MXF standards' Header Metadata object graph or
+  Index Tables. **Done.** Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer.
+  Reader and ingest only; rendering stays with Cavern.
   *Phase 1 done: `ac3iab::` (`src/ac3iab`) parses the full §7/§8 Preamble+IAFrame segment
   framing and every element in §9's Table 4 tree — IAFrame, BedDefinition (+ recursive
   BedDefinition/BedRemap children), ObjectDefinition (+ recursive ObjectDefinition/
@@ -1274,7 +1277,7 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
 - [ ] **DR7 (S)** — The Windows installer. `Packaging.cmake`'s NSIS block is silently skipped
   because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
   then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
-- [ ] **DR8 (M)** — Reach, restated per sub-item now that one of the three has actually landed:
+- [ ] **DR8 (M)** — Reach, restated per sub-item now that two of the three have landed:
   - **AppImage: done.** `ac3gui` ships as a self-contained AppImage (`linuxdeploy` +
     `linuxdeploy-plugin-qt`, built in an `ubuntu:22.04` container deliberately older than every
     other Linux CI leg's `ubuntu:26.04`, so its glibc floor stays lower) alongside the existing
@@ -1285,7 +1288,11 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
     rather than deferred — `ac3gui`'s own reason to exist is `ac3::audio`'s exclusive-mode ALSA/
     PipeWire passthrough, which needs exactly the raw device access a Flatpak sandbox exists to
     take away — see `docs/platforms/linux.md`'s own AppImage section for the full reasoning.
-  - **Windows ARM64**, on the hosted `windows-11-arm` runner — landing separately.
+  - **Windows ARM64: done, CLI-only.** `windows-msvc-arm64` builds and tests `ac3cli` on real
+    ARM64 hardware (no resolvable Qt6 ARM64 Windows kit for the pinned version yet, see
+    `docs/platforms/windows.md`'s ARM64 section) and packages a `win-arm64` release archive;
+    `experimental: true` until it proves itself green over real runs, the same promotion path
+    `macos-llvm` went through.
   - **macOS universal binaries** are a separate decision (the Cask is arm64-only and Intel demand
     is doubtful) — landing separately.
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
