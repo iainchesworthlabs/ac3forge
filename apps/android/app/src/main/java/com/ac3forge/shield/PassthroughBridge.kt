@@ -3,6 +3,8 @@ package com.ac3forge.shield
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.Build
+import androidx.annotation.ChecksSdkIntAtLeast
 import android.util.Log
 import java.nio.ByteBuffer
 
@@ -77,6 +79,7 @@ class PassthroughBridge {
      * rate for the same content.
      */
     fun isDirectPlaybackSupported(carrierRateHz: Int, eac3: Boolean): Boolean {
+        if (!hasDirectPlaybackQuery()) return false
         val format = iec61937Format(carrierRateHz)
         val supported = AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
         Log.d(TAG, "isDirectPlaybackSupported(carrier=$carrierRateHz eac3=$eac3) = $supported")
@@ -85,6 +88,7 @@ class PassthroughBridge {
 
     /** Ordinary (non-compressed) direct PCM support, at the content rate. */
     fun isPcmSupported(sampleRateHz: Int): Boolean {
+        if (!hasDirectPlaybackQuery()) return false
         val format = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
             .setSampleRate(sampleRateHz)
@@ -97,6 +101,7 @@ class PassthroughBridge {
     fun open(carrierRateHz: Int, eac3: Boolean): Boolean = synchronized(trackLock) {
         close()
 
+        if (!hasDirectPlaybackQuery()) return@synchronized false
         val format = iec61937Format(carrierRateHz)
         if (!AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)) {
             Log.w(TAG, "open: isDirectPlaybackSupported=false for carrier=$carrierRateHz eac3=$eac3")
@@ -148,6 +153,38 @@ class PassthroughBridge {
         }
         track.release()
     }
+
+    /**
+     * Whether this device's Android version has
+     * `AudioTrack.isDirectPlaybackSupported` at all - API 29.
+     *
+     * The app declares `minSdk 26` and called it unconditionally, so on any
+     * API 26-28 device every one of the three call sites above threw
+     * `NoSuchMethodError` - not a caught failure, a crash, on the app's single
+     * most load-bearing platform query. It was never noticed because the
+     * Shield this was written against is on API 30; a 2015/2017 Shield on
+     * Android 9 (API 28), or any other older Android TV, is API 28.
+     *
+     * Returning false rather than raising minSdk: the honest result on such a
+     * device is "no passthrough route can be confirmed", which the waiting
+     * screen already presents properly, and that is a better outcome than
+     * either a crash or refusing to install.
+     */
+    // Tells lint this IS an SDK-version guard. Without it lint only recognises
+    // an inline `Build.VERSION.SDK_INT >= 29` at each call site and keeps
+    // reporting all three as unguarded API-29 calls.
+    @ChecksSdkIntAtLeast(api = 29)
+    private fun hasDirectPlaybackQuery(): Boolean {
+        if (Build.VERSION.SDK_INT >= 29) return true
+        if (!warnedNoDirectQuery) {
+            warnedNoDirectQuery = true
+            Log.w(TAG, "AudioTrack.isDirectPlaybackSupported needs API 29; this device is API " +
+                "${Build.VERSION.SDK_INT} - passthrough cannot be confirmed here")
+        }
+        return false
+    }
+
+    private var warnedNoDirectQuery = false
 
     private fun iec61937Format(carrierRateHz: Int): AudioFormat =
         AudioFormat.Builder()

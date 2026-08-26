@@ -93,6 +93,14 @@ class InputController {
      */
     var onInputActivity: (() -> Unit)? = null
 
+    /**
+     * Invoked with the new scene index whenever the scene changes from a
+     * keypress here. MainActivity owns the on-screen announcement, the same
+     * split [onInputActivity] already follows - this class maps input, it does
+     * not decide what the screen says about it.
+     */
+    var onSceneChanged: ((Int) -> Unit)? = null
+
     // Set by onKeyLongPress, read (and cleared) by onKeyUp: the framework
     // calls onKeyDown once immediately and, if still held past the long-press
     // threshold, onKeyLongPress - onKeyUp always follows eventually either
@@ -332,6 +340,20 @@ class InputController {
             // held media key - these are handled here, on the down event,
             // rather than onKeyUp, so the mute/unmute takes effect the
             // instant the button is pressed rather than on release.
+            // Scene selection. Y/B on a controller; the remote's transport
+            // and channel keys are the only free pairs it has, and a remote
+            // that lacks them still reaches every scene by pressing next
+            // repeatedly, since the native side wraps.
+            KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_MEDIA_NEXT,
+            KeyEvent.KEYCODE_CHANNEL_UP -> {
+                if (event.repeatCount == 0) stepScene(1)
+                true
+            }
+            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+            KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                if (event.repeatCount == 0) stepScene(-1)
+                true
+            }
             // Toggled on the DOWN event and only on the first of a held
             // press, same as the media keys below - this drives a real change
             // in the transmitted bitstream, so key repeat must not chatter it.
@@ -396,7 +418,10 @@ class InputController {
             // default key handling never sees them either.
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_BUTTON_X,
-            KeyEvent.KEYCODE_MENU -> true
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BUTTON_Y,
+            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_MEDIA_NEXT,
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_UP,
+            KeyEvent.KEYCODE_CHANNEL_DOWN -> true
             else -> false
         }
     }
@@ -426,6 +451,19 @@ class InputController {
      * The rescaling above, for a single axis: dead below [flat], and ramping
      * from zero rather than jumping to [flat] once past it.
      */
+    /**
+     * Moves the scene on by [delta], wrapping. Also snaps the lead object back
+     * onto its course: the deflection is a bias off the *old* scene's path,
+     * and carrying it into a scene with a completely different shape reads as
+     * the new scene being wrong rather than as the object being pushed.
+     */
+    fun stepScene(delta: Int) {
+        val next = NativeBridge.nativeGetScene() + delta
+        NativeBridge.nativeSetScene(next)
+        NativeBridge.nativeSnapSelectedToCourse()
+        onSceneChanged?.invoke(NativeBridge.nativeGetScene())
+    }
+
     private fun rescaleScalar(value: Float, flat: Float): Float {
         val magnitude = abs(value)
         if (magnitude < flat) return 0f

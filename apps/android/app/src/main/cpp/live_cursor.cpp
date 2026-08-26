@@ -51,6 +51,7 @@
 #include <numbers>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -70,6 +71,7 @@ constexpr char kLogTag[] = "ac3forge.shield.live_cursor";
 constexpr int kInteractiveObjects = 1;
 constexpr int kAmbientObjects = 2;
 constexpr int kObjects = kInteractiveObjects + kAmbientObjects;
+constexpr int kSceneCount = 5;
 constexpr double kSampleRate = 48000.0;
 // The interactive lead at A4, the two ambient objects a major third and a
 // perfect fifth above it (C#5, E5) - an A major triad rather than an
@@ -116,12 +118,49 @@ float soft_limit(float x) {
 // the path is a gentle tilted ellipse in 3-space rather than a flat circle.
 // Distinct rate/phase/radius per object keeps the three visually and
 // audibly distinguishable rather than moving in lockstep.
+// What an object's path through the room actually looks like. The demo used
+// to have exactly one answer to this - a circle with a slow height bob - so
+// it had exactly one thing to show, forever. These are the shapes a scene can
+// ask for; the parameters below mean slightly different things per shape,
+// which is noted on each.
+enum class Shape : std::uint8_t {
+    // Circle in x/y about the room centre, with an independent height bob.
+    kOrbit,
+    // Front-to-back and back again, rising to a peak as it passes over the
+    // listening position: the "did you hear it go over you" pass. radius is
+    // the lateral wander, height_amp the apex height.
+    kFlyover,
+    // Fixed above the listener, pure vertical sweep. Isolates the height axis
+    // completely - the one shape where nothing else is moving to distract.
+    kElevator,
+    // Circle like kOrbit, but pinned near the ceiling: height_amp is the base
+    // height rather than a bob amplitude.
+    kOverhead,
+    // Hard front/back alternation with no height at all, for A/B-ing speaker
+    // placement rather than for listening to.
+    kPingPong,
+};
+
 struct TrajectoryParams {
-    double rate_hz;         // xy orbit revolutions per second
+    Shape shape = Shape::kOrbit;
+    double rate_hz;         // path repetitions per second
     double phase_rad;
     double radius;          // xy radius about the room centre, room units
-    double height_amp;      // z bob amplitude, room units ([-1,1] full range)
-    double height_rate_hz;  // z bob revolutions per second
+    double height_amp;      // z amplitude or base height, room units ([-1,1])
+    double height_rate_hz;  // z bob revolutions per second (kOrbit/kElevator)
+    // Per-scene voice level, multiplied onto kToneGain. 0 silences the object
+    // without stopping it moving - which is how a scene "has fewer objects"
+    // without the encoder being rebuilt for a different object count.
+    double gain_scale = 1.0;
+};
+
+struct Scene {
+    std::string_view name;
+    // One line of "what to listen for", shown with the name when the scene
+    // changes. The demo has always been able to show where a sound is; it has
+    // never told anyone what it wanted them to notice.
+    std::string_view hint;
+    std::array<TrajectoryParams, kObjects> objects;
 };
 
 // height_amp is close to the full [-1,1] range for the lead (0.85, not the
@@ -131,26 +170,134 @@ struct TrajectoryParams {
 // than a source passing overhead. Lap rate is also faster (12s, not 20s) so
 // the motion is perceptible within a short listening window rather than
 // requiring a patient, full-lap wait to notice.
-constexpr std::array<TrajectoryParams, kObjects> kTrajectory{{
-    // Interactive lead: one lap every 12s.
-    {1.0 / 12.0, 0.0, 0.45, 0.85, 1.0 / 25.0},
-    // Ambient 1: a smaller, slower orbit, phase-offset 120 degrees so it
-    // starts on the opposite side of the room from the lead.
-    {1.0 / 33.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.45, 1.0 / 53.0},
-    // Ambient 2: offset a further 120 degrees, and its height bob runs in
-    // the opposite sense (negative amplitude) so it and ambient 1 do not
-    // mirror each other in height as well as azimuth.
-    {1.0 / 27.0, 4.0 * std::numbers::pi / 3.0, 0.28, -0.45, 1.0 / 47.0},
+// The object COUNT is fixed at kObjects for every scene, deliberately:
+// AtmosEncoder takes its object count at construction, so varying it would
+// mean rebuilding the encoder mid-stream - per-object QMF filterbank
+// allocation on a thread holding a 32ms deadline. A scene that wants fewer
+// voices silences them with gain_scale instead and leaves them moving.
+constexpr std::array<Scene, kSceneCount> kScenes{{
+    // 0 - what the demo has always done. Still the best one to hand someone a
+    // controller on, so it stays first.
+    {"Orbit",
+     "The lead laps the room - push it off course and let go",
+     {{
+         {Shape::kOrbit, 1.0 / 12.0, 0.0, 0.45, 0.85, 1.0 / 25.0, 1.0},
+         {Shape::kOrbit, 1.0 / 33.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.45, 1.0 / 53.0, 1.0},
+         {Shape::kOrbit, 1.0 / 27.0, 4.0 * std::numbers::pi / 3.0, 0.28, -0.45, 1.0 / 47.0, 1.0},
+     }}},
+    // 1 - one voice, passing over the listening position. The ambients drop
+    // right down rather than out: something still has to hold the room while
+    // the lead is away at the far wall.
+    {"Flyover",
+     "Front to back, straight over your head - listen for it passing",
+     {{
+         {Shape::kFlyover, 1.0 / 9.0, 0.0, 0.10, 0.90, 0.0, 1.0},
+         {Shape::kOrbit, 1.0 / 41.0, 2.0 * std::numbers::pi / 3.0, 0.34, -0.20, 1.0 / 61.0, 0.35},
+         {Shape::kOrbit, 1.0 / 37.0, 4.0 * std::numbers::pi / 3.0, 0.34, -0.25, 1.0 / 59.0, 0.35},
+     }}},
+    // 2 - everything in the ceiling plane at once. The scene that sells height
+    // channels, because nothing is down at ear level to compare against.
+    {"Overhead",
+     "Everything is above you - the height channels are doing all of this",
+     {{
+         {Shape::kOverhead, 1.0 / 19.0, 0.0, 0.38, 0.80, 1.0 / 23.0, 1.0},
+         {Shape::kOverhead, 1.0 / 29.0, 2.0 * std::numbers::pi / 3.0, 0.30, 0.72, 1.0 / 31.0, 0.7},
+         {Shape::kOverhead, 1.0 / 23.0, 4.0 * std::numbers::pi / 3.0, 0.24, 0.88, 1.0 / 37.0, 0.7},
+     }}},
+    // 3 - the height axis on its own, nothing else moving or sounding.
+    {"Elevator",
+     "One voice, straight up and down over your seat - nothing else moving",
+     {{
+         {Shape::kElevator, 0.0, 0.0, 0.0, 0.92, 1.0 / 8.0, 1.0},
+         {Shape::kOrbit, 1.0 / 43.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 61.0, 0.0},
+         {Shape::kOrbit, 1.0 / 47.0, 4.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 59.0, 0.0},
+     }}},
+    // 4 - deliberately unmusical. This one is for checking a room, not for
+    // enjoying: front wall, back wall, nothing in between and no height.
+    {"Front / back",
+     "Hard front-to-back with no height - for checking your speaker placement",
+     {{
+         {Shape::kPingPong, 1.0 / 4.0, 0.0, 0.0, 0.0, 0.0, 1.0},
+         {Shape::kOrbit, 1.0 / 43.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 61.0, 0.0},
+         {Shape::kOrbit, 1.0 / 47.0, 4.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 59.0, 0.0},
+     }}},
 }};
 
-ac3::oba::Position trajectory_position(int obj, double time_s) {
-    const auto& p = kTrajectory[static_cast<std::size_t>(obj)];
+// Which scene the demo is playing. Written from Kotlin (a keypress, or the
+// guided tour's own timer), read by the encode thread.
+std::atomic<int> g_scene{0};
+
+// How long a scene change takes to complete. Positions are jumped between
+// otherwise, and a 32ms step from one side of the room to the other is an
+// abrupt pan rather than a move. Long enough to read as a transition, short
+// enough not to feel like waiting.
+constexpr double kSceneBlendSeconds = 0.9;
+
+// 0 at the start of a blend, 1 at the end, with the ends eased so the
+// transition neither starts nor stops abruptly.
+double smooth_step(double x) {
+    const double c = std::clamp(x, 0.0, 1.0);
+    return c * c * (3.0 - 2.0 * c);
+}
+
+// 0 -> 1 -> 0 over one period, for the shapes that travel out and back rather
+// than around. A sawtooth would be simpler but wraps, and a wrap is an object
+// teleporting from the back wall to the front.
+double triangle01(double phase) {
+    const double frac = phase - std::floor(phase);
+    return frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
+}
+
+ac3::oba::Position trajectory_position(int scene, int obj, double time_s) {
+    const auto& p = kScenes[static_cast<std::size_t>(scene)]
+                        .objects[static_cast<std::size_t>(obj)];
     const double angle = 2.0 * std::numbers::pi * p.rate_hz * time_s + p.phase_rad;
     const double height_angle =
         2.0 * std::numbers::pi * p.height_rate_hz * time_s + p.phase_rad;
-    return {.x = 0.5 + p.radius * std::sin(angle),
-            .y = 0.5 - p.radius * std::cos(angle),
-            .z = p.height_amp * std::sin(height_angle)};
+    switch (p.shape) {
+        case Shape::kFlyover: {
+            // y runs front (0) to back (1) and back again; height peaks as it
+            // crosses the listening position, so it arrives low, passes over,
+            // and leaves low.
+            const double travel = triangle01(p.rate_hz * time_s + p.phase_rad / (2.0 * std::numbers::pi));
+            const double y = 0.03 + 0.94 * travel;
+            return {.x = 0.5 + p.radius * std::sin(angle * 0.5),
+                    .y = y,
+                    .z = p.height_amp * std::sin(std::numbers::pi * travel)};
+        }
+        case Shape::kElevator:
+            return {.x = 0.5, .y = 0.5, .z = p.height_amp * std::sin(height_angle)};
+        case Shape::kOverhead:
+            // height_amp is a base height here, with a small bob around it -
+            // the point of the scene is that nothing drops back to ear level.
+            return {.x = 0.5 + p.radius * std::sin(angle),
+                    .y = 0.5 - p.radius * std::cos(angle),
+                    .z = std::clamp(p.height_amp + 0.12 * std::sin(height_angle), -1.0, 1.0)};
+        case Shape::kPingPong: {
+            const double travel = triangle01(p.rate_hz * time_s + p.phase_rad / (2.0 * std::numbers::pi));
+            return {.x = 0.5, .y = 0.05 + 0.90 * travel, .z = 0.0};
+        }
+        case Shape::kOrbit:
+        default:
+            return {.x = 0.5 + p.radius * std::sin(angle),
+                    .y = 0.5 - p.radius * std::cos(angle),
+                    .z = p.height_amp * std::sin(height_angle)};
+    }
+}
+
+// The position an object is at, accounting for a scene change still in
+// progress. `from` is the scene being left; once the blend is complete the
+// caller stops passing one.
+ac3::oba::Position blended_position(int scene, int from, double blend, int obj, double time_s) {
+    const auto to_pos = trajectory_position(scene, obj, time_s);
+    if (blend >= 1.0 || scene == from) {
+        return to_pos;
+    }
+    const auto from_pos = trajectory_position(from, obj, time_s);
+    const double w = smooth_step(blend);
+    return {.x = from_pos.x + (to_pos.x - from_pos.x) * w,
+            .y = from_pos.y + (to_pos.y - from_pos.y) * w,
+            .z = from_pos.z + (to_pos.z - from_pos.z) * w};
 }
 
 // Distance-based loudness: without this, an object sounded exactly as loud
@@ -418,10 +565,11 @@ public:
     // Called once per encode frame - this is the only place deflection_
     // decays, so the spring-back happens on its own every frame regardless
     // of whether any input arrived.
-    std::array<ac3::oba::ObjectPlacement, kObjects> advance(double time_s) {
+    std::array<ac3::oba::ObjectPlacement, kObjects> advance(double time_s, int scene, int from,
+                                                            double blend) {
         std::lock_guard lock(mutex_);
         for (int i = 0; i < kInteractiveObjects; ++i) {
-            const auto base = trajectory_position(i, time_s);
+            const auto base = blended_position(scene, from, blend, i, time_s);
             auto& defl = deflection_[static_cast<std::size_t>(i)];
             // Clamp to oamd.hpp's Position contract on top of the
             // deflection's own bounding-box clamp in deflect_selected():
@@ -440,8 +588,8 @@ public:
             defl.z *= kDeflectionDecayPerFrame;
         }
         for (int i = kInteractiveObjects; i < kObjects; ++i) {
-            placements_[static_cast<std::size_t>(i)] = {.position = trajectory_position(i, time_s),
-                                                         .gain = 1.0};
+            placements_[static_cast<std::size_t>(i)] = {
+                .position = blended_position(scene, from, blend, i, time_s), .gain = 1.0};
         }
         return placements_;
     }
@@ -592,6 +740,13 @@ void run_loop() {
     // one AC-3 frame is exactly kSamplesPerFrame/48000 seconds.
     const auto frame_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::duration<double>(ac3::kSamplesPerFrame / kSampleRate));
+    // Scene state belongs to this thread alone: g_scene is the only thing
+    // crossing a thread boundary, and the blend it triggers is derived here
+    // rather than shared, so nothing else has to be synchronised.
+    int active_scene = std::clamp(g_scene.load(std::memory_order_relaxed), 0, kSceneCount - 1);
+    int blend_from_scene = active_scene;
+    double blend_start_s = -kSceneBlendSeconds;  // already finished
+
     auto next_deadline = std::chrono::steady_clock::now();
     // Elapsed wall-clock time since the loop started is the trajectory's own
     // clock (trajectory_position's time_s) - a monotonic clock, not a sample
@@ -620,7 +775,24 @@ void run_loop() {
         // sample generation have already elapsed.
         const double time_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
-        const auto placement = live_cursor_state().advance(time_s);
+
+        // A scene change starts a blend from wherever the objects currently
+        // are. Changing again mid-blend restarts from the scene being left
+        // rather than compounding blends - the visible result of a fast
+        // double-press is one move, not two overlapping ones.
+        const int requested = std::clamp(g_scene.load(std::memory_order_relaxed), 0, kSceneCount - 1);
+        if (requested != active_scene) {
+            blend_from_scene = active_scene;
+            blend_start_s = time_s;
+            active_scene = requested;
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "scene -> %d (%.*s)", active_scene,
+                                static_cast<int>(kScenes[static_cast<std::size_t>(active_scene)].name.size()),
+                                kScenes[static_cast<std::size_t>(active_scene)].name.data());
+        }
+        const double blend = (time_s - blend_start_s) / kSceneBlendSeconds;
+
+        const auto placement =
+            live_cursor_state().advance(time_s, active_scene, blend_from_scene, blend);
 
         const bool ambient_muted = stream_stats().ambient_muted.load(std::memory_order_relaxed);
         for (int obj = 0; obj < kObjects; ++obj) {
@@ -633,8 +805,23 @@ void run_loop() {
             // distance_attenuation() reads THIS frame's own placement -
             // real position-based loudness, not merely correct panning
             // direction; see that function's own comment.
+            // The scene's own level for this voice, blended in alongside the
+            // position so a scene that silences an object fades it rather
+            // than cutting it - a hard gain step between frames is a click.
+            const double scene_gain = [&] {
+                const double to_gain =
+                    kScenes[static_cast<std::size_t>(active_scene)]
+                        .objects[static_cast<std::size_t>(obj)].gain_scale;
+                if (blend >= 1.0 || blend_from_scene == active_scene) {
+                    return to_gain;
+                }
+                const double from_gain =
+                    kScenes[static_cast<std::size_t>(blend_from_scene)]
+                        .objects[static_cast<std::size_t>(obj)].gain_scale;
+                return from_gain + (to_gain - from_gain) * smooth_step(blend);
+            }();
             const auto tone_gain =
-                kToneGain[static_cast<std::size_t>(obj)] *
+                kToneGain[static_cast<std::size_t>(obj)] * scene_gain *
                 ((!is_lead && ambient_muted) ? 0.0 : 1.0) *
                 distance_attenuation(placement[static_cast<std::size_t>(obj)].position);
             if (is_lead && !lead_sample.empty()) {
@@ -1044,13 +1231,51 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
     for (int i = 0; i < sample_count; ++i) {
         const double t = now_s + (static_cast<double>(i) / static_cast<double>(steps)) *
                                      static_cast<double>(seconds_ahead);
-        const auto pos = trajectory_position(0, t);  // object 0: the lead
+        // The scene as it is NOW: a blend in progress is deliberately ignored
+        // here, since this draws where the object is heading, and where it is
+        // heading is the scene it is heading into.
+        const auto pos = trajectory_position(
+            std::clamp(g_scene.load(std::memory_order_relaxed), 0, kSceneCount - 1), 0, t);
         flat[static_cast<std::size_t>(i) * 3 + 0] = static_cast<jfloat>(pos.x);
         flat[static_cast<std::size_t>(i) * 3 + 1] = static_cast<jfloat>(pos.y);
         flat[static_cast<std::size_t>(i) * 3 + 2] = static_cast<jfloat>(pos.z);
     }
     env->SetFloatArrayRegion(result, 0, sample_count * 3, flat.data());
     return result;
+}
+
+// Scene selection. See kScenes - the demo used to have one path through the
+// room and nothing else to show.
+extern "C" JNIEXPORT void JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeSetScene(JNIEnv* /*env*/, jclass /*clazz*/,
+                                                       jint scene) {
+    // Wrapped rather than clamped: this is reached by "next"/"previous" keys
+    // and by the guided tour, and all three want to come round again.
+    const int wrapped = ((scene % kSceneCount) + kSceneCount) % kSceneCount;
+    g_scene.store(wrapped, std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetScene(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return g_scene.load(std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetSceneCount(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return kSceneCount;
+}
+
+// name and hint for one scene, tab-separated - one call rather than two, and
+// they are only ever wanted together (the overlay shows both).
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetSceneText(JNIEnv* env, jclass /*clazz*/,
+                                                           jint scene) {
+    const int wrapped = ((scene % kSceneCount) + kSceneCount) % kSceneCount;
+    const auto& s = kScenes[static_cast<std::size_t>(wrapped)];
+    std::string text(s.name);
+    text += '\t';
+    text += s.hint;
+    return env->NewStringUTF(text.c_str());
 }
 
 // OBJECTS OFF, from the remote/controller. See the strip block in run_loop().

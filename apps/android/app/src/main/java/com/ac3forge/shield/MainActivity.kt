@@ -43,6 +43,16 @@ private const val ORIENTATION_CUE_MS = 5000L
 private const val IDLE_PROMPT_MS = 14000L
 private const val IDLE_CHECK_INTERVAL_MS = 2000L
 
+// The guided tour: once the demo has been left alone past IDLE_PROMPT_MS it
+// stops waiting to be picked up and starts showing itself, walking the scenes
+// with their own "listen for this" line. Long enough per scene to actually
+// hear what the line points at - a flyover pass takes about 9s - and to sit
+// still afterwards rather than feeling like a slideshow.
+private const val TOUR_SCENE_MS = 24000L
+
+// How long a scene announcement stays up after a scene change.
+private const val SCENE_CUE_MS = 4500L
+
 // How long the overlay cue's fade in/out takes - fast enough not to feel
 // laggy, slow enough to read as an intentional transition rather than a
 // jarring pop.
@@ -201,6 +211,25 @@ class MainActivity : Activity() {
     // or overwrites it with the attract prompt.
     private var backConfirmShowing = false
 
+    // The scene announcement owns the shared overlay while it is up, the same
+    // way the orientation cue and the BACK confirmation do.
+    private var sceneCueShowing = false
+    private val sceneCueTimeout = Runnable {
+        sceneCueShowing = false
+        hideOverlayCue()
+    }
+
+    // Whether the guided tour is currently driving the scene. Started by the
+    // idle checker, stopped by the first real input.
+    private var tourActive = false
+    private val tourAdvance = object : Runnable {
+        override fun run() {
+            if (!tourActive) return
+            inputController.stepScene(1)
+            mainHandler.postDelayed(this, TOUR_SCENE_MS)
+        }
+    }
+
     // Whether startFileReplay's worker is in flight - see onDestroy.
     @Volatile
     private var fileReplayRunning = false
@@ -246,11 +275,13 @@ class MainActivity : Activity() {
             // overlayCue is ever built - guard rather than crash, since
             // onResume/onPause still run normally in that mode too.
             if (!::overlayCue.isInitialized) return
-            if (!orientationCueShowing && !backConfirmShowing) {
+            if (!orientationCueShowing && !backConfirmShowing && !sceneCueShowing) {
                 val idleMs = SystemClock.elapsedRealtime() - lastInputAtMs
-                if (idleMs >= IDLE_PROMPT_MS && overlayCue.visibility != View.VISIBLE) {
-                    setOverlayCueText("Press any button to take control")
-                    showOverlayCue()
+                if (idleMs >= IDLE_PROMPT_MS && !tourActive) {
+                    // Left alone: stop waiting to be picked up and start
+                    // showing the room off instead. The prompt still says how
+                    // to take over.
+                    startGuidedTour()
                 } else if (idleMs < IDLE_PROMPT_MS && overlayCue.visibility == View.VISIBLE) {
                     hideOverlayCue()
                 }
@@ -410,6 +441,11 @@ class MainActivity : Activity() {
         )
 
         inputController.onInputActivity = { onUserInputActivity() }
+        inputController.onSceneChanged = { scene ->
+            // During the tour the announcement is prefixed, so a viewer can
+            // tell "the demo is walking itself" from "someone pressed a key".
+            showSceneCue(scene, prefix = if (tourActive) "Guided tour ·" else null)
+        }
         lastInputAtMs = SystemClock.elapsedRealtime()
         // Establishes the initial waiting/ready state and starts the encode
         // loop immediately if a receiver is already there - see this
@@ -750,7 +786,8 @@ class MainActivity : Activity() {
             "when you let go   •   Right stick / L1+R1: height   •   Press A/center: " +
             "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
             "lead   •   Play: bring the ambient tones back   •   X/Menu: OBJECTS OFF " +
-            "(watch the receiver drop to DD+)   •   Info: About\n"
+            "(watch the receiver drop to DD+)   •   Y/B or channel up/down: change scene   " +
+            "•   Info: About\n"
         val legendLead = "● lead (yours to push around)   "
         val legendAmbient = "● ● two ambient tones, always on their own course"
         val text = SpannableString(controls + legendLead + legendAmbient)
@@ -817,11 +854,58 @@ class MainActivity : Activity() {
     // this class, not InputController, owns the actual UI reaction.
     private fun onUserInputActivity() {
         lastInputAtMs = SystemClock.elapsedRealtime()
+        // Whoever just pressed something is now driving, not the tour. The
+        // scene it had reached is deliberately kept - yanking them back to
+        // scene 0 the instant they touch a stick would be worse than leaving
+        // them wherever the tour got to.
+        if (tourActive) stopGuidedTour()
         if (orientationCueShowing) {
             hideOrientationCue()
         } else if (overlayCue.visibility == View.VISIBLE) {
             hideOverlayCue()
         }
+    }
+
+    /**
+     * Announces a scene: its name, and the one line saying what to listen for.
+     * Both come from native so the text lives beside the trajectory it
+     * describes (`kScenes`) rather than drifting from it over here.
+     */
+    private fun showSceneCue(scene: Int, prefix: String? = null) {
+        if (!::overlayCue.isInitialized) return
+        val parts = try {
+            NativeBridge.nativeGetSceneText(scene).split('\t')
+        } catch (e: UnsatisfiedLinkError) {
+            return
+        }
+        val name = parts.getOrNull(0).orEmpty()
+        val hint = parts.getOrNull(1).orEmpty()
+        sceneCueShowing = true
+        setOverlayCueText(if (prefix != null) "$prefix  $name" else name, hint)
+        showOverlayCue()
+        mainHandler.removeCallbacks(sceneCueTimeout)
+        mainHandler.postDelayed(sceneCueTimeout, SCENE_CUE_MS)
+    }
+
+    private fun startGuidedTour() {
+        if (tourActive) return
+        tourActive = true
+        Log.i(TAG, "idle - starting the guided tour")
+        // Announce the scene it is already on before moving, so the tour
+        // begins by explaining what is on screen rather than by changing it.
+        showSceneCue(currentScene(), prefix = "Guided tour ·")
+        mainHandler.postDelayed(tourAdvance, TOUR_SCENE_MS)
+    }
+
+    private fun stopGuidedTour() {
+        tourActive = false
+        mainHandler.removeCallbacks(tourAdvance)
+    }
+
+    private fun currentScene(): Int = try {
+        NativeBridge.nativeGetScene()
+    } catch (e: UnsatisfiedLinkError) {
+        0
     }
 
     private fun hideOrientationCue() {
@@ -898,6 +982,7 @@ class MainActivity : Activity() {
         }
         inputController.stop()
         mainHandler.removeCallbacks(idleChecker)
+        stopGuidedTour()
         if (::waitingOverlay.isInitialized) {
             mainHandler.removeCallbacks(receiverChecker)
             unregisterReceiver(hdmiPlugReceiver)

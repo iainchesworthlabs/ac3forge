@@ -162,6 +162,25 @@ object NativeBridge {
     external fun nativeGetFutureLeadTrajectory(secondsAhead: Float, samples: Int): FloatArray
 
     /**
+     * The demo scene: which path through the room every object is following,
+     * and what the demo is asking the listener to notice. See live_cursor.cpp's
+     * `kScenes`. Wraps in both directions, so "next" from the last scene is
+     * the first.
+     *
+     * Changing scene starts a short blend rather than jumping - a 32ms step
+     * from one side of the room to the other is an abrupt pan, not a move.
+     */
+    external fun nativeSetScene(scene: Int)
+    external fun nativeGetScene(): Int
+    external fun nativeGetSceneCount(): Int
+
+    /**
+     * One scene's name and its "listen for this" line, tab-separated. One call
+     * rather than two because they are only ever wanted together.
+     */
+    external fun nativeGetSceneText(scene: Int): String
+
+    /**
      * OBJECTS OFF: strips the object layer out of every access unit before it
      * is wrapped for output, live, leaving everything else about the stream
      * alone (`ac3::io::strip_objects`). The bed decodes identically - it is
