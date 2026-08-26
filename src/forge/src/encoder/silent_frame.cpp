@@ -1,5 +1,7 @@
 #include "ac3/encoder/silent_frame.hpp"
 
+#include <string_view>
+
 namespace ac3 {
 
 std::string_view describe(FrameError error) {

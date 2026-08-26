@@ -23,6 +23,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
@@ -349,7 +350,13 @@ PYBIND11_MODULE(_ac3forge, m) {
     // --- free functions ----------------------------------------------------
     m.def("fullbw_channel_count", &ac3::fullbw_channel_count, py::arg("acmod"));
     m.def("sample_rate_hz", &ac3::sample_rate_hz, py::arg("sample_rate"));
-    m.def("describe", &ac3::describe, py::arg("error"), "Text for a DecodeError value");
+    // Two overloads of the same C++ name (ac3::describe(DecodeError) and, since AP2's
+    // FrameError::describe(), ac3::describe(FrameError)) - &ac3::describe alone is now
+    // ambiguous, so each is cast to its own function-pointer type before binding.
+    m.def("describe", static_cast<std::string_view (*)(ac3::DecodeError)>(&ac3::describe),
+          py::arg("error"), "Text for a DecodeError value");
+    m.def("describe", static_cast<std::string_view (*)(ac3::FrameError)>(&ac3::describe),
+          py::arg("error"), "Text for a FrameError value");
     m.def(
         "profile_for", [](ac3::meta::ProfileId id) { return ac3::meta::profile(id); }, py::arg("id"),
         "The ac3.Profile for one of the conventional ac3.ProfileId presets");
