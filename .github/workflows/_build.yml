@@ -717,12 +717,26 @@ jobs:
                           clang++ --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang ${LLVM_VERSION}"; exit 1; } ;;
             windows-llvm) clang-cl --version | head -1
                           clang-cl --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang-cl ${LLVM_VERSION}"; exit 1; } ;;
-            windows-msvc|windows-msvc-arm64)
+            windows-msvc)
                           echo "MSVC toolset: ${VCToolsVersion:-unknown}"
                           case "${VCToolsVersion:-}" in
                             ${MSVC_TOOLSET}*) ;;
                             *) echo "::error::expected an MSVC ${MSVC_TOOLSET}x toolset, got '${VCToolsVersion:-unset}'"; exit 1 ;;
                           esac ;;
+            # Report-only, unlike windows-msvc above - confirmed empirically on
+            # a real windows-11-arm run (2026-08-26): the hosted ARM64 image
+            # ships an older VS Build Tools generation (14.44.35207, VS2022
+            # ~17.14) than windows-latest's x64 image (14.5x, "VS 2026"/18.x),
+            # so the ${MSVC_TOOLSET} pin - resolved against the x64 image - does
+            # not hold here. The two runner images are maintained on separate
+            # GitHub-side update cadences; asserting they stay in lockstep
+            # isn't realistic yet. Same shape as macos-llvm's own case arm
+            # below, and the same reasoning: report whatever toolset this
+            # runner actually has rather than failing a leg still proving out
+            # its own baseline. Revisit once GitHub's ARM64 image catches up -
+            # or drops far enough behind to need its own pin.
+            windows-msvc-arm64)
+                          echo "MSVC toolset: ${VCToolsVersion:-unknown}" ;;
             # No hard version assert here unlike the other LLVM legs: Homebrew's
             # llvm formula has no versioned pin to check against (see the
             # install step's own comment), so this reports whatever it finds

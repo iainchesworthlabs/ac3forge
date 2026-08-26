@@ -165,7 +165,22 @@ this codebase holds itself to (see e.g. `cmake/vcpkg/triplets/arm64-linux-gcc.cm
 `vcvarsall.bat` bootstrap and `.github/actions/setup-msvc-env`'s CI-side environment loader probe
 the equivalent pair of `vcvarsall.bat` arguments (`arm64` native, then `amd64_arm64` cross) for the
 same reason — the target architecture's CRT/Windows SDK library directories have to match whichever
-compiler actually got picked, or linking fails outright with a machine-type mismatch.
+compiler actually got picked, or linking fails outright with a machine-type mismatch. Which of the
+two candidates actually wins is still open as of this writing (the leg's first real run failed one
+step earlier than Configure — see "Toolset generation" below); this section gets a follow-up update
+once that is resolved.
+
+**Toolset generation is older than the x64 images, confirmed empirically.** The `windows-11-arm`
+hosted runner's VS Build Tools install carries MSVC 14.44.35207 (VS2022, roughly the 17.14
+generation) — older than `windows-latest`'s x64 image, which is on the 14.5x ("VS 2026"/18.x)
+toolset every other Windows leg's `msvc_toolset` pin (`.github/toolchain-versions.json`) is written
+against. This is a genuine difference between the two runner images' own update cadences, not a
+misconfiguration — `vswhere`/`vcvarsall` resolution and the Ninja install both worked fine on the
+ARM64 runner in the same run that surfaced this. `_build.yml`'s "Report and assert toolchain
+versions" step accordingly does not hard-assert the shared pin for `windows-msvc-arm64` the way it
+does for `windows-msvc`; it reports whatever toolset this runner actually has instead, the same
+report-only shape already used for `macos-llvm`'s unpinnable Homebrew LLVM, with the reasoning
+recorded in that step's own case arm.
 
 **CLI-only, for now.** Unlike every other packageable Windows/Linux/macOS leg, `windows-msvc-arm64`
 does not build `ac3gui` — `AC3FORGE_BUILD_GUI` is off in `CMakePresets.json`'s
@@ -186,9 +201,11 @@ ships a genuinely native-hosted ARM64 Windows kit.
 
 **Status.** New and `experimental: true` (`continue-on-error`) in `_build.yml` until it has proven
 green over real runs, the same promotion path `macos-llvm` and the Android leg both went through —
-see that file's own header comment for the mechanics. If it never picks up a runner at all rather
-than failing normally, that means the `windows-11-arm` label is not yet enabled for this
-repository/org, which is a GitHub-settings question rather than a code one.
+see that file's own header comment for the mechanics. The `windows-11-arm` runner label is
+confirmed enabled for this repository/org: the leg's first real run picked up a runner immediately
+and passed checkout, "Setup MSVC environment" (`vswhere`/`vcvarsall` resolution) and the Ninja
+install, failing only at the toolset-version assertion described above (since relaxed to
+report-only for this leg). Iteration continues from there.
 
 **Unsigned binaries.** Like every other Windows binary this project ships today, this leg's output
 is unsigned — Authenticode signing (roadmap `DR6`) is blocked project-wide on acquiring a
