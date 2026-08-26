@@ -16,6 +16,7 @@
 
 #include <android/log.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <fstream>
@@ -32,6 +33,23 @@
 namespace {
 
 constexpr char kLogTag[] = "ac3forge.shield.file_replay";
+
+// Set by nativeStopFileReplay, cleared when play_file returns. Both wait
+// loops below used to be `while (!condition) sleep();` with no exit but
+// success: a receiver switched off, switched to another input, or simply
+// never draining leaves this thread spinning at 4ms forever, holding the sink
+// open, with no way to reach it - the Activity's own teardown could not stop
+// it and neither could anything else. live_cursor.cpp's equivalent loop has
+// always checked its stop flag; this one had none to check.
+std::atomic<bool> g_replay_stop{false};
+
+// Independently of an explicit stop, a wait that makes no progress at all for
+// this long is a stall, not slowness: at 32ms of audio per burst, a healthy
+// sink accepts or renders something several times a second. Long enough to
+// ride out an AVR's own re-lock after an input switch (typically well under a
+// second), short enough that a dead receiver ends the replay rather than
+// pinning a thread until the process dies.
+constexpr auto kNoProgressTimeout = std::chrono::seconds(5);
 
 // ac3::split_access_units groups syncframes by reading strmtyp from each
 // frame's own header - correct for a stream whose independent substream uses
@@ -144,11 +162,44 @@ bool play_file(const std::string& path) {
         }
         if (!*result) continue;  // accumulating; nothing to submit yet
         const auto& burst = **result;
+        auto blocked_since = std::chrono::steady_clock::now();
         while (!sink.submit(burst)) {
+            if (g_replay_stop.load(std::memory_order_relaxed)) {
+                __android_log_print(ANDROID_LOG_INFO, kLogTag, "stop requested - ending replay");
+                sink.stop();
+                return false;
+            }
+            if (std::chrono::steady_clock::now() - blocked_since > kNoProgressTimeout) {
+                __android_log_print(ANDROID_LOG_ERROR, kLogTag,
+                                    "sink accepted nothing for %llds - giving up",
+                                    static_cast<long long>(kNoProgressTimeout.count()));
+                sink.stop();
+                return false;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(4));
         }
     }
+    // Same treatment for the drain: a sink that stops rendering mid-drain
+    // would otherwise hold this thread here forever, after every burst has
+    // already been submitted.
+    auto last_progress = std::chrono::steady_clock::now();
+    auto last_rendered = sink.stats().bursts_rendered;
     while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
+        if (g_replay_stop.load(std::memory_order_relaxed)) {
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "stop requested during drain");
+            break;
+        }
+        const auto rendered = sink.stats().bursts_rendered;
+        if (rendered != last_rendered) {
+            last_rendered = rendered;
+            last_progress = std::chrono::steady_clock::now();
+        } else if (std::chrono::steady_clock::now() - last_progress > kNoProgressTimeout) {
+            __android_log_print(ANDROID_LOG_ERROR, kLogTag,
+                                "drain stalled at %llu/%llu bursts - giving up",
+                                static_cast<unsigned long long>(rendered),
+                                static_cast<unsigned long long>(sink.stats().bursts_submitted));
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     const auto stats = sink.stats();
@@ -169,5 +220,17 @@ Java_com_ac3forge_shield_NativeBridge_nativePlayEac3File(JNIEnv* env, jclass /*c
     const char* raw = env->GetStringUTFChars(jpath, nullptr);
     const std::string path(raw != nullptr ? raw : "");
     if (raw != nullptr) env->ReleaseStringUTFChars(jpath, raw);
-    return play_file(path) ? JNI_TRUE : JNI_FALSE;
+    g_replay_stop.store(false, std::memory_order_relaxed);
+    const bool ok = play_file(path);
+    g_replay_stop.store(false, std::memory_order_relaxed);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+// Asks a replay in progress to end at its next wait point. Safe to call when
+// nothing is playing (the flag is reset at the start of every replay) and
+// safe to call from the main thread - it never blocks on the replay thread,
+// which is the whole reason this is a flag rather than a join.
+extern "C" JNIEXPORT void JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeStopFileReplay(JNIEnv* /*env*/, jclass /*clazz*/) {
+    g_replay_stop.store(true, std::memory_order_relaxed);
 }

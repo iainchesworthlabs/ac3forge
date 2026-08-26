@@ -14,8 +14,33 @@ package com.ac3forge.shield
  * together later.
  */
 object NativeBridge {
-    init {
+    /**
+     * Whether `ac3forge_jni` actually loaded. Callers must check this before
+     * any `native*` call below; every one of them throws
+     * [UnsatisfiedLinkError] when it is false.
+     *
+     * The load is caught here rather than left to throw out of the static
+     * initializer, because a throwing initializer does not just fail once -
+     * it marks the class **erroneous** for the life of the process, and every
+     * subsequent access raises [NoClassDefFoundError] rather than the
+     * [UnsatisfiedLinkError] the call sites are written to catch. That turned
+     * the carefully-written "(native link failed - see logcat)" degraded mode
+     * into a crash on the very next line of `MainActivity.onCreate`: the
+     * `catch (e: UnsatisfiedLinkError)` around the first call did its job, and
+     * the *second* touch of this object took the process down.
+     *
+     * Catching [Throwable], not [UnsatisfiedLinkError]: `System.loadLibrary`
+     * also raises [SecurityException] and, on a mismatched/corrupt .so,
+     * [UnsatisfiedLinkError]'s siblings - and the whole point here is that
+     * nothing this method can do should be able to poison the class.
+     */
+    @JvmStatic
+    val available: Boolean = try {
         System.loadLibrary("ac3forge_jni")
+        true
+    } catch (t: Throwable) {
+        android.util.Log.e("ShieldAtmosDemo", "System.loadLibrary(ac3forge_jni) failed", t)
+        false
     }
 
     /** Smoke test only - see jni_entry.cpp. Proves the native link worked. */
@@ -148,4 +173,15 @@ object NativeBridge {
      * tag ac3forge.shield.file_replay for why).
      */
     external fun nativePlayEac3File(path: String): Boolean
+
+    /**
+     * Asks an in-flight [nativePlayEac3File] to end at its next wait point.
+     * Non-blocking and safe to call when nothing is playing.
+     *
+     * Exists because both of that function's wait loops used to have no exit
+     * but success: a receiver that stopped accepting or draining bursts left
+     * the replay thread sleeping in 4ms increments for the life of the
+     * process, with the sink still open. See file_replay.cpp.
+     */
+    external fun nativeStopFileReplay()
 }

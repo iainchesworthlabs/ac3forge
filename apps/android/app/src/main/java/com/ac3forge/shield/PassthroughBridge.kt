@@ -50,6 +50,26 @@ class PassthroughBridge {
     private var audioTrack: AudioTrack? = null
 
     /**
+     * Guards [audioTrack] across the two threads that touch it: the encode
+     * loop's own worker calls [open]/[submit], while [close] runs on the main
+     * thread from `MainActivity.onDestroy`.
+     *
+     * Without it, [submit] reads the field into a local and then calls `write`
+     * on it, so a concurrent [close] can `release()` that same track in
+     * between - a write against a released native peer, which is a native
+     * crash rather than an exception Kotlin could catch. The window needs a
+     * teardown to land inside one burst write, which is why it had not been
+     * seen; it is still a use-after-free.
+     *
+     * Held across `write` deliberately: `WRITE_NON_BLOCKING` bounds how long
+     * that can take, so the worst case is a teardown waiting out one
+     * non-blocking write, and `AudioTrack.write` already takes its own
+     * internal locks - this adds no lock class the audio path did not have.
+     * Reentrant, which is what lets [open] call [close] first.
+     */
+    private val trackLock = Any()
+
+    /**
      * Probes whether the current system audio route accepts this ONE
      * format/rate combination for direct IEC 61937 playback. Called once
      * per format from native (not batched - see passthrough.cpp), so
@@ -74,19 +94,19 @@ class PassthroughBridge {
     }
 
     /** Opens the AudioTrack at the given (already-carrier) rate. */
-    fun open(carrierRateHz: Int, eac3: Boolean): Boolean {
+    fun open(carrierRateHz: Int, eac3: Boolean): Boolean = synchronized(trackLock) {
         close()
 
         val format = iec61937Format(carrierRateHz)
         if (!AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)) {
             Log.w(TAG, "open: isDirectPlaybackSupported=false for carrier=$carrierRateHz eac3=$eac3")
-            return false
+            return@synchronized false
         }
 
         val burstBytes = if (eac3) EAC3_BURST_BYTES else AC3_BURST_BYTES
         val bufferBytes = burstBytes * BUFFER_BURSTS
 
-        return try {
+        try {
             val track = AudioTrack.Builder()
                 .setAudioFormat(format)
                 .setAudioAttributes(MOVIE_ATTRIBUTES)
@@ -110,15 +130,15 @@ class PassthroughBridge {
      * anything other than exactly `sizeBytes` as a failed submit and counts
      * a negative result as an underrun (see passthrough.cpp's submit()).
      */
-    fun submit(buffer: ByteBuffer, sizeBytes: Int): Int {
-        val track = audioTrack ?: return AudioTrack.ERROR_INVALID_OPERATION
+    fun submit(buffer: ByteBuffer, sizeBytes: Int): Int = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized AudioTrack.ERROR_INVALID_OPERATION
         buffer.position(0)
         buffer.limit(sizeBytes)
-        return track.write(buffer, sizeBytes, AudioTrack.WRITE_NON_BLOCKING)
+        track.write(buffer, sizeBytes, AudioTrack.WRITE_NON_BLOCKING)
     }
 
-    fun close() {
-        val track = audioTrack ?: return
+    fun close(): Unit = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized
         audioTrack = null
         try {
             track.stop()

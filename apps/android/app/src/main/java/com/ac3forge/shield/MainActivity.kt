@@ -22,6 +22,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -66,6 +67,11 @@ private const val RECEIVER_CHECK_INTERVAL_MS = 2500L
 // failure) to resolve one way or the other; see reconcileReceiverState's own
 // comment for the rest of this state machine.
 private const val START_ATTEMPT_GRACE_MS = 3000L
+
+// How long a first BACK press stays "armed" - long enough to read the
+// confirmation and press again deliberately, short enough that a BACK press
+// minutes later isn't silently treated as the second half of a pair.
+private const val BACK_CONFIRM_MS = 3000L
 
 // The E-AC3 IEC61937 carrier rate for this app's fixed 48kHz content rate
 // (live_cursor.cpp's kSampleRate) - carrier = 4x content for E-AC3, per
@@ -136,6 +142,33 @@ class MainActivity : Activity() {
     private var startAttemptPending = false
     private var startAttemptAtMs = 0L
 
+    // Set immediately before launching one of this app's OWN Activities, so
+    // onStop can tell "the user left the demo" from "the About screen came
+    // forward" and avoid tearing down a locked AVR connection for the latter.
+    // Cleared by the onStop it was set for.
+    private var launchingOwnActivity = false
+
+    // BACK-to-exit confirmation. The hints bar promises "Press any button to
+    // take control", and BACK is the one button that instead ends the demo
+    // mid-sentence - on a Shield remote it sits directly under the D-pad. A
+    // second press within this window still exits, so nobody is trapped.
+    private var backPressedAtMs = 0L
+    // Gates the idle checker off the shared overlay while the BACK
+    // confirmation owns it, exactly as orientationCueShowing already does -
+    // otherwise the next idle tick (<=2s away) either hides the confirmation
+    // or overwrites it with the attract prompt.
+    private var backConfirmShowing = false
+
+    // Whether startFileReplay's worker is in flight - see onDestroy.
+    @Volatile
+    private var fileReplayRunning = false
+
+    private val backConfirmTimeout = Runnable {
+        backConfirmShowing = false
+        backPressedAtMs = 0L
+        hideOverlayCue()
+    }
+
     // Fast path: the system broadcasts this whenever the HDMI audio route's
     // capabilities change (receiver on/off, input switched, EDID
     // renegotiated) - see AudioManager.ACTION_HDMI_AUDIO_PLUG's own
@@ -168,7 +201,7 @@ class MainActivity : Activity() {
             // overlayCue is ever built - guard rather than crash, since
             // onResume/onPause still run normally in that mode too.
             if (!::overlayCue.isInitialized) return
-            if (!orientationCueShowing) {
+            if (!orientationCueShowing && !backConfirmShowing) {
                 val idleMs = SystemClock.elapsedRealtime() - lastInputAtMs
                 if (idleMs >= IDLE_PROMPT_MS && overlayCue.visibility != View.VISIBLE) {
                     setOverlayCueText("Press any button to take control")
@@ -184,21 +217,29 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val version = try {
-            NativeBridge.nativeVersionString()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "native library failed to load/link", e)
-            "(native link failed - see logcat)"
+        // A live demo that is only interesting while it is on screen, on a TV
+        // that will otherwise dim and sleep underneath it - and this app
+        // deliberately fires an attract prompt after 14s of no input (see
+        // IDLE_PROMPT_MS), which is exactly the state the screen saver would
+        // otherwise interrupt.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Nothing below this point works without the native library, and
+        // limping on produces a fully-drawn dashboard reading zeroes rather
+        // than an explanation - see NativeBridge.available's own comment for
+        // why the failure is caught there rather than thrown from a static
+        // initializer.
+        if (!NativeBridge.available) {
+            Log.e(TAG, "native library unavailable - showing the failure screen instead of the dashboard")
+            setContentView(buildNativeFailureView())
+            return
         }
+
+        val version = NativeBridge.nativeVersionString()
         Log.i(TAG, "ac3::forge version reported by native library: $version")
 
-        val capabilities = try {
-            NativeBridge.registerPassthroughBridge(passthroughBridge)
-            NativeBridge.nativeProbePassthroughCapabilities()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "passthrough capability probe failed", e)
-            "(capability probe failed - see logcat)"
-        }
+        NativeBridge.registerPassthroughBridge(passthroughBridge)
+        val capabilities = NativeBridge.nativeProbePassthroughCapabilities()
         Log.i(TAG, "passthrough capability probe:\n$capabilities")
 
         val playFilePath = intent.getStringExtra("play_file")
@@ -211,11 +252,7 @@ class MainActivity : Activity() {
         // bundled lead-voice sample once at startup, on its own thread; a
         // late call would just miss it (see NativeBridge.nativeSetAssetManager's
         // own doc comment - missing this is a graceful fallback, not a crash).
-        try {
-            NativeBridge.nativeSetAssetManager(assets)
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "nativeSetAssetManager failed - lead object will use its live-synthesized voice", e)
-        }
+        NativeBridge.nativeSetAssetManager(assets)
 
         // nativeStartLiveCursor() is NOT called unconditionally here anymore
         // - it's gated on the receiver actually being ready, via
@@ -336,6 +373,41 @@ class MainActivity : Activity() {
         // unconditionally at this point - showing it while still waiting
         // for a receiver would just be confusing.
         reconcileReceiverState()
+    }
+
+    // Shown instead of the dashboard when ac3forge_jni did not load at all.
+    // Everything this app does is on the other side of that library, so the
+    // honest failure is a screen saying so - not a dashboard of zeroes that
+    // looks like a receiver problem.
+    private fun buildNativeFailureView(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setBackgroundColor(Theme.colorBackground)
+        addView(TextView(this@MainActivity).apply {
+            text = "ac3forge — Shield Atmos Demo"
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Theme.colorTextSecondary)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 32)
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = "Native library failed to load"
+            textSize = 30f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Theme.colorWarn)
+            gravity = Gravity.CENTER_HORIZONTAL
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = "libac3forge_jni.so could not be loaded on this device.\n" +
+                "Check that the APK's ABI matches (release builds are arm64-v8a only) " +
+                "and see logcat, tag $TAG, for the loader's own error."
+            textSize = 16f
+            setTextColor(Theme.colorTextSecondary)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setLineSpacing(6f, 1f)
+            setPadding(64, 28, 64, 0)
+        })
     }
 
     // Shown whenever the current HDMI route doesn't accept E-AC3 passthrough
@@ -614,12 +686,15 @@ class MainActivity : Activity() {
             setBackgroundColor(Theme.colorBackground)
         }
         setContentView(status)
+        fileReplayRunning = true
         thread(name = "file-replay") {
             val ok = try {
                 NativeBridge.nativePlayEac3File(path)
             } catch (e: UnsatisfiedLinkError) {
                 Log.e(TAG, "file replay failed to start", e)
                 false
+            } finally {
+                fileReplayRunning = false
             }
             Log.i(TAG, "file replay finished: ok=$ok")
             runOnUiThread {
@@ -631,6 +706,11 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // The native-failure screen has no room view, no encode loop and no
+        // JNI to deflect anything in - starting the input ticker there would
+        // drive nativeDeflectSelectedObject straight into the
+        // UnsatisfiedLinkError the failure screen exists to avoid.
+        if (!NativeBridge.available) return
         inputController.start()
         lastInputAtMs = SystemClock.elapsedRealtime()
         mainHandler.postDelayed(idleChecker, IDLE_CHECK_INTERVAL_MS)
@@ -654,6 +734,10 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        if (!NativeBridge.available) {
+            super.onPause()
+            return
+        }
         inputController.stop()
         mainHandler.removeCallbacks(idleChecker)
         if (::waitingOverlay.isInitialized) {
@@ -663,8 +747,47 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    /**
+     * Where the encode loop actually stops when the demo leaves the screen.
+     *
+     * It used to stop only in [onDestroy], so pressing HOME left a cached
+     * process pushing E-AC-3 bursts into the AVR indefinitely with no UI, no
+     * notification and no way to stop it short of force-stopping the app -
+     * the receiver stays locked to a bitstream nothing on screen accounts for.
+     *
+     * `onStop`, not `onPause`: [AboutActivity] is a full-screen Activity of
+     * this same app, and pausing for it should not tear down the AudioTrack
+     * and force the receiver to re-lock (a visible dropout, and a bounce back
+     * through the "Waiting for receiver…" interstitial) just because someone
+     * read the About screen for four seconds. `launchingOwnActivity` carries
+     * that intent across the stop, and `isChangingConfigurations` covers the
+     * recreation case for the same reason.
+     */
+    override fun onStop() {
+        if (::waitingOverlay.isInitialized && !isChangingConfigurations && !launchingOwnActivity) {
+            Log.i(TAG, "leaving the foreground - stopping the encode loop")
+            NativeBridge.nativeStopLiveCursor()
+            // The next reconcileReceiverState() (onResume) probes fresh and
+            // restarts. Reset the state machine so it does, rather than
+            // leaving it believing a receiver is still streaming.
+            startAttemptPending = false
+            lastSeenUnderrunCount = 0L
+            setReceiverReady(false)
+        }
+        launchingOwnActivity = false
+        super.onStop()
+    }
+
     override fun onDestroy() {
-        NativeBridge.nativeStopLiveCursor()
+        if (NativeBridge.available) {
+            NativeBridge.nativeStopLiveCursor()
+            // Diagnostic (play_file) mode: the replay runs on its own thread
+            // and, before it had a stop flag, outlived the Activity that
+            // started it. Non-blocking - it ends at its next wait point.
+            if (fileReplayRunning) {
+                NativeBridge.nativeStopFileReplay()
+            }
+        }
         passthroughBridge.close()
         super.onDestroy()
     }
@@ -683,8 +806,26 @@ class MainActivity : Activity() {
         // onUserInputActivity's own comment gives for keeping UI reactions
         // here rather than inside InputController.
         if (keyCode == KeyEvent.KEYCODE_INFO) {
+            launchingOwnActivity = true
             startActivity(Intent(this, AboutActivity::class.java))
             return true
+        }
+        // See backPressedAtMs. Deliberately a confirmation rather than a
+        // block: a demo nobody can leave is worse than one that exits by
+        // accident.
+        if (keyCode == KeyEvent.KEYCODE_BACK && ::overlayCue.isInitialized) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - backPressedAtMs > BACK_CONFIRM_MS) {
+                backPressedAtMs = now
+                backConfirmShowing = true
+                setOverlayCueText("Press BACK again to exit the demo")
+                showOverlayCue()
+                mainHandler.removeCallbacks(backConfirmTimeout)
+                mainHandler.postDelayed(backConfirmTimeout, BACK_CONFIRM_MS)
+                return true
+            }
+            mainHandler.removeCallbacks(backConfirmTimeout)
+            backConfirmShowing = false
         }
         if (keyEvent != null && inputController.onKeyDown(keyCode, keyEvent)) {
             return true

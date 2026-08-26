@@ -11,6 +11,15 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <!-- A Shield Controller is the best way to drive this demo (two analog
+         sticks, shoulder buttons) but not a requirement: InputController
+         handles the bundled remote's D-pad as a first-class path, which is
+         why the D-pad-center axis-mode toggle exists at all. Declaring it
+         required=false says so explicitly rather than leaving it to be
+         inferred. -->
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -20,11 +29,19 @@
         android:banner="@drawable/banner"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
+        <!-- configChanges lists every configuration change this Activity can
+             survive without being recreated. Recreation is not cosmetic here:
+             onDestroy tears down the AudioTrack, which drops the AVR's lock on
+             the bitstream and bounces the user back through the "Waiting for
+             receiver..." interstitial. navigation and keyboard are the ones
+             that actually fire on this device class - pairing or dropping a
+             Bluetooth controller changes both - and uiMode fires on a
+             day/night or TV-mode switch. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <!-- LEANBACK_LAUNCHER, not just LAUNCHER: this is what puts
