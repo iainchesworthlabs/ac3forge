@@ -175,6 +175,12 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - Internal: `std::format`/`std::print` replaced with {fmt} throughout, since the NDK's libc++ has
   no usable `<format>`; the WASM demo plays the library's own downmix rather than a hand-rolled
   one.
+- Internal: the macOS backend's loopback-capture gap is documented against Apple's real Core Audio
+  process/system tap API (`AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2 — the
+  in-tree comment previously cited 14.4) and now carries a pure, CI-verified OS-version capability
+  check (`ac3::coreaudio::system_audio_tap_api_available()`) a future implementation should refuse
+  on. Capture there is still input-only; the tap itself needs real Mac hardware to build and
+  verify. See [macOS](docs/platforms/macos.md#loopback-capture-not-yet-implemented).
 
 ### Fixed
 

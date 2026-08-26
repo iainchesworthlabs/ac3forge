@@ -36,6 +36,12 @@
 // coreaudio_support.hpp next door is the impure half: property fetching,
 // device enumeration, hog mode, and the async wait a physical-format or
 // nominal-rate change needs before it can be trusted.
+//
+// system_audio_tap_api_available() below is a third kind of "pure": it never
+// touches CoreAudio.framework at all, just the OS version - but that makes it
+// no less pure by this file's own definition (no live round-trip to a
+// device), so it lives here rather than earning its own header for one
+// function. See capture.cpp's own "Loopback" section for what it is for.
 
 namespace ac3::coreaudio {
 
@@ -118,6 +124,23 @@ namespace ac3::coreaudio {
 // this backend produced.
 [[nodiscard]] inline std::string fallback_name(const std::string& uid) {
     return uid.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + uid;
+}
+
+// Whether this OS build is new enough to expose Core Audio's process/system
+// audio tap API (AudioHardwareCreateProcessTap + CATapDescription) - the
+// mechanism capture.cpp's "Loopback" section documents as this backend's path
+// to loopback, not yet implemented here. Apple shipped the API in macOS 14.2
+// (Sonoma); this is a version gate only; it requests no permission, creates
+// no tap and touches no device, so unlike the tap itself it needs no real
+// hardware to write or trust - __builtin_available compiles the same runtime
+// check @available uses in Objective-C, and (per Clang's own restriction) may
+// only appear as an if-condition, which is why this wraps it instead of
+// returning the expression directly.
+[[nodiscard]] inline bool system_audio_tap_api_available() {
+    if (__builtin_available(macOS 14.2, *)) {
+        return true;
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------
