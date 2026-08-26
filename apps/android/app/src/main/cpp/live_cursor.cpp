@@ -55,6 +55,7 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/latency.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/sinks/iec61937.hpp"
 #include "ac3/audio/passthrough.hpp"
@@ -298,6 +299,38 @@ struct StreamStats {
     // not an approximation from the room-position math - see run_loop()'s
     // own comment on where this is computed. For the speaker-activity meter.
     std::array<std::atomic<float>, 6> channel_levels{};
+    // The encoder's own end-to-end latency for this configuration, in ms:
+    // object_latency_ms is what a decoder reconstructing the objects hears,
+    // bed_latency_ms what a legacy 5.1 decoder hears. Constant for a run
+    // (they depend on the config, not the content) but not compile-time
+    // constant here, since joc_domain decides whether the object path pays a
+    // second transform - see AtmosEncoder::latency(). Published so the
+    // dashboard can state the figure instead of the demo quietly implying
+    // the dot and the sound are simultaneous.
+    std::atomic<float> object_latency_ms{0.0F};
+    std::atomic<float> bed_latency_ms{0.0F};
+
+    // Zeroes everything a *previous* run left behind. Without this, a stopped
+    // loop froze its last values on screen rather than going dark: the meters
+    // held whatever the final frame happened to be, the frame/burst counters
+    // kept counting from the old total when the loop restarted, and
+    // `signed_stream` still claimed "Atmos (signed)" for a stream that was no
+    // longer being produced at all. A stopped demo should look stopped.
+    void reset() {
+        frames.store(0, std::memory_order_relaxed);
+        bursts_submitted.store(0, std::memory_order_relaxed);
+        bursts_rendered.store(0, std::memory_order_relaxed);
+        underruns.store(0, std::memory_order_relaxed);
+        signed_stream.store(false, std::memory_order_relaxed);
+        encode_ms.store(0.0F, std::memory_order_relaxed);
+        object_latency_ms.store(0.0F, std::memory_order_relaxed);
+        bed_latency_ms.store(0.0F, std::memory_order_relaxed);
+        for (auto& level : channel_levels) {
+            level.store(0.0F, std::memory_order_relaxed);
+        }
+        // ambient_muted is deliberately NOT reset: it is a user preference
+        // set from the remote, not a measurement of this run.
+    }
 };
 
 StreamStats& stream_stats() {
@@ -435,6 +468,10 @@ LiveCursorState& live_cursor_state() {
 }
 
 void run_loop() {
+    // Every counter and level below belongs to THIS run - see
+    // StreamStats::reset(). Must happen before signed_stream is set a few
+    // lines down.
+    stream_stats().reset();
     // Load the bundled signing key (if this build carries one) before deciding
     // whether to emit the object container: the same AAssetManager the lead
     // voice uses is already set by now (MainActivity.onCreate registers it
@@ -451,6 +488,19 @@ void run_loop() {
                                    kObjects);
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
                         "object container: %s", emit_objects ? "objects (signed)" : "bed51 (omitted, unsigned build)");
+    {
+        // Asked once, here: both figures are a property of the configuration
+        // this encoder was just built with, not of any frame.
+        const auto object_ms = ac3::latency_ms(encoder.latency(), ac3::SampleRate::k48000);
+        const auto bed_ms = ac3::latency_ms(encoder.bed_latency(), ac3::SampleRate::k48000);
+        stream_stats().object_latency_ms.store(static_cast<float>(object_ms),
+                                               std::memory_order_relaxed);
+        stream_stats().bed_latency_ms.store(static_cast<float>(bed_ms), std::memory_order_relaxed);
+        __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                            "encoder latency: objects %.1fms (%d samples), bed %.1fms (%d samples)",
+                            object_ms, encoder.latency().total_samples(), bed_ms,
+                            encoder.bed_latency().total_samples());
+    }
     ac3::audio::PassthroughSink sink;
     auto started = sink.start("", 48000, ac3::audio::BitstreamFormat::kEac3);
     if (!started) {
@@ -698,6 +748,12 @@ void run_loop() {
     }
 
     sink.stop();
+    // Clearing the trajectory clock is what makes
+    // nativeGetFutureLeadTrajectory report "no run in progress" rather than
+    // computing a path from a start time that is no longer meaningful - a
+    // stopped loop used to leave the waiting screen drawing a phantom orbit
+    // phased off whenever the device happened to boot.
+    g_start_time_ns.store(0, std::memory_order_relaxed);
     g_running.store(false, std::memory_order_release);
     __android_log_print(ANDROID_LOG_INFO, kLogTag, "encode loop stopped");
 }
@@ -853,6 +909,12 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
         return env->NewFloatArray(0);
     }
     const auto start_ns = g_start_time_ns.load(std::memory_order_relaxed);
+    if (start_ns == 0) {
+        // No run in progress (never started, or stopped) - there is no
+        // "ahead" to plot. An empty array, not a path computed against a
+        // zero epoch, which would be the whole boot-clock elapsed time.
+        return env->NewFloatArray(0);
+    }
     const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();
@@ -897,13 +959,22 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
         std::snprintf(loss_buf, sizeof loss_buf, " (%llu lost)",
                       static_cast<unsigned long long>(underruns));
     }
-    char buf[192];
+    // The object path's latency, which is what the moving dot on screen is
+    // actually ahead of. Shown so the demo states the figure rather than
+    // implying the plot and the sound are simultaneous; the plot is
+    // deliberately NOT shifted by it, because the encoder's own budget is
+    // only the part of the pipeline this app can measure - the AudioTrack
+    // queue and the receiver's own decode add more, and silently correcting
+    // for one term of three would be a different kind of wrong.
+    const auto object_lat_ms = s.object_latency_ms.load(std::memory_order_relaxed);
+    char buf[224];
     std::snprintf(buf, sizeof buf,
-                  "bursts %llu/%llu%s | encode %.1fms/32ms | %s%s",
+                  "bursts %llu/%llu%s | encode %.1f/32ms | enc lat %.0fms | %s%s",
                   static_cast<unsigned long long>(s.bursts_rendered.load(std::memory_order_relaxed)),
                   static_cast<unsigned long long>(s.bursts_submitted.load(std::memory_order_relaxed)),
                   loss_buf,
                   static_cast<double>(s.encode_ms.load(std::memory_order_relaxed)),
+                  static_cast<double>(object_lat_ms),
                   s.signed_stream.load(std::memory_order_relaxed) ? "Atmos (signed)"
                                                                    : "5.1 bed (unsigned)",
                   s.ambient_muted.load(std::memory_order_relaxed) ? " | ambient muted" : "");

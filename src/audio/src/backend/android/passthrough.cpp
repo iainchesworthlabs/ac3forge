@@ -236,6 +236,11 @@ struct PassthroughSink::Impl {
     jobject direct_buffers[kPoolSize] = {};
     int next_slot = 0;
 
+    // How many bytes of the burst currently being submitted the AudioTrack
+    // has already accepted across earlier, partial attempts. See submit().
+    std::size_t pending_offset = 0;
+    std::uint64_t partial_writes = 0;
+
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -282,29 +287,63 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
     bool ok = false;
     {
         std::lock_guard lock(g_bridge_mutex);
+        // A short (but non-negative) write means the AudioTrack accepted
+        // SOME bytes without accepting the whole burst. That is the
+        // documented behaviour of WRITE_NON_BLOCKING - it queues as much as
+        // fits and tells you how much - and it is reachable here whenever the
+        // track has room for part of a burst but not all of it.
+        //
+        // This used to be treated as a plain failure and the caller's retry
+        // loop resubmitted the WHOLE burst, splicing the already-accepted
+        // bytes into the stream a second time: a corrupt IEC 61937 burst, and
+        // a receiver that mutes or glitches rather than an error anyone could
+        // trace. (The comment that used to sit here excused it on the grounds
+        // that "that space is inspected by the Kotlin side before calling
+        // write" - PassthroughBridge.submit does no such inspection; it calls
+        // write directly.)
+        //
+        // So a partial write is now resumed from rather than restarted:
+        // pending_offset remembers how much of THIS burst is already queued,
+        // and only the remainder is staged and offered on the next attempt.
+        // The caller keeps passing the same full burst, which is what makes
+        // this safe to fix entirely on this side of the interface - no JNI
+        // signature change, no change to what a caller has to know.
+        const std::size_t offset = impl_->pending_offset;
+        const std::size_t remaining = burst.size() - offset;
+
         const int slot = impl_->next_slot;
         impl_->next_slot = (impl_->next_slot + 1) % Impl::kPoolSize;
         auto& storage = impl_->native_storage[static_cast<std::size_t>(slot)];
-        std::memcpy(storage.data(), burst.data(), burst.size());
+        std::memcpy(storage.data(), burst.data() + offset, remaining);
 
         const jint written = env->CallIntMethod(g_bridge, g_mid_submit,
                                                 impl_->direct_buffers[slot],
-                                                static_cast<jint>(burst.size()));
+                                                static_cast<jint>(remaining));
         if (env->ExceptionCheck() != 0) {
             env->ExceptionClear();
-        } else if (written == static_cast<jint>(burst.size())) {
+        } else if (written == static_cast<jint>(remaining)) {
             ok = true;
+            impl_->pending_offset = 0;
+        } else if (written > 0) {
+            // Partial: keep what was accepted and resume from there. Not an
+            // underrun - the track took data, it just could not take all of
+            // it this instant.
+            impl_->pending_offset = offset + static_cast<std::size_t>(written);
+            if (impl_->partial_writes++ == 0) {
+                __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                                    "AudioTrack accepted a partial burst (%d of %zu bytes) - "
+                                    "resuming from the offset rather than resubmitting",
+                                    static_cast<int>(written), remaining);
+            }
         } else if (written < 0) {
+            // A hard AudioTrack error. pending_offset is deliberately NOT
+            // reset: if the track recovers, resuming is still correct, and
+            // duplicating already-queued bytes is worse than a short burst.
             impl_->underruns.fetch_add(1, std::memory_order_relaxed);
         }
-        // A short (but non-negative) write means the AudioTrack accepted
-        // some bytes without accepting the whole burst - AudioTrack.write
-        // in non-blocking mode is documented not to do this for a track
-        // that is still open (it caps at the space actually available and
-        // that space is inspected by the Kotlin side before calling
-        // write), so this branch is deliberately treated the same as a
-        // hard failure rather than as a partial success to resume from -
-        // resubmitting the whole burst is simpler and correct either way.
+        // written == 0 is the ordinary "buffer full" case: nothing was
+        // accepted, so there is nothing to remember and the caller simply
+        // retries.
     }
 
     if (did_attach) {
@@ -321,6 +360,9 @@ void PassthroughSink::stop() {
     if (!impl_->running.exchange(false, std::memory_order_acq_rel)) {
         return;
     }
+    // Whatever was half-queued dies with the track; a later start() must not
+    // resume into a burst nothing is waiting for.
+    impl_->pending_offset = 0;
     if (!bridge_ready()) {
         return;
     }
@@ -367,6 +409,10 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     }
 
     impl_->burst_bytes = android_audio::burst_bytes_for(format);
+    // No burst is half-queued on a track that does not exist yet - see
+    // submit()'s partial-write handling for what this tracks.
+    impl_->pending_offset = 0;
+    impl_->partial_writes = 0;
     bool opened = false;
     {
         std::lock_guard lock(g_bridge_mutex);

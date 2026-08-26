@@ -73,6 +73,19 @@ private const val START_ATTEMPT_GRACE_MS = 3000L
 // minutes later isn't silently treated as the second half of a pair.
 private const val BACK_CONFIRM_MS = 3000L
 
+private const val WAITING_HEADLINE = "Waiting for receiver…"
+private const val WAITING_DETAIL =
+    "Turn on your AVR/receiver and select this HDMI input.\n" +
+        "The demo starts on its own once it's detected - no need to restart the app."
+
+// Shown between asking for the encode loop and the loop confirming it is up.
+// Short-lived on a healthy route; if it persists, the AudioTrack is failing to
+// open even though the route said it would accept the format - a materially
+// different problem from "no receiver", and one that should not look the same.
+private const val STARTING_HEADLINE = "Starting…"
+private const val STARTING_DETAIL =
+    "The receiver accepted the format - opening the audio stream…"
+
 // The E-AC3 IEC61937 carrier rate for this app's fixed 48kHz content rate
 // (live_cursor.cpp's kSampleRate) - carrier = 4x content for E-AC3, per
 // android_audio::carrier_rate() on the native side (see
@@ -123,7 +136,31 @@ class MainActivity : Activity() {
     // wherever this feature's other members get touched, same pattern
     // already used for overlayCue.
     private lateinit var waitingOverlay: View
-    private var receiverReady = false
+    private lateinit var waitingHeadline: TextView
+    private lateinit var waitingDetail: TextView
+    private lateinit var waitingCapability: TextView
+
+    /**
+     * Three states, not two.
+     *
+     * The overlay used to clear on [PassthroughBridge.isDirectPlaybackSupported]
+     * alone - "this route could accept E-AC-3" - which is a different claim
+     * from "audio is flowing". If `PassthroughSink::start()` then failed, the
+     * loop's thread exited immediately, the next reconcile still found the
+     * route capable, the old setReceiverReady(true) short-circuited as
+     * no-change, and the user got a fully-drawn dashboard over permanent
+     * silence. Worse, before the first encode frame every object is at its
+     * default position, so all three dots sit stacked at the origin: a
+     * plausible-looking picture, not an obviously broken one.
+     *
+     * READY now means `nativeIsLiveCursorRunning()`, which becomes true only
+     * after the sink actually opened. STARTING covers the gap between asking
+     * and knowing, so a slow AVR handshake reads as progress rather than as
+     * either a lie or a stall.
+     */
+    private enum class ReceiverState { WAITING, STARTING, READY }
+
+    private var receiverState = ReceiverState.WAITING
     // The first-launch orientation cue used to show unconditionally at the
     // end of onCreate; now it shows the first time the receiver actually
     // becomes ready (which may be immediately, or after some waiting) - this
@@ -177,6 +214,9 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.i(TAG, "ACTION_HDMI_AUDIO_PLUG received - re-checking receiver capability")
             reconcileReceiverState()
+            // The broadcast means the route's capabilities changed, which is
+            // exactly when the advertised-capability line is stale.
+            refreshCapabilityLine()
         }
     }
 
@@ -373,6 +413,11 @@ class MainActivity : Activity() {
         // unconditionally at this point - showing it while still waiting
         // for a receiver would just be confusing.
         reconcileReceiverState()
+        // setReceiverState(WAITING) short-circuits on the very first call -
+        // WAITING is already receiverState's starting value - so the initial
+        // read has to be kicked off explicitly rather than relying on a
+        // transition that never happens.
+        refreshCapabilityLine()
     }
 
     // Shown instead of the dashboard when ac3forge_jni did not load at all.
@@ -425,30 +470,44 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, 0, 0, 32)
         })
-        addView(TextView(this@MainActivity).apply {
-            text = "Waiting for receiver…"
+        waitingHeadline = TextView(this@MainActivity).apply {
+            text = WAITING_HEADLINE
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextPrimary)
             gravity = Gravity.CENTER_HORIZONTAL
-        })
-        addView(TextView(this@MainActivity).apply {
-            text = "Turn on your AVR/receiver and select this HDMI input.\n" +
-                "The demo starts on its own once it's detected - no need to restart the app."
+        }
+        addView(waitingHeadline)
+        waitingDetail = TextView(this@MainActivity).apply {
+            text = WAITING_DETAIL
             textSize = 16f
             setTextColor(Theme.colorTextSecondary)
             gravity = Gravity.CENTER_HORIZONTAL
             setLineSpacing(6f, 1f)
             setPadding(64, 28, 64, 0)
-        })
-        // VISIBLE by default, matching receiverReady's own default (false,
-        // i.e. "not ready") - setReceiverReady() only touches this view on
-        // an actual CHANGE (`ready == receiverReady` short-circuits
-        // otherwise), so if this started GONE while receiverReady started
-        // false, a capability check that finds "not ready" on the very
-        // first call (false -> false, no change) would never flip it on at
-        // all - confirmed on a real device: the full dashboard rendered
-        // instead of the waiting screen despite no receiver being capable.
+        }
+        addView(waitingDetail)
+        // What the route itself advertises, as opposed to the single bit
+        // isDirectPlaybackSupported returns - see CapabilityProbe. This is the
+        // line that tells "the AVR is off" apart from "the AVR is on and does
+        // not do E-AC-3", which the old screen could not distinguish.
+        waitingCapability = TextView(this@MainActivity).apply {
+            text = ""
+            textSize = 15f
+            setTextColor(Theme.colorAccent)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setLineSpacing(5f, 1f)
+            setPadding(64, 26, 64, 0)
+        }
+        addView(waitingCapability)
+        // VISIBLE by default, matching receiverState's own default (WAITING)
+        // - setReceiverState() only touches this view on an actual CHANGE
+        // (`state == receiverState` short-circuits otherwise), so if this
+        // started GONE while receiverState started WAITING, a capability
+        // check that finds "not ready" on the very first call (WAITING ->
+        // WAITING, no change) would never flip it on at all - confirmed on a
+        // real device: the full dashboard rendered instead of the waiting
+        // screen despite no receiver being capable.
         visibility = View.VISIBLE
     }
 
@@ -497,11 +556,11 @@ class MainActivity : Activity() {
                     "receiver likely gone, stopping the encode loop")
                 NativeBridge.nativeStopLiveCursor()
                 lastSeenUnderrunCount = 0L
-                setReceiverReady(false)
+                setReceiverState(ReceiverState.WAITING)
                 return
             }
             lastSeenUnderrunCount = underruns
-            setReceiverReady(true)
+            setReceiverState(ReceiverState.READY)
             return
         }
 
@@ -516,6 +575,13 @@ class MainActivity : Activity() {
         // instead of probing again.
         if (startAttemptPending) {
             if (SystemClock.elapsedRealtime() - startAttemptAtMs < START_ATTEMPT_GRACE_MS) {
+                // Asked, not yet confirmed. Deliberately NOT reported as
+                // ready: nativeStartLiveCursor returns JNI_TRUE
+                // unconditionally by design - it returns as soon as the worker
+                // is spawned - and making it wait for that worker's outcome is
+                // exactly the main-thread hang this grace period exists to
+                // avoid.
+                setReceiverState(ReceiverState.STARTING)
                 return
             }
             // Grace period elapsed and still not running - the attempt
@@ -533,15 +599,51 @@ class MainActivity : Activity() {
             startAttemptPending = true
             startAttemptAtMs = SystemClock.elapsedRealtime()
             lastSeenUnderrunCount = 0L
+            // Capable, and asked - but nothing is flowing until the worker
+            // says so. This is the case that used to clear the overlay
+            // outright and leave a silent dashboard behind it.
+            setReceiverState(ReceiverState.STARTING)
+        } else {
+            setReceiverState(ReceiverState.WAITING)
         }
-        setReceiverReady(capable)
     }
 
-    private fun setReceiverReady(ready: Boolean) {
-        if (ready == receiverReady) return
-        receiverReady = ready
-        Log.i(TAG, "receiver state changed: ${if (ready) "ready" else "waiting"}")
+    /**
+     * Refreshes the advertised-capability line. Off the main thread (see
+     * [CapabilityProbe]) with the result posted back, and only while the
+     * overlay is actually up: nothing reads it while streaming, and the fewer
+     * questions asked of the audio route during a live direct track, the
+     * better.
+     */
+    private fun refreshCapabilityLine() {
+        if (!::waitingCapability.isInitialized) return
+        CapabilityProbe.probeAsync(applicationContext) { report ->
+            mainHandler.post {
+                if (::waitingCapability.isInitialized && receiverState != ReceiverState.READY) {
+                    waitingCapability.text = report.describe()
+                }
+            }
+        }
+    }
+
+    private fun setReceiverState(state: ReceiverState) {
+        if (state == receiverState) return
+        val wasReady = receiverState == ReceiverState.READY
+        receiverState = state
+        Log.i(TAG, "receiver state changed: $state")
+
+        val ready = state == ReceiverState.READY
         waitingOverlay.visibility = if (ready) View.GONE else View.VISIBLE
+        if (!ready) {
+            val starting = state == ReceiverState.STARTING
+            waitingHeadline.text = if (starting) STARTING_HEADLINE else WAITING_HEADLINE
+            waitingDetail.text = if (starting) STARTING_DETAIL else WAITING_DETAIL
+            // Only re-read the route on a real transition into a non-ready
+            // state, not on every reconcile tick (one every 2.5s).
+            if (wasReady || !starting) {
+                refreshCapabilityLine()
+            }
+        }
         if (ready && !hasShownOrientationCueOnce) {
             hasShownOrientationCueOnce = true
             lastInputAtMs = SystemClock.elapsedRealtime()
@@ -772,7 +874,7 @@ class MainActivity : Activity() {
             // leaving it believing a receiver is still streaming.
             startAttemptPending = false
             lastSeenUnderrunCount = 0L
-            setReceiverReady(false)
+            setReceiverState(ReceiverState.WAITING)
         }
         launchingOwnActivity = false
         super.onStop()
