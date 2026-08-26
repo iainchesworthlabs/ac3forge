@@ -139,8 +139,22 @@ These hold across the whole API.
 
 **Errors are `std::expected`.** Nothing throws for a stream-level or configuration problem.
 `FrameError` covers encoding, `DecodeError` decoding, `ScanError` scanning, `WavError` file
-I/O, `MuxError` muxing. `DecodeError`, `ScanError`, `WavError` and `MuxError` each have a
-`describe()` returning a `std::string_view`; `FrameError` does not.
+I/O, `MuxError` muxing. All five have a `describe()` returning a `std::string_view`.
+
+**The `ac3::` namespace tree is codec-aware; `matroska::`/`mp4::`/`mpegts::`/`ac3adm::`/`ac3iab::`
+are codec-blind.** This is the namespace-level face of the header-prefix rule
+[CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#repository-layout)
+states for directories: everything nested under `ac3::` depends on or extends `ac3::forge`'s own
+model, down to `ac3::oba`, `ac3::io`, `ac3::meta`, `ac3::verify`, `ac3::iec61937`,
+`ac3::admbridge`, `ac3::audio` and `ac3::signing` — none of those are AC-3/E-AC-3-*specific*, but
+all of them know the codec exists. The separate top-level namespaces know nothing about AC-3,
+E-AC-3 or Atmos at all, and take frames as opaque bytes.
+
+Within `ac3::`, AC-3 is the base case and lives in the bare namespace; E-AC-3 additions and
+overrides live in `ac3::eac3`, nested rather than parallel. `ac3::FrameEncoder` (AC-3) and
+`ac3::eac3::FrameEncoder` (E-AC-3) sharing a class name across that boundary is this rule applied
+consistently, not an accident — the same split the Python bindings mirror by putting the E-AC-3
+encoder in a real `ac3.eac3` submodule rather than a same-module name that would collide.
 
 **Audio is `float`, nominally in [-1, 1).** Internally the transform runs in `double`.
 

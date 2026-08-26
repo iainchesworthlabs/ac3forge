@@ -112,12 +112,12 @@ Full program: [`examples/atmos_objects.cpp`](https://github.com/iainchesworthlab
 | `sample_rate` | `k48000` | Handed straight to the bed's own `eac3::FrameConfig`; nothing in the object layer reads it. |
 | `bitrate_kbps` | 448 | Per substream, as everywhere else. The object metadata competes with the mantissas for the same frame, so an object stream needs headroom a plain 5.1 stream does not. |
 | `dialnorm` | 31 | 1–31 (§5.4.2.8), as on the plain encoders. |
-| `num_bands_idx` | 4 | Index into `joc::kNumBands` (Table 50). More bands cost codewords without giving the matrix anything new to say. |
+| `num_bands_idx` | 4 | Index into `oba::joc::kNumBands` (Table 50). More bands cost codewords without giving the matrix anything new to say. |
 | `fine_quant` | `false` | §6.3.3.7's half-step quantizer, roughly one more bit per coefficient. Worth it when objects are nearly degenerate. |
 | `fast_mdct` | `true` | The §7.9.4 fast forward MDCT for the whole object encode: the bed's substream (via `eac3::FrameConfig::fast_mdct`) **and** the per-object `band_energy` transforms feeding the reconstruction-matrix solve. `false` forces the direct §8.2.3.2 reference form everywhere, for validation — the CLI spells that `fast-mdct=off` on the `atmos*` commands. |
-| `joc_domain` | `joc::Domain::kQmf` | Where the reconstruction matrix is estimated. `kQmf` is §7.1's 64-band complex filterbank — what §6.6.6 describes and what a licensed decoder reconstructs in. `kMdctBand` is the 256-bin MDCT approximation this project used before it had a filterbank: cheaper, about 5 dB worse per object, and only correct against a decoder told the same thing. CLI: `joc-domain=mdct`. |
+| `joc_domain` | `oba::joc::Domain::kQmf` | Where the reconstruction matrix is estimated. `kQmf` is §7.1's 64-band complex filterbank — what §6.6.6 describes and what a licensed decoder reconstructs in. `kMdctBand` is the 256-bin MDCT approximation this project used before it had a filterbank: cheaper, about 5 dB worse per object, and only correct against a decoder told the same thing. CLI: `joc-domain=mdct`. |
 
-At most 16 objects (`joc::kMaxObjects`, per TS 103 420 §8.3.2.2). `encoder.bed()` returns the
+At most 16 objects (`oba::joc::kMaxObjects`, per TS 103 420 §8.3.2.2). `encoder.bed()` returns the
 5.1 bed the last frame encoded — what a legacy decoder hears, and the thing most worth
 checking — and `encoder.parameters()` the pre-quantization reconstruction matrix.
 
@@ -130,7 +130,7 @@ Two limits are structural, not bugs: objects sharing a direction cannot be separ
 linear combination of the bed, and Dolby's decoder will not treat these as objects at all. Both
 are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-honest-limitations).
 
-## Getting the objects back: `joc::reconstruct`
+## Getting the objects back: `oba::joc::reconstruct`
 
 `Eac3Decoder` reconstructs object audio into `DecodedSubstream::object_audio` whenever a frame
 carries JOC, using `DecoderConfig::joc_domain` — `kQmf` by default, the same pair the encoder
@@ -138,10 +138,10 @@ estimated in. The result **lags the bed**, and by how much depends on the domain
 
 ```cpp
 // 256 samples of encode+decode, plus the JOC transform pair's own delay.
-const int delay = 256 + ac3::joc::reconstruction_delay(config.joc_domain);
+const int delay = 256 + ac3::oba::joc::reconstruction_delay(config.joc_domain);
 ```
 
-`joc::reconstruction_delay()` returns 576 for `kQmf` (the filterbank's 640-tap window less one
+`oba::joc::reconstruction_delay()` returns 576 for `kQmf` (the filterbank's 640-tap window less one
 64-sample hop) and 256 for `kMdctBand`. Ask it rather than hard-coding either: code that compares
 reconstructed objects against a known source and gets the shift wrong measures the latency
 instead of the reconstruction, and still looks plausible.

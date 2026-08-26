@@ -20,7 +20,7 @@
 // dependency back on them would invert that for every third party that links
 // ac3::forge to decode bare elementary streams and wants nothing else. This
 // file depends on both instead, which is fine at this layer - apps/common
-// already does for RecordingSink (ac3/io/wav.hpp, ac3/sinks/iec61937.hpp) -
+// already does for RecordingSink (ac3/io/wav.hpp, ac3/iec61937/iec61937.hpp) -
 // since disambiguating a container from a bare elementary stream is exactly
 // where knowing both sides earns its keep (see ContainerKind's own comment).
 

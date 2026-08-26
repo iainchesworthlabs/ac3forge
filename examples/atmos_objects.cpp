@@ -52,14 +52,14 @@ int main() {
     // Position error and audio-tracking SNR accumulate across every frame
     // after this one, so the transform pair's own warm-up (see
     // tests/oba/test_oba.cpp's "reconstruct is a delayed identity..." and
-    // tests/oba/test_atmos.cpp's "joc::reconstruct recovers well-separated
+    // tests/oba/test_atmos.cpp's "oba::joc::reconstruct recovers well-separated
     // objects...") doesn't flatter the numbers below.
     constexpr int kWarmupFrames = 3;
     constexpr int kTotalFrames = 62;  // two seconds
     // encode+decode (256), plus reconstruct's own pass - which is 256 or 576
     // depending on the domain it runs in, so the library is asked.
     constexpr std::size_t kDelay = static_cast<std::size_t>(
-        256 + ac3::joc::reconstruction_delay(ac3::joc::Domain::kQmf));
+        256 + ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kQmf));
 
     double position_error_sum = 0.0;
     int position_samples = 0;

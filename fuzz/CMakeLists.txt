@@ -164,7 +164,7 @@ ac3forge_add_fuzzer(fuzz_eac3_decode)
 ac3forge_add_fuzzer(fuzz_wav_read)
 
 # ac3::iec61937::BurstReader: IEC 61937 burst de-framing, driven the way
-# ac3cli's 'unspdif' drives it (src/forge/src/sinks/iec61937.cpp). The one
+# ac3cli's 'unspdif' drives it (src/forge/src/iec61937/iec61937.cpp). The one
 # entry point here whose input is by definition off a wire - an S/PDIF or
 # HDMI capture - and whose Pd word is an attacker-chosen length.
 ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
@@ -200,7 +200,7 @@ ac3forge_add_fuzzer(fuzz_emdf_parse)
 # (src/forge/src/oba/oamd.cpp).
 ac3forge_add_fuzzer(fuzz_oamd_parse)
 
-# ac3::joc::parse_payload: TS 103 420 §6's joc() payload, the one metadata
+# ac3::oba::joc::parse_payload: TS 103 420 §6's joc() payload, the one metadata
 # parser here that Huffman-decodes and that sizes a matrix from the stream's
 # own numbers (src/forge/src/oba/joc.cpp).
 ac3forge_add_fuzzer(fuzz_joc_parse)

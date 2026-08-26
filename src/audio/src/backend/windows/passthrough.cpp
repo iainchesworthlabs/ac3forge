@@ -23,7 +23,7 @@
 #include <thread>
 
 #include "ac3/audio/ring_buffer.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 
 namespace ac3::audio {
 
