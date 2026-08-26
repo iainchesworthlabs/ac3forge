@@ -175,8 +175,12 @@ TEST_CASE("a malformed positions= token is refused, by name whenever a device le
     }
 }
 
-TEST_CASE("positions= is refused outright with mode=channels, once past the device check",
+TEST_CASE("positions= is refused outright with mode=channels",
           "[cli][audio-io][concurrency]") {
+    // Unlike the malformed-token case above, this is a pure input-shape
+    // conflict - live_audio.cpp checks it before any device enumeration, so
+    // the refusal is unconditional even on a headless CI container with no
+    // capture endpoint at all.
     const auto out_path = scratch_dir() / "positions_channels.ac3";
     const auto log = scratch_dir() / "positions_channels.log";
     fs::remove(out_path);
@@ -185,9 +189,7 @@ TEST_CASE("positions= is refused outright with mode=channels, once past the devi
     const auto out = read_log(log);
     REQUIRE(rc != 0);
     CHECK_FALSE(fs::exists(out_path));
-    if (out.find("capture device index") == std::string::npos) {
-        CHECK(out.find("positions=") != std::string::npos);
-    }
+    CHECK(out.find("positions=") != std::string::npos);
 }
 
 TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or refuses by name",

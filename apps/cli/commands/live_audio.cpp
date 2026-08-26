@@ -351,6 +351,16 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     }
     const bool atmos = mode == "atmos";
 
+    // positions= only means anything once objects exist to drive - a pure
+    // input-shape conflict, so it is refused before any device I/O rather
+    // than after: the answer does not depend on what hardware is present.
+    if (meta.positions && !atmos) {
+        fmt::println(stderr,
+                     "error: positions= drives object placement, which only 'live mode=atmos' "
+                     "has");
+        return kExitUsage;
+    }
+
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
@@ -417,14 +427,6 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         fmt::println(stderr,
                      "error: layout=/codec= describe a channel session; mode=atmos always "
                      "encodes the TS 103 420 5.1 E-AC-3 bed plus its object layer");
-        return kExitUsage;
-    }
-    // positions= only means anything once objects exist to drive - same
-    // shape as the layout=/codec= refusal above, the other direction.
-    if (meta.positions && !atmos) {
-        fmt::println(stderr,
-                     "error: positions= drives object placement, which only 'live mode=atmos' "
-                     "has");
         return kExitUsage;
     }
     std::optional<TakePlan> take;

@@ -12,6 +12,10 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
+
+#include "ac3/oba/atmos.hpp"
+#include "ac3/oba/oamd.hpp"
 
 // OSC 1.0, transcribed from the published specification
 // (opensoundcontrol.org, "OSC 1.0 Specification") one grammar element at a
@@ -302,10 +306,9 @@ void walk_bundle_body(std::span<const std::byte> body, OscParseStats& stats, Sin
             keep_going = process_message(element, stats, emit);
         } else if (is_bundle_tag(element)) {
             constexpr std::size_t kBundleHeaderSize = 8 + 8;  // "#bundle\0" + time tag
-            if (element.size() < kBundleHeaderSize) {
-                ++stats.packets_rejected;
-            } else if (top + 1 >= static_cast<int>(kMaxBundleDepth)) {
-                ++stats.packets_rejected;  // too deep - dropped whole, not descended
+            if (element.size() < kBundleHeaderSize ||
+                top + 1 >= static_cast<int>(kMaxBundleDepth)) {
+                ++stats.packets_rejected;  // too short to be a real header, or too deep
             } else {
                 ++top;
                 stack[static_cast<std::size_t>(top)] =
