@@ -137,6 +137,13 @@ codec's own window — instead of leaving a hard discontinuity in the PCM, with 
 reported on the result. For E-AC-3, an access unit whose *dependent* substream will not decode
 renders its bed rather than failing outright.
 
+`DecoderConfig::diagnostics` is a **consumer-facing diagnostic sink** — a plain function pointer,
+no allocation, usable from the minimum-footprint decoder profile — for the recoverable events
+that concealment's own return value does not carry: a CRC that failed (reported the moment the
+check runs, whether or not concealment goes on to recover the frame) and an EMDF payload id this
+decoder does not interpret (§H.2.2, skipped without failing the frame). Null by default, at the
+cost of one branch per occurrence when it is not set.
+
 ### Inspection
 
 Decoding a stream and *describing* one are different jobs. `ac3::io::probe` (`ac3cli probe`)

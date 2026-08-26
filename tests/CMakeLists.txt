@@ -61,6 +61,7 @@ add_executable(ac3tests
     decoder/test_concealment.cpp
     core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
+    decoder/test_diagnostics.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
     dsp/test_dsp_qmf.cpp
