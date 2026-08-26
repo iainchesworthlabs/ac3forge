@@ -74,7 +74,7 @@ class InputController {
     @Volatile var axisMode: AxisMode = AxisMode.XY
         private set
 
-    @Volatile private var ambientMuted = false
+
 
     /**
      * OBJECTS OFF - see [NativeBridge.nativeSetObjectsOff]. Bound to BUTTON_X
@@ -398,21 +398,22 @@ class InputController {
             }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                 if (event.repeatCount == 0) {
-                    ambientMuted = !ambientMuted
-                    NativeBridge.nativeSetAmbientMuted(ambientMuted)
+                    // Read-modify-write against native rather than a local
+                    // copy: the settings panel and the phone remote change
+                    // this too, and a mirror here would drift out of step the
+                    // moment two of the three were used in one session.
+                    NativeBridge.nativeSetAmbientMuted(!NativeBridge.nativeGetAmbientMuted())
                 }
                 true
             }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
                 if (event.repeatCount == 0) {
-                    ambientMuted = true
                     NativeBridge.nativeSetAmbientMuted(true)
                 }
                 true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY -> {
                 if (event.repeatCount == 0) {
-                    ambientMuted = false
                     NativeBridge.nativeSetAmbientMuted(false)
                 }
                 true

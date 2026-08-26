@@ -1329,6 +1329,15 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
     return result;
 }
 
+// Whether the ambient voices are muted. A getter as well as a setter because
+// three places now change it - the remote's transport keys, the settings
+// panel and the phone remote - and a mirror of this in Kotlin would drift the
+// moment any two of them were used in one session.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetAmbientMuted(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return stream_stats().ambient_muted.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
+}
+
 // Path recording: idle -> recording -> playing -> idle. Returns the new
 // state (0/1/2, matching RecordState). The encode loop's own clock is what
 // timestamps a recording, so this needs the loop to be running; with it

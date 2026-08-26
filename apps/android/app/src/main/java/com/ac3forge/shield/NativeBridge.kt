@@ -144,6 +144,7 @@ object NativeBridge {
      * StreamStats::ambient_muted.
      */
     external fun nativeSetAmbientMuted(muted: Boolean)
+    external fun nativeGetAmbientMuted(): Boolean
 
     /** One formatted line of live encode-loop stats, for the on-screen overlay. */
     external fun nativeGetStreamStatsText(): String

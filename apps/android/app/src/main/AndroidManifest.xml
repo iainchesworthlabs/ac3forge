@@ -8,6 +8,15 @@
          SecurityException rather than silently doing nothing. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Needed only for the OPT-IN phone remote (WebRemote.kt), which binds a
+         listening socket on the local network so a phone in the room can drive
+         the object. Socket creation is kernel-enforced through the inet group,
+         so without this the ServerSocket fails at runtime rather than being
+         caught by any build-time check. The app makes no outbound requests of
+         any kind, and the remote does not start unless it is switched on in
+         the settings panel. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Android TV, not a phone/tablet fallback: a touchscreen is optional,
          leanback (the D-pad-navigable TV UI model) is required. Play would
          use this to keep the app off phones; irrelevant for a personal

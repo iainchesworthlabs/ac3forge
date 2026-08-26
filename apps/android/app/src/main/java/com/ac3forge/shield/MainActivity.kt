@@ -109,6 +109,13 @@ private const val EAC3_CARRIER_RATE_HZ = 192000
 // overscan actually crops; the room cards below already inset themselves.
 private const val OVERSCAN_FRACTION = 0.02f
 
+// Room-fraction per phone-remote update at full deflection. Lower than
+// InputController's own INPUT_SPEED because the page sends roughly one update
+// per ITS animation frame over the network, which arrives less regularly than
+// a local ticker - a smaller step keeps a burst of queued updates from
+// throwing the object across the room.
+private const val REMOTE_SPEED = 0.010f
+
 /**
  * Loads the native library, registers the [PassthroughBridge], runs the
  * HDMI capability probe, starts the encode loop (live_cursor.cpp), wires
@@ -229,6 +236,13 @@ class MainActivity : Activity() {
             mainHandler.postDelayed(this, TOUR_SCENE_MS)
         }
     }
+
+    // The settings panel, and the phone remote it makes discoverable. Both
+    // are built in onCreate and both are inert until asked for - see
+    // WebRemote's own comment on why a demo app must not open a listening
+    // socket just because it launched.
+    private lateinit var settings: SettingsOverlay
+    private val webRemote = WebRemote { command -> mainHandler.post { applyRemote(command) } }
 
     // Whether startFileReplay's worker is in flight - see onDestroy.
     @Volatile
@@ -422,6 +436,9 @@ class MainActivity : Activity() {
             ))
         }
 
+        settings = SettingsOverlay(this)
+        settings.setItems(buildSettingsItems())
+
         waitingOverlay = buildWaitingOverlay()
         // A sibling of `root`, not a child - it fully covers the dashboard
         // (including the title bar) while waiting, rather than requiring
@@ -435,6 +452,12 @@ class MainActivity : Activity() {
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
                 ))
                 addView(waitingOverlay, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
+                ))
+                // Above the waiting overlay: the settings panel is reachable
+                // even while waiting for a receiver, which is exactly when
+                // someone might want to check what this thing can do.
+                addView(settings.view, FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
                 ))
             },
@@ -472,6 +495,114 @@ class MainActivity : Activity() {
         // read has to be kicked off explicitly rather than relying on a
         // transition that never happens.
         refreshCapabilityLine()
+    }
+
+    /**
+     * The settings rows. Everything here is something the demo could already
+     * do from an undocumented keypress, plus the phone remote, which nothing
+     * on screen would otherwise reveal.
+     *
+     * Deliberately absent: bitrate, object count and the JOC domain. All three
+     * are fixed when `AtmosEncoder` is constructed, so changing them means
+     * rebuilding the encoder mid-stream - per-object QMF filterbank allocation
+     * on a thread holding a 32ms deadline. A settings row that silently risks
+     * the frame budget is worse than no row.
+     */
+    private fun buildSettingsItems(): List<SettingsOverlay.Item> = listOf(
+        SettingsOverlay.Item(
+            title = "Scene",
+            value = {
+                val scene = currentScene()
+                val name = try {
+                    NativeBridge.nativeGetSceneText(scene).substringBefore('\t')
+                } catch (e: UnsatisfiedLinkError) {
+                    "?"
+                }
+                "$name  (${scene + 1}/${sceneCount()})"
+            },
+            onChange = { delta -> inputController.stepScene(if (delta < 0) -1 else 1) },
+        ),
+        SettingsOverlay.Item(
+            title = "Ambient tones",
+            value = { if (ambientMutedNow()) "muted" else "playing" },
+            onChange = { NativeBridge.nativeSetAmbientMuted(!ambientMutedNow()) },
+        ),
+        SettingsOverlay.Item(
+            title = "Object layer",
+            value = { if (objectsOffNow()) "STRIPPED (plain DD+)" else "on (Atmos)" },
+            detail = {
+                if (!signedBuild()) {
+                    "no signing key in this build - the object container is not emitted at all"
+                } else {
+                    null
+                }
+            },
+            onChange = { NativeBridge.nativeSetObjectsOff(!objectsOffNow()) },
+        ),
+        SettingsOverlay.Item(
+            title = "Phone remote",
+            value = { if (webRemote.isRunning) "on" else "off" },
+            detail = {
+                if (webRemote.isRunning) {
+                    webRemote.url?.let { "open $it on a phone on the same network" }
+                        ?: "running, but no network address could be determined"
+                } else {
+                    "opens a page anyone in the room can drive the object from"
+                }
+            },
+            onChange = { if (webRemote.isRunning) webRemote.stop() else webRemote.start() },
+        ),
+        SettingsOverlay.Item(
+            title = "Guided tour",
+            value = { if (tourActive) "running" else "starts when idle" },
+            onChange = { if (tourActive) stopGuidedTour() else startGuidedTour() },
+        ),
+    )
+
+    private fun sceneCount(): Int = try {
+        NativeBridge.nativeGetSceneCount()
+    } catch (e: UnsatisfiedLinkError) {
+        1
+    }
+
+    private fun ambientMutedNow(): Boolean = try {
+        NativeBridge.nativeGetAmbientMuted()
+    } catch (e: UnsatisfiedLinkError) {
+        false
+    }
+
+    private fun objectsOffNow(): Boolean = try {
+        NativeBridge.nativeGetObjectsOff()
+    } catch (e: UnsatisfiedLinkError) {
+        false
+    }
+
+    // Whether this build carries a signing key, inferred from the one thing
+    // that reports it: a signed stream says so on the stats line.
+    private fun signedBuild(): Boolean = try {
+        NativeBridge.nativeGetStreamStatsText().contains("signed")
+    } catch (e: UnsatisfiedLinkError) {
+        false
+    }
+
+    /** Applies one phone-remote command, already posted to the main thread. */
+    private fun applyRemote(command: WebRemote.Command) {
+        if (!NativeBridge.available) return
+        onUserInputActivity()
+        when (command) {
+            is WebRemote.Command.Move ->
+                // Scaled the same way InputController scales a stick: this is
+                // one frame's worth of bias, not an absolute position.
+                NativeBridge.nativeDeflectSelectedObject(
+                    command.dx * REMOTE_SPEED,
+                    command.dy * REMOTE_SPEED,
+                    command.dz * REMOTE_SPEED,
+                )
+            is WebRemote.Command.Scene -> inputController.stepScene(command.delta)
+            WebRemote.Command.ToggleObjects -> NativeBridge.nativeSetObjectsOff(!objectsOffNow())
+            WebRemote.Command.Snap -> NativeBridge.nativeSnapSelectedToCourse()
+        }
+        if (settings.isOpen) settings.refresh()
     }
 
     // Shown instead of the dashboard when ac3forge_jni did not load at all.
@@ -800,7 +931,8 @@ class MainActivity : Activity() {
             "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
             "lead   •   Play: bring the ambient tones back   •   X/Menu: OBJECTS OFF " +
             "(watch the receiver drop to DD+)   •   Y/B or channel up/down: change scene   " +
-            "•   R2: record a path, then loop it   •   Info: About\n"
+            "•   R2: record a path, then loop it   •   L2/Guide: settings & phone " +
+            "remote   •   Info: About\n"
         val legendLead = "● lead (yours to push around)   "
         val legendAmbient = "● ● two ambient tones, always on their own course"
         val text = SpannableString(controls + legendLead + legendAmbient)
@@ -1035,6 +1167,9 @@ class MainActivity : Activity() {
      */
     override fun onStop() {
         if (::waitingOverlay.isInitialized && !isChangingConfigurations && !launchingOwnActivity) {
+            // A listening socket must not outlive the visible demo.
+            webRemote.stop()
+            settings.close()
             Log.i(TAG, "leaving the foreground - stopping the encode loop")
             NativeBridge.nativeStopLiveCursor()
             // The next reconcileReceiverState() (onResume) probes fresh and
@@ -1049,6 +1184,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        webRemote.stop()
         if (NativeBridge.available) {
             NativeBridge.nativeStopLiveCursor()
             // Diagnostic (play_file) mode: the replay runs on its own thread
@@ -1087,6 +1223,17 @@ class MainActivity : Activity() {
         // this is a MainActivity-level UI reaction, the same reasoning
         // onUserInputActivity's own comment gives for keeping UI reactions
         // here rather than inside InputController.
+        // The settings panel eats every key it recognises while open, so the
+        // demo's own controls do not fire underneath it.
+        if (settings.isOpen) {
+            if (settings.onKey(keyCode)) return true
+        }
+        if (keyCode == KeyEvent.KEYCODE_SETTINGS || keyCode == KeyEvent.KEYCODE_GUIDE ||
+            keyCode == KeyEvent.KEYCODE_BUTTON_L2
+        ) {
+            if (settings.isOpen) settings.close() else settings.open()
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_INFO) {
             launchingOwnActivity = true
             startActivity(Intent(this, AboutActivity::class.java))
@@ -1116,6 +1263,10 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyUp(keyCode: Int, keyEvent: KeyEvent?): Boolean {
+        // Swallow the up half of anything the open panel consumed on the way
+        // down, so a D-pad release does not clear a movement axis the panel
+        // never set in the first place.
+        if (settings.isOpen) return true
         if (inputController.onKeyUp(keyCode)) {
             return true
         }
