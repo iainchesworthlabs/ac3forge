@@ -1,9 +1,9 @@
 # ac3cli
 
-`ac3cli` is the command-line front end over `ac3::forge` — twenty-nine commands covering
+`ac3cli` is the command-line front end over `ac3::forge` — thirty-nine commands covering
 synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
 tool's own self-description (`help`, `man`, `completions`).
-One of the twenty-nine (`atmos-adm`) only *runs* in a build configured with
+One of the thirty-nine (`atmos-adm`) only *runs* in a build configured with
 `-DAC3FORGE_BUILD_ADM=ON`, but is always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
@@ -59,7 +59,7 @@ ac3forge 0.5.0-beta.1
   target:  Windows x86_64 (MSVC 1951)
 ```
 
-`--version` (or its `-v` alias) is a flag, not one of the twenty-nine commands — it's handled
+`--version` (or its `-v` alias) is a flag, not one of the thirty-nine commands — it's handled
 before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
 command's own help (or the full listing when no command was named).
 
@@ -74,9 +74,9 @@ command's own help (or the full listing when no command was named).
   [Options & grammars](metadata-options.md) for the full grammar.
 - **`out.ac3` vs. `out.ec3`** is how commands tell AC-3 output from E-AC-3 output; extensions
   aren't enforced, they're just the convention the examples follow.
-- **`-` means stdin or stdout** for `encode`, `eac3-encode`, `atmos-encode` and `decode`'s WAV/
-  AC-3/E-AC-3 path arguments — the conventional Unix pipe convention, so a WAV or stream never
-  needs to touch a disk at all:
+- **`-` means stdin or stdout** for `encode`, `eac3-encode`, `atmos-encode`, `decode`,
+  `strip-objects`, `probe` and `unspdif`'s WAV/AC-3/E-AC-3 path arguments — the conventional Unix
+  pipe convention, so a WAV or stream never needs to touch a disk at all:
 
   ```bash
   ac3cli encode - - 448 couple < in.wav > out.ac3
@@ -113,7 +113,7 @@ command's own help (or the full listing when no command was named).
 
 ## Next
 
-- [Commands](commands.md) — all 32 commands, grouped and with real usage text (`atmos-adm` only
+- [Commands](commands.md) — all 39 commands, grouped and with real usage text (`atmos-adm` only
   *runs* with `-DAC3FORGE_BUILD_ADM=ON`, but is listed either way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.

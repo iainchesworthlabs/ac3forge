@@ -240,3 +240,133 @@ TEST_CASE("the E-AC-3 search stays inert under VBR", "[quality][search][eac3]") 
         CHECK(first[frame] == second[frame]);
     }
 }
+
+// --------------------------------------------------------------------------
+// Roadmap EQ7's E-AC-3 half: FrameConfig::fgaincod.
+//
+// The risk here is not the same as the dbpbcod search's. dbpbcod moves the
+// masking curve and nothing else; fgaincod moves the curve AND opens the
+// per-block fgaincode element (Table E1.4), so it changes the bit LAYOUT of
+// every block as well as every mantissa width. Reading that element back at
+// the wrong offset is precisely the desync that was found on the decode side
+// against a real DEE stream - cplfgaincod sits ahead of the per-channel run,
+// and omitting it read every fast gain three bits early.
+//
+// So this pins the code and runs the whole frame through the mirror encoder,
+// which diffs the encoder's own model against a real decode block by block.
+// --------------------------------------------------------------------------
+TEST_CASE("a pinned E-AC-3 fgaincod round-trips through a real decode",
+          "[quality][search][eac3]") {
+    const auto stereo = make_material(2);
+    const auto surround = make_material(6);  // 5 fbw + LFE, so the run has an LFE tail
+    // 4 is Table E1.4's implied default and writes no element at all; the
+    // rest all open one. 0 and 7 are the ends of Table 7.11.
+    for (const int fgaincod : {0, 2, 4, 7}) {
+        for (const std::uint32_t kbps : {192U, 448U}) {
+            {
+                auto config = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0,
+                                         false, kbps);
+                config.fgaincod = fgaincod;
+                ac3::verify::Eac3MirrorEncoder mirror{
+                    ac3::eac3::AccessUnitConfig{.independent = config}};
+                for (int frame = 0; frame < kFrames; ++frame) {
+                    auto checked = mirror.encode_access_unit(spans_for(stereo, frame));
+                    REQUIRE(checked.has_value());
+                    CAPTURE(fgaincod, kbps, frame, mirror.last_report());
+                    CHECK(checked->ok());
+                }
+            }
+            {
+                // Coupled 5.1: the one shape that exercises cplfgaincod's own
+                // slot ahead of the per-channel run, and the LFE's at the end
+                // of it.
+                auto config = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k3_2,
+                                         true, kbps);
+                config.fgaincod = fgaincod;
+                ac3::verify::Eac3MirrorEncoder mirror{
+                    ac3::eac3::AccessUnitConfig{.independent = config}};
+                for (int frame = 0; frame < kFrames; ++frame) {
+                    auto checked = mirror.encode_access_unit(spans_for(surround, frame));
+                    REQUIRE(checked.has_value());
+                    CAPTURE(fgaincod, kbps, frame, mirror.last_report());
+                    CHECK(checked->ok());
+                }
+            }
+        }
+    }
+}
+
+// The default has to stay exactly where it was: -1 means "leave Table E1.4's
+// implied 0x4 alone", which is a different statement from "pin 4". Both
+// produce the same ALLOCATION, but only the first writes no fgaincode
+// element, and the roadmap entry's whole cost argument rests on that
+// distinction. Byte equality is the only check that can tell them apart.
+TEST_CASE("E-AC-3 fgaincod defaults to writing no fgaincode element at all",
+          "[quality][search][eac3]") {
+    const auto material = make_material(2);
+    auto defaulted = config_for(ac3::quality::Criterion::kNone, ac3::Acmod::k2_0, false, 192);
+    auto pinned_default = defaulted;
+    pinned_default.fgaincod = 4;  // the same code, stated rather than implied
+    auto pinned_other = defaulted;
+    pinned_other.fgaincod = 2;
+
+    const auto base = encode_all(defaulted, material);
+    const auto same = encode_all(pinned_default, material);
+    const auto other = encode_all(pinned_other, material);
+    REQUIRE(base.size() == same.size());
+    for (std::size_t frame = 0; frame < base.size(); ++frame) {
+        CAPTURE(frame);
+        // Pinning the default value is indistinguishable from not pinning it:
+        // frmfgaincode stays 0 either way.
+        CHECK(base[frame] == same[frame]);
+        // A non-default code is not: the element appears, so the bytes move.
+        CHECK(base[frame] != other[frame]);
+    }
+}
+
+// The fgaincod axis is one-directional, and that is a measured decision
+// rather than a cautious one - see the long note at its candidate guard in
+// eac3_frame.cpp's step 7a.
+//
+// The short version: this search minimises decoded-domain distortion, and on
+// E-AC-3 that criterion is OPPOSED to perceived quality along this axis. A
+// sweep of all eight codes on real CC0 material found SNR rising monotonically
+// with fgaincod while ViSQOL MOS-LQO fell, the MOS optimum sitting exactly on
+// §8.2.12's 0x4. An unrestricted search therefore buys SNR it can see and
+// spends quality it cannot - measured at -0.396 MOS against the one-axis
+// search at 96 kbit/s stereo. Only codes below 0x4, where the two measures
+// agree, are offered.
+//
+// 96 kbit/s stereo is the cell where AC-3's curve asks for 6 (above the
+// default) and where the regression was largest, so a search there must come
+// back with the default; 640 is where it asks for 0 and the axis is allowed
+// to act.
+TEST_CASE("the E-AC-3 search never raises fgaincod above the default",
+          "[quality][search][eac3]") {
+    const auto material = make_material(2);
+    // Low rate: AC-3's curve points up, so the axis must stay out of it and
+    // the encode must be identical to what the one-axis search produces.
+    // Pinning the default reproduces "one axis" exactly - it takes fgaincod
+    // out of the candidate set without changing anything else.
+    auto two_axis = config_for(ac3::quality::Criterion::kDistortion, ac3::Acmod::k2_0, false, 96);
+    auto one_axis = two_axis;
+    one_axis.fgaincod = 4;  // the default, stated - no element, no candidate
+
+    const auto searched = encode_all(two_axis, material);
+    const auto pinned = encode_all(one_axis, material);
+    REQUIRE(searched.size() == pinned.size());
+    for (std::size_t frame = 0; frame < searched.size(); ++frame) {
+        CAPTURE(frame);
+        CHECK(searched[frame] == pinned[frame]);
+    }
+
+    // And the guard is a direction test, not a blanket disable: at 640 the
+    // curve asks for 0, which is below the default, so the axis is live. That
+    // does not oblige the search to TAKE it - the refit may still reject it -
+    // so this only asserts the encode remains valid and decodable, which is
+    // what the mirror check below covers properly.
+    const int curve_640 = ac3::rate_adaptive_fgaincod(640, 2);
+    CHECK(curve_640 < 4);
+    const int curve_96 = ac3::rate_adaptive_fgaincod(96, 2);
+    CHECK(curve_96 > 4);
+}

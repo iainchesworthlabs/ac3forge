@@ -115,14 +115,21 @@ Dialog {
             // band/ceiling lines - see QcController::programmes()'s own
             // comment on why presets has exactly one entry once this is
             // anything but "All".
+            // Built from QcController.presetNames rather than listed here.
+            // The hand-written list this replaces was written when there were
+            // three presets and was never updated when roadmap IO11 inserted
+            // two more INTO THE MIDDLE of kQcPresetIds - so the button
+            // labelled "Netflix" was resolving index 3 to
+            // kQcPresetIds[2], atsc-a85-streaming, and reporting that
+            // preset's verdict under Netflix's name while netflix and
+            // apple-music-atmos were unreachable entirely. presetNames()
+            // derives from the same array setPresetIndex() indexes into
+            // (its own "All presets" entry included, at the same index 0
+            // this control uses), so the two cannot disagree again.
             SegmentedControl {
                 objectName: "qcPresetControl"
-                model: [
-                    { value: "0", label: qsTr("All") },
-                    { value: "1", label: qsTr("EBU R 128 s2") },
-                    { value: "2", label: qsTr("ATSC A/85") },
-                    { value: "3", label: qsTr("Netflix") },
-                ]
+                model: QcController.presetNames.map((label, index) =>
+                    ({ value: String(index), label: label }))
                 currentValue: String(QcController.presetIndex)
                 onSelected: (value) => QcController.presetIndex = parseInt(value)
             }

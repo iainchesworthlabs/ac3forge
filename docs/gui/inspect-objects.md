@@ -13,7 +13,10 @@ anywhere in the path — the same "distinct surface, reachable from the header" 
 **Inspect objects…**, in the header beside **QC a stream…** and **Preferences**. It opens
 regardless of what (if anything) is loaded in the main workbench.
 
-**Choose file…** opens a standard file picker filtered to `*.ac3`/`*.ec3` (plus **All files**).
+**Choose file…** opens a standard file picker with three filters — `*.ac3`/`*.ec3`, **Containers**
+(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`, roadmap IO2) and **All files**. The filters are a
+convenience for the picker only: `ObjectDecodeController` sniffs the actual bytes rather than
+trusting the extension, so a container works whatever the name says.
 Picking one starts the decode immediately, off the window's own event loop so the dialog stays
 responsive while a long file decodes. An AC-3 file (`bsid` ≤ 8) is refused with a plain explanation
 — object audio is an E-AC-3/Annex E tool only, so a plain AC-3 stream has nothing here to show. An

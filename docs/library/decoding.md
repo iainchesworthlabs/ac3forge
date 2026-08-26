@@ -100,8 +100,9 @@ Stated as limits rather than left to be discovered:
   `bsmod`/`dsurmod` behind `infomdate`; a frame that did not transmit one has no bits to
   overwrite, and inserting them would move every bit after it and re-frame the syncframe — which
   is a re-encode by another name. That is `kFieldAbsent`, and the answer is to encode (or
-  transcode) with the field enabled. This project's own E-AC-3 encoder never sets `infomdate`,
-  so its streams carry no `bsmod`/`dsurmod` to rewrite.
+  transcode) with the field enabled — on this project's own E-AC-3 encoder, that means setting
+  `eac3::FrameConfig::info`, which is what writes `infomdate`; a stream encoded with it unset
+  carries no `bsmod`/`dsurmod` to rewrite.
 - A **dependent** E-AC-3 substream reports no `compr` whatever its `compre` bit says: §E3.8.5
   repurposes that bit to mark the last dependent of the programme. Its eight bits are still
   skipped correctly; they are simply not a `compr` word.
@@ -210,12 +211,17 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 | `DecoderConfig` | Default | Notes |
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
+| `fast_imdct` | `true` | The fast inverse MDCT — the same fold the encoder's forward fast path uses — instead of the pseudocode's direct O(N²) sum against a 320 KiB tabulated matrix. Covers every inverse a decode runs: both decoders' PCM reconstruction, the three per-block inverses inside `eac3::ecpl_channel_spectrum`, and `joc::reconstruct`'s per-object synthesis. Decodes 4.5–4.7× faster, agreeing with the direct form to 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3) over 180 s of stream. It never reaches an encoder — the encoder-internal inverses read `eac3::FrameConfig`'s own `fast_mdct` — so nothing about *encoded* output depends on it. `false` selects the direct reference form, the oracle the fast path's tests validate against; `ac3cli` exposes the pair as `mode=performance` / `mode=reference`. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
 | `output` | all off | The §7.8 output stage — dialnorm, downmix, operating mode. See below. |
 | `concealment` | `kNone` | §7.10: what to do with a frame that will not decode. See below. |
+| `fast_mdct` | `true` | The §7.9.4 *forward* MDCT fold, for JOC bed analysis under `joc::Domain::kMdctBand` only — the one place a decode runs a forward transform, since §6.6.6's matrix combines the transmitted coefficients against the bed re-expressed in the domain the matrix was estimated in. No effect under the default `kQmf`, whose filterbank has only the one evaluation. `false` selects the direct §8.2.3.2 form, which is `joc::reconstruct`'s own default and what its fast-path tests validate against. |
 | `joc_domain` | `joc::Domain::kQmf` | Which domain JOC object reconstruction (above) runs §6.6.6's matrix in: `kQmf` is §7.1's 64-band complex filterbank, what the clause describes and what a licensed decoder runs; `kMdctBand` is the cheaper 512-sample-MDCT approximation this project used before the filterbank existed, correct only against a matrix estimated the same way (`AtmosConfig::joc_domain` on the encode side). The two have different algorithmic delay — `joc::reconstruction_delay(domain)` — so a caller comparing `object_audio` against a known source has to shift by it. |
 | `trace` | `nullptr` | AC-3 self-check (`FrameDecoder`): where the decoder records what it derived per block, for `ac3::verify` to diff against the encoder's own model. See below. |
 | `eac3_trace` | `nullptr` | The E-AC-3 counterpart (`Eac3Decoder`), one whole access unit rather than one frame. See below. |
+| `programme` | none | `std::optional<int>` (§E2.3.1.2). Which independent substream's programme `decode_access_unit` renders when a stream carries several — they are alternatives, not layers. `std::nullopt` renders whichever programme each call's access unit belongs to; set to an id and an access unit belonging to any other is skipped without being decoded at all. Ignored by `decode_substream`, which sits below the programme layer. See below. |
+| `syntax` | `nullptr` | `FrameSyntax*` (`ac3/decoder/syntax_trace.hpp`): which coding tools each block used and what exponent strategy each stream carried, recorded on the way past. Written by **both** decoders, unlike `trace`/`eac3_trace` — the Annex E tools are most of what makes it worth having. Filled incrementally, so a refused frame still leaves behind everything read before the refusal. |
+| `skip_reconstruction` | `false` | Parse every field exactly as a full decode does, but stop short of turning the coefficients into audio: no inverse transform, no overlap-add, no JOC object reconstruction, and no per-access-unit channel combination. The metadata (and any trace above) is identical to a full decode's; `channels` and `object_audio` come back empty. What `ac3cli probe` runs a whole file through. Note what it does *not* skip: the mantissas are still read, because the bit position of every field after them depends on it. |
 
 ## The output stage
 

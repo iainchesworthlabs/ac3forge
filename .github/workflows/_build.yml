@@ -1541,7 +1541,28 @@ jobs:
             echo "No changes to commit."
           else
             git commit -q -m "Quality trend: ${BRANCH}@${COMMIT_SHA}"
-            git push -q origin quality-history
+            # Four trend publishers (quality, performance,
+            # external-comparison, object-quality) share this one branch and
+            # routinely finish within seconds of each other, so losing the
+            # push race is an expected outcome rather than an error - it is
+            # what "! [rejected] (fetch first)" on main means. Each writes its
+            # own data file, so rebasing onto whichever sibling won is
+            # conflict-free; only a genuine conflict stops the retry.
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push -q origin quality-history 2>/dev/null; then
+                pushed=yes
+                break
+              fi
+              echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
+              git fetch -q origin quality-history
+              git rebase -q origin/quality-history
+              sleep $(( (RANDOM % 5) + 1 ))
+            done
+            if [ -z "${pushed}" ]; then
+              echo "::error::could not push quality-history after 5 attempts"
+              exit 1
+            fi
           fi
 
       # Deliberately after the push above, not instead of the append step

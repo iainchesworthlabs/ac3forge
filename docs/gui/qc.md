@@ -18,7 +18,10 @@ regardless of what (if anything) is loaded in the main workbench — QC-ing a fi
 nothing to do with whatever source is currently being configured for a new encode, and the two
 never interact.
 
-**Choose file…** opens a standard file picker filtered to `*.ac3`/`*.ec3` (plus **All files**).
+**Choose file…** opens a standard file picker with three filters — `*.ac3`/`*.ec3`, **Containers**
+(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`, roadmap IO2) and **All files**. The filters are a
+convenience for the picker only: `QcController` sniffs the actual bytes rather than trusting the
+extension, so a container works whatever the name says.
 Picking one starts the measurement immediately, the same way `ac3cli qc <file>` runs the moment
 it is invoked — there is no separate "Run" step. A long file measures off the window's own event
 loop (the same background-worker pattern every encode in this app already uses), so the dialog
@@ -41,17 +44,19 @@ Once a file has been measured, the dialog fills with:
       **tolerance band** around that preset's target and the true-peak meter a **ceiling line** at
       its limit — the value's own fill turns from neutral to the app's accent colour exactly when
       it falls outside the band or crosses the ceiling, the same two-state colouring the channel
-      meters' own CLIP indicator uses. Loudness range has no preset gate (none of the three named
+      meters' own CLIP indicator uses. Loudness range has no preset gate (none of the five named
       presets define one), so its meter always reads as a plain measurement.
     - **A dialnorm check** — the stream's own `dialnorm` restated as the LKFS it claims
       (`§5.4.2.8`: dialnorm is how far dialogue sits below digital 100%), the measured-minus-claimed
       delta, and what dialnorm the measurement itself would imply — exactly the three lines
       `ac3cli qc` prints under "dialnorm check", plus `compr` (§5.4.2.9/§7.7.2) when the stream
       carries one.
-    - **A verdict row per delivery preset** — EBU R 128 s2, ATSC A/85 and Netflix (the same three
-      `ac3::meta::qc.hpp` names, each preset's target/tolerance/ceiling cited from its own primary
-      source — see that header's own comment for the exact clauses), each showing its own
-      loudness PASS/FAIL, true-peak PASS/FAIL and an overall chip.
+    - **A verdict row per delivery preset** — EBU R 128 s2, ATSC A/85, ATSC A/85 streaming,
+      Netflix and Apple Music Atmos (the same five `ac3::meta::kQcPresetIds` names, each preset's
+      target/tolerance/ceiling cited from its own primary source — see `qc.hpp`'s own comment for
+      the exact clauses), each showing its own loudness PASS/FAIL, true-peak PASS/FAIL and an
+      overall chip. `QcController::programmes()` iterates the whole table, so this list grows with
+      it rather than with a count repeated here.
 
 ## Delivery preset
 
@@ -59,12 +64,20 @@ A segmented control — **All**, **EBU R 128 s2**, **ATSC A/85**, **Netflix** �
 qc`'s own `preset=<name>|all` argument:
 
 - **All** (the default) lists every preset's own verdict, with no single target/ceiling to draw
-  as a line on the meters above (three different presets would mean three different bands on the
+  as a line on the meters above (five different presets would mean five different bands on the
   same bar) — the meters show plain measured values, and the report becomes a compact overview of
-  where the stream sits against all three deliveries at once.
+  where the stream sits against all five deliveries at once.
 - Choosing **one** preset narrows the verdict list to it and feeds that preset's own numbers into
   the meters as the tolerance band / ceiling line, so the report can show exactly *why* a gate
   passed or failed rather than only *that* it did.
+
+**Known gap.** The control is four hardcoded entries in `QcDialog.qml`, not a binding to
+`QcController.presetNames` (which is "All presets" plus `kQcPresetIds` in order, and grows with
+that table). Since `programmes()` selects `kQcPresetIds[presetIndex - 1]`, the three named
+positions reach `ebu-r128-s2`, `atsc-a85` and `atsc-a85-streaming` — so the third one is labelled
+**Netflix** but selects ATSC A/85 streaming, and neither `netflix` nor `apple-music-atmos` can be
+selected at all. **All** is unaffected: it iterates the whole table, so every preset's verdict row
+is still reported. `ac3cli qc preset=<name>` reaches all five.
 
 ## What it does not do
 

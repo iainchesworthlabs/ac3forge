@@ -95,14 +95,20 @@ metadata options (any order, after the positional arguments):
                     [tools] positional can also reach this field via a bare nofastmdct token,
                     which wins if both are given; bare fast-mdct (the old opt-in) is a no-op
   fast-imdct=off    decode: force the direct §7.9.4 step-3 inverse instead of the default
-                    radix-2 FFT evaluation - the decode-side mirror of fast-mdct=off above,
+                    radix-4 FFT evaluation - the decode-side mirror of fast-mdct=off above,
                     with the same relationship to its oracle (both codecs; bare fast-imdct,
                     the old opt-in, is a no-op)
-  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit allocation parameters per
-                    frame, from the error a decoder will reconstruct, instead of taking the
-                    rate-derived defaults. distortion minimises that error; perceptual weights
-                    it by a tonality/masking model first. off (the default) keeps the fixed
-                    values every release before this emitted. Costs encode time - see
+  search=<what>     AC-3 encode (encode/sine) and E-AC-3 encode (eac3-encode/eac3-sine): choose
+                    §7.2.2's transmitted bit allocation parameters per frame, from the error a
+                    decoder will reconstruct, instead of taking the rate-derived defaults.
+                    distortion minimises that error; perceptual weights it by a tonality/masking
+                    model first. off (the default) keeps the fixed values every release before
+                    this emitted. E-AC-3 narrows it: CBR only (silently inert under vbr=),
+                    distortion only (perceptual parses and does nothing), AHT streams excluded
+                    from the measurement, and the candidates are dbpbcod - kAllocCodes' 3
+                    against Table E1.4's 2 - crossed with Table 7.11's rate-adaptive fgaincod,
+                    which unlike AC-3's is not free (it opens the per-block fgaincode element)
+                    and so is scored after a refit rather than assumed. Costs encode time - see
                     docs/library/quality.md for the measured figures
   mode=reference    both switches above in one word: every transform this command runs falls
                     back to the spec's own direct evaluation. mode=performance (the default
@@ -1026,8 +1032,10 @@ Optional positional arguments, when omitted:
 - WAV sample rates: AC-3 takes 32, 44.1 or 48 kHz (Table 5.6); E-AC-3 additionally takes the
   Annex E `fscod2` half rates 16, 22.05 and 24 kHz.
 - The bit rate must be one of the 19 nominal AC-3 rates (Table 5.18), 32 through 640 kbps.
-- `record` captures the first two channels of the endpoint (stereo); a mono device is duplicated
-  across both.
+- `record` (and `live mode=channels`) encodes onto `layout=` — `stereo` by default, anything up
+  to 7.1.4 — and places the endpoint's channels onto it by direction, not by index: a device
+  narrower than the layout leaves the rest silent, a wider one folds down per §7.8. See
+  [`layout=` and `codec=`](#layout-and-codec).
 - The Atmos commands take 1 to 15 objects — the bed's LFE is the 16th, and TS 103 420 §8.3.2.2
   caps the total at 16.
 
@@ -1084,10 +1092,12 @@ Optional positional arguments, when omitted:
   `fastmdct` tool token — the opt-in spellings from when this defaulted off — still parse and now
   name what already happens.
 - **`fast-imdct=off`**: the decode-side mirror. `decode` runs §7.9.4 step 3 — the inverse
-  transform's one O(N²) part — through a radix-2 FFT by default (the quality evidence that made
-  it the default: 7.8e-14 max peak-normalized relative error against the direct evaluation at the
+  transform's one O(N²) part — through an FFT by default. The kernel
+  (`src/forge/src/core/fft_kernel.hpp`) is radix-4 throughout, ending on a single radix-2 stage
+  only where log2(P) is odd — P = 128 and P = 512, not P = 64. The quality evidence that made it
+  the default: 7.8e-14 max peak-normalized relative error against the direct evaluation at the
   transform level, and over 180-second real-material decodes 214.9 dB SNR agreement for AC-3 /
-  284.7 dB for E-AC-3, with decodes 4.5–4.7× faster). `fast-imdct=off` forces the pseudocode's
+  284.7 dB for E-AC-3, with decodes 4.5–4.7× faster. `fast-imdct=off` forces the pseudocode's
   own direct sum — the reference form, and the oracle the fast path's tests validate against.
   Applies to both codecs; the `qc`, `levels` and playback decoders stay on the library default,
   where a ~1e-12 difference cannot move a reported figure. Encoded output never depends on this

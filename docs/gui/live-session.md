@@ -234,12 +234,14 @@ manifest is a complete file written and closed as it is produced.
 The Container combo's other three choices — S/PDIF, MP4, MPEG-TS — fall into the
 elementary-stream path above during a live session, not their own. For MP4 that is a format
 limit: `moov`/`stco` need every frame's final offset, so there is nothing to push a live unit
-into. S/PDIF and MPEG-TS both *do* have streaming writers (a *recording* — the Record button's
-capture-to-file take — uses them), but `ac3cli live` has no `container=` token for either, and a
-live session deliberately writes what its own copyable command line says it writes. So a live
-session with one of those three selected keeps writing the plain stream, exactly the file it
-would write with the combo left on Elementary stream; the container only changes what a *file*
-encode wraps it as afterward (see
+into. S/PDIF and MPEG-TS both *do* have streaming writers, and a *recording* — the Record
+button's capture-to-file take — uses them through `RecordingSink`; `ac3cli live` reaches them too,
+with `container=spdif` and `container=ts`. The gap is on this side:
+`EncoderController::openLiveOutputWriters` special-cases exactly two incremental writers,
+`matroska::Writer` and `mp4::FragmentWriter`, and everything else falls through to the plain
+write. So a live session with one of those three selected keeps writing the plain stream, exactly
+the file it would write with the combo left on Elementary stream; the container only changes what
+a *file* encode wraps it as afterward (see
 [Container](format-and-channels.md#presets-codec-bit-rate-container)).
 
 There is also an optional **raw-WAV safety copy**: the pre-flight "Raw-WAV safety copy" checkbox
@@ -361,7 +363,7 @@ capabilities this page describes, through the same code where the code is sharea
   captured channels onto them by direction through the same `plan::route` this page's own
   [layout switcher](#switching-layout-mid-session) drives. Neither is stereo-AC-3-only any more.
 - **Container choice**, and **take durability** with it. Both commands take
-  `container=raw|mkv|ts|spdif` (see
+  `container=raw|mkv|ts|spdif|fmp4` (`cmaf` is an accepted alias for the last; see
   [CLI → Options & grammars](../cli/metadata-options.md#container)) and write through
   `RecordingSink` — literally the same class, moved to `apps/common/` and compiled into both
   front ends — so a CLI take and a GUI take of the same container are the same bytes produced

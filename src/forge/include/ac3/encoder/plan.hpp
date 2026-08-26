@@ -261,10 +261,24 @@ struct Tools {
     // not a coding tool that changes the bitstream's SYNTAX, so it is
     // likewise not part of any(); unlike fast_mdct it does change which
     // codes a frame carries. kNone by default, matching the library config
-    // it feeds. AC-3 only so far: the E-AC-3 encoder's own step 9 has a
-    // different shape (Table E2.10 strategies hoisted to audfrm, snroffststr
-    // never exercised) and wiring it is EQ1/EQ2 work, not this.
+    // it feeds. Reaches both encoders now, on deliberately different terms:
+    // AC-3 searches dbpbcod and fgaincod under either criterion, E-AC-3
+    // searches the same two under kDistortion and CBR only - see
+    // eac3::FrameConfig::search for the scope and why kPerceptual and VBR
+    // are accepted but inert there.
     quality::Criterion search = quality::Criterion::kNone;
+
+    // §7.2.2.4 fast gain, Table 7.11 - search='s other axis, pinned for the
+    // whole encode rather than chosen per frame. -1 (the default) is each
+    // codec's own automatic behaviour, which is NOT the same behaviour in
+    // both: EncoderConfig::fgaincod follows core::rate_adaptive_fgaincod()'s
+    // measured curve, eac3::FrameConfig::fgaincod leaves Table E1.4's
+    // implied 0x4 and writes no fgaincode element at all. That asymmetry is
+    // priced, not accidental - see eac3::FrameConfig::fgaincod. 0..7 pins
+    // the code in both, and in E-AC-3 also takes it out of search='s
+    // candidate set. Not a coding tool that changes bitstream SYNTAX in
+    // AC-3, so - like fast_mdct and search above - not part of any().
+    int fgaincod = -1;
 
     // §7.3.4 dithflag, per-channel-per-block content decision - likewise not
     // a coding tool (a decoder that never receives a set dithflag still

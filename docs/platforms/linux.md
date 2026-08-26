@@ -171,17 +171,20 @@ launcher fires.
 ## CI
 
 `linux-gcc` and `linux-llvm` both run on every push and are **required**; both install a Qt6 kit
-and build and smoke-test `ac3gui` in addition to the CLI. A third leg, `linux-llvm-asan-ubsan`
-(AddressSanitizer + UndefinedBehaviorSanitizer), is also required but stays **CLI-only on
-purpose**, to keep a Qt kit out of the sanitizer leg's install time.
+and build and smoke-test `ac3gui` in addition to the CLI. Two sanitizer legs,
+`linux-llvm-asan-ubsan` (AddressSanitizer + UndefinedBehaviorSanitizer) and `linux-llvm-tsan`
+(ThreadSanitizer, over the `concurrency` ctest label only — `tests/audio/` plus
+`tests/cli/test_cli_live.cpp`), are also required and both stay **CLI-only on purpose**, to keep a
+Qt kit out of the sanitizer legs' install time. They are separate presets because the two runtimes
+are mutually exclusive: Clang refuses `-fsanitize=address,thread`.
 
 Two more legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on real ARM hardware
 (GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation) — see
 [Raspberry Pi](raspberry-pi.md), which is the hardware this arch target is validated
 against.
 
-The ALSA backend adds 14 tests of its own (`tests/backend/alsa/`) on top of the base suite: a
+The ALSA backend adds 15 tests of its own (`tests/backend/alsa/`) on top of the base suite: a
 Linux build with the GUI on and `libasound2-dev` absent runs the same suite as Windows, and ALSA
-adds those 14. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your build)
+adds those 15. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your build)
 runs the full suite. See [Verified configuration](../building.md#verified-configuration)
 for the full CI matrix.

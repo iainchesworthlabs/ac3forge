@@ -175,9 +175,9 @@ produces it.
 | `ac3adm::ac3adm` | A standalone BW64/RF64 + Audio Definition Model reader (container and metadata parsing only — codec-blind by design). Parses the container (ITU-R BS.2088-1) and the ADM XML graph (ITU-R BS.2076-2) on top of the vendored libbw64/libadm (github.com/ebu); links nothing from `ac3::forge` and knows nothing about AC-3. `ac3::admbridge` maps its object/bed graph onto `ac3::oba::AtmosEncoder`'s input shape, driven end to end by `ac3cli atmos-adm` — see [ADM bridging](library/adm-bridge.md). Opt-in (`-DAC3FORGE_BUILD_ADM=ON`, needs Boost) — the one component in this project with a third-party dependency. |
 | `mp4::fragment` + `mp4/hls.hpp` + `mp4/dash.hpp` | Fragmented MP4/CMAF segmenting (init segment + media segments, ISO/IEC 14496-12 §8.8 / ISO/IEC 23000-19) plus HLS media/master playlist and DASH `AdaptationSet` signaling helpers for the same segments — correct `CODECS`/`codecs` (RFC 6381) and, for Dolby Atmos, HLS's `CHANNELS="<N>/JOC"` (Apple's HLS Authoring Specification), with a multi-rendition master playlist for the paired 5.1 fallback that specification asks for. `ac3cli fmp4` wraps the whole thing. |
 | `ac3::iec61937` | S/PDIF burst packing: AC-3 byte-exact against FFmpeg's `spdif` muxer; E-AC-3 (`Eac3BurstPacker`) verified against FFmpeg's `spdif_header_eac3` and Microsoft's own IEC 61937 documentation (both independently fetched, not recalled — see the caveats below). |
-| `ac3::audio` | Live input/loopback capture — WASAPI on Windows, ALSA on Linux, CoreAudio on macOS (input only, no loopback) — through a lock-free SPSC ring. |
-| `ac3::audio::PassthroughSink` | Exclusive-mode/direct bitstream output, AC-3 or E-AC-3 — WASAPI on Windows, ALSA on Linux, CoreAudio on macOS, JNI-bridged `AudioTrack` on Android. See the caveats below (Windows and Android hardware-confirmed; the ALSA and CoreAudio backends are not). |
-| `ac3::audio::MonitorSink` | Shared-mode PCM playback — WASAPI, ALSA or CoreAudio: a non-bitstreamed preview/monitor path that decodes what is being encoded and plays it back on an ordinary output. Confirmed against real Windows hardware. |
+| `ac3::audio` | Live input/loopback capture — WASAPI on Windows, ALSA or PipeWire on Linux, CoreAudio on macOS (input only, no loopback) — through a lock-free SPSC ring. |
+| `ac3::audio::PassthroughSink` | Exclusive-mode/direct bitstream output, AC-3 or E-AC-3 — WASAPI on Windows, ALSA or PipeWire on Linux, CoreAudio on macOS, JNI-bridged `AudioTrack` on Android. See the caveats below (Windows, Android and Raspberry Pi hardware-confirmed; the CoreAudio backend is not, and PipeWire's negotiation needs a compressed codec enabled on the target node — see [Linux audio](building.md#linux-audio)). |
+| `ac3::audio::MonitorSink` | Shared-mode PCM playback — WASAPI, ALSA, PipeWire or CoreAudio: a non-bitstreamed preview/monitor path that decodes what is being encoded and plays it back on an ordinary output. Confirmed against real Windows hardware. |
 | `ac3::analysis` | Peak/RMS metering with console ballistics, and the Gerzon energy vector over the BS.775 ring. |
 | `ac3::meta::qc` | Bitstream-aware loudness QC (`ac3cli qc`): decodes a stream, measures it with the real BS.1770-4/EBU Tech 3342 meter, and compares against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate — EBU R 128 s2, ATSC A/85, or Netflix's Sound Mix Specifications, each preset's target/tolerance/true-peak ceiling cited from its own primary source. |
 
@@ -198,16 +198,17 @@ load-bearing enough to flag up front:
     the tag is deliberately not attempted. What is verified about reconstruction is the
     mathematics: §6.6.6 applied per band recovers each object to better than −20 dB.
 
-!!! warning "No Linux audio output has reached a real receiver"
+!!! warning "Linux audio output has reached a real receiver on one machine only"
     The ALSA backend was verified headless (including against ALSA's software `null` device,
-    under ASan+UBSan), and device enumeration has since run against real ALSA/HDMI devices on
-    Raspberry Pi hardware (see [Raspberry Pi](platforms/raspberry-pi.md)). But nothing has been
-    bitstreamed to an actual S/PDIF or HDMI output on Linux, and
-    no AV receiver has been asked to lock onto it there. This is a genuine gap, not one this
-    project's other real-hardware confirmations paper over — `PassthroughSink`'s Android backend
-    (see [Shield Atmos Demo](platforms/android.md)) has been confirmed bitstreaming real E-AC-3/
-    Atmos to a real AV receiver over HDMI, which validates the sink abstraction and burst-packing
-    logic in general, but says nothing about ALSA's own implementation specifically.
+    under ASan+UBSan), and has since bitstreamed to a real receiver for real on exactly one
+    machine: a Raspberry Pi 4B driving an Atmos-capable AVR over HDMI, everything from plain AC-3
+    through signed Atmos/JOC locking correctly (see
+    [Raspberry Pi](platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), which is
+    also where the vc4-hdmi device-classifier bug that run found is written up). No other Linux
+    machine, sound card or receiver has been tried, and the **PipeWire** backend has not reached a
+    receiver at all — its passthrough negotiation is real but needs a compressed codec enabled on
+    the target node by the session manager first. Treat the Pi result as one confirmed
+    configuration, not as ALSA-on-Linux generally.
 
 Enhanced coupling and transient pre-noise processing have no external decode oracle at all —
 not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own

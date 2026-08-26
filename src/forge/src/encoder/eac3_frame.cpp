@@ -118,7 +118,25 @@ constexpr BitAllocCodes kAllocCodes{.sdcycod = 2,
                                     .dbpbcod = 3,
                                     .floorcod = 7,
                                     .fgaincod = kBamode0Codes.fgaincod};
-constexpr int kFrmfgaincode = 0;   // fgaincod defaults to 0x4, matching AC-3
+// Roadmap EQ7's E-AC-3 half. fgaincod is the one bit-allocation parameter
+// baie does NOT carry, so where AC-3 gets its rate-adaptive value free -
+// §5.4.3.x hangs fgaincod off the snroffst element AC-3 already sends every
+// block - E-AC-3 has to pay for it separately: frmfgaincode opens a
+// per-block fgaincode element (Table E1.4) costing 1 + 3*(nchans + cplinu)
+// bits in every block that carries one. There is no persistence rule to
+// amortise that against, unlike baie: a block that declines the element
+// reverts every channel to 0x4 rather than keeping the last value, so
+// holding a non-default code means paying in all six blocks.
+//
+// That asymmetry is why this stayed at §8.2.12's fixed default long after
+// the AC-3 side moved, and why it cannot simply be switched on: at 5.1 with
+// coupling the element is 132 bits a frame, about 1.1% of a 384 kbit/s one,
+// which is real mantissa precision given up to buy a better masking curve.
+// So the default stays here and the code moves only when asked - pinned
+// through FrameConfig::fgaincod, or chosen by encode_frame's step 7a
+// candidate search, which scores it against real decoded-domain distortion
+// after refitting the frame to that candidate's own side-info cost.
+constexpr int kFgaincodDefault = kBamode0Codes.fgaincod;
 // EQ13's codes search (encode_frame, CBR only): the margin, in dB of mean
 // noise-to-signal, a candidate other than the incumbent must beat it by to
 // win - the same value and the same reason encoder.cpp's own step 9a uses
@@ -507,7 +525,18 @@ struct Payload {
     // before EQ13 - and only ever moves under FrameConfig::search (CBR only;
     // see encode_frame's own codes-search block), to kBamode0Codes, the only
     // other value baie can carry that this encoder ever chooses between.
+    //
+    // codes.fgaincod is the exception: baie does not carry it (see
+    // kFgaincodDefault's note), so it travels in the separate per-block
+    // fgaincode element below and is chosen by its own fit, not by baie's.
     BitAllocCodes codes = kAllocCodes;
+    // Roadmap EQ7: true when codes.fgaincod is something other than Table
+    // E1.4's implied 0x4 and the frame therefore opens the per-block
+    // fgaincode element to say so. Set by encode_frame's step 7a once the
+    // fit has decided the code is worth its side info; read by emit_frame,
+    // which is also what makes measure_side_bits() price it - the probe runs
+    // the real writer, so no separate bit accounting can drift from it.
+    bool frmfgaincode = false;
 
     // Frame reuse, same every-field contract as the plans above: after this,
     // a reused Payload is indistinguishable from `Payload{}` except that its
@@ -540,6 +569,7 @@ struct Payload {
         dynrng2 = {};
         compr2 = std::nullopt;
         codes = kAllocCodes;
+        frmfgaincode = false;
     }
 };
 
@@ -1579,7 +1609,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     w.put(blkswe ? 1 : 0, 1);
     w.put(kDithflage, 1);
     w.put(kBamode, 1);
-    w.put(kFrmfgaincode, 1);
+    w.put(payload.frmfgaincode ? 1 : 0, 1);
     w.put(dbaflde ? 1 : 0, 1);
     w.put(static_cast<std::uint32_t>(skipflde), 1);
     w.put(spx.atten ? 1 : 0, 1);  // spxattene
@@ -2155,7 +2185,32 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         }
         // snroffststr == 0: the offsets came from audfrm, so the block
         // carries no SNR fields whatsoever.
-        // frmfgaincode == 0, so fgaincod defaults to 0x4 for every channel.
+        //
+        // fgaincode (Table E1.4), roadmap EQ7's E-AC-3 half. Sent in every
+        // block when the frame carries a non-default fast gain, because the
+        // element has no persistence rule - unlike baie, a block that omits
+        // it reverts every channel to 0x4 rather than keeping the last value
+        // (the decoder's own else-branch fills the array), so a code held
+        // for the frame is a code paid for six times.
+        //
+        // Field order is the decoder's and Table E1.4's: the coupling
+        // channel's code leads, ahead of the per-channel run, and the LFE's
+        // is the last of that run rather than a separate element - reading
+        // nchans codes and no coupling one is exactly the desync that was
+        // fixed on the decode side against a real DEE stream.
+        if (payload.frmfgaincode) {
+            w.put(1, 1);  // fgaincode: this block states the codes
+            const auto code = static_cast<std::uint32_t>(payload.codes.fgaincod);
+            if (cpl.in_use) {
+                w.put(code, 3);  // cplfgaincod
+            }
+            for (int ch = 0; ch < nfchans; ++ch) {
+                w.put(code, 3);
+            }
+            if (config.lfe) {
+                w.put(code, 3);  // lfefgaincod, last of the 0..nchans run
+            }
+        }
         if (!dependent) {
             w.put(0, 1);  // convsnroffste, gated on strmtyp == 0x0
         }
@@ -2803,6 +2858,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // frame before this.
     Payload& payload = impl_->payload;
     payload.reset_for_frame();
+    // Roadmap EQ7: a pinned fast gain opens the per-block fgaincode element
+    // for the whole frame. Applied here, before any sizing, so
+    // measure_side_bits() prices the element from the real writer rather
+    // than from a second, driftable accounting of it.
+    if (impl_->config_.fgaincod >= 0) {
+        payload.codes.fgaincod = std::clamp(impl_->config_.fgaincod, 0, 7);
+        payload.frmfgaincode = payload.codes.fgaincod != kFgaincodDefault;
+    }
     // §7.7 dynamic range, carried in before the side information is sized: a
     // transmitted dynrng costs nine bits and the SNR search spends what is
     // left. §E3.8.5 gives a DEPENDENT substream's compre to the
@@ -3866,8 +3929,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const auto& plan = payload.chans[static_cast<std::size_t>(cpl_stream)];
         const int exp = plan.runs[0].decoded[static_cast<std::size_t>(cpl.strtmant)];
         const int psd = 3072 - (exp << 7);
-        cpl.fleak = std::clamp((psd - fast_gain(kAllocCodes.fgaincod) - 768) >> 8, 0, 7);
-        cpl.sleak = std::clamp((psd - slow_gain(kAllocCodes.sgaincod) - 768) >> 8, 0, 7);
+        // payload.codes, not kAllocCodes: EQ7 lets fgaincod move off the
+        // default, and a seed derived from a gain the frame is not going to
+        // use describes an allocation that will not happen. Transmitted
+        // either way, so this is a quality choice rather than a desync - but
+        // step 7a re-seeds after it settles the code, for the same reason.
+        cpl.fleak = std::clamp((psd - fast_gain(payload.codes.fgaincod) - 768) >> 8, 0, 7);
+        cpl.sleak = std::clamp((psd - slow_gain(payload.codes.sgaincod) - 768) >> 8, 0, 7);
     };
     set_coupling_leaks();
 
@@ -4681,36 +4749,101 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         BitAllocCodes best_codes = defaults;
         BitAllocCodes last_tried = defaults;
 
+        // Scoring a candidate needs the frame refitted against ITS side-info
+        // cost, not the incumbent's: an fgaincod candidate opens the
+        // per-block fgaincode element and a dbpbcod-only one does not, so
+        // the two are not competing for the same number of mantissa bits.
+        // measure_side_bits() runs the real writer, so setting the payload
+        // and re-measuring is the whole of that - there is no separate bit
+        // model here to keep in step.
+        const auto refit = [&](const BitAllocCodes& candidate) -> bool {
+            payload.codes = candidate;
+            payload.frmfgaincode = candidate.fgaincod != kFgaincodDefault;
+            set_coupling_leaks();  // the leak seeds follow fgaincod/sgaincod
+            side_bits = measure_side_bits();
+            if (side_bits + kTailBits > words * 16) {
+                return false;  // this candidate's side info does not fit
+            }
+            fixed_budget = words * 16 - side_bits - kTailBits;
+            lo = search(fixed_budget);
+            last_tried = candidate;
+            return true;
+        };
+        const auto consider = [&](const BitAllocCodes& candidate) {
+            if (candidate == last_tried || !refit(candidate)) {
+                return;
+            }
+            if (const double value = score(); value < best - kCodeSwitchMarginDb) {
+                best = value;
+                best_codes = candidate;
+            }
+        };
+
         const BitAllocCodes incumbent = impl_->previous_codes_;
         if (!(incumbent == defaults)) {
-            payload.codes = incumbent;
-            lo = search(fixed_budget);
-            last_tried = incumbent;
-            const double value = score();
-            if (value < best - kCodeSwitchMarginDb) {
-                best = value;
-                best_codes = incumbent;
-            }
+            consider(incumbent);
         }
         if (!(kBamode0Codes == defaults) && !(kBamode0Codes == incumbent)) {
-            payload.codes = kBamode0Codes;
-            lo = search(fixed_budget);
-            last_tried = kBamode0Codes;
-            // Last candidate: `best` itself has no reader after this, only
-            // best_codes does - clang-analyzer's dead-store check is right
-            // that assigning it here would be dead.
-            if (score() < best - kCodeSwitchMarginDb) {
-                best_codes = kBamode0Codes;
+            consider(kBamode0Codes);
+        }
+        // Roadmap EQ7/EQ13: the second axis, and the one direction of it that
+        // measured as safe.
+        //
+        // EQ13's own entry recorded that a one-axis E-AC-3 search had little
+        // left to find - EQ3 had already swept dbpbcod and found 3 winning
+        // every cell, so {2, 3} alone is close to a settled question.
+        // fgaincod is what moves alongside it, taking AC-3's own measured
+        // curve as the candidate.
+        //
+        // Only DOWNWARD, and that restriction is measured rather than
+        // cautious. This search minimises decoded-domain distortion, and on
+        // E-AC-3 that criterion and perceived quality are OPPOSED along this
+        // axis: sweeping all eight codes on real CC0 material at 96 kbit/s
+        // stereo, SNR rises monotonically 25.49 -> 27.37 dB from code 4 to 7
+        // while ViSQOL MOS-LQO falls 4.619 -> 4.127, with the MOS optimum
+        // sitting exactly on §8.2.12's 0x4 on both speech and music at both
+        // 96 and 192. So an unrestricted search reliably buys SNR the
+        // criterion can see and spends quality it cannot: measured at
+        // -0.396 MOS (speech) and -0.097 (music) against the one-axis search
+        // at 96 kbit/s. AC-3's curve asks for codes ABOVE 0x4 at exactly
+        // those low rates, so carrying it across whole is directionally
+        // wrong for this codec.
+        //
+        // Below 0x4 the two measures agree and the axis pays: +3.3 dB SNR at
+        // 640 stereo with MOS flat, and +1.17 dB / +0.29 MOS at coupled
+        // 5.1/640. That is the half kept. The side info is not what decides
+        // this either way - the element costs about 0.3-0.4 dB SNR and
+        // ~0.00 MOS, two orders below the quality the upward codes lose.
+        const int curve = rate_adaptive_fgaincod(
+            static_cast<int>(impl_->config_.bitrate_kbps), nfchans);
+        if (impl_->config_.fgaincod < 0 && curve < kFgaincodDefault) {
+            for (const BitAllocCodes base : {defaults, kBamode0Codes}) {
+                BitAllocCodes candidate = base;
+                candidate.fgaincod = curve;
+                consider(candidate);
             }
         }
 
-        payload.codes = best_codes;
         if (!(last_tried == best_codes)) {
-            // bap/lo currently belong to last_tried, not the winner - see
-            // encoder.cpp's own step 9a for why re-settling is cheaper than
-            // keeping every candidate's allocation around.
-            lo = search(fixed_budget);
+            // bap/lo/side_bits/fixed_budget all currently belong to
+            // last_tried, not the winner - see encoder.cpp's own step 9a for
+            // why re-settling is cheaper than keeping every candidate's
+            // allocation around. refit() rather than a bare search(): the
+            // winner may differ in whether it opens the fgaincode element,
+            // so the BUDGET has to be rebuilt from its own side_bits and not
+            // just the allocation re-searched against the loser's.
+            //
+            // The winner fitted once already, when it was scored, so the
+            // only way this can fail is a side-bits change between then and
+            // now - which nothing here does. Fall back to the incumbent
+            // rather than assert, so a frame is still emitted either way.
+            if (!refit(best_codes)) {
+                best_codes = defaults;
+                (void)refit(defaults);
+            }
         }
+        payload.codes = best_codes;
+        payload.frmfgaincode = best_codes.fgaincod != kFgaincodDefault;
         impl_->previous_codes_ = best_codes;
     }
 

@@ -539,6 +539,35 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          token);
             return false;
         }
+        if (key == "fgaincod") {
+            // §7.2.2.4 fast gain, Table 7.11 - search='s other axis, held for
+            // a whole encode instead of chosen per frame. Not scoped to one
+            // command: both codecs have the field and every encoding command
+            // routes through plan::Tools, the same reach dither= and search=
+            // already have.
+            //
+            // 'auto' spells the default rather than -1 doing it alone, since
+            // "auto" is what the two codecs' automatic behaviours have in
+            // common and not a number either of them uses (AC-3 follows the
+            // measured curve, E-AC-3 leaves Table E1.4's implied 0x4 and
+            // writes no element - see Options::fgaincod). -1 is accepted as
+            // the same thing spelled the way the library field is.
+            if (value == "auto" || value == "-1") {
+                out.fgaincod = -1;
+                continue;
+            }
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 7) {
+                fmt::println(stderr,
+                             "error: fgaincod must be 'auto' or 0-7 (Table 7.11) (got '{}')",
+                             token);
+                return false;
+            }
+            out.fgaincod = static_cast<int>(parsed);
+            continue;
+        }
         if (key == "dither") {
             // No bare-word form: unlike fast-mdct, dither has no prior
             // opt-in spelling to keep parsing, so only the value form -
