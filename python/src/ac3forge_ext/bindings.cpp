@@ -86,26 +86,11 @@ class KwargBinder {
 };
 
 // --- error translation -------------------------------------------------------
-// FrameError has no describe() on the C++ side (see docs/library/index.md's own conventions
-// list) - the message here is the enumerator's own name, not an invented description.
-std::string frame_error_name(ac3::FrameError e) {
-    switch (e) {
-        case ac3::FrameError::kInvalidBitrate: return "kInvalidBitrate";
-        case ac3::FrameError::kInvalidDialnorm: return "kInvalidDialnorm";
-        case ac3::FrameError::kInvalidSubstream: return "kInvalidSubstream";
-        case ac3::FrameError::kInvalidChannelMap: return "kInvalidChannelMap";
-        case ac3::FrameError::kTooManyChannels: return "kTooManyChannels";
-        case ac3::FrameError::kInvalidMixLevel: return "kInvalidMixLevel";
-        case ac3::FrameError::kInvalidBsi: return "kInvalidBsi";
-        case ac3::FrameError::kInvalidObjectAudio: return "kInvalidObjectAudio";
-    }
-    return "unknown";
-}
 
 struct EncodeFailure : std::runtime_error {
     ac3::FrameError code;
     explicit EncodeFailure(ac3::FrameError c)
-        : std::runtime_error("ac3forge encode failed: FrameError." + frame_error_name(c)), code(c) {}
+        : std::runtime_error("ac3forge encode failed: " + std::string(ac3::describe(c))), code(c) {}
 };
 
 struct DecodeFailure : std::runtime_error {
