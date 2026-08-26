@@ -26,6 +26,17 @@ namespace ac3cli::commands {
 // is where the reconstructed object audio itself comes out.
 int run_monitor(std::string_view in_path, int device_index, const ac3cli::Options& meta);
 
+// Decode an E-AC-3 stream's object layer and hand it to the OS's own spatial
+// object renderer (Windows' ISpatialAudioObjectRenderStream, roadmap UX8):
+// every JOC-reconstructed object goes out as a DYNAMIC object at its real
+// OAMD position, and the bed's LFE (never a JOC output - TS 103 420 §6.3.2.2
+// bypasses it) goes out as a STATIC one. This is the one path that lets
+// Dolby's own renderer engage with this project's reconstructed objects at
+// all - see ac3::audio::SpatialObjectSink's own header comment. Refuses
+// cleanly, naming which Settings toggle would fix it, when the chosen
+// endpoint has no spatial sound format enabled.
+int run_spatial(std::string_view in_path, int device_index, const ac3cli::Options& meta);
+
 // Live capture -> live encode -> optionally live monitor and/or live IEC
 // 61937 passthrough, running continuously and also writing the encoded
 // access units to a file (so a live session leaves an artifact the way

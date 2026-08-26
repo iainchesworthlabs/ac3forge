@@ -18,6 +18,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/spatial.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -538,6 +539,19 @@ int run_outputs() {
                      d.supports_eac3_passthrough ? "yes" : "no",
                      d.supports_exclusive_pcm ? "yes" : "no", d.name,
                      d.is_default ? "  [default]" : "");
+        // Probed per device rather than folded into RenderDeviceInfo above:
+        // GetMaxDynamicObjectCount() is a live, per-endpoint fact that
+        // changes the moment Settings > System > Sound is touched, not a
+        // build-time capability - see ac3::audio::probe_spatial_capability's
+        // own header comment.
+        if (const auto spatial = ac3::audio::probe_spatial_capability(d.id); spatial) {
+            if (spatial->max_dynamic_objects > 0) {
+                fmt::println("       spatial: {} dynamic objects (ac3cli spatial, roadmap UX8)",
+                             spatial->max_dynamic_objects);
+            } else {
+                fmt::println("       spatial: {}", spatial->reason);
+            }
+        }
     }
     fmt::println("");
     fmt::println("AC-3     the endpoint accepted an IEC 61937 AC-3 format in exclusive mode.");

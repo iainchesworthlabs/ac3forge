@@ -118,6 +118,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   algorithm for advanced sound systems, weighting channels by position, and can re-render an
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
+- **`ac3cli spatial`, a Windows Spatial Sound object sink.** Every JOC-reconstructed object goes
+  out as a dynamic object at its real OAMD position, and the bed's LFE as a static one, through
+  `ISpatialAudioObjectRenderStream`. This is the one path that lets Dolby's own renderer engage
+  with this project's reconstructed objects at all — a licensed decoder otherwise refuses to
+  object-decode a stream without a signing key this project doesn't ship. Refuses cleanly, naming
+  which Settings toggle to flip, when the chosen endpoint has no spatial sound format enabled;
+  `ac3cli outputs` reports each device's spatial capability alongside its passthrough columns.
 
 **Library, C API and Python**
 

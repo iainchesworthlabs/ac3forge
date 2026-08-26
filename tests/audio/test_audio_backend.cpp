@@ -6,6 +6,7 @@
 #include "ac3/audio/audio_backend.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/spatial.hpp"
 
 // The backend tree, tested from outside it.
 //
@@ -32,7 +33,8 @@ TEST_CASE("audio_backend reports a reason exactly when a capability is missing",
           "[audio-backend][concurrency]") {
     const auto& backend = ac3::audio::audio_backend();
 
-    for (const auto& capability : {backend.capture, backend.passthrough, backend.monitor}) {
+    for (const auto& capability :
+         {backend.capture, backend.passthrough, backend.monitor, backend.spatial}) {
         if (capability.available) {
             // Nothing to excuse, so nothing to say.
             CHECK(capability.reason.empty());
@@ -104,6 +106,55 @@ TEST_CASE("a render device list is well formed whatever the machine has in it",
         CHECK_FALSE(device.id.empty());
         CHECK_FALSE(device.name.empty());
     }
+}
+
+TEST_CASE("spatial capability probing agrees with the reported capability",
+          "[audio-backend][concurrency]") {
+    // probe_spatial_capability("") probes the DEFAULT render endpoint, which
+    // exists on every real machine but not in a container/CI runner with no
+    // sound card at all - so, unlike the capture/passthrough enumeration
+    // tests above, a missing endpoint (kDeviceNotFound) is not itself proof
+    // of anything about `spatial.available`. What has to agree is only the
+    // one signal that DOES mean "this build has no backend at all":
+    // kNoBackend.
+    const auto& spatial = ac3::audio::audio_backend().spatial;
+    const auto probed = ac3::audio::probe_spatial_capability("");
+    if (spatial.available) {
+        if (!probed.has_value()) {
+            CHECK(probed.error() != ac3::audio::SpatialError::kNoBackend);
+        }
+    } else {
+        REQUIRE_FALSE(probed.has_value());
+        CHECK(probed.error() == ac3::audio::SpatialError::kNoBackend);
+    }
+}
+
+TEST_CASE("every spatial error describes itself", "[audio-backend][concurrency]") {
+    using ac3::audio::SpatialError;
+    for (const auto error :
+         {SpatialError::kNoBackend, SpatialError::kComFailure, SpatialError::kDeviceNotFound,
+          SpatialError::kNoSpatialFormat, SpatialError::kFormatRejected,
+          SpatialError::kAlreadyRunning, SpatialError::kNotRunning}) {
+        const std::string_view text = ac3::audio::describe(error);
+        CHECK_FALSE(text.empty());
+        CHECK(text != "unknown spatial error");
+    }
+}
+
+TEST_CASE("a spatial sink that was never started refuses work", "[audio-backend][concurrency]") {
+    // Same contract as PassthroughSink's own never-started test: true of
+    // every backend including the stub, and the reason submit() checks
+    // running() first.
+    ac3::audio::SpatialObjectSink sink;
+    CHECK_FALSE(sink.running());
+    CHECK_FALSE(sink.can_submit());
+    CHECK_FALSE(sink.submit({}, {}));
+
+    const auto stats = sink.stats();
+    CHECK(stats.updates_submitted == 0);
+    CHECK(stats.updates_rendered == 0);
+    CHECK(stats.underruns == 0);
+    CHECK(stats.active_dynamic_objects == 0);
 }
 
 TEST_CASE("every capture error describes itself", "[audio-backend][concurrency]") {
