@@ -344,13 +344,25 @@ endif()
 # "depends on nothing of ac3::forge" shape as the three container writers above. Gated by
 # AC3FORGE_BUILD_ADM (default OFF, unlike the three above - see the option() itself for why).
 if(AC3FORGE_BUILD_ADM)
+    # roadmap item IM1 phase 3: ac3::admbridge's own IAB mapping (src/admbridge/src/iab_bridge.cpp)
+    # names ac3iab::IABitstreamFrame in a public header, so it needs the src/ac3iab add_subdirectory()
+    # above to have actually run. AC3FORGE_BUILD_IAB defaults ON, unlike AC3FORGE_BUILD_ADM, so this
+    # is the one combination that can silently fail to configure without an explicit guard - every
+    # other AC3FORGE_BUILD_ADM consequence below only ever depends on flags that are already
+    # unconditionally true (ac3::forge) or already checked by this same if() (ac3adm::ac3adm).
+    if(NOT AC3FORGE_BUILD_IAB)
+        message(FATAL_ERROR "AC3FORGE_BUILD_ADM=ON requires AC3FORGE_BUILD_IAB=ON (default ON) - "
+                             "ac3::admbridge's IAB mapping (roadmap IM1 phase 3) depends on ac3iab::ac3iab")
+    endif()
+
     add_subdirectory(src/ac3adm)
 
     # ac3::admbridge - roadmap item B1 phase 2: maps ac3adm's parsed ADM graph onto
-    # ac3::oba::AtmosEncoder. Depends on BOTH ac3::forge (added above) and ac3adm::ac3adm (just
-    # added), so it is meaningless without AC3FORGE_BUILD_ADM - gated by the same flag rather
-    # than a new option of its own; see src/admbridge/CMakeLists.txt's own header comment for
-    # the full reasoning, including why this is a separate module from either side.
+    # ac3::oba::AtmosEncoder. Depends on ac3::forge (added above), ac3adm::ac3adm (just added) and
+    # (roadmap IM1 phase 3) ac3iab::ac3iab (added earlier, guarded above), so it is meaningless
+    # without AC3FORGE_BUILD_ADM - gated by the same flag rather than a new option of its own; see
+    # src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this
+    # is a separate module from every side it bridges.
     add_subdirectory(src/admbridge)
 endif()
 

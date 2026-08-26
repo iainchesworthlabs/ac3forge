@@ -15,6 +15,7 @@ Usage:
   ac3cli atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
   ac3cli atmos-encode  <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
   ac3cli atmos-adm     <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
+  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (UNAVAILABLE HERE)
   ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
   ac3cli record        <out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index] (capture straight to a file; layout=/codec=/container= decide its shape)
   ac3cli live          <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
@@ -180,6 +181,52 @@ bare non-zero exit.
 See [ADM / BW64 reading](../library/adm.md) and [ADM → Atmos bridging](../library/adm-bridge.md)
 for the parser and the mapping layer this command drives, and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
+for the same pipeline as a minimal, standalone, self-fixturing program.
+
+### IAB ingest — real Dolby Atmos cinema/IMF masters (opt-in, roadmap IM1)
+
+**Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — the identical gate and the same
+`UNAVAILABLE HERE`/clear-error treatment `atmos-adm` above gets, and for the same underlying
+reason even though `ac3iab::ac3iab` itself is on by default: this command needs
+[`ac3::admbridge`'s own IAB mapping](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3)
+(`build_iab()`), and that whole module rides `AC3FORGE_BUILD_ADM` (see
+[ADM / BW64 reading](../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
+alongside `ac3iab::ac3iab`. What the row looks like in a build configured with the flag on (the
+usage block at the top of this page is copied from a *default* build, where this row instead reads
+`UNAVAILABLE HERE`):
+
+```text
+  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by the file's own authored panning - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+```
+
+| Command | What it does |
+|---|---|
+| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master |
+
+```bash
+ac3cli atmos-iab master.iab out.ec3 448
+```
+
+The same command reads a real MXF Track File too, no different invocation:
+
+```bash
+ac3cli atmos-iab master.mxf out.ec3 448
+```
+
+`dialnorm=` works the same as every other encoding command (see
+[Options & grammars](metadata-options.md)); `dialnorm=auto` does not — an IAB file's Bed/Object
+channels have no single fixed layout to measure loudness against the way `atmos-encode`'s WAV
+input does, so `atmos-iab` refuses it with a clear error rather than silently keeping the default.
+
+Every failure — a bitstream/MXF parse error (`ac3iab::IabError`) or a graph-resolution error
+(`ac3::admbridge::BridgeError`, e.g. a Table 19 `ChannelID` with no `BedLabel` equivalent, or
+essence that never resolved) — prints a real diagnosis via that error's own `describe()`, never an
+opaque crash or a bare non-zero exit.
+
+See [IAB reading](../library/iab.md) and
+[ADM → Atmos bridging](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3) for the parser
+and the mapping layer this command drives, and
+[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
 
 ### Object-layer strip

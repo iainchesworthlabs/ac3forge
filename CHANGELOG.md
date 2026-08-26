@@ -102,10 +102,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
-  sample corpus. **Now also reads real MXF IAB Track Files** (`ac3iab::parse_mxf_iab`), not just a
-  bare elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
-  which clip-wraps the whole bitstream as a single KLV. The bridge onto the ADM/Atmos layer is not
-  started.
+  sample corpus. Reads real MXF IAB Track Files too (`ac3iab::parse_mxf_iab`), not just a bare
+  elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
+  which clip-wraps the whole bitstream as a single KLV.
+- **`atmos-iab`: a real Dolby Atmos cinema/IMF master straight to DD+ JOC E-AC-3.** Every Bed
+  channel/Object an IAB file (or MXF Track File) names becomes an `AtmosEncoder` object, driven by
+  the file's own authored per-frame panning — `ac3::admbridge::build_iab`, the IAB counterpart to
+  the existing `atmos-adm`/ADM bridge. Needs `-DAC3FORGE_BUILD_ADM=ON`.
 - **One object-scene timeline type** (`ac3::oba::ObjectScene`) shared by `atmos-path`, the GUI and
   the examples, replacing four ad-hoc formats.
 - **Object extent, channel lock and zone constraints on encode**, mapped from the ADM bridge.

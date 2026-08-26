@@ -31,11 +31,11 @@
 #     to tolerate, just no oracle - see docs/verification.md's own note.
 #     Those streams skip the FFmpeg check too; the in-repo decoder round trip
 #     still covers them.
-#   - One whole COMMAND, not just one FFmpeg check, is conditional: `atmos-adm`
-#     (roadmap B1) only runs for real when this build was configured with
-#     -DAC3FORGE_BUILD_ADM=ON, which neither of this script's two CI callers'
-#     presets turn on - see that command's own block below for the detection
-#     and the reasoning.
+#   - Two whole COMMANDS, not just one FFmpeg check each, are conditional:
+#     `atmos-adm` (roadmap B1) and `atmos-iab` (roadmap IM1 phase 3) only run
+#     for real when this build was configured with -DAC3FORGE_BUILD_ADM=ON,
+#     which neither of this script's two CI callers' presets turn on - see
+#     each command's own block below for the detection and the reasoning.
 #
 # Usage: run_codec_matrix.sh <path-to-ac3cli> [workdir]
 # Exits non-zero on the first command that fails (a sanitizer violation exits
@@ -647,7 +647,12 @@ run_ffmpeg_check atmos_path.ec3
 # other command in this matrix is - not a synthetic shortcut. `run atmos-adm ...` appears in this
 # script's own text either way, which is what tools/checks/check_matrix_coverage.py's static presence
 # check actually looks for - see that script's own module docstring.
-ADM_FIXTURE_TOOL="$(dirname "$CLI")/examples/encode_adm"
+#
+# Same directory as $CLI itself, not an "examples/" subfolder under it: the root CMakeLists.txt
+# sets one project-wide CMAKE_RUNTIME_OUTPUT_DIRECTORY ("${CMAKE_BINARY_DIR}/bin"), so every
+# executable target - ac3cli, ac3tests, and every examples/ program alike - lands in that same
+# flat bin/ directory regardless of which source subdirectory built it.
+ADM_FIXTURE_TOOL="$(dirname "$CLI")/encode_adm"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
     echo "    [skip] atmos-adm: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
 elif [ ! -x "$ADM_FIXTURE_TOOL" ]; then
@@ -657,6 +662,26 @@ else
     run atmos-adm atmos_adm_fixture.wav atmos_adm.ec3 256
     run decode atmos_adm.ec3 atmos_adm.wav
     run_ffmpeg_check atmos_adm.ec3
+fi
+
+# atmos-iab (roadmap IM1 phase 3): the identical conditional-command shape atmos-adm above uses,
+# and for the same reason - it needs ac3::admbridge's own IAB mapping, gated by the same
+# AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: ac3iab::ac3iab
+# itself is on by default, but build_iab() only exists once admbridge is). Detected the same
+# "ask the real usage listing" way, not guessed from a preset name. examples/encode_iab's own
+# --write-fixture mode produces a real elementary IAB file on disk, so this is driven through a
+# real file the same way every other command in this matrix is. Same flat bin/ directory as $CLI
+# itself - see ADM_FIXTURE_TOOL's own comment above for why.
+IAB_FIXTURE_TOOL="$(dirname "$CLI")/encode_iab"
+if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
+    echo "    [skip] atmos-iab: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
+elif [ ! -x "$IAB_FIXTURE_TOOL" ]; then
+    echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
+else
+    "$IAB_FIXTURE_TOOL" --write-fixture atmos_iab_fixture.iab
+    run atmos-iab atmos_iab_fixture.iab atmos_iab.ec3 256
+    run decode atmos_iab.ec3 atmos_iab.wav
+    run_ffmpeg_check atmos_iab.ec3
 fi
 
 # --- Stream tools (roadmap DC9): no re-encode except where one is the point -
