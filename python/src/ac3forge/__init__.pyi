@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from enum import Enum
+from typing import overload
 
 import numpy as np
 import numpy.typing as npt
@@ -17,6 +18,9 @@ class Ac3EncodeError(Ac3Error):
 
 class Ac3DecodeError(Ac3Error):
     error: DecodeError
+
+class Ac3ScanError(Ac3Error):
+    error: ScanError
 
 class Acmod(Enum):
     kDualMono = ...
@@ -59,6 +63,19 @@ class StreamType(Enum):
     kDependent = ...
     kConvertible = ...
 
+class StreamKind(Enum):
+    kAc3 = ...
+    kEac3 = ...
+    kAc3CoreEac3Extension = ...
+
+class ScanError(Enum):
+    kEmpty = ...
+    kLostSync = ...
+    kUnsupportedBsid = ...
+    kReservedValue = ...
+    kTruncated = ...
+    kUnsupportedStructure = ...
+
 class ProfileId(Enum):
     kFilmStandard = ...
     kFilmLight = ...
@@ -78,12 +95,102 @@ class SurroundMixLevel(Enum):
 
 def fullbw_channel_count(acmod: Acmod) -> int: ...
 def sample_rate_hz(sample_rate: SampleRate) -> int: ...
+@overload
 def describe(error: DecodeError) -> str: ...
+@overload
+def describe(error: ScanError) -> str: ...
 def profile_for(id: ProfileId) -> Profile: ...
 def profile_name(id: ProfileId) -> str: ...
 def split_frames(stream: bytes) -> list[bytes]: ...
 def split_access_units(stream: bytes) -> list[bytes]: ...
 def stream_bsid(frame: bytes) -> int: ...
+
+# scan() and friends - roadmap AP6, ac3::io/elementary.hpp.
+def read_frame_header(at: bytes) -> FrameHeader: ...
+def scan(stream: bytes) -> ScannedStream: ...
+def access_unit_timing(stream: ScannedStream, index: int) -> AccessUnitTiming | None: ...
+def stream_duration_samples(stream: ScannedStream) -> int: ...
+def stream_duration_seconds(stream: ScannedStream) -> float: ...
+def access_unit_at_sample(stream: ScannedStream, sample: int) -> int | None: ...
+def access_unit_at_seconds(stream: ScannedStream, seconds: float) -> int | None: ...
+def uniform_access_unit_samples(stream: ScannedStream) -> int | None: ...
+
+class SubstreamService:
+    present: bool
+    bsmod: int
+    bsmod_present: bool
+    acmod: Acmod
+    lfe: bool
+    mix_metadata: bool
+
+class FrameHeader:
+    kind: StreamKind
+    bytes: int
+    bsid: int
+    bsmod: int
+    bsmod_present: bool
+    dsurmod: int
+    sample_rate: SampleRate
+    acmod: Acmod
+    lfe: bool
+    dialnorm: int
+    compr: int | None
+    dialnorm2: int | None
+    compr2: int | None
+    strmtyp: StreamType
+    substreamid: int
+    numblkscod: int
+    reduced_rate: bool
+    chanmap: int | None
+    oba_complexity_index: int | None
+    mix_metadata: bool
+    bit_rate_code: int
+    bitrate_kbps: int
+    @property
+    def coded_channels(self) -> int: ...
+
+class AccessUnitTiming:
+    start_sample: int
+    duration_samples: int
+    sample_rate: int
+    @property
+    def start_seconds(self) -> float: ...
+    @property
+    def duration_seconds(self) -> float: ...
+    def start_in_timescale(self, timescale: int) -> int: ...
+    def duration_in_timescale(self, timescale: int) -> int: ...
+
+class ScannedProgramme:
+    substreamid: int
+    acmod: Acmod
+    lfe: bool
+    channels: int
+    bsid: int
+    bsmod: int
+    substreams_per_unit: int
+    oba_complexity_index: int | None
+    access_units: list[bytes]
+
+class ScannedStream:
+    kind: StreamKind
+    sample_rate: SampleRate
+    acmod: Acmod
+    lfe: bool
+    channels: int
+    access_units: list[bytes]
+    access_unit_samples: list[int]
+    substreams_per_unit: int
+    programmes: list[ScannedProgramme]
+    bsid: int
+    bsmod: int
+    bit_rate_code: int
+    oba_complexity_index: int | None
+    bsmod_present: bool
+    dsurmod: int
+    mix_metadata: bool
+    independent_substreams: int
+    associated_substreams: list[SubstreamService]
+    channel_map: int
 
 class LatencyBudget:
     frame_samples: int

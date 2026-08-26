@@ -1149,9 +1149,12 @@ directory; there is still no threading anywhere in the codec core.
   (pybind11-direct, matching every other class here), with `ac3.eac3.access_unit_config_for_layout`
   as the named-layout convenience over `ac3::plan::channel_plan_for` — see
   `docs/library/python-api.md`'s "Encoding E-AC-3" section for what's mirrored and what's a real
-  gap there (mixmdate/infomdat, VBR/ABR, `additional` programmes) rather than a decision. Still
-  missing: `scan`, no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in
-  `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
+  gap there (mixmdate/infomdat, VBR/ABR, `additional` programmes) rather than a decision. ~~Still
+  missing: `scan`~~ done: `ac3.scan()`/`ac3.read_frame_header()` wrap `ac3::io::scan`/
+  `read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/`FrameHeader`, plus
+  `access_unit_timing` and its timing-arithmetic neighbours) — see `docs/library/python-api.md`'s
+  "Scanning a stream" section. Still missing: no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`
+  are off in `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
   `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
   that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
   macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
