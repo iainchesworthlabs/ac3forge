@@ -1460,16 +1460,42 @@ jobs:
       # AppImage's own bundled-Qt claim is what passes or fails it -
       # debian:12-slim is a different distro family entirely, satisfying
       # (a), with a glibc new enough to satisfy (b) too.
+      # docker cp, not `docker run -v "$PWD:/work"`: this step's own `docker`
+      # CLI runs INSIDE this job's ubuntu:22.04 container, talking to the
+      # HOST's daemon over the bind-mounted socket ("Install Docker CLI"
+      # above) - docker-outside-of-docker, not docker-in-docker. A `-v`
+      # bind mount asks the DAEMON to resolve $PWD against its own (the
+      # HOST's) filesystem, and there is no guarantee that path means
+      # anything there even when it very much exists in this container's own
+      # shell (confirmed for real: `ls ac3gui-*.AppImage` here finds the
+      # file, but the mount landed on an empty directory - the daemon and
+      # this container simply don't agree on what that path is). `docker
+      # cp` sidesteps the question entirely: it streams the file's bytes
+      # over the same client/daemon connection a bind mount would otherwise
+      # need shared filesystem visibility for, so it works regardless of
+      # whether the two sides' path namespaces line up at all.
       - name: Smoke test on a distro that never had Qt installed
         shell: bash
         run: |
           set -euo pipefail
           appimage="$(ls ac3gui-*.AppImage)"
-          docker run --rm -v "$PWD:/work" -e QT_QPA_PLATFORM=offscreen debian:12-slim \
-            /work/"$appimage" --appimage-extract-and-run --smoke \
-            /work/fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav \
-            /work/ac3gui-smoke.ac3 \
-            /work/ac3gui-smoke.png
+          chmod +x "$appimage"
+          echo "pwd: $PWD"
+          ls -la "$appimage" fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
+
+          cid="$(docker create -e QT_QPA_PLATFORM=offscreen debian:12-slim \
+            /ac3gui.AppImage --appimage-extract-and-run --smoke \
+            /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png)"
+          docker cp "$appimage" "${cid}:/ac3gui.AppImage"
+          docker cp fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav "${cid}:/roundtrip-stereo.wav"
+          docker start --attach "$cid"
+          status="$(docker inspect "$cid" --format='{{.State.ExitCode}}')"
+          docker rm -f "$cid" >/dev/null
+          echo "container exit status: $status"
+          if [ "$status" != "0" ]; then
+            echo "::error::AppImage smoke test failed on debian:12-slim (exit $status)"
+            exit 1
+          fi
           echo "ac3gui ran clean on debian:12-slim, which never had Qt or any build tool installed"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
