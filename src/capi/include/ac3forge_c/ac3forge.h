@@ -1306,7 +1306,12 @@ typedef enum ac3forge_qc_preset_id {
  * ac3::meta::kQcPresetIds's own size). */
 AC3FORGEC_EXPORT size_t ac3forge_qc_preset_count(void);
 
-typedef struct ac3forge_qc_preset {
+/* Tagged ac3forge_qc_preset_info rather than ac3forge_qc_preset: GCC's
+ * -Wshadow (built C++) treats a struct tag and a same-named free function as
+ * the function "hiding" the tag's implicit constructor-like name - the same
+ * reason ac3forge_version_info/ac3forge_version() above are split. The
+ * typedef name below is what callers actually use. */
+typedef struct ac3forge_qc_preset_info {
     double target_lkfs;
     double tolerance_lu;       /* +/- around target_lkfs, BAND only */
     double max_true_peak_dbtp; /* a ceiling, not a tolerance band */
