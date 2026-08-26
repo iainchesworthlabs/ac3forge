@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The app's only permission. VIBRATE is a normal permission, granted at
+         install with no runtime prompt, and it is what lets the demo pulse the
+         CONTROLLER (not the box) as an object crosses overhead - see
+         Haptics.kt. Without it, InputDevice.getVibrator().vibrate() throws
+         SecurityException rather than silently doing nothing. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Android TV, not a phone/tablet fallback: a touchscreen is optional,
          leanback (the D-pad-navigable TV UI model) is required. Play would
          use this to keep the app off phones; irrelevant for a personal

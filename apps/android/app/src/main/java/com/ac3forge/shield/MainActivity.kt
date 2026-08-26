@@ -441,6 +441,19 @@ class MainActivity : Activity() {
         )
 
         inputController.onInputActivity = { onUserInputActivity() }
+        inputController.onRecordStateChanged = { state ->
+            when (state) {
+                NativeBridge.RECORD_RECORDING -> showTransientCue(
+                    "Recording your path",
+                    "Fly the object where you want it - press R2 again to loop it",
+                )
+                NativeBridge.RECORD_PLAYING -> showTransientCue(
+                    "Looping your path",
+                    "It is still pushable - R2 again to go back to the scene",
+                )
+                else -> showTransientCue("Back to the scene's own course", null)
+            }
+        }
         inputController.onSceneChanged = { scene ->
             // During the tour the announcement is prefixed, so a viewer can
             // tell "the demo is walking itself" from "someone pressed a key".
@@ -787,7 +800,7 @@ class MainActivity : Activity() {
             "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
             "lead   •   Play: bring the ambient tones back   •   X/Menu: OBJECTS OFF " +
             "(watch the receiver drop to DD+)   •   Y/B or channel up/down: change scene   " +
-            "•   Info: About\n"
+            "•   R2: record a path, then loop it   •   Info: About\n"
         val legendLead = "● lead (yours to push around)   "
         val legendAmbient = "● ● two ambient tones, always on their own course"
         val text = SpannableString(controls + legendLead + legendAmbient)
@@ -882,6 +895,20 @@ class MainActivity : Activity() {
         val hint = parts.getOrNull(1).orEmpty()
         sceneCueShowing = true
         setOverlayCueText(if (prefix != null) "$prefix  $name" else name, hint)
+        showOverlayCue()
+        mainHandler.removeCallbacks(sceneCueTimeout)
+        mainHandler.postDelayed(sceneCueTimeout, SCENE_CUE_MS)
+    }
+
+    /**
+     * A short announcement over the room view, using the same shared overlay
+     * the scene cue does - and taking the same ownership flag, so the idle
+     * checker does not hide it or overwrite it two seconds later.
+     */
+    private fun showTransientCue(headline: String, subtitle: String?) {
+        if (!::overlayCue.isInitialized) return
+        sceneCueShowing = true
+        setOverlayCueText(headline, subtitle)
         showOverlayCue()
         mainHandler.removeCallbacks(sceneCueTimeout)
         mainHandler.postDelayed(sceneCueTimeout, SCENE_CUE_MS)

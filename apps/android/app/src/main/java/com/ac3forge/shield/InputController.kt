@@ -83,6 +83,17 @@ class InputController {
      */
     @Volatile private var objectsOff = false
 
+    // Controller rumble. Fed positions by RoomView (which already samples them
+    // every frame for the room panels) rather than sampling them again here -
+    // a second nativeGetObjectState call per vsync would buy nothing.
+    private val haptics = Haptics()
+
+    /**
+     * Invoked with the new record state whenever it changes from a keypress
+     * here - same split as [onSceneChanged].
+     */
+    var onRecordStateChanged: ((Int) -> Unit)? = null
+
     /**
      * Invoked once per handled input event (stick motion, D-pad, buttons) -
      * never for events this controller doesn't recognize. Set by
@@ -195,6 +206,7 @@ class InputController {
      * the object pinned against its clamp when focus returns.
      */
     fun clearMovement() {
+        haptics.reset()
         stickX = 0f
         stickY = 0f
         stickZ = 0f
@@ -217,11 +229,21 @@ class InputController {
         )
     }
 
+    /**
+     * The lead object's current position, handed over once per drawn frame by
+     * [RoomView] so the haptics can fire on the crossings worth feeling
+     * without a JNI call of their own. See [Haptics].
+     */
+    fun onLeadSampled(x: Float, y: Float, z: Float) {
+        haptics.onLeadPosition(x, y, z)
+    }
+
     /** Call from Activity.onGenericMotionEvent. Returns true if handled. */
     fun onGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK) {
             return false
         }
+        haptics.noteDevice(event.deviceId)
         val device = event.device
         val flat = deadzoneFor(device)
 
@@ -280,6 +302,7 @@ class InputController {
      * code) for [KeyEvent.startTracking] below - Returns true if handled.
      */
     fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        haptics.noteDevice(event.deviceId)
         val handled = onKeyDownInternal(keyCode, event)
         if (handled) onInputActivity?.invoke()
         return handled
@@ -340,6 +363,15 @@ class InputController {
             // held media key - these are handled here, on the down event,
             // rather than onKeyUp, so the mute/unmute takes effect the
             // instant the button is pressed rather than on release.
+            // Record / loop the lead's path. Controller-only: a basic
+            // remote has no free key left that every remote actually has, and
+            // this is a presenter's control rather than a viewer's.
+            KeyEvent.KEYCODE_BUTTON_R2 -> {
+                if (event.repeatCount == 0) {
+                    onRecordStateChanged?.invoke(NativeBridge.nativeToggleRecording())
+                }
+                true
+            }
             // Scene selection. Y/B on a controller; the remote's transport
             // and channel keys are the only free pairs it has, and a remote
             // that lacks them still reaches every scene by pressing next
@@ -421,7 +453,7 @@ class InputController {
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BUTTON_Y,
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_MEDIA_NEXT,
             KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_UP,
-            KeyEvent.KEYCODE_CHANNEL_DOWN -> true
+            KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_BUTTON_R2 -> true
             else -> false
         }
     }

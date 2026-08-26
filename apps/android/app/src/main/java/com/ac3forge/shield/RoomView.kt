@@ -217,6 +217,12 @@ class RoomView @JvmOverloads constructor(
         val objectCount = state.size / 4
         if (objectCount == 0) return
 
+        // The lead's position, handed to the input side for haptics. Done
+        // here because this view already has the state for this frame; making
+        // InputController fetch it again would double the per-vsync JNI cost
+        // for a value both already want.
+        inputController?.onLeadSampled(state[0], state[1], state[2])
+
         leadHistory.addLast(floatArrayOf(state[0], state[1], state[2]))
         while (leadHistory.size > MAX_HISTORY) {
             leadHistory.removeFirst()

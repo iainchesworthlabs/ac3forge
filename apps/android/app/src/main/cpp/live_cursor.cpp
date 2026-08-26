@@ -233,6 +233,20 @@ std::atomic<int> g_scene{0};
 // enough not to feel like waiting.
 constexpr double kSceneBlendSeconds = 0.9;
 
+// Path recording: hold the room's own clock and remember where the lead
+// object actually went, then fly that path forever. A parametric orbit is
+// something the demo does TO you; a path you flew by hand is something you
+// did, and watching your own gesture come round again is a different kind of
+// convincing.
+//
+// One entry per encode frame (32ms), capped at two minutes - well past any
+// gesture anyone performs live, and 3750 Positions is ~90KB, which is nothing
+// next to the frame buffers this loop already holds.
+constexpr int kMaxRecordFrames = 3750;
+constexpr double kFrameSeconds = static_cast<double>(ac3::kSamplesPerFrame) / kSampleRate;
+
+enum class RecordState : std::int32_t { kIdle = 0, kRecording = 1, kPlaying = 2 };
+
 // 0 at the start of a blend, 1 at the end, with the ends eased so the
 // transition neither starts nor stops abruptly.
 double smooth_step(double x) {
@@ -569,7 +583,16 @@ public:
                                                             double blend) {
         std::lock_guard lock(mutex_);
         for (int i = 0; i < kInteractiveObjects; ++i) {
-            const auto base = blended_position(scene, from, blend, i, time_s);
+            // A played-back recording REPLACES the scene's trajectory for the
+            // lead, but deflection still applies on top of it - the recorded
+            // path behaves exactly like any other course, including being
+            // pushable and springing back to itself.
+            const auto base =
+                (i == 0 && record_state_ == RecordState::kPlaying && !recorded_.empty())
+                    ? recorded_[static_cast<std::size_t>(
+                          static_cast<std::int64_t>((time_s - playback_start_s_) / kFrameSeconds) %
+                          static_cast<std::int64_t>(recorded_.size()))]
+                    : blended_position(scene, from, blend, i, time_s);
             auto& defl = deflection_[static_cast<std::size_t>(i)];
             // Clamp to oamd.hpp's Position contract on top of the
             // deflection's own bounding-box clamp in deflect_selected():
@@ -586,6 +609,20 @@ public:
             defl.x *= kDeflectionDecayPerFrame;
             defl.y *= kDeflectionDecayPerFrame;
             defl.z *= kDeflectionDecayPerFrame;
+
+            // Record the FINAL placed position, deflection and clamps
+            // included - what gets replayed is where the object actually
+            // went, not where the trajectory alone would have put it.
+            if (i == 0 && record_state_ == RecordState::kRecording) {
+                if (recorded_.size() < static_cast<std::size_t>(kMaxRecordFrames)) {
+                    recorded_.push_back(placements_[0].position);
+                } else {
+                    // Out of room: keep what was captured and start playing it
+                    // rather than silently recording nothing further.
+                    playback_start_s_ = time_s;
+                    record_state_ = RecordState::kPlaying;
+                }
+            }
         }
         for (int i = kInteractiveObjects; i < kObjects; ++i) {
             placements_[static_cast<std::size_t>(i)] = {
@@ -636,11 +673,59 @@ public:
         return placements_;
     }
 
+    /**
+     * Cycles idle -> recording -> playing -> idle, returning the new state.
+     *
+     * Stopping a recording goes straight to playing rather than back to idle:
+     * the gesture was performed to be watched, and making the user press
+     * again to see it is a beat of dead air in a live demo.
+     */
+    RecordState toggle_record(double time_s) {
+        std::lock_guard lock(mutex_);
+        switch (record_state_) {
+            case RecordState::kIdle:
+                recorded_.clear();
+                recorded_.reserve(kMaxRecordFrames);
+                record_state_ = RecordState::kRecording;
+                break;
+            case RecordState::kRecording:
+                // A recording too short to be a path at all is discarded
+                // rather than looped as a twitch.
+                if (recorded_.size() < 8) {
+                    recorded_.clear();
+                    record_state_ = RecordState::kIdle;
+                } else {
+                    playback_start_s_ = time_s;
+                    record_state_ = RecordState::kPlaying;
+                }
+                break;
+            case RecordState::kPlaying:
+                recorded_.clear();
+                record_state_ = RecordState::kIdle;
+                break;
+        }
+        return record_state_;
+    }
+
+    RecordState record_state() const {
+        std::lock_guard lock(mutex_);
+        return record_state_;
+    }
+
+    std::size_t recorded_frames() const {
+        std::lock_guard lock(mutex_);
+        return recorded_.size();
+    }
+
 private:
     mutable std::mutex mutex_;
     std::array<Deflection, kInteractiveObjects> deflection_{};
     std::array<ac3::oba::ObjectPlacement, kObjects> placements_{};
     int selected_ = 0;
+
+    RecordState record_state_ = RecordState::kIdle;
+    std::vector<ac3::oba::Position> recorded_;
+    double playback_start_s_ = 0.0;
 };
 
 LiveCursorState& live_cursor_state() {
@@ -1244,6 +1329,28 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
     return result;
 }
 
+// Path recording: idle -> recording -> playing -> idle. Returns the new
+// state (0/1/2, matching RecordState). The encode loop's own clock is what
+// timestamps a recording, so this needs the loop to be running; with it
+// stopped this is a no-op that stays idle.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeToggleRecording(JNIEnv* /*env*/, jclass /*clazz*/) {
+    const auto start_ns = g_start_time_ns.load(std::memory_order_relaxed);
+    if (start_ns == 0) {
+        return static_cast<jint>(RecordState::kIdle);
+    }
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    const double time_s = static_cast<double>(now_ns - start_ns) / 1.0e9;
+    return static_cast<jint>(live_cursor_state().toggle_record(time_s));
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetRecordState(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return static_cast<jint>(live_cursor_state().record_state());
+}
+
 // Scene selection. See kScenes - the demo used to have one path through the
 // room and nothing else to show.
 extern "C" JNIEXPORT void JNICALL
@@ -1353,6 +1460,15 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
 
     // What the object layer is costing, only while it is being taken away -
     // the number is meaningless otherwise, and the line has no width to spare.
+    // Recording state is worth a word on screen: a demo that is silently
+    // capturing, or silently replaying rather than following its own scene, is
+    // confusing in exactly the way this readout exists to prevent.
+    const char* record_buf = "";
+    switch (live_cursor_state().record_state()) {
+        case RecordState::kRecording: record_buf = " | REC"; break;
+        case RecordState::kPlaying:   record_buf = " | LOOPING YOUR PATH"; break;
+        case RecordState::kIdle:      break;
+    }
     char strip_buf[40] = "";
     if (s.objects_off.load(std::memory_order_relaxed)) {
         std::snprintf(strip_buf, sizeof strip_buf, " | OBJECTS OFF (-%u B/frame)",
@@ -1360,7 +1476,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
     }
     char buf[288];
     std::snprintf(buf, sizeof buf,
-                  "bursts %llu/%llu%s | encode %.1f/32ms | enc lat %.0fms | %s%s%s",
+                  "bursts %llu/%llu%s | encode %.1f/32ms | enc lat %.0fms | %s%s%s%s",
                   static_cast<unsigned long long>(s.bursts_rendered.load(std::memory_order_relaxed)),
                   static_cast<unsigned long long>(s.bursts_submitted.load(std::memory_order_relaxed)),
                   loss_buf,
@@ -1369,7 +1485,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
                   s.signed_stream.load(std::memory_order_relaxed) ? "Atmos (signed)"
                                                                    : "5.1 bed (unsigned)",
                   s.ambient_muted.load(std::memory_order_relaxed) ? " | ambient muted" : "",
-                  strip_buf);
+                  strip_buf, record_buf);
     return env->NewStringUTF(buf);
 }
 

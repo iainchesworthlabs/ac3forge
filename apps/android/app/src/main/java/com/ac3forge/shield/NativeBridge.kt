@@ -14,6 +14,10 @@ package com.ac3forge.shield
  * together later.
  */
 object NativeBridge {
+    const val RECORD_IDLE = 0
+    const val RECORD_RECORDING = 1
+    const val RECORD_PLAYING = 2
+
     /**
      * Whether `ac3forge_jni` actually loaded. Callers must check this before
      * any `native*` call below; every one of them throws
@@ -160,6 +164,22 @@ object NativeBridge {
      * trajectory_position().
      */
     external fun nativeGetFutureLeadTrajectory(secondsAhead: Float, samples: Int): FloatArray
+
+    /**
+     * Path recording, cycling idle -> recording -> playing -> idle and
+     * returning the new state (see [RECORD_IDLE]/[RECORD_RECORDING]/
+     * [RECORD_PLAYING]).
+     *
+     * What is captured is the lead object's FINAL placed position each encode
+     * frame - deflection and clamps included - so what replays is where the
+     * object actually went, not where its trajectory alone would have put it.
+     * A played-back path replaces the scene's trajectory for the lead but is
+     * still pushable, and still springs back to itself.
+     *
+     * Needs the encode loop running: its clock is what timestamps a recording.
+     */
+    external fun nativeToggleRecording(): Int
+    external fun nativeGetRecordState(): Int
 
     /**
      * The demo scene: which path through the room every object is following,
