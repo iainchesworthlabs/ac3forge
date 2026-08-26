@@ -70,6 +70,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   Encoding Engine fixture exercises it.
 - **QMF-domain JOC.** Object reconstruction runs in the 64-band complex filterbank the format
   calls for. Mean per-object SNR 22.8 → 28.6 dB. `joc-domain=qmf|mdct` selects it on both sides.
+- **A consumer-facing diagnostic sink.** `DecoderConfig::diagnostics` reports recoverable,
+  informational decode events — a CRC failure (fired the moment the check runs, so it still
+  reaches a caller even when `conceal=` turns the same frame into a successful, concealed
+  result) and an EMDF payload id neither decoder interprets. A plain function pointer, no
+  allocation, off by default, usable from the minimum-footprint decoder profile.
 
 **Containers and streams**
 
@@ -97,7 +102,10 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
-  sample corpus. Container extraction and the bridge onto the ADM layer are not started.
+  sample corpus. **Now also reads real MXF IAB Track Files** (`ac3iab::parse_mxf_iab`), not just a
+  bare elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
+  which clip-wraps the whole bitstream as a single KLV. The bridge onto the ADM/Atmos layer is not
+  started.
 - **One object-scene timeline type** (`ac3::oba::ObjectScene`) shared by `atmos-path`, the GUI and
   the examples, replacing four ad-hoc formats.
 - **Object extent, channel lock and zone constraints on encode**, mapped from the ADM bridge.
@@ -139,6 +147,8 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   [C API](docs/library/c-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
+- **`FrameError` gained `describe()`**, matching every other error type. Python's `Ac3EncodeError`
+  now carries a real message instead of just the failing enumerator's name.
 
 **Verification**
 
@@ -156,8 +166,18 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   comparison, an advisory ABI diff against the last release, CodeQL over the Android app's Kotlin,
   container-command tests, a headless browser test of the WASM demo, and instrumented tests for
   the Android bridge's device-free paths.
+- **A Windows ARM64 CI leg** on GitHub's hosted `windows-11-arm` runner, building and testing
+  `ac3cli` on real ARM64 hardware and packaging a `win-arm64` release archive — CLI-only for now
+  (no resolvable prebuilt Qt6 ARM64 kit yet) and experimental until proven green over real runs.
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
+
+**Tooling and packaging**
+
+- **macOS release packages are now universal (arm64 + x86_64) binaries.** A new CI leg builds a
+  real (not cross-compiled) x86_64 half on GitHub's native-Intel `macos-15-intel` runner, and a
+  merge job `lipo`s it together with the existing Apple Silicon build into one `.dmg`. The
+  Homebrew Cask no longer restricts itself to `arch: :arm64`.
 
 ### Changed
 
@@ -182,6 +202,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   [branch protection](.github/branch-protection.md). The trend pages still show two tracks so
   historical data stays visible; reworking them for a single track is separate follow-up work.
 - **ROADMAP.md was rebuilt** for the post-0.9.0 state.
+- **A pre-freeze naming sweep, source- and ABI-breaking.** JOC's namespace now matches its header
+  path: `ac3::joc` is `ac3::oba::joc`. The S/PDIF burst packer's directory now matches its
+  namespace, which was already correct: `ac3/sinks/iec61937.hpp` is `ac3/iec61937/iec61937.hpp` —
+  `ac3::audio`'s `PassthroughSink`/`MonitorSink` are the library's actual `Sink` types, and this
+  header was never one. `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` keep their shared name across
+  namespaces on purpose; [Library overview](docs/library/index.md) now writes down the
+  codec-vs-codec-blind namespace split that rule follows.
 - Internal: `std::format`/`std::print` replaced with {fmt} throughout, since the NDK's libc++ has
   no usable `<format>`; the WASM demo plays the library's own downmix rather than a hand-rolled
   one.

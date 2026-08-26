@@ -61,6 +61,7 @@ add_executable(ac3tests
     decoder/test_concealment.cpp
     core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
+    decoder/test_diagnostics.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
     dsp/test_dsp_qmf.cpp
@@ -80,9 +81,9 @@ add_executable(ac3tests
     core/test_fft.cpp
     containers/test_fmp4.cpp
     core/test_frame.cpp
-    sinks/test_iec61937.cpp
+    iec61937/test_iec61937.cpp
     decoder/test_latency.cpp
-    sinks/test_iec61937_unwrap.cpp
+    iec61937/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
     decoder/test_output_stage.cpp
     meta/test_loudness.cpp
@@ -374,7 +375,7 @@ endif()
 # only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
 # as the AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_IAB)
-    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp)
+    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
