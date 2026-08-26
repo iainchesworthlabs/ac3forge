@@ -1155,11 +1155,18 @@ directory; there is still no threading anywhere in the codec core.
   `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
   that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
   macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
-- [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
+- [x] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
   pins `AC3FORGE_BUILD_CAPI=OFF`); and the licence identifier drift (`pyproject.toml` says
-  `GPL-3.0-only`, every other manifest and the README say `GPL-3.0-or-later`).
+  `GPL-3.0-only`, every other manifest and the README say `GPL-3.0-or-later`). Done: a `.pc` file
+  per installed component (`cmake/PkgConfig.cmake`); `ac3adm`/`ac3::admbridge` now install/export
+  via `find_package(ac3forge)` shared-only (re-exporting the third-party libbw64/libadm they embed
+  was out of scope, so only the self-contained `.so` variant ships); `capi` vcpkg feature and Conan
+  option; `pyproject.toml` corrected to `GPL-3.0-or-later`. `tools/checks/check_packaging_versions.sh`
+  and the ABI gate (`ci.yml`) both extended so licence/feature/pkg-config drift and a missing
+  `abi-allowlist` entry (found stale for `ac3iab`, fixed alongside) fail CI instead of going
+  unnoticed.
 - [ ] **AP8 (M)** — A generated API reference (Doxygen into mkdocs; the header comments are
   already the reference) and versioned docs (`mike`: `latest` from `main`, `dev` from `develop`
   — today a `develop` docs change is invisible until a release). Note in `header-map.md` that
