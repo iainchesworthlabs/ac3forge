@@ -88,26 +88,11 @@ class KwargBinder {
 };
 
 // --- error translation -------------------------------------------------------
-// FrameError has no describe() on the C++ side (see docs/library/index.md's own conventions
-// list) - the message here is the enumerator's own name, not an invented description.
-std::string frame_error_name(ac3::FrameError e) {
-    switch (e) {
-        case ac3::FrameError::kInvalidBitrate: return "kInvalidBitrate";
-        case ac3::FrameError::kInvalidDialnorm: return "kInvalidDialnorm";
-        case ac3::FrameError::kInvalidSubstream: return "kInvalidSubstream";
-        case ac3::FrameError::kInvalidChannelMap: return "kInvalidChannelMap";
-        case ac3::FrameError::kTooManyChannels: return "kTooManyChannels";
-        case ac3::FrameError::kInvalidMixLevel: return "kInvalidMixLevel";
-        case ac3::FrameError::kInvalidBsi: return "kInvalidBsi";
-        case ac3::FrameError::kInvalidObjectAudio: return "kInvalidObjectAudio";
-    }
-    return "unknown";
-}
 
 struct EncodeFailure : std::runtime_error {
     ac3::FrameError code;
     explicit EncodeFailure(ac3::FrameError c)
-        : std::runtime_error("ac3forge encode failed: FrameError." + frame_error_name(c)), code(c) {}
+        : std::runtime_error("ac3forge encode failed: " + std::string(ac3::describe(c))), code(c) {}
 };
 
 struct DecodeFailure : std::runtime_error {
@@ -507,13 +492,16 @@ PYBIND11_MODULE(_ac3forge, m) {
     // --- free functions ----------------------------------------------------
     m.def("fullbw_channel_count", &ac3::fullbw_channel_count, py::arg("acmod"));
     m.def("sample_rate_hz", &ac3::sample_rate_hz, py::arg("sample_rate"));
-    // Cast to the specific overload: ac3::describe(DiagnosticEvent) (roadmap
-    // AP11, ac3/decoder/diagnostics.hpp) makes the bare &ac3::describe below
-    // ambiguous - a second overload in the same namespace, not something
-    // AP11's Python bindings surface at all (see docs/library/python-api.md's
-    // "What isn't exposed").
+    // Three overloads of the same C++ name now (ac3::describe(DecodeError),
+    // ac3::describe(FrameError) since AP2's FrameError::describe(), and
+    // ac3::describe(DiagnosticEvent), roadmap AP11's ac3/decoder/diagnostics.hpp) -
+    // &ac3::describe alone is ambiguous, so each bound overload is cast to its own
+    // function-pointer type. DiagnosticEvent's overload is not surfaced to Python at
+    // all (see docs/library/python-api.md's "What isn't exposed").
     m.def("describe", static_cast<std::string_view (*)(ac3::DecodeError)>(&ac3::describe),
           py::arg("error"), "Text for a DecodeError value");
+    m.def("describe", static_cast<std::string_view (*)(ac3::FrameError)>(&ac3::describe),
+          py::arg("error"), "Text for a FrameError value");
     m.def(
         "describe", [](ac3::io::ScanError e) { return std::string(ac3::io::describe(e)); },
         py::arg("error"), "Text for a ScanError value");
