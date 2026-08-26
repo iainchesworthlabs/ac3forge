@@ -432,6 +432,16 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
 
     set_target_properties(forge_simd_avx2 PROPERTIES
         POSITION_INDEPENDENT_CODE ON
+        # Same hidden-by-default rule forge_objects sets below: this object
+        # library's code ends up in the same forge_static/forge_shared
+        # archives, and without its own CXX_VISIBILITY_PRESET every symbol
+        # here (ac3::internal::avx2::*, the batched kernel entry points)
+        # compiles with default visibility and leaks into the .so's dynamic
+        # symbol table - visibility is a per-TU compile setting, so
+        # forge_shared's own hidden preset can't retroactively hide object
+        # code it merely links in.
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
         # LTO/LTCG is the one mechanism that can hoist AVX2-flagged codegen
         # across a translation-unit boundary into a caller that was never
         # compiled with the flag - silently producing an illegal
