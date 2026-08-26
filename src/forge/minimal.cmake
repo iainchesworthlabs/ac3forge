@@ -44,6 +44,20 @@ target_sources(forge_minimal
         src/core/mantissas.cpp       # §7.3 mantissa ungrouping and dither
         src/core/mdct.cpp            # §7.9.4 inverse transform (and the unused forward)
         src/core/transform/stub/reference_transform.cpp
+        # ROADMAP PF5's runtime-dispatch follow-on. mdct.cpp asks
+        # ac3::internal::cpu::has_avx2() before each vectorised kernel, so
+        # this profile has to answer - and both answers must LINK, not just
+        # compile.
+        #
+        # The MINIMAL variant of the probe, not the shared one: the shared
+        # implementation reports a bad AC3FORGE_SIMD_TIER through fmt, which
+        # this profile does not carry and whose formatted-output machinery it
+        # cannot afford. See that file's own header for why this is a separate
+        # translation unit rather than a branch. none/mdct_avx2.cpp supplies
+        # the std::unreachable() bodies for the declarations mdct.cpp calls on
+        # the branch a constant-false has_avx2() makes dead.
+        src/internal/cpu/minimal/cpu_features.cpp
+        src/internal/avx2/none/mdct_avx2.cpp
         # --- decode ------------------------------------------------------
         src/decoder/decoder.cpp             # AC-3, plus split_frames/split_access_units
         src/decoder/eac3_decoder.cpp        # Annex E, every tool
@@ -89,7 +103,18 @@ target_include_directories(forge_minimal
         # Cortex-M3 this profile targets has no vector unit for x86_64/
         # aarch64's intrinsics to reach, so there is no "auto" question to
         # ask here the way there is for the full library's desktop/Pi targets.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/generic")
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/generic"
+        # The runtime-AVX2 seam's three directories, resolved exactly as
+        # src/forge/CMakeLists.txt resolves them for the full library and for
+        # the same reason - the include SPELLING must not depend on which
+        # directory answers it. This profile always takes probe/none: an
+        # arm-none-eabi Cortex-M3 has no AVX2 to detect, so has_avx2() is a
+        # constant false here rather than a question. src/internal/avx2 is on
+        # the path for mdct_avx2.hpp's plain-signature declarations, which
+        # mdct.cpp includes unconditionally on every configuration.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/none"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
 
 target_compile_features(forge_minimal PUBLIC cxx_std_23)
 
