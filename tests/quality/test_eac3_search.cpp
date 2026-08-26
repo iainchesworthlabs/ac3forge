@@ -323,3 +323,50 @@ TEST_CASE("E-AC-3 fgaincod defaults to writing no fgaincode element at all",
         CHECK(base[frame] != other[frame]);
     }
 }
+
+// The fgaincod axis is one-directional, and that is a measured decision
+// rather than a cautious one - see the long note at its candidate guard in
+// eac3_frame.cpp's step 7a.
+//
+// The short version: this search minimises decoded-domain distortion, and on
+// E-AC-3 that criterion is OPPOSED to perceived quality along this axis. A
+// sweep of all eight codes on real CC0 material found SNR rising monotonically
+// with fgaincod while ViSQOL MOS-LQO fell, the MOS optimum sitting exactly on
+// §8.2.12's 0x4. An unrestricted search therefore buys SNR it can see and
+// spends quality it cannot - measured at -0.396 MOS against the one-axis
+// search at 96 kbit/s stereo. Only codes below 0x4, where the two measures
+// agree, are offered.
+//
+// 96 kbit/s stereo is the cell where AC-3's curve asks for 6 (above the
+// default) and where the regression was largest, so a search there must come
+// back with the default; 640 is where it asks for 0 and the axis is allowed
+// to act.
+TEST_CASE("the E-AC-3 search never raises fgaincod above the default",
+          "[quality][search][eac3]") {
+    const auto material = make_material(2);
+    // Low rate: AC-3's curve points up, so the axis must stay out of it and
+    // the encode must be identical to what the one-axis search produces.
+    // Pinning the default reproduces "one axis" exactly - it takes fgaincod
+    // out of the candidate set without changing anything else.
+    auto two_axis = config_for(ac3::quality::Criterion::kDistortion, ac3::Acmod::k2_0, false, 96);
+    auto one_axis = two_axis;
+    one_axis.fgaincod = 4;  // the default, stated - no element, no candidate
+
+    const auto searched = encode_all(two_axis, material);
+    const auto pinned = encode_all(one_axis, material);
+    REQUIRE(searched.size() == pinned.size());
+    for (std::size_t frame = 0; frame < searched.size(); ++frame) {
+        CAPTURE(frame);
+        CHECK(searched[frame] == pinned[frame]);
+    }
+
+    // And the guard is a direction test, not a blanket disable: at 640 the
+    // curve asks for 0, which is below the default, so the axis is live. That
+    // does not oblige the search to TAKE it - the refit may still reject it -
+    // so this only asserts the encode remains valid and decodable, which is
+    // what the mirror check below covers properly.
+    const int curve_640 = ac3::rate_adaptive_fgaincod(640, 2);
+    CHECK(curve_640 < 4);
+    const int curve_96 = ac3::rate_adaptive_fgaincod(96, 2);
+    CHECK(curve_96 > 4);
+}

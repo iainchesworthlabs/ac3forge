@@ -104,6 +104,7 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
     p.tools.coupling = couple;
     p.tools.fast_mdct = meta.fast_mdct;
     p.tools.search = meta.search;
+    p.tools.fgaincod = meta.fgaincod;
     p.tools.dither = meta.dither;
     const auto config = plan::ac3_config(p);
     const auto cp = plan::resolve(p);
@@ -173,6 +174,7 @@ int run_eac3_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_
     // 'sine'/'encode's identical assignment.
     p.tools.fast_mdct = meta.fast_mdct;
     p.tools.search = meta.search;
+    p.tools.fgaincod = meta.fgaincod;
     p.tools.dither = meta.dither;
     // eac3-encode meets an unframable rate with its own post-construction
     // check (encode.cpp's eac3_config_accepted()); this command builds its

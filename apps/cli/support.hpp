@@ -283,6 +283,21 @@ struct Options {
     // config it feeds - it costs encode time, and this project does not turn
     // a decision knob on without the numbers. AC-3 encodes only.
     ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
+    // §7.2.2.4 fast gain, Table 7.11 - the OTHER axis search= moves, offered
+    // here as a pin for the runs that want one code held across a whole
+    // encode rather than chosen per frame (plan::Tools::fgaincod, reaching
+    // EncoderConfig::fgaincod and eac3::FrameConfig::fgaincod). -1 is
+    // 'auto', which means different things to the two codecs and
+    // deliberately so: AC-3 hangs fgaincod off an element it already sends
+    // every block, so auto follows ac3::rate_adaptive_fgaincod()'s measured
+    // curve for free; E-AC-3's baie does not carry fgaincod at all, so auto
+    // leaves Table E1.4's implied 0x4 and writes no element. Pinning 0..7
+    // makes E-AC-3 pay for the per-block fgaincode element in all six
+    // blocks - which is exactly the trade this option exists to let a
+    // measurement run put a number on. Not command-scoped, for the same
+    // reason dither=/search= are not: every command that encodes at all can
+    // answer it, in either codec.
+    int fgaincod = -1;
     // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
     // of the human-readable table. Off by default - a bare `ac3cli probe
     // <file>` is meant to be read by a person, and every other command here

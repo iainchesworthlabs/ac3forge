@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 55> kOptionTokens{{
+constexpr std::array<OptionToken, 56> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -70,6 +70,7 @@ constexpr std::array<OptionToken, 55> kOptionTokens{{
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
     {"search=", "AC-3 encode, and eac3-encode under CBR: bit-allocation search, off (default)"},
+    {"fgaincod=", "encode: auto (default) or 0..7, §7.2.2.4 fast gain pinned for the whole encode"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
     {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
     {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},
@@ -497,8 +498,18 @@ void print_option_blocks(std::uint32_t mask) {
                      "weights it by a tonality/masking model first. off (the default) keeps every "
                      "release before this one's fixed values - costs encode time, see "
                      "docs/library/quality.md for the measured figures. eac3-encode: CBR only "
-                     "(dbpbcod against kAllocCodes/Table E1.4's two values, EQ13's own scope "
-                     "note) - inert under vbr= and under perceptual, same as off");
+                     "(dbpbcod against kAllocCodes/Table E1.4's two values, and fgaincod against "
+                     "the measured rate curve, each candidate refit against its own side-info "
+                     "cost) - inert under vbr= and under perceptual, same as off");
+        fmt::println("  fgaincod=<code>   pin §7.2.2.4's fast gain (Table 7.11) for the whole "
+                     "encode instead of letting the encoder choose it - auto (the default) or "
+                     "0..7, where a higher code leaks more of the fast masking curve. auto is "
+                     "each codec's own behaviour and they differ: AC-3 follows a measured "
+                     "rate curve, because fgaincod rides an element it already sends every "
+                     "block; E-AC-3 leaves Table E1.4's implied 0x4 and writes nothing, because "
+                     "there any other code opens a per-block fgaincode element in all six "
+                     "blocks (1 + 3*(nchans + cplinu) bits each). Pinning it on eac3-encode "
+                     "pays that cost and takes the code out of search='s candidate set");
         fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
                      "channel per block from content - applies wherever this command encodes, "
                      "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "

@@ -4750,19 +4750,37 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (!(kBamode0Codes == defaults) && !(kBamode0Codes == incumbent)) {
             consider(kBamode0Codes);
         }
-        // Roadmap EQ7/EQ13: the second axis. EQ13's own entry recorded that a
-        // one-axis E-AC-3 search had very little left to find - EQ3 had
-        // already swept dbpbcod and found 3 winning every cell on average, so
-        // {2, 3} with nothing to move alongside it is close to a settled
-        // question. fgaincod is what moves alongside it now: the same
-        // measured curve AC-3 uses, plus §8.2.12's own default, each tried on
-        // top of whichever dbpbcod is otherwise winning. Unlike AC-3's, these
-        // candidates are not free - each opens the fgaincode element - which
-        // is exactly why they are scored on real decoded-domain distortion
-        // after a refit rather than assumed.
+        // Roadmap EQ7/EQ13: the second axis, and the one direction of it that
+        // measured as safe.
+        //
+        // EQ13's own entry recorded that a one-axis E-AC-3 search had little
+        // left to find - EQ3 had already swept dbpbcod and found 3 winning
+        // every cell, so {2, 3} alone is close to a settled question.
+        // fgaincod is what moves alongside it, taking AC-3's own measured
+        // curve as the candidate.
+        //
+        // Only DOWNWARD, and that restriction is measured rather than
+        // cautious. This search minimises decoded-domain distortion, and on
+        // E-AC-3 that criterion and perceived quality are OPPOSED along this
+        // axis: sweeping all eight codes on real CC0 material at 96 kbit/s
+        // stereo, SNR rises monotonically 25.49 -> 27.37 dB from code 4 to 7
+        // while ViSQOL MOS-LQO falls 4.619 -> 4.127, with the MOS optimum
+        // sitting exactly on §8.2.12's 0x4 on both speech and music at both
+        // 96 and 192. So an unrestricted search reliably buys SNR the
+        // criterion can see and spends quality it cannot: measured at
+        // -0.396 MOS (speech) and -0.097 (music) against the one-axis search
+        // at 96 kbit/s. AC-3's curve asks for codes ABOVE 0x4 at exactly
+        // those low rates, so carrying it across whole is directionally
+        // wrong for this codec.
+        //
+        // Below 0x4 the two measures agree and the axis pays: +3.3 dB SNR at
+        // 640 stereo with MOS flat, and +1.17 dB / +0.29 MOS at coupled
+        // 5.1/640. That is the half kept. The side info is not what decides
+        // this either way - the element costs about 0.3-0.4 dB SNR and
+        // ~0.00 MOS, two orders below the quality the upward codes lose.
         const int curve = rate_adaptive_fgaincod(
             static_cast<int>(impl_->config_.bitrate_kbps), nfchans);
-        if (impl_->config_.fgaincod < 0 && curve != kFgaincodDefault) {
+        if (impl_->config_.fgaincod < 0 && curve < kFgaincodDefault) {
             for (const BitAllocCodes base : {defaults, kBamode0Codes}) {
                 BitAllocCodes candidate = base;
                 candidate.fgaincod = curve;

@@ -574,6 +574,88 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
     }
 }
 
+TEST_CASE("fgaincod= pins §7.2.2.4's fast gain on both codecs", "[cli][fgaincod]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "fgaincod_in.wav";
+    const auto channels = make_tone_channels(2, 4000, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    const auto bytes_of = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    SECTION("a pinned code reaches an AC-3 encode and changes the stream") {
+        const auto auto_path = dir / "fgaincod_auto.ac3";
+        const auto pinned_path = dir / "fgaincod_pinned.ac3";
+        const auto log = dir / "fgaincod_ac3.log";
+        fs::remove(auto_path);
+        fs::remove(pinned_path);
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + auto_path.string() +
+                            "\" 192 stereo fgaincod=auto",
+                        log) == 0);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + pinned_path.string() +
+                                    "\" 192 stereo fgaincod=7",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        REQUIRE(fs::exists(auto_path));
+        REQUIRE(fs::exists(pinned_path));
+        // A different fast gain is a different masking curve, so a different
+        // allocation: proof the token reached EncoderConfig::fgaincod rather
+        // than merely parsing. Compared as a bool for the reason the atmos
+        // motion test above gives - stringifying multi-KB streams for a
+        // Catch2 diff is at best slow.
+        const bool differs = bytes_of(auto_path) != bytes_of(pinned_path);
+        CHECK(differs);
+    }
+
+    SECTION("on E-AC-3, auto is byte-identical to saying nothing and a pin is not") {
+        const auto silent_path = dir / "fgaincod_silent.ec3";
+        const auto auto_path = dir / "fgaincod_auto.ec3";
+        const auto pinned_path = dir / "fgaincod_pinned.ec3";
+        const auto log = dir / "fgaincod_eac3.log";
+        for (const auto& path : {silent_path, auto_path, pinned_path}) {
+            fs::remove(path);
+        }
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + silent_path.string() +
+                            "\" 192 none stereo",
+                        log) == 0);
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + auto_path.string() +
+                            "\" 192 none stereo fgaincod=auto",
+                        log) == 0);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    pinned_path.string() + "\" 192 none stereo fgaincod=7",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        REQUIRE(fs::exists(pinned_path));
+        // eac3::FrameConfig::fgaincod's own contract: -1 writes no fgaincode
+        // element at all, so the default frame is exactly what it was before
+        // the field existed. Pinning opens the element in all six blocks.
+        const bool auto_is_default = bytes_of(silent_path) == bytes_of(auto_path);
+        CHECK(auto_is_default);
+        const bool pin_differs = bytes_of(silent_path) != bytes_of(pinned_path);
+        CHECK(pin_differs);
+    }
+
+    SECTION("out-of-range and non-numeric codes are refused, not clamped") {
+        for (const std::string bad : {"8", "-2", "four", ""}) {
+            const auto out_path = dir / "fgaincod_bad.ac3";
+            const auto log = dir / "fgaincod_bad.log";
+            fs::remove(out_path);
+            INFO("fgaincod=" << bad);
+            const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" +
+                                        out_path.string() + "\" 192 stereo fgaincod=" + bad,
+                                    log);
+            CHECK(rc != 0);
+            CHECK_FALSE(fs::exists(out_path));
+            CHECK(read_log(log).find("fgaincod") != std::string::npos);
+        }
+    }
+}
+
 // capture2= is 'live'-only, but its rejection happens in parse_options,
 // before Needs::kCapture is even checked (see run_main: parse_options runs
 // on the whole trailing-options span before the per-command needs gate) -
