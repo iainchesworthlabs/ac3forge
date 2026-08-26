@@ -129,6 +129,9 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
   `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
   `eac3::FrameEncoder`/`AccessUnitEncoder`.
+- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` npm package (roadmap UX5): a
+  push-frame decode API, an AudioWorklet playback pipeline, and an hls.js/MSE bridge over the
+  decoder compiled to WASM.
 
 ## Conventions
 

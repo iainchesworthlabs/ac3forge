@@ -1293,11 +1293,46 @@ jobs:
 
       - uses: ./.github/actions/setup-emscripten
 
+      # Moved ahead of the CMake build (unlike the setup-node this job used
+      # to do only for the Playwright harness below): roadmap UX5's
+      # ac3forge-wasm-decoder package (js/) has to be built before the
+      # "Assemble" step further down can copy its dist/ into the servable
+      # wasm_decode_demo/ directory - the demo is a consumer of the package
+      # (see docs/platforms/wasm.md), not a parallel implementation, so its
+      # build output has to exist first.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            js/package-lock.json
+            apps/wasm/tests/package-lock.json
+
+      - name: Build ac3forge-wasm-decoder package
+        working-directory: js
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm test
+
       - name: Configure
         run: cmake --preset config-wasm-emscripten
 
       - name: Build
         run: cmake --build build/config-wasm-emscripten
+
+      # apps/wasm/CMakeLists.txt only knows how to assemble ITS OWN static
+      # files (index.html/demo.js/favicons/the demo bitstream) plus whatever
+      # RUNTIME_OUTPUT_DIRECTORY put there (ac3forge_decode.js/.wasm) - it
+      # has no reason to learn about npm. This step is the same idea
+      # docs.yml's own deploy job already uses for its gh-pages assembly:
+      # plain shell, not a build-system feature.
+      - name: Assemble ac3forge-wasm-decoder into the demo directory
+        run: |
+          set -euo pipefail
+          mkdir -p build/config-wasm-emscripten/bin/wasm_decode_demo/package
+          cp -r js/dist/. build/config-wasm-emscripten/bin/wasm_decode_demo/package/
 
       # Not consumed by docs.yml (see this job's own header) - uploaded
       # purely so a failed/successful build's actual output is inspectable
@@ -1315,16 +1350,12 @@ jobs:
       # leg checked - docs/platforms/wasm.md's "Not yet verified" section
       # recorded decode/playback/render correctness as manual-only,
       # re-checked by eye every time this demo changed. apps/wasm/tests'
-      # Playwright harness drives the real Embind API against the bundled
+      # Playwright harness drives the real published package (js/) - the
+      # same calls apps/wasm/demo.js itself makes - against the bundled
       # fixture and asserts the same real values (channel count, sample
-      # rate, object count, duration, a moving object position) that manual
+      # rate, object count, duration, a moving object position, and now the
+      # AudioWorklet pipeline's own non-silent decoded output) that manual
       # verification checked before.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: apps/wasm/tests/package-lock.json
-
       - name: Install Playwright harness
         working-directory: apps/wasm/tests
         run: |

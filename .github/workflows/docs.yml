@@ -23,6 +23,10 @@ on:
       # needs the demo republished goes through apps/wasm/ (or one of
       # the paths below) too.
       - "apps/wasm/**"
+      # ac3forge-wasm-decoder (roadmap UX5) - the demo embeds js/dist/
+      # alongside the compiled decoder, so a package-only change also has
+      # to trigger a redeploy, same reasoning as apps/wasm/** above.
+      - "js/**"
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "cmake/toolchains/wasm.emscripten.toolchain.cmake"
@@ -38,6 +42,10 @@ on:
       - "CONTRIBUTING.md"
       - "ROADMAP.md"
       - "apps/wasm/**"
+      # ac3forge-wasm-decoder (roadmap UX5) - the demo embeds js/dist/
+      # alongside the compiled decoder, so a package-only change also has
+      # to trigger a redeploy, same reasoning as apps/wasm/** above.
+      - "js/**"
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "cmake/toolchains/wasm.emscripten.toolchain.cmake"
@@ -125,11 +133,31 @@ jobs:
 
       - uses: ./.github/actions/setup-emscripten
 
+      # ac3forge-wasm-decoder (roadmap UX5, js/) has to be built before the
+      # Emscripten rebuild below, which copies js/dist/ alongside the
+      # compiled decoder into the directory that overwrites docs/assets/
+      # wasm-decode-demo/ - the demo is a consumer of the package (see
+      # docs/platforms/wasm.md), so its build output has to exist first.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - name: Build ac3forge-wasm-decoder package
+        working-directory: js
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
       - name: Rebuild WASM decode demo
         run: |
           set -euo pipefail
           cmake --preset config-wasm-emscripten
           cmake --build build/config-wasm-emscripten
+          mkdir -p build/config-wasm-emscripten/bin/wasm_decode_demo/package
+          cp -r js/dist/. build/config-wasm-emscripten/bin/wasm_decode_demo/package/
           rm -rf docs/assets/wasm-decode-demo
           mkdir -p docs/assets/wasm-decode-demo
           cp -r build/config-wasm-emscripten/bin/wasm_decode_demo/. docs/assets/wasm-decode-demo/

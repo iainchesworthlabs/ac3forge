@@ -130,6 +130,26 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
 
+**Browser / WASM**
+
+- **A published npm package**, [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder),
+  turning the WASM decode demo's underlying build into a reusable browser decoder — a real answer
+  to Chrome's continued inability to decode EC-3 natively
+  ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)).
+- **A push-frame decode API** over the caller-buffer `decode_access_unit_into` form, so decoding a
+  live/streaming source allocates nothing on the hot path.
+- **A realtime AudioWorklet playback pipeline**: decoding runs in a Worker, off the main thread;
+  only a lock-free `SharedArrayBuffer` ring-buffer drain runs on the audio-rendering thread.
+  Multichannel output or the library's own §7.8 downmix (never a hand-rolled fold) is selectable
+  per stream.
+- **An hls.js/MSE bridge** for playing EC-3 audio where the browser cannot decode it natively —
+  patches `MediaSource`'s codec-support/`SourceBuffer` surface (a passive event listener alone
+  doesn't work: hls.js drops an audio track outright the moment the real `addSourceBuffer` throws
+  for an unsupported codec) and extracts access units from the fMP4 segments hls.js's own remuxer
+  produces.
+- The docs site's WASM demo is now a consumer of the published package rather than its own
+  parallel implementation of the same decode/playback logic.
+
 **Verification**
 
 - **E-AC-3 gains the coverage AC-3 already had**: an encoder input-space fuzzer, a mirror

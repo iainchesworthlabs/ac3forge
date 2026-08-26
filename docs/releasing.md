@@ -262,6 +262,45 @@ Pushing a `v*` tag (the same tag that triggers `release.yml`, see
 job for that tag, which requests an OIDC token against the `pypi` environment and uploads the
 built wheels — the `build` job (and its artifact) runs on every push regardless.
 
+## Publishing to npm
+
+Roadmap **UX5**: the browser decoder package (`js/`, see
+[docs/platforms/wasm.md](platforms/wasm.md)) as the
+[`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder) npm package.
+Versioning mirrors the PyPI package above rather than reinventing it: `js/package.json` carries a
+`0.0.0-dev` placeholder in the tree (the same untagged-build fallback CMake's own
+`GitVersionDerivation.cmake` uses), and `release.yml`'s `publish-npm` job stamps the real,
+resolved version (`npm version <version> --no-git-tag-version`) immediately before `npm publish`
+— nothing to keep in sync by hand, and the tag is still the single source of truth.
+
+**Publishing to npm is gated on a not-yet-provisioned `npm` GitHub environment** — unlike PyPI
+above, this has not been set up yet. `publish-npm` is gated on both a `v*` tag push and the `npm`
+environment, and (like PyPI) uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
+(OIDC) rather than a stored token — there is no `NPM_TOKEN` secret to leak in the first place.
+**Nobody should ever generate a long-lived npm token and paste it into a chat with an agent or
+into a GitHub secret** — trusted publishing exists specifically so that never has to happen.
+
+The one-time setup this needs (a maintainer, directly on npmjs.com and on GitHub — not something
+an agent should do, the same rule as PyPI's setup above):
+
+1. Publish the very first `ac3forge-wasm-decoder` release by hand (`cd js && npm publish` with a
+   temporary, scoped token deleted immediately after) to create the project on npmjs.com — npm's
+   trusted-publishing setup, unlike PyPI's, needs the package to already exist; there is no
+   "pending publisher" pre-registration mechanism for a name that doesn't exist yet.
+2. On the package's npmjs.com settings page, add a trusted publisher: provider GitHub Actions,
+   organization/user `iainchesworthlabs`, repository `ac3forge`, workflow filename
+   `release.yml`, environment `npm`.
+3. In the GitHub repo, create an environment named `npm` (Settings → Environments) — no secrets
+   need adding to it, the same reasoning as the `pypi` environment above. Optionally add required
+   reviewers for a manual approval gate before a publish actually runs.
+4. Requires npm CLI ≥ 11.5.1 and Node ≥ 22.14.0 for OIDC support — `release.yml`'s job installs
+   `npm@latest` explicitly rather than trusting whatever `actions/setup-node`'s chosen Node
+   version happens to bundle.
+
+Pushing a `v*` tag triggers `publish-npm` for that tag, which requests an OIDC token against the
+`npm` environment and runs `npm publish` from `js/` — no `--provenance` flag needed, npm attaches
+provenance attestations automatically for a trusted-published package.
+
 ## Homebrew formula and cask
 
 A Homebrew formula for `ac3cli` is staged in-tree at

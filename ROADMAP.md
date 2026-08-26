@@ -1197,11 +1197,27 @@ directory; there is still no threading anywhere in the codec core.
   the synthetic orbit as "the hook a real live position source drops into once one exists"; the
   Shield app is the only controller-driven path. Lands on `ac3::oba::SceneCursor`, the live half
   of IM7's scene type, which exists for exactly this.
-- [ ] **UX5 (L)** — WASM as a reusable streaming decoder: a push-frame API over
-  `decode_access_unit_into`, an AudioWorklet, multichannel output or DC1's downmix, published as
-  a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3
+- [x] **UX5 (L)** — WASM as a reusable streaming decoder. Shipped as
+  [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder) (`js/`): a
+  push-frame `PushDecoder` over `decode_access_unit_into`'s caller-buffer form (buffers allocated
+  once, reused every call — the C++ hot path allocates nothing), an `Ac3ForgeDecoderNode`
+  (decode in a Worker, a real `AudioWorkletNode` draining a `SharedArrayBuffer` ring buffer, so
+  only the ring-buffer read runs on the audio thread), multichannel output or DC1's
+  `ac3::OutputStage` downmix applied over a reused copy (never a hand-rolled fold), and an
+  hls.js/MSE bridge (`js/src/fmp4.ts` + a `MediaSource`/`addSourceBuffer` shim — a passive
+  `BUFFER_APPENDING` listener alone doesn't work, since hls.js drops the audio track entirely the
+  moment `addSourceBuffer('audio/mp4;codecs="ec-3"')` throws). `apps/wasm/`'s demo is now a
+  consumer of the package, not a parallel implementation — its old bespoke whole-file Embind
+  `Decoder` class is gone; `js/src/decode-file.ts`'s `decodeFile()` is built on `PushDecoder`
+  instead. Published versioning tracks the same release tag the PyPI package uses; npm
+  publishing itself is gated on a not-yet-provisioned `npm` GitHub environment (see
+  `docs/releasing.md`). Chrome still cannot decode EC-3
   ([video.js http-streaming #1297](https://github.com/videojs/http-streaming/issues/1297) is
-  open); the docs demo becomes a consumer of the package.
+  open) — this is a real, if not yet live-stream-soak-tested, answer to that. See
+  `docs/platforms/wasm.md`'s verification notes for exactly what's been checked (a real local
+  Emscripten 6.0.6 build, both Playwright specs, `js/`'s own unit tests against a real
+  ffmpeg-remuxed fMP4 fixture) versus what hasn't (a live hls.js instance against a real HLS
+  server).
 - [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` calls it "a separate, much
   larger undertaking"; the encoders are already proven platform-free (C API, wheels, NDK). A
   drop-a-WAV / capture-a-mic encode page, and a browser-side `qc`.

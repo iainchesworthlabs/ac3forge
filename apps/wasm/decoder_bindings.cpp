@@ -1,20 +1,31 @@
-// Embind wrapper around ac3::forge's decode path, for the roadmap-F3 browser
-// demo (apps/wasm/index.html). One JS-visible class, `Decoder`: feed it
-// a raw AC-3/E-AC-3 elementary stream (a Uint8Array, exactly what
-// fetch().arrayBuffer() gives you - no container, no demux step, see
-// ac3::io::scan's own header comment), and it decodes every access unit up
-// front, exposing:
-//   - the concatenated PCM per channel, plus a coarse per-block RMS energy
-//     trace per channel, driving the speaker-ring visualization;
-//   - real decoded Atmos object positions/gain per frame
-//     (DecodedAccessUnit::object_metadata, from OAMD) and each object's own
-//     reconstructed audio (::object_audio, from JOC) - both real decode-side
-//     capabilities, not present when this file was first written; see
-//     apply_objects()'s own comment for the exact API shape and its limits.
+// Embind wrapper around ac3::forge's decode path, for the reusable push-frame
+// package (roadmap UX5, js/) and the docs demo built on top of it
+// (apps/wasm/index.html - see js/src/decode-file.ts for the whole-file
+// convenience helper the demo actually calls).
+//
+// Two entry points:
+//   - scanStream(bytes): a thin wrapper over ac3::io::scan, so a caller can
+//     slice a whole elementary-stream blob into the access units
+//     PushDecoder::pushAccessUnit expects without re-walking syncframes
+//     itself.
+//   - PushDecoder: one ac3::Eac3Decoder per instance, decoding one access
+//     unit per call through decode_access_unit_into's caller-buffer form -
+//     the PCM buffers are allocated ONCE at construction and reused for
+//     every call (apps/baremetal/probe.cpp established the same
+//     caller-buffer pattern for the bare-metal PF7 profile), so the hot path
+//     never allocates on the C++ side. Eac3Decoder alone is enough for every
+//     ac3::io::StreamKind - decode_access_unit's own doc comment: a plain
+//     AC-3 syncframe "comes back as substream (kIndependent, 0)" - so
+//     scanStream's `kind` is informational only; PushDecoder does not branch
+//     on it.
+//
+// The optional §7.8 fold (DC1's ac3::OutputStage, never a hand-rolled one) is
+// applied separately from the main decode, over a small reused COPY of the
+// just-decoded channels - see PushDecoder::apply_fold's own comment for why
+// it can't be done in place.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -33,205 +44,244 @@
 
 namespace {
 
-// One RMS value per this many samples per channel - about 21ms at 48kHz,
-// small enough for the visualization to feel responsive to the music without
-// recomputing energy in JS on every animation frame.
-constexpr std::size_t kEnergyBlockSamples = 1024;
+// §E3.8.2's cap - the same bound apps/baremetal/probe.cpp's g_pcm/g_pcm_spans use.
+constexpr std::size_t kMaxChannels = 16;
+// x, y, z, gain_db, then §5.6.1.2's width/depth/height.
+constexpr std::size_t kPositionStride = 7;
 
-std::vector<float> block_rms(const std::vector<float>& samples, std::size_t block_size) {
-    std::vector<float> out;
-    if (block_size == 0) {
-        return out;
-    }
-    out.reserve(samples.size() / block_size + 1);
-    for (std::size_t start = 0; start < samples.size(); start += block_size) {
-        const std::size_t end = std::min(start + block_size, samples.size());
-        double sum_sq = 0.0;
-        for (std::size_t i = start; i < end; ++i) {
-            const double s = static_cast<double>(samples[i]);
-            sum_sq += s * s;
+// DecodedAccessUnit's `layout` gives the real Table E2.5 channel identity for
+// each position; dual mono (layout.count == 0) is the one case with no
+// layout at all (DecodedAccessUnit's own comment), and OutputStage already
+// treats it as two unrelated programmes rather than a soundfield - so the
+// only label fallback needed here is Ch1/Ch2.
+std::vector<std::string> channel_labels(const ac3::eac3::chanmap::Layout& layout,
+                                        ac3::Acmod acmod) {
+    if (layout.count > 0) {
+        std::vector<std::string> labels;
+        labels.reserve(static_cast<std::size_t>(layout.count));
+        for (const auto location : layout) {
+            labels.emplace_back(ac3::eac3::chanmap::name(location));
         }
-        const double count = static_cast<double>(end - start);
-        out.push_back(static_cast<float>(std::sqrt(sum_sq / count)));
+        return labels;
     }
-    return out;
+    if (acmod == ac3::Acmod::kDualMono) {
+        return {"Ch1", "Ch2"};
+    }
+    return {};
+}
+
+emscripten::val make_string_array(const std::vector<std::string>& values) {
+    auto arr = emscripten::val::array();
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        arr.set(static_cast<unsigned>(i), values[i]);
+    }
+    return arr;
+}
+
+emscripten::val make_error(const std::string& message) {
+    auto result = emscripten::val::object();
+    result.set("ok", false);
+    result.set("error", message);
+    return result;
 }
 
 }  // namespace
 
-class WasmDecoder {
+// Splits a whole elementary-stream byte blob into the access units
+// PushDecoder::pushAccessUnit expects, one call per entry - used by the
+// whole-file convenience helper (js/src/decode-file.ts) and available to any
+// consumer that already has a complete file rather than a live push feed
+// (an hls.js/MSE bridge instead slices its own container samples and never
+// needs this). Reuses ac3::io::scan rather than re-walking syncframes here.
+emscripten::val scanStream(const emscripten::val& js_bytes) {
+    const std::vector<std::uint8_t> raw = emscripten::vecFromJSArray<std::uint8_t>(js_bytes);
+    const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(raw.data()),
+                                            raw.size());
+
+    const auto scanned = ac3::io::scan(bytes);
+    if (!scanned) {
+        return make_error(std::string(ac3::io::describe(scanned.error())));
+    }
+
+    auto result = emscripten::val::object();
+    result.set("ok", true);
+    switch (scanned->kind) {
+        case ac3::io::StreamKind::kAc3:
+            result.set("kind", std::string("AC-3"));
+            break;
+        case ac3::io::StreamKind::kEac3:
+            result.set("kind", std::string("E-AC-3"));
+            break;
+        case ac3::io::StreamKind::kAc3CoreEac3Extension:
+            result.set("kind", std::string("AC-3 core + E-AC-3 extension"));
+            break;
+    }
+    result.set("sampleRate", static_cast<int>(ac3::sample_rate_hz(scanned->sample_rate)));
+
+    auto units = emscripten::val::array();
+    for (std::size_t i = 0; i < scanned->access_units.size(); ++i) {
+        const auto& unit = scanned->access_units[i];
+        auto entry = emscripten::val::object();
+        entry.set("offset", static_cast<unsigned>(reinterpret_cast<const std::uint8_t*>(unit.data()) -
+                                                    raw.data()));
+        entry.set("length", static_cast<unsigned>(unit.size()));
+        units.set(static_cast<unsigned>(i), entry);
+    }
+    result.set("accessUnits", units);
+    return result;
+}
+
+class PushDecoder {
    public:
-    // Decodes the whole stream up front. Returns true on success; on failure,
-    // error() explains why and every other getter reports an empty result.
-    bool decode(const emscripten::val& js_bytes) {
-        try {
-            return decode_impl(js_bytes);
-        } catch (const std::bad_alloc&) {
-            // The module's MAXIMUM_MEMORY ceiling (CMakeLists.txt) turned
-            // heap exhaustion into an exception instead of a dead tab; turn
-            // that into the same readable refusal any decode error gets.
-            // Partial state from the failed decode is discarded wholesale.
-            *this = WasmDecoder();
-            error_ =
-                "out of memory: this file's decoded audio does not fit the "
-                "demo's memory budget - try a shorter clip";
-            return false;
+    // foldTarget: ac3::DownmixTarget's own numeric order (0=as-coded,
+    // 1=Lo/Ro, 2=Lt/Rt, 3=mono) - kept as a plain int rather than an enum
+    // binding for one constructor argument. 0/false/false (the default a
+    // caller gets by passing target=asCoded) means "no fold": foldPcm/
+    // foldChannelCount then always report nothing, and apply_fold's copy is
+    // skipped entirely.
+    PushDecoder(int fold_target, bool fold_apply_dialnorm, bool fold_mix_lfe)
+        : fold_(ac3::OutputConfig{.target = static_cast<ac3::DownmixTarget>(fold_target),
+                                  .apply_dialnorm = fold_apply_dialnorm,
+                                  .mix_lfe = fold_mix_lfe}) {
+        for (auto& channel : pcm_) {
+            channel.resize(ac3::kSamplesPerFrame);
+        }
+        for (auto& channel : fold_scratch_) {
+            channel.resize(ac3::kSamplesPerFrame);
+        }
+        spans_.reserve(pcm_.size());
+        for (auto& channel : pcm_) {
+            spans_.emplace_back(channel);
         }
     }
 
-   private:
-    bool decode_impl(const emscripten::val& js_bytes) {
-        error_.clear();
-        channels_.clear();
-        stereo_.clear();
-        stereo_stage_.reset();
-        labels_.clear();
-        stream_kind_.clear();
-        sample_rate_ = 0;
-        object_count_ = 0;
-        object_start_frame_ = -1;
-        global_frame_index_ = 0;
+    emscripten::val pushAccessUnit(const emscripten::val& js_bytes) {
         object_positions_.clear();
         object_audio_.clear();
+        object_labels_.clear();
+        fold_channel_count_ = 0;
 
         const std::vector<std::uint8_t> raw = emscripten::vecFromJSArray<std::uint8_t>(js_bytes);
         const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(raw.data()),
                                                 raw.size());
-
-        const auto scanned = ac3::io::scan(bytes);
-        if (!scanned) {
-            error_ = std::string(ac3::io::describe(scanned.error()));
-            return false;
-        }
-        // Three kinds, not two: a §E2.3.1.2 legacy core is an AC-3 bed with
-        // E-AC-3 dependents over it, and calling that either name alone
-        // misdescribes the file in the one place the demo shows the user what
-        // it opened. It decodes down the Eac3Decoder branch below, which reads
-        // the AC-3 core natively.
-        switch (scanned->kind) {
-            case ac3::io::StreamKind::kAc3:
-                stream_kind_ = "AC-3";
-                break;
-            case ac3::io::StreamKind::kEac3:
-                stream_kind_ = "E-AC-3";
-                break;
-            case ac3::io::StreamKind::kAc3CoreEac3Extension:
-                stream_kind_ = "AC-3 core + E-AC-3 extension";
-                break;
-        }
-        sample_rate_ = static_cast<int>(ac3::sample_rate_hz(scanned->sample_rate));
-
-        if (scanned->kind == ac3::io::StreamKind::kAc3) {
-            ac3::FrameDecoder decoder;
-            for (const auto unit : scanned->access_units) {
-                const auto decoded = decoder.decode_frame(unit);
-                if (!decoded) {
-                    error_ = std::string(ac3::describe(decoded.error()));
-                    return false;
-                }
-                if (labels_.empty()) {
-                    labels_ = ac3_channel_labels(decoded->acmod, decoded->lfe);
-                }
-                fold_stereo(decoded->channels, nullptr, decoded->acmod, decoded->lfe,
-                            ac3::mix_levels(decoded->cmixlev, decoded->surmixlev),
-                            decoded->dialnorm);
-                append(decoded->channels);
+        try {
+            auto decoded = decoder_.decode_access_unit_into(bytes, spans_);
+            if (!decoded) {
+                return make_error(std::string(ac3::describe(decoded.error())));
             }
-        } else {
-            ac3::Eac3Decoder decoder;
-            for (const auto unit : scanned->access_units) {
-                const auto decoded = decoder.decode_access_unit(unit);
-                if (!decoded) {
-                    error_ = std::string(ac3::describe(decoded.error()));
-                    return false;
-                }
-                if (decoded->has_value()) {
-                    apply_layout(**decoded);
-                    apply_objects(**decoded);
-                }
+            if (!decoded->has_value()) {
+                auto result = emscripten::val::object();
+                result.set("ok", true);
+                result.set("holdBack", true);
+                return result;
             }
-            for (const auto& flushed : decoder.flush()) {
-                apply_layout_substream(flushed);
-            }
+            return describe_unit(**decoded);
+        } catch (const std::bad_alloc&) {
+            // ALLOW_MEMORY_GROWTH (CMakeLists.txt) turns heap exhaustion into
+            // an exception rather than a dead tab - same reasoning as the old
+            // whole-file Decoder's decode().
+            return make_error(
+                "out of memory: this frame's decoded audio does not fit the module's memory "
+                "budget");
         }
-
-        energy_.clear();
-        for (const auto& pcm : channels_) {
-            energy_.push_back(block_rms(pcm, kEnergyBlockSamples));
-        }
-        return true;
     }
 
-   public:
-    [[nodiscard]] std::string error() const { return error_; }
-    [[nodiscard]] std::string streamKind() const { return stream_kind_; }
-    [[nodiscard]] int sampleRate() const { return sample_rate_; }
-    [[nodiscard]] int channelCount() const { return static_cast<int>(channels_.size()); }
-    [[nodiscard]] int energyBlockSize() const { return static_cast<int>(kEnergyBlockSamples); }
+    // §3.7's tail: whichever substream identities were still holding a frame
+    // back at end-of-stream. Rare and end-of-stream-only (unlike
+    // pushAccessUnit above, decoder_.flush()'s own return value already
+    // allocates, so doing the same here costs nothing extra) - no fold or
+    // object metadata is attached to these entries, since a flushed result is
+    // a raw per-substream DecodedSubstream rather than an assembled
+    // DecodedAccessUnit (flush()'s own doc comment) and neither the layout
+    // union nor the OAMD/JOC line-up this class does elsewhere apply to one
+    // substream in isolation.
+    emscripten::val flush() {
+        flushed_ = decoder_.flush();
+        auto out = emscripten::val::array();
+        for (std::size_t i = 0; i < flushed_.size(); ++i) {
+            const auto& sub = flushed_[i];
+            const auto layout = ac3::eac3::chanmap::expand(sub.location_map());
+            const auto labels = channel_labels(layout, sub.acmod);
 
-    [[nodiscard]] emscripten::val channelLabels() const {
-        auto arr = emscripten::val::array();
-        for (std::size_t i = 0; i < labels_.size(); ++i) {
-            arr.set(static_cast<unsigned>(i), labels_[i]);
+            auto entry = emscripten::val::object();
+            entry.set("ok", true);
+            entry.set("holdBack", false);
+            entry.set("sampleRate", static_cast<int>(ac3::sample_rate_hz(sub.sample_rate)));
+            entry.set("frameSamples",
+                      ac3::eac3::blocks_per_syncframe(sub.numblkscod) * ac3::kSamplesPerBlock);
+            entry.set("dialnorm", sub.dialnorm);
+            entry.set("channelCount", static_cast<int>(labels.size()));
+            entry.set("channelLabels", make_string_array(labels));
+            entry.set("objectCount", 0);
+            entry.set("flushIndex", static_cast<unsigned>(i));
+            out.set(static_cast<unsigned>(i), entry);
         }
-        return arr;
+        return out;
     }
 
-    // Zero-copy view into this instance's own PCM buffer - valid only until
-    // the next decode() call or this object's destruction, exactly like any
-    // other WASM heap view (see index.html, which reads it once right after
-    // decode() and never holds onto it across a call).
+    [[nodiscard]] emscripten::val flushedChannelPcm(int index, int channel) const {
+        if (index < 0 || static_cast<std::size_t>(index) >= flushed_.size()) {
+            return emscripten::val::null();
+        }
+        const auto& channels = flushed_[static_cast<std::size_t>(index)].channels;
+        if (channel < 0 || static_cast<std::size_t>(channel) >= channels.size()) {
+            return emscripten::val::null();
+        }
+        const auto& pcm = channels[static_cast<std::size_t>(channel)];
+        return emscripten::val(emscripten::typed_memory_view(pcm.size(), pcm.data()));
+    }
+
+    // Zero-copy view into the last pushAccessUnit() call's coded/rendered PCM
+    // for `channel` - valid only until the next pushAccessUnit()/flush()
+    // call, the same contract the original whole-file Decoder's channelPcm()
+    // documented and apps/wasm/demo.js already respects (copy out
+    // immediately, never hold the view).
     [[nodiscard]] emscripten::val channelPcm(int channel) const {
-        if (channel < 0 || static_cast<std::size_t>(channel) >= channels_.size()) {
+        if (channel < 0 || static_cast<std::size_t>(channel) >= last_channel_count_) {
             return emscripten::val::null();
         }
-        const auto& pcm = channels_[static_cast<std::size_t>(channel)];
+        return emscripten::val(emscripten::typed_memory_view(
+            static_cast<std::size_t>(last_frame_samples_),
+            pcm_[static_cast<std::size_t>(channel)].data()));
+    }
+
+    [[nodiscard]] int foldChannelCount() const { return fold_channel_count_; }
+
+    // The optional §7.8 fold this instance was constructed for (ac3::
+    // OutputStage/DC1 - never a hand-rolled one), same zero-copy-until-next-
+    // call contract as channelPcm above. Null when fold_target was
+    // kAsCoded/0 (no fold requested) or channel is out of range.
+    [[nodiscard]] emscripten::val foldPcm(int channel) const {
+        if (channel < 0 || channel >= fold_channel_count_) {
+            return emscripten::val::null();
+        }
+        return emscripten::val(emscripten::typed_memory_view(
+            static_cast<std::size_t>(last_frame_samples_),
+            fold_scratch_[static_cast<std::size_t>(channel)].data()));
+    }
+
+    [[nodiscard]] int objectCount() const { return static_cast<int>(object_labels_.size()); }
+
+    // This frame's [x, y, z, gain_db, width, depth, height] for `object` -
+    // one snapshot per pushAccessUnit() call, not accumulated across calls
+    // (that bookkeeping is js/src/decode-file.ts's job now, for whichever
+    // consumer wants a whole-file timeline rather than a live one).
+    [[nodiscard]] emscripten::val objectPosition(int object) const {
+        if (object < 0 || static_cast<std::size_t>(object) >= object_positions_.size()) {
+            return emscripten::val::null();
+        }
+        return emscripten::val(emscripten::typed_memory_view(
+            kPositionStride, object_positions_[static_cast<std::size_t>(object)].data()));
+    }
+
+    [[nodiscard]] emscripten::val objectAudioPcm(int object) const {
+        if (object < 0 || static_cast<std::size_t>(object) >= object_audio_.size()) {
+            return emscripten::val::null();
+        }
+        const auto& pcm = object_audio_[static_cast<std::size_t>(object)];
         return emscripten::val(emscripten::typed_memory_view(pcm.size(), pcm.data()));
     }
 
-    // The §7.8 stereo fold this page plays - 0 is Lo, 1 is Ro. Same
-    // zero-copy view contract as channelPcm above. Null before a successful
-    // decode, and for a stream whose fold produced nothing (an empty file).
-    [[nodiscard]] emscripten::val stereoPcm(int channel) const {
-        if (channel < 0 || static_cast<std::size_t>(channel) >= stereo_.size()) {
-            return emscripten::val::null();
-        }
-        const auto& pcm = stereo_[static_cast<std::size_t>(channel)];
-        return emscripten::val(emscripten::typed_memory_view(pcm.size(), pcm.data()));
-    }
-
-    [[nodiscard]] emscripten::val channelEnergy(int channel) const {
-        if (channel < 0 || static_cast<std::size_t>(channel) >= energy_.size()) {
-            return emscripten::val::null();
-        }
-        const auto& blocks = energy_[static_cast<std::size_t>(channel)];
-        return emscripten::val(emscripten::typed_memory_view(blocks.size(), blocks.data()));
-    }
-
-    // 0 when the stream carries no OAMD at all (an ordinary 5.1/7.x stream,
-    // or a bed+objects program shape - JOC line-up only works for the
-    // dynamic-object-only shape AtmosEncoder itself produces, see
-    // apply_objects()'s own comment).
-    [[nodiscard]] int objectCount() const { return object_count_; }
-    [[nodiscard]] int objectFrameSize() const { return ac3::kSamplesPerFrame; }
-    [[nodiscard]] int objectFrameCount() const {
-        return object_positions_.empty()
-                   ? 0
-                   : static_cast<int>(object_positions_[0].size() / kPositionStride);
-    }
-    // Playback offset (seconds) of object frame 0 - 0.0 for the overwhelmingly
-    // common case (objects present from the stream's first frame), nonzero
-    // only if a real stream's OAMD payload starts partway through.
-    [[nodiscard]] double objectStartSeconds() const {
-        if (object_start_frame_ < 0 || sample_rate_ == 0) {
-            return 0.0;
-        }
-        return static_cast<double>(object_start_frame_) *
-               static_cast<double>(ac3::kSamplesPerFrame) / static_cast<double>(sample_rate_);
-    }
-
-    // The bed speaker label this object is ("L", "Tfr", ...), or an empty
-    // string for a dynamic object, which has an index and no name.
     [[nodiscard]] std::string objectLabel(int object) const {
         if (object < 0 || static_cast<std::size_t>(object) >= object_labels_.size()) {
             return {};
@@ -239,259 +289,129 @@ class WasmDecoder {
         return object_labels_[static_cast<std::size_t>(object)];
     }
 
-    // Flat [x, y, z, gain_db, width, depth, height] per decoded object frame,
-    // room-anchored per §4.2.1 (oamd.hpp's own Position comment): x/y in
-    // [0,1], z in [-1,1], and each extent axis in [0,1] with 0/0/0 a point.
-    [[nodiscard]] emscripten::val objectPositions(int object) const {
-        if (object < 0 || static_cast<std::size_t>(object) >= object_positions_.size()) {
-            return emscripten::val::null();
-        }
-        const auto& v = object_positions_[static_cast<std::size_t>(object)];
-        return emscripten::val(emscripten::typed_memory_view(v.size(), v.data()));
-    }
-
-    // This object's own reconstructed audio (JOC), concatenated the same way
-    // channelPcm() is - real isolated per-object audio, not that object's
-    // panned contribution to the bed.
-    [[nodiscard]] emscripten::val objectAudioPcm(int object) const {
-        if (object < 0 || static_cast<std::size_t>(object) >= object_audio_.size()) {
-            return emscripten::val::null();
-        }
-        const auto& v = object_audio_[static_cast<std::size_t>(object)];
-        return emscripten::val(emscripten::typed_memory_view(v.size(), v.data()));
-    }
-
    private:
-    static std::vector<std::string> ac3_channel_labels(ac3::Acmod acmod, bool lfe) {
-        // Table 5.8 coded order; the decoder's own DecodedFrame/DecodedSubstream
-        // header comments confirm LFE is always last when present.
-        static const std::array<std::vector<std::string>, 8> kByAcmod{{
-            {"Ch1", "Ch2"},              // kDualMono (1+1: two programmes, not a layout)
-            {"C"},                       // k1_0
-            {"L", "R"},                  // k2_0
-            {"L", "C", "R"},             // k3_0
-            {"L", "R", "S"},             // k2_1
-            {"L", "C", "R", "S"},        // k3_1
-            {"L", "R", "Ls", "Rs"},      // k2_2
-            {"L", "C", "R", "Ls", "Rs"}  // k3_2
-        }};
-        auto labels = kByAcmod[static_cast<std::uint8_t>(acmod)];
-        if (lfe) {
-            labels.emplace_back("LFE");
+    emscripten::val describe_unit(ac3::DecodedAccessUnit& unit) {
+        last_channel_count_ = static_cast<std::size_t>(
+            unit.layout.count > 0 ? unit.layout.count
+                                   : (unit.acmod == ac3::Acmod::kDualMono ? 2 : 0));
+        last_frame_samples_ = ac3::eac3::blocks_per_syncframe(unit.numblkscod) * ac3::kSamplesPerBlock;
+
+        const auto labels = channel_labels(unit.layout, unit.acmod);
+
+        apply_fold(unit);
+
+        // object_metadata (OAMD, PR #168) and object_audio (JOC, PR #169) are
+        // both real decode-side capabilities, now available per pushed frame
+        // instead of only after a whole file finished decoding - see
+        // oba::describe_objects()'s own header for what counts as "an
+        // object" (every JOC output: dynamic objects for the program
+        // AtmosEncoder writes, or the bed's own channels for channel-based-
+        // immersive third-party content).
+        const auto objects = unit.object_metadata
+                                  ? ac3::oba::describe_objects(*unit.object_metadata)
+                                  : std::vector<ac3::oba::DisplayObject>{};
+        object_positions_.reserve(objects.size());
+        object_labels_.reserve(objects.size());
+        for (const auto& object : objects) {
+            object_positions_.push_back({static_cast<float>(object.position.x),
+                                          static_cast<float>(object.position.y),
+                                          static_cast<float>(object.position.z),
+                                          static_cast<float>(object.gain_db),
+                                          static_cast<float>(object.size.width),
+                                          static_cast<float>(object.size.depth),
+                                          static_cast<float>(object.size.height)});
+            object_labels_.emplace_back(object.label);
         }
-        return labels;
+        if (unit.object_audio.size() == objects.size()) {
+            object_audio_ = std::move(unit.object_audio);
+        } else if (!objects.empty()) {
+            // An uploaded/pushed stream can carry OAMD positions with no
+            // matching JOC audio - pad with silence rather than desync this
+            // frame's object count from its own audio, same rule the old
+            // whole-file Decoder's pad_object_audio_with_silence() used.
+            object_audio_.assign(objects.size(),
+                                 std::vector<float>(static_cast<std::size_t>(last_frame_samples_), 0.0F));
+        }
+
+        auto result = emscripten::val::object();
+        result.set("ok", true);
+        result.set("holdBack", false);
+        result.set("sampleRate", static_cast<int>(ac3::sample_rate_hz(unit.sample_rate)));
+        result.set("frameSamples", last_frame_samples_);
+        result.set("dialnorm", unit.dialnorm);
+        result.set("channelCount", static_cast<int>(labels.size()));
+        result.set("channelLabels", make_string_array(labels));
+        result.set("foldChannelCount", fold_channel_count_);
+        result.set("objectCount", static_cast<int>(objects.size()));
+        result.set("objectLabels", make_string_array(object_labels_));
+        return result;
     }
 
-    // DecodedAccessUnit's `layout` gives the real Table E2.5 channel identity
-    // for each position - used in preference to acmod/lfe alone so a stream
-    // with dependent substreams (7.1.4 etc.) still gets correct labels.
-    void apply_layout(const ac3::DecodedAccessUnit& unit) {
-        if (unit.layout.count > 0) {
-            if (labels_.empty()) {
-                labels_.clear();
-                for (const auto location : unit.layout) {
-                    labels_.emplace_back(ac3::eac3::chanmap::name(location));
-                }
-            }
-        } else if (labels_.empty()) {
-            // Dual mono: not a layout at all (see DecodedAccessUnit's own
-            // comment) - fall back to acmod-based labels, which cover it.
-            labels_ = ac3_channel_labels(unit.acmod, false);
-        }
-        fold_stereo(unit.channels, &unit.layout, unit.acmod, unit.layout.index_of(
-                        ac3::eac3::chanmap::Location::kLfe) >= 0,
-                    ac3::mix_levels(unit.mixing), unit.dialnorm);
-        append(unit.channels);
-    }
-
-    void apply_layout_substream(const ac3::DecodedSubstream& sub) {
-        if (labels_.empty()) {
-            const auto map = sub.location_map();
-            const auto layout = ac3::eac3::chanmap::expand(map);
-            for (const auto location : layout) {
-                labels_.emplace_back(ac3::eac3::chanmap::name(location));
-            }
-        }
-        const auto layout = ac3::eac3::chanmap::expand(sub.location_map());
-        fold_stereo(sub.channels, &layout, sub.acmod, sub.lfe, ac3::mix_levels(sub.mixing),
-                    sub.dialnorm);
-        append(sub.channels);
-    }
-
-    // object_metadata (OAMD, PR #168) and object_audio (JOC, PR #169) are
-    // both real decode-side capabilities. What counts as "an object" here is
-    // every JOC output, which oba::describe_objects() spells out: for the
-    // dynamic-object-only program AtmosEncoder writes that is its dynamic
-    // objects, and for a bed program - what channel-based-immersive
-    // third-party content is - it is the bed's own channels, placed at the
-    // nominal room position of the speaker each label names. An arbitrary
-    // uploaded stream might carry OAMD positions with no matching JOC audio,
-    // handled below by padding that object's audio with silence rather than
-    // desyncing it from its own position track.
-    //
-    // object_count_ is fixed at the first frame that carries any objects;
-    // object_start_frame_ records which global (channel-timeline) frame that
-    // was, so objectStartSeconds() can offset an all-frames-have-objects
-    // stream by exactly zero while still handling the rarer case where OAMD
-    // only starts partway through. A frame with metadata missing AFTER
-    // objects have started (a real gap, or a parse this decoder declined)
-    // freezes each object's last known position and pads its audio with
-    // silence, rather than shortening the arrays and silently desyncing
-    // every later frame against global playback time.
-    void apply_objects(const ac3::DecodedAccessUnit& unit) {
-        const auto objects =
-            unit.object_metadata ? ac3::oba::describe_objects(*unit.object_metadata)
-                                 : std::vector<ac3::oba::DisplayObject>{};
-        if (!objects.empty()) {
-            if (object_count_ == 0) {
-                object_count_ = static_cast<int>(objects.size());
-                object_positions_.assign(static_cast<std::size_t>(object_count_), {});
-                object_audio_.assign(static_cast<std::size_t>(object_count_), {});
-                object_labels_.clear();
-                object_labels_.reserve(objects.size());
-                for (const auto& object : objects) {
-                    object_labels_.emplace_back(object.label);
-                }
-                object_start_frame_ = global_frame_index_;
-            }
-            const auto n =
-                std::min(objects.size(), static_cast<std::size_t>(object_count_));
-            for (std::size_t i = 0; i < n; ++i) {
-                auto& dst = object_positions_[i];
-                dst.push_back(static_cast<float>(objects[i].position.x));
-                dst.push_back(static_cast<float>(objects[i].position.y));
-                dst.push_back(static_cast<float>(objects[i].position.z));
-                dst.push_back(static_cast<float>(objects[i].gain_db));
-                // §5.6.1.2's extent, so the room view can draw a sized object
-                // as more than a dot. A bed channel is a point by definition.
-                dst.push_back(static_cast<float>(objects[i].size.width));
-                dst.push_back(static_cast<float>(objects[i].size.depth));
-                dst.push_back(static_cast<float>(objects[i].size.height));
-            }
-            if (unit.object_audio.size() == objects.size()) {
-                for (std::size_t i = 0; i < n; ++i) {
-                    const auto& src = unit.object_audio[i];
-                    object_audio_[i].insert(object_audio_[i].end(), src.begin(), src.end());
-                }
-            } else {
-                pad_object_audio_with_silence();
-            }
-        } else if (object_count_ > 0) {
-            for (auto& dst : object_positions_) {
-                if (dst.size() >= kPositionStride) {
-                    dst.insert(dst.end(), dst.end() - static_cast<std::ptrdiff_t>(kPositionStride),
-                               dst.end());
-                }
-            }
-            pad_object_audio_with_silence();
-        }
-        ++global_frame_index_;
-    }
-
-    void pad_object_audio_with_silence() {
-        for (auto& dst : object_audio_) {
-            dst.resize(dst.size() + static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F);
-        }
-    }
-
-    // The §7.8 stereo fold, accumulated alongside the coded channels rather
-    // than instead of them: the visualization wants every coded channel, and
-    // playback wants two. ac3::OutputStage does the fold - the same code path
-    // 'ac3cli decode channels=2' and the ALSA monitor use - driven by the
-    // stream's OWN cmixlev/surmixlev (AC-3) or mixmdate levels (E-AC-3), with
-    // §7.8.1's normalisation keeping it from overloading. dialnorm is applied
-    // too, so a programme authored quiet plays at the reference level.
-    //
-    // The fold works on a copy of the frame, because the coded channels have
-    // to survive it for the per-channel display.
-    void fold_stereo(const std::vector<std::vector<float>>& frame_channels,
-                     const ac3::eac3::chanmap::Layout* layout, ac3::Acmod acmod, bool lfe,
-                     const ac3::MixLevels& levels, int dialnorm) {
-        if (frame_channels.empty() || frame_channels.front().empty()) {
+    // The fold can't be done in place on pcm_: ac3::OutputStage's span form
+    // writes its result into the first output_channel_count() slots of
+    // whatever it's given, using the REST of that same array as its input -
+    // so folding pcm_ directly would overwrite the coded channel 0/1 data a
+    // caller also wants (the speaker-ring/per-channel visualization, in the
+    // demo's case). Copying into fold_scratch_ first - a bounded, allocation-
+    // free copy, both buffers sized once at construction - keeps both
+    // outputs available from one decode.
+    void apply_fold(const ac3::DecodedAccessUnit& unit) {
+        if (fold_.config().target == ac3::DownmixTarget::kAsCoded) {
             return;
         }
-        fold_frame_ = frame_channels;
         fold_views_.clear();
-        fold_views_.reserve(fold_frame_.size());
-        for (auto& channel : fold_frame_) {
-            fold_views_.emplace_back(channel);
+        fold_views_.reserve(last_channel_count_);
+        for (std::size_t ch = 0; ch < last_channel_count_; ++ch) {
+            std::copy_n(pcm_[ch].data(), static_cast<std::size_t>(last_frame_samples_),
+                       fold_scratch_[ch].data());
+            fold_views_.emplace_back(fold_scratch_[ch].data(),
+                                     static_cast<std::size_t>(last_frame_samples_));
         }
-        if (layout != nullptr && layout->count > 0) {
-            stereo_stage_.apply(fold_views_, *layout, acmod, lfe, levels, dialnorm);
+        const auto levels = ac3::mix_levels(unit.mixing);
+        const bool has_lfe = unit.layout.count > 0 &&
+                             unit.layout.index_of(ac3::eac3::chanmap::Location::kLfe) >= 0;
+        if (unit.layout.count > 0) {
+            fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm);
         } else {
-            stereo_stage_.apply(fold_views_, acmod, lfe, levels, dialnorm);
+            fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm);
         }
-        // Dual mono is never folded (1+1 is two programmes, not a
-        // soundfield), so it comes back at its coded width and its two
-        // programmes go out as they are - which is what the old hand-rolled
-        // fold did with them too, minus the invented coefficients.
-        const std::size_t produced =
-            acmod == ac3::Acmod::kDualMono ? std::min<std::size_t>(2, fold_frame_.size()) : 2;
-        stereo_.resize(2);
-        for (std::size_t ch = 0; ch < 2; ++ch) {
-            const auto& src = fold_frame_[std::min(ch, produced - 1)];
-            stereo_[ch].insert(stereo_[ch].end(), src.begin(), src.end());
-        }
+        fold_channel_count_ =
+            static_cast<int>(ac3::output_channel_count(fold_.config(), unit.acmod, has_lfe));
     }
 
-    void append(const std::vector<std::vector<float>>& frame_channels) {
-        if (channels_.size() < frame_channels.size()) {
-            channels_.resize(frame_channels.size());
-        }
-        for (std::size_t ch = 0; ch < frame_channels.size(); ++ch) {
-            auto& dst = channels_[ch];
-            const auto& src = frame_channels[ch];
-            dst.insert(dst.end(), src.begin(), src.end());
-        }
-    }
+    ac3::Eac3Decoder decoder_;  // Default DecoderConfig: always raw/coded output.
+    ac3::OutputStage fold_;     // The optional side fold - see apply_fold's own comment.
 
-    // x, y, z, gain_db, then §5.6.1.2's width/depth/height.
-    static constexpr std::size_t kPositionStride = 7;
+    std::array<std::vector<float>, kMaxChannels> pcm_;
+    std::vector<std::span<float>> spans_;
+    std::size_t last_channel_count_ = 0;
+    int last_frame_samples_ = 0;
 
-    std::string error_;
-    std::string stream_kind_;
-    int sample_rate_ = 0;
-    std::vector<std::string> labels_;
-    std::vector<std::vector<float>> channels_;
-    std::vector<std::vector<float>> energy_;
-    // What the page actually plays: the §7.8 fold of the same decode, two
-    // channels, in playback order. See fold_stereo.
-    std::vector<std::vector<float>> stereo_;
-    ac3::OutputStage stereo_stage_{
-        {.target = ac3::DownmixTarget::kLoRo, .apply_dialnorm = true}};
-    // fold_stereo's own scratch, reused so a long file does not allocate a
-    // frame's worth of channels per frame.
-    std::vector<std::vector<float>> fold_frame_;
+    std::array<std::vector<float>, kMaxChannels> fold_scratch_;
     std::vector<std::span<float>> fold_views_;
+    int fold_channel_count_ = 0;
 
-    int object_count_ = 0;
-    int object_start_frame_ = -1;
-    int global_frame_index_ = 0;
-    // per object: [x, y, z, gain_db, width, depth, height] * frames
-    std::vector<std::vector<float>> object_positions_;
-    std::vector<std::vector<float>> object_audio_;  // per object: concatenated PCM
-    // The bed speaker label each object is, empty for a dynamic object.
+    // This frame only - see objectPosition's own comment on why these are
+    // not accumulated across calls the way the old whole-file Decoder did.
+    std::vector<std::array<float, kPositionStride>> object_positions_;
+    std::vector<std::vector<float>> object_audio_;
     std::vector<std::string> object_labels_;
+
+    std::vector<ac3::DecodedSubstream> flushed_;
 };
 
-EMSCRIPTEN_BINDINGS(ac3forge_wasm_decode) {
-    emscripten::class_<WasmDecoder>("Decoder")
-        .constructor<>()
-        .function("decode", &WasmDecoder::decode)
-        .function("error", &WasmDecoder::error)
-        .function("streamKind", &WasmDecoder::streamKind)
-        .function("sampleRate", &WasmDecoder::sampleRate)
-        .function("channelCount", &WasmDecoder::channelCount)
-        .function("channelLabels", &WasmDecoder::channelLabels)
-        .function("channelPcm", &WasmDecoder::channelPcm)
-        .function("stereoPcm", &WasmDecoder::stereoPcm)
-        .function("channelEnergy", &WasmDecoder::channelEnergy)
-        .function("energyBlockSize", &WasmDecoder::energyBlockSize)
-        .function("objectCount", &WasmDecoder::objectCount)
-        .function("objectFrameSize", &WasmDecoder::objectFrameSize)
-        .function("objectFrameCount", &WasmDecoder::objectFrameCount)
-        .function("objectStartSeconds", &WasmDecoder::objectStartSeconds)
-        .function("objectLabel", &WasmDecoder::objectLabel)
-        .function("objectPositions", &WasmDecoder::objectPositions)
-        .function("objectAudioPcm", &WasmDecoder::objectAudioPcm);
+EMSCRIPTEN_BINDINGS(ac3forge_wasm_push_decode) {
+    emscripten::function("scanStream", &scanStream);
+    emscripten::class_<PushDecoder>("PushDecoder")
+        .constructor<int, bool, bool>()
+        .function("pushAccessUnit", &PushDecoder::pushAccessUnit)
+        .function("flush", &PushDecoder::flush)
+        .function("flushedChannelPcm", &PushDecoder::flushedChannelPcm)
+        .function("channelPcm", &PushDecoder::channelPcm)
+        .function("foldChannelCount", &PushDecoder::foldChannelCount)
+        .function("foldPcm", &PushDecoder::foldPcm)
+        .function("objectCount", &PushDecoder::objectCount)
+        .function("objectPosition", &PushDecoder::objectPosition)
+        .function("objectAudioPcm", &PushDecoder::objectAudioPcm)
+        .function("objectLabel", &PushDecoder::objectLabel);
 }
