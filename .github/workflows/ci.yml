@@ -1026,18 +1026,12 @@ jobs:
           echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
           echo "Merge base: $merge_base"
 
-      - name: Build and run the benchmarks at this PR's head
+      - name: Build the benchmarks at this PR's head
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset config-linux-gcc
           cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
-          mkdir -p perf-results/head
-          for i in $(seq 1 "$PERF_RUNS"); do
-            build/config-linux-gcc/bin/ac3bench --json-out "perf-results/head/bench$i.json"
-            build/config-linux-gcc/bin/ac3kernelbench \
-              --json-out "perf-results/head/kernels$i.json"
-          done
 
       # A worktree rather than `git checkout <sha>`: it leaves this checkout
       # (and its build tree, and tools/ci/compare_performance.py, which the
@@ -1045,23 +1039,50 @@ jobs:
       # base its own source dir - so CMakePresets.json's
       # ${sourceDir}/build/${presetName} puts the two builds in separate
       # directories with no cache to invalidate between them.
-      - name: Build and run the benchmarks at the merge base
+      - name: Build the benchmarks at the merge base
         shell: bash
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
           set -euo pipefail
           git worktree add --detach ../base-perf "$BASE_SHA"
-          mkdir -p perf-results/base
           pushd ../base-perf >/dev/null
           cmake --preset config-linux-gcc
           cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
           popd >/dev/null
+
+      # BOTH builds finish before EITHER is timed, and the two are then
+      # INTERLEAVED rather than run one block each. That ordering IS the
+      # measurement, not a detail:
+      #
+      #   - Timed-right-after-built meant head was timed on a machine still
+      #     warm from compiling head, and base on one warm from compiling
+      #     base. Building both first puts each binary in the same state.
+      #   - A shared runner drifts (thermal, co-tenants, page cache). Run in
+      #     blocks, ALL of any drift between the blocks lands on the delta,
+      #     indistinguishable from the code change. Alternating spreads it
+      #     over both sides instead, where compare_performance.py's
+      #     minimum-of-N can reject it.
+      #   - The order within a round alternates too, so neither side is
+      #     permanently the one running first and paying for whatever the
+      #     other left in cache.
+      #
+      # Same shape as the manual A/B measurements docs/performance-trend.md
+      # describes, for the same reason.
+      - name: Run both benchmark sets, interleaved
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p perf-results/head perf-results/base
+          head_bin=build/config-linux-gcc/bin
+          base_bin=../base-perf/build/config-linux-gcc/bin
           for i in $(seq 1 "$PERF_RUNS"); do
-            ../base-perf/build/config-linux-gcc/bin/ac3bench \
-              --json-out "perf-results/base/bench$i.json"
-            ../base-perf/build/config-linux-gcc/bin/ac3kernelbench \
-              --json-out "perf-results/base/kernels$i.json"
+            if [ $((i % 2)) -eq 1 ]; then order="head base"; else order="base head"; fi
+            for side in $order; do
+              if [ "$side" = head ]; then bin="$head_bin"; else bin="$base_bin"; fi
+              "$bin/ac3bench" --json-out "perf-results/$side/bench$i.json"
+              "$bin/ac3kernelbench" --json-out "perf-results/$side/kernels$i.json"
+            done
           done
 
       - name: Compare and publish the job summary
