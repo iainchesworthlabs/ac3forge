@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "ac3forge_c/export.h"
+#include "ac3forge_c/version.h"
 
 /* ac3forge's C API — roadmap item F1: a stable, minimal C-callable surface
  * over the encode/decode core, for bindings and embedding by callers that
@@ -79,6 +80,11 @@ AC3FORGEC_EXPORT const char* ac3forge_status_message(ac3forge_status_t status);
 /* --------------------------------------------------------------------- *
  * Version
  * --------------------------------------------------------------------- */
+
+/* AC3FORGE_C_VERSION_MAJOR/MINOR/PATCH and AC3FORGE_C_VERSION (ac3forge_c/version.h,
+ * included above) are the SDK version this translation unit compiled against, available
+ * to #if. ac3forge_version() below is the complementary runtime check: what actually got
+ * linked, which before v1.0 can differ from what a caller built against. */
 
 /* Tagged ac3forge_version_info rather than ac3forge_version: GCC's -Wshadow
  * (built C++) treats a struct tag and a same-named free function as the

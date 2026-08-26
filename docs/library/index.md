@@ -127,6 +127,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
 - [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
+- [API stability](api-stability.md) — the v1.0 freeze plan: header tiers, SemVer and deprecation
+  policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
   bindings and embedding (roadmap item F1).
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over

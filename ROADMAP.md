@@ -1097,18 +1097,26 @@ directory; there is still no threading anywhere in the codec core.
 
 ## AP. Library surface, bindings and v1.0
 
-- [ ] **AP1 (L)** — API freeze → v1.0.0 (was `F5`). The mechanical pieces exist (`version.hpp`,
-  `SameMajorVersion`, the C `_config_init` convention); the decisions do not. A public/internal
-  boundary: all 43 headers under `ac3/` are documented as API, including `ac3/core/`'s
-  bit-reader, bit-allocation, exponent, mantissa and FFT internals, and five public headers carry
-  a `namespace detail`. A written SemVer and deprecation policy: `AC3FORGE_DEPRECATED` is
-  generated and never used, and "deprecat" has zero hits across `docs/`. `SOVERSION` from the
-  full version to the major in all eight library `CMakeLists.txt`; an inline namespace;
-  compile-time version macros in `ac3forge.h` (only the runtime `ac3forge_version()` exists); a
-  growth story for the C config structs; a policy for experimental modules (IM5, any `iamf::` or
-  `ac4::`) so they never enter the frozen surface; release criteria against the standing Known
-  gaps; and a cadence/governance statement — the vcpkg reviewer cited "all releases are
-  prereleases" alongside the maturity rule.
+- [ ] **AP1 (L)** — API freeze → v1.0.0 (was `F5`). ~~the decisions do not [exist]~~ they're now
+  written down in `docs/library/api-stability.md`: every header
+  under `ac3/` gets a Public/Internal/Diagnostic/Experimental tier (the `ac3/core/` bit-reader,
+  bit-allocation, exponent, mantissa and FFT internals are Internal; `ac3iab` is Experimental
+  until `IM1` finishes; the five `namespace detail` headers are unaffected by tier — nothing in
+  `detail` is ever covered regardless); a SemVer and deprecation policy (`DEFINE_NO_DEPRECATED`
+  stays until `v1.0.0`, then drops from all nine libraries' `generate_export_header()` calls);
+  a C config struct growth policy (major bump or an additive `_v2` sibling, no size-sentinel
+  scheme); release criteria against the standing Known gaps; and a cadence/governance statement
+  answering the vcpkg reviewer's "all releases are prereleases" maturity note with a written
+  criteria list instead of an implicit "not yet." Compile-time version macros landed for real:
+  `AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`
+  (generated from a new `version.h.in`), tested against the runtime `ac3forge_version()` in
+  `tests/capi/test_capi.cpp`. Still open, both deliberately deferred to the `v1.0.0` cut itself
+  rather than done now (see the page's own reasoning): flipping `SOVERSION` from the full version
+  to the major component across all nine `CMakeLists.txt`, and introducing `inline namespace v1`
+  for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from advisory to
+  required, so a real break can't slip through the gap between promising compatibility and
+  actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
+  criteria rather than a separate, unlinked concern.
 - [x] **AP2 (M)** — Naming and error-type sweep before the freeze. Done, three real fixes and one
   deliberate non-fix: `ac3/oba/joc.hpp`/`joc_tables.hpp` now declare `ac3::oba::joc`, matching the
   path (source- and ABI-breaking — every in-repo caller, the two ABI allowlists and
