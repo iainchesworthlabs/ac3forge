@@ -4781,7 +4781,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const int curve = rate_adaptive_fgaincod(
             static_cast<int>(impl_->config_.bitrate_kbps), nfchans);
         if (impl_->config_.fgaincod < 0 && curve < kFgaincodDefault) {
-            for (const BitAllocCodes base : {defaults, kBamode0Codes}) {
+            for (const BitAllocCodes& base : {defaults, kBamode0Codes}) {
                 BitAllocCodes candidate = base;
                 candidate.fgaincod = curve;
                 consider(candidate);
