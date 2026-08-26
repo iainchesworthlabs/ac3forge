@@ -165,6 +165,15 @@ option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src
 # AC3FORGE_BUILD_ADM.
 option(AC3FORGE_BUILD_IAB "Build the standalone Immersive Audio Bitstream reader (src/ac3iab)" ON)
 
+# iamf::iamf (src/iamf) - roadmap item IM3 phase 1: a standalone OBU/ISOBMFF writer for AOM's
+# IAMF (Immersive Audio Model and Formats) v1.1.0, emitting `ipcm` substreams for a channel-based
+# 7.1.4 element. Same zero-third-party-dependency shape as ac3iab immediately above (unlike
+# ac3adm, see its own option() below), so it defaults ON the same way and for the same reason;
+# also like ac3iab, nothing in apps/cli, apps/gui or examples/ links it unconditionally yet (only
+# examples/mux_iamf.cpp does, guarded on this option) - see src/iamf/CMakeLists.txt's own header
+# comment.
+option(AC3FORGE_BUILD_IAMF "Build the standalone IAMF OBU/ISOBMFF writer (src/iamf)" ON)
+
 # Roadmap PF7: the minimum-footprint decoder profile. Not a "build X too"
 # option like the ones above - it REPLACES what src/forge builds with a single
 # decode-only static library for a target with a few hundred kilobytes of RAM
@@ -211,8 +220,9 @@ if(AC3FORGE_MINIMAL_DECODER)
     set(_ac3_minimal_conflicts "")
     foreach(_opt IN ITEMS AC3FORGE_BUILD_CLI AC3FORGE_BUILD_GUI AC3FORGE_BUILD_TESTS
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
-                          AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_CAPI
-                          AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON AC3FORGE_BUILD_FUZZERS)
+                          AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_IAMF
+                          AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON
+                          AC3FORGE_BUILD_FUZZERS)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()
@@ -338,6 +348,13 @@ endif()
 # (default ON, see the option() above).
 if(AC3FORGE_BUILD_IAB)
     add_subdirectory(src/ac3iab)
+endif()
+
+# A standalone writer, not a reader like ac3iab above - roadmap item IM3 phase 1 (an IAMF
+# OBU/ISOBMFF writer, see ROADMAP.md). Gated by AC3FORGE_BUILD_IAMF (default ON, see the option()
+# above).
+if(AC3FORGE_BUILD_IAMF)
+    add_subdirectory(src/iamf)
 endif()
 
 # A standalone BW64/RF64 + Audio Definition Model parser - reader, not writer, but the same
