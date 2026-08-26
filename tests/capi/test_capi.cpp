@@ -201,10 +201,19 @@ TEST_CASE("ac3forge_decoder_decode_frame reports the same errors ac3::FrameDecod
     ac3forge_decoder_config_t config;
     ac3forge_decoder_config_init(&config);
     ac3forge_decoder_t* decoder = nullptr;
+    CHECK(ac3forge_decoder_create(nullptr, &decoder) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_create(&config, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(decoder == nullptr);
     REQUIRE(ac3forge_decoder_create(&config, &decoder) == AC3FORGE_OK);
 
     const std::vector<uint8_t> garbage(16, 0xAB);
     ac3forge_decoded_frame_t* decoded = nullptr;
+    CHECK(ac3forge_decoder_decode_frame(nullptr, garbage.data(), garbage.size(), &decoded) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame(decoder, nullptr, 0, &decoded) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame(decoder, garbage.data(), garbage.size(), nullptr) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
     const auto status =
         ac3forge_decoder_decode_frame(decoder, garbage.data(), garbage.size(), &decoded);
     // Not asserting which specific DecodeError this garbage maps to - that's an
@@ -1706,6 +1715,17 @@ TEST_CASE(
                                               AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
                                               &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
     CHECK(out == nullptr);
+    ptrs[0] = storage[0].data();
+
+    // A genuine bitstream failure reports a decode-error code, same as the
+    // value form does - not merely a mismatched-argument rejection.
+    const std::vector<uint8_t> garbage(16, 0xAB);
+    const auto status = ac3forge_decoder_decode_frame_into(
+        decoder, garbage.data(), garbage.size(), ptrs.data(), AC3FORGE_DECODER_MAX_CHANNELS,
+        AC3FORGE_SAMPLES_PER_FRAME, &out);
+    CHECK(status >= AC3FORGE_ERROR_DECODE_TRUNCATED);
+    CHECK(status <= AC3FORGE_ERROR_DECODE_INVALID_STREAM);
+    CHECK(out == nullptr);
 
     ac3forge_bytes_destroy(encoded);
     ac3forge_decoder_destroy(decoder);
@@ -1924,6 +1944,17 @@ TEST_CASE(
               AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
               AC3FORGE_SAMPLES_PER_FRAME, &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
     CHECK(out == nullptr);
+    ptrs[0] = storage[0].data();
+
+    // A genuine bitstream failure reports a decode-error code, same as the
+    // value form does - not merely a mismatched-argument rejection.
+    const std::vector<uint8_t> garbage(16, 0xAB);
+    const auto status = ac3forge_eac3_decoder_decode_access_unit_into(
+        decoder, garbage.data(), garbage.size(), ptrs.data(), AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+        AC3FORGE_SAMPLES_PER_FRAME, &out);
+    CHECK(status >= AC3FORGE_ERROR_DECODE_TRUNCATED);
+    CHECK(status <= AC3FORGE_ERROR_DECODE_INVALID_STREAM);
+    CHECK(out == nullptr);
 
     ac3forge_eac3_decoder_destroy(decoder);
 }
@@ -1965,9 +1996,14 @@ TEST_CASE("ac3forge_scan reports the same shape ac3::io::scan does for an AC-3 s
     CHECK(ac3forge_scanned_stream_channels(scanned) == 2);
     CHECK(ac3forge_scanned_stream_substreams_per_unit(scanned) == 1);
     CHECK(ac3forge_scanned_stream_bsid(scanned) <= 8);
+    CHECK(ac3forge_scanned_stream_bsmod(scanned) == 0);  // no bsmod configured
+    CHECK(ac3forge_scanned_stream_bit_rate_code(scanned) < 19);  // Table 5.18 has 19 entries
     CHECK(ac3forge_scanned_stream_bsmod_present(scanned) == 1);  // AC-3 always transmits bsmod
+    CHECK(ac3forge_scanned_stream_dsurmod(scanned) == 0);  // not indicated for a 2/0 stream
     CHECK(ac3forge_scanned_stream_mix_metadata(scanned) == 0);
     CHECK(ac3forge_scanned_stream_independent_substreams(scanned) == 0);  // AC-3 has no substreams
+    CHECK(ac3forge_scanned_stream_has_oba_complexity_index(scanned) == 0);  // no Atmos container
+    CHECK(ac3forge_scanned_stream_oba_complexity_index(scanned) == 0);
 
     REQUIRE(ac3forge_scanned_stream_access_unit_count(scanned) == 3);
     std::size_t offset_sum = 0;
@@ -1980,14 +2016,44 @@ TEST_CASE("ac3forge_scan reports the same shape ac3::io::scan does for an AC-3 s
     }
     CHECK(offset_sum == stream.size());
     CHECK(ac3forge_scanned_stream_access_unit(scanned, 3).length == 0);  // out of range
+    CHECK(ac3forge_scanned_stream_access_unit_samples(scanned, 3) == 0);  // out of range
+
+    // AC-3 has no independent substream 1-3 to be an associated one - both a
+    // present-but-unseen index and an out-of-range one take the same default.
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod_present(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_acmod(scanned, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_associated_substream_lfe(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_mix_metadata(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, -1) == 0);  // out of range
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 3) == 0);   // out of range
 
     REQUIRE(ac3forge_scanned_stream_programme_count(scanned) == 1);
     CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 0) == 0);
     CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_lfe(scanned, 0) == 0);
     CHECK(ac3forge_scanned_stream_programme_channels(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_bsid(scanned, 0) <= 8);
+    CHECK(ac3forge_scanned_stream_programme_bsmod(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 0) == 1);
+    CHECK(ac3forge_scanned_stream_programme_has_oba_complexity_index(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_oba_complexity_index(scanned, 0) == 0);
     REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 0) == 3);
     CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 0).offset == 0);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 3).length == 0);  // out of range
     CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 1, 0).length == 0);  // no 2nd programme
+    CHECK(ac3forge_scanned_stream_programme_access_unit_count(scanned, 1) == 0);      // no 2nd programme
+    // Every programme_* accessor takes its no-such-programme default the same way.
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 1) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_lfe(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsid(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsmod(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_has_oba_complexity_index(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_oba_complexity_index(scanned, 1) == 0);
 
     CHECK(ac3forge_scanned_stream_duration_samples(scanned) == 3 * AC3FORGE_SAMPLES_PER_FRAME);
     uint32_t uniform = 0;
@@ -2009,6 +2075,11 @@ TEST_CASE("ac3forge_scan reports the same shape ac3::io::scan does for an AC-3 s
     CHECK(index == 1);
     CHECK(ac3forge_scanned_stream_access_unit_at_sample(
               scanned, 3u * AC3FORGE_SAMPLES_PER_FRAME, &index) == 0);
+
+    index = 999;
+    REQUIRE(ac3forge_scanned_stream_access_unit_at_seconds(scanned, 0.0, &index) == 1);
+    CHECK(index == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_at_seconds(scanned, 999.0, &index) == 0);
 
     ac3forge_scanned_stream_destroy(scanned);
 }
@@ -2067,6 +2138,76 @@ TEST_CASE(
     ac3forge_scanned_stream_destroy(scanned);
 }
 
+TEST_CASE(
+    "ac3forge_scan reports independent_substreams and associated-substream fields for a "
+    "multi-programme stream",
+    "[capi][scan][eac3]") {
+    // Two independent substreams (I0, I1), each its own single-syncframe
+    // programme - a broadcast "second service" (§5.4.2.2), not a dependent
+    // widening one bed. Concatenated frame by frame, the same wire shape
+    // ac3forge_split_access_units already delimits into four access units.
+    ac3::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
+    ac3::eac3::FrameEncoder programme1{
+        {.bitrate_kbps = 96, .acmod = ac3::Acmod::k1_0, .substreamid = 1}};
+
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> centre(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<uint8_t> stream;
+    for (int frame = 0; frame < 2; ++frame) {
+        fill_tone(left.data(), 1000.0, frame, 48000.0);
+        fill_tone(right.data(), 800.0, frame, 48000.0);
+        fill_tone(centre.data(), 1200.0, frame, 48000.0);
+        const std::vector<std::span<const float>> views0{left, right};
+        const std::vector<std::span<const float>> views1{centre};
+
+        const auto frame0 = programme0.encode_frame(views0);
+        REQUIRE(frame0.has_value());
+        const auto* data0 = reinterpret_cast<const uint8_t*>(frame0->data());
+        stream.insert(stream.end(), data0, data0 + frame0->size());
+
+        const auto frame1 = programme1.encode_frame(views1);
+        REQUIRE(frame1.has_value());
+        const auto* data1 = reinterpret_cast<const uint8_t*>(frame1->data());
+        stream.insert(stream.end(), data1, data1 + frame1->size());
+    }
+
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    REQUIRE(ac3forge_scan(stream.data(), stream.size(), &scanned) == AC3FORGE_OK);
+    REQUIRE(scanned != nullptr);
+
+    // Bit 0 (substream 0) and bit 1 (substream 1) both seen somewhere in the stream.
+    CHECK(ac3forge_scanned_stream_independent_substreams(scanned) == 0x03);
+
+    REQUIRE(ac3forge_scanned_stream_programme_count(scanned) == 2);
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_bsid(scanned, 0) == 16);
+    REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 0).offset == 0);
+
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 1) == 1);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 1) == AC3FORGE_ACMOD_1_0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 1) == 1);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 1) == 1);
+    REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 1) == 2);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 1, 0).length > 0);
+
+    // Independent substream 1 (index 0 - substreams 1-3 map to indices 0-2) is
+    // a real, present associated substream; substreams 2 and 3 were never seen.
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 0) == 1);
+    CHECK(ac3forge_scanned_stream_associated_substream_acmod(scanned, 0) == AC3FORGE_ACMOD_1_0);
+    CHECK(ac3forge_scanned_stream_associated_substream_lfe(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod_present(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_mix_metadata(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 2) == 0);
+
+    ac3forge_scanned_stream_destroy(scanned);
+}
+
 TEST_CASE("ac3forge_scan rejects bad arguments and reports ScanError codes", "[capi][scan]") {
     ac3forge_scanned_stream_t* scanned = nullptr;
     CHECK(ac3forge_scan(nullptr, 0, &scanned) == AC3FORGE_ERROR_INVALID_ARGUMENT);
@@ -2079,6 +2220,30 @@ TEST_CASE("ac3forge_scan rejects bad arguments and reports ScanError codes", "[c
     const std::vector<uint8_t> no_sync(64, 0x00);  // no 0x0B77 anywhere in this buffer
     CHECK(ac3forge_scan(no_sync.data(), no_sync.size(), &scanned) == AC3FORGE_ERROR_SCAN_LOST_SYNC);
     CHECK(scanned == nullptr);
+
+    // A real frame cut short after its sync word: enough to find sync, not
+    // enough to hold the rest of bsi.
+    ac3forge_encoder_config_t config;
+    ac3forge_encoder_config_init(&config);
+    config.acmod = AC3FORGE_ACMOD_2_0;
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&config, &encoder) == AC3FORGE_OK);
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME, 0.1f);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME, 0.1f);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_bytes_t* encoded = nullptr;
+    REQUIRE(ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                          &encoded) == AC3FORGE_OK);
+    ac3forge_encoder_destroy(encoder);
+    // Not pinning which specific ScanError this lands on - same "the parser's
+    // own business" stance the C++ DecodeError tests above take - only that
+    // it is a real scan failure past the empty/lost-sync gate (scan() needs
+    // at least 6 bytes just to look for a sync word at all).
+    const auto status = ac3forge_scan(ac3forge_bytes_data(encoded), 8, &scanned);
+    CHECK(status >= AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID);
+    CHECK(status <= AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE);
+    CHECK(scanned == nullptr);
+    ac3forge_bytes_destroy(encoded);
 }
 
 // --- Loudness / level / QC metering (roadmap AP5) -------------------------
@@ -2091,11 +2256,12 @@ TEST_CASE("ac3forge_loudness_meter measures a stereo tone", "[capi][loudness]") 
     CHECK(ac3forge_loudness_meter_channel_count(meter) == 2);
     CHECK(ac3forge_loudness_meter_has_integrated_lkfs(meter) == 0);
 
-    // 20 frames of 1536 samples at 48 kHz is 640 ms - enough for every
-    // window (400 ms momentary, 3 s short-term excluded) to have something.
+    // 100 frames of 1536 samples at 48 kHz is 3.2 s - enough for every window
+    // (400 ms momentary, 3 s short-term, and Loudness Range's own short-term
+    // population) to have something to report.
     std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
     std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
-    for (int frame = 0; frame < 20; ++frame) {
+    for (int frame = 0; frame < 100; ++frame) {
         fill_tone(left.data(), 1000.0, frame, 48000.0);
         fill_tone(right.data(), 1000.0, frame, 48000.0);
         const float* channels[2] = {left.data(), right.data()};
@@ -2110,7 +2276,14 @@ TEST_CASE("ac3forge_loudness_meter measures a stereo tone", "[capi][loudness]") 
     CHECK(integrated > -20.0);
     CHECK(integrated < 0.0);
 
-    CHECK(ac3forge_loudness_meter_has_momentary_lkfs(meter) == 1);
+    REQUIRE(ac3forge_loudness_meter_has_momentary_lkfs(meter) == 1);
+    CHECK(ac3forge_loudness_meter_momentary_lkfs(meter) < 0.0);
+    REQUIRE(ac3forge_loudness_meter_has_short_term_lkfs(meter) == 1);
+    CHECK(ac3forge_loudness_meter_short_term_lkfs(meter) < 0.0);
+    // A constant-amplitude tone has no loudness variation, so the gated
+    // population's 95th and 10th percentiles coincide: LRA reads ~0 LU.
+    REQUIRE(ac3forge_loudness_meter_has_loudness_range(meter) == 1);
+    CHECK(std::abs(ac3forge_loudness_meter_loudness_range(meter)) < 1.0);
     REQUIRE(ac3forge_loudness_meter_has_true_peak_dbtp(meter) == 1);
     CHECK(ac3forge_loudness_meter_true_peak_dbtp(meter) < 0.0);  // 0.5 amplitude, under full scale
 
@@ -2120,6 +2293,9 @@ TEST_CASE("ac3forge_loudness_meter measures a stereo tone", "[capi][loudness]") 
 TEST_CASE("ac3forge_loudness_meter_create_for_chanmap mirrors the C++ Annex 3 constructor",
           "[capi][loudness]") {
     ac3forge_loudness_meter_t* meter = nullptr;
+    CHECK(ac3forge_loudness_meter_create_for_chanmap(AC3FORGE_SAMPLE_RATE_48000,
+                                                      AC3FORGE_CHANMAP_512_HEIGHT,
+                                                      nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
     REQUIRE(ac3forge_loudness_meter_create_for_chanmap(
                 AC3FORGE_SAMPLE_RATE_48000, AC3FORGE_CHANMAP_512_HEIGHT, &meter) == AC3FORGE_OK);
     REQUIRE(meter != nullptr);
@@ -2152,6 +2328,25 @@ TEST_CASE("ac3forge_dialnorm_from_lkfs mirrors ac3::meta::dialnorm_from_lkfs", "
     CHECK(ac3forge_dialnorm_from_lkfs(-40.0) == 31);  // quieter than -31 clamps
 }
 
+TEST_CASE("ac3forge_level_meter_ballistics_init matches MeterBallistics{}'s own defaults",
+          "[capi][levels]") {
+    ac3forge_level_meter_ballistics_t ballistics;
+    ac3forge_level_meter_ballistics_init(&ballistics);
+    CHECK(ballistics.rms_integration_ms == 300.0);
+    CHECK(ballistics.peak_decay_db_per_s == 20.0);
+    CHECK(ballistics.peak_hold_ms == 1200.0);
+
+    // A custom ballistics struct is honoured, not silently replaced with the
+    // defaults - faster RMS integration and peak decay than the default.
+    ballistics.rms_integration_ms = 50.0;
+    ballistics.peak_decay_db_per_s = 40.0;
+    ac3forge_level_meter_t* meter = nullptr;
+    REQUIRE(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 0, &ballistics, &meter) ==
+            AC3FORGE_OK);
+    REQUIRE(meter != nullptr);
+    ac3forge_level_meter_destroy(meter);
+}
+
 TEST_CASE("ac3forge_level_meter measures peak and RMS of a known tone", "[capi][levels]") {
     ac3forge_level_meter_t* meter = nullptr;
     REQUIRE(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 0, nullptr, &meter) ==
@@ -2176,6 +2371,10 @@ TEST_CASE("ac3forge_level_meter measures peak and RMS of a known tone", "[capi][
     CHECK(std::abs(summary.peak_db - (-6.02)) < 0.1);
     CHECK(summary.clipped_samples == 0);
     CHECK(summary.samples == AC3FORGE_SAMPLES_PER_FRAME);
+    // Out of range takes the documented empty default.
+    const auto summary_out_of_range = ac3forge_level_meter_summary(meter, 99);
+    CHECK(summary_out_of_range.samples == 0);
+    CHECK(summary_out_of_range.peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
 
     const auto level = ac3forge_level_meter_level(meter, 0);
     CHECK(level.clipped == 0);
@@ -2295,20 +2494,65 @@ TEST_CASE("scan/metering C accessors take their documented defaults on null hand
     CHECK(ac3forge_scanned_stream_kind(nullptr) == AC3FORGE_STREAM_KIND_AC3);
     CHECK(ac3forge_scanned_stream_sample_rate(nullptr) == AC3FORGE_SAMPLE_RATE_48000);
     CHECK(ac3forge_scanned_stream_acmod(nullptr) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_lfe(nullptr) == 0);
     CHECK(ac3forge_scanned_stream_channels(nullptr) == 0);
     CHECK(ac3forge_scanned_stream_access_unit_count(nullptr) == 0);
     CHECK(ac3forge_scanned_stream_access_unit(nullptr, 0).length == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_samples(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_substreams_per_unit(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bsid(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bsmod(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bit_rate_code(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_has_oba_complexity_index(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_oba_complexity_index(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bsmod_present(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_dsurmod(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_mix_metadata(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_independent_substreams(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_channel_map(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod_present(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_acmod(nullptr, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_associated_substream_lfe(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_mix_metadata(nullptr, 0) == 0);
     CHECK(ac3forge_scanned_stream_programme_count(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substream_id(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(nullptr, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_lfe(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_channels(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsid(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsmod(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_has_oba_complexity_index(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_oba_complexity_index(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_access_unit_count(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(nullptr, 0, 0).length == 0);
     CHECK(ac3forge_scanned_stream_duration_samples(nullptr) == 0);
     CHECK(ac3forge_scanned_stream_duration_seconds(nullptr) == 0.0);
     CHECK(ac3forge_scanned_stream_access_unit_timing(nullptr, 0, nullptr, nullptr, nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_at_sample(nullptr, 0, nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_at_seconds(nullptr, 0.0, nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_uniform_access_unit_samples(nullptr, nullptr) == 0);
 
     CHECK(ac3forge_loudness_meter_channel_count(nullptr) == 0);
     CHECK(ac3forge_loudness_meter_has_integrated_lkfs(nullptr) == 0);
     CHECK(ac3forge_loudness_meter_integrated_lkfs(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_momentary_lkfs(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_momentary_lkfs(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_short_term_lkfs(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_short_term_lkfs(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_loudness_range(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_loudness_range(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_true_peak_dbtp(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_true_peak_dbtp(nullptr) == 0.0);
 
     CHECK(ac3forge_level_meter_channel_count(nullptr) == 0);
     CHECK(ac3forge_level_meter_acmod(nullptr) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_level_meter_lfe(nullptr) == 0);
+    CHECK(ac3forge_level_meter_sample_rate(nullptr) == 0);
     CHECK(ac3forge_level_meter_summary(nullptr, 0).samples == 0);
     CHECK(ac3forge_level_meter_level(nullptr, 0).peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
+
+    ac3forge_level_meter_ballistics_init(nullptr);  // documented no-op
 }
