@@ -1074,7 +1074,13 @@ jobs:
       # silently degrades to a REST tarball download without it) and none of
       # the rest of this either. python3/python3-pip is aqtinstall's own
       # runtime (installed by "Install Qt (prebuilt)" below); the Docker CLI
-      # is installed separately, right before the step that needs it.
+      # is installed separately, right before the step that needs it. sudo
+      # is a real package here, not just a PATH probe: this container has no
+      # sudo binary at all (unlike a GitHub-hosted runner's own host OS), and
+      # "Install Qt (prebuilt)" below shells out to `sudo apt-get ...`
+      # internally for its own system dependencies - already running as
+      # root makes every sudo call here a no-op passthrough, so installing
+      # the package is the whole fix.
       - name: Bootstrap container
         run: |
           set -eu
@@ -1083,7 +1089,7 @@ jobs:
           apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates curl file git gnupg \
             libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip \
-            software-properties-common tar unzip wget zip
+            software-properties-common sudo tar unzip wget zip
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
