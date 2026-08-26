@@ -132,9 +132,10 @@ constexpr BitAllocCodes kAllocCodes{.sdcycod = 2,
 // the AC-3 side moved, and why it cannot simply be switched on: at 5.1 with
 // coupling the element is 132 bits a frame, about 1.1% of a 384 kbit/s one,
 // which is real mantissa precision given up to buy a better masking curve.
-// So the frame decides it the way EQ5 decides delta segments - fit both
-// ways, keep the higher composite SNR offset - rather than by assertion.
-// See fgaincod_candidates_for() and encode_frame's step 7a.
+// So the default stays here and the code moves only when asked - pinned
+// through FrameConfig::fgaincod, or chosen by encode_frame's step 7a
+// candidate search, which scores it against real decoded-domain distortion
+// after refitting the frame to that candidate's own side-info cost.
 constexpr int kFgaincodDefault = kBamode0Codes.fgaincod;
 // EQ13's codes search (encode_frame, CBR only): the margin, in dB of mean
 // noise-to-signal, a candidate other than the incumbent must beat it by to

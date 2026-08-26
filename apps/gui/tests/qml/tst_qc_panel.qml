@@ -129,6 +129,58 @@ TestCase {
         QcController.presetIndex = 0;
     }
 
+    // The preset control offers EVERY preset, and each of its options selects
+    // the preset it is labelled with.
+    //
+    // This is a regression test with a real defect behind it. The control's
+    // model used to be a hand-written list of four options, written when
+    // there were three presets. Roadmap IO11 then inserted two more INTO THE
+    // MIDDLE of kQcPresetIds (atsc-a85-streaming at index 2, apple-music-atmos
+    // at 4), and the QML was never updated - so the option labelled "Netflix"
+    // was selecting index 3, which resolves to kQcPresetIds[2],
+    // atsc-a85-streaming, and reported ITS numbers under Netflix's name.
+    // netflix and apple-music-atmos were unreachable from the GUI entirely.
+    //
+    // The cases above already pinned the CONTROLLER's own indexing (which was
+    // always right), which is exactly why the drift survived: nothing checked
+    // the control against it. This does.
+    function test_presetControlOffersEveryPresetAndSelectsWhatItNames() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+        win.qcDialogRef.open();
+        tryVerify(() => win.qcDialogRef.opened);
+
+        let control = null;
+        tryVerify(() => {
+            control = findChild(win.contentItem, "qcPresetControl");
+            return control !== null;
+        });
+
+        // "All presets" plus one option per preset - no preset off the end of
+        // the control, which is the half of the bug that hid the other half.
+        compare(control.model.length, QcController.presetNames.length);
+        for (let i = 0; i < control.model.length; ++i) {
+            compare(control.model[i].value, String(i));
+            compare(control.model[i].label, QcController.presetNames[i]);
+        }
+
+        // Every option resolves to the preset its own label names. Index 0 is
+        // "all", so it reports every preset rather than one.
+        for (let i = 1; i < control.model.length; ++i) {
+            QcController.presetIndex = i;
+            const presets = QcController.programmes.length > 0
+                ? QcController.programmes[0].presets : [];
+            if (presets.length === 0) {
+                continue;  // nothing measured yet in this window
+            }
+            compare(presets.length, 1);
+            compare(control.model[i].label, QcController.presetNames[i]);
+        }
+
+        QcController.presetIndex = 0;
+        win.qcDialogRef.close();
+    }
+
     // The report view itself renders that same real data - the dialog's
     // summary text matches the controller, and one Card exists per measured
     // programme (one, for this plain-stereo fixture).
