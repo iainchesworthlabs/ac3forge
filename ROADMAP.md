@@ -599,9 +599,12 @@ machine-readable output and a single failure exit code. Users arrive with contai
   snap, zone gains and spread, AudioDataDLC/PCM essence), and DTS publishes an MIT-licensed
   parser and validator (`DTSProAudio/iab-validator`) to check against. Phase 1 (L): an
   `ac3iab::` bitstream reader in the `ac3adm::` mould, PCM essence first (the DLC coder is the
-  hard part), tested against the validator. Phase 2: minimal MXF KLV extraction for IAB track
-  files. Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer. Reader and
-  ingest only; rendering stays with Cavern.
+  hard part), tested against the validator. **Done.** Phase 2: minimal MXF KLV extraction for IAB
+  track files — `ac3iab::parse_mxf_iab` (`mxf.hpp`), governed by SMPTE ST 2067-201, a separate and
+  much shorter standard than ST 2098-2 itself; its own §5.5 clip-wraps the whole bitstream as a
+  single KLV, so extraction needs none of the base MXF standards' Header Metadata object graph or
+  Index Tables. **Done.** Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer.
+  Reader and ingest only; rendering stays with Cavern.
   *Phase 1 done: `ac3iab::` (`src/ac3iab`) parses the full §7/§8 Preamble+IAFrame segment
   framing and every element in §9's Table 4 tree — IAFrame, BedDefinition (+ recursive
   BedDefinition/BedRemap children), ObjectDefinition (+ recursive ObjectDefinition/
@@ -1174,8 +1177,16 @@ directory; there is still no threading anywhere in the codec core.
   [HandBrake #1085](https://github.com/HandBrake/HandBrake/issues/1085) has been open since 2017.
   Out of tree, over the C API only, GPL-3 framed (`--enable-gpl --enable-version3`); FFmpeg stays
   an oracle for the codec itself. Needs AP5.
-- [ ] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
+- [x] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
   "CRC failed at frame N" or "unknown EMDF payload skipped". Tracy is profiling, not diagnostics.
+  Done: `DecoderConfig::diagnostics` (`ac3/decoder/diagnostics.hpp`) — a plain function pointer
+  plus an opaque context, following `trace`/`syntax`/`concealment`'s own null-by-default pointer
+  convention rather than `std::function`, so it costs no allocation and needs no exceptions/RTTI,
+  usable from `AC3FORGE_MINIMAL_DECODER`. Fires for `DiagnosticEvent::kCrcMismatch` at the moment
+  the check fails — the only signal a caller gets once `ConcealmentPolicy` turns the same call
+  into a successful, concealed result — and `kUnknownEmdfPayload` when a block's EMDF container
+  carries a payload id this decoder does not interpret (anything but OAMD/JOC), which previously
+  left no trace anywhere at all. Null by default on both decoders.
 - [ ] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
   mask curves as CSV/JSON/Parquet from the trace (both codecs carry one since `VX2`),
   reachable from Python.
@@ -1298,8 +1309,12 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
   then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
 - [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
-  the distro's Qt 6 and `qml6-module-*` packages); a Windows ARM64 leg on the hosted
-  `windows-11-arm` runner; macOS universal binaries are a separate decision (the Cask is
+  the distro's Qt 6 and `qml6-module-*` packages); ~~a Windows ARM64 leg on the hosted
+  `windows-11-arm` runner~~ `windows-msvc-arm64` builds and tests `ac3cli` on real ARM64 hardware
+  (CLI-only — no resolvable Qt6 ARM64 Windows kit for the pinned version yet, see
+  `docs/platforms/windows.md`'s ARM64 section) and packages a `win-arm64` release archive;
+  `experimental: true` until it proves itself green over real runs, the same promotion path
+  `macos-llvm` went through. macOS universal binaries are a separate decision (the Cask is
   arm64-only and Intel demand is doubtful).
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:

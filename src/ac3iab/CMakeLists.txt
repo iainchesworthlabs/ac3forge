@@ -42,7 +42,8 @@ target_sources(ac3iab_objects
     PRIVATE
         src/bitreader.cpp
         src/iab_reader.cpp
-        src/iab.cpp)
+        src/iab.cpp
+        src/mxf_reader.cpp)
 
 target_include_directories(ac3iab_objects
     PUBLIC
