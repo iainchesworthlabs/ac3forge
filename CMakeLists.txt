@@ -154,6 +154,10 @@ option(AC3FORGE_BUILD_FUZZERS "Build libFuzzer harnesses (Clang only; see fuzz/)
 option(AC3FORGE_BUILD_MATROSKA "Build the standalone Matroska container writer (src/matroska)" ON)
 option(AC3FORGE_BUILD_MP4 "Build the standalone MP4/ISOBMFF container writer (src/mp4)" ON)
 option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src/mpegts)" ON)
+# Roadmap IM4: the AC-4 sync-frame/TOC/presentation/substream-group bitstream
+# inspector (src/ac4). Same "own option, defaults ON" treatment as the three
+# above - apps/cli's `probe` command links it unconditionally.
+option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector (src/ac4)" ON)
 
 # Roadmap PF7: the minimum-footprint decoder profile. Not a "build X too"
 # option like the ones above - it REPLACES what src/forge builds with a single
@@ -189,6 +193,10 @@ if(NOT AC3FORGE_BUILD_MPEGTS AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR
     message(FATAL_ERROR "AC3FORGE_BUILD_MPEGTS=OFF requires AC3FORGE_BUILD_CLI, "
         "AC3FORGE_BUILD_GUI, AC3FORGE_BUILD_TESTS and AC3FORGE_BUILD_EXAMPLES to all be OFF too - "
         "they all link mpegts::mpegts unconditionally.")
+endif()
+if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_TESTS))
+    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_CLI and "
+        "AC3FORGE_BUILD_TESTS to both be OFF too - they both link ac4::ac4 unconditionally.")
 endif()
 
 # AC3FORGE_MINIMAL_DECODER's own version of the three guards above. Everything listed here
@@ -321,6 +329,14 @@ endif()
 # opted out of the same way matroska is expected to become opt-out-able too.
 if(AC3FORGE_BUILD_MPEGTS)
     add_subdirectory(src/mpegts)
+endif()
+
+# A fourth standalone module, same "depends on nothing of ac3::forge" shape
+# as the three container writers above - roadmap IM4's AC-4 bitstream
+# inspector. Gated by AC3FORGE_BUILD_AC4 (default ON, see the option() and
+# its FATAL_ERROR guard above).
+if(AC3FORGE_BUILD_AC4)
+    add_subdirectory(src/ac4)
 endif()
 
 # A standalone BW64/RF64 + Audio Definition Model parser - reader, not writer, but the same

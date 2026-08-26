@@ -472,13 +472,21 @@ machine-readable output and a single failure exit code. Users arrive with contai
   object elements once v2.0 is final. Phase 3: an OBU reader (`ipcm`/FLAC) onto
   `FrameConfig`/`AtmosEncoder`. `libiamf` and OAR are oracles, not sources. IM2 first is the
   cheaper route to the same ecosystem.
-- [ ] **IM4 (L)** — AC-4 parse-and-inspect (was `D4`). Nothing in the tree. ETSI TS 103 190-1
-  V1.3.1 and -2 V1.3.1 (2025-07) and ATSC A/342-2:2024 are free. An `ac4::` TOC / presentation /
-  substream parser feeding IO1, an independent Python reference parser in the
-  `tools/references` mould, and a separable carriage slice: `ac-4` sample entry and `dac4` box in
-  `mp4::`, the AC-4 descriptor in `mpegts::`, DASH-IF §5.3.4 signalling. `ac3::emdf` is reusable
-  (AC-4 carries the same container). Decide first where real AC-4 test streams come from —
-  nothing open encodes it.
+- [ ] **IM4 (L)** — AC-4 parse-and-inspect (was `D4`). The blocking question is resolved: nothing
+  open encodes AC-4, but the Dolby Encoding Engine already licensed and used for the AC-3/E-AC-3
+  external-baseline tier includes `dee_ac4_encoder.exe`/`dee_ac4ajoc_encoder.exe`, and the Dolby
+  Reference Player's `dlbac4parse` GStreamer element frames (though does not yet decode PCM from)
+  real AC-4 output on this machine — see docs/verification.md's AC-4 section. TOC / presentation /
+  channel-coded substream-group parsing landed: a standalone `ac4::` library (deliberately not
+  under `ac3::` — it depends on nothing of `ac3::forge`, including `ac3::emdf`, whose classic
+  Annex H sync+length+protection framing turned out not to be what AC-4's own `emdf_info()`/
+  `emdf_payloads_substream()` actually use), an independent Python reference parser
+  (`tools/references/ac4_parse.py`), real DEE fixtures (`tools/generators/gen_ac4_baseline.py`),
+  and `ac3cli probe` support (table + `json=1`, both bitstream_version <= 1 legacy and >= 2
+  extended TOC paths, 7.0.4 through 22.2 channel-based immersive). What remains: A-JOC/
+  direct-coded-object/OAMD substream groups (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — refused
+  cleanly today, not misparsed) and the separable carriage slice (`ac-4` sample entry and `dac4`
+  box in `mp4::`, the AC-4 descriptor in `mpegts::`, DASH-IF §5.3.4 signalling).
 - [ ] **IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module (was `D1`).
   `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, 41 commits behind `develop`)
   is far past the old `D1` text: a complete internal lossless codec — stream assembler, PMQ matrix

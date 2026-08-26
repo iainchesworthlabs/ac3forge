@@ -29,6 +29,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/version.hpp"
+#include "ac4/ac4.hpp"
 
 namespace ac3cli::commands {
 
@@ -656,6 +657,245 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
     json.end_object();
 }
 
+// --- AC-4 ---------------------------------------------------------------
+//
+// A separate walk from everything above, over ac4::scan()/parse_raw_frame()
+// rather than ac3::io::Prober - AC-4 is a different codec with a different
+// bitstream (see src/ac4/include/ac4/ac4.hpp's own scope note: TOC/
+// presentation/substream-group framing, not audio decode), so none of the
+// AC-3/E-AC-3-specific fields above (acmod, bsmod, chanmap, dialnorm,
+// exponent_strategy, ...) apply to it. Rather than writing thirty `null`
+// members onto every AC-4 response for fields that belong to a different
+// codec family entirely, `stream.codec == "ac4"` responses carry only the
+// fields meaningful across any codec plus a dedicated `stream.ac4` object -
+// additive to the documented schema, not a violation of its "never
+// omitted" rule, which is about a stream's own optional fields within one
+// codec family. See docs/cli/commands.md.
+//
+// No detail=frames/detail=blocks equivalent exists here: there is no
+// per-block audio-layer walk to show, by scope. The first sync frame's TOC
+// stands for the whole file's structure (real AC-4 streams do not change
+// presentation/substream-group layout frame to frame), alongside file-wide
+// CRC and parse-failure counts.
+
+std::string_view ac4_error_token(ac4::Error error) {
+    switch (error) {
+        case ac4::Error::kTruncated:
+            return "truncated";
+        case ac4::Error::kLostSync:
+            return "lost_sync";
+        case ac4::Error::kUnsupportedBitstreamVersion:
+            return "unsupported_bitstream_version";
+        case ac4::Error::kObjectCodedGroup:
+            return "object_coded_group";
+    }
+    return "unknown";
+}
+
+struct Ac4Summary {
+    std::size_t sync_frames = 0;
+    std::size_t bytes = 0;
+    std::size_t crc_failures = 0;
+    std::optional<ac4::Error> parse_error;  // first one seen, if any
+    std::optional<ac4::RawFrame> first_frame;
+};
+
+Ac4Summary summarize_ac4(std::span<const std::byte> data) {
+    Ac4Summary summary;
+    const auto scanned = ac4::scan(data);
+    summary.sync_frames = scanned.frames.size();
+    for (const auto& frame : scanned.frames) {
+        summary.bytes += frame.raw_ac4_frame.size() + (frame.crc_ok ? 6 : 4);
+        if (frame.crc_ok && !*frame.crc_ok) {
+            ++summary.crc_failures;
+        }
+        auto parsed = ac4::parse_raw_frame(frame.raw_ac4_frame);
+        if (!parsed && !summary.parse_error) {
+            summary.parse_error = parsed.error();
+        }
+        if (parsed && !summary.first_frame) {
+            summary.first_frame = std::move(*parsed);
+        }
+    }
+    if (scanned.stopped_at && !summary.parse_error) {
+        summary.parse_error = scanned.stopped_at;
+    }
+    return summary;
+}
+
+void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
+    fmt::println("{:<16}{}", "file", path);
+    fmt::println("{:<16}AC-4", "codec");
+    fmt::println("{:<16}{} ({} sync frame(s)), {} bytes", "access units", summary.sync_frames,
+                 summary.sync_frames, summary.bytes);
+    fmt::println("{:<16}{} of {} valid", "CRC", summary.sync_frames - summary.crc_failures,
+                 summary.sync_frames);
+    if (summary.parse_error) {
+        fmt::println("{:<16}{}", "parse error", ac4::describe(*summary.parse_error));
+    }
+    if (!summary.first_frame) {
+        return;
+    }
+    const auto& toc = summary.first_frame->toc;
+    fmt::println("{:<16}{}", "bs version", toc.bitstream_version);
+    fmt::println("{:<16}{} Hz", "sample rate", toc.sample_rate_hz);
+    fmt::println("{:<16}{}", "presentations", toc.n_presentations);
+    for (const auto& group : toc.substream_groups) {
+        for (const auto& sub : group.substreams) {
+            fmt::println("  {:<14}{}{}", "", sub.channel_mode_name,
+                         sub.bitrate_kbps ? fmt::format(", {} kbit/s", *sub.bitrate_kbps) : "");
+        }
+    }
+    for (const auto& pres : toc.presentations_v0) {
+        for (const auto& [role, sub] : pres.substreams) {
+            fmt::println("  {:<14}{}: {}", "", role, sub.channel_mode_name);
+        }
+    }
+}
+
+void write_ac4_substream_info(JsonWriter& json, const ac4::ChannelSubstreamInfo& sub) {
+    json.begin_object();
+    json.member("channel_mode", static_cast<std::int64_t>(sub.channel_mode));
+    json.member("channel_mode_name", sub.channel_mode_name);
+    if (sub.ch_mode) {
+        json.member("ch_mode", static_cast<std::int64_t>(*sub.ch_mode));
+    } else {
+        json.member_null("ch_mode");
+    }
+    if (sub.bitrate_kbps) {
+        json.member("bitrate_kbps", static_cast<std::int64_t>(*sub.bitrate_kbps));
+    } else {
+        json.member_null("bitrate_kbps");
+    }
+    if (sub.substream_index) {
+        json.member("substream_index", static_cast<std::int64_t>(*sub.substream_index));
+    } else {
+        json.member_null("substream_index");
+    }
+    // §6.3.2.7.3-.5: whether channels channel_mode implies exist in the
+    // original content or carry encoded silence - e.g. a 5.1.4 source
+    // carried in a 7.1.4-coded substream has b_4_back_channels_present ==
+    // false, and channel_mode_name alone would say "7.1.4" either way.
+    if (sub.original_content) {
+        json.key("original_content");
+        json.begin_object();
+        json.member("b_4_back_channels_present", sub.original_content->b_4_back_channels_present);
+        json.member("b_centre_present", sub.original_content->b_centre_present);
+        json.member("top_channels_present",
+                    static_cast<std::int64_t>(sub.original_content->top_channels_present));
+        json.end_object();
+    } else {
+        json.member_null("original_content");
+    }
+    json.end_object();
+}
+
+void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary& summary) {
+    json.key("stream");
+    json.begin_object();
+    json.member("codec", "ac4");
+    json.member("access_units", static_cast<std::uint64_t>(summary.sync_frames));
+    json.member("syncframes", static_cast<std::uint64_t>(summary.sync_frames));
+    json.member("bytes", static_cast<std::uint64_t>(summary.bytes));
+    json.key("integrity");
+    json.begin_object();
+    json.member("crc_valid", summary.crc_failures == 0 && summary.sync_frames > 0);
+    json.member("crc_failures", static_cast<std::uint64_t>(summary.crc_failures));
+    json.member("parse_failures", summary.parse_error ? std::uint64_t{1} : std::uint64_t{0});
+    if (summary.parse_error) {
+        json.member("first_parse_error", ac4_error_token(*summary.parse_error));
+    } else {
+        json.member_null("first_parse_error");
+    }
+    json.end_object();
+
+    json.key("ac4");
+    if (!summary.first_frame) {
+        json.value_null();
+        json.end_object();
+        return;
+    }
+    const auto& toc = summary.first_frame->toc;
+    json.begin_object();
+    json.member("bitstream_version", static_cast<std::int64_t>(toc.bitstream_version));
+    json.member("sample_rate_hz", static_cast<std::int64_t>(toc.sample_rate_hz));
+    json.member("frame_rate_index", static_cast<std::int64_t>(toc.frame_rate_index));
+    json.member("n_presentations", static_cast<std::int64_t>(toc.n_presentations));
+
+    json.key("substream_groups");
+    json.begin_array();
+    for (const auto& group : toc.substream_groups) {
+        json.begin_object();
+        json.member("b_substreams_present", group.b_substreams_present);
+        json.key("substreams");
+        json.begin_array();
+        for (const auto& sub : group.substreams) {
+            write_ac4_substream_info(json, sub);
+        }
+        json.end_array();
+        json.end_object();
+    }
+    json.end_array();
+
+    json.key("presentations_v0");
+    json.begin_array();
+    for (const auto& pres : toc.presentations_v0) {
+        json.begin_object();
+        json.member("presentation_version", static_cast<std::int64_t>(pres.presentation_version));
+        json.key("substreams");
+        json.begin_array();
+        for (const auto& [role, sub] : pres.substreams) {
+            json.begin_object();
+            json.member("role", role);
+            write_ac4_substream_info(json, sub);
+            json.end_object();
+        }
+        json.end_array();
+        json.end_object();
+    }
+    json.end_array();
+    json.end_object();  // ac4
+
+    json.end_object();  // stream
+    (void)path;
+}
+
+int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& meta) {
+    // Reads the whole input into memory - unlike the AC-3/E-AC-3 path above,
+    // which pulls forward through a fixed window (see docs/cli/commands.md's
+    // "Memory is flat" claim, which is specific to that path and not
+    // extended here). ac4::scan()/parse_raw_frame() operate on a
+    // std::span - a deliberate parse-and-inspect design, not a streaming
+    // decoder - and this command's own scope never walks per-block audio
+    // detail the way detail=frames/blocks does for AC-3/E-AC-3, so an AC-4
+    // file large enough for that to matter is not the case this exists for.
+    const std::vector<char> raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::vector<std::byte> data(raw.size());
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        data[i] = static_cast<std::byte>(raw[i]);
+    }
+    const auto summary = summarize_ac4(data);
+    if (summary.sync_frames == 0) {
+        fmt::println(stderr, "error: {}",
+                     summary.parse_error ? ac4::describe(*summary.parse_error)
+                                          : "no AC-4 sync frame found");
+        return 1;
+    }
+    if (meta.json) {
+        JsonWriter json{stdout};
+        json.begin_object();
+        json.member("schema", "ac3forge.probe/1");
+        json.member("generator", ac3::version_full);
+        json.member("file", in_path);
+        write_ac4_stream(json, in_path, summary);
+        json.end_object();
+        json.finish();
+    } else {
+        print_ac4_table(in_path, summary);
+    }
+    return summary.crc_failures > 0 || summary.parse_error ? 1 : 0;
+}
+
 }  // namespace
 
 int run_probe(std::string_view in_path, const Options& meta) {
@@ -679,6 +919,17 @@ int run_probe(std::string_view in_path, const Options& meta) {
         }
     }
     std::istream& in = is_stdio_path(in_path) ? std::cin : file;
+
+    // A single peek() disambiguates without disturbing the stream position
+    // for either downstream reader: AC-3/E-AC-3's syncword starts 0x0B77,
+    // AC-4's Annex G sync_word starts 0xAC40/0xAC41 - the first byte alone
+    // (0x0B vs 0xAC) already decides it, and peek() works the same way on a
+    // real file and on a pipe (std::cin), unlike a seek. ac3::io::
+    // AccessUnitReader below is unaffected either way - this dispatch has
+    // to happen before it, since it is hardwired to AC-3/E-AC-3 framing.
+    if (in.peek() == 0xAC) {
+        return run_probe_ac4(in_path, in, meta);
+    }
 
     // The JSON document is written as the walk produces it - the frames array
     // first, streamed, then the stream summary, which is only complete once

@@ -45,6 +45,7 @@ if(NOT Catch2_FOUND)
 endif()
 
 add_executable(ac3tests
+    ac4/test_ac4.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -191,6 +192,12 @@ target_compile_definitions(ac3tests
 # same reasoning: a path, because ctest runs from the build tree.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
+
+# tests/ac4/test_ac4.cpp reads the real DEE-produced AC-4 fixtures under
+# here (tools/generators/gen_ac4_baseline.py) - same reasoning as the two
+# defines above.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
@@ -372,6 +379,7 @@ target_link_libraries(ac3tests
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
+        ac4::ac4
         ac3::warnings
         ac3::coverage
         ac3::fmt

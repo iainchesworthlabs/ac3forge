@@ -67,6 +67,7 @@ target_link_libraries(ac3cli
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
+        ac4::ac4
         ac3::warnings
         ac3::fmt
         ac3::coverage)

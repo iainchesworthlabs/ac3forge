@@ -14,6 +14,22 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **`ac3cli probe` reads AC-4 streams.** A new standalone `ac4::` library
+  (`src/ac4`, no dependency on `ac3::forge`) parses AC-4's sync-frame, table
+  of contents, presentation and channel-coded substream-group framing
+  (ETSI TS 103 190-1/-2), including 7.0.4 through 22.2 channel-based
+  immersive layouts. `probe` sniffs the file automatically and reports it
+  the same two ways as AC-3/E-AC-3 — a table, or `json=1`'s
+  `ac3forge.probe/1` document, now with `stream.codec == "ac4"` and a
+  dedicated `stream.ac4` object. It is bitstream inspection, not decoding:
+  audio content is reported by byte range, never decoded, and A-JOC/object/
+  OAMD substream groups are recognised and refused cleanly rather than
+  misparsed. An independent Python transcription
+  (`tools/references/ac4_parse.py`) and real Dolby Encoding Engine fixtures
+  (`tools/generators/gen_ac4_baseline.py`) back it the same way the
+  existing E-AC-3 external-baseline tier does. See
+  [docs/verification.md](docs/verification.md#ac-4) for what is and is not
+  checked, and [docs/cli/commands.md](docs/cli/commands.md#probe--what-the-stream-says-about-itself).
 - **Encoder/decoder latency budget** (`PF6`). `ac3/latency.hpp`'s `LatencyBudget` reports frame
   granularity, MDCT/IMDCT overlap, encoder lookahead and the E-AC-3 §3.7 decoder hold-back as
   sample counts, via `latency()`/`latency_samples()` on `ac3::FrameEncoder`,
