@@ -836,7 +836,7 @@ typedef struct ac3forge_atmos_config {
     ac3forge_sample_rate_t sample_rate;
     uint32_t bitrate_kbps; /* default 448 */
     int dialnorm;
-    int num_bands_idx; /* index into joc::kNumBands (Table 50); default 4 */
+    int num_bands_idx; /* index into ac3::oba::joc::kNumBands (Table 50); default 4 */
     int fine_quant;
     int emit_object_metadata; /* default 1 — see AtmosConfig's own comment on turning this off */
     int fast_mdct;

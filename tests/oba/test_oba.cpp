@@ -45,7 +45,7 @@ std::uint32_t read_variable_bits_max(ac3::BitReader& r, int group_bits, int max_
     }
 }
 
-int huff_decode(std::span<const ac3::joc::HuffCode> table, ac3::BitReader& r) {
+int huff_decode(std::span<const ac3::oba::joc::HuffCode> table, ac3::BitReader& r) {
     std::uint32_t accumulated = 0;
     for (int bits = 1; bits <= 32; ++bits) {
         accumulated = (accumulated << 1) | r.read_bit();
@@ -63,28 +63,28 @@ int huff_decode(std::span<const ac3::joc::HuffCode> table, ac3::BitReader& r) {
 TEST_CASE("JOC quantization round-trips through the spec's own scale", "[oba][joc]") {
     // §6.6.4's note pins the reachable range exactly, which is the cheapest
     // check that the 820/4096 scale and the nquant/2 origin are both right.
-    CHECK_THAT(ac3::joc::dequantize(0, false),
+    CHECK_THAT(ac3::oba::joc::dequantize(0, false),
                Catch::Matchers::WithinAbs(-9.609, 0.001));
-    CHECK_THAT(ac3::joc::dequantize(95, false),
+    CHECK_THAT(ac3::oba::joc::dequantize(95, false),
                Catch::Matchers::WithinAbs(9.410, 0.001));
-    CHECK_THAT(ac3::joc::dequantize(0, true),
+    CHECK_THAT(ac3::oba::joc::dequantize(0, true),
                Catch::Matchers::WithinAbs(-9.609, 0.001));
-    CHECK_THAT(ac3::joc::dequantize(191, true),
+    CHECK_THAT(ac3::oba::joc::dequantize(191, true),
                Catch::Matchers::WithinAbs(9.509, 0.001));
 
     // Zero gain is a code, not an approximation - it is the origin.
-    CHECK(ac3::joc::quantize(0.0, false) == 48);
-    CHECK(ac3::joc::quantize(0.0, true) == 96);
-    CHECK(ac3::joc::dequantize(48, false) == 0.0);
+    CHECK(ac3::oba::joc::quantize(0.0, false) == 48);
+    CHECK(ac3::oba::joc::quantize(0.0, true) == 96);
+    CHECK(ac3::oba::joc::dequantize(48, false) == 0.0);
 
     // Fine quantization must actually halve the step.
-    const double coarse_step = ac3::joc::dequantize(49, false);
-    const double fine_step = ac3::joc::dequantize(97, true);
+    const double coarse_step = ac3::oba::joc::dequantize(49, false);
+    const double fine_step = ac3::oba::joc::dequantize(97, true);
     CHECK_THAT(coarse_step, Catch::Matchers::WithinAbs(2.0 * fine_step, 1e-12));
 
     for (const bool fine : {false, true}) {
         for (const double value : {-9.0, -1.0, -0.2, 0.0, 0.5, 1.0, 3.3, 9.0}) {
-            const double back = ac3::joc::dequantize(ac3::joc::quantize(value, fine), fine);
+            const double back = ac3::oba::joc::dequantize(ac3::oba::joc::quantize(value, fine), fine);
             CHECK_THAT(back, Catch::Matchers::WithinAbs(value, fine ? 0.051 : 0.101));
         }
     }
@@ -93,18 +93,18 @@ TEST_CASE("JOC quantization round-trips through the spec's own scale", "[oba][jo
 TEST_CASE("Table 54 matches the standard's worked example", "[oba][joc]") {
     // §6.6.5: "If joc_num_bands = 15 and the input to sb_to_pb(subband) is the
     // subband value 24, sb_to_pb(24) returns the value 13."
-    STATIC_CHECK(ac3::joc::kNumBands[6] == 15);
-    STATIC_CHECK(ac3::joc::kSubbandToBand[6][24] == 13);
+    STATIC_CHECK(ac3::oba::joc::kNumBands[6] == 15);
+    STATIC_CHECK(ac3::oba::joc::kSubbandToBand[6][24] == 13);
     // Every mapping has to reach its last band, or the top of the spectrum
     // would be coded with parameters nothing ever reads.
-    for (std::size_t idx = 0; idx < ac3::joc::kNumBands.size(); ++idx) {
-        CHECK(ac3::joc::kSubbandToBand[idx][0] == 0);
-        CHECK(ac3::joc::kSubbandToBand[idx][63] == ac3::joc::kNumBands[idx] - 1);
+    for (std::size_t idx = 0; idx < ac3::oba::joc::kNumBands.size(); ++idx) {
+        CHECK(ac3::oba::joc::kSubbandToBand[idx][0] == 0);
+        CHECK(ac3::oba::joc::kSubbandToBand[idx][63] == ac3::oba::joc::kNumBands[idx] - 1);
     }
 }
 
 TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
-    ac3::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 7};
+    ac3::oba::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 7};
     params.matrix.resize(params.coefficient_count());
     // A matrix with structure rather than noise: each object leans on a
     // different channel, and the lean varies across bands. Constant values
@@ -118,7 +118,7 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
         }
     }
 
-    const auto payload = ac3::joc::build_payload(params);
+    const auto payload = ac3::oba::joc::build_payload(params);
     ac3::BitReader r{payload};
 
     // --- joc_header ---
@@ -141,7 +141,7 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
 
     // --- joc_data, undone exactly as §6.6.2 Pseudocode 3 specifies ---
     constexpr int kNquant = 96;
-    const std::span<const ac3::joc::HuffCode> table{ac3::joc::kMtxCoarse};
+    const std::span<const ac3::oba::joc::HuffCode> table{ac3::oba::joc::kMtxCoarse};
     for (int object = 0; object < params.objects; ++object) {
         for (int channel = 0; channel < params.channels; ++channel) {
             int previous = kNquant / 2;  // the offset Pseudocode 3 starts from
@@ -150,7 +150,7 @@ TEST_CASE("JOC payload decodes back to the matrix it was given", "[oba][joc]") {
                 REQUIRE(difference >= 0);
                 const int code = (previous + difference) % kNquant;
                 previous = code;
-                CHECK_THAT(ac3::joc::dequantize(code, false),
+                CHECK_THAT(ac3::oba::joc::dequantize(code, false),
                            Catch::Matchers::WithinAbs(
                                params.at(object, channel, band), 0.101));
             }
@@ -170,12 +170,12 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
     // both ship: the MDCT pair's own 256 samples (the same one-block delay
     // tests/decoder/test_eac3_decoder.cpp's snr_db helper documents), and
     // the filterbank's 576 (its 640-tap window less one 64-sample hop).
-    // joc::reconstruction_delay() is the single place either number is
+    // oba::joc::reconstruction_delay() is the single place either number is
     // written down, so a test that used the wrong one could not silently
     // pass by measuring a shifted signal against itself.
-    for (const auto domain : {ac3::joc::Domain::kMdctBand, ac3::joc::Domain::kQmf}) {
-        CAPTURE(domain == ac3::joc::Domain::kQmf);
-        ac3::joc::FrameParameters params{.objects = 1, .num_bands_idx = 4};
+    for (const auto domain : {ac3::oba::joc::Domain::kMdctBand, ac3::oba::joc::Domain::kQmf}) {
+        CAPTURE(domain == ac3::oba::joc::Domain::kQmf);
+        ac3::oba::joc::FrameParameters params{.objects = 1, .num_bands_idx = 4};
         params.matrix.assign(params.coefficient_count(), 0.0);
         for (int band = 0; band < params.bands(); ++band) {
             params.at(0, 0, band) = 1.0;
@@ -187,16 +187,16 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
         }
 
-        ac3::joc::ReconstructionState state;
+        ac3::oba::joc::ReconstructionState state;
         const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
         std::vector<std::vector<float>> out;
         for (int frame = 0; frame < 3; ++frame) {
-            out = ac3::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
+            out = ac3::oba::joc::reconstruct(bed_views, params, state, /*fast_mdct=*/false,
                                        /*fast_imdct=*/false, domain);
         }
         REQUIRE(out.size() == 1);
 
-        const int delay = ac3::joc::reconstruction_delay(domain);
+        const int delay = ac3::oba::joc::reconstruction_delay(domain);
         double signal = 0.0;
         double error = 0.0;
         for (int n = delay; n < ac3::kSamplesPerFrame; ++n) {
@@ -212,7 +212,7 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
 TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][joc]") {
     for (const bool fine : {false, true}) {
         CAPTURE(fine);
-        ac3::joc::FrameParameters params{
+        ac3::oba::joc::FrameParameters params{
             .objects = 4, .num_bands_idx = 4, .fine_quant = fine, .seq_count = 7};
         params.matrix.resize(params.coefficient_count());
         for (int object = 0; object < params.objects; ++object) {
@@ -224,8 +224,8 @@ TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][jo
             }
         }
 
-        const auto payload = ac3::joc::build_payload(params);
-        const auto decoded = ac3::joc::parse_payload(payload);
+        const auto payload = ac3::oba::joc::build_payload(params);
+        const auto decoded = ac3::oba::joc::parse_payload(payload);
         REQUIRE(decoded.has_value());
         CHECK(decoded->objects == params.objects);
         CHECK(decoded->channels == params.channels);
@@ -249,9 +249,9 @@ TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][jo
 TEST_CASE("JOC parse_payload covers every band count and the object-count boundary", "[oba][joc]") {
     for (const int num_bands_idx : {0, 1, 2, 3, 4, 5, 6, 7}) {
         CAPTURE(num_bands_idx);
-        for (const int objects : {1, ac3::joc::kMaxObjects}) {
+        for (const int objects : {1, ac3::oba::joc::kMaxObjects}) {
             CAPTURE(objects);
-            ac3::joc::FrameParameters params{.objects = objects, .num_bands_idx = num_bands_idx};
+            ac3::oba::joc::FrameParameters params{.objects = objects, .num_bands_idx = num_bands_idx};
             params.matrix.assign(params.coefficient_count(), 0.0);
             for (int object = 0; object < objects; ++object) {
                 for (int channel = 0; channel < params.channels; ++channel) {
@@ -260,8 +260,8 @@ TEST_CASE("JOC parse_payload covers every band count and the object-count bounda
                     }
                 }
             }
-            const auto payload = ac3::joc::build_payload(params);
-            const auto decoded = ac3::joc::parse_payload(payload);
+            const auto payload = ac3::oba::joc::build_payload(params);
+            const auto decoded = ac3::oba::joc::parse_payload(payload);
             REQUIRE(decoded.has_value());
             CHECK(decoded->objects == objects);
             CHECK(decoded->bands() == params.bands());
@@ -270,17 +270,17 @@ TEST_CASE("JOC parse_payload covers every band count and the object-count bounda
 }
 
 TEST_CASE("JOC parse_payload rejects what it cannot cleanly interpret", "[oba][joc]") {
-    ac3::joc::FrameParameters params{.objects = 2, .num_bands_idx = 3};
+    ac3::oba::joc::FrameParameters params{.objects = 2, .num_bands_idx = 3};
     params.matrix.assign(params.coefficient_count(), 0.5);
-    const auto payload = ac3::joc::build_payload(params);
-    REQUIRE(ac3::joc::parse_payload(payload).has_value());
+    const auto payload = ac3::oba::joc::build_payload(params);
+    REQUIRE(ac3::oba::joc::parse_payload(payload).has_value());
 
     SECTION("truncated payload") {
         for (const std::size_t cut : {std::size_t{1}, payload.size() / 2, payload.size() - 1}) {
             CAPTURE(cut);
             const std::vector<std::byte> truncated(payload.begin(),
                                                    payload.begin() + static_cast<std::ptrdiff_t>(cut));
-            CHECK_FALSE(ac3::joc::parse_payload(truncated).has_value());
+            CHECK_FALSE(ac3::oba::joc::parse_payload(truncated).has_value());
         }
     }
 
@@ -290,11 +290,11 @@ TEST_CASE("JOC parse_payload rejects what it cannot cleanly interpret", "[oba][j
         // parser does not implement.
         auto corrupt = payload;
         corrupt[0] |= std::byte{0b001'00000};
-        CHECK_FALSE(ac3::joc::parse_payload(corrupt).has_value());
+        CHECK_FALSE(ac3::oba::joc::parse_payload(corrupt).has_value());
     }
 
     SECTION("an empty payload") {
-        CHECK_FALSE(ac3::joc::parse_payload({}).has_value());
+        CHECK_FALSE(ac3::oba::joc::parse_payload({}).has_value());
     }
 }
 
@@ -302,9 +302,9 @@ TEST_CASE("JOC codes an unchanged band in a single bit", "[oba][joc]") {
     // Value 0 has a one-bit codeword in every generic table, which is the
     // whole reason the matrix is differentially coded along the bands: a
     // coefficient that does not move across the spectrum is nearly free.
-    ac3::joc::FrameParameters flat{.objects = 1, .num_bands_idx = 7};  // 23 bands
+    ac3::oba::joc::FrameParameters flat{.objects = 1, .num_bands_idx = 7};  // 23 bands
     flat.matrix.assign(flat.coefficient_count(), 0.0);
-    const auto payload = ac3::joc::build_payload(flat);
+    const auto payload = ac3::oba::joc::build_payload(flat);
     // joc_header 12 + joc_info's fixed 18 + 8 per object (presence, bands,
     // sparse, quant, slope, data points) = 38 bits, then 5 channels x 23 bands
     // of zero-difference codewords at one bit each.
@@ -847,19 +847,19 @@ TEST_CASE("OAMD skips an oa_element it does not recognise", "[oba][oamd]") {
 }
 
 TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]") {
-    CHECK(ac3::joc::dmx_channel_count(ac3::joc::kDmxConfig5X) == 5);
-    CHECK(ac3::joc::dmx_channel_count(ac3::joc::kDmxConfig7X) == 7);
-    CHECK(ac3::joc::dmx_channel_count(ac3::joc::kDmxConfig5XPlus2) == 7);
-    CHECK(ac3::joc::dmx_channel_count(ac3::joc::kDmxConfig5XPhaseShift) == 5);
-    CHECK(ac3::joc::dmx_channel_count(ac3::joc::kDmxConfig5XPlus2PhaseShift) == 7);
+    CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig5X) == 5);
+    CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig7X) == 7);
+    CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig5XPlus2) == 7);
+    CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig5XPhaseShift) == 5);
+    CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig5XPlus2PhaseShift) == 7);
     // Table 48 reserves 5..7 and gives them no channel count, which is what
     // parse_payload keys its refusal off.
-    CHECK(ac3::joc::dmx_channel_count(5) == 0);
-    CHECK(ac3::joc::dmx_channel_count(7) == 0);
+    CHECK(ac3::oba::joc::dmx_channel_count(5) == 0);
+    CHECK(ac3::oba::joc::dmx_channel_count(7) == 0);
 
-    for (const int config : {ac3::joc::kDmxConfig5XPhaseShift, ac3::joc::kDmxConfig7X}) {
+    for (const int config : {ac3::oba::joc::kDmxConfig5XPhaseShift, ac3::oba::joc::kDmxConfig7X}) {
         CAPTURE(config);
-        const int channels = ac3::joc::dmx_channel_count(config);
+        const int channels = ac3::oba::joc::dmx_channel_count(config);
         ac3::BitWriter w;
         w.put(static_cast<std::uint32_t>(config), 3);
         w.put(1, 6);  // joc_num_objects_bits => 2 objects
@@ -892,7 +892,7 @@ TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]"
         }
         const auto payload = w.take();
 
-        const auto decoded = ac3::joc::parse_payload(payload);
+        const auto decoded = ac3::oba::joc::parse_payload(payload);
         REQUIRE(decoded.has_value());
         CHECK(decoded->dmx_config_idx == config);
         CHECK(decoded->channels == channels);
@@ -935,10 +935,10 @@ TEST_CASE("JOC refuses the two headers that carry no length", "[oba][joc]") {
     };
     // A reserved joc_dmx_config_idx: Table 48 names no channel count, so
     // joc_data has no loop bound.
-    CHECK_FALSE(ac3::joc::parse_payload(header(6, 0)).has_value());
+    CHECK_FALSE(ac3::oba::joc::parse_payload(header(6, 0)).has_value());
     // A nonzero joc_ext_config_idx: §6.2.1 gives joc_ext_data() no syntax at
     // all, so there is nothing to skip past either.
-    CHECK_FALSE(ac3::joc::parse_payload(header(0, 1)).has_value());
+    CHECK_FALSE(ac3::oba::joc::parse_payload(header(0, 1)).has_value());
 }
 
 TEST_CASE("EMDF reports a payload configuration outside Table 56's shape", "[emdf]") {

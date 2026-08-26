@@ -1109,11 +1109,21 @@ directory; there is still no threading anywhere in the codec core.
   `ac4::`) so they never enter the frozen surface; release criteria against the standing Known
   gaps; and a cadence/governance statement — the vcpkg reviewer cited "all releases are
   prereleases" alongside the maturity rule.
-- [ ] **AP2 (M)** — Naming and error-type sweep before the freeze. `ac3/oba/joc.hpp` declares
-  `ac3::joc`, not `ac3::oba`; `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` share a name
-  across namespaces; `iec61937` lives under `sinks/`; `FrameError` has no `describe()` while every
-  other error type does (a Python `Ac3EncodeError`'s message is the enumerator's name). Record
-  the codec-vs-codec-blind namespace split in `docs/library/index.md`.
+- [x] **AP2 (M)** — Naming and error-type sweep before the freeze. Done, three real fixes and one
+  deliberate non-fix: `ac3/oba/joc.hpp`/`joc_tables.hpp` now declare `ac3::oba::joc`, matching the
+  path (source- and ABI-breaking — every in-repo caller, the two ABI allowlists and
+  `tools/generators/gen_joc_tables.py` moved with it); `ac3/sinks/` — a directory that only ever
+  held one file, and that file was never a `Sink` type in the first place, `ac3::audio`'s
+  `PassthroughSink`/`MonitorSink` are the real ones — is now `ac3/iec61937/`, header path only,
+  the `ac3::iec61937` namespace was already correctly named (source-breaking for the `#include`
+  path; ABI unaffected since mangled names carry the namespace, not the directory); `FrameError`
+  gained `describe()` (`src/forge/src/encoder/silent_frame.cpp`), and the Python binding's
+  `EncodeFailure` now builds `Ac3EncodeError`'s message from it instead of the enumerator's own
+  name. `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` sharing a name across namespaces is left
+  alone — it is the same base-case-in-the-bare-namespace, extension-in-a-nested-one split the
+  Python bindings already mirror with a real `ac3.eac3` submodule, not an inconsistency — and is
+  now written down as a convention in `docs/library/index.md` alongside the codec-vs-codec-blind
+  namespace split.
 - [x] **AP3 (L)** — Pimpl sweep. Done: every `AC3FORGE_EXPORT` class with non-trivial state now
   hides it behind `struct Impl; std::unique_ptr<Impl> impl_;`, the same pattern the three WAV
   classes already used — `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` (finished from their
@@ -1296,13 +1306,32 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
   then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
 - [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
-  the distro's Qt 6 and `qml6-module-*` packages); ~~a Windows ARM64 leg on the hosted
-  `windows-11-arm` runner~~ `windows-msvc-arm64` builds and tests `ac3cli` on real ARM64 hardware
-  (CLI-only — no resolvable Qt6 ARM64 Windows kit for the pinned version yet, see
-  `docs/platforms/windows.md`'s ARM64 section) and packages a `win-arm64` release archive;
-  `experimental: true` until it proves itself green over real runs, the same promotion path
-  `macos-llvm` went through. macOS universal binaries are a separate decision (the Cask is
-  arm64-only and Intel demand is doubtful).
+  the distro's Qt 6 and `qml6-module-*` packages) is still open. The other two halves have both
+  landed since this item was last written, independently:
+  - ~~A Windows ARM64 leg on the hosted `windows-11-arm` runner~~ `windows-msvc-arm64` builds and
+    tests `ac3cli` on real ARM64 hardware (CLI-only — no resolvable Qt6 ARM64 Windows kit for the
+    pinned version yet, see `docs/platforms/windows.md`'s ARM64 section) and packages a
+    `win-arm64` release archive; `experimental: true` until it proves itself green over real runs,
+    the same promotion path `macos-llvm` went through.
+  - **macOS universal binaries: landed.** This item originally called them "a separate decision,
+    not a given," skeptical because the Cask was arm64-only and Intel demand looked doubtful —
+    that skepticism was written without checking current GitHub runner availability, and it turned
+    out to rest on a stale assumption: `macos-15-intel` exists, is free for public repos, and is
+    real native Intel hardware, not Rosetta emulation (confirmed against
+    `docs.github.com/en/actions/reference/runners/github-hosted-runners`) — so a universal binary
+    needed no cross-compilation and the actual blocker was gone.
+    `cmake/vcpkg/triplets/x64-macos-llvm.cmake` joins the existing `arm64-macos-llvm.cmake`;
+    `macos.llvm.toolchain.cmake` and `FindQt6.cmake` needed zero changes, since both already
+    resolved their target architecture generically. A new `macos-llvm-x64` CI leg builds the Intel
+    half for real; a `package-macos-universal` job `lipo`-merges it with `macos-llvm`'s arm64
+    build (proven via `lipo -info` on the merged `ac3cli`/`ac3gui` binaries and a bundled Qt
+    framework binary in the CI log, not assumed from a green checkmark) and packages the result as
+    the release's one canonical macOS `.dmg` — neither single-arch leg's own `cpack` output ships
+    as the release artifact any more, a deliberate change from before. The Homebrew Cask dropped
+    its `depends_on arch: :arm64`. `macos-llvm-x64` stays `experimental: true` until proven green
+    the same way `macos-llvm` was; see
+    [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) and
+    [docs/releasing.md](releasing.md#what-gets-published).
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:
   - **Linux/ALSA: confirmed.** `docs/platforms/raspberry-pi.md` ("Live HDMI passthrough to a

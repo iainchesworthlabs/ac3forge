@@ -23,7 +23,7 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | Format sniffing before any decoder commits | `ac3::io::scan` | yes |
 | EMDF containers in a skip field (§H.2.2) | `ac3::emdf::parse_container` | yes — `fuzz_emdf_parse`, plus indirectly through the E-AC-3 harnesses |
 | OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
-| JOC payloads (TS 103 420 §6) | `ac3::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
+| JOC payloads (TS 103 420 §6) | `ac3::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
 | WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
 | IEC 61937 bursts off an S/PDIF or HDMI capture | `ac3::iec61937::BurstReader` | yes — `fuzz_iec61937_unwrap` |
 | ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `AC3FORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
