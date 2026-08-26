@@ -121,17 +121,17 @@ std::expected<ComPtr<IMMDeviceEnumerator>, SpatialError> make_enumerator() {
 }
 
 std::expected<ComPtr<IMMDevice>, SpatialError> resolve_device(
-    IMMDeviceEnumerator& enumerator, const std::string& device_id) {
+    const ComPtr<IMMDeviceEnumerator>& enumerator, const std::string& device_id) {
     ComPtr<IMMDevice> device;
     if (device_id.empty()) {
-        if (FAILED(enumerator.GetDefaultAudioEndpoint(eRender, eConsole, &device))) {
+        if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) {
             return std::unexpected(SpatialError::kDeviceNotFound);
         }
     } else {
         const int wide_len = MultiByteToWideChar(CP_UTF8, 0, device_id.c_str(), -1, nullptr, 0);
         std::wstring wide(static_cast<std::size_t>(wide_len > 0 ? wide_len - 1 : 0), L'\0');
         MultiByteToWideChar(CP_UTF8, 0, device_id.c_str(), -1, wide.data(), wide_len);
-        if (FAILED(enumerator.GetDevice(wide.c_str(), &device))) {
+        if (FAILED(enumerator->GetDevice(wide.c_str(), &device))) {
             return std::unexpected(SpatialError::kDeviceNotFound);
         }
     }
@@ -144,7 +144,7 @@ std::expected<ComPtr<ISpatialAudioClient>, SpatialError> activate_spatial_client
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
-    auto device = resolve_device(**enumerator, device_id);
+    auto device = resolve_device(*enumerator, device_id);
     if (!device) {
         return std::unexpected(device.error());
     }

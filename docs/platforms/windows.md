@@ -28,8 +28,15 @@ On Windows, the three features that touch sound hardware are all implemented ove
   E-AC-3 burst framing (IEC 61937).
 - **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
   path that decodes what is being encoded and plays it back on an ordinary output.
+- **`ac3::audio::SpatialObjectSink`** (roadmap UX8) — `ISpatialAudioObjectRenderStream`: decoded
+  Atmos objects go out as dynamic objects at their real OAMD positions, and the bed's LFE (never
+  a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind `ac3cli spatial`. This is the one
+  path that lets Dolby's own renderer engage with this project's reconstructed objects at all — a
+  licensed decoder otherwise refuses object decoding without a signing key this project doesn't
+  ship (see [Object signing](../concepts/object-signing.md)) — and needs nothing but a spatial-
+  sound-capable endpoint to do it, no AVR and no key.
 
-These three are not equally verified against real hardware, and the project's own documentation
+These four are not equally verified against real hardware, and the project's own documentation
 is deliberately explicit about the difference.
 
 !!! note "MonitorSink is confirmed against real hardware"
@@ -43,6 +50,21 @@ is deliberately explicit about the difference.
     rather than the bed's fixed six channels. Both are fixed; see
     `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
     `apps/cli/commands/live_audio.cpp`.
+
+!!! note "SpatialObjectSink is confirmed against a real spatial endpoint"
+    `ac3cli spatial` has activated `ISpatialAudioObjectRenderStream` and rendered a real Atmos
+    stream (4 orbiting objects, 8 s, this project's own encoder) against the default Realtek
+    output after Windows Sonic for Headphones was enabled on it — 250 access units, zero
+    underruns, clean shutdown. The `kNoSpatialFormat` refusal was confirmed the same session
+    against a second endpoint that still had no spatial format enabled, and against the very
+    endpoint used for the successful run, probed *before* Windows Sonic was turned on
+    (`GetMaxDynamicObjectCount` read 0 everywhere on this machine at that point). What is not yet
+    checked: a listening pass confirming the rendered audio actually arrives from where the OAMD
+    positions say it should — nobody running this had ears in the loop, only the OS's own
+    accept-and-render behaviour — and the "bed as static objects" branch beyond the LFE, since
+    every stream this project's own encoder produces is dynamic-object-only (`oamd.hpp`'s own
+    documented shape); a genuine third-party bed-plus-objects Annex E stream would be needed to
+    exercise the rest of `oba::bed_labels()` against a verified coded-channel-order mapping.
 
 !!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver on Windows"
     No S/PDIF or HDMI endpoint behind an actual AV receiver has been connected to a Windows
