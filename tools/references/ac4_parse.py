@@ -402,14 +402,195 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
             'substreams': [], 'emdf_substreams': emdf_substreams}
 
 
+# --- §6.2.1.13 oamd_substream_info ------------------------------------------
+
+def parse_oamd_substream_info(r, b_substreams_present):
+    b_oamd_ndot = r.bits(1)
+    substream_index = parse_substream_index_ref(r) if b_substreams_present else None
+    return {'b_oamd_ndot': b_oamd_ndot, 'substream_index': substream_index}
+
+
+# --- §6.2.1.10 bed_dyn_obj_assignment ---------------------------------------
+
+# Table 62 (§6.3.2.10.5, direct-coded) and Table 63 (A-JOC-coded) both
+# index bed_chan_assign_code the same way: how many BED objects the code
+# expands to. The two tables differ (direct-coded's counts run one higher
+# per entry, room for its own extra LFE slot at index 3) so each caller
+# passes its own.
+_BED_CHAN_ASSIGN_COUNT_AJOC = [2, 3, 5, 7, 9, 7, 9, 11]
+_BED_CHAN_ASSIGN_COUNT_DIRECT = [2, 3, 6, 8, 10, 8, 10, 12]
+_STD_BED_GROUP_SIZE = [2, 1, 1, 2, 2, 2, 2, 2, 2, 1]
+
+
+class OamdCommonDataPresent(Exception):
+    """Raised when ac4_substream_info_ajoc() sets b_oamd_common_data_present.
+    oamd_common_data() (§6.2.8.1) is a large, separate metadata structure
+    (bed assignment, DRC, target-device categories, dialogue enhancement)
+    this parser does not transcribe - see the module docstring. It is
+    reached only from this one TOC-level info element; the OAMD substream
+    DATA payload itself (oamd_substream(), §6.2.2.4) is always treated as
+    an opaque byte range regardless of this flag, the same as every other
+    non-channel-audio substream."""
+
+
+def parse_bed_dyn_obj_assignment(r, n_signals):
+    """§6.2.1.10 / §6.3.2.10.8. Returns a list of {'type': 'BED'|'DYN'|'ISF',
+    'lfe': bool, 'ajoc_coded': bool} dicts - always ajoc_coded=True here,
+    since this element only appears inside ac4_substream_info_ajoc()."""
+    objects = []
+
+    def add(kind, lfe):
+        objects.append({'type': kind, 'lfe': lfe, 'ajoc_coded': True})
+
+    b_dyn_objects_only = r.bits(1)
+    if b_dyn_objects_only:
+        return objects  # every object in this substream is dynamic and unlisted here
+    if r.bits(1):  # b_isf
+        isf_config = r.bits(3)
+        n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+        for _ in range(n_isf):
+            add('ISF', False)
+        return objects
+    if r.bits(1):  # b_ch_assign_code
+        bed_chan_assign_code = r.bits(3)
+        for _ in range(_BED_CHAN_ASSIGN_COUNT_AJOC[bed_chan_assign_code]):
+            add('BED', False)
+        return objects
+    if not r.bits(1):  # b_channel_assignment_flags_present
+        # Neither an assignment code nor explicit flags: one nonstd_bed_
+        # channel_assignment code (§6.3.2.10.8) per bed signal, n_bed_signals
+        # of them (1, unless n_signals > 1 lets more than one be named).
+        if n_signals > 1:
+            bed_ch_bits = (n_signals - 1).bit_length()
+            n_bed_signals = r.bits(bed_ch_bits) + 1
+        else:
+            n_bed_signals = 1
+        for _ in range(n_bed_signals):
+            nonstd_bed_channel_assignment = r.bits(4)
+            if nonstd_bed_channel_assignment != 3:
+                add('BED', False)
+        return objects
+    if r.bits(1):  # b_nonstd_bed_channel_assignment_flags_present
+        flags = r.bits(17)
+        for i in range(17):
+            # Table 64: array position (16-i) = "channel order" i; array
+            # position 0 is the LAST bit read (LSB of a plain r.bits(17)),
+            # position 16 the FIRST (MSB), so flag[16-i] sits at bit i.
+            # Cross-checked against §6.3.2.10.8 EXAMPLE 2's worked value.
+            if (flags >> i) & 1:  # flag[16-i]
+                if i != 3 and i != 16:
+                    add('BED', False)
+    else:
+        flags = r.bits(10)
+        for i in range(10):
+            if (flags >> i) & 1:  # flag[9-i], same reasoning as the 17-bit case above
+                if i != 2 and i != 9:
+                    for _ in range(_STD_BED_GROUP_SIZE[i]):
+                        add('BED', False)
+    return objects
+
+
+# --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
+
+def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_present):
+    b_lfe = r.bits(1)
+    b_static_dmx = r.bits(1)
+    static_objects = []
+    if b_static_dmx:
+        n_fullband_dmx_signals = 5
+    else:
+        n_fullband_dmx_signals = r.bits(4) + 1
+        static_objects = parse_bed_dyn_obj_assignment(r, n_fullband_dmx_signals)
+    if r.bits(1):  # b_oamd_common_data_present
+        raise OamdCommonDataPresent(
+            'ac4_substream_info_ajoc sets b_oamd_common_data_present; '
+            'oamd_common_data() (TS 103 190-2 §6.2.8.1) not implemented')
+    n_fullband_upmix_signals = r.bits(4) + 1
+    if n_fullband_upmix_signals == 16:
+        n_fullband_upmix_signals += variable_bits(r, 3)
+    upmix_objects = parse_bed_dyn_obj_assignment(r, n_fullband_upmix_signals)
+    sf_multiplier = None
+    if fs_index == 1 and r.bits(1):  # b_sf_multiplier
+        sf_multiplier = r.bits(1)
+    bitrate_kbps = None
+    if r.bits(1):  # b_bitrate_info
+        bitrate_kbps = BITRATE_KBPS.get(_read_bitrate_indicator(r))
+    for _ in range(frame_rate_factor):
+        r.bits(1)  # b_audio_ndot
+    substream_index = parse_substream_index_ref(r) if b_substreams_present else None
+    return {'b_lfe': b_lfe, 'b_static_dmx': b_static_dmx,
+            'n_fullband_dmx_signals': n_fullband_dmx_signals, 'static_objects': static_objects,
+            'n_fullband_upmix_signals': n_fullband_upmix_signals, 'upmix_objects': upmix_objects,
+            'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
+            'substream_index': substream_index}
+
+
+# --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
+
+def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_present):
+    objects = []
+
+    def add(kind, lfe):
+        objects.append({'type': kind, 'lfe': lfe, 'ajoc_coded': False})
+
+    n_objects_code = r.bits(3)
+    # Table 60 (§6.3.2.10.2): codes 0-4 are b_lfe/1+b_lfe/2+b_lfe/3+b_lfe/
+    # 5+b_lfe, 5-7 reserved - but the syntax table's own lookup is this flat
+    # 6-entry array regardless, and b_lfe is folded in separately below
+    # rather than by this array, so a "reserved" code still parses (just
+    # with a count this parser cannot cross-check against the semantics
+    # table's own account of it).
+    num_objects = [0, 1, 2, 3, 5, 7][n_objects_code]
+    b_dynamic_objects = r.bits(1)
+    if b_dynamic_objects:
+        # No early return: fs_index/bitrate/b_audio_ndot/substream_index
+        # below are read unconditionally, after this whole if/else - the
+        # syntax table's braces close this branch well before them.
+        b_lfe = r.bits(1)
+        for i in range(num_objects):
+            add('BED', True) if (b_lfe and i == 0) else add('DYN', False)
+    elif r.bits(1):  # b_bed_objects
+        if r.bits(1):  # b_bed_start
+            if r.bits(1):  # b_ch_assign_code
+                bed_chan_assign_code = r.bits(3)
+                count = _BED_CHAN_ASSIGN_COUNT_DIRECT[bed_chan_assign_code]
+                for i in range(count):
+                    add('BED', i == 3)
+            elif r.bits(1):  # b_nonstd_bed_channel_assignment_flags_present
+                flags = r.bits(17)
+                for i in range(17):
+                    if (flags >> i) & 1:
+                        add('BED', i == 3 or i == 16)
+            else:
+                flags = r.bits(10)
+                for i in range(10):
+                    if (flags >> i) & 1:  # flag[9-i] - see parse_bed_dyn_obj_assignment()
+                        for _ in range(_STD_BED_GROUP_SIZE[i]):
+                            add('BED', i == 2 or i == 9)
+    elif r.bits(1):  # b_isf
+        if r.bits(1):  # b_isf_start
+            isf_config = r.bits(3)
+            n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+            for _ in range(n_isf):
+                add('ISF', False)
+    else:
+        res_bytes = r.bits(4)
+        r.bits(8 * res_bytes)
+    sf_multiplier = None
+    if fs_index == 1 and r.bits(1):  # b_sf_multiplier
+        sf_multiplier = r.bits(1)
+    bitrate_kbps = None
+    if r.bits(1):  # b_bitrate_info
+        bitrate_kbps = BITRATE_KBPS.get(_read_bitrate_indicator(r))
+    for _ in range(frame_rate_factor):
+        r.bits(1)  # b_audio_ndot
+    substream_index = parse_substream_index_ref(r) if b_substreams_present else None
+    return {'objects': objects, 'b_dynamic_objects': bool(b_dynamic_objects),
+            'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
+            'substream_index': substream_index}
+
+
 # --- §6.2.1.6 ac4_substream_group_info / §6.2.1.8 ac4_substream_info_chan --
-
-class ObjectCodedGroup(Exception):
-    """Raised when a substream group is not channel-coded. TS 103 190-2
-    clause 6.3.2.8 (A-JOC), 6.3.2.10 (direct-coded objects) and 6.3.2.12
-    (OAMD) define the info elements needed to stay synchronised past this
-    point; this parser does not transcribe them (see module docstring)."""
-
 
 def parse_substream_group_info(r, fs_index, frame_rate_factor):
     # frame_rate_factor is a frame-global quantity in the spec's own telling
@@ -434,22 +615,35 @@ def parse_substream_group_info(r, fs_index, frame_rate_factor):
         if n_lf_substreams == 5:
             n_lf_substreams += variable_bits(r, 2)
     b_channel_coded = r.bits(1)
-    if not b_channel_coded:
-        raise ObjectCodedGroup(
-            'substream group is object/A-JOC/OAMD-coded (b_channel_coded=0); '
-            'TS 103 190-2 clause 6.3.2.8-6.3.2.12 not implemented')
     substreams = []
-    for _ in range(n_lf_substreams):
-        # sus_ver only exists for bitstream_version == 1; the caller only
-        # reaches this function for bitstream_version >= 2, where it is
-        # implicitly 1 (extended ac4_substream() syntax) per §6.2.1.6.
-        chan = parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_present)
-        if b_hsf_ext:
-            parse_hsf_ext_substream_info(r, b_substreams_present)
-        substreams.append(chan)
+    oamd = None
+    if b_channel_coded:
+        for _ in range(n_lf_substreams):
+            # sus_ver only exists for bitstream_version == 1; the caller only
+            # reaches this function for bitstream_version >= 2, where it is
+            # implicitly 1 (extended ac4_substream() syntax) per §6.2.1.6.
+            chan = parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_present)
+            if b_hsf_ext:
+                parse_hsf_ext_substream_info(r, b_substreams_present)
+            substreams.append({'kind': 'chan', 'info': chan})
+    else:
+        if r.bits(1):  # b_oamd_substream
+            oamd = parse_oamd_substream_info(r, b_substreams_present)
+        for _ in range(n_lf_substreams):
+            if r.bits(1):  # b_ajoc
+                info = parse_substream_info_ajoc(
+                    r, fs_index, frame_rate_factor, b_substreams_present)
+                kind = 'ajoc'
+            else:
+                info = parse_substream_info_obj(
+                    r, fs_index, frame_rate_factor, b_substreams_present)
+                kind = 'obj'
+            if b_hsf_ext:
+                parse_hsf_ext_substream_info(r, b_substreams_present)
+            substreams.append({'kind': kind, 'info': info})
     content_type = parse_content_type(r) if r.bits(1) else None  # b_content_type
-    return {'b_substreams_present': b_substreams_present, 'substreams': substreams,
-            'content_type': content_type}
+    return {'b_substreams_present': b_substreams_present, 'b_channel_coded': bool(b_channel_coded),
+            'oamd': oamd, 'substreams': substreams, 'content_type': content_type}
 
 
 # --- §6.2.1.3 ac4_presentation_v1_info / §6.2.1.7 ac4_sgi_specifier --------
@@ -630,23 +824,26 @@ def parse_ac4_toc(r):
     return toc
 
 
-def channel_substream_indices(toc):
+def audio_substream_indices(toc):
     """Table 15 (Part 1) / Table 50 (Part 2): substream_index_table() is one
     flat array, but each entry's *type* - and so which ac4_substream_data
     element actually sits there - is decided by which kind of *_info element
-    referenced it. ac4_substream_info()/ac4_substream_info_chan() map to
+    referenced it. ac4_substream_info()/ac4_substream_info_chan()/
+    ac4_substream_info_ajoc()/ac4_substream_info_obj() ALL map to the same
     ac4_substream() (the audio_size-prefixed shape parse_substream_header()
-    reads); ac4_presentation_substream_info() and emdf_info()'s payloads
-    reference map to ac4_presentation_substream() and
-    emdf_payloads_substream() instead, neither of which this parser
-    transcribes - reading audio_size out of one of those would just be
-    reinterpreting the wrong bytes as the wrong shape."""
+    reads) - channel-coded, A-JOC and direct-coded-object substreams share
+    one envelope. ac4_presentation_substream_info(), oamd_substream_info()
+    and emdf_info()'s payloads reference map to ac4_presentation_substream(),
+    oamd_substream() and emdf_payloads_substream() instead, none of which
+    this parser transcribes - reading audio_size out of one of those would
+    just be reinterpreting the wrong bytes as the wrong shape."""
     indices = set()
     if toc['substream_groups'] is not None:
         for group in toc['substream_groups']:
             for sub in group['substreams']:
-                if sub['substream_index'] is not None:
-                    indices.add(sub['substream_index'])
+                idx = sub['info'].get('substream_index')
+                if idx is not None:
+                    indices.add(idx)
     else:
         for pres in toc['presentations']:
             for _, sub in pres.get('substreams', []):
@@ -671,16 +868,16 @@ def parse_raw_frame(raw):
     r = Reader(raw)
     toc = parse_ac4_toc(r)
     toc_bytes = (r.pos + 7) // 8
-    chan_indices = channel_substream_indices(toc)
+    audio_indices = audio_substream_indices(toc)
     substreams = []
     offset = toc_bytes + toc['payload_base']
     for index, size in enumerate(toc['substream_sizes']):
         payload = raw[offset:offset + size]
         audio_size = None
-        if index in chan_indices and len(payload) >= 3:
+        if index in audio_indices and len(payload) >= 3:
             audio_size = parse_substream_header(Reader(payload))
-        substreams.append({'offset': offset, 'size': size,
-                            'is_channel_audio': index in chan_indices, 'audio_size': audio_size})
+        substreams.append({'offset': offset, 'size': size, 'is_audio': index in audio_indices,
+                            'audio_size': audio_size})
         offset += size
     return toc, substreams
 
@@ -701,7 +898,7 @@ def main():
 
     try:
         toc, substreams = parse_raw_frame(raw)
-    except (ObjectCodedGroup, ValueError) as exc:
+    except (OamdCommonDataPresent, ValueError) as exc:
         raise SystemExit(f'REFUSED: {exc}') from exc
 
     print(f"  bitstream_version={toc['bitstream_version']} "
@@ -714,9 +911,10 @@ def main():
         for i, group in enumerate(toc['substream_groups']):
             print(f"  substream_group {i}: {group}")
     for i, sub in enumerate(substreams):
-        kind = 'channel audio' if sub['is_channel_audio'] else 'other (presentation/EMDF-payloads)'
+        kind = ('audio (chan/ajoc/obj)' if sub['is_audio']
+                else 'other (presentation/EMDF-payloads/OAMD)')
         print(f"  substream {i}: offset={sub['offset']} size={sub['size']} [{kind}]"
-              + (f" audio_size={sub['audio_size']}" if sub['is_channel_audio'] else ''))
+              + (f" audio_size={sub['audio_size']}" if sub['is_audio'] else ''))
 
     ok = all(c is not False for _, _, _, c in frames)
     print('VERDICT:', 'all CRCs ok' if ok else 'CRC FAILURE present')

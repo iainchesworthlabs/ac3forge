@@ -687,8 +687,8 @@ std::string_view ac4_error_token(ac4::Error error) {
             return "lost_sync";
         case ac4::Error::kUnsupportedBitstreamVersion:
             return "unsupported_bitstream_version";
-        case ac4::Error::kObjectCodedGroup:
-            return "object_coded_group";
+        case ac4::Error::kOamdCommonDataPresent:
+            return "oamd_common_data_present";
     }
     return "unknown";
 }
@@ -724,6 +724,46 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
     return summary;
 }
 
+std::string_view object_kind_token(ac4::ObjectKind kind) {
+    switch (kind) {
+        case ac4::ObjectKind::kBed: return "bed";
+        case ac4::ObjectKind::kDyn: return "dyn";
+        case ac4::ObjectKind::kIsf: return "isf";
+    }
+    return "unknown";
+}
+
+// One line per §6.2.1.6 substream, whichever of chan/ajoc/obj it is - the
+// human-readable counterpart to write_ac4_group_substream()'s JSON.
+std::string describe_group_substream(const ac4::GroupSubstream& sub) {
+    switch (sub.kind) {
+        case ac4::GroupSubstream::Kind::kChan:
+            if (!sub.chan) {
+                break;
+            }
+            return fmt::format(
+                "{}{}", sub.chan->channel_mode_name,
+                sub.chan->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.chan->bitrate_kbps) : "");
+        case ac4::GroupSubstream::Kind::kAjoc:
+            if (!sub.ajoc) {
+                break;
+            }
+            return fmt::format(
+                "A-JOC, {} dmx + {} upmix signal(s){}", sub.ajoc->n_fullband_dmx_signals,
+                sub.ajoc->n_fullband_upmix_signals,
+                sub.ajoc->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.ajoc->bitrate_kbps) : "");
+        case ac4::GroupSubstream::Kind::kObj:
+            if (!sub.obj) {
+                break;
+            }
+            return fmt::format(
+                "object, {} object(s){}{}", sub.obj->objects.size(),
+                sub.obj->b_dynamic_objects ? " (dynamic)" : "",
+                sub.obj->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.obj->bitrate_kbps) : "");
+    }
+    return "(refused)";
+}
+
 void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
     fmt::println("{:<16}{}", "file", path);
     fmt::println("{:<16}AC-4", "codec");
@@ -743,8 +783,7 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
     fmt::println("{:<16}{}", "presentations", toc.n_presentations);
     for (const auto& group : toc.substream_groups) {
         for (const auto& sub : group.substreams) {
-            fmt::println("  {:<14}{}{}", "", sub.channel_mode_name,
-                         sub.bitrate_kbps ? fmt::format(", {} kbit/s", *sub.bitrate_kbps) : "");
+            fmt::println("  {:<14}{}", "", describe_group_substream(sub));
         }
     }
     for (const auto& pres : toc.presentations_v0) {
@@ -791,6 +830,107 @@ void write_ac4_substream_info(JsonWriter& json, const ac4::ChannelSubstreamInfo&
     json.end_object();
 }
 
+void write_ac4_object_entries(JsonWriter& json, const std::vector<ac4::ObjectEntry>& objects) {
+    json.begin_array();
+    for (const auto& obj : objects) {
+        json.begin_object();
+        json.member("kind", object_kind_token(obj.kind));
+        json.member("lfe", obj.lfe);
+        json.member("ajoc_coded", obj.ajoc_coded);
+        json.end_object();
+    }
+    json.end_array();
+}
+
+void write_ac4_ajoc_substream_info(JsonWriter& json, const ac4::AjocSubstreamInfo& sub) {
+    json.begin_object();
+    json.member("b_lfe", sub.b_lfe);
+    json.member("b_static_dmx", sub.b_static_dmx);
+    json.member("n_fullband_dmx_signals", static_cast<std::int64_t>(sub.n_fullband_dmx_signals));
+    json.key("static_objects");
+    write_ac4_object_entries(json, sub.static_objects);
+    json.member("n_fullband_upmix_signals",
+                static_cast<std::int64_t>(sub.n_fullband_upmix_signals));
+    json.key("upmix_objects");
+    write_ac4_object_entries(json, sub.upmix_objects);
+    if (sub.sf_multiplier) {
+        json.member("sf_multiplier", static_cast<std::int64_t>(*sub.sf_multiplier));
+    } else {
+        json.member_null("sf_multiplier");
+    }
+    if (sub.bitrate_kbps) {
+        json.member("bitrate_kbps", static_cast<std::int64_t>(*sub.bitrate_kbps));
+    } else {
+        json.member_null("bitrate_kbps");
+    }
+    if (sub.substream_index) {
+        json.member("substream_index", static_cast<std::int64_t>(*sub.substream_index));
+    } else {
+        json.member_null("substream_index");
+    }
+    json.end_object();
+}
+
+void write_ac4_obj_substream_info(JsonWriter& json, const ac4::ObjSubstreamInfo& sub) {
+    json.begin_object();
+    json.key("objects");
+    write_ac4_object_entries(json, sub.objects);
+    json.member("b_dynamic_objects", sub.b_dynamic_objects);
+    if (sub.sf_multiplier) {
+        json.member("sf_multiplier", static_cast<std::int64_t>(*sub.sf_multiplier));
+    } else {
+        json.member_null("sf_multiplier");
+    }
+    if (sub.bitrate_kbps) {
+        json.member("bitrate_kbps", static_cast<std::int64_t>(*sub.bitrate_kbps));
+    } else {
+        json.member_null("bitrate_kbps");
+    }
+    if (sub.substream_index) {
+        json.member("substream_index", static_cast<std::int64_t>(*sub.substream_index));
+    } else {
+        json.member_null("substream_index");
+    }
+    json.end_object();
+}
+
+// One entry of a substream group's own substream list (§6.2.1.6) - a tagged
+// union in JSON the same way ac4::GroupSubstream is in C++: "kind" says
+// which of "chan"/"ajoc"/"obj" is non-null.
+void write_ac4_group_substream(JsonWriter& json, const ac4::GroupSubstream& sub) {
+    json.begin_object();
+    switch (sub.kind) {
+        case ac4::GroupSubstream::Kind::kChan:
+            json.member("kind", "chan");
+            break;
+        case ac4::GroupSubstream::Kind::kAjoc:
+            json.member("kind", "ajoc");
+            break;
+        case ac4::GroupSubstream::Kind::kObj:
+            json.member("kind", "obj");
+            break;
+    }
+    json.key("chan");
+    if (sub.chan) {
+        write_ac4_substream_info(json, *sub.chan);
+    } else {
+        json.value_null();
+    }
+    json.key("ajoc");
+    if (sub.ajoc) {
+        write_ac4_ajoc_substream_info(json, *sub.ajoc);
+    } else {
+        json.value_null();
+    }
+    json.key("obj");
+    if (sub.obj) {
+        write_ac4_obj_substream_info(json, *sub.obj);
+    } else {
+        json.value_null();
+    }
+    json.end_object();
+}
+
 void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary& summary) {
     json.key("stream");
     json.begin_object();
@@ -828,10 +968,25 @@ void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary&
     for (const auto& group : toc.substream_groups) {
         json.begin_object();
         json.member("b_substreams_present", group.b_substreams_present);
+        json.member("b_channel_coded", group.b_channel_coded);
+        json.key("oamd");
+        if (group.oamd) {
+            json.begin_object();
+            json.member("b_oamd_ndot", group.oamd->b_oamd_ndot);
+            if (group.oamd->substream_index) {
+                json.member("substream_index",
+                            static_cast<std::int64_t>(*group.oamd->substream_index));
+            } else {
+                json.member_null("substream_index");
+            }
+            json.end_object();
+        } else {
+            json.value_null();
+        }
         json.key("substreams");
         json.begin_array();
         for (const auto& sub : group.substreams) {
-            write_ac4_substream_info(json, sub);
+            write_ac4_group_substream(json, sub);
         }
         json.end_array();
         json.end_object();

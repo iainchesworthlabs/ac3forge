@@ -25,12 +25,19 @@
 // mpegts::/mp4::/matroska:: are - it depends on nothing under ac3::forge,
 // and knows nothing about AC-3, E-AC-3 or Atmos.
 //
-// Scope is channel-coded substream groups only (b_channel_coded == 1).
-// A-JOC, direct-coded-object and OAMD substream groups
-// (TS 103 190-2 clause 6.3.2.8-6.3.2.12) are recognised and refused
-// cleanly (Error::kObjectCodedGroup) rather than misparsed - transcribing
-// their info elements (object position tables, bed/dynamic object
-// assignment, OAMD metadata) is a separate piece of work.
+// Scope covers both channel-coded and object/A-JOC-coded substream groups
+// (b_channel_coded 1 or 0): TOC/presentation/substream-group/substream-info
+// framing for A-JOC-coded (§6.3.2.8), direct-coded-object (§6.3.2.10) and
+// OAMD (§6.3.2.12) substreams is parsed the same way the channel-coded path
+// is - object position/bed assignment (bed_dyn_obj_assignment(), §6.2.1.10)
+// included. One piece is deliberately not: oamd_common_data() (§6.2.8.1),
+// reachable only via ac4_substream_info_ajoc()'s own
+// b_oamd_common_data_present flag, is a large separate metadata structure
+// (bed assignment, DRC, target-device categories, dialogue enhancement) -
+// a stream setting that flag is refused cleanly (Error::kOamdCommonDataPresent)
+// rather than misparsed. The OAMD substream DATA payload itself
+// (oamd_substream(), §6.2.2.4) was never in scope either way - like every
+// non-audio substream, it is reported as a byte range only.
 //
 // The bitstream_version >= 2 path (TS 103 190-2 clause 6, presentation_v1
 // and substream-group framing) is cross-checked against real Dolby
@@ -41,7 +48,19 @@
 // <= 1 path (legacy TS 103 190-1 ac4_toc()/ac4_presentation_info()) has no
 // such stream to test against - no encoder available to this project
 // writes it - so it is transcribed and page-verified against the published
-// spec text only. See docs/verification.md.
+// spec text only.
+//
+// A-JOC/direct-coded-object/OAMD framing has a narrower verification story
+// still: no real stream reaches it either - `dee_ac4ajoc_encoder.exe`
+// accepts only an Atmos ADM BWF mezzanine, which this project's own tooling
+// cannot produce one DEE accepts (the same "gates on content provenance,
+// not syntax" limit docs/verification.md already states for the AC-3/
+// E-AC-3 side), and `dee_ac4ims_encoder.exe` - the other locally available
+// object-adjacent encoder, despite its name - was confirmed to stay
+// channel-coded regardless. What stands in for it is a set of synthetic,
+// hand-built bitstreams cross-checked between this parser and
+// tools/references/ac4_parse.py, each built by an independent bit writer
+// in neither module - see tests/ac4/test_ac4.cpp. See docs/verification.md.
 
 namespace ac4 {
 
@@ -49,7 +68,7 @@ enum class Error : std::uint8_t {
     kTruncated,
     kLostSync,
     kUnsupportedBitstreamVersion,  // > 2; TS 103 190-2 §6.3.2.1.1
-    kObjectCodedGroup,             // b_channel_coded == 0; see module docs above
+    kOamdCommonDataPresent,        // see module docs above
 };
 
 [[nodiscard]] AC4_EXPORT std::string_view describe(Error error);
@@ -111,11 +130,65 @@ struct ChannelSubstreamInfo {
     std::optional<int> substream_index;       // index into Toc::substream_sizes
 };
 
+// --- §6.2.1.10 bed_dyn_obj_assignment / §6.3.2.10.8 -------------------------
+
+enum class ObjectKind : std::uint8_t { kBed, kDyn, kIsf };
+
+struct ObjectEntry {
+    ObjectKind kind = ObjectKind::kDyn;
+    bool lfe = false;
+    bool ajoc_coded = false;
+};
+
+// --- §6.2.1.13 oamd_substream_info ------------------------------------------
+
+struct OamdSubstreamInfo {
+    bool b_oamd_ndot = false;
+    std::optional<int> substream_index;
+};
+
+// --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
+
+struct AjocSubstreamInfo {
+    bool b_lfe = false;
+    bool b_static_dmx = false;
+    int n_fullband_dmx_signals = 0;
+    std::vector<ObjectEntry> static_objects;   // empty when b_static_dmx
+    int n_fullband_upmix_signals = 0;
+    std::vector<ObjectEntry> upmix_objects;
+    std::optional<int> sf_multiplier;
+    std::optional<int> bitrate_kbps;
+    std::optional<int> substream_index;
+};
+
+// --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
+
+struct ObjSubstreamInfo {
+    std::vector<ObjectEntry> objects;
+    bool b_dynamic_objects = false;
+    std::optional<int> sf_multiplier;
+    std::optional<int> bitrate_kbps;
+    std::optional<int> substream_index;
+};
+
 // --- §6.2.1.6 ac4_substream_group_info --------------------------------------
+
+// One entry of a substream group's own substream list. Exactly one of
+// `chan`/`ajoc`/`obj` is set, selected by `kind` - a tagged union rather
+// than std::variant so callers can query without visiting.
+struct GroupSubstream {
+    enum class Kind : std::uint8_t { kChan, kAjoc, kObj };
+    Kind kind = Kind::kChan;
+    std::optional<ChannelSubstreamInfo> chan;
+    std::optional<AjocSubstreamInfo> ajoc;
+    std::optional<ObjSubstreamInfo> obj;
+};
 
 struct SubstreamGroupInfo {
     bool b_substreams_present = false;
-    std::vector<ChannelSubstreamInfo> substreams;  // channel-coded groups only
+    bool b_channel_coded = true;
+    std::optional<OamdSubstreamInfo> oamd;  // set only when !b_channel_coded and b_oamd_substream
+    std::vector<GroupSubstream> substreams;
     std::optional<ContentType> content_type;
 };
 
@@ -169,14 +242,16 @@ struct Toc {
 struct Substream {
     std::size_t offset = 0;  // byte offset of ac4_substream_data() within the raw frame
     std::size_t size = 0;    // bytes, from Toc::substream_sizes
-    // True when this index was referenced by a channel-coded
-    // ac4_substream_info()/ac4_substream_info_chan() element - i.e. this is
-    // an ac4_substream() this parser knows how to read the audio_size
-    // header of. False covers ac4_presentation_substream() and
-    // emdf_payloads_substream() (§6.2.1.12, §4.2.4.4) - different shapes,
-    // reported by byte range only.
-    bool is_channel_audio = false;
-    std::optional<int> audio_size;  // §4.3.4.1, only set when is_channel_audio
+    // True when this index was referenced by an ac4_substream_info()/
+    // ac4_substream_info_chan()/ac4_substream_info_ajoc()/
+    // ac4_substream_info_obj() element - i.e. this is an ac4_substream()
+    // this parser knows how to read the audio_size header of (Table 50:
+    // all four map to the same envelope). False covers
+    // ac4_presentation_substream(), oamd_substream() and
+    // emdf_payloads_substream() (§6.2.1.12, §6.2.2.4, §4.2.4.4) - different
+    // shapes, reported by byte range only.
+    bool is_audio = false;
+    std::optional<int> audio_size;  // §4.3.4.1, only set when is_audio
 };
 
 struct RawFrame {
