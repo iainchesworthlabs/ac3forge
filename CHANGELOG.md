@@ -257,6 +257,17 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
   seeded from the device's own declared flat range. Right-stick height is resolved by probing which
   axis the device declares rather than assuming.
+- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
+  and draws what a decoder finds in them — the lead object's intended height against the height read
+  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
+  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
+  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
+  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
+- **The status line now reports whole-frame occupancy**, not just `encode_frame()`. The previously
+  quoted figure excluded synthesis, the limiter, both meters, signing, stripping, the packer and the
+  JNI submit — most of the frame.
+- **The real-time encode thread no longer attaches to and detaches from the JVM once per frame**, and
+  both worker threads now have explicit priorities instead of inheriting whatever started them.
 - **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
   objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
   Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
