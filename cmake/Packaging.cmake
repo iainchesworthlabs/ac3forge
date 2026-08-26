@@ -92,6 +92,20 @@ if(WIN32)
             DeleteRegKey HKCR "AC3Forge.Stream"
             System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
         ]])
+    else()
+        # DR7: this used to be silent - a missing makensis just meant the ZIP
+        # packaged alone with no diagnostic anywhere, which is how the
+        # Windows release shipped installer-less for several releases running
+        # before anyone noticed (see docs/releasing.md#winget-manifest and
+        # ROADMAP.md's DR7). CI now installs makensis explicitly
+        # (.github/workflows/_build.yml's "Install NSIS (Windows)" step) and
+        # asserts packages/*.exe exists after Package, so this warning firing
+        # THERE means that install broke and the leg fails outright; degrading
+        # to a ZIP-only package on purpose - with a visible reason why - is
+        # still the right call for a local dev build without NSIS installed.
+        message(WARNING "makensis not found on PATH - packaging a ZIP only, "
+            "no NSIS installer. Install NSIS (https://nsis.sourceforge.io/) "
+            "or `choco install nsis` to get one locally.")
     endif()
 elseif(APPLE)
     list(APPEND CPACK_GENERATOR "DragNDrop")

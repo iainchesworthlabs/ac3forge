@@ -567,6 +567,21 @@ jobs:
         if: matrix.gold_reference && runner.os == 'macOS'
         run: brew install ffmpeg
 
+      # DR7: makensis is what turns the NSIS block in cmake/Packaging.cmake
+      # from a graceful, silent no-op into a real installer. Installed fresh
+      # here rather than baked into the ci-runners Packer image, same
+      # reasoning as ffmpeg/Ninja above - see
+      # docs/ci-self-hosted-runners.md's "Measuring whether it's actually
+      # worth it": nothing is pre-baked onto the self-hosted image without
+      # data justifying it, and there is none for NSIS specifically yet.
+      # Scoped to the same condition as the Package step below (only
+      # windows-msvc packages on Windows today) so a leg that never runs
+      # cpack doesn't pay for an installer it won't use.
+      - name: Install NSIS (Windows)
+        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
+        shell: bash
+        run: choco install nsis -y --no-progress --requirechecksums
+
       # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
       # set them up itself (unlike MSBuild). clang-cl needs them too.
       - name: Setup MSVC environment
@@ -983,6 +998,27 @@ jobs:
         if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package))
         shell: bash
         run: cpack --preset pack-${{ matrix.preset }}
+
+      # DR7: the whole point of installing makensis above is that its
+      # absence stops being silent. cmake/Packaging.cmake's find_program()
+      # gate degrades to a ZIP-only package with just a message(WARNING ...)
+      # rather than failing cpack outright - the right behaviour for a local
+      # dev build without NSIS installed, the wrong one here, where makensis
+      # was just installed on purpose and a missing .exe means that install
+      # broke rather than a deliberate choice. Failing loudly on this leg is
+      # what keeps DR7 fixed instead of quietly regressing the same way
+      # again - see docs/releasing.md#winget-manifest.
+      - name: Assert the NSIS installer was produced (Windows)
+        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          exes=(packages/*.exe)
+          if [ ${#exes[@]} -eq 0 ]; then
+            echo "::error::cpack produced no NSIS installer (.exe) - makensis is missing or cmake/Packaging.cmake's find_program() gate silently dropped NSIS again. Check the 'Install NSIS (Windows)' step and the configure log's warnings above."
+            exit 1
+          fi
 
       - name: Upload package artifacts
         if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package))
