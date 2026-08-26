@@ -552,7 +552,18 @@ jobs:
           } else {
             if (Test-Path $llvmDir) {
               Write-Host "Existing LLVM install does not match $version - removing before reinstalling"
-              Remove-Item -Path $llvmDir -Recurse -Force
+              # NOT Remove-Item -Recurse -Force: GitHub-hosted windows-latest
+              # images ship their own pre-installed LLVM at this same path, and
+              # PowerShell's Remove-Item -Recurse is known to be pathologically
+              # slow (effectively hangs) walking a large, unfamiliar directory
+              # tree - confirmed the hard way, it ran the full 90-minute CI
+              # timeout with zero progress. cmd's rd /s /q calls the native
+              # Win32 directory-removal APIs directly and doesn't share that
+              # problem.
+              & cmd.exe /c "rd /s /q `"$llvmDir`""
+              if (Test-Path $llvmDir) {
+                throw "Failed to remove $llvmDir before reinstalling LLVM $version"
+              }
             }
             $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
             $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
