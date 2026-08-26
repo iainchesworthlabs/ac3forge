@@ -238,6 +238,30 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **Packaging manifests and the Homebrew tap** were two releases behind, and **several pages
   described shipped work as still pending** — both corrected.
 
+**Shield Atmos Demo (Android)**
+
+- **The encode loop kept streaming to the receiver after the demo left the screen.** It stopped only
+  in `onDestroy`, so pressing HOME left a cached process pushing E-AC-3 bursts into the AVR with no
+  UI and nothing to stop it. Now stopped in `onStop`, without tearing down the stream for the app's
+  own About screen. Both on-screen render loops likewise ran behind other windows.
+- **"Waiting for receiver" cleared on a capability probe rather than on audio flowing**, so a failed
+  sink open left a fully-drawn dashboard over permanent silence. Readiness now means the encode loop
+  is confirmed running, with a distinct "starting" state in between, and the waiting screen reports
+  what the HDMI route actually advertises — including whether it claims the Atmos (JOC) profile.
+- **A native library load failure crashed instead of showing its own failure screen**, because a
+  throwing static initializer marks the class erroneous and the later `NoClassDefFoundError` is not
+  what the call sites caught.
+- **A partial `AudioTrack` write duplicated bytes into the IEC 61937 stream**, since a short write
+  was retried by resubmitting the whole burst. Now resumed from.
+- **Precise placement was impossible**: a flat per-axis deadzone with no rescaling meant the
+  smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
+  seeded from the device's own declared flat range. Right-stick height is resolved by probing which
+  axis the device declares rather than assuming.
+- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
+  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
+  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
+  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
+
 ## [0.9.0-beta.1] - 2026-08-22
 
 Ninth tagged release. The headline is the memory-usage optimization programme landing in full:
