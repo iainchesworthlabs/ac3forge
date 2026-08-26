@@ -19,9 +19,9 @@
 // mpegts::mpegts already use for their own containers (bare `include/ac3iab/` prefix, not
 // `ac3/ac3iab/` - see CONTRIBUTING.md's repository-layout section on what that prefix means).
 // AudioDataDLC's lossless coder (Annex B) is read only by identity in this phase, not decoded
-// - see model.hpp's AudioDataDlc comment. Phase 2 (MXF/KLV extraction for IAB track files) and
-// phase 3 (mapping onto ac3::admbridge's ObjectPath layer, the `atmos-iab` CLI command) are
-// separate, later work.
+// - see model.hpp's AudioDataDlc comment. Phase 2 (MXF/KLV extraction for IAB track files - see
+// mxf.hpp) is implemented alongside this header. Phase 3 (mapping onto ac3::admbridge's
+// ObjectPath layer, the `atmos-iab` CLI command) is separate, later work.
 //
 // Every table and algorithm this module implements is transcribed directly from the published
 // standard (SMPTE ST 2098-2:2022, a free PDF since SMPTE opened its catalogue on 2026-06-17),
@@ -48,6 +48,13 @@ enum class IabError : std::uint8_t {
     kUnterminatedString,    // a NUL-terminated ASCII field (AudioDescriptionText,
                            // AuthoringToolURI) ran off the end of its element without a
                            // terminating 0x00 byte
+    kMxfBadKlv,             // mxf.hpp: a KLV Length field violated SMPTE ST 336:2017's BER
+                           // encoding rules (the reserved 0x80 "indefinite length" token, or a
+                           // long form needing more than the 8 following bytes SMPTE ST 377-1's
+                           // 9-byte-total cap on a KLV Length field allows)
+    kMxfNoIabEssence,       // mxf.hpp: walked every top-level KLV in the file without finding one
+                           // whose Key matched SMPTE ST 2067-201 Table 4.2's registered IAB
+                           // Essence Element Key
 };
 
 [[nodiscard]] AC3IAB_EXPORT std::string_view describe(IabError error);
@@ -62,9 +69,11 @@ struct IABitstreamFrame {
 
 // Parses a whole IABitstream (§7): a sequential run of Preamble+IAFrame segment pairs read
 // until end of file/stream, per Table 2's `while(true)` framing. This is the container an
-// elementary `.iab` file actually uses; it is also what roadmap item IM1's phase 2 (MXF/KLV
-// extraction, not implemented yet) would eventually hand this parser once it has stripped an
-// IAB track file's own KLV wrapper down to the same Preamble+IAFrame byte sequence.
+// elementary `.iab` file actually uses; it is also what mxf.hpp's parse_mxf_iab() hands this
+// exact function (the istream overload) once it has stripped an IAB track file's own KLV
+// wrapper away - SMPTE ST 2067-201 clip-wraps the whole IABitstream as a single Generic
+// Container KLV Value, so there is no reframing to do, only extraction (see mxf.hpp's own
+// header comment).
 [[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
     const std::string& path);
 [[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(

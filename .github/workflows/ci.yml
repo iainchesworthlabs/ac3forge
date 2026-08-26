@@ -1228,6 +1228,12 @@ jobs:
           exit "$status"
 
       - name: Exported-symbol allowlist check
+        # Independent of the abidiff step above (see this job's header
+        # comment) - must run even when abidiff already found a diff, which
+        # pre-1.0 it does on almost every PR. Without this, GitHub Actions'
+        # default success()-only condition means an abidiff failure silently
+        # skips the one check here that catches a real regression.
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
