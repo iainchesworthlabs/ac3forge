@@ -9,7 +9,7 @@
 #include <string>
 
 #include "ac3/io/wav.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "fmp4_folder_writer.hpp"
 #include "matroska/matroska.hpp"
 #include "mpegts/mpegts.hpp"

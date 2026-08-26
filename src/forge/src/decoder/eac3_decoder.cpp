@@ -694,11 +694,11 @@ struct Eac3Decoder::Impl {
     // (zeroed) at first use, exactly as the map's operator[] created it.
     std::array<std::unique_ptr<std::array<std::array<double, 256>, 6>>, kSubstreamSlots> delay_;
     // One per substream identity that has ever carried JOC:
-    // joc::reconstruct's own matrix-ramp and per-object/per-channel
+    // oba::joc::reconstruct's own matrix-ramp and per-object/per-channel
     // overlap-add state, so a moving object's audio and the frame-to-frame
     // matrix interpolation both have real continuity instead of restarting
-    // cold every frame - see joc::ReconstructionState's own doc comment.
-    std::array<std::unique_ptr<joc::ReconstructionState>, kSubstreamSlots> joc_state_;
+    // cold every frame - see oba::joc::ReconstructionState's own doc comment.
+    std::array<std::unique_ptr<oba::joc::ReconstructionState>, kSubstreamSlots> joc_state_;
     // A substream identity's slot engages the first time one of its frames
     // sets transproce, and stays engaged (buffering one frame at a time)
     // for the rest of the stream - see decode_substream's own doc comment.
@@ -1374,7 +1374,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
 
     // Captured alongside out.object_metadata below, from whichever block's
     // skip field carries the EMDF container - kept raw here (not parsed
-    // yet) because joc::parse_payload needs FrameParameters::objects to
+    // yet) because oba::joc::parse_payload needs FrameParameters::objects to
     // agree with the OAMD program it rides beside, which is only known once
     // both payloads have been seen.
     std::vector<std::byte> joc_bytes;
@@ -2900,7 +2900,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     {
         AC3_ZONE_SCOPED_N("eac3_joc_reconstruct");
         if (out.object_metadata && !joc_bytes.empty()) {
-            const auto params = joc::parse_payload(joc_bytes);
+            const auto params = oba::joc::parse_payload(joc_bytes);
             const auto indices = oba::joc_object_indices(out.object_metadata->program);
             // §6.3.2.2 Table 47: the JOC downmix is the five channels this
             // substream carries, in JOC order. A 7-channel downmix needs
@@ -2908,14 +2908,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // not have in hand here, so those configurations parse but do
             // not reconstruct.
             if (params && params->objects == static_cast<int>(indices.size()) &&
-                params->channels == joc::kNumChannels5X) {
-                constexpr std::array<int, joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+                params->channels == oba::joc::kNumChannels5X) {
+                constexpr std::array<int, oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
                 // Spans, not copies: this permutation used to deep-copy five
                 // channels (~30 KB a frame) purely to reorder them.
-                std::array<std::span<const float>, joc::kNumChannels5X> bed_joc_order{};
+                std::array<std::span<const float>, oba::joc::kNumChannels5X> bed_joc_order{};
                 bool have_bed =
-                    static_cast<std::size_t>(joc::kNumChannels5X) <= out.channels.size();
-                for (int jc = 0; have_bed && jc < joc::kNumChannels5X; ++jc) {
+                    static_cast<std::size_t>(oba::joc::kNumChannels5X) <= out.channels.size();
+                for (int jc = 0; have_bed && jc < oba::joc::kNumChannels5X; ++jc) {
                     bed_joc_order[static_cast<std::size_t>(jc)] =
                         out.channels[static_cast<std::size_t>(
                             kAc3FromJoc[static_cast<std::size_t>(jc)])];
@@ -2923,9 +2923,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 if (have_bed) {
                     auto& joc_slot = impl_->joc_state_[static_cast<std::size_t>(key)];
                     if (!joc_slot) {
-                        joc_slot = std::make_unique<joc::ReconstructionState>();
+                        joc_slot = std::make_unique<oba::joc::ReconstructionState>();
                     }
-                    out.object_audio = joc::reconstruct(
+                    out.object_audio = oba::joc::reconstruct(
                         bed_joc_order, *params, *joc_slot, impl_->config_.fast_mdct,
                         impl_->config_.fast_imdct, impl_->config_.joc_domain);
                     out.object_indices = indices;

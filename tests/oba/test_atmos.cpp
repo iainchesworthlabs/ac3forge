@@ -53,7 +53,7 @@ std::complex<double> project(std::span<const float> x, double hz) {
 // Nyquist evenly, so at 48 kHz each is 375 Hz wide, and Table 54 groups them.
 int band_of(double hz, int num_bands_idx) {
     const auto subband = static_cast<std::size_t>(hz / (24000.0 / 64.0));
-    return ac3::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
+    return ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
 }
 
 // §6.6.6, evaluated at one frequency. The decoder applies the matrix band by
@@ -251,7 +251,7 @@ TEST_CASE("band_energy consults its fast flag, and both paths agree", "[atmos][f
     // Broadband content on purpose: tones alone leave most of the nine bands
     // only window leakage, whose relative error says nothing. A deterministic
     // LCG keeps the "noise" reproducible, and two tones keep it real-ish.
-    const auto& mapping = ac3::joc::kSubbandToBand[4];  // 9 bands
+    const auto& mapping = ac3::oba::joc::kSubbandToBand[4];  // 9 bands
     std::uint32_t lcg = 0x2545F491u;
     bool any_difference = false;
     for (int frame = 0; frame < 3; ++frame) {
@@ -434,12 +434,12 @@ std::optional<std::vector<std::byte>> find_payload(std::span<const std::byte> fr
 
 }  // namespace
 
-TEST_CASE("joc::reconstruct recovers well-separated objects through the real wire", "[atmos][joc][decoder]") {
+TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the real wire", "[atmos][joc][decoder]") {
     // Same four-corner placement/frequency setup as "well-separated objects
     // come back out of the bed" above, which already proves the ENCODER's
     // own in-memory matrix separates these cleanly - this test proves the
     // same thing about the DECODE path: real encoded bytes, through
-    // emdf::parse_container + joc::parse_payload + joc::reconstruct.
+    // emdf::parse_container + oba::joc::parse_payload + oba::joc::reconstruct.
     ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640}, 4};
     const std::array<ac3::oba::ObjectPlacement, 4> placement{{
         {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
@@ -450,16 +450,16 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
     const std::array<double, 4> hz{311.0, 997.0, 2200.0, 5000.0};
     const std::array<double, 4> amplitude{0.30, 0.25, 0.20, 0.22};
 
-    constexpr std::array<int, ac3::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
 
     ac3::Eac3Decoder decoder;
-    ac3::joc::ReconstructionState state;
+    ac3::oba::joc::ReconstructionState state;
     std::vector<std::span<const float>> views(4);
 
     // The shipped default on both sides. The domain pair is compared
     // head-to-head in "QMF-domain JOC reconstructs objects at least as well
     // as the MDCT-band path" below; this one just has to run what ships.
-    constexpr auto kDomain = ac3::joc::Domain::kQmf;
+    constexpr auto kDomain = ac3::oba::joc::Domain::kQmf;
     constexpr int kFrames = 6;
     std::array<std::vector<float>, 4> source;   // the whole run, per object
     std::array<std::vector<float>, 4> recovered;  // ditto, aligned index for index
@@ -492,15 +492,15 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
 
         const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
         REQUIRE(joc_bytes.has_value());
-        const auto params = ac3::joc::parse_payload(*joc_bytes);
+        const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
         REQUIRE(params.has_value());
 
-        std::array<std::span<const float>, ac3::joc::kNumChannels5X> bed_joc_order{};
-        for (int jc = 0; jc < ac3::joc::kNumChannels5X; ++jc) {
+        std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed_joc_order{};
+        for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
             bed_joc_order[static_cast<std::size_t>(jc)] =
                 sub.channels[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto reconstructed = ac3::joc::reconstruct(
+        const auto reconstructed = ac3::oba::joc::reconstruct(
             bed_joc_order, *params, state, /*fast_mdct=*/false, /*fast_imdct=*/false, kDomain);
         REQUIRE(reconstructed.size() == 4);
         for (std::size_t i = 0; i < 4; ++i) {
@@ -519,7 +519,7 @@ TEST_CASE("joc::reconstruct recovers well-separated objects through the real wir
     // mostly measuring this codebase's own well-understood, expected
     // transform-pair latency.
     const std::size_t kDelay =
-        static_cast<std::size_t>(256 + ac3::joc::reconstruction_delay(kDomain));
+        static_cast<std::size_t>(256 + ac3::oba::joc::reconstruction_delay(kDomain));
     constexpr std::size_t kSkip = static_cast<std::size_t>(kFrame);  // one frame's warm-up/cool-down
     for (int object = 0; object < 4; ++object) {
         CAPTURE(object);
@@ -557,9 +557,9 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
     //
     // The two do not have the same latency and the comparison has to allow
     // for it: 256 samples of encode+decode either way, plus the JOC
-    // transform pair's own joc::reconstruction_delay(domain) on top - 256
+    // transform pair's own oba::joc::reconstruction_delay(domain) on top - 256
     // for the MDCT pair, 576 for the filterbank.
-    const auto measure = [](ac3::joc::Domain encode_domain, ac3::joc::Domain decode_domain) {
+    const auto measure = [](ac3::oba::joc::Domain encode_domain, ac3::oba::joc::Domain decode_domain) {
         constexpr int kObjects = 4;
         ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = encode_domain},
                                        kObjects};
@@ -572,9 +572,9 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         const std::array<double, kObjects> hz{311.0, 997.0, 2200.0, 5000.0};
         const std::array<double, kObjects> amplitude{0.30, 0.25, 0.20, 0.22};
 
-        constexpr std::array<int, ac3::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+        constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
         ac3::Eac3Decoder decoder;
-        ac3::joc::ReconstructionState state;
+        ac3::oba::joc::ReconstructionState state;
         std::vector<std::span<const float>> views(kObjects);
 
         constexpr int kFrames = 10;
@@ -601,15 +601,15 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
 
             const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
             REQUIRE(joc_bytes.has_value());
-            const auto params = ac3::joc::parse_payload(*joc_bytes);
+            const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
             REQUIRE(params.has_value());
 
-            std::array<std::span<const float>, ac3::joc::kNumChannels5X> bed_joc_order{};
-            for (int jc = 0; jc < ac3::joc::kNumChannels5X; ++jc) {
+            std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed_joc_order{};
+            for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
                 bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                     kAc3FromJoc[static_cast<std::size_t>(jc)])];
             }
-            const auto out = ac3::joc::reconstruct(bed_joc_order, *params, state,
+            const auto out = ac3::oba::joc::reconstruct(bed_joc_order, *params, state,
                                                    /*fast_mdct=*/false, /*fast_imdct=*/false,
                                                    decode_domain);
             REQUIRE(out.size() == kObjects);
@@ -619,7 +619,7 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         }
 
         const auto delay =
-            static_cast<std::size_t>(256 + ac3::joc::reconstruction_delay(decode_domain));
+            static_cast<std::size_t>(256 + ac3::oba::joc::reconstruction_delay(decode_domain));
         const std::size_t skip = static_cast<std::size_t>(2 * kFrame);
         std::array<double, kObjects> snr{};
         for (std::size_t object = 0; object < kObjects; ++object) {
@@ -644,8 +644,8 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         return total / static_cast<double>(snr.size());
     };
 
-    const auto mdct = measure(ac3::joc::Domain::kMdctBand, ac3::joc::Domain::kMdctBand);
-    const auto qmf = measure(ac3::joc::Domain::kQmf, ac3::joc::Domain::kQmf);
+    const auto mdct = measure(ac3::oba::joc::Domain::kMdctBand, ac3::oba::joc::Domain::kMdctBand);
+    const auto qmf = measure(ac3::oba::joc::Domain::kQmf, ac3::oba::joc::Domain::kQmf);
 
     for (std::size_t object = 0; object < mdct.size(); ++object) {
         CAPTURE(object, mdct[object], qmf[object]);
@@ -688,16 +688,16 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
     // the block boundary, so per-band power read off it is noisy in a way
     // a complex subband's magnitude is not.
     const double cross_mdct_qmf =
-        mean(measure(ac3::joc::Domain::kMdctBand, ac3::joc::Domain::kQmf));
+        mean(measure(ac3::oba::joc::Domain::kMdctBand, ac3::oba::joc::Domain::kQmf));
     const double cross_qmf_mdct =
-        mean(measure(ac3::joc::Domain::kQmf, ac3::joc::Domain::kMdctBand));
+        mean(measure(ac3::oba::joc::Domain::kQmf, ac3::oba::joc::Domain::kMdctBand));
     CAPTURE(cross_mdct_qmf, cross_qmf_mdct);
     CHECK(cross_mdct_qmf < qmf_mean);
     CHECK(cross_qmf_mdct < qmf_mean);
 }
 
 TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[atmos][joc][fast-mdct][decoder]") {
-    // PF8: DecoderConfig::fast_mdct reaches joc::reconstruct's own bed
+    // PF8: DecoderConfig::fast_mdct reaches oba::joc::reconstruct's own bed
     // analysis under Domain::kMdctBand - the one place a DECODE runs a
     // forward transform. Same two-part shape as "band_energy consults its
     // fast flag..." above: the two paths must AGREE (quality) and must NOT
@@ -706,7 +706,7 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
     // refuses). Real encoded-and-decoded bytes through Eac3Decoder, not a
     // synthetic bed, so quantized coefficients and real bit-allocated PCM
     // feed the transform exactly as a real decode would.
-    constexpr auto kDomain = ac3::joc::Domain::kMdctBand;
+    constexpr auto kDomain = ac3::oba::joc::Domain::kMdctBand;
     constexpr int kObjects = 3;
     ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 640, .joc_domain = kDomain}, kObjects};
     const std::array<ac3::oba::ObjectPlacement, kObjects> placement{{
@@ -717,10 +717,10 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
     const std::array<double, kObjects> hz{233.0, 1500.0, 4200.0};
     const std::array<double, kObjects> amplitude{0.28, 0.24, 0.20};
 
-    constexpr std::array<int, ac3::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
     ac3::Eac3Decoder decoder;
-    ac3::joc::ReconstructionState direct_state;
-    ac3::joc::ReconstructionState fast_state;
+    ac3::oba::joc::ReconstructionState direct_state;
+    ac3::oba::joc::ReconstructionState fast_state;
     std::vector<std::span<const float>> views(kObjects);
 
     constexpr int kFrames = 8;
@@ -747,18 +747,18 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
 
         const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
         REQUIRE(joc_bytes.has_value());
-        const auto params = ac3::joc::parse_payload(*joc_bytes);
+        const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
         REQUIRE(params.has_value());
 
-        std::array<std::span<const float>, ac3::joc::kNumChannels5X> bed_joc_order{};
-        for (int jc = 0; jc < ac3::joc::kNumChannels5X; ++jc) {
+        std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed_joc_order{};
+        for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
             bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                 kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto direct_out = ac3::joc::reconstruct(bed_joc_order, *params, direct_state,
+        const auto direct_out = ac3::oba::joc::reconstruct(bed_joc_order, *params, direct_state,
                                                        /*fast_mdct=*/false, /*fast_imdct=*/true,
                                                        kDomain);
-        const auto fast_out = ac3::joc::reconstruct(bed_joc_order, *params, fast_state,
+        const auto fast_out = ac3::oba::joc::reconstruct(bed_joc_order, *params, fast_state,
                                                      /*fast_mdct=*/true, /*fast_imdct=*/true,
                                                      kDomain);
         REQUIRE(direct_out.size() == kObjects);

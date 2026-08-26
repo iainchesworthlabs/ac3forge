@@ -143,6 +143,8 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   `trace_to_json_lines` in Python) turn it into one tidy row per (frame, substream, block, stream,
   kind, index, value): per-frame bap, exponent, the §7.2.2.5 masking curve and the composite SNR
   offset, ready for `pandas.read_csv`/`read_json` and `.to_parquet()` from there.
+- **`FrameError` gained `describe()`**, matching every other error type. Python's `Ac3EncodeError`
+  now carries a real message instead of just the failing enumerator's name.
 
 **Verification**
 
@@ -165,6 +167,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   (no resolvable prebuilt Qt6 ARM64 kit yet) and experimental until proven green over real runs.
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
+
+**Tooling and packaging**
+
+- **macOS release packages are now universal (arm64 + x86_64) binaries.** A new CI leg builds a
+  real (not cross-compiled) x86_64 half on GitHub's native-Intel `macos-15-intel` runner, and a
+  merge job `lipo`s it together with the existing Apple Silicon build into one `.dmg`. The
+  Homebrew Cask no longer restricts itself to `arch: :arm64`.
 
 ### Changed
 
@@ -189,6 +198,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   [branch protection](.github/branch-protection.md). The trend pages still show two tracks so
   historical data stays visible; reworking them for a single track is separate follow-up work.
 - **ROADMAP.md was rebuilt** for the post-0.9.0 state.
+- **A pre-freeze naming sweep, source- and ABI-breaking.** JOC's namespace now matches its header
+  path: `ac3::joc` is `ac3::oba::joc`. The S/PDIF burst packer's directory now matches its
+  namespace, which was already correct: `ac3/sinks/iec61937.hpp` is `ac3/iec61937/iec61937.hpp` —
+  `ac3::audio`'s `PassthroughSink`/`MonitorSink` are the library's actual `Sink` types, and this
+  header was never one. `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` keep their shared name across
+  namespaces on purpose; [Library overview](docs/library/index.md) now writes down the
+  codec-vs-codec-blind namespace split that rule follows.
 - Internal: `std::format`/`std::print` replaced with {fmt} throughout, since the NDK's libc++ has
   no usable `<format>`; the WASM demo plays the library's own downmix rather than a hand-rolled
   one.
