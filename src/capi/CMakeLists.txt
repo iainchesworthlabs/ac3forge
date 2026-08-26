@@ -43,7 +43,11 @@ target_sources(forge_c_objects
         src/decoder.cpp
         src/eac3.cpp
         src/eac3_encoder.cpp
-        src/encoder.cpp)
+        src/encoder.cpp
+        src/levels.cpp
+        src/loudness.cpp
+        src/qc.cpp
+        src/scan.cpp)
 
 target_include_directories(forge_c_objects
     PUBLIC

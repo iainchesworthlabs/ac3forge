@@ -68,7 +68,17 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_DECODE_BAD_CRC = 32,
     AC3FORGE_ERROR_DECODE_RESERVED_VALUE = 33,
     AC3FORGE_ERROR_DECODE_UNSUPPORTED = 34,
-    AC3FORGE_ERROR_DECODE_INVALID_STREAM = 35
+    AC3FORGE_ERROR_DECODE_INVALID_STREAM = 35,
+
+    /* ac3::io::ScanError — ac3forge_scan() only; split_frames()/split_access_units()/
+     * stream_bsid() stay on ac3::DecodeError above, since ac3::io::scan() is the
+     * only entry point in this header built on ac3::io's own error type. */
+    AC3FORGE_ERROR_SCAN_EMPTY = 50,
+    AC3FORGE_ERROR_SCAN_LOST_SYNC = 51,
+    AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID = 52,
+    AC3FORGE_ERROR_SCAN_RESERVED_VALUE = 53,
+    AC3FORGE_ERROR_SCAN_TRUNCATED = 54,
+    AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE = 55
 } ac3forge_status_t;
 
 /* A short, static, human-readable description of `status` — e.g. for a log
@@ -129,6 +139,12 @@ typedef enum ac3forge_acmod {
 #define AC3FORGE_SAMPLES_PER_BLOCK 256
 #define AC3FORGE_BLOCKS_PER_FRAME 6
 #define AC3FORGE_SAMPLES_PER_FRAME 1536
+
+/* Every AC-3 layout codes at most 5 full-bandwidth channels plus LFE - the
+ * span count ac3forge_decoder_decode_frame_into() always requires,
+ * regardless of what a given frame actually codes, since that is not known
+ * until the frame's own header is parsed. */
+#define AC3FORGE_DECODER_MAX_CHANNELS 6
 
 /* --------------------------------------------------------------------- *
  * Latency (roadmap PF6)
@@ -327,6 +343,23 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_decoder_decode_frame(ac3forge_decode
                                                                const uint8_t* frame,
                                                                size_t frame_size,
                                                                ac3forge_decoded_frame_t** out_frame);
+
+/* As ac3forge_decoder_decode_frame, but the PCM lands in caller-owned planar
+ * storage instead of an allocation this call would otherwise own - the C
+ * mirror of FrameDecoder::decode_frame_into(), for a realtime embedder that
+ * cannot allocate on the decode path. channels: exactly
+ * AC3FORGE_DECODER_MAX_CHANNELS pointers, each exactly
+ * AC3FORGE_SAMPLES_PER_FRAME samples - always six spans, regardless of what
+ * this particular frame codes, since that is only known once its header is
+ * parsed; a trailing span this frame's acmod/lfe do not need is left
+ * untouched. On success, *out_frame carries every field decode_frame()
+ * would EXCEPT the PCM itself (its channel_count() reports 0 - the samples
+ * went to the caller's spans instead, in AC-3 channel order with LFE last).
+ * On an error return the spans' contents are unspecified, exactly as
+ * discarded as the value form's partial frame is. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_decoder_decode_frame_into(
+    ac3forge_decoder_t* decoder, const uint8_t* frame, size_t frame_size, float* const* channels,
+    size_t channel_count, size_t samples_per_channel, ac3forge_decoded_frame_t** out_frame);
 
 AC3FORGEC_EXPORT ac3forge_sample_rate_t ac3forge_decoded_frame_sample_rate(
     const ac3forge_decoded_frame_t* frame);
@@ -568,6 +601,12 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
 
 typedef struct ac3forge_eac3_decoder ac3forge_eac3_decoder_t;
 
+/* Table E2.5 caps one rendered programme (bed plus every dependent) at 16
+ * channels (§E3.8.2) - the span count
+ * ac3forge_eac3_decoder_decode_access_unit_into() always requires, for the
+ * same "not known until parsed" reason as AC3FORGE_DECODER_MAX_CHANNELS. */
+#define AC3FORGE_EAC3_DECODER_MAX_CHANNELS 16
+
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_create(
     const ac3forge_decoder_config_t* config, ac3forge_eac3_decoder_t** out_decoder);
 AC3FORGEC_EXPORT void ac3forge_eac3_decoder_destroy(ac3forge_eac3_decoder_t* decoder);
@@ -597,6 +636,28 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_decode_substream(
  * delimited exactly as ac3forge_split_access_units() would delimit it. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit(
     ac3forge_eac3_decoder_t* decoder, const uint8_t* unit, size_t unit_size,
+    ac3forge_decoded_access_unit_t** out_unit);
+
+/* As ac3forge_eac3_decoder_decode_access_unit, but the rendered programme's
+ * PCM lands in caller-owned planar storage - the C mirror of
+ * Eac3Decoder::decode_access_unit_into(). channels: exactly
+ * AC3FORGE_EAC3_DECODER_MAX_CHANNELS pointers, each exactly
+ * AC3FORGE_SAMPLES_PER_FRAME samples, written in the rendered layout's own
+ * slot order (coded order for dual mono); a trailing span this programme
+ * does not render is left untouched. Same held-back convention as the value
+ * form: AC3FORGE_OK with *out_unit left NULL means the §3.7 hold-back - and
+ * the spans are left untouched for that call too, not partially written,
+ * because a held-back frame's PCM is buffered internally either way and
+ * only copied out (to the caller's spans this time) at the call that
+ * releases it. ac3forge_eac3_decoder_flush() is still the release path at
+ * end of stream and still returns library-owned data even for a decoder
+ * driven entirely through this form - there is no flush_into, since flush's
+ * own per-substream results were never assembled into one programme to
+ * begin with (see its own comment). On an error return the spans' contents
+ * are unspecified. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit_into(
+    ac3forge_eac3_decoder_t* decoder, const uint8_t* unit, size_t unit_size,
+    float* const* channels, size_t channel_count, size_t samples_per_channel,
     ac3forge_decoded_access_unit_t** out_unit);
 
 /* Releases whichever frames transient pre-noise processing is still holding
@@ -826,6 +887,193 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_stream_bsid(const uint8_t* frame, si
                                                       int* out_bsid);
 
 /* --------------------------------------------------------------------- *
+ * Stream scan (ac3::io::scan / ac3::io::ScannedStream)
+ * --------------------------------------------------------------------- */
+
+/* split_frames()/split_access_units()/stream_bsid() above only delimit a
+ * stream; ac3forge_scan() actually reads what it contains - sample rate,
+ * layout, every programme it carries, the Annex G/DVB service fields a
+ * muxer's descriptors want - without decoding any audio. Mirrors
+ * ac3::io::scan()/ScannedStream. */
+
+/* Mirrors ac3::io::StreamKind. */
+typedef enum ac3forge_stream_kind {
+    AC3FORGE_STREAM_KIND_AC3 = 0,   /* bsid <= 10 */
+    AC3FORGE_STREAM_KIND_EAC3 = 1,  /* bsid 16 (Annex E) */
+    /* §E2.3.1.2 legacy-core delivery: an AC-3 syncframe carrying the 5.1 bed,
+     * immediately followed by one or more Annex E dependent substreams that
+     * extend it - see ac3::io::StreamKind's own comment on why this is its
+     * own kind rather than folded into either of the two above. */
+    AC3FORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION = 2
+} ac3forge_stream_kind_t;
+
+typedef struct ac3forge_scanned_stream ac3forge_scanned_stream_t;
+
+/* On success, *out_stream receives the scan result; the caller must destroy
+ * it. `stream`'s bytes must stay valid and unmodified for as long as any
+ * access-unit span this result reports is still in use - same convention as
+ * ac3forge_split_frames()/ac3forge_split_access_units(). */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_scan(const uint8_t* stream, size_t stream_size,
+                                               ac3forge_scanned_stream_t** out_stream);
+
+AC3FORGEC_EXPORT ac3forge_stream_kind_t ac3forge_scanned_stream_kind(
+    const ac3forge_scanned_stream_t* stream);
+AC3FORGEC_EXPORT ac3forge_sample_rate_t ac3forge_scanned_stream_sample_rate(
+    const ac3forge_scanned_stream_t* stream);
+/* Of the first (or only) substream - see ac3forge_scanned_stream_channels()
+ * for what the stream as a whole RENDERS. */
+AC3FORGEC_EXPORT ac3forge_acmod_t ac3forge_scanned_stream_acmod(
+    const ac3forge_scanned_stream_t* stream);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_lfe(const ac3forge_scanned_stream_t* stream);
+/* Channels the stream RENDERS - for E-AC-3 this folds in every dependent
+ * substream's chanmap, so it is not the bed's own channel count. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_channels(const ac3forge_scanned_stream_t* stream);
+
+/* The FIRST programme's access units only (offset/length into the `stream`
+ * buffer passed to ac3forge_scan()) - see ScannedStream::access_units's own
+ * comment on why a second programme's units are not appended here. Use the
+ * programme accessors below to reach any others. */
+AC3FORGEC_EXPORT size_t ac3forge_scanned_stream_access_unit_count(
+    const ac3forge_scanned_stream_t* stream);
+AC3FORGEC_EXPORT ac3forge_span_t ac3forge_scanned_stream_access_unit(
+    const ac3forge_scanned_stream_t* stream, size_t index);
+/* Samples access unit `index` codes - parallel to the count above. Always
+ * AC3FORGE_SAMPLES_PER_FRAME for AC-3; an E-AC-3 independent substream's own
+ * numblkscod (§E2.3.1.4) lets this be 256, 512, 768 or 1536, and a stream may
+ * mix lengths. */
+AC3FORGEC_EXPORT uint32_t ac3forge_scanned_stream_access_unit_samples(
+    const ac3forge_scanned_stream_t* stream, size_t index);
+/* Substreams in the first access unit; always 1 for AC-3. */
+AC3FORGEC_EXPORT size_t ac3forge_scanned_stream_substreams_per_unit(
+    const ac3forge_scanned_stream_t* stream);
+
+/* --- raw syntax fields (ac3::io::dec3.hpp's codec-config boxes / MPEG-TS
+ * descriptors want these straight off the bitstream) --------------------- */
+
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_bsid(const ac3forge_scanned_stream_t* stream);
+/* 0 when the stream never carried bsmod - see bsmod_present() below, which
+ * is what distinguishes "the stream said complete main" from "never said". */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_bsmod(const ac3forge_scanned_stream_t* stream);
+/* AC-3 only (a kAc3CoreEac3Extension stream's core included): Table 5.18's
+ * index into kBitratesKbps. Meaningless for plain E-AC-3, which has no
+ * equivalent fixed-table field. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_bit_rate_code(const ac3forge_scanned_stream_t* stream);
+/* TS 103 420 §8.3.2.2's complexity_index_type_a - the Atmos/JOC marker
+ * readable without decoding the EMDF container itself. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_has_oba_complexity_index(
+    const ac3forge_scanned_stream_t* stream);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_oba_complexity_index(
+    const ac3forge_scanned_stream_t* stream);
+/* Whether bsmod was actually transmitted - always true for AC-3, only when
+ * infomdate was set for E-AC-3. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_bsmod_present(const ac3forge_scanned_stream_t* stream);
+/* §5.4.2.8/§E2.3.2.3 dsurmod: 0 = not indicated, 1 = NOT Dolby Surround
+ * encoded, 2 = Dolby Surround encoded. Only transmitted when acmod is 2/0. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_dsurmod(const ac3forge_scanned_stream_t* stream);
+/* The Annex G §3.5 mixinfoexists conditions for independent substream 0. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_mix_metadata(const ac3forge_scanned_stream_t* stream);
+/* Bit n set when an independent substream with substreamid n appears
+ * ANYWHERE in the stream - an observation over the whole stream, computed
+ * independently of how the programme list below groups them. */
+AC3FORGEC_EXPORT uint8_t ac3forge_scanned_stream_independent_substreams(
+    const ac3forge_scanned_stream_t* stream);
+/* The FIRST programme's rendered channel LOCATIONS as one Table E2.5
+ * custom-channel-map word (bit 0 = Left in the MSB through bit 15 = LFE in
+ * the LSB) - see ac3::io::ScannedStream::channel_map's own comment. Written
+ * for ac3::io::dash_channel_configuration()'s DASH @value. */
+AC3FORGEC_EXPORT uint16_t ac3forge_scanned_stream_channel_map(
+    const ac3forge_scanned_stream_t* stream);
+
+/* --- independent substreams 1-3 (index 0-2), for the DVB/ATSC descriptors
+ * that name them individually - substream 0 is the stream's main service,
+ * already described by acmod/lfe/bsmod/mix_metadata above. `present` false
+ * means that substream id was never seen. -------------------------------- */
+
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_present(
+    const ac3forge_scanned_stream_t* stream, int index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_bsmod(
+    const ac3forge_scanned_stream_t* stream, int index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_bsmod_present(
+    const ac3forge_scanned_stream_t* stream, int index);
+AC3FORGEC_EXPORT ac3forge_acmod_t ac3forge_scanned_stream_associated_substream_acmod(
+    const ac3forge_scanned_stream_t* stream, int index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_lfe(
+    const ac3forge_scanned_stream_t* stream, int index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_associated_substream_mix_metadata(
+    const ac3forge_scanned_stream_t* stream, int index);
+
+/* --- ac3::io::ScannedProgramme, by index - ascending substreamid order,
+ * never empty on a successful scan. Entry 0 is the same programme every
+ * scalar accessor above describes. §E2.3.1.2 allows up to 8 for E-AC-3;
+ * always exactly 1 for AC-3 and AC3FORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION,
+ * neither of which has a second independent substream to number away from. */
+
+AC3FORGEC_EXPORT size_t ac3forge_scanned_stream_programme_count(
+    const ac3forge_scanned_stream_t* stream);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_substream_id(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+AC3FORGEC_EXPORT ac3forge_acmod_t ac3forge_scanned_stream_programme_acmod(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_lfe(const ac3forge_scanned_stream_t* stream,
+                                                         size_t programme_index);
+/* Channels this PROGRAMME renders, folding in every dependent's chanmap. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_channels(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_bsid(const ac3forge_scanned_stream_t* stream,
+                                                          size_t programme_index);
+/* §5.4.2.2's service type - what tells a receiver this programme is a
+ * complete main service (0-1) rather than one to be mixed against another
+ * (2-7). */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_bsmod(const ac3forge_scanned_stream_t* stream,
+                                                           size_t programme_index);
+AC3FORGEC_EXPORT size_t ac3forge_scanned_stream_programme_substreams_per_unit(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_has_oba_complexity_index(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_programme_oba_complexity_index(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+/* One entry per frame period, offset/length into the `stream` buffer passed
+ * to ac3forge_scan() - same span convention as
+ * ac3forge_scanned_stream_access_unit() above. */
+AC3FORGEC_EXPORT size_t ac3forge_scanned_stream_programme_access_unit_count(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index);
+AC3FORGEC_EXPORT ac3forge_span_t ac3forge_scanned_stream_programme_access_unit(
+    const ac3forge_scanned_stream_t* stream, size_t programme_index, size_t au_index);
+
+AC3FORGEC_EXPORT void ac3forge_scanned_stream_destroy(ac3forge_scanned_stream_t* stream);
+
+/* --- timing (ac3::io::access_unit_timing() and neighbours) - over the FIRST
+ * programme's access units, same convention as the scalar fields above. --- */
+
+/* Access unit `index`'s absolute position - returns 0 (out-parameters left
+ * untouched) when there is no such unit, 1 otherwise. A caller wanting
+ * seconds divides start_sample/duration_samples by sample_rate itself (or an
+ * arbitrary-timescale tick by multiplying before dividing) - deliberately not
+ * wrapped here, unlike AccessUnitTiming's own start_seconds()/
+ * start_in_timescale(), since it is one line either caller side and this
+ * keeps the entry point count down. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_access_unit_timing(
+    const ac3forge_scanned_stream_t* stream, size_t index, uint64_t* out_start_sample,
+    uint32_t* out_duration_samples, uint32_t* out_sample_rate);
+AC3FORGEC_EXPORT uint64_t ac3forge_scanned_stream_duration_samples(
+    const ac3forge_scanned_stream_t* stream);
+AC3FORGEC_EXPORT double ac3forge_scanned_stream_duration_seconds(
+    const ac3forge_scanned_stream_t* stream);
+/* The access unit covering `sample`/`seconds` - i.e. the one to cut at for a
+ * given position. Returns 0 (out_index untouched) past the end of the
+ * stream, 1 otherwise. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_access_unit_at_sample(
+    const ac3forge_scanned_stream_t* stream, uint64_t sample, size_t* out_index);
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_access_unit_at_seconds(
+    const ac3forge_scanned_stream_t* stream, double seconds, size_t* out_index);
+/* The one length every access unit shares - returns 0 (out_samples
+ * untouched) when they differ, 1 otherwise. mp4::AudioTrack/mpegts::
+ * AudioTrack/matroska::AudioTrack each need exactly this before a stream can
+ * be muxed into a fixed-duration track. */
+AC3FORGEC_EXPORT int ac3forge_scanned_stream_uniform_access_unit_samples(
+    const ac3forge_scanned_stream_t* stream, uint32_t* out_samples);
+
+/* --------------------------------------------------------------------- *
  * Atmos encode (ac3::oba::AtmosEncoder)
  * --------------------------------------------------------------------- */
 
@@ -888,6 +1136,217 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
     ac3forge_atmos_encoder_t* encoder, const float* const* objects, size_t object_count,
     size_t samples_per_object, const ac3forge_object_placement_t* placements,
     size_t placement_count, ac3forge_bytes_t** out_unit);
+
+/* --------------------------------------------------------------------- *
+ * Loudness metering (ac3::meta::LoudnessMeter)
+ * --------------------------------------------------------------------- */
+
+typedef struct ac3forge_loudness_meter ac3forge_loudness_meter_t;
+
+/* BS.1770-4 Annex 1's basic algorithm, keyed on acmod/lfe exactly like
+ * ac3::meta::LoudnessMeter's own first constructor - the lone surround of
+ * 2/1 and 3/1 is weighted as the surround FIELD collapsed to one channel
+ * (see the C++ class's own comment on how this differs from the chanmap
+ * form below for that one case). push() below expects spans in the coded
+ * order this acmod implies (Table 5.8), LFE last. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_create(
+    ac3forge_sample_rate_t sample_rate, ac3forge_acmod_t acmod, int lfe,
+    ac3forge_loudness_meter_t** out_meter);
+
+/* BS.1770-5 Annex 3's extended algorithm over a rendered Table E2.5 layout -
+ * the wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) an acmod cannot name, because a
+ * dependent substream's height/wide/rear channels are not members of Table
+ * 5.8 at all. `chanmap` is the same Table E2.5 bitmask
+ * ac3forge_decoded_substream_location_map()/AC3FORGE_CHANMAP_* use; push()
+ * then expects spans in that map's own bit order (ac3::eac3::chanmap::expand()'s
+ * order). Fails with AC3FORGE_ERROR_INVALID_ARGUMENT for a chanmap with no
+ * channels set. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_create_for_chanmap(
+    ac3forge_sample_rate_t sample_rate, uint16_t chanmap, ac3forge_loudness_meter_t** out_meter);
+
+AC3FORGEC_EXPORT void ac3forge_loudness_meter_destroy(ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_loudness_meter_channel_count(const ac3forge_loudness_meter_t* meter);
+
+/* channels: channel_count() planar spans, coded order with LFE last, each
+ * samples_per_channel samples - any length works, unlike encode_frame()'s
+ * fixed frame size, since a meter is fed incrementally over a whole
+ * programme rather than one frame at a time. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_push(
+    ac3forge_loudness_meter_t* meter, const float* const* channels, size_t channel_count,
+    size_t samples_per_channel);
+
+/* std::nullopt-via-has_* convention, same as every optional field elsewhere
+ * in this header (e.g. ac3forge_decoded_frame_has_compr()) - false before
+ * enough audio has been pushed for that measurement to mean anything (see
+ * ac3::meta::LoudnessMeter's own per-accessor comments on how much). */
+AC3FORGEC_EXPORT int ac3forge_loudness_meter_has_integrated_lkfs(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT double ac3forge_loudness_meter_integrated_lkfs(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_loudness_meter_has_momentary_lkfs(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT double ac3forge_loudness_meter_momentary_lkfs(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_loudness_meter_has_short_term_lkfs(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT double ac3forge_loudness_meter_short_term_lkfs(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_loudness_meter_has_loudness_range(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT double ac3forge_loudness_meter_loudness_range(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_loudness_meter_has_true_peak_dbtp(
+    const ac3forge_loudness_meter_t* meter);
+AC3FORGEC_EXPORT double ac3forge_loudness_meter_true_peak_dbtp(
+    const ac3forge_loudness_meter_t* meter);
+
+/* §5.4.2.8: dialnorm is how many dB dialogue sits below digital 100 percent,
+ * valid 1..31 - a programme louder than -1 LKFS or quieter than -31 clamps,
+ * which is why a stream that never measured anything reports 31. */
+AC3FORGEC_EXPORT int ac3forge_dialnorm_from_lkfs(double lkfs);
+
+/* --------------------------------------------------------------------- *
+ * Level metering (ac3::analysis::LevelMeter)
+ * --------------------------------------------------------------------- */
+
+/* Everything at or below this reports as this on
+ * ac3forge_channel_level_t/ac3forge_channel_summary_t's *_db fields, so a
+ * caller never meets log10(0) - mirrors ac3::analysis::kFloorDb. */
+#define AC3FORGE_LEVEL_METER_FLOOR_DB (-120.0)
+
+typedef struct ac3forge_level_meter_ballistics {
+    double rms_integration_ms;  /* default 300.0 */
+    double peak_decay_db_per_s; /* default 20.0 */
+    double peak_hold_ms;        /* default 1200.0 */
+} ac3forge_level_meter_ballistics_t;
+
+/* Fills `ballistics` with the same defaults as ac3::analysis::MeterBallistics{}. */
+AC3FORGEC_EXPORT void ac3forge_level_meter_ballistics_init(
+    ac3forge_level_meter_ballistics_t* ballistics);
+
+typedef struct ac3forge_level_meter ac3forge_level_meter_t;
+
+/* `channels` 0 meters exactly acmod's own channel count (mirrors LevelMeter's
+ * first constructor); a larger value meters a wider layout no acmod can name
+ * - E-AC-3's dependent substreams add speakers Table 5.8 has no word for -
+ * with the acmod still naming and placing the first channels of them as the
+ * bed (see LevelMeter's second constructor's own comment); a value below
+ * acmod's own count is raised to it rather than truncating a layout the
+ * caller has already committed to. `ballistics` NULL uses the same defaults
+ * ac3forge_level_meter_ballistics_init() fills in. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_level_meter_create(
+    ac3forge_acmod_t acmod, int lfe, uint32_t sample_rate, int channels,
+    const ac3forge_level_meter_ballistics_t* ballistics, ac3forge_level_meter_t** out_meter);
+
+AC3FORGEC_EXPORT void ac3forge_level_meter_destroy(ac3forge_level_meter_t* meter);
+AC3FORGEC_EXPORT ac3forge_acmod_t ac3forge_level_meter_acmod(const ac3forge_level_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_level_meter_lfe(const ac3forge_level_meter_t* meter);
+AC3FORGEC_EXPORT int ac3forge_level_meter_channel_count(const ac3forge_level_meter_t* meter);
+AC3FORGEC_EXPORT uint32_t ac3forge_level_meter_sample_rate(const ac3forge_level_meter_t* meter);
+
+/* Planar, one span per channel in A/52 order. The shortest span sets the
+ * length; channels beyond the ones supplied are metered as silence, so a
+ * caller that hands over fewer spans sees the rest fall away rather than
+ * freeze. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_level_meter_process(
+    ac3forge_level_meter_t* meter, const float* const* channels, size_t channel_count,
+    size_t samples_per_channel);
+
+/* Drops both the ballistic state and the accumulated summary. */
+AC3FORGEC_EXPORT void ac3forge_level_meter_reset(ac3forge_level_meter_t* meter);
+
+typedef struct ac3forge_channel_level {
+    double peak_db; /* ballistic peak */
+    double hold_db; /* held maximum */
+    double rms_db;  /* integrated RMS */
+    int clipped;    /* reached full scale since the last reset */
+} ac3forge_channel_level_t;
+
+/* The live ballistic view - channel_index in [0, channel_count()); every
+ * field is AC3FORGE_LEVEL_METER_FLOOR_DB/clipped=0 out of range. */
+AC3FORGEC_EXPORT ac3forge_channel_level_t ac3forge_level_meter_level(
+    const ac3forge_level_meter_t* meter, size_t channel_index);
+
+typedef struct ac3forge_channel_summary {
+    double peak; /* linear */
+    double rms;  /* linear - ac3::analysis::ChannelSummary::rms() */
+    double peak_db;
+    double rms_db;
+    uint64_t samples;
+    uint64_t clipped_samples;
+} ac3forge_channel_summary_t;
+
+/* Unweighted, exact statistics over everything processed so far - what a
+ * file report wants; levels() above exists to make a moving display readable
+ * and would only smear a question this has an exact answer to. */
+AC3FORGEC_EXPORT ac3forge_channel_summary_t ac3forge_level_meter_summary(
+    const ac3forge_level_meter_t* meter, size_t channel_index);
+
+/* --------------------------------------------------------------------- *
+ * QC gate (ac3::meta::qc)
+ * --------------------------------------------------------------------- */
+
+typedef enum ac3forge_qc_loudness_limit {
+    AC3FORGE_QC_LOUDNESS_BAND = 0,   /* |measured - target| <= tolerance_lu */
+    AC3FORGE_QC_LOUDNESS_CEILING = 1 /* measured <= target; tolerance_lu unused */
+} ac3forge_qc_loudness_limit_t;
+
+/* Mirrors ac3::meta::QcPresetId, ordinals matching kQcPresetIds's own
+ * declaration order. */
+typedef enum ac3forge_qc_preset_id {
+    AC3FORGE_QC_PRESET_EBU_R128_S2 = 0,
+    AC3FORGE_QC_PRESET_ATSC_A85 = 1,
+    AC3FORGE_QC_PRESET_ATSC_A85_STREAMING = 2,
+    AC3FORGE_QC_PRESET_NETFLIX = 3,
+    AC3FORGE_QC_PRESET_APPLE_MUSIC_ATMOS = 4
+} ac3forge_qc_preset_id_t;
+
+/* Every preset id is valid in [0, ac3forge_qc_preset_count()) - for a caller
+ * that wants to check a measurement against all of them (mirrors
+ * ac3::meta::kQcPresetIds's own size). */
+AC3FORGEC_EXPORT size_t ac3forge_qc_preset_count(void);
+
+typedef struct ac3forge_qc_preset {
+    double target_lkfs;
+    double tolerance_lu;       /* +/- around target_lkfs, BAND only */
+    double max_true_peak_dbtp; /* a ceiling, not a tolerance band */
+    ac3forge_qc_loudness_limit_t loudness_limit;
+    /* The primary document this row was read out of, with its version and
+     * date - library-owned storage valid for the process lifetime; never
+     * free() it. */
+    const char* source;
+} ac3forge_qc_preset_t;
+
+AC3FORGEC_EXPORT ac3forge_qc_preset_t ac3forge_qc_preset(ac3forge_qc_preset_id_t id);
+/* Library-owned storage valid for the process lifetime. */
+AC3FORGEC_EXPORT const char* ac3forge_qc_preset_name(ac3forge_qc_preset_id_t id);
+/* 1 and *out_id set on a recognized name (e.g. "ebu-r128-s2"), 0 otherwise -
+ * *out_id is left untouched when this returns 0. */
+AC3FORGEC_EXPORT int ac3forge_parse_qc_preset(const char* name, ac3forge_qc_preset_id_t* out_id);
+
+/* One preset's verdict against one measurement - mirrors ac3::meta::QcVerdict.
+ * Either half is left at its not-passing default when the corresponding
+ * measurement was itself unavailable (has_integrated_lkfs/has_true_peak_dbtp
+ * false below) - material this gate cannot actually judge, not a false
+ * pass. */
+typedef struct ac3forge_qc_verdict {
+    int has_loudness_delta_lu;
+    double loudness_delta_lu; /* measured - target */
+    int loudness_pass;
+    int has_true_peak_margin_dbtp;
+    double true_peak_margin_dbtp; /* ceiling - measured; >= 0 passes */
+    int true_peak_pass;
+} ac3forge_qc_verdict_t;
+
+AC3FORGEC_EXPORT int ac3forge_qc_verdict_pass(const ac3forge_qc_verdict_t* verdict);
+
+/* has_integrated_lkfs/has_true_peak_dbtp: pass 0 exactly when
+ * ac3forge_loudness_meter_has_integrated_lkfs()/..._has_true_peak_dbtp()
+ * would - see ac3forge_qc_verdict_t's own comment on what that leaves in the
+ * verdict. */
+AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
+    const ac3forge_qc_preset_t* preset, int has_integrated_lkfs, double integrated_lkfs,
+    int has_true_peak_dbtp, double true_peak_dbtp);
 
 #ifdef __cplusplus
 } /* extern "C" */

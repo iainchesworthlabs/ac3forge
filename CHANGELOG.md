@@ -127,6 +127,16 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **An E-AC-3 encoder in the C API and in Python**, covering plain E-AC-3 and the wide
   dependent-substream layouts with the Annex E tools. See [C API](docs/library/c-api.md) and
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
+- **Stream scan, caller-buffer decode, and loudness/level/QC metering, all now in the C API.**
+  `ac3forge_scan` reports what a stream actually contains — layout, every programme, the
+  DVB/ATSC service fields a muxer's descriptors want — without decoding any audio.
+  `ac3forge_decoder_decode_frame_into`/`ac3forge_eac3_decoder_decode_access_unit_into` decode
+  into caller-owned buffers instead of allocating per call, for the realtime embedder this C
+  surface exists for, and preserve the §3.7 transient pre-noise hold-back exactly (a held-back
+  frame leaves the caller's spans untouched). `ac3forge_loudness_meter_t`/
+  `ac3forge_level_meter_t`/`ac3forge_qc_preset`/`ac3forge_evaluate_qc_gate` mirror the library's
+  BS.1770-5 loudness meter, level meter and named delivery-QC gates. See
+  [C API](docs/library/c-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
 
