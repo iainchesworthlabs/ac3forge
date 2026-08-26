@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
