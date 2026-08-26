@@ -157,9 +157,10 @@ void print_unavailable_reasons(std::span<const CommandInfo> commands) {
 
 void print_stdio_topic() {
     fmt::println("");
-    fmt::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
-    fmt::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    fmt::println("       eac3-encode, atmos-encode, decode and probe only. e.g.:");
+    fmt::println("'-' in place of <in.wav>, <in.raw>, <in.mkv|in.mp4|in.ts>, <in.ac3|in.ec3>,");
+    fmt::println("       <out.ac3>, <out.ec3> or <out.wav> means stdin (an input path) or");
+    fmt::println("       stdout (an output path) - encode, eac3-encode, atmos-encode,");
+    fmt::println("       strip-objects, decode, probe, unspdif and demux only. e.g.:");
     fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
 }
 
