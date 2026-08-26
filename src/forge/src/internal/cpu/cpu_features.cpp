@@ -1,5 +1,6 @@
 #include "cpu_features.hpp"
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
@@ -11,7 +12,7 @@ namespace ac3::internal::cpu {
 
 namespace {
 
-enum class ForcedTier { kAuto, kSse2, kAvx2 };
+enum class ForcedTier : std::uint8_t { kAuto, kSse2, kAvx2 };
 
 // AC3FORGE_SIMD_TIER, parsed once. Portable - no platform-specific code -
 // which is why it lives here rather than in one of the directory-selected

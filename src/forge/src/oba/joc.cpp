@@ -747,7 +747,7 @@ namespace {
             // with; each arm below is one of its branches with the operands
             // written in the identical order, so the coefficients are
             // bit-identical rather than merely equivalent.
-            enum class MixRule {
+            enum class MixRule : std::uint8_t {
                 kTailBlend,     // the delayed tail: blend two stored snapshots
                 kFlat,          // no history to ramp from: this frame outright
                 kSmoothWhole,   // one data point: one ramp across the window
