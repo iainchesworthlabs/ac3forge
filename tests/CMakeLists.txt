@@ -61,6 +61,7 @@ add_executable(ac3tests
     decoder/test_concealment.cpp
     core/test_crc_mutator.cpp
     decoder/test_decoder.cpp
+    decoder/test_diagnostics.cpp
     meta/test_drc.cpp
     dsp/test_dsp_biquad.cpp
     dsp/test_dsp_qmf.cpp
@@ -376,7 +377,7 @@ endif()
 # only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
 # as the AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_IAB)
-    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp)
+    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
