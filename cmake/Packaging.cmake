@@ -282,7 +282,17 @@ set(CPACK_COMPONENT_LIBRUNTIME_GROUP "dev")
 # today's existing filename is unchanged, and include(CPack) leaves an
 # already-set variable alone rather than recomputing it.
 if(WIN32)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
+        # Arch-qualified, the same reason the LINUX branch below already is:
+        # an arm64 build is also an 8-byte-pointer build, so
+        # CMAKE_SIZEOF_VOID_P alone can't tell it apart from x64, and without
+        # this an arm64 archive would silently collide with (overwrite/get
+        # confused with) the existing x64 "win64" archive name.
+        # CMAKE_SYSTEM_PROCESSOR is set to exactly "ARM64" by
+        # cmake/toolchains/windows.msvc.toolchain.cmake for that target -
+        # see its own comment.
+        set(CPACK_SYSTEM_NAME "win-arm64")
+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(CPACK_SYSTEM_NAME "win64")
     else()
         set(CPACK_SYSTEM_NAME "win32")
