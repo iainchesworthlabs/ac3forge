@@ -610,10 +610,13 @@ artifact (`.github/workflows/_build.yml`), so the packaging path is exercised co
 rather than only when someone remembers to run it locally.
 
 A tag-triggered release workflow (`.github/workflows/release.yml`) builds, signs, attests and
-publishes packages for the four `release_package` legs — `windows-msvc`, `linux-gcc`,
-`linux-gcc-arm64` and `macos-llvm`, one canonical build per OS/architecture — whenever a
+publishes packages for the three `release_package` legs — `windows-msvc`, `linux-gcc` and
+`linux-gcc-arm64` — plus, since DR8, a `package-macos-universal` job that `lipo`-merges
+`macos-llvm`'s (arm64) and `macos-llvm-x64`'s (x86_64) install trees into one universal `.dmg`
+rather than either leg packaging solo: one canonical build per OS/architecture, whenever a
 `vX.Y.Z` tag is pushed; a packaging failure on any of them blocks the release like any other
-required leg. The release carries GPG signing (optional, off until a key is provisioned),
+required leg. See [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) for how
+the macOS merge works. The release carries GPG signing (optional, off until a key is provisioned),
 keyless Sigstore/OIDC build provenance, an SPDX SBOM, and a GitHub Release; nine beta releases
 (v0.2.0-beta.1 through v0.9.0-beta.1) have shipped through this path for real. See
 [docs/releasing.md](releasing.md) for the full process, including how to provision the GPG key.
