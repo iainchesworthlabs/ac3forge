@@ -149,6 +149,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
 
+**Tooling and packaging**
+
+- **macOS release packages are now universal (arm64 + x86_64) binaries.** A new CI leg builds a
+  real (not cross-compiled) x86_64 half on GitHub's native-Intel `macos-15-intel` runner, and a
+  merge job `lipo`s it together with the existing Apple Silicon build into one `.dmg`. The
+  Homebrew Cask no longer restricts itself to `arch: :arm64`.
+
 ### Changed
 
 - **JOC defaults to the QMF domain** on both sides. Reconstructed object audio now lags the bed by

@@ -1276,8 +1276,25 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
 - [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
   the distro's Qt 6 and `qml6-module-*` packages); a Windows ARM64 leg on the hosted
-  `windows-11-arm` runner; macOS universal binaries are a separate decision (the Cask is
-  arm64-only and Intel demand is doubtful).
+  `windows-11-arm` runner. **macOS universal binaries: landed.** This item originally called them
+  "a separate decision, not a given," skeptical because the Cask was arm64-only and Intel demand
+  looked doubtful — that skepticism was written without checking current GitHub runner
+  availability, and it turned out to rest on a stale assumption: `macos-15-intel` exists, is free
+  for public repos, and is real native Intel hardware, not Rosetta emulation (confirmed against
+  `docs.github.com/en/actions/reference/runners/github-hosted-runners`) — so a universal binary
+  needed no cross-compilation and the actual blocker was gone. `cmake/vcpkg/triplets/x64-macos-llvm.cmake`
+  joins the existing `arm64-macos-llvm.cmake`; `macos.llvm.toolchain.cmake` and `FindQt6.cmake`
+  needed zero changes, since both already resolved their target architecture generically. A new
+  `macos-llvm-x64` CI leg builds the Intel half for real; a `package-macos-universal` job
+  `lipo`-merges it with `macos-llvm`'s arm64 build (proven via `lipo -info` on the merged
+  `ac3cli`/`ac3gui` binaries and a bundled Qt framework binary in the CI log, not assumed from a
+  green checkmark) and packages the result as the release's one canonical macOS `.dmg` — neither
+  single-arch leg's own `cpack` output ships as the release artifact any more, a deliberate change
+  from before. The Homebrew Cask dropped its `depends_on arch: :arm64`. `macos-llvm-x64` stays
+  `experimental: true` until proven green the same way `macos-llvm` was; see
+  [docs/platforms/macos.md](docs/platforms/macos.md#universal-binaries-dr8) and
+  [docs/releasing.md](docs/releasing.md#what-gets-published). The AppImage/Flatpak and Windows
+  ARM64 halves of this item are unrelated, separate pieces of work and remain open.
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:
   - **Linux/ALSA: confirmed.** `docs/platforms/raspberry-pi.md` ("Live HDMI passthrough to a

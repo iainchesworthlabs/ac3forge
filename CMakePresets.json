@@ -136,6 +136,21 @@
         "rhs": "Darwin"
       }
     },
+    {
+      "name": "macos-llvm-x64",
+      "hidden": true,
+      "description": "macOS (Intel)/Homebrew LLVM toolchain selection, x86_64. Same toolchain file and reasoning as macos-llvm - cmake/toolchains/macos.llvm.toolchain.cmake already resolves x64 vs arm64 from VCPKG_TARGET_ARCHITECTURE, falling back to uname -m outside a vcpkg port-build context - only the vcpkg triplet differs, same shape as linux-gcc-arm64 next to linux-gcc. Verified via CI only, on GitHub's macos-15-intel runner (real native Intel hardware, not Rosetta emulation - see .github/workflows/_build.yml's matrix entry). GUI off by default for the same reason as macos-llvm.",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-macos-llvm",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
+        "AC3FORGE_BUILD_GUI": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
 
     {
       "name": "wasm-emscripten",
@@ -282,6 +297,16 @@
       "displayName": "macOS LLVM Debug"
     },
     {
+      "name": "config-macos-llvm-x64",
+      "inherits": [ "release", "macos-llvm-x64", "core" ],
+      "displayName": "macOS LLVM x64 Release"
+    },
+    {
+      "name": "config-macos-llvm-x64-debug",
+      "inherits": [ "debug", "macos-llvm-x64", "core" ],
+      "displayName": "macOS LLVM x64 Debug"
+    },
+    {
       "name": "config-wasm-emscripten",
       "inherits": [ "release", "wasm-emscripten" ],
       "displayName": "Emscripten/WASM Release (browser decode demo)"
@@ -400,6 +425,16 @@
       "name": "build-macos-llvm-debug",
       "configurePreset": "config-macos-llvm-debug",
       "displayName": "macOS LLVM Debug"
+    },
+    {
+      "name": "build-macos-llvm-x64",
+      "configurePreset": "config-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Release"
+    },
+    {
+      "name": "build-macos-llvm-x64-debug",
+      "configurePreset": "config-macos-llvm-x64-debug",
+      "displayName": "macOS LLVM x64 Debug"
     },
     {
       "name": "build-wasm-emscripten",
@@ -535,6 +570,18 @@
       "inherits": "test-base"
     },
     {
+      "name": "test-macos-llvm-x64",
+      "configurePreset": "config-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Release Tests",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-macos-llvm-x64-debug",
+      "configurePreset": "config-macos-llvm-x64-debug",
+      "displayName": "macOS LLVM x64 Debug Tests",
+      "inherits": "test-base"
+    },
+    {
       "name": "test-linux-llvm-asan-ubsan",
       "configurePreset": "config-linux-llvm-asan-ubsan",
       "displayName": "Linux LLVM ASan+UBSan Tests",
@@ -624,6 +671,12 @@
       "displayName": "macOS LLVM Package",
       "configurePreset": "config-macos-llvm",
       "inherits": "package-base"
+    },
+    {
+      "name": "pack-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Package",
+      "configurePreset": "config-macos-llvm-x64",
+      "inherits": "package-base"
     }
   ],
 
@@ -689,6 +742,15 @@
         { "type": "configure", "name": "config-macos-llvm" },
         { "type": "build", "name": "build-macos-llvm" },
         { "type": "test", "name": "test-macos-llvm" }
+      ]
+    },
+    {
+      "name": "ci-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-macos-llvm-x64" },
+        { "type": "build", "name": "build-macos-llvm-x64" },
+        { "type": "test", "name": "test-macos-llvm-x64" }
       ]
     },
     {
