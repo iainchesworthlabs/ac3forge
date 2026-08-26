@@ -138,8 +138,9 @@ struct FrameConfig {
     std::uint32_t bitrate_kbps = 192;
     // std::nullopt: CBR, sized from bitrate_kbps (frame_words() below). Set:
     // VBR: bitrate_kbps is not read on the encode path at all - the
-    // cplbegf/spxbegf frequency defaults use vbr->nominal_kbps in its place
-    // (falling back to max_kbps, then kVbrDefaultNominalKbps).
+    // cplbegf/spxbegf frequency defaults use vbr->nominal_kbps in its place,
+    // falling back to vbr->abr->target_kbps, then max_kbps, then
+    // kVbrDefaultNominalKbps (VbrConfig::nominal_kbps states the same chain).
     std::optional<VbrConfig> vbr = std::nullopt;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
@@ -505,11 +506,23 @@ using AuxPayload = std::span<const std::byte>;
 // a configuration before building an encoder for it, which is what a live
 // pipeline sizing its buffers actually needs.
 [[nodiscard]] constexpr LatencyBudget eac3_latency(const FrameConfig& config) {
+    // A short syncframe (numblkscod 0-2, §E2.3.1.4) carries 256, 512 or 768
+    // samples, not kSamplesPerFrame - which is the whole point of roadmap
+    // EQ11's low-latency mode, and what ac3/latency.hpp's own frame_samples
+    // note has always said this field means. Reading kSamplesPerFrame here
+    // regardless made latency_samples() overstate a one-block frame by
+    // 1280 samples, ~27 ms at 48 kHz, to exactly the live pipeline that
+    // asks in order to size its buffers.
+    //
+    // The hold-back is one FRAME period for the same reason (§3.7 needs the
+    // previous frame, whatever length it is), so it tracks the same figure
+    // rather than a second, fixed one.
+    const int frame_samples = blocks_per_syncframe(config.numblkscod) * kSamplesPerBlock;
     return LatencyBudget{
-        .frame_samples = kSamplesPerFrame,
+        .frame_samples = frame_samples,
         .transform_samples = kTransformDelaySamples,
         .lookahead_samples = 0,
-        .holdback_samples = config.transient_prenoise ? kSamplesPerFrame : 0};
+        .holdback_samples = config.transient_prenoise ? frame_samples : 0};
 }
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
