@@ -865,7 +865,7 @@ jobs:
         shell: bash
         run: |
           cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
-          git diff --exit-code -- apps/gui/translations
+          git -C "${GITHUB_WORKSPACE}" diff --exit-code -- apps/gui/translations
 
       # Sanitizers only catch what actually executes. ctest's cases exercise
       # encoder/decoder logic in isolation; this drives the real CLI across
