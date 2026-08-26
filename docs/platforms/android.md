@@ -191,15 +191,20 @@ platform's Atmos encode path. With both fixes, the Shield holds an exact 32.0ms/
 zero underruns. See [Performance trend](../performance-trend.md) for the CI regression gate this
 bug prompted (`tests/performance/`'s hard real-time gate plus the `ac3bench` trend tracker).
 
-## Objects: one interactive lead, two ambient, all on pre-planned orbits
+## Objects: one interactive lead, two ambient, all on pre-planned paths
 
 `live_cursor.cpp` no longer holds a single object at a fixed point. Every object
-(`kInteractiveObjects` + `kAmbientObjects`, currently 1 + 2) follows its own closed-form orbit —
-`trajectory_position()`, a circle in the room's x/y plane centred on the room's *exact* middle
-(`(0.5, 0.5)`, per `oamd.hpp` — also where the JOC/VBAP render implicitly assumes the listener
-sits) with an independent, slower height bob — so every object's lap carries it both in front of
-and behind the listening position, not confined to the front half of the room. Rate/phase/radius
-differ per object (`kTrajectory`) so the three stay visually and audibly distinct.
+(`kInteractiveObjects` + `kAmbientObjects`, currently 1 + 2) follows its own closed-form path from
+the current [scene](#scenes-and-a-demo-that-runs-itself) — `trajectory_position()`, evaluated
+about the room's *exact* middle (`(0.5, 0.5)`, per `oamd.hpp`, which is also where the JOC/VBAP
+render implicitly assumes the listener sits). Rate/phase/radius differ per object so the three stay
+visually and audibly distinct.
+
+The default shape, and the one everything below describes, is the **Orbit** scene's circle in the
+room's x/y plane with an independent, slower height bob — so every object's lap carries it both
+in front of and behind the listening position rather than being confined to the front half of the
+room. The other four scenes replace that shape; the voices, falloff and limiter below are shared by
+all of them.
 
 The two ambient objects (a major third and a perfect fifth above the lead's A4, forming an A major
 triad rather than an arbitrary tone set — `kToneHz`/`kToneGain`) are **never touched by input** —
@@ -225,6 +230,105 @@ direction, but no sense of "coming toward me" versus "far away." An inverse-squa
 (`distance_attenuation()`, clamped with a floor so the far end of an orbit is quieter but never
 silent — fully silent would fight the pause/mute isolation feature's own point) is applied as an
 extra per-object, per-frame gain multiplier, computed from that frame's own placement.
+
+## Scenes, and a demo that runs itself
+
+The app used to have exactly one thing to show, forever: three objects on
+fixed sine orbits, from launch until you walked away. `kScenes` replaces that
+single trajectory table with five, each naming its own shape, its own
+per-object parameters, and one line of what to listen for:
+
+| Scene | What it is for |
+| --- | --- |
+| **Orbit** | What the demo has always done. Still the best one to hand someone a controller on, so it stays first. |
+| **Flyover** | Front to back and back again, rising to a peak as it crosses the listening position — it arrives low, passes over, leaves low. |
+| **Overhead** | All three in the ceiling plane. Sells the height channels precisely because nothing is left at ear level to compare against. |
+| **Elevator** | One voice straight up and down over the seat, everything else silent. The height axis on its own. |
+| **Front / back** | Hard alternation, no height. Deliberately unmusical — for checking speaker placement, not for listening to. |
+
+**The object count stays fixed at three for every scene, deliberately.**
+`AtmosEncoder` takes its object count at construction, so varying it means
+rebuilding the encoder mid-stream — per-object QMF filterbank allocation on
+a thread holding a 32ms deadline. A scene that wants fewer voices silences
+them with `gain_scale` and leaves them moving.
+
+Scene changes **blend**, position and gain together: a 32ms step from one side
+of the room to the other is an abrupt pan rather than a move, and a hard gain
+step between frames is a click. Changing again mid-blend restarts from the
+scene being left rather than compounding, so a fast double-press reads as one
+move rather than two overlapping ones.
+
+**The guided tour.** The idle timeout used to do one thing: show "press any
+button to take control" and wait. It now starts walking the scenes, announcing
+each with its name and its listen-for line, so a demo left alone between
+visitors runs itself rather than sitting still having already made its point.
+The first real input stops it and keeps whatever scene it reached — yanking
+someone back to the first scene the instant they touch a stick would be worse.
+
+## Record a path, and fly it back
+
+**R2** cycles idle → recording → looping → idle. What is captured is the lead
+object's *final placed position* each encode frame, deflection and clamps
+included, so what replays is where the object actually went rather than where
+its trajectory alone would have put it. A parametric orbit is something the
+demo does to you; a path flown by hand is something you did.
+
+A played-back path replaces the scene's trajectory for the lead but is still
+pushable and still springs back to itself, so it behaves like any other
+course. Stopping a recording goes straight to looping rather than back to
+idle — the gesture was performed to be watched. A recording under eight
+frames is discarded rather than looped as a twitch, and running out of buffer
+(two minutes) starts playing what was captured rather than silently recording
+nothing further. Controller-only: a basic remote has no free key that every
+remote actually has, and this is a presenter's control.
+
+## Rumble, on the crossings that need a second opinion
+
+Height is the hardest thing in this demo to be sure of by ear. Everything else
+has a second channel of evidence — you see the dot go left and you hear it
+go left — but elevation has only the sound, and a listener who is not
+certain what they are supposed to be hearing tends to conclude they are not
+hearing it. `Haptics` pulses the **controller** as the object crosses over the
+seat, and more lightly as it passes through the listening position.
+
+Event-driven, not continuous: a permanently buzzing pad stops meaning anything
+within about ten seconds and flattens its battery mid-demo. The vibrator is
+the input device's, not the system one — on a TV box the system vibrator is
+absent or meaningless, and the thing the user is holding is the controller.
+Positions come from `RoomView`, which already samples them every frame for the
+room panels, rather than costing a second JNI call per vsync. Needs the
+`VIBRATE` permission, without which `vibrate()` throws `SecurityException`.
+
+## Settings, and a phone as a second controller
+
+Every control in this app was an undocumented keypress. The hints bar lists
+them, but that is a reference for someone who already knows. **L2**, **Guide**
+or **Settings** opens a D-pad-navigable panel with scene, ambient tones,
+object layer, phone remote and guided tour, all read live so a row reflects
+state changed by the physical keys while the panel is open. It consumes every
+key it recognises, so the demo's own controls do not fire underneath it.
+
+Deliberately absent from it: bitrate, object count and the JOC domain. All
+three are fixed when `AtmosEncoder` is constructed, so a row for any of them
+means rebuilding the encoder mid-stream, and a setting that silently risks the
+frame budget is worse than no setting.
+
+**The phone remote** (`WebRemote`) serves one page with a touchpad, a height
+slider and scene buttons, so anyone in the room drives the object from their
+own phone with no pairing and no explaining.
+
+!!! warning "It is off by default, and that is not an oversight"
+    A demo app has no business opening a listening socket on somebody's
+    network because it happened to launch, so it starts only when switched on
+    in the settings panel, and stops in `onStop` alongside the encode loop.
+
+    It is deliberately tiny and deliberately narrow: five fixed paths, a
+    bounded request line, one page held as a constant, no filesystem access,
+    every incoming number clamped to [-1, 1] before it reaches the native
+    side, and a 404 for everything else. **There is no authentication** —
+    anyone who can reach the port can move the object. That is the honest
+    trade for a sideloaded personal demo on a home network, and it is exactly
+    why it does not start by itself.
 
 ## OBJECTS OFF: taking the object layer away, live
 
@@ -606,6 +710,17 @@ every other required leg.
     false, so what these assert is that the JNI round trip and the `AudioTrack`/`AudioFormat`
     calls fail safely rather than throwing or hanging.
 
+!!! note "The app now asks for two permissions"
+    Both are new, both are normal permissions granted at install with no
+    runtime prompt, and both are listed here because an app that previously
+    asked for nothing now asks for something. `VIBRATE` drives the controller
+    rumble. `INTERNET` is needed only for the opt-in phone remote's listening
+    socket — the app makes no outbound requests of any kind. Worth noting
+    how the second one was found: lint does not check it, because socket
+    creation is kernel-enforced through the inet group rather than by a
+    permission annotation, so it would have failed on the device with the
+    build entirely green.
+
 !!! warning "Added but not yet run on the hardware"
     Everything in this list is written, reviewed and building, and none of it has been through a
     real Shield with a real receiver attached. It is listed separately from the confirmed work above
@@ -625,6 +740,14 @@ every other required leg.
     - **The soundfield arrow, the programme meter and the loudness readout** — arithmetic over
       the encoded bed, so they are as right as the encoder is, but nobody has watched the arrow
       track a real pan on a real screen.
+    - **Every scene except Orbit.** The shapes are arithmetic and the blend is
+      arithmetic, but nobody has heard a flyover pass overhead on real
+      speakers, which is the entire claim that scene makes.
+    - **Rumble.** Whether a Shield Controller reports a vibrator through
+      `InputDevice.getVibrator()` at all is unconfirmed; the resolved result is
+      logged at startup for exactly that reason.
+    - **The phone remote.** Never loaded from a real phone, and the Shield's
+      own network behaviour on the port is unverified.
     - **The partial-write fix.** The path it corrects is the one that had never been observed
       firing; the change makes a short write resumable rather than duplicating bytes. Whether short
       writes happen at all on this device is still unknown — the first one now logs.

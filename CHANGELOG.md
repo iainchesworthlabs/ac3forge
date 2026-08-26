@@ -257,6 +257,21 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
   seeded from the device's own declared flat range. Right-stick height is resolved by probing which
   axis the device declares rather than assuming.
+- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
+  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
+  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
+  between; and once left idle it walks them itself rather than just inviting the next person.
+- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
+  gesture forever — still pushable, still springing back to itself.
+- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
+  passing through the listening position.
+- **New: a settings panel and a phone remote.** Every control was previously an undocumented
+  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
+  drive the object from their own phone. The remote is **off by default** and has no authentication
+  — it starts only when switched on, and stops when the demo leaves the screen.
+- **`isDirectPlaybackSupported` was called unguarded on a minSdk-26 app**, so on any API 26–28
+  device — a 2015/2017 Shield on Android 9, for instance — the app's most load-bearing platform
+  query threw `NoSuchMethodError` rather than degrading. Guarded.
 - **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
   decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
   screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
