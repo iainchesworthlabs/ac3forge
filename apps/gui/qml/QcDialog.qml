@@ -109,15 +109,19 @@ Dialog {
             // AND feeds its target/tolerance/ceiling into the meters as the
             // band/ceiling lines - see QcController::programmes()'s own
             // comment on why presets has exactly one entry once this is
-            // anything but "All".
+            // anything but "All". The model is built off presetNames rather
+            // than hardcoded, so it grows with ac3::meta::kQcPresetIds
+            // instead of drifting out of sync with it.
             SegmentedControl {
                 objectName: "qcPresetControl"
-                model: [
-                    { value: "0", label: qsTr("All") },
-                    { value: "1", label: qsTr("EBU R 128 s2") },
-                    { value: "2", label: qsTr("ATSC A/85") },
-                    { value: "3", label: qsTr("Netflix") },
-                ]
+                model: {
+                    const names = QcController.presetNames;
+                    const entries = [];
+                    for (let i = 0; i < names.length; ++i) {
+                        entries.push({ value: String(i), label: names[i] });
+                    }
+                    return entries;
+                }
                 currentValue: String(QcController.presetIndex)
                 onSelected: (value) => QcController.presetIndex = parseInt(value)
             }

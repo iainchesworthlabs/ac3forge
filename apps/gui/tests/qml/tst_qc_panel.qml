@@ -129,6 +129,66 @@ TestCase {
         QcController.presetIndex = 0;
     }
 
+    // The regression this guards: the segmented control used to hardcode
+    // four rows (All + three names) in QcDialog.qml itself, so once
+    // ac3::meta::kQcPresetIds grew to five, the fourth row's value ("3")
+    // silently landed on atsc-a85-streaming instead of Netflix and the last
+    // two presets had no row to click at all - even though presetIndex
+    // itself already accepted 0..5. Driving the model off presetNames (see
+    // that Q_PROPERTY's own comment) means every row here is reached
+    // through the actual UI control, not just by setting the property
+    // directly the way the tests above do.
+    function test_everyPresetIsReachableThroughTheSegmentedControl() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+
+        QcController.measureFile(realStreamUrl);
+        tryCompare(QcController, "busy", false, 15000);
+        win.qcDialogRef.open();
+        tryVerify(() => win.qcDialogRef.opened);
+
+        let ctrl = null;
+        tryVerify(() => {
+            ctrl = findChild(win.contentItem, "qcPresetControl");
+            return ctrl !== null;
+        });
+
+        // findChild's own visual-tree search can't see a Repeater's
+        // dynamically created delegates once they sit inside a Dialog's
+        // overlay content (its QObject parent is the Repeater, not the Row
+        // the delegate is visually parented to - the search that reaches
+        // "qcPresetControl" itself falls back to a QObject-based lookup
+        // that does not retrace that same detour). Walking the control's
+        // own (real, live) children directly sidesteps that rather than
+        // fighting it, while still driving the genuine delegate Item that
+        // is on screen - mouseClick below is the same real interaction a
+        // user's click would be.
+        function segment(value) {
+            for (let i = 0; i < ctrl.children.length; ++i) {
+                if (ctrl.children[i].objectName === "seg-" + value) {
+                    return ctrl.children[i];
+                }
+            }
+            return null;
+        }
+
+        // value "5" is Apple Music Atmos, the last and previously-unreachable
+        // row - see this test's own header comment for why.
+        const lastSeg = segment("5");
+        verify(lastSeg !== null);
+        mouseClick(lastSeg);
+        compare(QcController.presetIndex, 5);
+        compare(QcController.programmes[0].presets.length, 1);
+        compare(QcController.programmes[0].presets[0].id, "apple-music-atmos");
+
+        const allSeg = segment("0");
+        verify(allSeg !== null);
+        mouseClick(allSeg);
+        compare(QcController.presetIndex, 0);
+
+        win.qcDialogRef.close();
+    }
+
     // The report view itself renders that same real data - the dialog's
     // summary text matches the controller, and one Card exists per measured
     // programme (one, for this plain-stereo fixture).

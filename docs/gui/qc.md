@@ -41,27 +41,33 @@ Once a file has been measured, the dialog fills with:
       **tolerance band** around that preset's target and the true-peak meter a **ceiling line** at
       its limit — the value's own fill turns from neutral to the app's accent colour exactly when
       it falls outside the band or crosses the ceiling, the same two-state colouring the channel
-      meters' own CLIP indicator uses. Loudness range has no preset gate (none of the three named
-      presets define one), so its meter always reads as a plain measurement.
+      meters' own CLIP indicator uses. A ceiling preset (Apple Music Atmos — a level not to
+      exceed rather than a band to sit inside) draws that same line as a single ceiling rather
+      than a band. Loudness range has no preset gate (none of the named presets define one), so
+      its meter always reads as a plain measurement.
     - **A dialnorm check** — the stream's own `dialnorm` restated as the LKFS it claims
       (`§5.4.2.8`: dialnorm is how far dialogue sits below digital 100%), the measured-minus-claimed
       delta, and what dialnorm the measurement itself would imply — exactly the three lines
       `ac3cli qc` prints under "dialnorm check", plus `compr` (§5.4.2.9/§7.7.2) when the stream
       carries one.
-    - **A verdict row per delivery preset** — EBU R 128 s2, ATSC A/85 and Netflix (the same three
-      `ac3::meta::qc.hpp` names, each preset's target/tolerance/ceiling cited from its own primary
-      source — see that header's own comment for the exact clauses), each showing its own
+    - **A verdict row per delivery preset** — EBU R 128 s2, ATSC A/85, ATSC A/85 streaming,
+      Netflix and Apple Music Atmos (the same `ac3::meta::qc.hpp` names, each preset's own
+      target/tolerance/ceiling and the document edition it was judged against cited from its own
+      primary source — see that header's own comment for the exact clauses), each showing its own
       loudness PASS/FAIL, true-peak PASS/FAIL and an overall chip.
 
 ## Delivery preset
 
-A segmented control — **All**, **EBU R 128 s2**, **ATSC A/85**, **Netflix** — mirrors `ac3cli
-qc`'s own `preset=<name>|all` argument:
+A segmented control — **All**, plus one entry per `ac3::meta::kQcPresetIds` entry (currently
+**EBU R 128 s2**, **ATSC A/85**, **ATSC A/85 streaming**, **Netflix** and **Apple Music Atmos**) —
+mirrors `ac3cli qc`'s own `preset=<name>|all` argument. The control's model is read from
+`QcController::presetNames()` rather than hardcoded, so it grows automatically the next time a
+preset is added to that table:
 
 - **All** (the default) lists every preset's own verdict, with no single target/ceiling to draw
-  as a line on the meters above (three different presets would mean three different bands on the
+  as a line on the meters above (five different presets would mean five different bands on the
   same bar) — the meters show plain measured values, and the report becomes a compact overview of
-  where the stream sits against all three deliveries at once.
+  where the stream sits against every delivery at once.
 - Choosing **one** preset narrows the verdict list to it and feeds that preset's own numbers into
   the meters as the tolerance band / ceiling line, so the report can show exactly *why* a gate
   passed or failed rather than only *that* it did.
