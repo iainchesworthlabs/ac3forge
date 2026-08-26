@@ -527,6 +527,7 @@ ac3::oba::SceneCursor::release(unsigned long)
 ac3::oba::SceneCursor::release_all()
 ac3::oba::SceneCursor::sample(double) const
 ac3::oba::SceneCursor::sample_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
+ac3::oba::apply(ac3::oba::SceneOscUpdate const&, ac3::oba::ObjectPlacement const&)
 ac3::oba::band_energy(std::span<float const, 18446744073709551615ul>, std::span<unsigned char const, 64ul>, std::span<double, 18446744073709551615ul>, bool)
 ac3::oba::bed_label_position(ac3::oba::BedLabel)
 ac3::oba::bed_labels(unsigned short)
@@ -537,6 +538,8 @@ ac3::oba::evaluate_placements(std::span<ac3::oba::ObjectPath const, 184467440737
 ac3::oba::joc_object_indices(ac3::oba::Program const&)
 ac3::oba::make_orbit_path(double, double, double, double, double)
 ac3::oba::orientation_from_degrees(double, double, double)
+ac3::oba::parse_osc_packet(std::span<std::byte const, 18446744073709551615ul>, ac3::oba::OscParseStats*)
+ac3::oba::parse_osc_packet_into(std::span<std::byte const, 18446744073709551615ul>, std::span<ac3::oba::SceneOscUpdate, 18446744073709551615ul>, ac3::oba::OscParseStats*)
 ac3::oba::parse_payload(std::span<std::byte const, 18446744073709551615ul>)
 ac3::oba::qmf_band_energy(std::span<float const, 18446744073709551615ul>, std::span<unsigned char const, 64ul>, std::span<double, 18446744073709551615ul>, ac3::dsp::QmfAnalysis&)
 ac3::oba::read_scene(std::basic_string_view<char, std::char_traits<char> >)
