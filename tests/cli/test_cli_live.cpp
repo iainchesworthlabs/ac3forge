@@ -179,8 +179,11 @@ TEST_CASE("positions= is refused outright with mode=channels",
           "[cli][audio-io][concurrency]") {
     // Unlike the malformed-token case above, this is a pure input-shape
     // conflict - live_audio.cpp checks it before any device enumeration, so
-    // the refusal is unconditional even on a headless CI container with no
-    // capture endpoint at all.
+    // the refusal is unconditional once run_live() actually runs. On a build
+    // with no capture backend compiled in at all (CI's no-alsa/posix leg),
+    // main.cpp refuses the whole 'live' command one level higher, before
+    // run_live() is ever reached, with its own "unavailable on this
+    // platform" message - still a refusal, just not this one.
     const auto out_path = scratch_dir() / "positions_channels.ac3";
     const auto log = scratch_dir() / "positions_channels.log";
     fs::remove(out_path);
@@ -189,7 +192,9 @@ TEST_CASE("positions= is refused outright with mode=channels",
     const auto out = read_log(log);
     REQUIRE(rc != 0);
     CHECK_FALSE(fs::exists(out_path));
-    CHECK(out.find("positions=") != std::string::npos);
+    if (out.find("is unavailable on this platform") == std::string::npos) {
+        CHECK(out.find("positions=") != std::string::npos);
+    }
 }
 
 TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or refuses by name",
