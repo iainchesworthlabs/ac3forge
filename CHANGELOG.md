@@ -129,6 +129,14 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
+- **Zero-copy numpy encode/decode in Python**, plus caller-buffer decoding. Every `encode_frame`/
+  `encode_access_unit` call accepts a 2-D `(n_channels, n_samples)` array as well as a sequence of
+  1-D arrays, and reads directly out of whichever is passed when it is already contiguous
+  `float32`; decoded `.channels`/`.object_audio` are read-only views onto the decoded object's own
+  memory instead of a fresh copy on every access; `FrameDecoder.decode_frame_into`/
+  `Eac3Decoder.decode_access_unit_into` write PCM into caller-supplied buffers for a realtime
+  embedder or tight batch loop that wants to reuse them. See [Python API](docs/library/python-api.md)'s
+  "Zero-copy numpy and buffer reuse".
 
 **Verification**
 

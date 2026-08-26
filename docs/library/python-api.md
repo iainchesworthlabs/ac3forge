@@ -37,10 +37,13 @@ for frame in range(31):
 
 Full program: [`examples/python/encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py).
 
-`encode_frame` takes a sequence of 1-D `float32`-convertible arrays (any array-like `numpy`
-accepts — a list also works), one per channel, **AC-3 channel order** (Table 5.8, LFE last —
-same convention as the C++ API, see [docs/library/index.md](index.md#conventions)), each exactly
-`ac3.SAMPLES_PER_FRAME` (1536) samples. It returns one syncframe as `bytes`.
+`encode_frame` takes either a 2-D `(n_channels, n_samples)` array or a sequence of 1-D
+`float32`-convertible arrays (any array-like `numpy` accepts — a list also works), one per
+channel, **AC-3 channel order** (Table 5.8, LFE last — same convention as the C++ API, see
+[docs/library/index.md](index.md#conventions)), each exactly `ac3.SAMPLES_PER_FRAME` (1536)
+samples. It returns one syncframe as `bytes`. See [Zero-copy numpy and buffer
+reuse](#zero-copy-numpy-and-buffer-reuse) below for what "zero-copy" means here and the one
+caveat it comes with.
 
 `ac3.EncoderConfig` mirrors `ac3::EncoderConfig` field for field (`encoder/encoder.hpp`) —
 construct it with keyword arguments for whichever fields you want to change from their C++
@@ -68,14 +71,70 @@ for frame_bytes in ac3.split_frames(stream):
     print(decoded.channel_labels, decoded.channels[0].shape)
 ```
 
-`decoded.channels` is a list of `numpy.float32` arrays, one per channel, in decode order.
-`decoded.channel_labels` is the same channels' Table 5.8/Table E2.5 names as plain strings
-(`["L", "C", "R", "Ls", "Rs", "LFE"]`) — not part of the C++ `DecodedFrame`/`DecodedSubstream`
-structs themselves, added here purely for convenience.
+`decoded.channels` is a list of `numpy.float32` arrays, one per channel, in decode order — a
+read-only *view* onto `decoded`'s own memory rather than a copy (see [Zero-copy
+numpy](#zero-copy-numpy-and-buffer-reuse) below). `decoded.channel_labels` is the same channels'
+Table 5.8/Table E2.5 names as plain strings (`["L", "C", "R", "Ls", "Rs", "LFE"]`) — not part of
+the C++ `DecodedFrame`/`DecodedSubstream` structs themselves, added here purely for convenience.
 
 `ac3.split_frames`/`ac3.split_access_units` wrap the free functions of the same name in
 `ac3/decoder/decoder.hpp` — splitting a raw elementary stream (or one already known to be E-AC-3)
 into individual syncframes or access units before decoding each one.
+
+## Zero-copy numpy and buffer reuse
+
+Roadmap **AP6**. Every `encode_frame`/`encode_access_unit` call above (AC-3, E-AC-3, and
+`AtmosEncoder.encode_frame`'s `objects`) and every decoded `.channels`/`.object_audio` property
+avoids a `memcpy` when it can:
+
+- **Encode input** is read directly out of the array(s) you pass — no intermediate copy — as
+  long as they are already `float32` and C-contiguous (`numpy`'s default for a freshly-built
+  array). An array that isn't (wrong dtype, a transposed/strided view, a Python `list` of plain
+  floats) is converted once, exactly as it always was; this only removes the *second*,
+  unconditional copy the pre-AP6 bindings always made on top of that.
+- **Decoded PCM** (`.channels`, `.object_audio`) is a read-only `numpy` view directly onto the
+  `DecodedFrame`/`DecodedSubstream`/`DecodedAccessUnit` instance's own memory — no allocation, no
+  copy. The view keeps that instance alive for as long as the view itself is (via `numpy`'s own
+  `base` mechanism), so it stays valid even after you drop your last reference to the decoded
+  object. It is non-writeable (`arr.flags.writeable is False`): mutating it would silently
+  corrupt the decoder's own state.
+
+**The one caveat**: encoding releases Python's GIL for the actual codec work (so another Python
+thread can make progress while it runs), which means an array you are encoding must not be
+mutated by another thread until `encode_frame`/`encode_access_unit` returns — the same
+"don't touch the buffer mid-call" contract any zero-copy buffer-protocol API has. This does not
+apply to the array(s) you get back from decoding; those are plain read access once the call
+returns.
+
+For a caller that decodes the same stream shape repeatedly (a realtime embedder, a tight batch
+loop) and wants to reuse its own buffers instead of letting each call allocate fresh ones,
+`FrameDecoder.decode_frame_into`/`Eac3Decoder.decode_access_unit_into` write PCM straight into
+buffers you supply instead:
+
+```python
+import numpy as np
+
+decoder = ac3.FrameDecoder()
+out = np.zeros((ac3.MAX_AC3_CHANNELS, ac3.SAMPLES_PER_FRAME), dtype=np.float32)
+for frame_bytes in ac3.split_frames(stream):
+    decoded = decoder.decode_frame_into(frame_bytes, out)  # decoded.channels stays empty
+    n = ac3.fullbw_channel_count(decoded.acmod) + (1 if decoded.lfe else 0)
+    print(decoded.channel_labels, out[:n])
+```
+
+`out` is either a single 2-D `(buffers, ac3.SAMPLES_PER_FRAME)` array or a sequence of 1-D
+arrays, each `float32`, C-contiguous and writeable. `buffers` must be **at least**
+`ac3.MAX_AC3_CHANNELS` (6) for `decode_frame_into`, or `ac3.eac3.MAX_RENDER_CHANNELS` (16) for
+`decode_access_unit_into` — the
+real channel count for a given frame is only known once it has been decoded, so both methods ask
+for enough buffers up front to cover any layout their decoder can produce; unused trailing
+buffers are simply left untouched. Every one of these constraints is checked explicitly and
+raises `TypeError`/`ValueError` on mismatch — it does not fall back to silently copying into a
+private buffer the decoder would write into instead of yours (which would defeat the entire
+point), and it does not rely on the C++ side's own `assert()` (compiled out in release wheels) as
+the only guard, the same policy `encode_frame`'s own channel-count check follows (see
+[Errors](#errors) below). The returned `DecodedFrame`/`DecodedAccessUnit`'s own `.channels` stays
+empty either way — read the PCM back from `out`.
 
 ## Encoding E-AC-3
 
@@ -161,7 +220,7 @@ does not need to import wholesale).
 | Exception | Raised by | `.error` |
 |---|---|---|
 | `ac3.Ac3EncodeError` | `FrameEncoder.encode_frame`, `AtmosEncoder.encode_frame`, `ac3.eac3.FrameEncoder.encode_frame`, `ac3.eac3.AccessUnitEncoder.encode_access_unit` | `ac3.FrameError` |
-| `ac3.Ac3DecodeError` | `FrameDecoder.decode_frame`, `Eac3Decoder.decode_substream`/`decode_access_unit`, `ac3.split_frames`/`split_access_units`/`stream_bsid` | `ac3.DecodeError` |
+| `ac3.Ac3DecodeError` | `FrameDecoder.decode_frame`/`decode_frame_into`, `Eac3Decoder.decode_substream`/`decode_access_unit`/`decode_access_unit_into`, `ac3.split_frames`/`split_access_units`/`stream_bsid` | `ac3.DecodeError` |
 
 Both derive from `ac3.Ac3Error(RuntimeError)`. `ac3.FrameError` has no C++-side `describe()`
 (see [docs/library/index.md](index.md#conventions)'s own note — some codec-level failures never
@@ -169,9 +228,13 @@ got a text description on the C++ side either), so an `Ac3EncodeError`'s message
 enumerator's own name; `ac3.DecodeError` does have one (`ac3.describe`), so an `Ac3DecodeError`'s
 message is real spec-level text.
 
-A wrong-length channel array (not `ac3.SAMPLES_PER_FRAME` samples) raises a plain `ValueError`
-instead — that is a Python-level usage error, not a codec-level failure the C++ side can report at
-all (short-changing `encode_frame` is documented as "a programming error, not a runtime one").
+A wrong-length or wrong-count channel array (not `ac3.SAMPLES_PER_FRAME` samples, or not
+`channel_count` of them) raises a plain `ValueError` instead — that is a Python-level usage
+error, not a codec-level failure the C++ side can report at all (short-changing `encode_frame` is
+documented as "a programming error, not a runtime one"). `decode_frame_into`/
+`decode_access_unit_into`'s `out` gets the same treatment for its own shape: too few buffers, a
+buffer that's too short, or one that isn't C-contiguous or writeable all raise `ValueError`; the
+wrong dtype raises `TypeError`. See [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above.
 
 ## What isn't exposed
 
@@ -186,6 +249,12 @@ beyond the convenience `channel_labels` list above — deliberately unsupported 
 `mixmdate`/`infomdat` metadata groups, `vbr`/ABR and `search` are unmirrored too, but those **are**
 gaps rather than decisions (see [Encoding E-AC-3](#encoding-e-ac-3) above) — `AccessUnitConfig` is
 also missing `additional` (further independent programmes, I1-I7).
+
+There is no `Eac3Decoder.decode_substream_into` — only the two forms that assemble a full
+programme (`FrameDecoder.decode_frame_into`, `Eac3Decoder.decode_access_unit_into`) have a
+caller-buffer form, because that is the only pair `ac3::FrameDecoder`/`ac3::Eac3Decoder`
+themselves expose one for (see [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above); a
+single substream's own PCM is always freshly allocated.
 
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
