@@ -1191,11 +1191,12 @@ jobs:
       # and that Python is linked against a newer glibc than this
       # DELIBERATELY older container ships - the same class of "too new for
       # this floor" problem this whole job exists to avoid, just hitting the
-      # tooling instead of the product. install-qt-action's aqtinstall step
-      # (action/src/main.ts, pinned commit) shells out to a bare `python3`
-      # resolved by PATH search, not a fixed absolute path, so putting the
-      # apt-installed, container-glibc-linked python3 ahead of the hosted
-      # one on PATH is the whole fix - no env var to override.
+      # tooling instead of the product. This alone is necessary but not
+      # sufficient - install-qt-action's own composite action.yml (not just
+      # its JS action, src/main.ts) runs a plain actions/setup-python step
+      # first, which re-prepends the hosted-cache Python's bin dir ahead of
+      # this one via core.addPath() - see the "Install Qt (prebuilt)" step's
+      # own comment for that half of the fix (setup-python: false).
       - name: Bootstrap container
         run: |
           set -eu
@@ -1254,11 +1255,32 @@ jobs:
       # the point anyway: an apt-installed Qt would tie the AppImage right
       # back to the one distro it was built on, the exact problem this job
       # exists to route around.
+      #
+      # setup-python: false turns off this action's OWN top-level
+      # composite step (its action.yml, not the JS action src/main.ts a
+      # source read alone would show): a plain `actions/setup-python@v6`
+      # step, `python-version: '>=3.9.0 <=3.13.3'`, that runs before the
+      # real Qt-install step and unconditionally on by default. It resolves
+      # that version from the GitHub-hosted runner's own hosted tool cache
+      # (`/opt/hostedtoolcache`, bind-mounted into this container from the
+      # host, not part of the ubuntu:22.04 image at all) and calls
+      # core.addPath() on its bin dir - which, running AFTER "Bootstrap
+      # container" above already prepended /usr/bin to PATH, wins and
+      # silently puts the hosted-cache Python back in front for the actual
+      # aqtinstall step that follows. That cached Python is linked against a
+      # newer glibc than this deliberately-older container ships (confirmed
+      # against a real CI failure: GLIBC_2.38 not found), the same class of
+      # "too new for this floor" problem this whole job exists to keep out
+      # of the product, just landing on the tooling instead. Disabling this
+      # input is the documented way to skip that whole step, so the
+      # apt-installed, container-glibc-linked python3 "Bootstrap container"
+      # already put ahead on PATH is the one that actually gets used.
       - name: Install Qt (prebuilt)
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
         with:
           version: ${{ needs.toolchain-versions.outputs.qt_version }}
           cache: true
+          setup-python: false
 
       - uses: ./.github/actions/setup-vcpkg
         with:
