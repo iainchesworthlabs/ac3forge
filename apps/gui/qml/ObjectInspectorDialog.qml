@@ -101,6 +101,14 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Theme.space4
 
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is. title is "" (a styled Text below draws the
+        // visible "Inspect objects" heading instead), so Dialog's own
+        // title-derived accessible name has nothing to read without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("Inspect objects")
+
         RowLayout {
             Layout.fillWidth: true
             Text {
@@ -150,6 +158,8 @@ Dialog {
                 running: ObjectDecodeController.busy
                 implicitWidth: 24
                 implicitHeight: 24
+                Accessible.role: Accessible.Indicator
+                Accessible.name: qsTr("Decoding…")
             }
         }
 
@@ -229,6 +239,13 @@ Dialog {
                             root.playing = false;
                             root.frameIndex = Math.round(value);
                         }
+                        Accessible.name: qsTr("Frame")
+                        Accessible.description: root.currentFrame
+                            ? qsTr("%1 s, frame %2 of %3")
+                                  .arg(root.currentFrame.time.toFixed(2))
+                                  .arg(root.frameIndex + 1)
+                                  .arg(ObjectDecodeController.frameCount)
+                            : ""
                     }
                     Connections {
                         target: root
@@ -273,6 +290,15 @@ Dialog {
                             color: Theme.neutral100
                             border.color: Theme.divider
                             border.width: 1
+
+                            // A picture of the same objects the list below
+                            // already states in full (position, gain, size,
+                            // lock) as text - so the alternative here points
+                            // there rather than re-deriving every coordinate
+                            // into a second sentence.
+                            Accessible.role: Accessible.Graphic
+                            Accessible.name: qsTr("Room plan, top-down")
+                            Accessible.description: qsTr("%1 object(s); positions are listed in full below").arg(root.currentObjects.length)
 
                             Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -369,6 +395,14 @@ Dialog {
                             color: Theme.neutral100
                             border.color: Theme.divider
                             border.width: 1
+
+                            // Same objects as the plan view above, projected
+                            // side-on - see that Rectangle's own comment on
+                            // why the alternative text points at the list
+                            // below rather than repeating every coordinate.
+                            Accessible.role: Accessible.Graphic
+                            Accessible.name: qsTr("Room elevation, side-on")
+                            Accessible.description: qsTr("%1 object(s); positions are listed in full below").arg(root.currentObjects.length)
 
                             readonly property real earY: height * 0.66
                             function zToY(z) {
@@ -469,6 +503,24 @@ Dialog {
 
                                 readonly property bool auditioning:
                                     objectRow.index === ObjectDecodeController.auditioningIndex
+                                readonly property string label: objectRow.modelData.label
+                                    ? objectRow.modelData.label
+                                    : qsTr("obj %1").arg(objectRow.index + 1)
+
+                                // One compound summary for the whole row -
+                                // same "built from the fields already drawn"
+                                // discipline as QcDialog's own preset rows,
+                                // so this can never disagree with the five
+                                // separate Texts a sighted user reads.
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: objectRow.label
+                                Accessible.description: qsTr("x %1, y %2, z %3, %4 dB%5%6")
+                                    .arg(objectRow.modelData.x.toFixed(2))
+                                    .arg(objectRow.modelData.y.toFixed(2))
+                                    .arg(objectRow.modelData.z.toFixed(2))
+                                    .arg(objectRow.modelData.gainDb.toFixed(1))
+                                    .arg(objectRow.auditioning ? qsTr(", auditioning") : "")
+                                    .arg(objectRow.modelData.snap ? qsTr(", locked to a speaker") : "")
 
                                 Rectangle {
                                     Layout.preferredWidth: 10
@@ -479,9 +531,7 @@ Dialog {
                                     Layout.preferredWidth: 60
                                     // A bed channel names itself ("L", "Tfr");
                                     // a dynamic object only has an index.
-                                    text: objectRow.modelData.label
-                                        ? objectRow.modelData.label
-                                        : qsTr("obj %1").arg(objectRow.index + 1)
+                                    text: objectRow.label
                                     font.pixelSize: 12
                                     font.family: Theme.monoFamily
                                     color: Theme.text
@@ -533,6 +583,9 @@ Dialog {
                                     text: objectRow.auditioning ? qsTr("Stop") : qsTr("Audition")
                                     flat: true
                                     onClicked: ObjectDecodeController.auditionObject(objectRow.index)
+                                    Accessible.name: objectRow.auditioning
+                                        ? qsTr("Stop auditioning %1").arg(objectRow.label)
+                                        : qsTr("Audition %1").arg(objectRow.label)
                                 }
                             }
                         }

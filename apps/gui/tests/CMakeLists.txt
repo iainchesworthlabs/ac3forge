@@ -39,7 +39,9 @@ qt_add_executable(ac3gui_qmltests
     ../common/container_input.cpp
     ../common/container_input.hpp
     system_theme.cpp
-    system_theme.hpp)
+    system_theme.hpp
+    language_manager.cpp
+    language_manager.hpp)
 
 # apps/common, for the same reason ../CMakeLists.txt names it: RecordingSink
 # and Fmp4FolderWriter moved there when ac3cli's own takes started streaming
@@ -67,6 +69,41 @@ qt_add_qml_module(ac3gui_qmltests
 # a file when that file already exists." A local build of one target at a
 # time never triggers this, which is why it went unnoticed until now.
 add_dependencies(ac3gui_qmltests ac3gui)
+
+# ---------------------------------------------------------------------------
+# Roadmap UX3: a second, independent .qm embedding for this target - same
+# rationale as the AC3_QML_FILES embedding above, and for the same reason
+# that comment gives: a shared library between the two targets would be more
+# machinery than what it wraps. lrelease only, not lupdate - the QML files
+# are the identical list ac3gui already scans (AC3_QML_FILES), so a second
+# extraction pass would just regenerate byte-identical .ts content; running
+# it twice buys nothing and doubles the target-name bookkeeping. The pseudo-
+# locale QA fixture (AC3_PSEUDO_TS_FILE) is added here ONLY - see that
+# variable's own comment in ../CMakeLists.txt for why production ac3gui.exe
+# doesn't carry it.
+#
+# OUTPUT_LOCATION is set on the .ts sources between the two qt6_add_lrelease
+# calls (ac3gui's own, inside qt_add_translations() above, already ran with
+# it unset) rather than left at the shared default: this file is include()d
+# into ../CMakeLists.txt's own scope, not a real subdirectory (see this
+# file's header comment), so CMAKE_CURRENT_BINARY_DIR here is the SAME
+# directory ac3gui's own .qm files already land in - without a distinct
+# output location the two custom commands would both target
+# ".../ac3gui_fr.qm" and Ninja would refuse the second one as "multiple
+# rules generate the same output".
+# ---------------------------------------------------------------------------
+set_source_files_properties(${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE} PROPERTIES
+    OUTPUT_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/tests")
+
+qt6_add_lrelease(ac3gui_qmltests
+    TS_FILES ${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE}
+    LRELEASE_TARGET ac3gui_qmltests_lrelease
+    QM_FILES_OUTPUT_VARIABLE AC3_GUI_TEST_QM_FILES)
+
+qt6_add_resources(ac3gui_qmltests "ac3gui_qmltests_translations"
+    PREFIX "/i18n"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}/tests"
+    FILES ${AC3_GUI_TEST_QM_FILES})
 
 # The standard Qt Quick Test hookup: QUICK_TEST_MAIN's generated main() reads
 # this macro to find the tst_*.qml files at run time. -input on the ctest
@@ -180,10 +217,22 @@ foreach(AC3_GUI_QML_TEST_FILE IN LISTS AC3_GUI_QML_TEST_FILES)
     string(REGEX REPLACE "^tst_" "" AC3_GUI_QML_TEST_SUITE "${AC3_GUI_QML_TEST_NAME}")
     set(AC3_GUI_QML_TEST_CASE "ac3gui_qml_tests_${AC3_GUI_QML_TEST_SUITE}")
 
+    # tst_localisation_pipeline.qml is the one suite that needs a locale
+    # forced deterministically rather than whatever this machine's own
+    # system locale happens to be - LanguageManager::applyInitialLanguage()
+    # reads AC3GUI_LOCALE ahead of the persisted setting/system locale for
+    # exactly this (language_manager.cpp), and "xx" selects the pseudo-
+    # locale QA fixture (translations/ac3gui_xx.ts) every other suite has no
+    # reason to load.
+    set(AC3_GUI_QML_TEST_ENV "${AC3_GUI_QMLTESTS_ENV}")
+    if(AC3_GUI_QML_TEST_SUITE STREQUAL "localisation_pipeline")
+        list(APPEND AC3_GUI_QML_TEST_ENV "AC3GUI_LOCALE=xx")
+    endif()
+
     add_test(NAME ${AC3_GUI_QML_TEST_CASE}
         COMMAND ac3gui_qmltests -input "${AC3_GUI_QML_TEST_FILE}" -platform offscreen)
     set_tests_properties(${AC3_GUI_QML_TEST_CASE} PROPERTIES
-        ENVIRONMENT "${AC3_GUI_QMLTESTS_ENV}"
+        ENVIRONMENT "${AC3_GUI_QML_TEST_ENV}"
         # A safety net independent of whatever actually caused the macOS
         # hangs above, sized per-suite rather than for the whole harness -
         # see the comment above this loop for the measurement behind 300s.

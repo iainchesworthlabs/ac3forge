@@ -46,6 +46,20 @@ RowLayout {
 
     spacing: 6
 
+    // A live level indicator, not static text: name and description are
+    // rebuilt from the same fed/peakDb/clipped state the visual fill and
+    // CLIP box already read, so a screen reader's announcement can never
+    // say something the meter itself disagrees with.
+    Accessible.role: Accessible.Indicator
+    Accessible.name: root.channelName
+    Accessible.description: !root.fed
+        ? qsTr("not fed")
+        : (root.peakDb <= root.controller.meterFloorDb
+            ? qsTr("silent")
+            : (root.clipped
+                ? qsTr("%1 dBFS, clipped").arg(root.peakDb.toFixed(1))
+                : qsTr("%1 dBFS").arg(root.peakDb.toFixed(1))))
+
     Text {
         Layout.preferredWidth: 56
         text: root.channelName
@@ -126,6 +140,16 @@ RowLayout {
         // An unfed channel cannot clip - its CLIP box dims with the rest of
         // the row instead of implying a judgement is being made.
         opacity: root.fed ? 1.0 : 0.45
+
+        // A button only once there is a latch actually worth clearing -
+        // Accessible.checked mirrors the same `clipped` state the fill and
+        // border colours already key off, and disabled tracks the MouseArea's
+        // own `enabled` exactly rather than a second guess at it.
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("Clear clip indicator for %1").arg(root.channelName)
+        Accessible.checkable: true
+        Accessible.checked: root.clipped
+        Accessible.onPressAction: root.controller.clearClipLatch(root.channelIndex)
 
         Text {
             anchors.centerIn: parent

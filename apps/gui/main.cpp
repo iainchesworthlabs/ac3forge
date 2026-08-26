@@ -21,6 +21,7 @@
 
 #include "ac3/version.hpp"
 #include "encoder_controller.hpp"
+#include "language_manager.hpp"
 
 // Headless self-checks, the reason the offscreen platform plugin is deployed
 // beside the executable. They drive the real controller and the real QML and
@@ -548,7 +549,14 @@ int main(int argc, char* argv[]) {
     // every control - not just the Texts that name a family - uses it.
     for (const auto* face :
          {":/fonts/Archivo-Regular.ttf", ":/fonts/Archivo-Medium.ttf",
-          ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf"}) {
+          ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf",
+          // Noto Sans Arabic/Hebrew - Latin has no glyph coverage for either
+          // script, needed once Arabic/Hebrew/Yiddish are selected (Yiddish
+          // is written in Hebrew script). Registered unconditionally, same
+          // as Archivo, rather than only when one of those languages is
+          // active - see Theme.qml's own rtlFonts map for where they're
+          // actually selected.
+          ":/fonts/NotoSansArabic.ttf", ":/fonts/NotoSansHebrew.ttf"}) {
         if (QFontDatabase::addApplicationFont(QLatin1String(face)) < 0) {
             fmt::println(stderr, "could not register bundled font {}", face);
         }
@@ -571,6 +579,15 @@ int main(int argc, char* argv[]) {
     // no C++ round trip needed for something that never changes at runtime.
     engine.rootContext()->setContextProperty(
         QStringLiteral("appVersionDetails"), QString::fromStdString(ac3::version_details()));
+
+    // Installs translators and sets the initial layout direction before any
+    // QML is loaded (loadFromModule() below), so the first frame already
+    // renders translated and RTL-mirrored where appropriate - same ordering
+    // CountdownSolver's own main.cpp uses for its LanguageManager.
+    LanguageManager language_manager(app, engine);
+    language_manager.applyInitialLanguage();
+    engine.rootContext()->setContextProperty(QStringLiteral("languageManager"), &language_manager);
+
     engine.loadFromModule("Ac3Forge", "Main");
 
     const auto args = QGuiApplication::arguments();

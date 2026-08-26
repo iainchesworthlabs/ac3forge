@@ -826,6 +826,30 @@ jobs:
             "$bin" "${smoke_args[@]}"
           fi
 
+      # Roadmap UX3's own literal ask: "newly added strings cannot silently
+      # fall out of the catalogue". Re-runs lupdate (the ac3gui_lupdate
+      # target qt_add_translations() creates - apps/gui/CMakeLists.txt)
+      # against the same QML/C++ sources it scans at release time, then
+      # fails if that changed any of the six real .ts files - a qsTr()
+      # string added or edited without re-running lupdate would otherwise
+      # rot silently until someone happened to notice. Only runs once (this
+      # leg) since extraction doesn't depend on OS/compiler - the sources it
+      # scans are identical everywhere gui: true builds ac3gui.
+      #
+      # Deliberately NOT the stricter "zero unfinished" gate the sibling
+      # CountdownSolver project runs (R:\CountdownSolver's own
+      # .github/workflows/ci.yml, "Translations complete") - translation
+      # coverage here is real but partial by design (docs/gui/
+      # localisation.md tracks exactly what), so that bar would fail today
+      # on content nobody has touched. Tightening to it is the natural next
+      # step once coverage is complete, not before.
+      - name: Check translations are up to date
+        if: matrix.gui && matrix.name == 'Linux GCC'
+        shell: bash
+        run: |
+          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
+          git diff --exit-code -- apps/gui/translations
+
       # Sanitizers only catch what actually executes. ctest's cases exercise
       # encoder/decoder logic in isolation; this drives the real CLI across
       # every layout, every Annex E tool token, both Atmos container modes and

@@ -155,7 +155,11 @@ see [Dual mono](format-and-channels.md#dual-mono) for why nothing is shared betw
 A real dialog, persisted across sessions (QSettings), three columns:
 
 - **Appearance** — theme (Light / Dark / System) and the **palette** (Signal / Ink / Console /
-  System — the last follows the desktop's accent colour where the platform exposes one); which
+  System — the last follows the desktop's accent colour where the platform exposes one);
+  **Language** (System / English / Français / Deutsch / Español / العربية / עברית / יידיש),
+  switching live with no restart — Arabic, Hebrew and Yiddish also mirror the whole window
+  right-to-left and switch to a bundled Noto Sans face, since Archivo has no glyph coverage for
+  either script; see [Localisation](localisation.md) for what is translated today; which
   meter rows to show by default ([Coded / Rendered](loading-a-source.md#02-levels));
   **Explanations** — show the plain-language notes beside controls, and optionally warn before
   a choice changes the codec (the codec follows the channels either way; the warning only makes
@@ -201,6 +205,8 @@ The rest of the guide, in reading order:
    actually recovers from an already-encoded file, from the header's own dialog
 10. [Open stream](open-stream.md) — play an already-encoded file and export its decode, from the
     header's own dialog or a finished run's own **More…** menu
+11. [Localisation](localisation.md) — what's translated today, the pseudo-locale QA fixture, and
+    how to update or add a language
 
 Or start with [Concepts](../concepts/index.md) if terms like "dependent substream" or "JOC" are
 unfamiliar — the GUI uses the same vocabulary as the standards it implements.

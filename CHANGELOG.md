@@ -118,6 +118,18 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   algorithm for advanced sound systems, weighting channels by position, and can re-render an
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
+- **GUI localisation.** A Preferences **Language** picker switches the app live between English
+  and five real languages (Français, Deutsch, Español, العربية, עברית, יידיש — the same set the
+  sibling CountdownSolver project ships), with right-to-left mirroring and bundled Noto Sans
+  Arabic/Hebrew faces for the three languages that need them. Coverage is partial today (window
+  chrome, tab names, the Guided wizard, all of Preferences) and tracked, not hidden — see
+  [Localisation](docs/gui/localisation.md). A pseudo-locale QA fixture proves the extraction/
+  compile/load pipeline end to end independent of real-language completeness, and CI now fails if
+  a `qsTr()` change isn't reflected in the committed translation catalogue.
+- **GUI accessibility.** Every custom control and every control in the main window now reports a
+  real `Accessible` name, role and description to screen readers, built from the same live state
+  the visuals already read rather than a static copy of a label — channel meters, QC gates, the
+  Guided wizard's cards, the object-placement room and timeline views, run-strip chips, all of it.
 
 **Library, C API and Python**
 
