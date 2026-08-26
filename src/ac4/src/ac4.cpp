@@ -1,6 +1,7 @@
 #include "ac4/ac4.hpp"
 
 #include <array>
+#include <bit>
 #include <unordered_map>
 
 namespace ac4 {
@@ -13,9 +14,9 @@ std::string_view describe(Error error) {
             return "lost sync: sync_word was neither 0xAC40 nor 0xAC41";
         case Error::kUnsupportedBitstreamVersion:
             return "bitstream_version > 2 is not decodable per TS 103 190-2 §6.3.2.1.1";
-        case Error::kObjectCodedGroup:
-            return "substream group is object/A-JOC/OAMD-coded (b_channel_coded=0); "
-                   "TS 103 190-2 clause 6.3.2.8-6.3.2.12 not implemented";
+        case Error::kOamdCommonDataPresent:
+            return "ac4_substream_info_ajoc sets b_oamd_common_data_present; "
+                   "oamd_common_data() (TS 103 190-2 §6.2.8.1) not implemented";
     }
     return "unknown ac4::Error";
 }
@@ -25,7 +26,7 @@ namespace {
 // MSB-first bit reader with a sticky failure state - the same shape
 // ac3::core::BitReader uses for overflow, extended here to also carry the
 // two explicit refusal conditions (kUnsupportedBitstreamVersion,
-// kObjectCodedGroup) so every parse_* helper below can bail out with a
+// kOamdCommonDataPresent) so every parse_* helper below can bail out with a
 // plain early return instead of threading std::expected through the whole
 // call tree. Only parse_raw_frame(), at the boundary, converts the final
 // state to std::expected.
@@ -593,6 +594,215 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
 // with no parameter, i.e. ambient state rather than a per-group value, so
 // the caller (parse_toc()) resolves it once, from the first presentation,
 // and threads it through explicitly instead of re-deriving it per group.
+// --- §6.2.1.13 oamd_substream_info ------------------------------------------
+
+OamdSubstreamInfo parse_oamd_substream_info(Reader& r, bool b_substreams_present) {
+    OamdSubstreamInfo info;
+    info.b_oamd_ndot = r.bits(1) != 0;
+    if (b_substreams_present) {
+        info.substream_index = parse_substream_index_ref(r);
+    }
+    return info;
+}
+
+// --- §6.2.1.10 bed_dyn_obj_assignment ---------------------------------------
+
+// Table 62 (§6.3.2.10.5, direct-coded) and Table 63 (A-JOC-coded) both
+// index bed_chan_assign_code the same way: how many BED objects the code
+// expands to. The two tables differ (direct-coded's counts run one higher
+// per entry, room for its own extra LFE slot at index 3) so each caller
+// passes its own.
+constexpr std::array<int, 8> kBedChanAssignCountAjoc = {2, 3, 5, 7, 9, 7, 9, 11};
+constexpr std::array<int, 8> kBedChanAssignCountDirect = {2, 3, 6, 8, 10, 8, 10, 12};
+constexpr std::array<int, 10> kStdBedGroupSize = {2, 1, 1, 2, 2, 2, 2, 2, 2, 1};
+
+// §6.2.1.10 / §6.3.2.10.8. Always ajoc_coded=true - this element only
+// appears inside ac4_substream_info_ajoc().
+std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) {
+    std::vector<ObjectEntry> objects;
+    auto add = [&](ObjectKind kind, bool lfe) { objects.push_back({kind, lfe, true}); };
+
+    if (r.bits(1)) {  // b_dyn_objects_only
+        return objects;  // every object in this substream is dynamic and unlisted here
+    }
+    if (r.bits(1)) {  // b_isf
+        constexpr std::array<int, 6> kIsfCounts = {4, 8, 10, 14, 15, 30};
+        const int n_isf = kIsfCounts[r.bits(3)];
+        for (int i = 0; i < n_isf; ++i) {
+            add(ObjectKind::kIsf, false);
+        }
+        return objects;
+    }
+    if (r.bits(1)) {  // b_ch_assign_code
+        const int count = kBedChanAssignCountAjoc[r.bits(3)];
+        for (int i = 0; i < count; ++i) {
+            add(ObjectKind::kBed, false);
+        }
+        return objects;
+    }
+    if (!r.bits(1)) {  // b_channel_assignment_flags_present
+        // Neither an assignment code nor explicit flags: one nonstd_bed_
+        // channel_assignment code (§6.3.2.10.8) per bed signal, n_bed_signals
+        // of them (1, unless n_signals > 1 lets more than one be named).
+        int n_bed_signals = 1;
+        if (n_signals > 1) {
+            const int bed_ch_bits = std::bit_width(static_cast<unsigned>(n_signals - 1));
+            n_bed_signals = static_cast<int>(r.bits(bed_ch_bits)) + 1;
+        }
+        for (int b = 0; b < n_bed_signals; ++b) {
+            if (r.bits(4) != 3) {  // nonstd_bed_channel_assignment
+                add(ObjectKind::kBed, false);
+            }
+        }
+        return objects;
+    }
+    if (r.bits(1)) {  // b_nonstd_bed_channel_assignment_flags_present
+        // Table 64: array position (16 - channel_order); array position 0
+        // is the FIRST bit transmitted, so it becomes the MSB (bit 16) of a
+        // monolithic MSB-first r.bits(17) - position 16 is the LAST bit
+        // transmitted, the LSB (bit 0). flag[j] therefore sits at bit
+        // (16-j), i.e. flag[16-i] sits at bit i. Cross-checked against
+        // §6.3.2.10.8 EXAMPLE 2's worked value in tests/ac4/test_ac4.cpp.
+        const std::uint32_t flags = r.bits(17);
+        for (int i = 0; i < 17; ++i) {
+            if ((flags >> i) & 1) {  // flag[16-i]
+                if (i != 3 && i != 16) {
+                    add(ObjectKind::kBed, false);
+                }
+            }
+        }
+    } else {
+        const std::uint32_t flags = r.bits(10);
+        for (int i = 0; i < 10; ++i) {
+            if ((flags >> i) & 1) {  // flag[9-i], same reasoning as above
+                if (i != 2 && i != 9) {
+                    for (int j = 0; j < kStdBedGroupSize[static_cast<std::size_t>(i)]; ++j) {
+                        add(ObjectKind::kBed, false);
+                    }
+                }
+            }
+        }
+    }
+    return objects;
+}
+
+// --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
+
+AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_rate_factor,
+                                             bool b_substreams_present) {
+    AjocSubstreamInfo info;
+    info.b_lfe = r.bits(1) != 0;
+    info.b_static_dmx = r.bits(1) != 0;
+    if (info.b_static_dmx) {
+        info.n_fullband_dmx_signals = 5;
+    } else {
+        info.n_fullband_dmx_signals = static_cast<int>(r.bits(4)) + 1;
+        info.static_objects = parse_bed_dyn_obj_assignment(r, info.n_fullband_dmx_signals);
+    }
+    if (r.bits(1)) {  // b_oamd_common_data_present
+        r.fail(Error::kOamdCommonDataPresent);
+        return info;
+    }
+    info.n_fullband_upmix_signals = static_cast<int>(r.bits(4)) + 1;
+    if (info.n_fullband_upmix_signals == 16) {
+        info.n_fullband_upmix_signals += static_cast<int>(variable_bits(r, 3));
+    }
+    info.upmix_objects = parse_bed_dyn_obj_assignment(r, info.n_fullband_upmix_signals);
+    if (fs_index == 1 && r.bits(1)) {  // b_sf_multiplier
+        info.sf_multiplier = static_cast<int>(r.bits(1));
+    }
+    if (r.bits(1)) {  // b_bitrate_info
+        info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
+    }
+    for (int i = 0; i < frame_rate_factor; ++i) {
+        r.skip(1);  // b_audio_ndot
+    }
+    if (b_substreams_present) {
+        info.substream_index = parse_substream_index_ref(r);
+    }
+    return info;
+}
+
+// --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
+
+ObjSubstreamInfo parse_substream_info_obj(Reader& r, int fs_index, int frame_rate_factor,
+                                           bool b_substreams_present) {
+    ObjSubstreamInfo info;
+    auto add = [&](ObjectKind kind, bool lfe) { info.objects.push_back({kind, lfe, false}); };
+
+    constexpr std::array<int, 6> kNumObjects = {0, 1, 2, 3, 5, 7};
+    // Table 60 (§6.3.2.10.2): codes 0-4 are b_lfe/1+b_lfe/2+b_lfe/3+b_lfe/
+    // 5+b_lfe, 5-7 reserved - but the syntax table's own lookup is this
+    // flat 6-entry array regardless, and b_lfe is folded in separately
+    // below rather than by this array, so a "reserved" code still parses
+    // (just with a count this parser cannot cross-check against the
+    // semantics table's own account of it).
+    const int num_objects = kNumObjects[r.bits(3)];
+    info.b_dynamic_objects = r.bits(1) != 0;
+    if (info.b_dynamic_objects) {
+        // No early return: fs_index/bitrate/b_audio_ndot/substream_index
+        // below are read unconditionally, after this whole if/else - the
+        // syntax table's braces close this branch well before them.
+        const bool b_lfe = r.bits(1) != 0;
+        for (int i = 0; i < num_objects; ++i) {
+            if (b_lfe && i == 0) {
+                add(ObjectKind::kBed, true);
+            } else {
+                add(ObjectKind::kDyn, false);
+            }
+        }
+    } else if (r.bits(1)) {  // b_bed_objects
+        if (r.bits(1)) {     // b_bed_start
+            if (r.bits(1)) {  // b_ch_assign_code
+                const int count = kBedChanAssignCountDirect[r.bits(3)];
+                for (int i = 0; i < count; ++i) {
+                    add(ObjectKind::kBed, i == 3);
+                }
+            } else if (r.bits(1)) {  // b_nonstd_bed_channel_assignment_flags_present
+                const std::uint32_t flags = r.bits(17);
+                for (int i = 0; i < 17; ++i) {
+                    if ((flags >> i) & 1) {
+                        add(ObjectKind::kBed, i == 3 || i == 16);
+                    }
+                }
+            } else {
+                const std::uint32_t flags = r.bits(10);
+                for (int i = 0; i < 10; ++i) {
+                    if ((flags >> i) & 1) {  // flag[9-i] - see parse_bed_dyn_obj_assignment()
+                        for (int j = 0; j < kStdBedGroupSize[static_cast<std::size_t>(i)]; ++j) {
+                            add(ObjectKind::kBed, i == 2 || i == 9);
+                        }
+                    }
+                }
+            }
+        }
+    } else if (r.bits(1)) {  // b_isf
+        if (r.bits(1)) {     // b_isf_start
+            constexpr std::array<int, 6> kIsfCounts = {4, 8, 10, 14, 15, 30};
+            const int n_isf = kIsfCounts[r.bits(3)];
+            for (int i = 0; i < n_isf; ++i) {
+                add(ObjectKind::kIsf, false);
+            }
+        }
+    } else {
+        const int res_bytes = static_cast<int>(r.bits(4));
+        r.skip(8 * res_bytes);
+    }
+    if (fs_index == 1 && r.bits(1)) {  // b_sf_multiplier
+        info.sf_multiplier = static_cast<int>(r.bits(1));
+    }
+    if (r.bits(1)) {  // b_bitrate_info
+        info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
+    }
+    for (int i = 0; i < frame_rate_factor; ++i) {
+        r.skip(1);  // b_audio_ndot
+    }
+    if (b_substreams_present) {
+        info.substream_index = parse_substream_index_ref(r);
+    }
+    return info;
+}
+
 SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame_rate_factor) {
     SubstreamGroupInfo group;
     group.b_substreams_present = r.bits(1) != 0;
@@ -607,21 +817,46 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
             n_lf_substreams += variable_bits(r, 2);
         }
     }
-    if (!r.bits(1)) {  // b_channel_coded
-        r.fail(Error::kObjectCodedGroup);
-        return group;
-    }
-    for (std::uint32_t i = 0; i < n_lf_substreams; ++i) {
-        // sus_ver only exists for bitstream_version == 1; the caller only
-        // reaches this function for bitstream_version >= 2 (see parse_toc()'s
-        // dispatch), where it is implicitly 1 (extended ac4_substream()
-        // syntax) per §6.2.1.6.
-        auto chan =
-            parse_substream_info_chan(r, fs_index, frame_rate_factor, group.b_substreams_present);
-        if (b_hsf_ext) {
-            parse_hsf_ext_substream_info(r, group.b_substreams_present);
+    group.b_channel_coded = r.bits(1) != 0;
+    if (group.b_channel_coded) {
+        for (std::uint32_t i = 0; i < n_lf_substreams; ++i) {
+            // sus_ver only exists for bitstream_version == 1; the caller only
+            // reaches this function for bitstream_version >= 2 (see parse_toc()'s
+            // dispatch), where it is implicitly 1 (extended ac4_substream()
+            // syntax) per §6.2.1.6.
+            auto chan =
+                parse_substream_info_chan(r, fs_index, frame_rate_factor, group.b_substreams_present);
+            if (b_hsf_ext) {
+                parse_hsf_ext_substream_info(r, group.b_substreams_present);
+            }
+            GroupSubstream sub;
+            sub.kind = GroupSubstream::Kind::kChan;
+            sub.chan = std::move(chan);
+            group.substreams.push_back(std::move(sub));
         }
-        group.substreams.push_back(std::move(chan));
+    } else {
+        if (r.bits(1)) {  // b_oamd_substream
+            group.oamd = parse_oamd_substream_info(r, group.b_substreams_present);
+        }
+        for (std::uint32_t i = 0; i < n_lf_substreams; ++i) {
+            GroupSubstream sub;
+            if (r.bits(1)) {  // b_ajoc
+                sub.kind = GroupSubstream::Kind::kAjoc;
+                sub.ajoc = parse_substream_info_ajoc(r, fs_index, frame_rate_factor,
+                                                      group.b_substreams_present);
+            } else {
+                sub.kind = GroupSubstream::Kind::kObj;
+                sub.obj = parse_substream_info_obj(r, fs_index, frame_rate_factor,
+                                                    group.b_substreams_present);
+            }
+            if (b_hsf_ext) {
+                parse_hsf_ext_substream_info(r, group.b_substreams_present);
+            }
+            group.substreams.push_back(std::move(sub));
+            if (r.error()) {
+                return group;  // kOamdCommonDataPresent - stop, caller checks r.error()
+            }
+        }
     }
     if (r.bits(1)) {  // b_content_type
         group.content_type = parse_content_type(r);
@@ -858,17 +1093,27 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
 // reference map to ac4_presentation_substream() and
 // emdf_payloads_substream() instead, neither of which this parser
 // transcribes.
-std::vector<bool> channel_substream_indices(const Toc& toc) {
-    std::vector<bool> is_chan(static_cast<std::size_t>(toc.n_substreams), false);
+std::vector<bool> audio_substream_indices(const Toc& toc) {
+    std::vector<bool> is_audio(static_cast<std::size_t>(toc.n_substreams), false);
     auto mark = [&](std::optional<int> idx) {
-        if (idx && *idx >= 0 && static_cast<std::size_t>(*idx) < is_chan.size()) {
-            is_chan[static_cast<std::size_t>(*idx)] = true;
+        if (idx && *idx >= 0 && static_cast<std::size_t>(*idx) < is_audio.size()) {
+            is_audio[static_cast<std::size_t>(*idx)] = true;
         }
     };
     if (!toc.substream_groups.empty()) {
         for (const auto& group : toc.substream_groups) {
             for (const auto& sub : group.substreams) {
-                mark(sub.substream_index);
+                switch (sub.kind) {
+                    case GroupSubstream::Kind::kChan:
+                        mark(sub.chan ? sub.chan->substream_index : std::nullopt);
+                        break;
+                    case GroupSubstream::Kind::kAjoc:
+                        mark(sub.ajoc ? sub.ajoc->substream_index : std::nullopt);
+                        break;
+                    case GroupSubstream::Kind::kObj:
+                        mark(sub.obj ? sub.obj->substream_index : std::nullopt);
+                        break;
+                }
             }
         }
     } else {
@@ -878,7 +1123,7 @@ std::vector<bool> channel_substream_indices(const Toc& toc) {
             }
         }
     }
-    return is_chan;
+    return is_audio;
 }
 
 // §4.2.4.2 / §6.2.2.2 ac4_substream(): outer envelope only (audio_size).
@@ -901,7 +1146,7 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
     RawFrame result;
     result.toc = std::move(*toc_result);
     const std::size_t toc_bytes = (r.bit_position() + 7) / 8;
-    const auto chan_indices = channel_substream_indices(result.toc);
+    const auto audio_indices = audio_substream_indices(result.toc);
     std::size_t offset = toc_bytes + static_cast<std::size_t>(result.toc.payload_base);
     for (int index = 0; index < result.toc.n_substreams; ++index) {
         const auto size =
@@ -920,9 +1165,9 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
         Substream sub;
         sub.offset = offset;
         sub.size = size;
-        sub.is_channel_audio = static_cast<std::size_t>(index) < chan_indices.size() &&
-                               chan_indices[static_cast<std::size_t>(index)];
-        if (sub.is_channel_audio && size >= 3) {
+        sub.is_audio = static_cast<std::size_t>(index) < audio_indices.size() &&
+                       audio_indices[static_cast<std::size_t>(index)];
+        if (sub.is_audio && size >= 3) {
             Reader sub_r(raw_ac4_frame.subspan(offset, size));
             sub.audio_size = parse_substream_header(sub_r);
         }

@@ -649,10 +649,16 @@ machine-readable output and a single failure exit code. Users arrive with contai
   `emdf_payloads_substream()` actually use), an independent Python reference parser
   (`tools/references/ac4_parse.py`), real DEE fixtures (`tools/generators/gen_ac4_baseline.py`),
   and `ac3cli probe` support (table + `json=1`, both bitstream_version <= 1 legacy and >= 2
-  extended TOC paths, 7.0.4 through 22.2 channel-based immersive). What remains: A-JOC/
-  direct-coded-object/OAMD substream groups (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — refused
-  cleanly today, not misparsed) and the separable carriage slice (`ac-4` sample entry and `dac4`
-  box in `mp4::`, the AC-4 descriptor in `mpegts::`, DASH-IF §5.3.4 signalling).
+  extended TOC paths, 7.0.4 through 22.2 channel-based immersive). A-JOC/direct-coded-object/OAMD
+  substream group parsing (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`,
+  `ac4_substream_info_obj()`, `bed_dyn_obj_assignment()`, `oamd_substream_info()`) landed as a
+  follow-up: no real fixture reaches this path (`dee_ac4ajoc_encoder.exe` gates on Atmos mezzanine
+  provenance this project's tooling cannot produce; `dee_ac4ims_encoder.exe` stays channel-coded
+  despite its name), so it is verified against synthetic hand-built vectors instead — see
+  docs/verification.md's AC-4 section. `oamd_common_data()` (§6.2.8.1) remains explicitly out of
+  scope, refused cleanly (`Error::kOamdCommonDataPresent`) rather than misparsed. What remains: the
+  separable carriage slice (`ac-4` sample entry and `dac4` box in `mp4::`, the AC-4 descriptor in
+  `mpegts::`, DASH-IF §5.3.4 signalling).
 - [ ] **IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module (was `D1`).
   `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, 41 commits behind `develop`)
   is far past the old `D1` text: a complete internal lossless codec — stream assembler, PMQ matrix

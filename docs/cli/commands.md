@@ -489,10 +489,12 @@ coded channel, LFE last) and `coupling_exponent_strategy`.
 
 `probe` auto-detects AC-4 (`ac4::`, roadmap IM4) by its first byte — `0xAC` rather than AC-3/
 E-AC-3's `0x0B` — so `ac3cli probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
-same way. It reads the sync frame, table of contents, presentation and channel-coded
-substream-group framing; audio content is reported by byte range, never decoded, and there is no
-`detail=frames`/`detail=blocks` equivalent — there is no per-block audio-layer walk to show, by
-scope (see [Verification](../verification.md#ac-4) for exactly what that does and does not cover).
+same way. It reads the sync frame, table of contents, presentation and substream-group framing —
+channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike; audio content is
+reported by byte range, never decoded, and there is no `detail=frames`/`detail=blocks`
+equivalent — there is no per-block audio-layer walk to show, by scope (see
+[Verification](../verification.md#ac-4) for exactly what that does and does not cover, including
+the narrower evidence behind the A-JOC/object/OAMD path).
 
 ```bash
 ac3cli probe stream.ac4
@@ -514,17 +516,30 @@ the AC-3/E-AC-3 `stream` shape above with its acmod/bsmod/numblkscod/etc. fields
 by one. Those fields belong to a different codec family and do not apply; `stream.ac4` is
 additive to the schema, and a consumer branches on `stream.codec` first the way any
 discriminated-union JSON shape is read. `stream.ac4`: `bitstream_version`, `sample_rate_hz`,
-`frame_rate_index`, `n_presentations`, `substream_groups[]` (each with `b_substreams_present` and
-`substreams[]`), and `presentations_v0[]` for the legacy `bitstream_version <= 1` path (empty for
-every stream observed so far — see the Verification link above). Each substream entry carries
-`channel_mode`, `channel_mode_name`, `ch_mode`, `bitrate_kbps`, `substream_index` and
-`original_content` (`b_4_back_channels_present`/`b_centre_present`/`top_channels_present` —
-whether channels `channel_mode` implies exist are real content or encoded silence, e.g. a 5.1.4
-source carried in a 7.1.4-coded substream). `stream.integrity` (`crc_valid`, `crc_failures`,
-`parse_failures`, `first_parse_error`) is shared with the AC-3/E-AC-3 shape. A substream group
-that is A-JOC/object/OAMD-coded (`b_channel_coded == 0`) is refused cleanly — `first_parse_error`
-names it — rather than misparsed; **exit code** follows the same rule as AC-3/E-AC-3: 0 only when
-every sync frame's CRC passed and every frame parsed.
+`frame_rate_index`, `n_presentations`, `substream_groups[]`, and `presentations_v0[]` for the
+legacy `bitstream_version <= 1` path (empty for every stream observed so far — see the
+Verification link above). Each `substream_groups[]` entry carries `b_substreams_present`,
+`b_channel_coded`, `oamd` (null unless the group is object-coded and carries an OAMD substream:
+`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each substream entry is a tagged union —
+`kind` (`"chan"`, `"ajoc"` or `"obj"`) says which one of `chan`/`ajoc`/`obj` is non-null, the
+other two `null`:
+- `chan`: `channel_mode`, `channel_mode_name`, `ch_mode`, `bitrate_kbps`, `substream_index`,
+  `original_content` (`b_4_back_channels_present`/`b_centre_present`/`top_channels_present` —
+  whether channels `channel_mode` implies exist are real content or encoded silence, e.g. a 5.1.4
+  source carried in a 7.1.4-coded substream).
+- `ajoc`: `b_lfe`, `b_static_dmx`, `n_fullband_dmx_signals`, `static_objects[]`,
+  `n_fullband_upmix_signals`, `upmix_objects[]`, `sf_multiplier`, `bitrate_kbps`,
+  `substream_index`.
+- `obj`: `objects[]`, `b_dynamic_objects`, `sf_multiplier`, `bitrate_kbps`, `substream_index`.
+- Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
+  "isf", lfe, ajoc_coded}`.
+
+`stream.integrity` (`crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error`) is shared
+with the AC-3/E-AC-3 shape. The one payload this parser still refuses rather than reads is
+`oamd_common_data()` (§6.2.8.1, reachable only via an A-JOC substream's own
+`b_oamd_common_data_present` flag) — `first_parse_error` names it
+(`oamd_common_data_present`) when hit; **exit code** follows the same rule as AC-3/E-AC-3: 0 only
+when every sync frame's CRC passed and every frame parsed.
 
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 

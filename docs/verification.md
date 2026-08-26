@@ -559,9 +559,10 @@ See [Conformance vectors](conformance-vectors.md).
 ## AC-4
 
 `ac4::` (roadmap IM4) is a bitstream inspector, not a decoder: it parses the sync frame, table of
-contents, presentation and channel-coded substream-group framing (ETSI TS 103 190-1/-2), and
-reports `audio_data`/`metadata()` payloads as byte ranges without decoding them. That narrower
-scope changes which of this page's usual checks apply.
+contents, presentation and substream-group framing (ETSI TS 103 190-1/-2) — channel-coded,
+A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
+as byte ranges without decoding them. That narrower scope changes which of this page's usual
+checks apply.
 
 **Where real AC-4 streams come from.** Nothing open encodes AC-4 — the same gap this page states
 for AC-3/E-AC-3, just with no third-party corpus to fall back on either, since neither ATSC nor
@@ -606,12 +607,34 @@ either — but it does mean **no tool available to this project can currently de
 so nothing here can be checked against rendered PCM the way AC-3/E-AC-3's SNR gates are. If that
 gap closes later, it would upgrade tier 2 above (framing-only) to an audio-content check.
 
-**What this parser deliberately does not read.** A-JOC, direct-coded-object and OAMD substream
-groups (`b_channel_coded == 0`, TS 103 190-2 clause 6.3.2.8-6.3.2.12) are recognised and refused
-with `Error::kObjectCodedGroup` rather than misparsed — transcribing their info elements (object
-position tables, bed/dynamic object assignment, OAMD metadata) is separate, larger scope this PR
-did not take on. `dee_ac4ajoc_encoder.exe`/`dee_ac4ims_encoder.exe` could generate real streams to
-validate against if that scope is picked up. The `bitstream_version <= 1` legacy path
+**A-JOC / direct-coded-object / OAMD substream groups** (`b_channel_coded == 0`, TS 103 190-2
+clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`, `ac4_substream_info_obj()`,
+`bed_dyn_obj_assignment()`, `oamd_substream_info()`) are parsed the same way the channel-coded
+path is, as of the IM4 follow-up that added them. Their verification story is narrower than tier
+1/2/3 above, though, because no real stream reaches this path: `dee_ac4ajoc_encoder.exe` accepts
+only an Atmos ADM BWF mezzanine as input, and this project has no tooling that produces one DEE
+accepts (the same "gates on content provenance, not syntax" limit this page already states for
+the AC-3/E-AC-3 JOC side); `dee_ac4ims_encoder.exe` — the other locally available object-adjacent
+encoder, despite its "immersive stereo" name — was confirmed to stay channel-coded regardless of
+input. What stands in for a real fixture is a set of **synthetic, hand-built bitstreams**
+(`tests/ac4/test_ac4.cpp`), each assembled by a from-scratch `BitWriter` sharing no code with
+either `ac4::` or `tools/references/ac4_parse.py`, field-traced against the spec text (including
+Table 64/65's array-position-to-bit-index mapping, cross-checked against §6.3.2.10.8's own worked
+EXAMPLE 2/3 values) rather than against an external reader. This is weaker evidence than tiers
+2-3 — a shared misreading of the spec between this parser and its own test vectors cannot be
+ruled out the way MediaInfo or DEE's own output rules it out for the channel-coded path — but it
+is stronger than self-consistency alone: the vectors caught two real bugs during construction (an
+array-index formula that was reversed for one of the two flag-array widths, and this parser's own
+handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
+branch but excluded for `bed_dyn_obj_assignment()`'s, a genuine spec difference this project's
+first draft assumed away). If `dee_ac4ajoc_encoder.exe`'s provenance gate or `dee_ac4ims_encoder.exe`'s
+behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1,
+reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
+out of scope either way — a large separate metadata structure (bed assignment, DRC, target-device
+categories, dialogue enhancement) a stream setting that flag is refused cleanly
+(`Error::kOamdCommonDataPresent`) rather than misparsed.
+
+**The `bitstream_version <= 1` legacy path**
 (`ac4_toc()`/`ac4_presentation_info()` as TS 103 190-1 alone defines them) is transcribed and
 checked against the published spec text (including a page-rendered visual check of Table 4/5,
 not just the PDF's extracted text) but never against a real stream — every DEE 6.5.4 encode
