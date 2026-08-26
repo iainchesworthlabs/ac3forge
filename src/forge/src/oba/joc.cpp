@@ -19,7 +19,7 @@
 #include "ac3/dsp/qmf.hpp"
 #include "ac3/oba/joc_tables.hpp"
 
-namespace ac3::joc {
+namespace ac3::oba::joc {
 
 namespace {
 
@@ -735,4 +735,4 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
                                   : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
 }
 
-}  // namespace ac3::joc
+}  // namespace ac3::oba::joc
