@@ -70,6 +70,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   Encoding Engine fixture exercises it.
 - **QMF-domain JOC.** Object reconstruction runs in the 64-band complex filterbank the format
   calls for. Mean per-object SNR 22.8 → 28.6 dB. `joc-domain=qmf|mdct` selects it on both sides.
+- **A consumer-facing diagnostic sink.** `DecoderConfig::diagnostics` reports recoverable,
+  informational decode events — a CRC failure (fired the moment the check runs, so it still
+  reaches a caller even when `conceal=` turns the same frame into a successful, concealed
+  result) and an EMDF payload id neither decoder interprets. A plain function pointer, no
+  allocation, off by default, usable from the minimum-footprint decoder profile.
 
 **Containers and streams**
 

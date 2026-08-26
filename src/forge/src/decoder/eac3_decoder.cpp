@@ -1046,6 +1046,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // the whole error check: the register reads zero over the frame past the
     // sync word, its own two bytes included.
     if (crc16(frame.subspan(2)) != 0) {
+        // See FrameDecoder::decode_frame_core's own comment on why this is
+        // reported here and not only via the returned error.
+        if (impl_->config_.diagnostics != nullptr) {
+            impl_->config_.diagnostics({.event = DiagnosticEvent::kCrcMismatch},
+                                       impl_->config_.diagnostics_context);
+        }
         return std::unexpected(DecodeError::kBadCrc);
     }
 
@@ -2181,6 +2187,18 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                             out.object_metadata = oba::parse_payload(payload.bytes);
                         } else if (payload.id == emdf::kPayloadIdJoc && joc_bytes.empty()) {
                             joc_bytes.assign(payload.bytes.begin(), payload.bytes.end());
+                        } else if (payload.id != emdf::kPayloadIdOamd &&
+                                   payload.id != emdf::kPayloadIdJoc &&
+                                   impl_->config_.diagnostics != nullptr) {
+                            // Any id this decoder does not interpret at all -
+                            // a second JOC payload (joc_bytes already taken)
+                            // is a recognised id this decoder simply has no
+                            // use for twice, not an unknown one, so it does
+                            // not reach here.
+                            impl_->config_.diagnostics(
+                                {.event = DiagnosticEvent::kUnknownEmdfPayload,
+                                 .emdf_payload_id = static_cast<std::uint8_t>(payload.id)},
+                                impl_->config_.diagnostics_context);
                         }
                     }
                 }
