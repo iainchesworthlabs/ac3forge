@@ -736,46 +736,126 @@ namespace {
             const auto view = params.object_view(object);
             const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
+            // --- pass 1: this timeslot's mixing coefficients -------------
+            //
+            // Every branch that decides WHICH formula §6.6.5 applies depends
+            // only on the object's shape and on `ts` - never on the channel
+            // or the subband - so all of them resolve once here instead of
+            // 320 times (kNumChannels5X * kQmfSubbands) inside the loop that
+            // used to carry them. `interpolate` above is the readable
+            // statement of the same rules and stays the reference this agrees
+            // with; each arm below is one of its branches with the operands
+            // written in the identical order, so the coefficients are
+            // bit-identical rather than merely equivalent.
+            enum class MixRule {
+                kTailBlend,     // the delayed tail: blend two stored snapshots
+                kFlat,          // no history to ramp from: this frame outright
+                kSmoothWhole,   // one data point: one ramp across the window
+                kSmoothFirst,   // two data points, first half
+                kSmoothSecond,  // two data points, second half
+                kSteepPrevious, // steep, before the step
+                kSteepFirst,    // steep, at or after the first step
+                kSteepSecond,   // steep, at or after the second
+            };
+            constexpr int kHalfWindow = kQmfTimeslots / 2;
+            const MixRule rule = [&] {
+                if (previous_frame) {
+                    return MixRule::kTailBlend;
+                }
+                if (!has_previous) {
+                    return MixRule::kFlat;
+                }
+                if (!shape.steep) {
+                    if (shape.data_points == 1) {
+                        return MixRule::kSmoothWhole;
+                    }
+                    return ts < kHalfWindow ? MixRule::kSmoothFirst : MixRule::kSmoothSecond;
+                }
+                if (ts < shape.offset_ts[0]) {
+                    return MixRule::kSteepPrevious;
+                }
+                if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+                    return MixRule::kSteepFirst;
+                }
+                return MixRule::kSteepSecond;
+            }();
+
+            const auto object_base = (static_cast<std::size_t>(object) *
+                                      static_cast<std::size_t>(kNumChannels5X)) *
+                                     static_cast<std::size_t>(kQmfSubbands);
+            for (int ch = 0; ch < kNumChannels5X; ++ch) {
+                auto& mix_ch = qmf.mix[static_cast<std::size_t>(ch)];
+                const std::size_t row =
+                    object_base + (static_cast<std::size_t>(ch) *
+                                   static_cast<std::size_t>(kQmfSubbands));
+                for (int k = 0; k < dsp::kQmfSubbands; ++k) {
+                    const auto band = mapping[static_cast<std::size_t>(k)];
+                    const std::size_t index = row + static_cast<std::size_t>(k);
+                    const double dq0 = view.at(0, ch, band);
+                    // Every enumerator is handled below, but MSVC cannot see
+                    // that a switch over a complete enum leaves nothing
+                    // unassigned (C4701), and this file is built -Werror.
+                    double m = 0.0;
+                    switch (rule) {
+                        case MixRule::kTailBlend: {
+                            const double previous_val =
+                                has_previous ? state.previous_matrix[index] : dq0;
+                            const double older_val =
+                                has_older ? state.older_matrix[index] : previous_val;
+                            m = older_val + tail_frac * (previous_val - older_val);
+                            break;
+                        }
+                        case MixRule::kFlat:
+                            m = shape.data_points > 1 ? view.at(1, ch, band) : dq0;
+                            break;
+                        case MixRule::kSmoothWhole:
+                            m = state.previous_matrix[index] +
+                                static_cast<double>(ts + 1) *
+                                    (dq0 - state.previous_matrix[index]) /
+                                    static_cast<double>(kQmfTimeslots);
+                            break;
+                        case MixRule::kSmoothFirst:
+                            m = state.previous_matrix[index] +
+                                static_cast<double>(ts + 1) *
+                                    (dq0 - state.previous_matrix[index]) /
+                                    static_cast<double>(kHalfWindow);
+                            break;
+                        case MixRule::kSmoothSecond:
+                            m = dq0 + static_cast<double>(ts - kHalfWindow + 1) *
+                                          (view.at(1, ch, band) - dq0) /
+                                          static_cast<double>(kQmfTimeslots - kHalfWindow);
+                            break;
+                        case MixRule::kSteepPrevious:
+                            m = state.previous_matrix[index];
+                            break;
+                        case MixRule::kSteepFirst:
+                            m = dq0;
+                            break;
+                        case MixRule::kSteepSecond:
+                            m = view.at(1, ch, band);
+                            break;
+                    }
+                    mix_ch[static_cast<std::size_t>(k)] = m;
+                }
+            }
+
+            // --- pass 2: §6.6.6's per-subband linear combination ----------
+            //
+            // Nothing conditional left: a contiguous walk over subbands,
+            // accumulating each one over the five bed channels in the same
+            // order the fused loop did, so every sum is bit-identical.
             for (int k = 0; k < dsp::kQmfSubbands; ++k) {
-                const auto band = mapping[static_cast<std::size_t>(k)];
+                const auto j = static_cast<std::size_t>(k);
                 double real = 0.0;
                 double imag = 0.0;
                 for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                    const std::size_t index =
-                        (static_cast<std::size_t>(object) *
-                             static_cast<std::size_t>(kNumChannels5X) +
-                         static_cast<std::size_t>(ch)) *
-                            static_cast<std::size_t>(kQmfSubbands) +
-                        static_cast<std::size_t>(k);
-                    // This frame's own transmitted value, used both as the
-                    // ramp's ultimate fallback (no history at all) and as
-                    // one endpoint of the current-frame segment below.
-                    const std::array<double, kMaxDataPoints> dq = {
-                        view.at(0, ch, band),
-                        shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
-                    const double previous_val =
-                        has_previous ? state.previous_matrix[index] : dq[0];
-                    double m;
-                    if (previous_frame) {
-                        // Degenerates to `previous_val` outright when there is
-                        // no older snapshot either (older_val == previous_val
-                        // in that case), which is the same "nothing to ramp
-                        // from" fallback every other domain uses.
-                        const double older_val =
-                            has_older ? state.older_matrix[index] : previous_val;
-                        m = older_val + tail_frac * (previous_val - older_val);
-                    } else {
-                        m = has_previous
-                                ? interpolate(shape, previous_val, dq, ts)
-                                : dq[static_cast<std::size_t>(shape.data_points - 1)];
-                    }
-                    real += m * qmf.bed_real[static_cast<std::size_t>(ch)]
-                                            [static_cast<std::size_t>(k)];
-                    imag += m * qmf.bed_imag[static_cast<std::size_t>(ch)]
-                                            [static_cast<std::size_t>(k)];
+                    const auto c = static_cast<std::size_t>(ch);
+                    const double m = qmf.mix[c][j];
+                    real += m * qmf.bed_real[c][j];
+                    imag += m * qmf.bed_imag[c][j];
                 }
-                qmf.object_real[static_cast<std::size_t>(k)] = real;
-                qmf.object_imag[static_cast<std::size_t>(k)] = imag;
+                qmf.object_real[j] = real;
+                qmf.object_imag[j] = imag;
             }
 
             const std::span<float, dsp::kQmfHop> emitted{

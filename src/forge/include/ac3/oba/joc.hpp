@@ -365,6 +365,16 @@ struct ReconstructionState {
         std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_imag{};
         std::array<double, dsp::kQmfSubbands> object_real{};
         std::array<double, dsp::kQmfSubbands> object_imag{};
+        // §6.6.5's mixing coefficient for one (object, timeslot), all
+        // channels and subbands: filled in one branch-free pass, then read by
+        // the accumulation pass. Splitting the two is what lets each be fast
+        // - the coefficient's own shape/timeslot branches resolve once per
+        // (object, timeslot) rather than once per (subband, channel), and the
+        // accumulation that follows becomes a plain contiguous walk over
+        // subbands with nothing conditional in it. Laid out channel-major so
+        // both it and bed_real/bed_imag are contiguous in the subband index
+        // the accumulation runs over.
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> mix{};
     };
     std::unique_ptr<QmfState> qmf{};
 
