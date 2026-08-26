@@ -205,6 +205,15 @@ ac3forge_add_fuzzer(fuzz_oamd_parse)
 # own numbers (src/forge/src/oba/joc.cpp).
 ac3forge_add_fuzzer(fuzz_joc_parse)
 
+# --- Live position input (roadmap UX4) ---------------------------------------
+# ac3::oba::parse_osc_packet: the OSC 1.0 wire form of a live scene update
+# (src/forge/src/oba/scene_osc.cpp). Not behind the bitstream at all - this
+# is the project's first NETWORK-facing parser, reached straight from a UDP
+# datagram by ac3::audio::LivePositionSource whenever a live session opts
+# into positions=osc:<port>, with no CRC or container ahead of it the way
+# every other untrusted parser above has.
+ac3forge_add_fuzzer(fuzz_osc_parse)
+
 # ac3::signing::verify_atmos_stream/verify_atmos_frame: the only signing
 # operation that runs on a stream its caller did not produce
 # (src/signing/src/emdf_atmos_signer.cpp). Links ac3::signing on top of

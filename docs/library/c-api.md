@@ -199,10 +199,14 @@ every field this struct doesn't carry.
 
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
-here either, and that is a decision rather than an omission: the shape of the type is expected to
-move when a live position source lands (roadmap `UX4`, which is why `SceneCursor` exists), and
-this surface is a candidate for the coming API freeze, where an experimental type would be a
-lasting commitment. Exposing half of it - the serialisation without the type, say - would be
-worse than exposing none, because a caller would get a scene it could load and not evaluate.
-Read and write the JSON form from the host language and hand the resulting placements to the
-encoder entry points above until the type settles.
+here either, and that is a decision rather than an omission - but no longer the shape-instability
+one it used to be. `SceneCursor` existed precisely because the seam a live position source would
+plug into wasn't finished; roadmap `UX4`'s OSC wire form
+([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)) has since landed as a sibling
+header, and it changed nothing about `scene.hpp`: no method on `ObjectScene`/`SceneCursor` gained
+or lost a parameter, nothing was added to either class. The shape has settled. What is left is a
+plain "not done yet": this surface is a candidate for the coming API freeze, where an
+experimental type would be a lasting commitment, and exposing half of it - the serialisation
+without the type, say - would still be worse than exposing none, because a caller would get a
+scene it could load and not evaluate. Read and write the JSON form from the host language and
+hand the resulting placements to the encoder entry points above until it is exposed properly.

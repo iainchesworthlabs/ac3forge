@@ -151,6 +151,70 @@ TEST_CASE("live either runs a capture-to-monitor session or refuses by name",
     }
 }
 
+TEST_CASE("a malformed positions= token is refused, by name whenever a device let it get there",
+          "[cli][audio-io][concurrency]") {
+    // A bad positions= token is checked well after the capture_device index
+    // is (run_live's own order: device range checks, then mode/positions
+    // validation, then capture.start()), so on a headless CI container with
+    // no capture endpoint at all, device index 0 is out of range FIRST and
+    // that is the refusal actually reported - still a refusal, just not
+    // about positions=. The unconditional claim is "refused, nothing
+    // written"; the positions=-specific claim only holds once a device
+    // error is ruled out.
+    const auto out_path = scratch_dir() / "positions_malformed.ac3";
+    const auto log = scratch_dir() / "positions_malformed.log";
+    fs::remove(out_path);
+    const auto rc = run_cli(
+        "live \"" + out_path.string() + "\" 0 1 192 -2 -2 atmos positions=not-a-real-token", log);
+    const auto out = read_log(log);
+    REQUIRE(rc != 0);
+    CHECK_FALSE(fs::exists(out_path));
+    if (out.find("capture device index") == std::string::npos) {
+        CHECK(out.find("positions=") != std::string::npos);
+        CHECK(out.find("scheme") != std::string::npos);
+    }
+}
+
+TEST_CASE("positions= is refused outright with mode=channels, once past the device check",
+          "[cli][audio-io][concurrency]") {
+    const auto out_path = scratch_dir() / "positions_channels.ac3";
+    const auto log = scratch_dir() / "positions_channels.log";
+    fs::remove(out_path);
+    const auto rc = run_cli(
+        "live \"" + out_path.string() + "\" 0 1 192 -2 -2 channels positions=osc:9000", log);
+    const auto out = read_log(log);
+    REQUIRE(rc != 0);
+    CHECK_FALSE(fs::exists(out_path));
+    if (out.find("capture device index") == std::string::npos) {
+        CHECK(out.find("positions=") != std::string::npos);
+    }
+}
+
+TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or refuses by name",
+          "[cli][audio-io][concurrency]") {
+    const auto dir = scratch_dir();
+    const auto out_path = dir / "live_positions.ec3";
+    const auto log = dir / "live_positions.log";
+    fs::remove(out_path);
+    // port 0 asks the OS for an ephemeral port - this can never collide with
+    // anything else running on the machine, the same reason
+    // tests/audio/test_live_positions.cpp binds the same way.
+    const auto rc =
+        run_cli("live \"" + out_path.string() + "\" 0 1 192 -2 -2 atmos positions=osc:local:0",
+                log);
+    const auto out = read_log(log);
+    check_spoke_either_way(rc, out);
+    if (rc == 0) {
+        // A real session ran: the listener status line is unconditional
+        // whenever positions= is honoured, whether or not anything was
+        // actually sent to it.
+        CHECK(out.find("positions: OSC on") != std::string::npos);
+        CHECK(fs::exists(out_path));
+    } else {
+        CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
 TEST_CASE("monitor either plays a stream or refuses by name", "[cli][audio-io][concurrency]") {
     const auto dir = scratch_dir();
     const auto stream = dir / "monitor_in.ac3";

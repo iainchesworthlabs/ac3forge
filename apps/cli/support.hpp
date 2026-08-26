@@ -82,6 +82,21 @@ void set_verbosity(bool quiet, bool verbose);
 // already account for it.
 [[nodiscard]] bool quiet_mode();
 
+// 'live' mode=atmos only: positions=<scheme>:[<bind>:]<port>, parsed from the
+// command line by parse_options. Scheme-prefixed deliberately - roadmap
+// UX4's MIDI and game-controller follow-ons land as new schemes under this
+// same token ("midi:<port name>", "gamepad:<n>") rather than a new token or
+// a grammar change; only "osc" exists today. bind is "127.0.0.1" (the
+// default - see run_live's own comment on why loopback, not any-interface,
+// is what a bare positions=osc:<port> gets) or "0.0.0.0" (positions=
+// osc:any:<port>, explicit opt-in) or a dotted-quad IPv4 literal - never a
+// hostname, so starting a session never blocks on DNS.
+struct PositionSourceSpec {
+    std::string scheme;
+    std::string bind;
+    std::uint16_t port = 0;
+};
+
 // Everything a command accepts after its positional arguments, in any order.
 // The metadata group is ac3::plan::Metadata verbatim; drc_scale is decode-
 // side local, because nothing an encoder is configured with corresponds to
@@ -211,6 +226,10 @@ struct Options {
     // count mid-session. Unset means one slot per captured channel, which is
     // what live has always done.
     std::optional<std::size_t> live_objects;
+    // 'live' mode=atmos only: a real live object-position source (roadmap
+    // UX4) instead of the built-in synthetic orbit. Unset means the orbit,
+    // unchanged - see PositionSourceSpec's own comment for the grammar.
+    std::optional<PositionSourceSpec> positions;
     // 'live' only: whether an AC-3-only passthrough endpoint gets the
     // parallel 5.1 AC-3 downmix leg (the default, matching the GUI's
     // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did

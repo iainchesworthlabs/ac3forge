@@ -109,6 +109,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`record` and `live` reach parity with the GUI session**: any layout up to 7.1.4, either codec,
   `container=raw|mkv|ts|spdif|fmp4` written incrementally, a capture-silence watchdog, an object
   slot budget for `mode=atmos`, and a parallel 5.1 leg for an AC-3-only endpoint.
+- **Live object positioning over OSC**, replacing the synthetic orbit `live mode=atmos` and the
+  GUI's live room used to fake motion with. `ac3cli live ... mode=atmos positions=osc:<port>`
+  and a "Drive objects from OSC" toggle on the GUI's Live session card both drive object
+  placement from a show-control rig or a DAW in real time (`/object/<n>/xyz|gain|lfe|release`,
+  0-based), room markers greying out while a live update owns them. Loopback-only by default;
+  `positions=osc:any:<port>` opts into every interface. MIDI and a desktop game controller are
+  follow-ons under the same `positions=<scheme>:...` grammar, not implemented yet.
 - **A GUI stream player** — the twin of `ac3cli monitor` — with transport, live meters, the
   soundfield view, and WAV/object export from the same decode pass. A finished run offers **QC
   this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).

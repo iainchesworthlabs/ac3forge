@@ -252,8 +252,10 @@ scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));  // front w
 ### The live half: `SceneCursor`
 
 `SceneCursor` is the same timeline with per-object overrides an external source pushes in as
-they arrive — the seam a live position source (roadmap `UX4`: OSC, MIDI, a game controller) and
-the GUI's live room plug into, and the reason the scene type isn't just a static table.
+they arrive — the seam a live position source and the GUI's live room plug into, and the reason
+the scene type isn't just a static table. Roadmap `UX4` is that seam: OSC (below) is a real live
+source today; MIDI and a game controller are follow-ons under the same `positions=` token, not
+implemented yet.
 
 ```cpp
 ac3::oba::SceneCursor cursor{std::move(scene)};
@@ -268,6 +270,78 @@ authored, and `AtmosEncoder` already ramps its bed between the placements it is 
 is the right place for that smoothing, since it is the thing that knows the frame boundary. The
 scene's orientation applies to pushed placements too, so a live object and its authored
 neighbours never end up in different rooms.
+
+### The OSC wire form
+
+`ac3/oba/scene_osc.hpp`. A third reader of a per-object update, beside the JSON and
+keyframe-text forms above. Where those two AUTHOR a timeline up front, this one feeds
+`SceneCursor` while a session is running: parse one UDP datagram from a show-control rig or a
+DAW into zero or more updates, merge each onto the object's current placement, push the result.
+
+```cpp
+// Stands in for one UDP datagram addressed to /object/0/xyz, as a show-
+// control rig configured to speak this project's convention would send
+// it.
+const auto datagram = osc_xyz_message("/object/0/xyz", 0.9F, 0.1F, 0.5F);
+```
+
+```cpp
+ac3::oba::OscParseStats stats;
+for (const auto& update : ac3::oba::parse_osc_packet(datagram, &stats)) {
+    if (update.release) {
+        cursor.release(update.object);
+        continue;
+    }
+    // The merge that keeps this object's authored gain (0.7 above)
+    // rather than resetting it to a default-constructed placement's
+    // 1.0 - see apply()'s own header comment for why this step exists
+    // and cannot be skipped in favour of pushing `update` directly.
+    const auto base = cursor.scene().evaluate(update.object, 0.0);
+    if (const auto merged = ac3::oba::apply(update, base)) {
+        cursor.push({.object = update.object, .placement = *merged});
+    }
+}
+```
+
+Full program: [`examples/osc_object_control.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/osc_object_control.cpp).
+
+Address patterns match LITERALLY — no OSC glob (`?`/`*`/`[]`/`{}`) matching — with `<n>` the
+0-based object index:
+
+| Address | Type tag | Meaning |
+|---|---|---|
+| `/object/<n>/xyz` | `,fff` | Position, the same room-coordinate convention `Position`/the keyframe grammar use per §4.2.1: x∈[0,1], y∈[0,1], z∈[-1,1]. |
+| `/object/<n>/gain` | `,f` | Linear gain — matches `ObjectPlacement::gain`, not dB. |
+| `/object/<n>/lfe` | `,f` | Linear LFE send. |
+| `/object/<n>/release` | `,` (no args) | Hand to `SceneCursor::release(object)` instead of `apply()`/`push()` — there is no placement to merge, only a request to stop overriding. |
+
+`apply()` is the piece worth understanding before wiring this up, because it encodes a real
+correctness rule rather than a convenience. `SceneCursor::push()` replaces a *whole*
+`ObjectPlacement`, so routing a position-only OSC message straight through a
+default-constructed placement would silently reset that object's gain to 1.0 and drop its
+`lfe_send` — destroying whatever gain law the caller already has running for it. `apply()`
+merges the wire update onto a *base* placement instead — typically
+`cursor.scene().evaluate(object, time_s)`, this object's currently-authored value — so every
+field the OSC message didn't touch carries through unchanged.
+
+The other half of the rule is about position, and it is easy to get backwards: `apply()` never
+reuses `base`'s position as the merged position, even when the incoming update carries none of
+its own. That is deliberate, not an oversight. `ObjectScene::evaluate()` has *already* rotated
+the position it hands back (the scene's `Orientation`, applied on the way out of `evaluate()`),
+and `SceneCursor::sample_into()` rotates a *pushed* placement's position again on the way to the
+encoder. Push a once-already-rotated position back in and a non-identity `Orientation` rotates
+it twice. So a gain- or lfe-only update that arrives before this object has ever had a position
+pushed has nothing safe to push yet — `apply()` returns `std::nullopt` in that case, meaning
+"nothing ready to push." A caller wiring this up for real is responsible for remembering that
+update against the object and re-applying it once a position finally arrives.
+
+This header is pure, portable, zero-socket, zero-thread code — no I/O of any kind — and is
+fuzzed (`fuzz/fuzz_osc_parse.cpp`) and unit-tested (`tests/oba/test_scene_osc.cpp`) accordingly.
+The actual UDP listener, `ac3::audio::LivePositionSource`, is a separate, app-serving-only piece
+and is **not** part of this installed library, for the same reason the rest of `ac3::audio`
+isn't (see [Using ac3::forge](index.md)'s note on live audio); `ac3cli live mode=atmos
+positions=osc:[<bind>:]<port>` is where a reader can see it wired up end to end over a real
+socket.
 
 ### The serialised form
 

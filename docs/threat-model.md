@@ -31,6 +31,7 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | Matroska/WebM containers | `matroska::demux`, `matroska::Reader` | yes |
 | MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
 | MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
+| OSC control packets (UDP), a live object-position source | `ac3::oba::parse_osc_packet` | yes — `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list alongside the other object/metadata-layer harnesses |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
@@ -175,6 +176,9 @@ The important structural property is that **every per-access-unit allocation is 
 bitstream field of fixed width**, so no single frame can be made to consume an unbounded amount
 of memory or time. Decode cost is linear in the number of access units, with a bounded cost per
 unit; there is no super-linear amplification and no recursive descent anywhere in the parsers.
+The OSC bundle walker (below) extends that same guarantee to network input rather than carving
+out an exception to it: arbitrarily nested bundles are walked with an explicit stack and a hard
+depth cap instead of function recursion, by construction rather than by convention.
 
 Enforced limits, and where they come from:
 
@@ -194,6 +198,9 @@ Enforced limits, and where they come from:
 | `addbsi` | 64 bytes | `addbsil` is 6 bits |
 | OAMD objects | 32 | `object_count_bits` is 5 bits; §5.5.2's escape for larger counts (`0x1F` plus a 7-bit extension) is refused rather than implemented |
 | JOC objects | 16 | `kMaxObjects`, checked explicitly; TS 103 420 §8.3.2.2's own cap |
+| OSC receive buffer | 65,535 bytes | `LivePositionSource`'s `kRecvBufferSize`, sized above the 65,507-byte IPv4 maximum a UDP datagram can ever carry — UDP's own length field is 16 bits, so nothing legal is ever larger |
+| OSC bundle nesting | 8 levels | `parse_osc_packet`'s iterative bundle walk (`kMaxBundleDepth`); a bundle nested past the cap is dropped whole rather than descended into |
+| Live OSC per-object mailbox | 1 pending update per session object slot | `LivePositionSource`, sized once at construction from the same object-slot budget as "JOC objects" above (at most 15 dynamic objects; TS 103 420 §8.3.2.2 caps the total at 16 once the bed's LFE is counted) |
 | WASM demo heap | 1 GiB | `MAXIMUM_MEMORY`, with `std::bad_alloc` caught and reported |
 
 ### A hostile `frmsiz`
@@ -286,6 +293,29 @@ container at all has nothing to verify — see
 [Object signing](concepts/object-signing.md). Verification is opt-in
 (`ac3cli decode ... verify-objects`); a signed-but-unchecked stream decodes exactly like an
 unsigned one. This project ships no key.
+
+### OSC live-position input has no authentication or encryption
+
+`positions=osc:<port>` (`ac3cli live mode=atmos`) and the GUI live room's "Drive objects from
+OSC" toggle open a plain UDP socket. OSC 1.0 has no authentication or encryption of its own, and
+this project adds neither: anyone who can reach the bound address and port can send
+`/object/<n>/xyz` and move that object, full stop. The source IP is not checked — UDP has no
+connection to check it against, and it is trivially spoofable regardless — so "only my
+show-control rig sent that" is never a guarantee this layer gives an operator.
+
+The default bind is loopback (`127.0.0.1`): a session accepts datagrams only from the machine
+running it unless the operator explicitly widens that — `positions=osc:any:<port>` on the CLI,
+or the GUI's "any interface" checkbox, both of which bind `0.0.0.0` instead. This is opt-in
+surface on top of opt-in surface: a session listens for OSC at all only when `positions=` (or
+the GUI toggle) is explicitly used, and listens on every interface only when that is explicitly
+widened too.
+
+What a successful spoof or injection buys an attacker is narrow. `ac3::oba::apply`
+(`src/forge/src/oba/scene_osc.cpp`) merges only position, gain and `lfe_send` onto an object's
+existing placement, or releases it back to its authored automation (`/object/<n>/release`) —
+there is no path from this input to encoder configuration, to the filesystem, or to anything
+outside the object placements themselves. The blast radius of a successful attack is "objects
+move to wherever the packet says," never a compromised process.
 
 ## What a decode failure looks like
 

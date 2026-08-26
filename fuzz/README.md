@@ -225,6 +225,7 @@ coverage number that quietly stopped improving.
 | `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
 | `fuzz_joc_parse`       | `ac3::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
 | `fuzz_signing_verify`  | `ac3::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
+| `fuzz_osc_parse`       | `ac3::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (roadmap UX4), reached straight from a UDP datagram by `ac3::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
 | `fuzz_adm_parse`       | `ac3adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
 
 ### The object and metadata layer (roadmap VX3)

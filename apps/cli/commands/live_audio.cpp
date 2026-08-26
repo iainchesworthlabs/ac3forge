@@ -21,6 +21,7 @@
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
+#include "ac3/audio/live_positions.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/resampler.hpp"
@@ -33,6 +34,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
@@ -417,6 +419,14 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                      "encodes the TS 103 420 5.1 E-AC-3 bed plus its object layer");
         return kExitUsage;
     }
+    // positions= only means anything once objects exist to drive - same
+    // shape as the layout=/codec= refusal above, the other direction.
+    if (meta.positions && !atmos) {
+        fmt::println(stderr,
+                     "error: positions= drives object placement, which only 'live mode=atmos' "
+                     "has");
+        return kExitUsage;
+    }
     std::optional<TakePlan> take;
     if (!atmos) {
         take = resolve_take_plan(meta, bitrate, sr);
@@ -486,6 +496,62 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         return kExitUsage;
     }
     const std::size_t nobjects = slots.size();
+
+    // positions=: a real live object-position source (roadmap UX4) instead
+    // of the built-in synthetic orbit below. Built here, right after
+    // nobjects is fixed and before anything else in this session (capture,
+    // encoders, the output file) opens, so a bind failure is refused early
+    // rather than discovered mid-session. Fatal (kExitUnavailable) rather
+    // than a warning the way monitor=/passthrough= are: those are OUTPUT
+    // legs whose absence still leaves a correct recording, but positions=
+    // is an INPUT - silently falling back to the orbit because a port was
+    // already in use would put a different scene in the file than the one
+    // asked for, discovered only at playback.
+    std::unique_ptr<ac3::audio::LivePositionSource> position_source;
+    std::optional<ac3::oba::SceneCursor> position_cursor;
+    if (atmos && meta.positions) {
+        position_source = std::make_unique<ac3::audio::LivePositionSource>(nobjects);
+        const auto bound = position_source->start(meta.positions->bind, meta.positions->port);
+        if (!bound) {
+            fmt::println(stderr, "error: positions={}:{}:{} - {}", meta.positions->scheme,
+                         meta.positions->bind, meta.positions->port,
+                         ac3::audio::describe(bound.error()));
+            return kExitUnavailable;
+        }
+        // One default automation point per slot: the orbit's own t=0
+        // position, so an object nothing has addressed yet holds where the
+        // orbit would have started it - still spread apart from its
+        // siblings, which is the reason the orbit spreads them at all (JOC
+        // cannot separate co-located objects) - and this session's own
+        // gain law, so switching positions= on changes WHERE objects start,
+        // never how loud they are.
+        std::vector<ac3::oba::SceneObject> objects(nobjects);
+        for (std::size_t i = 0; i < nobjects; ++i) {
+            const double angle =
+                2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(nobjects);
+            const double height =
+                nobjects == 1 ? 0.5
+                             : -1.0 + 2.0 * static_cast<double>(i) /
+                                          static_cast<double>(nobjects - 1);
+            objects[i].automation.push_back(
+                {.time_s = 0.0,
+                 .position = {.x = 0.5 + 0.5 * std::sin(angle),
+                             .y = 0.5 - 0.5 * std::cos(angle),
+                             .z = height},
+                 .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
+                 .lfe_send = i == 0 ? 0.2 : 0.0});
+        }
+        auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+        if (!scene) {
+            fmt::println(stderr, "error: internal: {}", scene.error().message);
+            return kExitUsage;
+        }
+        position_cursor.emplace(std::move(*scene));
+        status_println(status,
+                       "positions: OSC on {}:{}, objects 0-{} (/object/<n>/xyz|gain|lfe|release)",
+                       meta.positions->bind, position_source->local_port(), nobjects - 1);
+    }
+
     const auto channel_plan = atmos ? plan::ChannelPlan{} : plan::resolve(take->plan);
     std::optional<plan::Routing> routing;
     if (!atmos) {
@@ -835,24 +901,33 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         if (atmos) {
             // Objects orbit at their own rate and start spread around the
             // ring, matching run_atmos exactly - the position is recomputed
-            // from elapsed time every frame rather than fixed once, which is
-            // the whole point: a real live source reads the same way.
+            // from elapsed time every frame rather than fixed once, which
+            // used to be described as "the hook a real live position source
+            // drops into once one exists" (see live_audio.hpp's own header):
+            // positions= is that source now, sampled through the same
+            // SceneCursor seam ac3::oba::SceneCursor was built for (roadmap
+            // UX4), at the frame-end time `t` either path already needs.
             const double t = static_cast<double>(n0) / static_cast<double>(rate_hz);
-            for (std::size_t i = 0; i < nobjects; ++i) {
-                const double rate =
-                    1.0 / (6.0 * (1.0 + 0.31 * static_cast<double>(i)));
-                const double phase =
-                    2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(nobjects);
-                const double angle = 2.0 * std::numbers::pi * rate * t + phase;
-                const double height =
-                    nobjects == 1 ? 0.5
-                                 : -1.0 + 2.0 * static_cast<double>(i) /
-                                              static_cast<double>(nobjects - 1);
-                placement[i] = {.position = {.x = 0.5 + 0.5 * std::sin(angle),
-                                             .y = 0.5 - 0.5 * std::cos(angle),
-                                             .z = height},
-                                .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
-                                .lfe_send = i == 0 ? 0.2 : 0.0};
+            if (position_source) {
+                position_source->drain_into(*position_cursor, t);
+                position_cursor->sample_into(t, placement);
+            } else {
+                for (std::size_t i = 0; i < nobjects; ++i) {
+                    const double rate =
+                        1.0 / (6.0 * (1.0 + 0.31 * static_cast<double>(i)));
+                    const double phase =
+                        2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(nobjects);
+                    const double angle = 2.0 * std::numbers::pi * rate * t + phase;
+                    const double height =
+                        nobjects == 1 ? 0.5
+                                     : -1.0 + 2.0 * static_cast<double>(i) /
+                                                  static_cast<double>(nobjects - 1);
+                    placement[i] = {.position = {.x = 0.5 + 0.5 * std::sin(angle),
+                                                 .y = 0.5 - 0.5 * std::cos(angle),
+                                                 .z = height},
+                                    .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
+                                    .lfe_send = i == 0 ? 0.2 : 0.0};
+                }
             }
             const auto unit = atmos_encoder->encode_frame(views, placement);
             if (!unit) {
@@ -968,6 +1043,9 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (device2) {
         capture2.stop();
     }
+    if (position_source) {
+        position_source->stop();
+    }
     if (monitoring) {
         while (monitor_sink.stats().frames_rendered < monitor_sink.stats().frames_submitted) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -1017,6 +1095,12 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         status_println(status,
                        "  {} object slots, {} bound to captured channels, {} carried silent",
                        nobjects, bound, nobjects - bound);
+    }
+    if (position_source) {
+        const auto position_stats = position_source->stats();
+        status_println(status, "positions: {} datagrams, {} updates applied, {} dropped",
+                       position_stats.datagrams, position_stats.updates_applied,
+                       position_stats.packets_rejected + position_stats.messages_dropped);
     }
     status_println(status, "captured {} frames, {} silence-filled, {} dropped",
                    stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);

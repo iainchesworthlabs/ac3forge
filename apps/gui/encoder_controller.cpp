@@ -668,12 +668,31 @@ QVariantList EncoderController::objectModel() const {
     // unset for.
     const bool live_slots = live_active_ && atmos_enabled_;
     const auto slot_channels = live_slots ? liveSlotChannels() : std::vector<int>{};
+    // Whenever positions= is actually driving this session, an object it has
+    // addressed shows the position ac3::audio::LivePositionSource pushed
+    // instead of its authored object_configs_ entry - the same relationship
+    // is_live() has to a SceneCursor's underlying ObjectScene. An object it
+    // has not (yet) addressed still reads from object_configs_ exactly as
+    // before this existed, so a session with positions= partially bound
+    // looks no different from a plain one for the objects nothing has
+    // touched.
+    const bool osc_active =
+        live_slots && live_position_source_ != nullptr && live_position_source_->running();
+    const auto live_positions = osc_active ? liveObjectSnapshot() : std::vector<ObjectConfig>{};
+    const auto network_driven =
+        osc_active ? liveObjectNetworkDriven() : std::vector<bool>{};
     for (int i = 0; i < object_count_; ++i) {
         const auto key = keyForObjectIndex(i);
-        const auto config = key ? map_value(object_configs_, *key) : ObjectConfig{};
+        auto config = key ? map_value(object_configs_, *key) : ObjectConfig{};
+        const bool driven = osc_active && static_cast<std::size_t>(i) < network_driven.size() &&
+                            network_driven[static_cast<std::size_t>(i)];
+        if (driven && static_cast<std::size_t>(i) < live_positions.size()) {
+            config = live_positions[static_cast<std::size_t>(i)];
+        }
         const auto keyframes = sortedKeyframes(i);
         QVariantMap row;
         row[QStringLiteral("index")] = i;
+        row[QStringLiteral("networkDriven")] = driven;
         if (live_slots) {
             const int bound = static_cast<std::size_t>(i) < slot_channels.size()
                                   ? slot_channels[static_cast<std::size_t>(i)]
@@ -1718,6 +1737,19 @@ void EncoderController::setObjectPosition(int objectIndex, double x, double y, d
     if (!key) {
         return;
     }
+    {
+        // A drag on an object ac3::audio::LivePositionSource is currently
+        // driving is refused rather than raced against the worker's own
+        // write to the same slot - objectModel()'s "networkDriven" row is
+        // what QML disables the drag handle on, this is the C++-level
+        // backstop for whatever reaches here anyway.
+        std::lock_guard lock(live_object_mutex_);
+        if (objectIndex >= 0 &&
+            static_cast<std::size_t>(objectIndex) < live_object_network_driven_.size() &&
+            live_object_network_driven_[static_cast<std::size_t>(objectIndex)]) {
+            return;
+        }
+    }
     auto& config = object_configs_[*key];
     config.x = std::clamp(x, 0.0, 1.0);
     config.y = std::clamp(y, 0.0, 1.0);
@@ -1738,6 +1770,14 @@ void EncoderController::setObjectLfeSend(int objectIndex, double value) {
     const auto key = keyForObjectIndex(objectIndex);
     if (!key) {
         return;
+    }
+    {
+        std::lock_guard lock(live_object_mutex_);
+        if (objectIndex >= 0 &&
+            static_cast<std::size_t>(objectIndex) < live_object_network_driven_.size() &&
+            live_object_network_driven_[static_cast<std::size_t>(objectIndex)]) {
+            return;
+        }
     }
     auto& config = object_configs_[*key];
     config.lfe_send = std::clamp(value, 0.0, 1.0);
@@ -1767,6 +1807,11 @@ void EncoderController::notifyObjectsChangedSoon() {
 std::vector<EncoderController::ObjectConfig> EncoderController::liveObjectSnapshot() const {
     std::lock_guard lock(live_object_mutex_);
     return live_object_snapshot_;
+}
+
+std::vector<bool> EncoderController::liveObjectNetworkDriven() const {
+    std::lock_guard lock(live_object_mutex_);
+    return live_object_network_driven_;
 }
 
 std::vector<int> EncoderController::liveSlotChannels() const {
@@ -3813,6 +3858,30 @@ void EncoderController::setLiveWavSafetyCopy(bool on) {
     emit liveWavSafetyCopyChanged();
 }
 
+void EncoderController::setLiveOscEnabled(bool enabled) {
+    if (enabled == live_osc_enabled_) {
+        return;
+    }
+    live_osc_enabled_ = enabled;
+    emit liveOscConfigChanged();
+}
+
+void EncoderController::setLiveOscPort(int port) {
+    if (port == live_osc_port_) {
+        return;
+    }
+    live_osc_port_ = port;
+    emit liveOscConfigChanged();
+}
+
+void EncoderController::setLiveOscAnyInterface(bool any_interface) {
+    if (any_interface == live_osc_any_interface_) {
+        return;
+    }
+    live_osc_any_interface_ = any_interface;
+    emit liveOscConfigChanged();
+}
+
 void EncoderController::addLiveObject(int captureChannel) {
     if (!live_active_ || !atmos_enabled_) {
         return;
@@ -4212,6 +4281,50 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
         }
         std::lock_guard lock(live_object_mutex_);
         live_object_snapshot_ = std::move(snapshot);
+        live_object_network_driven_.assign(static_cast<std::size_t>(object_count_), false);
+    }
+
+    // positions=: a real live object-position source (roadmap UX4) instead
+    // of manual room placement. Opened here, right after object_count_/
+    // live_object_snapshot_ are final for this session and before the
+    // worker launches - a bind failure refuses the WHOLE session rather
+    // than silently falling back to manual placement, matching
+    // 'ac3cli live positions=osc:<port>''s own "an input's absence changes
+    // what lands in the file/room" reasoning. Everything opened above
+    // (capture, capture2, the monitor sink) is torn down on this path the
+    // same way it would be if this were one refusal earlier.
+    if (atmos_enabled_ && live_osc_enabled_) {
+        live_position_source_ =
+            std::make_unique<ac3::audio::LivePositionSource>(static_cast<std::size_t>(object_count_));
+        const QString bind_address = live_osc_any_interface_ ? QStringLiteral("0.0.0.0")
+                                                              : QStringLiteral("127.0.0.1");
+        const auto bound = live_position_source_->start(
+            bind_address.toStdString(),
+            static_cast<std::uint16_t>(std::clamp(live_osc_port_, 1, 65535)));
+        if (!bound) {
+            const auto why = ac3::audio::describe(bound.error());
+            live_position_source_.reset();
+            live_capture_->stop();
+            live_capture_.reset();
+            if (live_capture2_) {
+                live_capture2_->stop();
+                live_capture2_.reset();
+            }
+            if (live_monitor_sink_) {
+                live_monitor_sink_->stop();
+                live_monitor_sink_.reset();
+            }
+            setStatus(QStringLiteral("Could not start the OSC listener on port %1: %2")
+                          .arg(live_osc_port_)
+                          .arg(QString::fromUtf8(why.data(), static_cast<qsizetype>(why.size()))));
+            emit encodeRefused(status_);
+            return;
+        }
+        live_osc_listening_ = true;
+        live_osc_status_.clear();
+        live_osc_datagrams_ = 0;
+        live_osc_updates_applied_ = 0;
+        live_osc_dropped_ = 0;
     }
 
     stop_live_.store(false, std::memory_order_relaxed);
@@ -4419,6 +4532,30 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                                       .dialnorm = p.meta.dialnorm,
                                       .num_bands_idx = 4},
                 static_cast<int>(nobjects));
+        }
+        // positions=: seeded from whatever the room held at session start
+        // (liveObjectSnapshot(), thread-safe to call here), one static
+        // automation point per object carrying this SESSION's own gain law
+        // (0.7/sqrt(n), lfe/sqrt(n) - exactly what the non-driven branch
+        // below still computes inline) so an object nothing on the network
+        // has addressed yet holds exactly where the room already had it,
+        // at the level this session would have given it anyway.
+        std::optional<ac3::oba::SceneCursor> position_cursor;
+        if (atmos && live_position_source_) {
+            const auto seed = liveObjectSnapshot();
+            std::vector<ac3::oba::SceneObject> objects(nobjects);
+            for (std::size_t i = 0; i < nobjects; ++i) {
+                const auto& config = i < seed.size() ? seed[i] : ObjectConfig{};
+                objects[i].automation.push_back(
+                    {.time_s = 0.0,
+                     .position = {.x = config.x, .y = config.y, .z = config.z},
+                     .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
+                     .lfe_send = config.lfe_send / std::sqrt(static_cast<double>(nobjects))});
+            }
+            auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+            if (scene) {
+                position_cursor.emplace(std::move(*scene));
+            }
         }
         auto ac3_monitor_decoder = std::make_unique<ac3::FrameDecoder>();
         // Heap-allocated (PREfast's C6262, alert #90): Eac3Decoder's
@@ -4718,13 +4855,41 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                     }
                     object_views[ch] = object_block[ch];
                 }
-                const auto snapshot = liveObjectSnapshot();
-                for (std::size_t i = 0; i < nobjects; ++i) {
-                    const auto& config = i < snapshot.size() ? snapshot[i] : ObjectConfig{};
-                    placement[i] = {
-                        .position = {.x = config.x, .y = config.y, .z = config.z},
-                        .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
-                        .lfe_send = config.lfe_send / std::sqrt(static_cast<double>(nobjects))};
+                if (position_cursor) {
+                    // positions=: drain whatever ac3::audio::
+                    // LivePositionSource has received since the last frame,
+                    // then sample at this frame's own end time - the same
+                    // drain-then-sample order and the same instant
+                    // 'ac3cli live positions=osc:<port>' uses, so a packet
+                    // that arrived during this frame's capture read is in
+                    // force for this same frame either way.
+                    const double t =
+                        static_cast<double>(n0) / static_cast<double>(sample_rate);
+                    live_position_source_->drain_into(*position_cursor, t);
+                    position_cursor->sample_into(t, std::span{placement}.first(nobjects));
+                    // Mirrored out for the room view: objectModel() reads
+                    // these under the same lock rather than reaching into
+                    // the worker-local position_cursor directly.
+                    std::lock_guard lock(live_object_mutex_);
+                    for (std::size_t i = 0; i < nobjects && i < live_object_snapshot_.size(); ++i) {
+                        const bool driven = position_cursor->is_live(i);
+                        live_object_network_driven_[i] = driven;
+                        if (driven) {
+                            live_object_snapshot_[i].x = placement[i].position.x;
+                            live_object_snapshot_[i].y = placement[i].position.y;
+                            live_object_snapshot_[i].z = placement[i].position.z;
+                            live_object_snapshot_[i].lfe_send = placement[i].lfe_send;
+                        }
+                    }
+                } else {
+                    const auto snapshot = liveObjectSnapshot();
+                    for (std::size_t i = 0; i < nobjects; ++i) {
+                        const auto& config = i < snapshot.size() ? snapshot[i] : ObjectConfig{};
+                        placement[i] = {
+                            .position = {.x = config.x, .y = config.y, .z = config.z},
+                            .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
+                            .lfe_send = config.lfe_send / std::sqrt(static_cast<double>(nobjects))};
+                    }
                 }
                 const auto unit = atmos_encoder->encode_frame(
                     std::span{object_views}.first(nobjects),
@@ -4927,14 +5092,33 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                                                                   meter.levels().end());
                 const auto encoded = static_cast<qint64>(n0 / ac3::kSamplesPerFrame);
                 const double drift_ppm = has_device2 ? slave_drift->drift_ppm() : 0.0;
+                // Thread-safe to read here (LivePositionSource::stats() is
+                // its own small lock, independent of live_object_mutex_) -
+                // std::nullopt when positions= is off, so the GUI thread
+                // below leaves the counters exactly as a plain session does.
+                const auto osc_stats =
+                    position_cursor ? std::optional{live_position_source_->stats()}
+                                    : std::nullopt;
                 QMetaObject::invokeMethod(
-                    this, [this, seconds, dropped, underruns, encoded, drift_ppm,
+                    this, [this, seconds, dropped, underruns, encoded, drift_ppm, osc_stats,
                           snapshot = std::move(snapshot)] {
                         live_running_seconds_ = seconds;
                         live_frames_encoded_ = encoded;
                         live_frames_dropped_ = static_cast<qint64>(dropped);
                         live_underruns_ = underruns;
                         live_drift_ppm_ = drift_ppm;
+                        if (osc_stats) {
+                            live_osc_datagrams_ = static_cast<qint64>(osc_stats->datagrams);
+                            live_osc_updates_applied_ =
+                                static_cast<qint64>(osc_stats->updates_applied);
+                            live_osc_dropped_ = static_cast<qint64>(
+                                osc_stats->packets_rejected + osc_stats->messages_dropped);
+                            // The room view's markers just moved (or a slot's
+                            // networkDriven flag just flipped) - refresh it at
+                            // the same throttled cadence these counters use
+                            // rather than every single audio frame.
+                            emit objectsChanged();
+                        }
                         emit liveStatsChanged();
                         publishLevels(snapshot);
                     });
@@ -5031,12 +5215,21 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                 live_passthrough_sink_->stop();
                 live_passthrough_sink_.reset();
             }
+            if (live_position_source_) {
+                live_position_source_->stop();
+                live_position_source_.reset();
+            }
             live_active_ = false;
             live_reconnecting_ = false;
             live_second_device_active_ = false;
             live_second_device_name_.clear();
             live_drift_ppm_ = 0.0;
             live_downmix_leg_ = false;
+            live_osc_listening_ = false;
+            {
+                const std::lock_guard lock(live_object_mutex_);
+                live_object_network_driven_.clear();
+            }
             // Whatever a loaded file (or nothing at all) had before this
             // session resized object_configs_ to the capture device's
             // channel count - see startLiveSession's own comment and

@@ -688,9 +688,9 @@ run alongside the file `live` always writes.
 `live mode` (also shared with `atmos`): `channels` (default) encodes the captured channels onto
 `layout=` — stereo by default, anything up to 7.1.4 — placing them by direction the way `encode`
 places a file's; `atmos` pans capture channels into a 5.1 bed as objects, moving each one every
-frame the same way `atmos`'s synthetic orbit does — the hook a real live position source drops
-into once one exists. `layout=`/`codec=` describe a channel session only; `mode=atmos` always
-encodes the TS 103 420 shape and refuses either.
+frame the same way `atmos`'s synthetic orbit does, unless `positions=` names a real live position
+source instead — see **Live object positions over OSC** below. `layout=`/`codec=` describe a
+channel session only; `mode=atmos` always encodes the TS 103 420 shape and refuses either.
 
 **Take shape and durability.** `record` and `live` both take `layout=`, `codec=`,
 `container=raw|mkv|ts|spdif|fmp4` (`cmaf` is an accepted alias for the last) and
@@ -708,6 +708,87 @@ start — `objects=<N>` sets the budget, `map=` binds capture channels to slots 
 [Options & grammars](metadata-options.md#objects-and-map-modeatmos)). A slot with nothing bound to
 it is carried silent rather than changing the object count a decoder read from the first access
 unit.
+
+**Live object positions over OSC (roadmap UX4).** `positions=<scheme>:[<bind>:]<port>` (`mode=atmos`
+only — refused with `mode=channels`, since there are no objects to place) swaps the built-in
+synthetic orbit for a real live position source: a show-control rig, a DAW, or any OSC 1.0 sender
+addressing this session's objects over UDP. The token is scheme-prefixed on purpose — only `osc`
+exists today, but a MIDI source (`positions=midi:...`) or a desktop game controller
+(`positions=gamepad:...`) can land as new schemes later without a grammar change. **Neither MIDI
+nor gamepad is implemented yet.**
+
+`<bind>` is `local` (the default — binds `127.0.0.1`, loopback only), `any` (binds `0.0.0.0`,
+every interface — a real security-relevant choice, not just a technical one: it opens the port to
+whatever else can already reach this machine, not just this process), or a dotted-quad IPv4
+literal. Never a hostname — there is no DNS resolution, so starting a session never blocks waiting
+for one to resolve. `<port>` is 1-65535.
+
+```text
+positions=osc:9000                 # loopback, port 9000 (the default bind)
+positions=osc:any:9000             # every interface
+positions=osc:192.168.1.50:9000    # bind to one specific local address
+```
+
+Once bound, the listener understands one address space, `<n>` 0-based and matching scene order:
+
+| Address | OSC type tag | Arguments |
+|---|---|---|
+| `/object/<n>/xyz` | `,fff` | x, y, z (float32) — the same room-anchored axes `atmos-path`'s own scene grammar uses (see [x/y/z above](#synthesis-generate-a-stream-from-nothing) and [Library → Spatial & Atmos](../library/spatial-and-atmos.md)) |
+| `/object/<n>/gain` | `,f` | linear gain (float32), not dB |
+| `/object/<n>/lfe` | `,f` | linear `lfe_send` (float32) |
+| `/object/<n>/release` | `,` | no arguments — hands the object back to the orbit's own starting point |
+
+Any other address, or a message with the wrong argument count or type, is silently dropped and
+counted rather than treated as fatal to the session — a show-control rig sends plenty of traffic
+this listener has no use for, and none of it should end a take. A `/gain` or `/lfe` message that
+arrives before that object's first `/xyz` is held pending rather than applied or dropped, and takes
+effect the moment a position follows it.
+
+A bind failure — most often the port already in use — refuses the whole session (exit `4`,
+`kExitUnavailable`) rather than silently falling back to the orbit. That is deliberate, and
+different from `monitor=`/`passthrough=`: those are output legs whose absence still leaves a
+correct file behind, but `positions=` is an *input* — a silent fallback would put a different
+scene in the recorded file than the one asked for, discoverable only at playback.
+
+An object nothing has addressed yet holds exactly where the orbit's own formula would have started
+it at t=0 — still spread apart from its siblings (objects sharing a direction are exactly what JOC
+cannot separate, which is why the orbit spreads them at all) — at this session's own gain law
+(`0.7 / sqrt(N)`, the same one the orbit itself uses). A session with `positions=` on but nothing
+yet addressing some of its objects therefore degrades gracefully: those objects sit still and
+audible, never silent, never snapped to room centre.
+
+Status lines at session start and end report what actually happened — read the live text out of
+`apps/cli/commands/live_audio.cpp` (search for `"positions:"`) if this drifts, but as of writing:
+
+```text
+positions: OSC on 127.0.0.1:9000, objects 0-3 (/object/<n>/xyz|gain|lfe|release)
+...
+positions: 812 datagrams, 796 updates applied, 12 dropped
+```
+
+**Testing it.** Any OSC 1.0 sender works — TouchOSC, a DAW's OSC output, or a few dependency-free
+lines of Python:
+
+```python
+import socket, struct
+
+def osc_xyz(obj, x, y, z):
+    addr = f"/object/{obj}/xyz".encode() + b"\0"
+    addr += b"\0" * (-len(addr) % 4)          # pad to a 4-byte boundary
+    tags = b",fff\0\0\0\0"                    # ",fff" padded the same way
+    return addr + tags + struct.pack(">fff", x, y, z)
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(osc_xyz(0, 0.8, 0.2, 0.0), ("127.0.0.1", 9000))
+```
+
+```bash
+ac3cli live out.ec3 0 60 192 -2 -2 atmos positions=osc:9000
+```
+
+That starts a 60-second object session listening on loopback port 9000; the Python snippet above
+moves object 0 to `x=0.8, y=0.2, z=0.0` — front-right of the room, at listener height — while it
+runs.
 
 **An AC-3-only receiver.** When the session's stream needs E-AC-3 but the chosen
 `passthrough_device` only bitstreams plain AC-3, `live` sends it a parallel 5.1 AC-3 encode of the

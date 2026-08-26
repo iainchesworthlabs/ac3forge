@@ -62,7 +62,14 @@ In rough order of strength:
    The object and metadata layer is driven directly rather than through the decoder: separate
    harnesses over `emdf::parse_container`, `oba::parse_payload`, `joc::parse_payload`,
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
-   seeded from the real payloads inside this project's own Atmos streams. That matters because
+   seeded from the real payloads inside this project's own Atmos streams. A sixth,
+   `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
+   (roadmap UX4), driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
+   covered the same direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list
+   and so covered by CI exactly as the five above are; its own seeds are hand-built OSC packets
+   (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos stream, since there is no
+   bitstream to extract them from. See [Threat model](threat-model.md#trust-boundary). That
+   matters because
    the indirect route was mostly closed: both decoders check their CRC words before reading the
    frame behind them, so a mutation landing in a skip field died at the checksum. The two decode
    harnesses now carry a custom mutator that re-stamps crc1 and crc2 after mutating — crc1

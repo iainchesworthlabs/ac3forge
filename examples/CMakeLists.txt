@@ -26,6 +26,7 @@ set(AC3FORGE_EXAMPLES
     custom_layout
     multi_source_assignment
     scripted_object_motion
+    osc_object_control
     object_signing
     level_metering
     decode_robustness
