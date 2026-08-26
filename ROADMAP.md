@@ -1237,11 +1237,27 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   fabricated); `tools/checks/check_packaging_versions.sh` passes. The live tap
   (`iainchesworthlabs/homebrew-ac3forge`) is pushed to match. Still the second cycle in a row these
   went stale — DR2 is the fix for that.
-- [ ] **DR2 (M)** — Post-release automation: release notes from the matching CHANGELOG section
-  (`release.yml` still uses `--generate-notes`), a post-release job that computes the digests and
-  opens the manifest-bump PR, and a latest-tag advisory extending
-  `tools/checks/check_packaging_versions.sh` — which deliberately does not check the latest tag
-  because the bump was manual; automating the bump removes that objection.
+- [x] **DR2 (M)** — Post-release automation. Done: `release.yml`'s `github-release` job now
+  renders the release body from CHANGELOG.md's matching `## [x.y.z]` section
+  (`tools/release/render_release_notes.py`) instead of `--generate-notes`, and `SHA512SUMS` is
+  generated unconditionally (previously only alongside GPG signing) so the step below always has
+  something to cross-check against. A new `manifest-bump` job calls
+  `.github/workflows/manifest-bump.yml` after every real (non-dry-run) release: it downloads the
+  release's source tarball and, where they exist, `ac3forge-*-Darwin.dmg`/`ac3forge-*-win64.zip`,
+  computes the digests `tools/release/bump_manifests.py` needs, cross-checks the two platform
+  assets against the release's own `SHA512SUMS` (never fabricated — the source tarball has no
+  entry to check against, it isn't a CI-built package), opens a PR bumping all four staged
+  manifests together, and pushes the Homebrew Formula/Cask to the live
+  `iainchesworthlabs/homebrew-ac3forge` tap when `HOMEBREW_TAP_TOKEN` is provisioned. That
+  workflow is also directly `workflow_dispatch`-able with `dry_run: true` (the default), so the
+  whole download/digest/cross-check pipeline is exercisable against any already-shipped tag
+  without cutting a release — verified locally against the real v0.9.0-beta.1 release assets
+  before this shipped. `tools/checks/check_packaging_versions.sh` now carries the latest-tag
+  advisory too (a `::warning::`, not a gate — merging the bump PR is still a separate, reviewed
+  step), and `ci.yml`'s `packaging-consistency` job fetches full history so it can see tags at
+  all. Still manual, because it means writing to a repository this project does not own: the
+  vcpkg/Conan/winget upstream fork PRs, and Homebrew's local macOS-only `brew audit`/`brew
+  install`/`brew test` validation. See `docs/releasing.md`'s Post-release section.
 - [ ] **DR3 (S)** — A vcpkg git registry (`ports/ac3forge` + `versions/`) now, so consumers get
   `vcpkg install ac3forge` through `vcpkg-configuration.json` instead of overlay-ports from a
   source clone; keep #53470 as a draft to re-request around 2027-02. The reviewer also cited
