@@ -94,6 +94,11 @@ private const val STARTING_DETAIL =
 // constant here rather than exposed over JNI for a single call site).
 private const val EAC3_CARRIER_RATE_HZ = 192000
 
+// Fraction of screen width kept clear inside the edge-to-edge bars - see
+// MainActivity.overscanInset. 2% is the conservative end of the range TV
+// overscan actually crops; the room cards below already inset themselves.
+private const val OVERSCAN_FRACTION = 0.02f
+
 /**
  * Loads the native library, registers the [PassthroughBridge], runs the
  * HDMI capability probe, starts the encode loop (live_cursor.cpp), wires
@@ -671,7 +676,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextPrimary)
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(24, 20, 24, 2)
+            setPadding(overscanInset(), 20, overscanInset(), 2)
         })
         addView(TextView(this@MainActivity).apply {
             text = "LIVE DOLBY ATMOS OBJECT DEMO"
@@ -703,17 +708,12 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f),
                 )
                 addView(TextView(this@MainActivity).apply {
-                    text = "Stick/D-pad: push the lead object off its course, it drifts back " +
-                        "when you let go   •   Right stick / L1+R1: height   •   Press A/center: " +
-                        "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
-                        "lead   •   Play: bring the ambient tones back   •   Info: About\n" +
-                        "● lead (yours to push around)   ● ● two ambient tones, always on their " +
-                        "own course"
+                    text = buildHintsText()
                     textSize = 12f
                     gravity = Gravity.CENTER
                     setTextColor(Theme.colorTextSecondary)
                     setLineSpacing(5f, 1f)
-                    setPadding(20, 14, 24, 14)
+                    setPadding(overscanInset(), 14, overscanInset(), 14)
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f))
             },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
@@ -722,6 +722,61 @@ class MainActivity : Activity() {
 
     private fun dividerView(): View = View(this).apply {
         setBackgroundColor(Theme.colorSurfaceBorder)
+    }
+
+    /**
+     * Horizontal breathing room for content inside the edge-to-edge bars.
+     *
+     * The room cards already float `Theme.spacingUnit` in from the screen
+     * edge, but the title and hints bars run to the bezel with only their own
+     * ~20px of text padding - and a TV that still overscans crops a few
+     * percent of every edge, which is far more than 20px on a 4K panel. This
+     * is what actually gets clipped, so this is where the inset belongs.
+     */
+    private fun overscanInset(): Int =
+        (resources.displayMetrics.widthPixels * OVERSCAN_FRACTION).toInt()
+
+    /**
+     * The control hints, with each legend bullet drawn in the colour that
+     * object is actually plotted in.
+     *
+     * The line reads "● lead … ● ● two ambient tones", and the whole TextView
+     * was one flat secondary grey - three identical grey bullets standing in
+     * for the coral, green and blue dots on screen, which is a legend that
+     * identifies nothing.
+     */
+    private fun buildHintsText(): CharSequence {
+        val controls = "Stick/D-pad: push the lead object off its course, it drifts back " +
+            "when you let go   •   Right stick / L1+R1: height   •   Press A/center: " +
+            "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
+            "lead   •   Play: bring the ambient tones back   •   Info: About\n"
+        val legendLead = "● lead (yours to push around)   "
+        val legendAmbient = "● ● two ambient tones, always on their own course"
+        val text = SpannableString(controls + legendLead + legendAmbient)
+
+        // Index 0 is the lead, 1 and 2 the ambients - the same ordering
+        // live_cursor.cpp's kObjects uses and RoomView already draws with.
+        val leadBullet = controls.length
+        text.setSpan(
+            ForegroundColorSpan(Theme.objectColors[0]),
+            leadBullet,
+            leadBullet + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        val ambientBullet = controls.length + legendLead.length
+        text.setSpan(
+            ForegroundColorSpan(Theme.objectColors[1]),
+            ambientBullet,
+            ambientBullet + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        text.setSpan(
+            ForegroundColorSpan(Theme.objectColors[2]),
+            ambientBullet + 2,
+            ambientBullet + 3,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        return text
     }
 
     // Builds overlayCue's text as a two-tier Spannable (a larger bold
@@ -813,7 +868,7 @@ class MainActivity : Activity() {
         // drive nativeDeflectSelectedObject straight into the
         // UnsatisfiedLinkError the failure screen exists to avoid.
         if (!NativeBridge.available) return
-        inputController.start()
+        inputController.start(this)
         lastInputAtMs = SystemClock.elapsedRealtime()
         mainHandler.postDelayed(idleChecker, IDLE_CHECK_INTERVAL_MS)
 
@@ -892,6 +947,18 @@ class MainActivity : Activity() {
         }
         passthroughBridge.close()
         super.onDestroy()
+    }
+
+    /**
+     * A key held as the window loses focus delivers its up event to whatever
+     * took focus, not to this Activity - so the digital axis it latched would
+     * stay latched. See [InputController.clearMovement].
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus && NativeBridge.available) {
+            inputController.clearMovement()
+        }
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {

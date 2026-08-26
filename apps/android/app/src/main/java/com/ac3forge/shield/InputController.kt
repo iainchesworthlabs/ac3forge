@@ -1,10 +1,17 @@
 package com.ac3forge.shield
 
+import android.content.Context
+import android.hardware.input.InputManager
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.Choreographer
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.sign
 
 /**
  * Shield Controller (analog sticks + shoulder buttons + D-pad) and basic
@@ -91,6 +98,47 @@ class InputController {
     private var lastFrameTimeNanos = 0L
     private val choreographer = Choreographer.getInstance()
 
+    // Which axis this device reports right-stick VERTICAL on, resolved once
+    // per device id from what the device actually declares. See
+    // [heightAxisFor] - this used to be hardcoded to AXIS_Z.
+    private val heightAxisByDevice = HashMap<Int, Int>()
+
+    // The stick's own declared rest-position slop, per device id. See
+    // [deadzoneFor].
+    private val flatByDevice = HashMap<Int, Float>()
+
+    private var inputManager: InputManager? = null
+    private val deviceListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) {}
+
+        override fun onInputDeviceChanged(deviceId: Int) {
+            // Its axis set or flat range may have changed with it.
+            heightAxisByDevice.remove(deviceId)
+            flatByDevice.remove(deviceId)
+        }
+
+        /**
+         * A controller or remote that disappears while a key is held delivers
+         * the down and never the matching up, leaving that digital axis
+         * latched at +/-1 forever - the object then sits pinned against its
+         * clamp box with no input and no way to release it. CEC and IR
+         * bridges do the same thing.
+         *
+         * Handled by listening for the device going away rather than by
+         * timing out a held key, deliberately: Android's own key repeat does
+         * not cover shoulder buttons on every device, so a staleness timeout
+         * short enough to be useful would break held L1/R1 - two of this
+         * app's documented continuous controls - to fix a case this catches
+         * exactly.
+         */
+        override fun onInputDeviceRemoved(deviceId: Int) {
+            heightAxisByDevice.remove(deviceId)
+            flatByDevice.remove(deviceId)
+            Log.i(TAG, "input device $deviceId removed - clearing latched movement")
+            clearMovement()
+        }
+    }
+
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!running) return
@@ -104,10 +152,14 @@ class InputController {
     }
 
     /** Call from Activity.onResume. */
-    fun start() {
+    fun start(context: Context) {
         if (running) return
         running = true
         lastFrameTimeNanos = 0L
+        if (inputManager == null) {
+            inputManager = context.getSystemService(Context.INPUT_SERVICE) as? InputManager
+        }
+        inputManager?.registerInputDeviceListener(deviceListener, Handler(Looper.getMainLooper()))
         choreographer.postFrameCallback(frameCallback)
     }
 
@@ -115,6 +167,19 @@ class InputController {
     fun stop() {
         running = false
         choreographer.removeFrameCallback(frameCallback)
+        inputManager?.unregisterInputDeviceListener(deviceListener)
+        clearMovement()
+    }
+
+    /**
+     * Drops every accumulated movement scalar, analog and digital.
+     *
+     * Also called when the window loses focus: a key held as the window goes
+     * away (the Shield's own HOME overlay, a system dialog) delivers its
+     * up event to whatever took focus, not here, which would otherwise leave
+     * the object pinned against its clamp when focus returns.
+     */
+    fun clearMovement() {
         stickX = 0f
         stickY = 0f
         stickZ = 0f
@@ -142,7 +207,34 @@ class InputController {
         if (event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK) {
             return false
         }
-        stickX = deadzone(event.getAxisValue(MotionEvent.AXIS_X))
+        val device = event.device
+        val flat = deadzoneFor(device)
+
+        // Radial, then rescaled - not a per-axis cut.
+        //
+        // The old `if (abs(v) < 0.15) 0 else v` did two things wrong at once.
+        // Per-axis, it let a stick pushed diagonally register movement on one
+        // axis while the other was still inside its own cut. And with no
+        // rescaling, the smallest value it could ever emit was the deadzone
+        // itself: velocity jumped from nothing to 15% of full travel with no
+        // way to ask for less. Against the native 1.5s spring-back decay that
+        // settles at about a third of the clamp box - so the smallest
+        // deflection anyone could hold was a third of full travel, in a demo
+        // whose entire point is placing an object precisely.
+        val rawX = event.getAxisValue(MotionEvent.AXIS_X)
+        val rawY = event.getAxisValue(MotionEvent.AXIS_Y)
+        val magnitude = hypot(rawX, rawY)
+        if (magnitude < flat) {
+            stickX = 0f
+            stickY = 0f
+        } else {
+            // Re-map [flat, 1] onto [0, 1] along the direction actually
+            // pushed, so travel starts at zero and the diagonal keeps its
+            // angle.
+            val scaled = ((magnitude - flat) / (1f - flat)) / magnitude
+            stickX = rawX * scaled
+            stickY = rawY * scaled
+        }
         // oamd.hpp's room y runs front (0, where the listener faces - see
         // Position's own comment) to back (1). MotionEvent's AXIS_Y is
         // positive pushing the stick DOWN/toward the player, which already
@@ -153,8 +245,10 @@ class InputController {
         // needed the equivalent flip applied explicitly, since a button has
         // no physical "pushed away from you" motion to read the sense from
         // the way a stick does.
-        stickY = deadzone(event.getAxisValue(MotionEvent.AXIS_Y))
-        stickZ = deadzone(-event.getAxisValue(MotionEvent.AXIS_Z))
+        // Height is one scalar off a different stick, so it gets the scalar
+        // form of the same rescaling - a radial deadzone is meaningless for a
+        // single axis.
+        stickZ = rescaleScalar(-event.getAxisValue(heightAxisFor(device)), flat)
         // Past the same deadzone real movement uses, not merely "an event
         // arrived" - some controllers deliver a low-level trickle of
         // ACTION_MOVE events even at physical rest, which would otherwise
@@ -310,14 +404,72 @@ class InputController {
         }
     }
 
-    private fun deadzone(value: Float): Float = if (abs(value) < DEADZONE) 0f else value
+    /**
+     * The rescaling above, for a single axis: dead below [flat], and ramping
+     * from zero rather than jumping to [flat] once past it.
+     */
+    private fun rescaleScalar(value: Float, flat: Float): Float {
+        val magnitude = abs(value)
+        if (magnitude < flat) return 0f
+        return sign(value) * ((magnitude - flat) / (1f - flat))
+    }
+
+    /**
+     * The stick's own declared rest slop, from
+     * [InputDevice.MotionRange.getFlat], falling back to [DEADZONE] when the
+     * device declares nothing useful. A device that knows its own noise floor
+     * is a better source for this than one constant chosen for one controller.
+     */
+    private fun deadzoneFor(device: InputDevice?): Float {
+        if (device == null) return DEADZONE
+        return flatByDevice.getOrPut(device.id) {
+            val flat = device.getMotionRange(MotionEvent.AXIS_X, InputDevice.SOURCE_JOYSTICK)?.flat
+                ?: 0f
+            // A declared flat of 0 means "not specified", and anything near
+            // half travel is a misreport worth ignoring rather than obeying.
+            if (flat > 0.01f && flat < 0.5f) flat else DEADZONE
+        }
+    }
+
+    /**
+     * Which axis carries right-stick VERTICAL on this device.
+     *
+     * This was hardcoded to [MotionEvent.AXIS_Z]. On the standard Android
+     * gamepad mapping the right stick is AXIS_Z horizontal and AXIS_RZ
+     * vertical, so AXIS_Z is very likely the wrong half of that stick -
+     * pushing right would change height and pushing up would do nothing.
+     *
+     * Resolved by asking the device what it actually has, once per device id,
+     * rather than by summing a fallback chain: reading RZ and "falling back"
+     * to Z on a device that has both would add two axes of the same physical
+     * stick together, and left/right would then change height too. The chosen
+     * axis is logged so it can be confirmed against a real controller.
+     */
+    private fun heightAxisFor(device: InputDevice?): Int {
+        if (device == null) return MotionEvent.AXIS_RZ
+        return heightAxisByDevice.getOrPut(device.id) {
+            val axis = when {
+                device.getMotionRange(MotionEvent.AXIS_RZ, InputDevice.SOURCE_JOYSTICK) != null ->
+                    MotionEvent.AXIS_RZ
+                device.getMotionRange(MotionEvent.AXIS_RY, InputDevice.SOURCE_JOYSTICK) != null ->
+                    MotionEvent.AXIS_RY
+                else -> MotionEvent.AXIS_Z
+            }
+            Log.i(TAG, "device ${device.id} (${device.name}): height axis = $axis")
+            axis
+        }
+    }
 
     /** What the D-pad's up/down axis biases: further into the room, or height. */
     enum class AxisMode { XY, XZ }
 
     companion object {
-        // Below this, a stick's own physical rest-position noise/drift would
-        // otherwise register as constant tiny movement.
+        private const val TAG = "ShieldAtmosDemo"
+
+        // Fallback only, for a device that declares no flat range of its own
+        // - see deadzoneFor. Below this, a stick's own physical
+        // rest-position noise/drift would otherwise register as constant tiny
+        // movement.
         private const val DEADZONE = 0.15f
         // Room-fraction per second at full stick deflection or a held D-pad
         // direction - roughly 1.7s to cross the whole room edge to edge, a

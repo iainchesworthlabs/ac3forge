@@ -422,6 +422,9 @@ class RoomView @JvmOverloads constructor(
             (panelW / 2f - 24f) / ISO_X_HALF_RANGE,
             (panelH / 2f - 24f) / ISO_Y_HALF_RANGE,
         )
+        // The same proportion of the panel the flat panels use for their own
+        // dots, so all three read as one size to the eye - see drawFlatPanel.
+        val isoDotRadius = minOf(panelW, panelH) * 0.05f
 
         fun project(x: Float, y: Float, z: Float): FloatArray {
             val cx = x - 0.5f
@@ -499,7 +502,13 @@ class RoomView @JvmOverloads constructor(
             val isSelected = state[i * 4 + 3] != 0f
             val (px, py) = project(state[i * 4], state[i * 4 + 1], state[i * 4 + 2])
                 .let { it[0] to it[1] }
-            drawObjectDot(canvas, px, py, 16f, objectColor(i), isSelected)
+            // Derived from the panel, like the other two panels already do
+            // (see drawFlatPanel's own `radius`) rather than a fixed 16px.
+            // A hardcoded pixel radius is one size on the authoring device
+            // and another on any panel of a different size - and this is the
+            // biggest of the three panels, so its dots were the ones reading
+            // smallest relative to their own card.
+            drawObjectDot(canvas, px, py, isoDotRadius, objectColor(i), isSelected)
         }
     }
 

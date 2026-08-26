@@ -27,7 +27,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:banner="@drawable/banner"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@style/Theme.ShieldAtmosDemo">
 
         <!-- configChanges lists every configuration change this Activity can
              survive without being recreated. Recreation is not cosmetic here:
