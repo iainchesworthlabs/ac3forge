@@ -151,6 +151,21 @@ and E-AC-3 has the same fuzzing and mirror-self-check coverage AC-3 has had sinc
   under the default `joc-domain=qmf`.
 - **SIMD kernels selected by CMake, not `#ifdef`** (`PF5`): 128-bit vectorised hot paths on
   x86-64/ARMv8, bit-identical output, no runtime dispatch.
+- **Runtime AVX2 dispatch, and the two non-SIMD findings that outweighed it** (`PF5` follow-on).
+  A second, AVX2-flagged kernel tier selected per-process by CPUID (`AC3FORGE_SIMD_TIER` forces
+  either way for testing), with 256-bit versions of the windowing and twiddle stages and batched
+  4-transform IMDCT/MDCT kernels behind `imdct512_windowed_batch4`/`mdct512_forward_batch4`. All
+  bit-identical: real encodes and decodes are byte-for-byte the same under `sse2` and `avx2`.
+  Profiling by *source line* then found two costs far larger than any transform:
+  `FrameParameters::at()` re-walked an O(objects) offset list on every coefficient access, making
+  a frame O(objects²) — fixing it makes a 12-object Atmos decode **1.82x** faster under
+  `joc-domain=mdct` and **2.90x** under the default `joc-domain=qmf`; and `aht_bin_gaq_bits`
+  fully quantised six mantissas per candidate gain to read one integer off each, where the
+  codeword width follows from a single predicate — **1.70x** on `eac3_51_auto` whole-frame
+  encode. Both are pure bookkeeping changes with unchanged output. FMA3 was measured (~1%, and it
+  perturbs results) and declined; `-ffp-contract=off` stays pinned. See
+  [docs/building.md](docs/building.md)'s "Runtime AVX2 dispatch" and
+  [docs/performance-trend.md](docs/performance-trend.md)'s "Profile by source line, not by symbol".
 - **An encoder/decoder latency budget** (`PF6`) and **a minimum-footprint decoder profile**
   (`PF7`, `AC3FORGE_MINIMAL_DECODER`, cross-compiled and run on QEMU's Cortex-M3 target).
 

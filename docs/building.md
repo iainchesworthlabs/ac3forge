@@ -926,6 +926,54 @@ pipeline respectively), so whatever benefit the vectorised slice contributes is 
 of its caller at the per-call granularity this method can resolve. Those three stay SSE2/NEON-only;
 extending them to AVX2 would need proof of aggregate (not per-call) benefit first.
 
+### Batching across transforms, and where the transpose tax lands
+
+The kernels above widen operations *within* one transform. The follow-on phases took the other
+axis — running four INDEPENDENT same-size transforms in lockstep, one per SIMD lane — because
+the FFT core (`fft_kernel.hpp`) has no clean within-one-transform grouping to widen at all. It is
+templated on its arithmetic type (`typename VecType = double`), so the identical body serves the
+existing scalar instantiation and a new `f64x4` one; `imdct512_windowed_batch4` and
+`mdct512_forward_batch4` (`mdct.hpp`) are the batched entry points, used by JOC's object loop,
+JOC's bed analysis, and both encoders' per-channel loops. Each checks `has_avx2()` internally and
+falls back to four ordinary calls, so a caller only ever decides "are four ready to batch".
+
+**The batched inverse took three designs, and the reason is worth stating** because the first two
+look reasonable and both lost. A batched kernel needs its four objects interleaved; the caller
+holds them contiguous per object; so *something* must transpose, and the only question is what
+currency it is paid in. Paying inside the kernel with `f64x4::set` gathers and `lane0()..lane3()`
+extraction — several dependent instructions per four doubles, run 128 and 512 times a call — came
+out ~1% slower than the scalar path it replaced. Moving the interleaving out into the caller's own
+storage made the kernel faster but the caller ~8% slower, because its accumulation and overlap-add
+passes then strode one cache line per double (L1d misses roughly doubled across a decode); net
+~7% worse than the first attempt. Paying it in 4x4 block transposes at the kernel boundary
+(`transpose4x4`, `simd_avx2.hpp` — eight independent shuffles per sixteen doubles, both sides
+keeping their natural layout) is what finally won. At this transform size the arithmetic saved is
+small enough that the transpose's *form* decides the outcome, not its presence.
+
+**FMA3 was measured and declined.** Compiling the AVX2 kernels with `-mfma -ffp-contract=fast`
+fuses 46 instructions across both batch kernels, the twiddle stages and the FFT instantiations —
+an upper bound, since hand-written `_mm256_fmadd_pd` cannot beat what the optimiser already finds.
+It buys about **1%**. It also changes results: one of thirteen decoded object WAVs differed.
+Encoded bitstreams happened to match on the material tried, which is luck (the coefficient deltas
+quantised to the same mantissas), not a property. One percent does not justify retiring the
+cross-tier byte-identity gate or having a single binary emit different bitstreams depending on the
+CPU it lands on, so [Floating-point contraction](#floating-point-contraction) stays pinned.
+
+One trap for anyone re-running that experiment: **the `[avx2]` bit-exactness cases do not detect
+contraction.** They compare a batched kernel against `imdct512_windowed`, which also routes
+through AVX2 twiddle kernels — so with FMA enabled both sides fuse and still agree. They pass on
+an FMA build. Compare decoded PCM, not bitstream hashes.
+
+### What the transform work was actually worth
+
+Batching moved `joc_reconstruct_mdct_4obj` about 18% against the pre-batching scalar baseline, and
+a real 12-object `joc-domain=mdct` decode a few percent. Encode barely moved (−0.9% to −2.2%) for a
+reason worth recording: **the entire transform stack is only ~2.3% of an E-AC-3 encode profile**, so
+even a large multiple on it cannot show. Two later, non-SIMD changes each dwarfed all of it — see
+[Performance trend](performance-trend.md)'s note on profiling by source line. The transforms are
+now fully 256-bit (582 ymm register operands against 55 xmm in the AVX2 kernel object); the
+remaining cost in this codec is not in them.
+
 ## Floating-point contraction
 
 The project pins `-ffp-contract=off` (`/fp:precise` on MSVC, `/clang:-ffp-contract=off` on
