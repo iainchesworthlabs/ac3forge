@@ -1203,6 +1203,22 @@ jobs:
           merge_failed=0
           while IFS= read -r -d '' f; do
             rel="${f#arm64-runtime/}"
+            case "$rel" in
+              */_CodeSignature/*)
+                # ac3gui.app's Mach-O executables get ad-hoc code-signed at
+                # build time (Apple Silicon requires at least an ad-hoc
+                # signature to execute at all), which is what produces this
+                # bundle-level manifest - it hashes every file in the bundle
+                # AS IT STOOD on one architecture's build alone, so it is
+                # genuinely different content between the two builds, not a
+                # real divergence to fail on. It is also stale on both sides
+                # regardless of which one "wins" here, the moment any Mach-O
+                # file in the bundle gets lipo-merged below - "Re-sign the
+                # merged .app bundle" further down replaces it with a
+                # manifest computed against the actual merged content.
+                continue
+                ;;
+            esac
             a="arm64-runtime/$rel"
             x="x64-runtime/$rel"
             m="merged/$rel"
@@ -1254,6 +1270,38 @@ jobs:
             fi
           else
             echo "::warning::no ac3gui.app in the merged tree - CLI-only merge, nothing to verify there"
+          fi
+
+      # The merge above skipped ac3gui.app/Contents/_CodeSignature/* rather
+      # than fail on it (see that step's own comment) - which leaves the
+      # bundle carrying whichever architecture's original signature the
+      # rsync baseline happened to copy through, computed against THAT
+      # build's file content, not the merged one. codesign --deep walks in
+      # and re-signs every nested Mach-O (the merged ac3cli's own signature
+      # is untouched by lipo -create - it concatenates already-signed thin
+      # slices without altering their bytes, so this is about the bundle-level
+      # manifest, not the executables' own embedded signatures) and
+      # regenerates _CodeSignature/CodeResources against the real merged
+      # tree. "-" (ad-hoc, no certificate) is the only option available -
+      # DR6 (real Developer ID signing/notarization) is blocked on
+      # certificates this project does not have, same as every other macOS
+      # release artifact. Best-effort: codesign failing here would mean
+      # Gatekeeper's own signature check on the .app is no better/worse than
+      # before this step existed (it already refuses an ad-hoc/unsigned app
+      # outright - see the Homebrew Cask's own caveats), so it does not
+      # block the must-have .dmg below.
+      - name: Re-sign the merged .app bundle (ad-hoc)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "merged/ac3gui.app" ]; then
+            echo "no ac3gui.app in the merged tree - nothing to re-sign"
+            exit 0
+          fi
+          if codesign --force --deep --sign - "merged/ac3gui.app"; then
+            codesign --verify --deep --strict "merged/ac3gui.app" && echo "codesign: merged ac3gui.app verifies against its own (ad-hoc) signature"
+          else
+            echo "::warning::ad-hoc re-sign of the merged ac3gui.app failed - shipping it with a stale single-architecture signature instead. Gatekeeper already refuses an unsigned/ad-hoc app outright (see the Homebrew Cask's caveats and DR6), so this does not change what a downloader has to do to run it."
           fi
 
       # hdiutil, not cpack: CPack's DragNDrop generator only ever packages a
