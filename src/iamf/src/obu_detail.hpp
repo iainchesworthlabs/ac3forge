@@ -227,7 +227,8 @@ inline void put_loudness_info(Bytes& out, const LoudnessInfo& loudness) {
 // IAMF §3.7.3 Layout(): layout_type(2)=LOUDSPEAKERS_SS_CONVENTION(2) | sound_system(4) |
 // reserved(2)=0, packed into one byte.
 inline void put_loudspeakers_layout(Bytes& out, std::uint8_t sound_system) {
-    put_u8(out, static_cast<std::uint8_t>((2U << 6) | (sound_system << 2)));
+    const auto shifted = static_cast<unsigned int>(sound_system) << 2;
+    put_u8(out, static_cast<std::uint8_t>((2U << 6) | shifted));
 }
 
 [[nodiscard]] inline Bytes build_mix_presentation_obu_payload(std::uint64_t mix_presentation_id,
