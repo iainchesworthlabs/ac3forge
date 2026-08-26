@@ -113,7 +113,7 @@ compiling the same C++23 source this binding instead links as a black box). Thre
 3. **Reported, not changed: no enum in the header says whether it may gain new values in a
    future minor release.** This matters specifically for a strongly-typed binding — a Rust `enum`
    can't safely represent an FFI discriminant it doesn't recognize. `ac3forge::Error` is
-   deliberately open (`Error::Other(i32)`) for exactly this reason rather than a closed set that
+   deliberately open (`Error::Other(u32)`) for exactly this reason rather than a closed set that
    would have to panic or silently misreport on a value from a newer library. Not a header change
    — a design-philosophy question worth recording, not a bug.
 

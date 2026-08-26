@@ -36,7 +36,7 @@ pub enum Error {
     /// still gives a human-readable string for it (`"unknown status"` for a value the C library
     /// itself doesn't recognize either — see `src/capi/src/common.cpp`'s own fallback), so
     /// [`Error`]'s `Display` impl works for this variant exactly like every other one.
-    Other(i32),
+    Other(u32),
 }
 
 impl Error {
