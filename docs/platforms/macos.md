@@ -183,7 +183,7 @@ numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separ
 with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
 evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same
 toolchain now sit on opposite sides of the split, purely by CPU architecture. See `ci.yml`'s VX11
-comment and [ROADMAP.md](../../ROADMAP.md)'s VX11 entry for the fuller record.
+comment and [ROADMAP.md](../roadmap.md)'s VX11 entry for the fuller record.
 
 ---
 
