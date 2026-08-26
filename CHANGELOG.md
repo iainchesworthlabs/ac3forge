@@ -148,6 +148,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   the Android bridge's device-free paths.
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
+- **The block-switch decision's cross-toolchain determinism is proven, not assumed.** The
+  transient detector that decides `blksw` — which reshapes MDCT type, coupling/AHT eligibility
+  and rematrix bands every block, on both encoders — is verified bit-identical across five
+  independent compiler/architecture builds, and its decision is now pinned by tests at all six
+  A/52 sample rates instead of just one.
 
 ### Changed
 
