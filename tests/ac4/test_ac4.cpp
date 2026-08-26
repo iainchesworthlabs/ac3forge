@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -287,7 +288,8 @@ void write_ac4_single_empty_substream_index_table(BitWriter& w) {
 // single substream's *_info() element - i.e. everything after
 // write_ac4_object_coded_group_preamble()'s b_channel_coded=0 and before
 // the trailing b_content_type flag this function appends itself.
-ac4::RawFrame parse_wrapped_object_coded_group(void (*write_payload)(BitWriter&)) {
+ac4::RawFrame parse_wrapped_object_coded_group(
+    const std::function<void(BitWriter&)>& write_payload) {
     BitWriter w;
     write_ac4_object_coded_preamble(w);
     write_ac4_object_coded_group_preamble(w);
@@ -510,6 +512,43 @@ TEST_CASE("parse_oamd_substream_info via ac4_substream_group_info's b_oamd_subst
     REQUIRE(group.substreams.size() == 1);
     REQUIRE(group.substreams[0].obj.has_value());
     CHECK(group.substreams[0].obj->objects.empty());
+}
+
+TEST_CASE("read_bitrate_indicator: terminal and extended codes resolve distinctly", "[ac4]") {
+    // Table 90's own "Value of bitrate_indicator" bit-pattern column is
+    // ambiguous as a plain integer - the 3-bit terminal code 0b100 (24
+    // kbit/s) and the 5-bit extended code 0b00100 (32 kbit/s) are the same
+    // int once leading zeros are dropped. A lookup table keyed by that raw
+    // pattern (as this parser's first draft was) silently collapses both
+    // to whichever value the table implementation happens to keep for a
+    // duplicate key - proven here by checking that the two now resolve to
+    // their correct, DISTINCT brate_ind-mapped kbit/s values rather than
+    // both landing on the same one.
+    auto build = [](std::uint32_t code, int width) {
+        return [code, width](BitWriter& w) {
+            w.put(0, 1);  // b_oamd_substream = 0
+            w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
+            w.put(0, 3);  // n_objects_code (unused)
+            w.put(0, 1);  // b_dynamic_objects
+            w.put(0, 1);  // b_bed_objects
+            w.put(0, 1);  // b_isf
+            w.put(0, 4);  // res_bytes = 0
+            w.put(1, 1);  // b_bitrate_info
+            w.put(code, width);
+            w.put(0, 1);  // b_audio_ndot
+            w.put(0, 2);  // substream_index = 0
+        };
+    };
+
+    const auto terminal = parse_wrapped_object_coded_group(build(0b100, 3));  // 24 kbit/s
+    REQUIRE(terminal.toc.substream_groups[0].substreams[0].obj.has_value());
+    REQUIRE(terminal.toc.substream_groups[0].substreams[0].obj->bitrate_kbps.has_value());
+    CHECK(*terminal.toc.substream_groups[0].substreams[0].obj->bitrate_kbps == 24);
+
+    const auto extended = parse_wrapped_object_coded_group(build(0b00100, 5));  // 32 kbit/s
+    REQUIRE(extended.toc.substream_groups[0].substreams[0].obj.has_value());
+    REQUIRE(extended.toc.substream_groups[0].substreams[0].obj->bitrate_kbps.has_value());
+    CHECK(*extended.toc.substream_groups[0].substreams[0].obj->bitrate_kbps == 32);
 }
 
 TEST_CASE("parse_raw_frame refuses bitstream_version above 2", "[ac4]") {

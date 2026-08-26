@@ -326,21 +326,29 @@ void parse_presentation_config_ext_info(Reader& r) {
 
 // --- Table 90 (§4.3.3.7.5): bitrate_indicator -------------------------------
 
+// Returns Table 90's own brate_ind column (0..19) - NOT the raw "Value of
+// bitrate_indicator" bit pattern the table also lists, which is ambiguous
+// as a plain integer: the 3-bit terminal codes 0b100/0b110 (4/6) equal the
+// 5-bit extended codes 0b00100/0b00110 (also 4/6) once read into an int,
+// since leading zeros don't change a binary literal's value. A 3-bit code
+// with LSB 0 is terminal (brate_ind = v/2, 0-3); LSB 1 extends to 5 bits,
+// continuing the same sequence: prefix 001 -> 4-7, 011 -> 8-11, 101 ->
+// 12-15, 111 -> 16-19 (the last two prefixes are Table 90's own combined
+// "0b1X1XX (8 further values), Unlimited" row - deliberately absent from
+// bitrate_kbps() below, which reports them as unmapped).
 int read_bitrate_indicator(Reader& r) {
-    // A 3-bit code whose LSB is always 0; an odd 3-bit prefix extends to 5
-    // bits (the same variable-width shape channel_mode uses, with its own
-    // prefix set).
-    std::uint32_t v = r.bits(3);
-    if (v & 1) {
-        v = (v << 2) | r.bits(2);
+    const std::uint32_t v = r.bits(3);
+    if (!(v & 1)) {
+        return static_cast<int>(v / 2);
     }
-    return static_cast<int>(v);
+    const std::uint32_t extra = r.bits(2);
+    return static_cast<int>(4 + (v / 2) * 4 + extra);
 }
 
 std::optional<int> bitrate_kbps(int indicator) {
     static const std::unordered_map<int, int> kTable = {
-        {0b000, 16},   {0b010, 20},   {0b100, 24},   {0b110, 28},   {0b00100, 32}, {0b00101, 40},
-        {0b00110, 48}, {0b00111, 56}, {0b01100, 64}, {0b01101, 80}, {0b01110, 96}, {0b01111, 112},
+        {0, 16}, {1, 20}, {2, 24}, {3, 28}, {4, 32},  {5, 40},
+        {6, 48}, {7, 56}, {8, 64}, {9, 80}, {10, 96}, {11, 112},
     };
     const auto it = kTable.find(indicator);
     return it == kTable.end() ? std::nullopt : std::optional<int>(it->second);
