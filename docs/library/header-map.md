@@ -4,7 +4,8 @@ The headers a caller normally reaches for, and what lives in each. Not the compl
 `src/*/include/` — the pure table headers (`ac3/core/aht_tables.hpp`, `bitalloc_tables.hpp`,
 `oba/joc_tables.hpp`), the primitives the ones below are built out of (`ac3/core/crc16.hpp`,
 `fft.hpp`) and a handful of narrow internals are installed but nothing here discusses them
-directly.
+directly. See [API stability](api-stability.md) for which of the rows below (and which of those
+omitted internals) is actually part of the frozen surface once `v1.0.0` ships.
 
 | Header | Contents |
 |---|---|
@@ -36,7 +37,7 @@ directly.
 | `ac3/oba/motion.hpp` | `Keyframe`, `KeyframePath`, `OrbitPath`, `ObjectPath` (a `std::variant` of the two), `evaluate_placements`. The per-object layer: turns authored keyframes or a closed-form orbit into the `ObjectPlacement` span `AtmosEncoder::encode_frame` already took per-frame — a placement-generation layer in front of the existing API, not a change to it. Backs `ac3cli atmos`'s built-in orbit and `live`'s `atmos` mode. |
 | `ac3/oba/scene.hpp` | `ObjectScene`, `SceneObject`, `AutomationPoint`, `Interpolation`, `Orientation`, `SceneCursor`, `to_json`/`scene_from_json`, `to_keyframe_text`/`scene_objects_from_keyframe_text`, `read_scene`/`scene_from_text`. The scene layer above `motion.hpp`: named objects with a bed assignment and position/gain automation, explicit interpolation and ends-hold ramp semantics, a scene orientation applied to positions as metadata (never a render), a JSON serialised form, and a live cursor for a stream of updates. Backs `ac3cli atmos-path`/`atmos-encode`, the GUI's object-path export and the station-broadcast example. |
 | `ac3/emdf/emdf.hpp` | The TS 102 366 Annex H container. |
-| `ac3/sinks/iec61937.hpp` | S/PDIF burst packing and de-framing (AC-3 and E-AC-3) — the only `ac3/sinks/` header, and part of `ac3::forge` itself. |
+| `ac3/iec61937/iec61937.hpp` | S/PDIF burst packing and de-framing (AC-3 and E-AC-3), namespace `ac3::iec61937`; part of `ac3::forge` itself. Renamed from `ac3/sinks/` (AP2) so the directory matches the namespace it declares, like every other single-module directory in the tree. |
 | `ac3/audio/passthrough.hpp` | `PassthroughSink` — exclusive-mode/direct bitstream output, WASAPI on Windows, ALSA on Linux, CoreAudio on macOS. Part of `ac3::audio`, not `ac3::forge`: that target is not installed or exported (see [Using ac3::forge](index.md)), so this and the `ac3/audio/` rows below are in-tree only. |
 | `ac3/audio/monitor.hpp` | `MonitorSink` — shared-mode PCM playback (WASAPI/ALSA/CoreAudio, resampled and mixed like any other app), for previewing a decode without a bitstream-capable receiver. The non-exclusive counterpart to `PassthroughSink`. Backs `ac3cli monitor` and `live`'s monitor leg. |
 | `ac3/audio/capture.hpp`, `ring_buffer.hpp` | Live input/loopback capture — WASAPI on Windows, ALSA on Linux, CoreAudio on macOS (input-only: no loopback) — and the lock-free SPSC ring behind it. |

@@ -124,6 +124,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
 - [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
+- [API stability](api-stability.md) — the v1.0 freeze plan: header tiers, SemVer and deprecation
+  policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
   bindings and embedding (roadmap item F1).
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
@@ -136,8 +138,8 @@ These hold across the whole API.
 
 **Errors are `std::expected`.** Nothing throws for a stream-level or configuration problem.
 `FrameError` covers encoding, `DecodeError` decoding, `ScanError` scanning, `WavError` file
-I/O, `MuxError` muxing. `DecodeError`, `ScanError`, `WavError` and `MuxError` each have a
-`describe()` returning a `std::string_view`; `FrameError` does not.
+I/O, `MuxError` muxing. Every error type in the library, including `FrameError`, has a
+`describe()` returning a `std::string_view` (AP2).
 
 **Audio is `float`, nominally in [-1, 1).** Internally the transform runs in `double`.
 
@@ -187,3 +189,20 @@ them carry (`EncoderConfig::trace`, `DecoderConfig::trace`/`eac3_trace`/
 instrumentation headers, not part of the frozen public surface themselves —
 adding, removing or retyping one of those pointers is not a promise this
 convention covers.
+
+**`ac3::joc` is deliberately not `ac3::oba`.** `ac3::oba` holds this project's own
+object-based-audio concepts — `AtmosEncoder`, OAMD metadata, the `ObjectScene` timeline, keyframe
+motion — all Dolby/Atmos-specific and meaningless outside that embedding. `ac3::joc`
+(`ac3/oba/joc.hpp`, `joc_tables.hpp`) implements ETSI TS 103 420's Joint Object Coding tool on its
+own terms: a downmix-to-objects reconstruction any codec's bitstream could carry, not something
+this project invented or that is bound to E-AC-3/Atmos specifically. The split is codec-blind
+(`joc`) versus codec/vendor-specific (`oba`), not a naming oversight (AP2) — `joc.hpp` sharing the
+`oba/` directory is the one loose end worth naming, a directory-of-convenience since nothing else
+currently reaches for the tool, not a reason to fold the namespace into `oba`.
+
+**`ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` share a bare class name on purpose.** Each is
+qualified by its codec's namespace, and there is no third, unqualified `FrameEncoder` for either
+to be confused with — code naming both in one translation unit already writes `ac3::FrameEncoder`
+against `ac3::eac3::FrameEncoder`, which reads unambiguously without an alias. A rename was
+considered and declined (AP2): reopening the two classes now would undo the naming AP3 just
+finished pimpl'ing them under.

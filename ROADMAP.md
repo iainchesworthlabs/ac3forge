@@ -1094,23 +1094,38 @@ directory; there is still no threading anywhere in the codec core.
 
 ## AP. Library surface, bindings and v1.0
 
-- [ ] **AP1 (L)** — API freeze → v1.0.0 (was `F5`). The mechanical pieces exist (`version.hpp`,
-  `SameMajorVersion`, the C `_config_init` convention); the decisions do not. A public/internal
-  boundary: all 43 headers under `ac3/` are documented as API, including `ac3/core/`'s
-  bit-reader, bit-allocation, exponent, mantissa and FFT internals, and five public headers carry
-  a `namespace detail`. A written SemVer and deprecation policy: `AC3FORGE_DEPRECATED` is
-  generated and never used, and "deprecat" has zero hits across `docs/`. `SOVERSION` from the
-  full version to the major in all eight library `CMakeLists.txt`; an inline namespace;
-  compile-time version macros in `ac3forge.h` (only the runtime `ac3forge_version()` exists); a
-  growth story for the C config structs; a policy for experimental modules (IM5, any `iamf::` or
-  `ac4::`) so they never enter the frozen surface; release criteria against the standing Known
-  gaps; and a cadence/governance statement — the vcpkg reviewer cited "all releases are
-  prereleases" alongside the maturity rule.
-- [ ] **AP2 (M)** — Naming and error-type sweep before the freeze. `ac3/oba/joc.hpp` declares
-  `ac3::joc`, not `ac3::oba`; `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` share a name
-  across namespaces; `iec61937` lives under `sinks/`; `FrameError` has no `describe()` while every
-  other error type does (a Python `Ac3EncodeError`'s message is the enumerator's name). Record
-  the codec-vs-codec-blind namespace split in `docs/library/index.md`.
+- [ ] **AP1 (L)** — API freeze → v1.0.0 (was `F5`). ~~the decisions do not [exist]~~ they're now
+  written down in [docs/library/api-stability.md](docs/library/api-stability.md): every header
+  under `ac3/` gets a Public/Internal/Diagnostic/Experimental tier (the `ac3/core/` bit-reader,
+  bit-allocation, exponent, mantissa and FFT internals are Internal; `ac3iab` is Experimental
+  until `IM1` finishes; the five `namespace detail` headers are unaffected by tier — nothing in
+  `detail` is ever covered regardless); a SemVer and deprecation policy (`DEFINE_NO_DEPRECATED`
+  stays until `v1.0.0`, then drops from all nine libraries' `generate_export_header()` calls);
+  a C config struct growth policy (major bump or an additive `_v2` sibling, no size-sentinel
+  scheme); release criteria against the standing Known gaps; and a cadence/governance statement
+  answering the vcpkg reviewer's "all releases are prereleases" maturity note with a written
+  criteria list instead of an implicit "not yet." Compile-time version macros landed for real:
+  `AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`
+  (generated from a new `version.h.in`), tested against the runtime `ac3forge_version()` in
+  `tests/capi/test_capi.cpp`. Still open, both deliberately deferred to the `v1.0.0` cut itself
+  rather than done now (see the page's own reasoning): flipping `SOVERSION` from the full version
+  to the major component across all nine `CMakeLists.txt`, and introducing `inline namespace v1`
+  for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from advisory to
+  required, so a real break can't slip through the gap between promising compatibility and
+  actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
+  criteria rather than a separate, unlinked concern.
+- [x] **AP2 (M)** — Naming and error-type sweep before the freeze. Done: `FrameError` now has a
+  `describe()` (`silent_frame.hpp`/`encoder.cpp`), same shape as every sibling error type — a
+  Python `Ac3EncodeError`'s message is real spec-level text instead of the enumerator's own name,
+  and `ac3.describe()` gained a `FrameError` overload alongside its existing `DecodeError` one.
+  `iec61937` moved from `ac3/sinks/`/`src/sinks/` into its own `ac3/iec61937/`/`src/iec61937/`, so
+  the directory matches the namespace it declares like every other single-module directory (24
+  include/build-file references updated). `ac3::joc` staying separate from `ac3::oba`, and
+  `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder` sharing a bare name, were both decided rather than
+  changed: the former is a deliberate codec-blind-tool-vs-Dolby-specific split, the latter would
+  have undone `AP3`'s pimpl naming for a collision that doesn't actually exist (no unqualified
+  third `FrameEncoder` either name could be confused with) — both decisions and their reasoning
+  are recorded in `docs/library/index.md`'s Conventions section per this item's own instruction.
 - [x] **AP3 (L)** — Pimpl sweep. Done: every `AC3FORGE_EXPORT` class with non-trivial state now
   hides it behind `struct Impl; std::unique_ptr<Impl> impl_;`, the same pattern the three WAV
   classes already used — `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` (finished from their

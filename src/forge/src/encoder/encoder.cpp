@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "ac3/core/bitalloc.hpp"
@@ -36,6 +37,38 @@
 #include "snr_search.hpp"
 
 namespace ac3 {
+
+// Each case mirrors the comment already on that enumerator in silent_frame.hpp.
+std::string_view describe(FrameError error) {
+    switch (error) {
+        case FrameError::kInvalidBitrate:
+            return "the bitrate is not one of the legal encoded rates for this stream, or none "
+                   "in the requested quality window can hold it";
+        case FrameError::kInvalidDialnorm:
+            return "dialnorm is outside A/52's 1-31 range (§5.4.2.8) - 0 is reserved";
+        case FrameError::kInvalidSubstream:
+            return "a substream's strmtyp/substreamid is out of range, an access unit has more "
+                   "than eight dependents, or a dependent disagrees with its parent on sample "
+                   "rate";
+        case FrameError::kInvalidChannelMap:
+            return "the channel locations a chanmap names do not add up to the channels the "
+                   "substream's acmod and lfeon actually code (A/52 §E2.3.1.8)";
+        case FrameError::kTooManyChannels:
+            return "the bed and its dependents together render more than sixteen distinct Table "
+                   "E2.5 locations, the whole-programme ceiling A/52 §E3.8.2 states";
+        case FrameError::kInvalidMixLevel:
+            return "a mixing-metadata field would go out as a reserved code (Tables D2.4 and "
+                   "D2.6 reserve three of the eight surround levels) or out of range";
+        case FrameError::kInvalidObjectAudio:
+            return "aux user data is longer than auxdatal's 14 bits can measure (§5.4.4.2), or "
+                   "an object count is outside what TS 103 420 §8.3.2.2 allows in addbsi";
+        case FrameError::kInvalidBsi:
+            return "a bit stream information field would not fit the bits §5.4.2 / Table E1.2 "
+                   "gives it, or the config asked for two things the syntax cannot carry at once "
+                   "- Annex D's xbsi groups and a time code, which occupy the same 28 bits (§D1)";
+    }
+    return "unknown frame error";
+}
 
 namespace {
 

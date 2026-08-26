@@ -89,6 +89,19 @@ target_compile_definitions(forge_c_static PUBLIC AC3FORGEC_STATIC_DEFINE)
 # exactly like from a .cpp one. ac3forge.h's own extern "C" block (guarded on
 # __cplusplus) is what actually matters for C linkage, not this header.
 
+# Compile-time version macros (AP1) - a plain configure_file rather than
+# GenerateVersion.cmake's restamp-every-build machinery, since PROJECT_VERSION
+# only changes on a reconfigure anyway (unlike the git provenance
+# ac3/version.hpp also carries, which this header does not need).
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" AC3FORGEC_VERSION_MATCH "${PROJECT_VERSION}")
+set(AC3FORGEC_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(AC3FORGEC_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(AC3FORGEC_VERSION_PATCH "${CMAKE_MATCH_3}")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/ac3forge_c/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3forge_c/version.h"
+    @ONLY)
+
 set_target_properties(forge_c_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"
     SOVERSION "${PROJECT_VERSION}")

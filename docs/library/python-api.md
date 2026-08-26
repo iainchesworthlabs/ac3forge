@@ -163,11 +163,9 @@ does not need to import wholesale).
 | `ac3.Ac3EncodeError` | `FrameEncoder.encode_frame`, `AtmosEncoder.encode_frame`, `ac3.eac3.FrameEncoder.encode_frame`, `ac3.eac3.AccessUnitEncoder.encode_access_unit` | `ac3.FrameError` |
 | `ac3.Ac3DecodeError` | `FrameDecoder.decode_frame`, `Eac3Decoder.decode_substream`/`decode_access_unit`, `ac3.split_frames`/`split_access_units`/`stream_bsid` | `ac3.DecodeError` |
 
-Both derive from `ac3.Ac3Error(RuntimeError)`. `ac3.FrameError` has no C++-side `describe()`
-(see [docs/library/index.md](index.md#conventions)'s own note — some codec-level failures never
-got a text description on the C++ side either), so an `Ac3EncodeError`'s message is the
-enumerator's own name; `ac3.DecodeError` does have one (`ac3.describe`), so an `Ac3DecodeError`'s
-message is real spec-level text.
+Both derive from `ac3.Ac3Error(RuntimeError)`. Both `ac3.FrameError` and `ac3.DecodeError` have a
+C++-side `describe()` (see [docs/library/index.md](index.md#conventions)), so an `Ac3EncodeError`'s
+and an `Ac3DecodeError`'s message is real spec-level text, not the enumerator's own name.
 
 A wrong-length channel array (not `ac3.SAMPLES_PER_FRAME` samples) raises a plain `ValueError`
 instead — that is a Python-level usage error, not a codec-level failure the C++ side can report at

@@ -14,7 +14,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0, both decoders gain a
 consumer output stage, all three containers become readable as well as writable, and the
-verification estate extends to E-AC-3. The repository also moved to trunk-based development.
+verification estate extends to E-AC-3. The repository also moved to trunk-based development, and
+a concrete API-freeze plan for v1.0 now exists.
 
 ### Added
 
@@ -148,6 +149,16 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   the Android bridge's device-free paths.
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
+- **`FrameError` gained a `describe()`**, the same shape every sibling error type already had — a
+  Python `Ac3EncodeError`'s message was previously just the enumerator's own name (`FrameError.
+  kInvalidBitrate`), now real spec-level text; `ac3.describe()` gained a matching `FrameError`
+  overload alongside its existing `DecodeError` one. The C API gained a compile-time version:
+  `AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`,
+  alongside the existing runtime-only `ac3forge_version()`. Part of `AP2`'s naming/error-type
+  sweep and `AP1`'s API-freeze groundwork — see
+  [docs/library/api-stability.md](docs/library/api-stability.md) for the full v1.0 stability plan
+  this begins: header tiers, a SemVer/deprecation policy, and what's still deliberately deferred
+  to the `v1.0.0` cut itself (`SOVERSION`, an ABI-tagging inline namespace).
 
 ### Changed
 
@@ -171,6 +182,9 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   parameters. See [CONTRIBUTING.md](CONTRIBUTING.md) and
   [branch protection](.github/branch-protection.md). The trend pages still show two tracks so
   historical data stays visible; reworking them for a single track is separate follow-up work.
+- **`ac3::iec61937` moved from `ac3/sinks/`/`src/sinks/` to its own `ac3/iec61937/`/
+  `src/iec61937/`**, so the directory matches the namespace it declares like every other
+  single-module directory in the tree (`AP2`).
 - **ROADMAP.md was rebuilt** for the post-0.9.0 state.
 - Internal: `std::format`/`std::print` replaced with {fmt} throughout, since the NDK's libc++ has
   no usable `<format>`; the WASM demo plays the library's own downmix rather than a hand-rolled

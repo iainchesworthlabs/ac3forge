@@ -166,7 +166,7 @@ target_sources(forge_objects
         src/oba/scene_text.cpp
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
-        src/sinks/iec61937.cpp
+        src/iec61937/iec61937.cpp
         src/spatial/spatial.cpp
         src/verify/eac3_mirror.cpp
         src/verify/eac3_selfcheck.cpp
