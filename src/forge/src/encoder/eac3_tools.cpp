@@ -263,12 +263,47 @@ double aht_dequantize_mantissa(std::uint32_t code, std::uint32_t escape, bool ha
 
 int aht_bin_gaq_bits(std::span<const double, kBlocksPerFrameSize> values,
                      int mantissa_bits, int gain) {
-    int bits = 0;
-    for (const double value : values) {
-        const auto code = aht_quantize_mantissa(value, mantissa_bits, gain);
-        bits += code.bits + code.escape_bits;
+    // Only the WIDTH of each codeword is wanted here, never the codeword, its
+    // reconstruction or its escape payload - and the width follows from one
+    // predicate per value, not from quantizing it. Spelling that out matters
+    // because aht_choose_gain calls this once per candidate gain and was
+    // therefore running a full aht_quantize_mantissa (clamp, mask, two
+    // divisions for `recon`) three times over for every value, to read one
+    // integer off each result. Measured before this: aht_quantize_mantissa
+    // was ~38% of an E-AC-3 encode profile, eac3_tools.cpp ~43%.
+    //
+    // Every branch of aht_quantize_mantissa below agrees with this by
+    // construction - see the widths it assigns:
+    //   gain == 1        -> bits = mantissa_bits, escape_bits = 0 (always)
+    //   otherwise, small -> bits = small_bits,    escape_bits = 0
+    //   otherwise, large -> bits = small_bits,    escape_bits = large_bits
+    // so the total is a fixed part plus large_bits per escape.
+    const int n = static_cast<int>(values.size());
+
+    // Unity gain has no escape path at all: its branch returns before
+    // escape_bits is ever set, whatever the value. The total is a constant
+    // and the values need not be read.
+    if (gain == 1) {
+        return n * mantissa_bits;
     }
-    return bits;
+
+    const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
+    const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
+    const int small_half = 1 << (small_bits - 1);
+
+    // The escape predicate, transcribed exactly from aht_quantize_mantissa's
+    // own `small` computation and its `std::abs(small) < small_half` test -
+    // identical operations on identical values, so the count, and therefore
+    // this function's result, is bit-for-bit what the quantizing form
+    // returned.
+    int escapes = 0;
+    for (const double value : values) {
+        const auto small = static_cast<int>(std::lround(value * small_half * gain));
+        if (std::abs(small) >= small_half) {
+            ++escapes;
+        }
+    }
+    return (n * small_bits) + (escapes * large_bits);
 }
 
 int aht_choose_gain(std::span<const double, kBlocksPerFrameSize> values,

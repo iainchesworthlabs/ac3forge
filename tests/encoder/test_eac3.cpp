@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <numbers>
 #include <numeric>
+#include <random>
 #include <ranges>
 #include <span>
 #include <utility>
@@ -605,6 +606,14 @@ TEST_CASE("GAQ bit accounting matches what it emits", "[eac3][aht][gaq]") {
     // The rate search sizes the frame from aht_bin_gaq_bits and the packer
     // emits from aht_quantize_mantissa. If those two ever disagree the frame
     // is the wrong size, so they are checked against each other directly.
+    //
+    // This became a REAL cross-check when aht_bin_gaq_bits stopped quantizing:
+    // it now derives each codeword's width from the escape predicate alone
+    // (that is the whole point - the quantizing form was ~38% of an encode
+    // profile), so the two sides no longer share an implementation the way
+    // they did when one simply called the other. The randomised sweep below
+    // exists for that reason, and leans on the escape boundary at |value| =
+    // 1/gain, which is exactly where the two could disagree.
     const std::array<std::array<double, 6>, 4> cases{{
         {0.9, 0.1, -0.05, 0.02, -0.3, 0.6},   // one large, mostly small
         {0.02, -0.01, 0.03, 0.0, -0.02, 0.01},  // all small
@@ -625,6 +634,37 @@ TEST_CASE("GAQ bit accounting matches what it emits", "[eac3][aht][gaq]") {
             }
         }
     }
+
+    // Randomised, plus values placed deliberately either side of the escape
+    // boundary - a mismatch anywhere here means the frame is mis-sized.
+    std::mt19937_64 rng(0x67617120'62697473ULL);
+    std::uniform_real_distribution<double> spread(-1.5, 1.5);
+    std::size_t mismatches = 0;
+    for (int hebap = 8; hebap <= 19; ++hebap) {
+        const int m = aht_mantissa_bits(hebap);
+        for (const int gain : {1, 2, 4}) {
+            const double boundary = 1.0 / gain;
+            std::uniform_real_distribution<double> edge(boundary - 0.02, boundary + 0.02);
+            for (int trial = 0; trial < 400; ++trial) {
+                std::array<double, 6> values{};
+                for (std::size_t j = 0; j < values.size(); ++j) {
+                    // Half the trials sit on the boundary, half range freely;
+                    // signs alternate so both wrap directions are covered.
+                    const double v = (trial % 2 == 0) ? edge(rng) : spread(rng);
+                    values[j] = (j % 2 == 0) ? v : -v;
+                }
+                int emitted = 0;
+                for (const double value : values) {
+                    const auto code = aht_quantize_mantissa(value, m, gain);
+                    emitted += code.bits + code.escape_bits;
+                }
+                if (emitted != aht_bin_gaq_bits(values, m, gain)) {
+                    ++mismatches;
+                }
+            }
+        }
+    }
+    CHECK(mismatches == 0);
 }
 
 TEST_CASE("GAQ gain words are counted the way they are packed",
