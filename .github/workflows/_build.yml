@@ -1290,6 +1290,19 @@ jobs:
       # before this step existed (it already refuses an ad-hoc/unsigned app
       # outright - see the Homebrew Cask's own caveats), so it does not
       # block the must-have .dmg below.
+      #
+      # Observed for real, not hypothetical: the first proven run
+      # (v0.0.0-alpha.2 dry run) hit exactly this fallback - codesign
+      # refused with "bundle format is ambiguous (could be app or
+      # framework)" on ac3gui.app/Contents/Frameworks/QtQuickControls2.framework,
+      # one of Qt's own bundled frameworks, not anything this project
+      # controls the layout of. The runtime .dmg still built and shipped
+      # from the same run with a merged, lipo-verified ac3cli/ac3gui/QtCore
+      # (confirmed via lipo -info in that job's log) - only the bundle-level
+      # signature stayed stale. Worth another look if it turns out to matter
+      # in practice; not chased further here since there is no real Mac to
+      # confirm a fix against, and Gatekeeper blocks this app either way
+      # until DR6 lands.
       - name: Re-sign the merged .app bundle (ad-hoc)
         shell: bash
         run: |
@@ -1339,6 +1352,14 @@ jobs:
       # the must-have half of this job - see docs/releasing.md's "What gets
       # published" for why library/libruntime are a secondary download even
       # on a single-arch build.
+      # No if-no-artifact-found here: the pinned SHA below predates that
+      # input (confirmed for real - v0.0.0-alpha.2's dry run logged
+      # "Unexpected input(s) 'if-no-artifact-found'" and listed the actual
+      # supported set, which does not include it). continue-on-error at the
+      # step level is what actually keeps a genuinely-missing artifact from
+      # failing this job; the next step's own directory check below is what
+      # decides "found" vs "missing" either way, so the input was redundant
+      # even before this.
       - name: Download arm64/x64 dev install trees
         id: download_dev
         continue-on-error: true
@@ -1347,7 +1368,6 @@ jobs:
           pattern: macos-install-dev-*
           path: dev
           merge-multiple: false
-          if-no-artifact-found: warn
 
       - name: lipo-merge and package the dev trees
         continue-on-error: true
@@ -1356,9 +1376,9 @@ jobs:
           VERSION_TAG_INPUT: ${{ inputs.version_tag }}
         run: |
           set -euo pipefail
-          # if-no-artifact-found: warn above means a missing artifact does not
-          # fail the download step, so check for the actual directories here
-          # rather than trusting the previous step's outcome.
+          # continue-on-error above means a failed/missing download does not
+          # stop this step from running, so check for the actual directories
+          # here rather than trusting the previous step's outcome.
           if [ ! -d dev/macos-install-dev-arm64 ] || [ ! -d dev/macos-install-dev-x64 ]; then
             echo "::warning::one or both dev install trees are missing - skipping the best-effort dev archive (see the runtime .dmg above for the must-have release artifact)"
             exit 0
