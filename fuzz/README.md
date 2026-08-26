@@ -626,7 +626,7 @@ gitignored; `fuzz/run.sh` creates it on demand.
 `.github/workflows/fuzz.yml`:
 
 - `fuzz-regress` - replays `fuzz/seeds/` + `fuzz/regressions/` with no
-  mutation, on every push/PR to `main`/`develop`. Seconds, not minutes, and
+  mutation, on every push/PR to `main`. Seconds, not minutes, and
   not marked experimental: a failure here means a previously-fixed bug came
   back, which should always be loud.
 - `fuzz-short` - a 60-second-per-harness mutation budget over the crash-only

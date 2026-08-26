@@ -17,6 +17,17 @@ Modes:
   eac3       - our E-AC-3 encoder, one row per Annex E tool set, vs FFmpeg's
                E-AC-3 encoder, at the low rates the tools exist to serve
   eac3-51    - the same for 5.1, with genuinely decorrelated channels
+  fgaincod   - roadmap EQ7's E-AC-3 half: whether §7.2.2.4's measured
+               fast-gain curve still wins once E-AC-3 charges for the
+               per-block fgaincode element §8.2.12's implied 0x4 avoids.
+               Five legs a rate: the default, the default pinned
+               explicitly (a byte-identical zero-noise control), the curve,
+               and search=distortion with fgaincod pinned and free - the
+               last pair separating what EQ7's second axis adds from what
+               EQ13's one-axis search was already worth. Scored per time
+               window, so every delta carries a paired standard error. `--with-51` adds the coupled
+               5.1 legs on synthetic material; `--json-out PATH` writes the
+               rows. See race_fgaincod().
   vbr        - the E-AC-3 rate-distortion curve VBR shipped without: sweeps
                VbrConfig.quality, measures what rate each point actually
                costs, and scores CBR and FFmpeg CBR at that same measured
@@ -658,6 +669,221 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
         print()
 
 
+# --- EQ7: does the fast-gain curve survive E-AC-3's side-info bill? ------------
+#
+# AC-3 has followed a measured fgaincod curve since 0.7.0 because it costs
+# nothing there: §7.2.2.4's fast gain rides the snroffst element AC-3 already
+# sends every block. E-AC-3's baie does not carry fgaincod at all, so any code
+# other than Table E1.4's implied 0x4 opens a separate per-block fgaincode
+# element in ALL SIX blocks - 1 + 3*(nchans + cplinu) bits each - paid out of
+# the mantissa budget. Whether the better masking curve is worth that is a
+# measurement, which is what this mode is.
+#
+# Five legs per rate:
+#
+#   auto      - the shipped default: no element, implied 0x4. The baseline.
+#   pin-0x4   - fgaincod=4 explicitly. Byte-identical to `auto` BY
+#               CONSTRUCTION - encode_frame only sets frmfgaincode when the
+#               pinned code differs from §8.2.12's, so stating 0x4 writes no
+#               element either. It is carried as a control anyway, and it is
+#               the most useful row in the table for reading the rest: every
+#               one of its deltas must come out exactly 0.000, which is the
+#               proof that encode -> FFmpeg decode -> align -> score has no
+#               run-to-run noise at all. Any non-zero delta elsewhere is
+#               therefore signal, not scatter. (What it is NOT is a
+#               cost-only control - there is no way to buy the element
+#               without also changing the code, so the side-info bill is
+#               priced arithmetically instead: 1 + 3*(nchans + cplinu) bits a
+#               block, six blocks, against the frame's own bit count.)
+#   pin-N     - fgaincod pinned at rate_adaptive_fgaincod's own value for
+#               this rate. (pin-N - auto) is the curve's benefit NET of the
+#               element it had to open to get there, which is the question.
+#   search-1ax- search=distortion with fgaincod pinned at the default, which
+#               takes it out of the candidate set: exactly the one-axis
+#               dbpbcod-only search EQ13 shipped, and the thing roadmap EQ8
+#               recorded as not moving the stereo/192 cell.
+#   search-2ax- search=distortion left to move both axes, refitting each
+#               candidate against its own side-info cost. The per-frame
+#               answer, and (search-2ax - search-1ax) is what EQ7 added to
+#               EQ13 rather than what EQ13 was already worth.
+#
+# Every metric is reported per WINDOW, not once per file (see
+# window_profile): the encoder here is deterministic - encoding the same WAV
+# twice is byte-identical, so there is no run-to-run noise to average out -
+# but 30 s of programme material is not homogeneous, and a MOS-LQO scored on
+# one 4 s slice of it is one sample of a distribution. Differences are taken
+# PAIRED, window by window against the baseline's same window, so the spread
+# reported alongside each delta is the spread of the DIFFERENCE and not the
+# much larger spread of the material.
+FGAINCOD_RATES = (96, 128, 192, 256, 448, 640)
+# 5.1 with coupling, where the element is at its most expensive: five
+# full-bandwidth channels plus the LFE and the coupling channel is 22 bits a
+# block, 132 a frame - about 1.1% of a 384 kbit/s frame against about 0.4% of
+# a 192 kbit/s stereo one.
+FGAINCOD_RATES_51 = (384, 640)
+FGAINCOD_WINDOWS = 5
+
+
+def rate_adaptive_fgaincod(kbps, nfchans):
+    """ac3::rate_adaptive_fgaincod (src/forge/src/core/bitalloc.cpp), mirrored.
+
+    Deliberately a second copy of the line rather than a number typed per
+    row: this mode exists to pin the code the ENCODER would have chosen, so
+    if that line ever moves the table has to move with it. Truncation is
+    toward zero to match C++ integer division, which matters on every leg
+    where the numerator goes negative (any rate above 128 kbit/s per channel)
+    before the clamp catches it.
+    """
+    per_channel = kbps // max(nfchans, 1)
+    numerator = (128 - per_channel) * 7 + 90 // 2
+    quotient = abs(numerator) // 90
+    return max(0, min(7, quotient if numerator >= 0 else -quotient))
+
+
+def window_profile(o, d, rate=RATE, windows=FGAINCOD_WINDOWS):
+    """SNR/LSD/MOS per disjoint MOS_WINDOW_S span, evenly tiled across o/d.
+
+    Returns three lists of equal length. MOS entries are None wherever
+    perceptual_score declined (see its docstring) - callers pair the lists
+    positionally, so a hole stays a hole rather than shifting the pairing.
+
+    Half a second is dropped from each end before tiling: align()'s own
+    leading trim varies by a handful of samples between calls, and a
+    fixture's very start is the most likely place to find a fade-in.
+    """
+    span = int(MOS_WINDOW_S * rate)
+    margin = rate // 2
+    n = min(len(o), len(d))
+    usable = max(n - 2 * margin, span)
+    count = max(1, min(windows, usable // span))
+    chunk = usable // count
+    snrs, lsds, moses = [], [], []
+    for i in range(count):
+        start = margin + i * chunk + (chunk - span) // 2
+        ow, dw = o[start:start + span], d[start:start + span]
+        # float(), not the np.float32 these come back as: read_wav_f32 hands
+        # back float32, so every reduction over it stays float32 - and a
+        # float32 is not JSON serialisable, which --json-out finds only after
+        # the whole (long) sweep has already run.
+        snrs.append(float(10 * np.log10(np.sum(ow**2) / max(np.sum((dw - ow) ** 2), 1e-30))))
+        lsds.append(float(spectral_scores(ow, dw)[0]))
+        mos = perceptual_score(ow, dw, rate=rate)
+        moses.append(None if mos is None else float(mos))
+    return snrs, lsds, moses
+
+
+def paired_delta(leg, base):
+    """Mean and standard error of the paired per-window difference.
+
+    Pairs positionally and skips any window where either side is None, which
+    is the only way a MOS list here has holes. (None, None) when nothing
+    pairs at all, so a row prints "-" rather than inventing a zero.
+    """
+    # strict=True: every leg at a rate is scored by the same window_profile
+    # over the same-length overlap, so a length mismatch would mean the
+    # pairing had silently drifted - which is the one failure this whole
+    # paired treatment cannot survive, and so is worth raising over.
+    pairs = [a - b for a, b in zip(leg, base, strict=True)
+             if a is not None and b is not None]
+    if not pairs:
+        return None, None
+    mean = float(np.mean(pairs))
+    if len(pairs) < 2:
+        return mean, None
+    return mean, float(np.std(pairs, ddof=1) / math.sqrt(len(pairs)))
+
+
+def _fmt_delta(mean, sem, width=13, places=3):
+    if mean is None:
+        return f"{'-':>{width}}"
+    text = f"{mean:+.{places}f}"
+    if sem is not None:
+        text += f"+-{sem:.{places}f}"
+    return f"{text:>{width}}"
+
+
+def fgaincod_legs(kbps, nfchans):
+    """(label, extra CLI token) per leg, with the curve's own value resolved.
+
+    pin-N drops out wherever the curve lands back on §8.2.12's own code -
+    which it does at 5.1/384, 76 kbit/s a channel - because there it IS
+    pin-0x4: the encoder writes no element for either, so a second identical
+    row would only pad the table. The rate still has a real answer, and it is
+    "the curve asks for nothing here", which the curve_fgaincod column says.
+    """
+    curve = rate_adaptive_fgaincod(kbps, nfchans)
+    legs = [("auto", None), ("pin-0x4", "fgaincod=4")]
+    if curve != 4:
+        legs.append((f"pin-{curve}", f"fgaincod={curve}"))
+    # fgaincod=4 alongside search= is not redundant with pin-0x4: it pins the
+    # code, which is what takes it out of the search's candidate set (see
+    # eac3_frame.cpp's `config_.fgaincod < 0` guard), leaving dbpbcod as the
+    # only axis. That is the shipped one-axis search, reproduced here as the
+    # control the two-axis row is actually measured against.
+    legs.append(("search-1ax", "search=distortion fgaincod=4"))
+    legs.append(("search-2ax", "search=distortion"))
+    return legs, curve
+
+
+def race_fgaincod(original, source, seconds, rates=FGAINCOD_RATES, tools="none",
+                  layout="stereo", nfchans=2, json_out=None, rows=None):
+    rows = [] if rows is None else rows
+    print(f"{'kbps':>5} | {'leg':<10} | {'SNR dB':>7} | {'dSNR':>13} | {'LSD dB':>6} | "
+          f"{'dLSD':>13} | {'MOS':>5} | {'dMOS':>13} | {'rate':>6}")
+    print("-" * 100)
+    for kbps in rates:
+        legs, curve = fgaincod_legs(kbps, nfchans)
+        base = None
+        for label, extra in legs:
+            coded = BUILD / f"race_fg_{layout}_{tools}_{label}_{kbps}.ec3"
+            cmd = [CLI, "eac3-encode", str(source), str(coded), str(kbps), tools, layout]
+            if extra:
+                # split(): a leg may carry more than one token (search-1ax is
+                # search= and fgaincod= together), and argv entries never
+                # contain spaces here.
+                cmd.extend(extra.split())
+            run(cmd)
+            wav = BUILD / f"race_fg_{layout}_{tools}_{label}_{kbps}.wav"
+            # FFmpeg throughout, and with the strict reader on: the point of
+            # this table is a comparison of ENCODERS, so the decoder has to be
+            # one constant. Its own Annex E parser does read Table E1.4's
+            # fgaincode element - verified before this mode was written, by
+            # decoding a pinned stream both ways and finding 63-66 dB
+            # agreement with this project's own decoder, which is the §7.3.4
+            # dither floor rather than an allocation divergence.
+            run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
+                 "crccheck+bitstream+buffer+explode", "-i", str(coded),
+                 "-c:a", "pcm_f32le", str(wav)])
+            o, d, _ = align(original, read_wav_f32(wav))
+            snrs, lsds, moses = window_profile(o, d)
+            if base is None:
+                base = (snrs, lsds, moses)
+            dsnr = paired_delta(snrs, base[0])
+            dlsd = paired_delta(lsds, base[1])
+            dmos = paired_delta(moses, base[2])
+            scored = [m for m in moses if m is not None]
+            rate = measured_kbps(coded, seconds)
+            print(f"{kbps:>5} | {label:<10} | {float(np.mean(snrs)):>7.2f} | "
+                  f"{_fmt_delta(*dsnr)} | {float(np.mean(lsds)):>6.2f} | "
+                  f"{_fmt_delta(*dlsd)} | "
+                  f"{(f'{np.mean(scored):.2f}' if scored else '-'):>5} | "
+                  f"{_fmt_delta(*dmos)} | {rate:>6.1f}")
+            rows.append({"layout": layout, "tools": tools, "kbps": kbps, "leg": label,
+                         "curve_fgaincod": curve, "windows": len(snrs),
+                         "snr_db": snrs, "lsd_db": lsds, "mos": moses,
+                         "d_snr_db": dsnr[0], "d_snr_sem": dsnr[1],
+                         "d_lsd_db": dlsd[0], "d_lsd_sem": dlsd[1],
+                         "d_mos": dmos[0], "d_mos_sem": dmos[1],
+                         "measured_kbps": rate})
+        print()
+    print("deltas are PAIRED per-window differences against this rate's own auto row,")
+    print("mean +- standard error over the windows. LSD is an error, so NEGATIVE is")
+    print("better there; SNR and MOS are qualities, so positive is better.")
+    if json_out:
+        Path(json_out).write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    return rows
+
+
 # --- VBR characterisation ----------------------------------------------------
 #
 # VBR shipped as a per-frame quality knob with no evidence at all: no race
@@ -732,7 +958,7 @@ def race_vbr(original, source, seconds, json_out=None):
         # duration, but the encoder pads the last frame out to a whole 1536
         # samples, so a stream already pinned to 1024 kbit/s measures a
         # fraction of a per cent above it and CBR has no legal frame that big.
-        cbr_kbps = min(VBR_FORMAT_MAX_KBPS, max(32, int(round(kbps))))
+        cbr_kbps = min(VBR_FORMAT_MAX_KBPS, max(32, round(kbps)))
         cbr = BUILD / f"vbr_cbr{cbr_kbps}.ec3"
         _encode_eac3(source, cbr, cbr_kbps)
         cbr_snr, cbr_lsd, _cbr_hf, cbr_mos = decode_scores(
@@ -1149,14 +1375,30 @@ TREND_LEGS = [
 ]
 
 
+# The encoder's own "header room" refusal (ac3::eac3's budget check - see
+# tools/ci/fuzz_eac3_encoder_space.py's REFUSALS, which names this exact
+# message): a legitimate outcome at the two crossover legs TREND_LEGS' own
+# comment added deliberately, not a defect. eac3-stereo-64's "none" row is
+# the known case - 32 kbit/s per channel fits only with both coupling and
+# spectral extension on, which "none" turns off - so _trend_encode reports
+# it rather than raising, and race_trend prints "n/a" for that cell instead
+# of aborting the whole trend run over an outcome the leg exists to show.
+_HEADER_ROOM_REFUSAL = "the encoder cannot express this configuration"
+
+
 def _trend_encode(wav, kbps, codec, tools, out):
     if codec == "ac3":
         run([CLI, "encode", str(wav), str(out), str(kbps)])
-    else:
-        cmd = [CLI, "eac3-encode", str(wav), str(out), str(kbps)]
-        if tools:
-            cmd.append(tools)
-        run(cmd)
+        return True
+    cmd = [CLI, "eac3-encode", str(wav), str(out), str(kbps)]
+    if tools:
+        cmd.append(tools)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        if _HEADER_ROOM_REFUSAL in result.stderr:
+            return False
+        raise SystemExit(f"command failed: {' '.join(map(str, cmd))}\n{result.stderr}")
+    return True
 
 
 def race_trend(json_out=None):
@@ -1200,15 +1442,24 @@ def race_trend(json_out=None):
         for row_label, tools in rows:
             cache_key = tools if is_eac3 else None
             if cache_key in landscape_cache:
-                snr, lsd, hf, mos, kbps_measured = landscape_cache[cache_key]
+                scored = landscape_cache[cache_key]
             else:
                 coded = BUILD / f"trend_{name}_{row_label}.{ext[codec]}"
-                _trend_encode(wav, kbps, codec, tools, coded)
-                wav_scratch = BUILD / f"trend_{name}_{row_label}.wav"
-                snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch,
-                                                              perceptual=True)
-                kbps_measured = measured_kbps(coded, seconds)
-                landscape_cache[cache_key] = (snr, lsd, hf, mos, kbps_measured)
+                if _trend_encode(wav, kbps, codec, tools, coded):
+                    wav_scratch = BUILD / f"trend_{name}_{row_label}.wav"
+                    snr, lsd, hf, mos = decode_scores_ours_fixed(original, coded, wav_scratch,
+                                                                  perceptual=True)
+                    kbps_measured = measured_kbps(coded, seconds)
+                    scored = (snr, lsd, hf, mos, kbps_measured)
+                else:
+                    scored = None
+                landscape_cache[cache_key] = scored
+
+            if scored is None:
+                print(f"{name:<18} | {row_label:<10} | {'n/a':>7} | {'-':>6} | "
+                      f"{'-':>6} | {'-':>4} | {'-':>6}")
+                continue
+            snr, lsd, hf, mos, kbps_measured = scored
 
             lsd_out = float(lsd) if is_eac3 else None
             hf_out = float(hf) if is_eac3 else None
@@ -1405,8 +1656,8 @@ OBJECT_NAMES = ["broadcast", "comet", "engine", "pod-hi", "pod-lo"]
 # 9.6-18.6 dB at 256, 11.9-22.7 dB at 448. A regression in bit allocation
 # moves the first far more than the second; one in the JOC matrix moves both.
 OBJECT_LEGS = [
-    dict(name="atmos-objects-256", kbps=256),
-    dict(name="atmos-objects-448", kbps=448),
+    {"name": "atmos-objects-256", "kbps": 256},
+    {"name": "atmos-objects-448", "kbps": 448},
 ]
 
 # joc::reconstruct is a DELAYED identity, not an instantaneous one: two
@@ -1503,7 +1754,7 @@ def object_spectral_scores(o, d):
     leak = (None if occupied.all()
             else 10 * np.log10(max(band_d[~occupied].sum(), 1e-30) /
                                max(band_o[occupied].sum(), 1e-30)))
-    for (lo, hi), inside in zip(BANDS, occupied):
+    for (lo, hi), inside in zip(BANDS, occupied, strict=True):
         if not inside:
             continue
         eo = so[loud, lo:hi].sum(axis=1) + 1e-12
@@ -1586,9 +1837,9 @@ def race_objects(json_out=None):
             snr, lsd, leak, mos = object_scores(np.ascontiguousarray(source[:, index]),
                                                 np.ascontiguousarray(recovered),
                                                 perceptual=True)
-            rows.append(dict(leg=name, bitrate_kbps=kbps, variant=object_name, snr_db=snr,
-                             lsd_db=lsd, leak_db=leak, mos_lqo=mos,
-                             measured_kbps=float(kbps_measured)))
+            rows.append({"leg": name, "bitrate_kbps": kbps, "variant": object_name, "snr_db": snr,
+                        "lsd_db": lsd, "leak_db": leak, "mos_lqo": mos,
+                        "measured_kbps": float(kbps_measured)})
 
         # Every mean is taken over `objects` rather than over `rows`, which
         # the scene row is about to join: averaging a list while appending
@@ -1597,18 +1848,18 @@ def race_objects(json_out=None):
         objects = list(rows)
         every_mos = [r["mos_lqo"] for r in objects]
         every_leak = [r["leak_db"] for r in objects if r["leak_db"] is not None]
-        rows.append(dict(
-            leg=name, bitrate_kbps=kbps, variant="scene",
-            snr_db=float(np.mean([r["snr_db"] for r in objects])),
-            lsd_db=float(np.mean([r["lsd_db"] for r in objects])),
+        rows.append({
+            "leg": name, "bitrate_kbps": kbps, "variant": "scene",
+            "snr_db": float(np.mean([r["snr_db"] for r in objects])),
+            "lsd_db": float(np.mean([r["lsd_db"] for r in objects])),
             # Averaged over the objects that HAVE a leakage figure: an
             # object occupying every band contributes no measurement rather
             # than a floor value that would drag the scene mean down by
             # hundreds of dB (see object_spectral_scores).
-            leak_db=(float(np.mean(every_leak)) if every_leak else None),
-            mos_lqo=(None if any(m is None for m in every_mos)
-                     else float(np.mean(every_mos))),
-            measured_kbps=float(kbps_measured)))
+            "leak_db": (float(np.mean(every_leak)) if every_leak else None),
+            "mos_lqo": (None if any(m is None for m in every_mos)
+                        else float(np.mean(every_mos))),
+            "measured_kbps": float(kbps_measured)})
 
         for row in rows:
             print(f"{row['leg']:<18} | {row['variant']:<10} | {row['snr_db']:>7.2f} | "
@@ -1944,6 +2195,39 @@ def main():
         source = BUILD / "race_src51.wav"
         write_wav_f32(source, make_material_51())
         race_eac3(read_wav_f32(source), source, seconds, rates=(192, 256, 384))
+    elif which == "fgaincod":
+        json_out = None
+        if "--json-out" in sys.argv:
+            json_out = Path(sys.argv[sys.argv.index("--json-out") + 1])
+        # The stereo table's default tool set is `none`: this mode is about
+        # one bit-allocation parameter, and coupling or spectral extension
+        # moving underneath it would confound the very deltas it reports.
+        # --tools auto is the follow-up that asks the same question of the
+        # tool set a real stream at these rates would actually carry (`auto`
+        # turns spx on below 56 kbit/s a channel and coupling below 12 + 14n),
+        # and --rates narrows the sweep to the cells where that matters.
+        tools = sys.argv[sys.argv.index("--tools") + 1] if "--tools" in sys.argv else "none"
+        rates = FGAINCOD_RATES
+        if "--rates" in sys.argv:
+            rates = tuple(int(r) for r in sys.argv[sys.argv.index("--rates") + 1].split(","))
+        rows = race_fgaincod(original, source, seconds, rates=rates, tools=tools,
+                             json_out=json_out)
+        # The 5.1 half runs off make_material_51() whatever --material said,
+        # for the reason main()'s eac3-51 guard gives: both programme
+        # fixtures are stereo and there is no redistributable native 5.1
+        # programme source. Opt-in rather than automatic - it is synthetic
+        # material answering a cost question the stereo table cannot (the
+        # element is ~3x more expensive with six coded channels), and mixing
+        # synthetic rows into a real-material table without saying so is
+        # exactly how a measurement gets misread later.
+        if "--with-51" in sys.argv:
+            source_51 = BUILD / "race_src51.wav"
+            write_wav_f32(source_51, make_material_51())
+            original_51 = read_wav_f32(source_51)
+            print("\n=== coupled 5.1, SYNTHETIC material (make_material_51) ===")
+            race_fgaincod(original_51, source_51, len(original_51) / RATE,
+                          rates=FGAINCOD_RATES_51, tools="cpl", layout="51", nfchans=5,
+                          json_out=json_out, rows=rows)
     elif which == "vbr":
         json_out = None
         if "--json-out" in sys.argv:
@@ -1988,7 +2272,8 @@ def main():
     else:
         raise SystemExit(
             f"unknown race '{which}' "
-            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | eac3-transient | vbr | seam | "
+            f"(ac3 | couple | fast-mdct | eac3 | eac3-51 | eac3-transient | "
+            f"fgaincod | vbr | seam | "
             f"crosscheck | ci | trend | objects)"
             "\n[--material synth|speech|music] on every mode except ci, trend and eac3-51.")
 

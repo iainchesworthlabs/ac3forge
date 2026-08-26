@@ -165,7 +165,7 @@ def write_pcm16(path: Path, channels: list[list[float]], rate: int) -> None:
     for i in range(frames):
         for channel in channels:
             value = max(-1.0, min(1.0, channel[i]))
-            payload += struct.pack("<h", int(round(value * 32767.0)))
+            payload += struct.pack("<h", round(value * 32767.0))
     with wave.open(str(path), "wb") as out:
         out.setnchannels(len(channels))
         out.setsampwidth(2)
@@ -218,14 +218,24 @@ def _ffmpeg_support(vector: Vector) -> dict[str, str]:
     if vector.layout in TWO_DEPENDENT_LAYOUTS:
         return {
             "support": "none",
-            "note": "ff_ac3_parse_header rejects substreamid != 0, so a second dependent substream is unreadable in any container",
+            "note": (
+                "ff_ac3_parse_header rejects substreamid != 0, so a second dependent "
+                "substream is unreadable in any container"
+            ),
         }
     if any(tool in UNMODELLED_TOOLS for tool in vector.tools):
         return {
             "support": "none",
-            "note": "FFmpeg's Annex E parser has no syntax for enhanced coupling or transient pre-noise processing - it does not reject these streams, it has no model of the bits",
+            "note": (
+                "FFmpeg's Annex E parser has no syntax for enhanced coupling or transient "
+                "pre-noise processing - it does not reject these streams, it has no model "
+                "of the bits"
+            ),
         }
-    return {"support": "full", "note": "FFmpeg decodes this stream, so it is available as an independent oracle"}
+    return {
+        "support": "full",
+        "note": "FFmpeg decodes this stream, so it is available as an independent oracle",
+    }
 
 
 # The 48 kHz sources are copied from the repo; the rest are synthesized above.
@@ -257,7 +267,7 @@ SOURCES: dict[str, dict] = {
     },
 }
 
-for _rate in (44100, 32000) + FSCOD2_RATES:
+for _rate in (44100, 32000, *FSCOD2_RATES):
     SOURCES[f"synth_{_rate}"] = {
         "file": f"synth_6ch_{_rate}.wav",
         "synthesize": _rate,
@@ -332,7 +342,8 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="ac3-dualmono",
             codec="AC-3",
-            exercises="1+1 dual mono - two independent programmes in one syncframe, each with its own dialnorm",
+            exercises=("1+1 dual mono - two independent programmes in one syncframe, "
+                       "each with its own dialnorm"),
             args=["encode", "@source", "@out", "192", "1+1", "dialnorm=27", "dialnorm2=18"],
             source="reference_stereo",
             suffix=".ac3",
@@ -344,7 +355,8 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="ac3-silence",
             codec="AC-3",
-            exercises="a silent stream - the degenerate but legal case a decoder still has to frame correctly",
+            exercises=("a silent stream - the degenerate but legal case a decoder "
+                       "still has to frame correctly"),
             args=["silence", "@out", "1", "192"],
             source=None,
             suffix=".ac3",
@@ -356,7 +368,8 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="ac3-drc-film-standard",
             codec="AC-3",
-            exercises="§7.7.1 dynrng words from the Film Standard profile, plus dialnorm measured from the source",
+            exercises=("§7.7.1 dynrng words from the Film Standard profile, plus "
+                       "dialnorm measured from the source"),
             args=["encode", "@source", "@out", "256", "51", "drc=film-standard", "dialnorm=auto"],
             source="reference_51",
             suffix=".ac3",
@@ -368,8 +381,10 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="ac3-heavy-compr",
             codec="AC-3",
-            exercises="§7.7.2 heavy compression (compr), the word an RF-mode decoder prefers over dynrng",
-            args=["encode", "@source", "@out", "192", "mono", "heavy", "ceiling=-1.0", "dialogue=-24"],
+            exercises=("§7.7.2 heavy compression (compr), the word an RF-mode "
+                       "decoder prefers over dynrng"),
+            args=["encode", "@source", "@out", "192", "mono", "heavy",
+                  "ceiling=-1.0", "dialogue=-24"],
             source="reference_51",
             suffix=".ac3",
             layout="mono",
@@ -380,7 +395,9 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="ac3-reference-transform",
             codec="AC-3",
-            exercises="the same 5.1 encode with the spec's direct §8.2.3.2 MDCT instead of the default fast path - differs from ac3-51 only at coefficient-rounding level",
+            exercises=("the same 5.1 encode with the spec's direct §8.2.3.2 MDCT "
+                       "instead of the default fast path - differs from ac3-51 "
+                       "only at coefficient-rounding level"),
             args=["encode", "@source", "@out", "384", "51", "mode=reference"],
             source="reference_51",
             suffix=".ac3",
@@ -396,7 +413,8 @@ def build_vector_list() -> list[Vector]:
                 Vector(
                     ident=f"ac3-{layout}-{rate}",
                     codec="AC-3",
-                    exercises=f"{layout} at {rate} Hz - Table 5.6's fscod {1 if rate == 44100 else 2}",
+                    exercises=(f"{layout} at {rate} Hz - Table 5.6's fscod "
+                               f"{1 if rate == 44100 else 2}"),
                     args=["encode", "@source", "@out", str(kbps), layout],
                     source=f"synth_{rate}",
                     suffix=".ac3",
@@ -416,13 +434,18 @@ def build_vector_list() -> list[Vector]:
         ("514", 256),
         ("714", 384),
     ):
+        if layout in TWO_DEPENDENT_LAYOUTS:
+            substream_desc = "two dependent substreams"
+        elif layout in ("71", "512", "514"):
+            substream_desc = "its dependent substream"
+        else:
+            substream_desc = "a single substream"
         v.append(
             Vector(
                 ident=f"eac3-{layout}",
                 codec="E-AC-3",
                 exercises=(
-                    f"{layout} with no Annex E coding tools - the bed plus "
-                    f"{'two dependent substreams' if layout in TWO_DEPENDENT_LAYOUTS else 'its dependent substream' if layout in ('71', '512', '514') else 'a single substream'}"
+                    f"{layout} with no Annex E coding tools - the bed plus {substream_desc}"
                 ),
                 args=["eac3-encode", "@source", "@out", str(kbps), "none", layout],
                 source="reference_51",
@@ -457,7 +480,8 @@ def build_vector_list() -> list[Vector]:
         ("tpn", "§3.7 transient pre-noise processing"),
         ("cpl+ecpl", "standard coupling with enhanced coupling on top"),
         ("spx+aht", "spectral extension and AHT together"),
-        ("cpl:4+spx:5", "coupling and spectral extension with the band edges pinned rather than chosen"),
+        ("cpl:4+spx:5",
+         "coupling and spectral extension with the band edges pinned rather than chosen"),
         ("all", "coupling, spectral extension and AHT stacked"),
         ("cpl+ecpl+tpn", "enhanced coupling and transient pre-noise processing together"),
         ("auto", "the rate-driven tool policy choosing for itself at 192 kbit/s over 5.1"),
@@ -486,7 +510,8 @@ def build_vector_list() -> list[Vector]:
             Vector(
                 ident=f"eac3-{layout}-all",
                 codec="E-AC-3",
-                exercises=f"{layout} with coupling, spectral extension and AHT stacked across the dependent substreams",
+                exercises=(f"{layout} with coupling, spectral extension and AHT "
+                           "stacked across the dependent substreams"),
                 args=["eac3-encode", "@source", "@out", "256", "all", layout],
                 source="reference_51",
                 suffix=".ec3",
@@ -517,7 +542,7 @@ def build_vector_list() -> list[Vector]:
         )
 
     # --- E-AC-3: the other sample rates, including fscod2 ----------------
-    for rate in (44100, 32000) + FSCOD2_RATES:
+    for rate in (44100, 32000, *FSCOD2_RATES):
         for layout, kbps in (("stereo", 96), ("51", 192)):
             fscod2 = rate in FSCOD2_RATES
             v.append(
@@ -544,7 +569,8 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="atmos-4obj",
             codec="E-AC-3 (Atmos)",
-            exercises="a 5.1 bed plus four synthetic orbiting objects - OAMD + JOC in the EMDF container (TS 103 420), unsigned",
+            exercises=("a 5.1 bed plus four synthetic orbiting objects - OAMD + JOC "
+                       "in the EMDF container (TS 103 420), unsigned"),
             args=["atmos", "@out", "2", "256", "4", "4", "objects"],
             source=None,
             suffix=".ec3",
@@ -557,7 +583,9 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="atmos-bed51",
             codec="E-AC-3 (Atmos)",
-            exercises="the same programme in bed-only mode - objects panned into the 5.1 bed with no EMDF container at all, the graceful-fallback half of the either/or",
+            exercises=("the same programme in bed-only mode - objects panned into "
+                       "the 5.1 bed with no EMDF container at all, the "
+                       "graceful-fallback half of the either/or"),
             args=["atmos", "@out", "2", "256", "4", "4", "bed51"],
             source=None,
             suffix=".ec3",
@@ -569,7 +597,8 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="atmos-encode-6obj",
             codec="E-AC-3 (Atmos)",
-            exercises="every source channel carried as its own object rather than a bed - six objects from the 5.1 fixture",
+            exercises=("every source channel carried as its own object rather than "
+                       "a bed - six objects from the 5.1 fixture"),
             args=["atmos-encode", "@source", "@out", "256", "6"],
             source="reference_51",
             suffix=".ec3",
@@ -582,7 +611,8 @@ def build_vector_list() -> list[Vector]:
         Vector(
             ident="atmos-path",
             codec="E-AC-3 (Atmos)",
-            exercises="object motion from an authored keyframe file instead of the built-in orbit - two objects on crossing paths",
+            exercises=("object motion from an authored keyframe file instead of "
+                       "the built-in orbit - two objects on crossing paths"),
             args=["atmos-path", "@out", "@input:paths.txt", "3", "256", "2"],
             source=None,
             suffix=".ec3",
@@ -613,7 +643,8 @@ ATMOS_PATHS = """\
 SIGNED_VECTOR = Vector(
     ident="atmos-4obj-signed",
     codec="E-AC-3 (Atmos)",
-    exercises="atmos-4obj's programme with the EMDF object container signed - the authenticity tag a licensed decoder gates object decoding on",
+    exercises=("atmos-4obj's programme with the EMDF object container signed - the "
+               "authenticity tag a licensed decoder gates object decoding on"),
     args=["atmos", "@out", "2", "256", "4", "4", "objects", "sign-objects"],
     source=None,
     suffix=".ec3",
@@ -726,7 +757,8 @@ def generate(
                 raise CliError(f"source fixture missing: {origin}")
             shutil.copyfile(origin, target)
         else:
-            write_pcm16(target, synth_six_channel(spec["synthesize"], spec["seconds"]), spec["sample_rate"])
+            write_pcm16(target, synth_six_channel(spec["synthesize"], spec["seconds"]),
+                        spec["sample_rate"])
         spec["path"] = f"source/{spec['file']}"
         sources.append(
             {
@@ -798,7 +830,8 @@ def generate(
                 "tools": vector.tools,
                 "source": SOURCES[vector.source]["path"] if vector.source else None,
                 "extra_inputs": vector.extra_inputs,
-                "command": ["ac3cli", *[a.replace(str(out_dir) + os.sep, "").replace("\\", "/") for a in args]],
+                "command": ["ac3cli", *[a.replace(str(out_dir) + os.sep, "").replace("\\", "/")
+                                        for a in args]],
                 "bytes": target.stat().st_size,
                 "sha256": sha256_file(target),
                 "decoded_pcm_sha256": decode_sha,
@@ -832,7 +865,8 @@ def generate(
         "signing": (
             {
                 "signed_vectors": True,
-                "note": "signed with an operator-supplied key; the key itself is not part of this bundle and is not recoverable from it",
+                "note": ("signed with an operator-supplied key; the key itself is not "
+                         "part of this bundle and is not recoverable from it"),
             }
             if sign
             else {
@@ -913,9 +947,10 @@ container.
 
 ## What FFmpeg can and cannot read
 
-{ffmpeg_full} of these vectors decode under FFmpeg, {ffmpeg_header} are framed correctly by it but refuse to decode,
-and {ffmpeg_none} it cannot read at all. Every vector's `ffmpeg` field says which and why. The three states
-are not interchangeable: a stream FFmpeg has no syntax for is not the same as one it rejects.
+{ffmpeg_full} of these vectors decode under FFmpeg, {ffmpeg_header} are framed correctly by it
+but refuse to decode, and {ffmpeg_none} it cannot read at all. Every vector's `ffmpeg` field says
+which and why. The three states are not interchangeable: a stream FFmpeg has no syntax for is not
+the same as one it rejects.
 
 The gaps are FFmpeg's, not this encoder's - a second dependent substream (7.1.4), enhanced
 coupling, transient pre-noise processing, and `fscod2` audio. Those four are exactly where an
@@ -970,7 +1005,8 @@ def write_archive(out_dir: Path, archive: Path) -> None:
     raw = archive.parent / archive.name.removesuffix(".gz")
     with tarfile.open(raw, "w", format=tarfile.GNU_FORMAT) as tar:
         for path in files:
-            info = tar.gettarinfo(str(path), arcname=f"{root}/{path.relative_to(out_dir).as_posix()}")
+            arcname = f"{root}/{path.relative_to(out_dir).as_posix()}"
+            info = tar.gettarinfo(str(path), arcname=arcname)
             info.mtime = 0
             info.uid = 0
             info.gid = 0
@@ -979,9 +1015,12 @@ def write_archive(out_dir: Path, archive: Path) -> None:
             info.mode = 0o644
             with path.open("rb") as handle:
                 tar.addfile(info, handle)
-    with raw.open("rb") as src, archive.open("wb") as dst:
-        with gzip.GzipFile(fileobj=dst, mode="wb", compresslevel=9, mtime=0) as gz:
-            shutil.copyfileobj(src, gz)
+    with (
+        raw.open("rb") as src,
+        archive.open("wb") as dst,
+        gzip.GzipFile(fileobj=dst, mode="wb", compresslevel=9, mtime=0) as gz,
+    ):
+        shutil.copyfileobj(src, gz)
     raw.unlink()
 
 
@@ -1062,7 +1101,8 @@ def main() -> int:
     write_readme(args.out, manifest)
 
     total = sum(p.stat().st_size for p in args.out.rglob("*") if p.is_file())
-    print(f"{len(manifest['vectors'])} vectors, {len(manifest['sources'])} sources, {total / 1e6:.1f} MB in {args.out}")
+    print(f"{len(manifest['vectors'])} vectors, {len(manifest['sources'])} sources, "
+          f"{total / 1e6:.1f} MB in {args.out}")
 
     if args.check_determinism:
         with tempfile.TemporaryDirectory() as tmp:

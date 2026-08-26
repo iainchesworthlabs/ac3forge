@@ -81,8 +81,11 @@ is stated as one.
 - **The source material is synthetic** — sine tones plus seeded, band-limited noise. That is what
   makes the set redistributable, and it exercises every coding tool, but it is not real programme
   material: a defect that only shows on speech or music is not something these vectors can find.
-  Roadmap VX7 adds CC0 speech and music beside the synthetic fixtures; when it lands, this set
-  gains legs on that material.
+  Redistributable CC0 speech and music now exist in the tree — roadmap VX7 landed them as
+  `tests/golden/audio/programme_speech_stereo.flac` and `programme_music_stereo.flac` — but this
+  set was never wired to them: `tools/generators/gen_conformance_vectors.py` still synthesizes
+  every source from first principles, and its own comment marks the spot where those files would
+  join. Pointing the generator at them is outstanding work, not a pending roadmap item.
 - **Agreement with these vectors is agreement with one implementation**, not with the standard.
   Where FFmpeg can read a vector, the manifest says so, and cross-checking against it is
   meaningfully stronger than checking against this project alone.
@@ -103,9 +106,14 @@ Encoded output is **not** currently bit-identical across compilers and architect
 - Regenerating with a different compiler or on a different architecture produces different
   hashes for the same *correct* streams.
 
-Roadmap VX11 and VX12 are the work that would make hashes portable — explaining the arm64 offset
-and gating byte-identical encodes across every leg. Until then the bundle records exactly what
-built it and this page says the hashes are per-platform.
+Roadmap VX11 asked why that offset (6.02 dB, exactly one exponent) is there, and has closed
+without an answer: both hypotheses it proposed — Homebrew's libm, then FMA contraction — were
+falsified by direct measurement, so it is architectural in some way still unidentified. What that
+leg produced instead is a watch: `tools/checks/check_cross_platform_hash.py` pins a SHA-256 of the
+encoded bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so the
+divergence cannot change size silently. VX12 — gating byte-identical encodes across every leg —
+is the one still open, and until it lands the bundle records exactly what built it and this page
+says the hashes are per-platform.
 
 ## Regenerating it
 

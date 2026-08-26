@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iterator>
-#include <numbers>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -80,168 +79,19 @@ using Location = eac3::chanmap::Location;
 }
 
 // --- geometry ---------------------------------------------------------------
-
-struct Direction {
-    double azimuth_deg = 0.0;    // counterclockwise from front, ITU-R BS.775
-    double elevation_deg = 0.0;  // 0 on the listener's plane
-};
-
-// Nominal elevation of the upper layer. TS 103 420 renders heights well above
-// the ring; 45° is the conventional Atmos ceiling angle and the only number
-// the crossfade below needs.
-constexpr double kHeightElevationDeg = 45.0;
-
-// Where a location sits. Two entries are context-dependent, both to avoid two
-// DISTINCT locations landing on the identical (ring, azimuth) pair that
-// pan_direction/pan_ring pan by - two targets it cannot tell apart make one
-// of them lose whatever a source aimed at that spot was carrying, silently:
 //
-//   - The side surround pair: with rear surrounds also present they move
-//     forward to +/-90 and the rears take the +/-150 the 5.1 ring would have
-//     given them, which is the physical difference between 5.1 and 7.1
-//     rather than a naming one. But Lsd/Rsd (SMPTE 428-3's own discrete side
-//     position) already sits at +/-90 unconditionally - so a request naming
-//     Ls/Rs, Lrs/Rrs AND Lsd/Rsd together would put Ls/Rs and Lsd/Rsd on top
-//     of each other. has_side_discrete keeps Ls/Rs at their no-rears +/-110
-//     in exactly that combination, which is otherwise unused in the low ring.
-//   - Ts (Table E2.5's lone, unpaired "top surround") sits directly overhead,
-//     where azimuth is physically undefined - 0 was as good a choice as any
-//     UNTIL Vhc, the front height centre, turned out to already own azimuth 0
-//     in the same (high) ring. This file's own naming already treats
-//     "surround" as REAR throughout (Cs, Lrs/Rrs, Lts/Rts all sit behind the
-//     listener) - Ts follows that pattern and moves to 180, behind the
-//     listener like Cs, rather than colliding with Vhc in front.
-[[nodiscard]] Direction direction_of(Location location, bool has_rears,
-                                     bool has_side_discrete) {
-    switch (location) {
-        case Location::kLeft: return {30.0, 0.0};
-        case Location::kCentre: return {0.0, 0.0};
-        case Location::kRight: return {-30.0, 0.0};
-        case Location::kLeftSurround:
-            return {has_rears && !has_side_discrete ? 90.0 : 110.0, 0.0};
-        case Location::kRightSurround:
-            return {has_rears && !has_side_discrete ? -90.0 : -110.0, 0.0};
-        case Location::kLc: return {15.0, 0.0};
-        case Location::kRc: return {-15.0, 0.0};
-        case Location::kLrs: return {150.0, 0.0};
-        case Location::kRrs: return {-150.0, 0.0};
-        case Location::kCs: return {180.0, 0.0};
-        case Location::kTs: return {180.0, 90.0};
-        case Location::kLsd: return {90.0, 0.0};
-        case Location::kRsd: return {-90.0, 0.0};
-        case Location::kLw: return {60.0, 0.0};
-        case Location::kRw: return {-60.0, 0.0};
-        case Location::kVhl: return {45.0, kHeightElevationDeg};
-        case Location::kVhr: return {-45.0, kHeightElevationDeg};
-        case Location::kVhc: return {0.0, kHeightElevationDeg};
-        case Location::kLts: return {135.0, kHeightElevationDeg};
-        case Location::kRts: return {-135.0, kHeightElevationDeg};
-        case Location::kLfe:
-        case Location::kLfe2: return {0.0, 0.0};
-    }
-    return {};
-}
-
-// The speakers a pan may place a source on: everything in `locations` that has
-// a direction at all. The LFE is deliberately absent - it is not a point on
-// the ring, and leaving it in would give it the azimuth of the centre channel,
-// so a centre-panned source would land in the subwoofer and nowhere else.
-struct PanTargets {
-    std::vector<Location> locations;
-    std::vector<Direction> directions;
-
-    // Where a location sits in this set, or -1 if it takes no panned audio.
-    [[nodiscard]] int index_of(Location location) const {
-        const auto at = std::ranges::find(locations, location);
-        return at == locations.end()
-                   ? -1
-                   : static_cast<int>(std::distance(locations.begin(), at));
-    }
-};
-
-[[nodiscard]] PanTargets pan_targets(std::span<const Location> locations) {
-    const bool has_rears = std::ranges::find(locations, Location::kLrs) != locations.end();
-    const bool has_side_discrete =
-        std::ranges::find(locations, Location::kLsd) != locations.end();
-    PanTargets out;
-    for (const auto location : locations) {
-        if (is_lfe(location)) {
-            continue;
-        }
-        out.locations.push_back(location);
-        out.directions.push_back(direction_of(location, has_rears, has_side_discrete));
-    }
-    return out;
-}
-
-// Everything at or above this counts as the upper layer. Half way to the
-// nominal height angle, so no real location is ambiguous.
-constexpr double kHeightThresholdDeg = kHeightElevationDeg / 2.0;
-
-// A gain below this is not a quiet signal, it is arithmetic: cos(pi/2) lands
-// near 6e-17 rather than on zero, and -334 dB of leakage into a channel that
-// should be silent is worse than useless - it makes "is this channel carrying
-// anything?" unanswerable and costs a multiply per sample to stay wrong.
-constexpr double kNegligibleGain = 1e-9;
-
-// One source direction spread over a target speaker set. Two rings - the
-// listener's plane and the ceiling - each panned by azimuth, crossfaded by
-// elevation at constant power.
-//
-// A target with no upper layer takes the whole source at full level rather
-// than a cosine-attenuated share: a 5.1 ring has no height speakers, and a
-// legacy decoder has to hear everything or backward compatibility means
-// nothing. That is the same rule spatial::pan_room states for the 5.1 bed.
-void pan_direction(Direction source, std::span<const Direction> targets,
-                   std::span<double> gains) {
-    std::ranges::fill(gains, 0.0);
-
-    std::vector<double> low_az;
-    std::vector<std::size_t> low_index;
-    std::vector<double> high_az;
-    std::vector<std::size_t> high_index;
-    for (std::size_t i = 0; i < targets.size(); ++i) {
-        if (targets[i].elevation_deg >= kHeightThresholdDeg) {
-            high_az.push_back(targets[i].azimuth_deg);
-            high_index.push_back(i);
-        } else {
-            low_az.push_back(targets[i].azimuth_deg);
-            low_index.push_back(i);
-        }
-    }
-
-    double weight_low = 1.0;
-    double weight_high = 0.0;
-    if (!high_az.empty() && !low_az.empty()) {
-        const double t =
-            std::clamp(source.elevation_deg / kHeightElevationDeg, 0.0, 1.0);
-        weight_low = std::cos(t * std::numbers::pi / 2.0);
-        weight_high = std::sin(t * std::numbers::pi / 2.0);
-    } else if (low_az.empty()) {
-        weight_low = 0.0;
-        weight_high = 1.0;
-    }
-
-    if (weight_low > kNegligibleGain && !low_az.empty()) {
-        std::vector<double> ring(low_az.size());
-        spatial::pan_ring(source.azimuth_deg, low_az, ring);
-        for (std::size_t i = 0; i < ring.size(); ++i) {
-            gains[low_index[i]] += weight_low * ring[i];
-        }
-    }
-    if (weight_high > kNegligibleGain && !high_az.empty()) {
-        std::vector<double> ring(high_az.size());
-        spatial::pan_ring(source.azimuth_deg, high_az, ring);
-        for (std::size_t i = 0; i < ring.size(); ++i) {
-            gains[high_index[i]] += weight_high * ring[i];
-        }
-    }
-    for (auto& gain : gains) {
-        if (gain < kNegligibleGain) {
-            gain = 0.0;
-        }
-    }
-}
+// The height-aware azimuth/elevation panner (Direction, direction_of,
+// PanTargets, pan_targets, pan_direction) used to live here alone; it is now
+// ac3::spatial's, promoted so IO12's object-based loudness measurement can
+// pan an object by its own position with the identical geometry this
+// renderer uses to move a bed's channels between layouts. Aliased back in
+// rather than qualified at every call site below.
+using Direction = spatial::Direction;
+using spatial::direction_of;
+using PanTargets = spatial::PanTargets;
+using spatial::pan_targets;
+using spatial::pan_direction;
+using spatial::kNegligibleGain;
 
 // --- source layouts ---------------------------------------------------------
 
@@ -1093,6 +943,10 @@ EncoderConfig ac3_config(const Plan& plan) {
             .dialnorm2 = cp.bed_acmod == Acmod::kDualMono
                             ? std::optional<int>(plan.meta.dialnorm2)
                             : std::nullopt,
+            // -1 here is EncoderConfig's own "encoder chooses", which for
+            // AC-3 is the measured rate curve - so the default reaches the
+            // same behaviour it had before this field was plumbed.
+            .fgaincod = plan.tools.fgaincod,
             .acmod = cp.bed_acmod,
             .lfe = cp.bed_lfe,
             // Coupling shares coefficients between full-bandwidth channels
@@ -1138,6 +992,15 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.fast_mdct = tools.fast_mdct;
     config.dither = tools.dither;
     config.numblkscod = tools.numblkscod;
+    // EQ13: CBR only - see FrameConfig::search's own comment for what
+    // search=distortion/perceptual actually do here, and for how the two
+    // axes it now moves are priced against each other.
+    config.search = tools.search;
+    // EQ7: -1 leaves Table E1.4's implied 0x4 and writes no element, which
+    // is byte-for-byte the frame this encoder emitted before the field
+    // existed; 0..7 pins the code and pays for the per-block fgaincode
+    // element in all six blocks.
+    config.fgaincod = tools.fgaincod;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its

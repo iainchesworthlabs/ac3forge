@@ -28,7 +28,9 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -220,6 +222,46 @@ std::vector<std::string> chanmap_labels(std::uint16_t map) {
         labels.emplace_back(ac3::eac3::chanmap::name(layout[i]));
     }
     return labels;
+}
+
+// The named-layout convenience roadmap AP6 asks for: a caller names a
+// LayoutId (e.g. k71) instead of hand-building the dependents' chanmaps -
+// ac3::plan::channel_plan_for() already carries that table
+// (ac3/encoder/plan.hpp), this just turns its ChannelPlan into a real
+// eac3.AccessUnitConfig. Each dependent's acmod/lfe is derived from its own
+// chanmap via chanmap::acmod_for_chanmap() the same way
+// ac3::plan::eac3_config() does internally. dependent_bitrate_kbps defaults
+// to half the independent's rate - the same ratio
+// docs/library/encoding-eac3.md's own 7.1 example uses (384/192) - since
+// substreams share a frame period rather than dividing it.
+ac3::eac3::AccessUnitConfig access_unit_config_for_layout(
+    ac3::plan::LayoutId layout, std::uint32_t bitrate_kbps,
+    std::optional<std::uint32_t> dependent_bitrate_kbps, ac3::SampleRate sample_rate) {
+    const auto plan = ac3::plan::channel_plan_for(layout);
+    ac3::eac3::AccessUnitConfig config;
+    config.independent.sample_rate = sample_rate;
+    config.independent.bitrate_kbps = bitrate_kbps;
+    config.independent.acmod = plan.bed_acmod;
+    config.independent.lfe = plan.bed_lfe;
+    const std::uint32_t dep_kbps = dependent_bitrate_kbps.value_or(bitrate_kbps / 2);
+    for (const auto chanmap : plan.dependents) {
+        const auto acmod_lfe = ac3::eac3::chanmap::acmod_for_chanmap(chanmap);
+        if (!acmod_lfe) {
+            // Unreachable for any LayoutId's own table (every kLayouts entry is
+            // built from a chanmap this always resolves) - guarded rather than
+            // asserted so a future LayoutId addition fails loudly in Python
+            // instead of silently building an incomplete access unit.
+            throw py::value_error("no acmod/lfe combination codes this layout's dependent channels");
+        }
+        ac3::eac3::FrameConfig dependent;
+        dependent.sample_rate = sample_rate;
+        dependent.bitrate_kbps = dep_kbps;
+        dependent.acmod = acmod_lfe->first;
+        dependent.lfe = acmod_lfe->second;
+        dependent.chanmap = chanmap;
+        config.dependents.push_back(dependent);
+    }
+    return config;
 }
 
 }  // namespace
@@ -529,6 +571,11 @@ PYBIND11_MODULE(_ac3forge, m) {
             "encode_frame",
             [](ac3::FrameEncoder& self, const py::sequence& channels) {
                 auto owned = extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+                    throw py::value_error("expected " + std::to_string(self.channel_count()) +
+                                          " channels (self.channel_count), got " +
+                                          std::to_string(owned.size()));
+                }
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;
@@ -737,6 +784,11 @@ PYBIND11_MODULE(_ac3forge, m) {
                std::vector<ac3::oba::ObjectPlacement> placement) {
                 auto owned =
                     extract_channels(objects, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (owned.size() != static_cast<std::size_t>(self.dynamic_object_count())) {
+                    throw py::value_error("expected " + std::to_string(self.dynamic_object_count()) +
+                                          " objects (self.dynamic_object_count), got " +
+                                          std::to_string(owned.size()));
+                }
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;
@@ -763,4 +815,233 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly(
             "bed_latency", &ac3::oba::AtmosEncoder::bed_latency,
             "The 5.1 bed's budget: what a legacy decoder that ignores the container hears.");
+
+    // --- E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder), roadmap AP6 ------------
+    // A real submodule rather than flat top-level names like Eac3Decoder: ac3::FrameEncoder and
+    // ac3::eac3::FrameEncoder share a name across C++ namespaces (roadmap AP2), so ac3.FrameEncoder
+    // (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is what keeps that collision out of the binding
+    // surface. pybind11-direct on ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every
+    // other class here (see this file's own header comment) - not layered on the C API.
+    py::module_ eac3 = m.def_submodule(
+        "eac3", "ac3::eac3::FrameEncoder/AccessUnitEncoder - E-AC-3 encoding, including wide "
+                 "layouts past 5.1 via dependent substreams.");
+
+    // ac3.StreamType (registered above, shared with DecodedSubstream.strmtyp) is reused here
+    // rather than re-bound - pybind11 has one C++-type-to-Python-type mapping process-wide, and a
+    // submodule is a namespace for lookup, not a second type registry.
+
+    py::enum_<ac3::plan::LayoutId>(
+        eac3, "LayoutId",
+        "Named speaker layouts (ac3::plan::LayoutId) - the named-layout convenience "
+        "access_unit_config_for_layout() below builds a full AccessUnitConfig from, without "
+        "hand-building a dependent's chanmap.")
+        .value("kMono", ac3::plan::LayoutId::kMono, "1/0 mono")
+        .value("kStereo", ac3::plan::LayoutId::kStereo, "2/0 stereo")
+        .value("kDualMono", ac3::plan::LayoutId::kDualMono, "1+1 dual mono")
+        .value("k51", ac3::plan::LayoutId::k51, "5.1")
+        .value("k71", ac3::plan::LayoutId::k71, "7.1 (one dependent)")
+        .value("k512", ac3::plan::LayoutId::k512, "5.1.2 (one dependent)")
+        .value("k514", ac3::plan::LayoutId::k514, "5.1.4 (one dependent)")
+        .value("k714", ac3::plan::LayoutId::k714, "7.1.4 (two dependents)");
+
+    // Not mirrored on ac3.eac3.FrameConfig: the mixmdate/infomdat metadata groups and vbr/ABR
+    // (EQ12) - a real gap, not a stable design decision the way the C API's trim is documented to
+    // be; and the internal self-check `trace` hook, which is never exposed anywhere in this
+    // binding layer.
+    py::class_<ac3::eac3::FrameConfig>(
+        eac3, "FrameConfig",
+        "One substream's config (ac3::eac3::FrameConfig) - sample rate (including the fscod2 "
+        "reduced rates), bitrate, acmod/lfe, the Annex E tools, and substream identity.")
+        .def(py::init([](py::kwargs kwargs) {
+            return KwargBinder<ac3::eac3::FrameConfig>(std::move(kwargs))
+                .field("sample_rate", &ac3::eac3::FrameConfig::sample_rate)
+                .field("bitrate_kbps", &ac3::eac3::FrameConfig::bitrate_kbps)
+                .field("numblkscod", &ac3::eac3::FrameConfig::numblkscod)
+                .field("dialnorm", &ac3::eac3::FrameConfig::dialnorm)
+                .field("dialnorm2", &ac3::eac3::FrameConfig::dialnorm2)
+                .field("chbwcod", &ac3::eac3::FrameConfig::chbwcod)
+                .field("acmod", &ac3::eac3::FrameConfig::acmod)
+                .field("lfe", &ac3::eac3::FrameConfig::lfe)
+                .field("strmtyp", &ac3::eac3::FrameConfig::strmtyp)
+                .field("substreamid", &ac3::eac3::FrameConfig::substreamid)
+                .field("chanmap", &ac3::eac3::FrameConfig::chanmap)
+                .field("last_dependent", &ac3::eac3::FrameConfig::last_dependent)
+                .field("drc", &ac3::eac3::FrameConfig::drc)
+                .field("heavy", &ac3::eac3::FrameConfig::heavy)
+                .field("drc2", &ac3::eac3::FrameConfig::drc2)
+                .field("heavy2", &ac3::eac3::FrameConfig::heavy2)
+                .field("auto_tools", &ac3::eac3::FrameConfig::auto_tools)
+                .field("coupling", &ac3::eac3::FrameConfig::coupling)
+                .field("cplbegf", &ac3::eac3::FrameConfig::cplbegf)
+                .field("enhanced", &ac3::eac3::FrameConfig::enhanced)
+                .field("spx", &ac3::eac3::FrameConfig::spx)
+                .field("spxbegf", &ac3::eac3::FrameConfig::spxbegf)
+                .field("spx_atten", &ac3::eac3::FrameConfig::spx_atten)
+                .field("spxattencod", &ac3::eac3::FrameConfig::spxattencod)
+                .field("aht", &ac3::eac3::FrameConfig::aht)
+                .field("gaqmod", &ac3::eac3::FrameConfig::gaqmod)
+                .field("transient_prenoise", &ac3::eac3::FrameConfig::transient_prenoise)
+                .field("fast_mdct", &ac3::eac3::FrameConfig::fast_mdct)
+                .field("dither", &ac3::eac3::FrameConfig::dither)
+                .field("oba_complexity_index", &ac3::eac3::FrameConfig::oba_complexity_index)
+                .finish();
+        }))
+        .def_readwrite("sample_rate", &ac3::eac3::FrameConfig::sample_rate)
+        .def_readwrite("bitrate_kbps", &ac3::eac3::FrameConfig::bitrate_kbps)
+        .def_readwrite("numblkscod", &ac3::eac3::FrameConfig::numblkscod)
+        .def_readwrite("dialnorm", &ac3::eac3::FrameConfig::dialnorm)
+        .def_readwrite("dialnorm2", &ac3::eac3::FrameConfig::dialnorm2)
+        .def_readwrite("chbwcod", &ac3::eac3::FrameConfig::chbwcod)
+        .def_readwrite("acmod", &ac3::eac3::FrameConfig::acmod)
+        .def_readwrite("lfe", &ac3::eac3::FrameConfig::lfe)
+        .def_readwrite("strmtyp", &ac3::eac3::FrameConfig::strmtyp)
+        .def_readwrite("substreamid", &ac3::eac3::FrameConfig::substreamid)
+        .def_readwrite("chanmap", &ac3::eac3::FrameConfig::chanmap)
+        .def_readwrite("last_dependent", &ac3::eac3::FrameConfig::last_dependent)
+        .def_readwrite("drc", &ac3::eac3::FrameConfig::drc)
+        .def_readwrite("heavy", &ac3::eac3::FrameConfig::heavy)
+        .def_readwrite("drc2", &ac3::eac3::FrameConfig::drc2)
+        .def_readwrite("heavy2", &ac3::eac3::FrameConfig::heavy2)
+        .def_readwrite("auto_tools", &ac3::eac3::FrameConfig::auto_tools)
+        .def_readwrite("coupling", &ac3::eac3::FrameConfig::coupling)
+        .def_readwrite("cplbegf", &ac3::eac3::FrameConfig::cplbegf)
+        .def_readwrite("enhanced", &ac3::eac3::FrameConfig::enhanced)
+        .def_readwrite("spx", &ac3::eac3::FrameConfig::spx)
+        .def_readwrite("spxbegf", &ac3::eac3::FrameConfig::spxbegf)
+        .def_readwrite("spx_atten", &ac3::eac3::FrameConfig::spx_atten)
+        .def_readwrite("spxattencod", &ac3::eac3::FrameConfig::spxattencod)
+        .def_readwrite("aht", &ac3::eac3::FrameConfig::aht)
+        .def_readwrite("gaqmod", &ac3::eac3::FrameConfig::gaqmod)
+        .def_readwrite("transient_prenoise", &ac3::eac3::FrameConfig::transient_prenoise)
+        .def_readwrite("fast_mdct", &ac3::eac3::FrameConfig::fast_mdct)
+        .def_readwrite("dither", &ac3::eac3::FrameConfig::dither)
+        .def_readwrite("oba_complexity_index", &ac3::eac3::FrameConfig::oba_complexity_index);
+
+    py::class_<ac3::eac3::FrameMetadata>(eac3, "FrameMetadata", "The §7.7 words for one frame")
+        .def(py::init([](py::kwargs kwargs) {
+            return KwargBinder<ac3::eac3::FrameMetadata>(std::move(kwargs))
+                .field("dynrng", &ac3::eac3::FrameMetadata::dynrng)
+                .field("compr", &ac3::eac3::FrameMetadata::compr)
+                .field("dynrng2", &ac3::eac3::FrameMetadata::dynrng2)
+                .field("compr2", &ac3::eac3::FrameMetadata::compr2)
+                .finish();
+        }))
+        .def_readwrite("dynrng", &ac3::eac3::FrameMetadata::dynrng)
+        .def_readwrite("compr", &ac3::eac3::FrameMetadata::compr)
+        .def_readwrite("dynrng2", &ac3::eac3::FrameMetadata::dynrng2)
+        .def_readwrite("compr2", &ac3::eac3::FrameMetadata::compr2);
+
+    py::class_<ac3::eac3::FrameEncoder>(
+        eac3, "FrameEncoder",
+        "One substream. AccessUnitEncoder below builds several of these to widen past 5.1.")
+        .def(py::init<const ac3::eac3::FrameConfig&>(), py::arg("config"))
+        .def(
+            "encode_frame",
+            [](ac3::eac3::FrameEncoder& self, const py::sequence& channels,
+               std::optional<ac3::eac3::FrameMetadata> metadata, const py::buffer& aux) {
+                auto owned =
+                    extract_channels(channels, static_cast<std::size_t>(self.samples_per_frame()));
+                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+                    throw py::value_error("expected " + std::to_string(self.channel_count()) +
+                                          " channels (self.channel_count), got " +
+                                          std::to_string(owned.size()));
+                }
+                const auto aux_bytes = to_bytes(aux);
+                std::vector<std::byte> bytes;
+                {
+                    py::gil_scoped_release release;
+                    auto spans = as_spans(owned);
+                    auto result = metadata ? self.encode_frame(spans, *metadata, aux_bytes)
+                                            : self.encode_frame(spans, aux_bytes);
+                    if (!result) {
+                        throw EncodeFailure(result.error());
+                    }
+                    bytes = std::move(*result);
+                }
+                return py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            },
+            py::arg("channels"), py::arg("metadata") = py::none(), py::arg("aux") = py::bytes(),
+            "channels: a sequence of 1-D float arrays, self.samples_per_frame samples each, AC-3 "
+            "channel order (LFE last). metadata: explicit §7.7 words (FrameMetadata) in place of "
+            "measuring them from `channels` - AccessUnitEncoder needs this so every substream of "
+            "one programme agrees; None measures internally. aux: a pre-built EMDF container. "
+            "Returns one syncframe as bytes.")
+        .def_property_readonly("config", &ac3::eac3::FrameEncoder::config)
+        .def_property_readonly("channel_count", &ac3::eac3::FrameEncoder::channel_count)
+        .def_property_readonly("samples_per_frame", &ac3::eac3::FrameEncoder::samples_per_frame)
+        .def_property_readonly("latency", &ac3::eac3::FrameEncoder::latency)
+        .def_property_readonly("latency_samples", &ac3::eac3::FrameEncoder::latency_samples);
+
+    // dependents/additional are std::vector<FrameConfig>/std::vector<ProgrammeConfig> on the C++
+    // side; pybind11/stl.h converts a Python list of eac3.FrameConfig directly. `additional`
+    // (further independent programmes, I1-I7) is not mirrored - see docs/library/python-api.md.
+    py::class_<ac3::eac3::AccessUnitConfig>(
+        eac3, "AccessUnitConfig",
+        "The independent substream's config plus its dependents', in transmission order.")
+        .def(py::init([](py::kwargs kwargs) {
+            return KwargBinder<ac3::eac3::AccessUnitConfig>(std::move(kwargs))
+                .field("independent", &ac3::eac3::AccessUnitConfig::independent)
+                .field("dependents", &ac3::eac3::AccessUnitConfig::dependents)
+                .finish();
+        }))
+        .def_readwrite("independent", &ac3::eac3::AccessUnitConfig::independent)
+        .def_readwrite("dependents", &ac3::eac3::AccessUnitConfig::dependents);
+
+    py::class_<ac3::eac3::AccessUnit>(
+        eac3, "AccessUnit", "One encoded access unit: every substream's bytes, concatenated.")
+        .def_property_readonly("bytes",
+                                [](const ac3::eac3::AccessUnit& u) {
+                                    return py::bytes(reinterpret_cast<const char*>(u.bytes.data()),
+                                                      u.bytes.size());
+                                })
+        .def_readonly("substream_bytes", &ac3::eac3::AccessUnit::substream_bytes,
+                       "Byte length of each substream (independent first); sums to len(bytes).")
+        .def_property_readonly("substream_count", &ac3::eac3::AccessUnit::substream_count);
+
+    py::class_<ac3::eac3::AccessUnitEncoder>(
+        eac3, "AccessUnitEncoder",
+        "Wide layouts past 5.1: one independent substream plus dependents that widen it. See "
+        "access_unit_config_for_layout() for building a config from a named LayoutId.")
+        .def(py::init<const ac3::eac3::AccessUnitConfig&>(), py::arg("config"))
+        .def(
+            "encode_access_unit",
+            [](ac3::eac3::AccessUnitEncoder& self, const py::sequence& channels,
+               const py::buffer& aux) {
+                auto owned =
+                    extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+                    throw py::value_error("expected " + std::to_string(self.channel_count()) +
+                                          " channels (self.channel_count), got " +
+                                          std::to_string(owned.size()));
+                }
+                const auto aux_bytes = to_bytes(aux);
+                ac3::eac3::AccessUnit result;
+                {
+                    py::gil_scoped_release release;
+                    auto spans = as_spans(owned);
+                    auto encoded = self.encode_access_unit(spans, aux_bytes);
+                    if (!encoded) {
+                        throw EncodeFailure(encoded.error());
+                    }
+                    result = std::move(*encoded);
+                }
+                return result;
+            },
+            py::arg("channels"), py::arg("aux") = py::bytes(),
+            "channels: every channel of the access unit grouped by substream in transmission "
+            "order - the independent's first (AC-3 order, LFE last), then each dependent's in the "
+            "order its chanmap names them - self.channel_count spans total, "
+            "ac3.SAMPLES_PER_FRAME samples each. aux: a pre-built EMDF container.")
+        .def_property_readonly("config", &ac3::eac3::AccessUnitEncoder::config)
+        .def_property_readonly("channel_count", &ac3::eac3::AccessUnitEncoder::channel_count)
+        .def_property_readonly("latency", &ac3::eac3::AccessUnitEncoder::latency)
+        .def_property_readonly("latency_samples", &ac3::eac3::AccessUnitEncoder::latency_samples);
+
+    eac3.def("access_unit_config_for_layout", &access_unit_config_for_layout, py::arg("layout"),
+              py::arg("bitrate_kbps"), py::arg("dependent_bitrate_kbps") = py::none(),
+              py::arg("sample_rate") = ac3::SampleRate::k48000,
+              "A ready AccessUnitConfig for a named LayoutId (e.g. eac3.LayoutId.k71), without "
+              "hand-building a dependent's chanmap - see ac3::plan::channel_plan_for(). "
+              "dependent_bitrate_kbps defaults to half of bitrate_kbps, applied to every "
+              "dependent.");
 }

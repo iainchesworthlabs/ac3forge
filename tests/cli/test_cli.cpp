@@ -574,6 +574,93 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
     }
 }
 
+// The name spells "section" rather than using §: CTest passes a test
+// name straight through argv as a Catch2 filter, and this repo has twice
+// had a Windows leg fail with "No test cases matched" because the
+// runner's argv encoding mangled U+00A7. Comments and the body are fine -
+// only the NAME round-trips through argv.
+TEST_CASE("fgaincod= pins section 7.2.2.4's fast gain on both codecs", "[cli][fgaincod]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "fgaincod_in.wav";
+    const auto channels = make_tone_channels(2, 4000, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    const auto bytes_of = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    SECTION("a pinned code reaches an AC-3 encode and changes the stream") {
+        const auto auto_path = dir / "fgaincod_auto.ac3";
+        const auto pinned_path = dir / "fgaincod_pinned.ac3";
+        const auto log = dir / "fgaincod_ac3.log";
+        fs::remove(auto_path);
+        fs::remove(pinned_path);
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + auto_path.string() +
+                            "\" 192 stereo fgaincod=auto",
+                        log) == 0);
+        const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" + pinned_path.string() +
+                                    "\" 192 stereo fgaincod=7",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        REQUIRE(fs::exists(auto_path));
+        REQUIRE(fs::exists(pinned_path));
+        // A different fast gain is a different masking curve, so a different
+        // allocation: proof the token reached EncoderConfig::fgaincod rather
+        // than merely parsing. Compared as a bool for the reason the atmos
+        // motion test above gives - stringifying multi-KB streams for a
+        // Catch2 diff is at best slow.
+        const bool differs = bytes_of(auto_path) != bytes_of(pinned_path);
+        CHECK(differs);
+    }
+
+    SECTION("on E-AC-3, auto is byte-identical to saying nothing and a pin is not") {
+        const auto silent_path = dir / "fgaincod_silent.ec3";
+        const auto auto_path = dir / "fgaincod_auto.ec3";
+        const auto pinned_path = dir / "fgaincod_pinned.ec3";
+        const auto log = dir / "fgaincod_eac3.log";
+        for (const auto& path : {silent_path, auto_path, pinned_path}) {
+            fs::remove(path);
+        }
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + silent_path.string() +
+                            "\" 192 none stereo",
+                        log) == 0);
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + auto_path.string() +
+                            "\" 192 none stereo fgaincod=auto",
+                        log) == 0);
+        const auto rc = run_cli("eac3-encode \"" + wav_path.string() + "\" \"" +
+                                    pinned_path.string() + "\" 192 none stereo fgaincod=7",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        REQUIRE(fs::exists(pinned_path));
+        // eac3::FrameConfig::fgaincod's own contract: -1 writes no fgaincode
+        // element at all, so the default frame is exactly what it was before
+        // the field existed. Pinning opens the element in all six blocks.
+        const bool auto_is_default = bytes_of(silent_path) == bytes_of(auto_path);
+        CHECK(auto_is_default);
+        const bool pin_differs = bytes_of(silent_path) != bytes_of(pinned_path);
+        CHECK(pin_differs);
+    }
+
+    SECTION("out-of-range and non-numeric codes are refused, not clamped") {
+        for (const std::string bad : {"8", "-2", "four", ""}) {
+            const auto out_path = dir / "fgaincod_bad.ac3";
+            const auto log = dir / "fgaincod_bad.log";
+            fs::remove(out_path);
+            INFO("fgaincod=" << bad);
+            const auto rc = run_cli("encode \"" + wav_path.string() + "\" \"" +
+                                        out_path.string() + "\" 192 stereo fgaincod=" + bad,
+                                    log);
+            CHECK(rc != 0);
+            CHECK_FALSE(fs::exists(out_path));
+            CHECK(read_log(log).find("fgaincod") != std::string::npos);
+        }
+    }
+}
+
 // capture2= is 'live'-only, but its rejection happens in parse_options,
 // before Needs::kCapture is even checked (see run_main: parse_options runs
 // on the whole trailing-options span before the per-command needs gate) -
@@ -2261,6 +2348,97 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
     CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
 }
 
+// Roadmap IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
+// only the flat 5.1 VBAP fold every dynamic object was panned into at encode
+// time - spatial.hpp's own "a raised object folds onto the ring... at full
+// level" - so an object authored at the ceiling measures no differently from
+// one on the ring. objects= re-renders each object by its own OAMD position
+// (including height) onto the named layout instead, which is what BS.1770-5
+// Annex 4 asks for.
+TEST_CASE("qc objects= re-renders an elevated object, layout=bed cannot see it",
+          "[cli][qc][objects]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_objects_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    // 2 s, the same "well past 3 real frames" duration the layout=rendered
+    // test above uses.
+    constexpr std::size_t kFrames = 96000;
+    const auto channels = make_tone_channels(2, kFrames, kRate);
+    REQUIRE(write_wav(wav_path, channels, kRate));
+
+    // Object 0 pinned at the ceiling directly overhead; object 1 pinned on
+    // the floor at the left wall - both static (one keyframe each is enough,
+    // see the atmos-encode keyframes test above for the file format).
+    const auto paths_path = dir / "qc_objects_paths.txt";
+    {
+        std::ofstream paths{paths_path};
+        REQUIRE(paths.is_open());
+        paths << "0 0.0  0.5 0.5 1.0  1.0 0.0\n";
+        paths << "1 0.0  0.0 0.5 0.0  1.0 0.0\n";
+    }
+
+    const auto ec3_path = dir / "qc_objects.ec3";
+    REQUIRE(run_cli("atmos-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 448 2 \"" + paths_path.string() + "\"",
+                    dir / "qc_objects_encode.log") == 0);
+
+    const auto bed_log = dir / "qc_objects_bed.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" layout=bed", bed_log) == 0);
+    const auto bed_text = read_log(bed_log);
+
+    const auto objects_log = dir / "qc_objects_514.log";
+    REQUIRE(run_cli("qc \"" + ec3_path.string() + "\" objects=514", objects_log) == 0);
+    const auto objects_text = read_log(objects_log);
+    INFO("bed:\n" << bed_text << "\nobjects=514:\n" << objects_text);
+
+    // Reports which configuration and rendering algorithm measured it, per
+    // Annex 4's own "should be reported" - see analysis.cpp's own comment.
+    const auto objects_section_at = objects_text.find("objects=5.1.4");
+    REQUIRE(objects_section_at != std::string::npos);
+    CHECK(objects_text.find("BS.1770-5 Annex 4") != std::string::npos);
+
+    // layout= and objects= are independent switches (this invocation asked
+    // for neither layout=bed nor layout=rendered explicitly, so the default
+    // layout=bed report comes first) - the objects= figures are read from
+    // after that landmark so a bare value_after does not just find the bed
+    // pass's own "integrated loudness" line again.
+    const auto objects_section = objects_text.substr(objects_section_at);
+
+    // The ceiling object's energy lands on a height pair layout=bed's flat
+    // 5.1 fold has no channel for at all (spatial::pan_room folds it onto the
+    // ring instead), so the two measurements must genuinely disagree - if
+    // objects= were quietly still metering the same flat bed, they would not.
+    const auto bed_lkfs = value_after(bed_text, "integrated loudness");
+    const auto objects_lkfs = value_after(objects_section, "integrated loudness");
+    REQUIRE(bed_lkfs.has_value());
+    REQUIRE(objects_lkfs.has_value());
+    CHECK(*objects_lkfs != Catch::Approx(*bed_lkfs).margin(0.05));
+}
+
+TEST_CASE("qc objects= refuses a programme with no dynamic-object-only OAMD",
+          "[cli][qc][objects]") {
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "qc_objects_bad_in.wav";
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 48000;
+    REQUIRE(write_wav(wav_path, {make_tone(0.4, 440.0, kFrames, kRate),
+                                  make_tone(0.4, 660.0, kFrames, kRate)},
+                      kRate));
+    // A plain channel-based E-AC-3 stream - no OAMD/JOC at all - is exactly
+    // what objects= cannot meter.
+    const auto ec3_path = dir / "qc_objects_bad.ec3";
+    REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
+                        "\" 192 none 51",
+                    dir / "qc_objects_bad_encode.log") == 0);
+
+    const auto log = dir / "qc_objects_bad.log";
+    const auto rc = run_cli("qc \"" + ec3_path.string() + "\" objects=514", log);
+    CHECK(rc != 0);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(text.find("no dynamic-object-only OAMD") != std::string::npos);
+}
+
 TEST_CASE("qc layout= rejects anything but bed or rendered", "[cli][qc][layout]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "qc_layout_bad_in.wav";
@@ -3368,6 +3546,130 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
                           (dir / "demux_absent.out").string() + "\"",
                       log) != 0);
     }
+}
+
+// Roadmap IO2's remaining half: decode/qc/levels (play/monitor share the same
+// read_elementary_stream call and need real audio hardware to exercise, so
+// are not re-tested here) all take a container in place of a raw .ac3/.ec3,
+// sniffed by content rather than by extension - exactly what demux already
+// does, reused via apps/common/container_input.hpp's
+// ac3::apps::elementary_stream_from_bytes rather than duplicated a third
+// time (support.cpp's own read_elementary_stream, and the GUI's
+// qc_controller.cpp/object_decode_controller.cpp).
+TEST_CASE("decode/qc/levels accept a container in place of a raw elementary stream",
+          "[cli][io2]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "io2_widen.log";
+
+    const auto es = dir / "io2_widen.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + es.string() + "\" 1 448 440 60 51", log) == 0);
+    const auto mkv = dir / "io2_widen.mkv";
+    REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+    const auto mp4 = dir / "io2_widen.mp4";
+    REQUIRE(run_cli("mp4 \"" + es.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+    const auto ts = dir / "io2_widen.ts";
+    REQUIRE(run_cli("ts \"" + es.string() + "\" \"" + ts.string() + "\"", log) == 0);
+
+    SECTION("decode") {
+        const auto read_bytes = [](const fs::path& path) {
+            std::ifstream in{path, std::ios::binary};
+            REQUIRE(in.is_open());
+            return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                     std::istreambuf_iterator<char>{}};
+        };
+        const auto from_es = dir / "io2_widen_from_es.wav";
+        REQUIRE(run_cli("decode \"" + es.string() + "\" \"" + from_es.string() + "\"", log) == 0);
+        const auto expected = read_bytes(from_es);
+        for (const auto& container : {mkv, mp4, ts}) {
+            CAPTURE(container);
+            const auto out = dir / (container.stem().string() + "_decoded.wav");
+            CHECK(run_cli("decode \"" + container.string() + "\" \"" + out.string() + "\"", log) ==
+                 0);
+            CHECK(read_bytes(out) == expected);
+        }
+    }
+
+    SECTION("qc") {
+        for (const auto& container : {mkv, mp4, ts}) {
+            CAPTURE(container);
+            CHECK(run_cli("qc \"" + container.string() + "\"", log) == 0);
+        }
+    }
+
+    SECTION("levels") {
+        for (const auto& container : {mkv, mp4, ts}) {
+            CAPTURE(container);
+            CHECK(run_cli("levels \"" + container.string() + "\"", log) == 0);
+        }
+    }
+}
+
+// --- remux (roadmap IO2) -----------------------------------------------------
+
+TEST_CASE("remux converts one container straight to another", "[cli][remux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "remux.log";
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    const auto es = dir / "remux_source.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + es.string() + "\" 1 448 440 60 51", log) == 0);
+    const auto mkv = dir / "remux_source.mkv";
+    REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+
+    // Matroska carries no dec3 box at all, so remuxing it to MP4 exercises
+    // exactly the claim run_mp4's own comment makes: codec_config is built
+    // from the re-scanned bitstream (ac3::io::build_codec_config_box), never
+    // from what the source container could or could not declare. If that
+    // ever regressed to reading a source-side box instead, this MP4 would
+    // have nothing to build one from and mp4::mux would refuse it outright -
+    // the round trip through demux below is what proves it wrote a coherent
+    // one rather than merely that it wrote *something*.
+    SECTION("Matroska to MP4 round-trips through demux") {
+        const auto mp4 = dir / "remux_mkv_to_mp4.mp4";
+        REQUIRE(run_cli("remux \"" + mkv.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+        const auto recovered = dir / "remux_mkv_to_mp4.ec3";
+        REQUIRE(run_cli("demux \"" + mp4.string() + "\" \"" + recovered.string() + "\"", log) ==
+               0);
+        CHECK(read_bytes(recovered) == read_bytes(es));
+    }
+
+    SECTION("MP4 to MPEG-TS round-trips through demux") {
+        const auto mp4 = dir / "remux_source.mp4";
+        REQUIRE(run_cli("mp4 \"" + es.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+        const auto ts = dir / "remux_mp4_to_ts.ts";
+        REQUIRE(run_cli("remux \"" + mp4.string() + "\" \"" + ts.string() + "\"", log) == 0);
+        const auto recovered = dir / "remux_mp4_to_ts.ec3";
+        REQUIRE(run_cli("demux \"" + ts.string() + "\" \"" + recovered.string() + "\"", log) == 0);
+        CHECK(read_bytes(recovered) == read_bytes(es));
+    }
+
+    SECTION("a bare elementary stream remuxes straight to a container too") {
+        const auto mp4 = dir / "remux_bare_to_mp4.mp4";
+        REQUIRE(run_cli("remux \"" + es.string() + "\" \"" + mp4.string() + "\"", log) == 0);
+        const auto recovered = dir / "remux_bare_to_mp4.ec3";
+        REQUIRE(run_cli("demux \"" + mp4.string() + "\" \"" + recovered.string() + "\"", log) ==
+               0);
+        CHECK(read_bytes(recovered) == read_bytes(es));
+    }
+}
+
+TEST_CASE("remux refuses an output extension it does not write", "[cli][remux]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "remux_bad.log";
+    const auto es = dir / "remux_bad_source.ec3";
+    REQUIRE(run_cli("eac3-sine \"" + es.string() + "\" 1 448 440 60 51", log) == 0);
+    const auto mkv = dir / "remux_bad_source.mkv";
+    REQUIRE(run_cli("mkv \"" + es.string() + "\" \"" + mkv.string() + "\"", log) == 0);
+
+    const auto rc = run_cli(
+        "remux \"" + mkv.string() + "\" \"" + (dir / "remux_bad.xyz").string() + "\"", log);
+    CHECK(rc != 0);
+    CHECK(read_log(log).find("does not name a container this build writes") != std::string::npos);
 }
 
 // --- unspdif (roadmap IO3) ---------------------------------------------------

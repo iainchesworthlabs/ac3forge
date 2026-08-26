@@ -20,6 +20,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
+#include "container_input.hpp"
 
 using qc_detail::RawProgramme;
 using qc_detail::RawResult;
@@ -280,10 +281,20 @@ MeasureOutcome measure_file(const QString& path) {
         outcome.error = QStringLiteral("%1 is empty.").arg(path);
         return outcome;
     }
-    std::vector<std::byte> stream(raw.size());
+    std::vector<std::byte> file_bytes(raw.size());
     for (std::size_t i = 0; i < raw.size(); ++i) {
-        stream[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
+        file_bytes[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
     }
+
+    // roadmap IO2: the file itself unchanged if it is not a container this
+    // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
+    // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
+    auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);
+    if (!demuxed.error.empty()) {
+        outcome.error = QStringLiteral("%1 is a %2").arg(path, to_qstring(demuxed.error));
+        return outcome;
+    }
+    const auto stream = std::move(demuxed.bytes);
 
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {

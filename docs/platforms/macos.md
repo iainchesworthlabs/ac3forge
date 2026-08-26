@@ -8,7 +8,7 @@
     issue (Homebrew's unpinned `llvm` formula flagging Catch2's `__COUNTER__` usage under
     `-Wc2y-extensions` — see `cmake/CompilerWarnings.cmake`), fixed in one commit, followed by two
     consecutive clean runs. The `continue-on-error` escape hatch has since been removed
-    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/develop/.github/workflows/_build.yml)),
+    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)),
     so a `macos-llvm` failure blocks like every other required leg now.
 
 ## Toolchain
@@ -103,13 +103,20 @@ cpack --preset pack-macos-llvm
 Produces a DragNDrop image on top of a plain ZIP when the packaging tool is found, the same way
 NSIS is on Windows and DEB/RPM are on Linux. `macos-llvm` is one of the four `release_package`
 legs (alongside `windows-msvc`, `linux-gcc` and `linux-gcc-arm64`) that package on a real tagged
-release (`release.yml`, `do_package: true`). That path has been exercised for real: four beta
-releases, v0.2.0-beta.1 through v0.5.0-beta.1, have shipped through the tag-triggered workflow,
+release (`release.yml`, `do_package: true`). That path has been exercised for real: nine beta
+releases, v0.2.0-beta.1 through v0.9.0-beta.1, have shipped through the tag-triggered workflow,
 macOS packages included. `cmake/Packaging.cmake` needed no change for `ac3gui` to join that
 `.dmg`: which targets end up in a package is decided entirely by which `install()` rules ran, and
 `ac3gui`'s already runs whenever `AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop generator itself is
 unconditional on `APPLE`, GUI or not. No stable (non-beta) release has been tagged yet. See
 [Packaging](../building.md#packaging).
+
+The `.app` bundle also declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3`
+and `.ec3` — a custom `Info.plist.in` rather than CMake's default template, since neither
+extension is a system-known UTI and each needs its own `UTTypeConformsTo: public.audio`
+declaration tying it to `audio/ac3`/`audio/eac3`. Configure/build-verified only, like the rest of
+this file's GUI coverage below — nobody has opened a real `.ac3` file from Finder on real hardware
+yet.
 
 ## CI: what has and has not been verified
 

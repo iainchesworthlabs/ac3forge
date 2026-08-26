@@ -1,13 +1,21 @@
-# ADM → Atmos bridging: `ac3::admbridge`
+# ADM ↔ Atmos bridging: `ac3::admbridge`
 
-`ac3/admbridge/bridge.hpp`, `ac3/admbridge/coordinates.hpp`, library `ac3::admbridge`. Roadmap item
-B1 phase 2 of 3 (see [ROADMAP.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md)): maps the ADM object graph
-[`ac3adm::ac3adm`](adm.md) (phase 1) parses from a BW64/ADM master onto
-[`ac3::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `ac3::oba::ObjectPath` plus
-one mono PCM span per bed speaker feed or dynamic object, ready to drive `encode_frame()` in a
-loop. This module is the mapping/bridge library and its tests only; driving it end to end is
-phase 3 — `ac3cli atmos-adm` and [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp), both **done**, see
-[Commands](../cli/commands.md).
+`ac3/admbridge/bridge.hpp`, `ac3/admbridge/coordinates.hpp`, library `ac3::admbridge`. Two
+directions live here now:
+
+- **Read** (roadmap item B1 phase 2 of 3, see [ROADMAP.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md)):
+  maps the ADM object graph [`ac3adm::ac3adm`](adm.md) parses from a BW64/ADM master onto
+  [`ac3::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `ac3::oba::ObjectPath` plus
+  one mono PCM span per bed speaker feed or dynamic object, ready to drive `encode_frame()` in a
+  loop. Driven end to end by `ac3cli atmos-adm` and
+  [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp).
+- **Write** (roadmap item IM2, "JOC → ADM BWF writer"): the mirror image — maps a decoded
+  `ac3::Eac3Decoder` programme's own bed/object PCM and OAMD automation onto an
+  `ac3adm::AdmDocument`, ready for `ac3adm::write_bw64()`. Driven end to end by
+  `ac3cli decode ... adm_out`.
+
+Both directions are the same "one place `ac3adm` and `ac3::forge`/`ac3::oba` are allowed to meet"
+seam this module has always been, see [Commands](../cli/commands.md) for both commands.
 
 **Opt-in, gated by the same flag as `ac3adm::ac3adm`.** `ac3::admbridge` depends on both
 `ac3adm::ac3adm` and `ac3::forge`, so it is meaningless without `AC3FORGE_BUILD_ADM=ON` and is
@@ -45,11 +53,13 @@ Two hard constraints rule out folding this into either side it bridges:
 shape `ac3::signing` uses for its own `ac3::forge` dependency. It is not part of the installed
 `find_package(ac3forge)` package, for the same reason `ac3adm::ac3adm` itself is not (see
 [ADM / BW64 reading](adm.md)'s own "Why opt-in" section): consume it via `add_subdirectory`
-in-tree. ROADMAP.md's IM1 entry (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is
-now in the roadmap's "not on the list" section for want of a public specification) names this
-module as the "mapping layer" it plans to share once it exists — another reason to keep this logic
-independent of `ac3adm`'s own BW64/ADM-XML-specific parsing, even though
-`ac3adm::AdmDocument` is the only input shape today.
+in-tree. ROADMAP.md's IM1 (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is now
+in the roadmap's "not on the list" section for want of a public specification) names this module
+as the "mapping layer" it intends to share. Its phase 1 has landed — `ac3iab::ac3iab` (`src/ac3iab`)
+parses the §7/§8 bitstream today, default-ON and installed like the container modules — but its
+phase 3, the `atmos-iab` command that maps an `IaFrame` onto this module's `ObjectPath` layer, is
+unstarted, so `ac3adm::AdmDocument` is still the only input shape here. That sharing is another
+reason to keep this logic independent of `ac3adm`'s own BW64/ADM-XML-specific parsing.
 
 ## What gets mapped
 
@@ -135,13 +145,45 @@ an object in the downmix would have the receiving renderer spread it a second ti
 caller constructing paths directly can set them; it is only the ADM-derived route that leaves them
 at their defaults.
 
+## Write direction (roadmap IM2)
+
+`write()` takes a `WriteInput` — a sample rate plus one `WriteChannel` per channel to place in the
+master, in any order — and returns an `ac3adm::AdmDocument` ready for `ac3adm::write_bw64()`. A
+channel is either a bed channel (`bed_label` set — written as a static `DirectSpeakers` channel
+pinned at `ac3::oba::bed_label_position()`, `updates` unused) or a dynamic object (`bed_label`
+empty — written as an `Objects` channel whose `audioBlockFormat` sequence comes from `updates`).
+
+Scoped to exactly what this project's own decoder ever produces: a dynamic-object-only-or-single-
+bed-instance programme (`Eac3Decoder` never emits ISF objects, several bed instances, or
+non-standard Table 13 assignments — see `oamd.hpp`'s own `Program` comment), no nested
+`audioObject`s, cartesian positions only. `ac3cli decode`'s own `--adm` wiring (`decode.cpp`)
+additionally only attempts this for a `dynamic_only` programme — a genuine bed program (channel-
+based-immersive third-party content) is warned about and skipped, not written incorrectly.
+
+**`WriteObjectUpdate` is the write-direction input for one OAMD update**, timestamped in absolute
+samples from the start of the whole decode (not the access unit it arrived in) — a caller
+assembles the list by walking every decoded access unit's own
+`DecodedAccessUnit::object_metadata->blocks` in file order and adding each block's own
+`sample_offset` to a running total of samples already emitted. `build_block_formats()` (internal
+to `bridge.cpp`) turns this into one `audioBlockFormat` per update: TS 103 420's own per-block
+model — a value takes effect at `sample_offset`, reached over `ramp_duration` samples, then held —
+is already, block for block, BS.2076-2 §10.3's `jumpPosition = 1` + `interpolationLength` case, so
+this direction needs none of `build_channel_path()`'s own read-direction case analysis; the first
+update in a channel's sequence becomes a plain hold (§10.3's "the first block covers its entire
+length regardless of `jumpPosition`" rule), every later one an explicit jump/ramp.
+
+`room_to_adm_cartesian()` (`coordinates.hpp`) is the algebraic inverse of `adm_cartesian_to_room()`
+above (`x_adm = 2·x_room - 1`, `y_adm = 1 - 2·y_room`, `z_adm = z_room`) — this writer only ever
+emits cartesian ADM, matching the Dolby Atmos Master ADM Profile's own shape, so there is no
+matching polar inverse.
+
 ## API
 
 ```cpp
 enum class BridgeError : std::uint8_t {
     kNoProgramme, kProgrammeNotFound, kUnresolvedReference, kObjectReferenceCycle,
     kUnsupportedType, kChannelTrackMismatch, kNoAudioForTrack, kEmptyBlockSequence,
-    kTooManyChannels,
+    kTooManyChannels, kEmptyInput,
 };
 std::string_view describe(BridgeError error);
 
@@ -162,6 +204,24 @@ std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& docume
 ac3adm::CartesianPosition polar_to_adm_cartesian(const ac3adm::PolarPosition& polar);
 ac3::oba::Position adm_cartesian_to_room(const ac3adm::CartesianPosition& cartesian);
 ac3::oba::Position adm_position_to_room(const ac3adm::Position& position);
+ac3adm::CartesianPosition room_to_adm_cartesian(const ac3::oba::Position& room);
+
+struct WriteObjectUpdate {
+    std::uint64_t sample_offset = 0;
+    int ramp_duration_samples = 0;             // ac3::oba::UpdateBlock::ramp_duration verbatim
+    ac3::oba::DynamicObject state;
+};
+struct WriteChannel {
+    std::string name;
+    std::span<const float> pcm;
+    std::optional<ac3::oba::BedLabel> bed_label{};    // set: bed/LFE; empty: dynamic object
+    std::span<const WriteObjectUpdate> updates{};     // dynamic objects only
+};
+struct WriteInput {
+    std::uint32_t sample_rate = 0;
+    std::vector<WriteChannel> channels;
+};
+std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input);
 ```
 
 `BridgeResult` is deliberately struct-of-arrays, not one struct per channel — `paths` is directly

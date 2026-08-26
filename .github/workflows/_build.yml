@@ -44,9 +44,9 @@ on:
         description: >-
           After the gold-reference gate passes on every leg, append this run's SNR results to the
           quality-history branch (see docs/quality-trend.md). Computed and set by ci.yml only for
-          direct pushes to develop/main - never for a PR, so unmerged work never pollutes the
-          trend - and left false by release.yml's call, which is tag-triggered, not a push to
-          either branch. A plain boolean input rather than this job re-deriving
+          direct pushes to main - never for a PR, so unmerged work never pollutes the
+          trend - and left false by release.yml's call, which is tag-triggered, not a push at
+          all. A plain boolean input rather than this job re-deriving
           github.event_name/github.ref itself: those reflect the reusable workflow's own call
           context, and computing the condition once at the unambiguous caller site is simpler
           than relying on exactly how that context propagates through workflow_call.
@@ -1055,8 +1055,22 @@ jobs:
   build-android:
     name: Android (Shield)
     runs-on: ubuntu-latest
+    # Unset elsewhere in this file's `build` matrix (which sets 90 for the
+    # slowest desktop legs, see its own header) - this job had no bound at
+    # all before the emulator step below existed. An emulator boot that
+    # never completes is the most likely hang in this job now, not the
+    # Gradle/CMake build; 45 is generous for boot + connectedDebugAndroidTest
+    # without leaving a wedged runner tying up the queue indefinitely.
+    timeout-minutes: 45
     permissions:
       contents: read
+      # CodeQL's java-kotlin analyze step below uploads SARIF - see the
+      # "Initialize CodeQL"/"Perform CodeQL Analysis" steps' own comment for
+      # why that leg lives here instead of codeql.yml. ci.yml's build-and-test
+      # and release.yml's build-packages both raise this same ceiling on their
+      # calls into this reusable workflow, the same override pattern they
+      # already use for contents: write/actions: read.
+      security-events: write
     env:
       # A step's `if:` cannot read `secrets` directly, only `env` - so the
       # presence check happens once here and the materialize step reads this
@@ -1123,6 +1137,21 @@ jobs:
           printf '%s' "$ATMOS_SIGNING_KEY" > "$asset_dir/signing.key"
           echo "Wrote $asset_dir/signing.key ($(wc -c < "$asset_dir/signing.key") base64 chars) - object signing enabled."
 
+      # java-kotlin has no buildless extractor mode (build-mode: none extracts
+      # nothing from this 100%-Kotlin app - see codeql.yml's own header for
+      # the measured run that found this), so it needs a real Gradle build to
+      # trace. This job already pays for JDK 17, the pinned NDK and the
+      # signing key material above, and already runs assembleDebug on every
+      # push - init before that build, analyze right after, is cheaper than a
+      # second Android toolchain standing up its own leg in codeql.yml.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          config-file: ./.github/codeql/codeql-config.yml
+          queries: security-and-quality
+
       - name: Build debug APK
         working-directory: apps/android
         shell: bash
@@ -1130,6 +1159,46 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :app:assembleDebug --console=plain
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: "/language:java-kotlin"
+
+      # Roadmap VX18(b): device-free instrumented coverage for
+      # NativeBridge/PassthroughBridge (apps/android/app/src/androidTest/) -
+      # nothing before this ran ANY Kotlin-level test, only the C++-side
+      # pure logic on the desktop ctest suite (docs/platforms/android.md).
+      # GitHub-hosted Linux runners only have KVM acceleration for x86/
+      # x86_64 system images, not arm64-v8a under software translation, so
+      # this needs an x86_64 debug build - see build.gradle.kts's debug
+      # buildType ndk.abiFilters comment for why arm64-v8a is re-listed
+      # there rather than dropped.
+      - name: Enable KVM group perms for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | \
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Instrumented tests (emulator)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          working-directory: apps/android
+          disable-animations: true
+          # -noaudio: no host audio device to bridge to inside this
+          # container/runner anyway, and it makes isDirectPlaybackSupported
+          # deterministically false, which is exactly the "no receiver"
+          # contract PassthroughBridgeInstrumentedTest/
+          # NativeBridgeInstrumentedTest check - real passthrough hardware
+          # is docs/platforms/android.md's manual verification, not this.
+          emulator-options: >-
+            -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim -camera-back none
+          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
 
       # Only meaningful for a release build with a keystore actually
       # provisioned - release.yml's call passes these four secrets, ci.yml's
@@ -1233,12 +1302,42 @@ jobs:
       # Not consumed by docs.yml (see this job's own header) - uploaded
       # purely so a failed/successful build's actual output is inspectable
       # from the Actions run, the same convenience packages-android gets.
+      # Unconditional (ahead of the browser test below) so a failing test
+      # still leaves the build it tested inspectable.
       - name: Upload demo artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wasm-decode-demo
           path: build/config-wasm-emscripten/bin/wasm_decode_demo
           if-no-files-found: error
+
+      # Roadmap VX18(a): until this, "it compiles" was the only thing any CI
+      # leg checked - docs/platforms/wasm.md's "Not yet verified" section
+      # recorded decode/playback/render correctness as manual-only,
+      # re-checked by eye every time this demo changed. apps/wasm/tests'
+      # Playwright harness drives the real Embind API against the bundled
+      # fixture and asserts the same real values (channel count, sample
+      # rate, object count, duration, a moving object position) that manual
+      # verification checked before.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/wasm/tests/package-lock.json
+
+      - name: Install Playwright harness
+        working-directory: apps/wasm/tests
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Headless-browser decode test
+        working-directory: apps/wasm/tests
+        env:
+          WASM_DEMO_DIR: ${{ github.workspace }}/build/config-wasm-emscripten/bin/wasm_decode_demo
+          CI: "1"
+        run: npm test
 
   # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
@@ -1330,10 +1429,10 @@ jobs:
   # A dedicated branch sidesteps that entirely, and - since this is a public
   # repo - is fetchable client-side from raw.githubusercontent.com with no
   # auth, no API rate limit, and no server: see docs/quality-trend.md's own
-  # script. That also decouples data collection (every develop/main push)
-  # from the docs site's own publish cadence (push to main only, per
-  # docs.yml) - a develop push's numbers show up on the trend page without
-  # needing a docs deploy at all.
+  # script. That also decouples data collection (every main push) from the
+  # docs site's own publish cadence (also push to main, per docs.yml, but a
+  # separate job) - a push's numbers show up on the trend page without
+  # waiting on that job to finish.
   quality-trend:
     name: Publish quality trend
     needs: build
@@ -1423,7 +1522,28 @@ jobs:
             echo "No changes to commit."
           else
             git commit -q -m "Quality trend: ${BRANCH}@${COMMIT_SHA}"
-            git push -q origin quality-history
+            # Four trend publishers (quality, performance,
+            # external-comparison, object-quality) share this one branch and
+            # routinely finish within seconds of each other, so losing the
+            # push race is an expected outcome rather than an error - it is
+            # what "! [rejected] (fetch first)" on main means. Each writes its
+            # own data file, so rebasing onto whichever sibling won is
+            # conflict-free; only a genuine conflict stops the retry.
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push -q origin quality-history 2>/dev/null; then
+                pushed=yes
+                break
+              fi
+              echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
+              git fetch -q origin quality-history
+              git rebase -q origin/quality-history
+              sleep $(( (RANDOM % 5) + 1 ))
+            done
+            if [ -z "${pushed}" ]; then
+              echo "::error::could not push quality-history after 5 attempts"
+              exit 1
+            fi
           fi
 
       # Deliberately after the push above, not instead of the append step

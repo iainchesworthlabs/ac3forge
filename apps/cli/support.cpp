@@ -33,8 +33,6 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -45,11 +43,9 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
-#include "matroska/matroska.hpp"
-#include "mp4/dash.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
+#include "container_input.hpp"
 #include "platform/stdio_binary.hpp"
+#include "recording_sink.hpp"
 #include "usage.hpp"
 
 namespace ac3cli {
@@ -543,6 +539,35 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          token);
             return false;
         }
+        if (key == "fgaincod") {
+            // §7.2.2.4 fast gain, Table 7.11 - search='s other axis, held for
+            // a whole encode instead of chosen per frame. Not scoped to one
+            // command: both codecs have the field and every encoding command
+            // routes through plan::Tools, the same reach dither= and search=
+            // already have.
+            //
+            // 'auto' spells the default rather than -1 doing it alone, since
+            // "auto" is what the two codecs' automatic behaviours have in
+            // common and not a number either of them uses (AC-3 follows the
+            // measured curve, E-AC-3 leaves Table E1.4's implied 0x4 and
+            // writes no element - see Options::fgaincod). -1 is accepted as
+            // the same thing spelled the way the library field is.
+            if (value == "auto" || value == "-1") {
+                out.fgaincod = -1;
+                continue;
+            }
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 7) {
+                fmt::println(stderr,
+                             "error: fgaincod must be 'auto' or 0-7 (Table 7.11) (got '{}')",
+                             token);
+                return false;
+            }
+            out.fgaincod = static_cast<int>(parsed);
+            continue;
+        }
         if (key == "dither") {
             // No bare-word form: unlike fast-mdct, dither has no prior
             // opt-in spelling to keep parsing, so only the value form -
@@ -960,9 +985,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
-        if (key == "codec") {
-            // 'transcode' only. Named rather than inferred when out_path is
-            // "-" or has no .ac3/.ec3 suffix to read - see Options::codec.
+        if (key == "codec" && command == "transcode") {
+            // 'transcode' only - disambiguated from record/live's own codec=
+            // below the same way layout= is, a few blocks down. Named rather
+            // than inferred when out_path is "-" or has no .ac3/.ec3 suffix
+            // to read - see Options::codec.
             if (value == "ac3") {
                 out.codec = ac3::plan::Codec::kAc3;
             } else if (value == "eac3" || value == "ec3") {
@@ -1246,6 +1273,16 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 fmt::println(stderr, "error: layout must be bed or rendered (got '{}')", token);
                 return false;
             }
+            continue;
+        }
+        if (key == "objects" && command == "qc") {
+            const auto id = ac3::plan::parse_layout(value);
+            if (!id) {
+                fmt::println(stderr, "error: objects layout '{}' not recognised ({})", value,
+                             ac3::plan::layout_names());
+                return false;
+            }
+            out.qc_objects_layout = id;
             continue;
         }
         if (key == "layout") {
@@ -1912,6 +1949,20 @@ std::vector<std::byte> read_all(std::string_view path) {
         return {};
     }
     return bytes;
+}
+
+std::vector<std::byte> read_elementary_stream(std::string_view in_path) {
+    auto bytes = read_all(in_path);
+    if (bytes.empty()) {
+        fmt::println(stderr, "error: cannot read {}", in_path);
+        return {};
+    }
+    auto result = ac3::apps::elementary_stream_from_bytes(bytes);
+    if (!result.error.empty()) {
+        fmt::println(stderr, "error: {} is a {}", in_path, result.error);
+        return {};
+    }
+    return std::move(result.bytes);
 }
 
 std::expected<ac3::io::WavData, ac3::io::WavError> read_wav_arg(std::string_view path) {

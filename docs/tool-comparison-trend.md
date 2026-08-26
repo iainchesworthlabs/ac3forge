@@ -2,7 +2,7 @@
 
 The commit-level half of the external-encoder landscape comparison — see
 [Landscape](landscape.md) for the release-facing headline number. Every push
-to `develop` or `main` encodes the same three fixed legs
+to `main` encodes the same three fixed legs
 [`tools/generators/gen_external_baseline.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/gen_external_baseline.py)
 measures FFmpeg's and Dolby DEE's encoders against, scores this build's own
 output through `ac3cli`'s own decoder (no FFmpeg, no DEE, at CI time — see
@@ -90,10 +90,10 @@ the column was never populated. Rows from that point on carry real numbers.
 (function () {
   const REPO = "iainchesworthlabs/ac3forge";
   const HISTORY_BRANCH = "quality-history";
-  const TRACKS = [
-    { branch: "develop", color: "#7c4dff" },
-    { branch: "main", color: "#00acc1" },
-  ];
+  const MAIN_COLOR = "#00acc1";
+  // Muted and dashed (see buildChart) rather than a third saturated colour -
+  // the historical track reads as archived, not as a second live series.
+  const HISTORICAL_COLOR = "#9e9e9e";
   // Mirrors tools/ci/append_external_comparison_history.py's own constants -
   // keep these in sync if that script's thresholds change; this is a
   // display-only echo, not a second source of truth. Only the soft
@@ -145,20 +145,24 @@ the column was never populated. Rows from that point on carry real numbers.
 
   const state = {
     leg: "eac3-stereo-192",
-    // "branch": one line per branch for a single focus variant (the
-    // original view). "variant": one line per tool-set variant for a single
-    // branch, un-folded - same branch-vs-leg tradeoff as quality-trend.md's
-    // "By platform leg" view: never both branch and variant as line
-    // dimensions at once, since up to 10 variants x 2 branches would be as
-    // unreadable as the per-leg-and-variant chart this page already avoids.
+    // "branch": one line for main's focus variant, plus an optional second
+    // line for develop's frozen history (the original view). "variant": one
+    // line per tool-set variant for a single track, un-folded - same
+    // track-vs-leg tradeoff as quality-trend.md's "By platform leg" view:
+    // never both branch and variant as line dimensions at once, since up to
+    // 10 variants x 2 tracks would be as unreadable as the per-leg-and-
+    // variant chart this page already avoids.
     chartMode: "branch",
     chartVariant: "landscape",
-    // Which branch's per-variant lines are drawn in "variant" mode. develop
-    // by default, same reasoning as quality-trend.md's legBranch.
-    chartBranch: "develop",
+    // Which track's per-variant lines are drawn in "variant" mode. main by
+    // default, now that it is the only track still gaining commits.
+    chartBranch: "main",
     tableVariants: Object.fromEntries(ALL_VARIANTS.map((v) => [v, DEFAULT_TABLE_VARIANTS.includes(v)])),
-    branches: { main: true, develop: true },
-    developFullHistory: false,
+    // develop stopped moving on 2026-08-25's move to trunk-based
+    // development (see "Where the data lives" below) - kept, but no longer
+    // shown by default alongside main. Same reasoning as quality-trend.md's
+    // identical flag.
+    showHistorical: false,
   };
 
   function rawUrl(branch, file) {
@@ -222,28 +226,16 @@ the column was never populated. Rows from that point on carry real numbers.
     return `https://github.com/${REPO}/commit/${sha}`;
   }
 
-  function mostRecentCommit(records) {
-    if (records.length === 0) return null;
-    return records.reduce((a, b) => (a.commit_date > b.commit_date ? a : b)).commit;
-  }
-
-  // "variant" mode always looks at one branch's full leg history - same
+  // "variant" mode always looks at one track's full leg history - same
   // reasoning as quality-trend.md's leg view: the point is seeing a
-  // per-variant trend over many commits, so the develop-collapse and
-  // other-branch filters "branch" mode uses don't apply here.
+  // per-variant trend over many commits. "branch" mode scopes to main, plus
+  // develop's frozen history (in full - nothing to collapse) if asked for.
   function visibleRecords(allRecords) {
     const legRecords = allRecords.filter((r) => r.leg === state.leg);
     if (state.chartMode === "variant") {
       return legRecords.filter((r) => r.branch === state.chartBranch);
     }
-    const latestDevelop = mostRecentCommit(legRecords.filter((r) => r.branch === "develop"));
-    return legRecords.filter((r) => {
-      if (!state.branches[r.branch]) return false;
-      if (r.branch === "develop" && !state.developFullHistory) {
-        return r.commit === latestDevelop;
-      }
-      return true;
-    });
+    return legRecords.filter((r) => r.branch === "main" || (state.showHistorical && r.branch === "develop"));
   }
 
   function chartSeries(records, variant) {
@@ -306,7 +298,8 @@ the column was never populated. Rows from that point on carry real numbers.
       if (pts.length === 0) continue;
       if (pts.length > 1) {
         const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(Date.parse(p.commit_date)).toFixed(1)},${y(p.snr_db).toFixed(1)}`).join(" ");
-        svg += `<path d="${path}" fill="none" stroke="${track.color}" stroke-width="2"/>`;
+        const dash = track.dashed ? ' stroke-dasharray="5,3"' : "";
+        svg += `<path d="${path}" fill="none" stroke="${track.color}" stroke-width="2"${dash}/>`;
       }
       pts.forEach((p) => {
         const cx = x(Date.parse(p.commit_date)).toFixed(1);
@@ -399,10 +392,10 @@ the column was never populated. Rows from that point on carry real numbers.
           </select>
         </label>
         ${variantMode ? `
-          <label for="tool-trend-chart-branch">Branch
+          <label for="tool-trend-chart-branch">Track
             <select id="tool-trend-chart-branch">
-              <option value="develop" ${state.chartBranch === "develop" ? "selected" : ""}>develop</option>
               <option value="main" ${state.chartBranch === "main" ? "selected" : ""}>main</option>
+              <option value="develop" ${state.chartBranch === "develop" ? "selected" : ""}>develop (historical, pre-2026-08-25)</option>
             </select>
           </label>
         ` : `
@@ -411,9 +404,7 @@ the column was never populated. Rows from that point on carry real numbers.
               ${ALL_VARIANTS.map((v) => `<option value="${v}" ${state.chartVariant === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           </label>
-          <label><input type="checkbox" id="tool-trend-branch-main" ${state.branches.main ? "checked" : ""}/> main</label>
-          <label><input type="checkbox" id="tool-trend-branch-develop" ${state.branches.develop ? "checked" : ""}/> develop</label>
-          ${state.branches.develop ? `<label><input type="checkbox" id="tool-trend-develop-history" ${state.developFullHistory ? "checked" : ""}/> develop: show full history</label>` : ""}
+          <label><input type="checkbox" id="tool-trend-show-historical" ${state.showHistorical ? "checked" : ""}/> Show historical (develop, pre-2026-08-25)</label>
         `}
       </div>
       <div class="tool-trend-variant-filter">
@@ -446,24 +437,10 @@ the column was never populated. Rows from that point on carry real numbers.
         render(allRecords, releasesBySha);
       });
     }
-    const mainToggle = document.getElementById("tool-trend-branch-main");
-    if (mainToggle) {
-      mainToggle.addEventListener("change", (e) => {
-        state.branches.main = e.target.checked;
-        render(allRecords, releasesBySha);
-      });
-    }
-    const developToggle = document.getElementById("tool-trend-branch-develop");
-    if (developToggle) {
-      developToggle.addEventListener("change", (e) => {
-        state.branches.develop = e.target.checked;
-        render(allRecords, releasesBySha);
-      });
-    }
-    const historyToggle = document.getElementById("tool-trend-develop-history");
-    if (historyToggle) {
-      historyToggle.addEventListener("change", (e) => {
-        state.developFullHistory = e.target.checked;
+    const historicalToggle = document.getElementById("tool-trend-show-historical");
+    if (historicalToggle) {
+      historicalToggle.addEventListener("change", (e) => {
+        state.showHistorical = e.target.checked;
         render(allRecords, releasesBySha);
       });
     }
@@ -476,9 +453,10 @@ the column was never populated. Rows from that point on carry real numbers.
   }
 
   // Builds this render's tracks per state.chartMode - branch mode keeps one
-  // track per branch for the focus variant (chartSeries); variant mode
-  // un-folds the single chartBranch into one track per tool-set variant.
-  // Mirrors quality-trend.md's identical buildTracks.
+  // track for main's focus variant, plus develop's frozen history if asked
+  // for (chartSeries); variant mode un-folds the single chartBranch into one
+  // track per tool-set variant. Mirrors quality-trend.md's identical
+  // buildTracks.
   function buildTracks(visible) {
     if (state.chartMode === "variant") {
       return ALL_VARIANTS.map((v) => ({
@@ -488,12 +466,22 @@ the column was never populated. Rows from that point on carry real numbers.
         points: chartSeries(visible, v),
       }));
     }
-    return TRACKS.map((t) => ({
-      key: t.branch,
-      label: t.branch === "develop" && !state.developFullHistory ? `${t.branch} (latest commit only)` : t.branch,
-      color: t.color,
-      points: state.branches[t.branch] ? chartSeries(visible.filter((r) => r.branch === t.branch), state.chartVariant) : [],
-    }));
+    const tracks = [{
+      key: "main",
+      label: "main",
+      color: MAIN_COLOR,
+      points: chartSeries(visible.filter((r) => r.branch === "main"), state.chartVariant),
+    }];
+    if (state.showHistorical) {
+      tracks.push({
+        key: "develop",
+        label: "develop (historical, pre-2026-08-25)",
+        color: HISTORICAL_COLOR,
+        dashed: true,
+        points: chartSeries(visible.filter((r) => r.branch === "develop"), state.chartVariant),
+      });
+    }
+    return tracks;
   }
 
   function render(allRecords, releasesBySha) {
@@ -509,12 +497,13 @@ the column was never populated. Rows from that point on carry real numbers.
     attachControlListeners(allRecords, releasesBySha);
   }
 
-  Promise.all([...TRACKS.map((t) => fetchTrack(t.branch)), fetchReleaseShaMap()]).then((results) => {
-    const releasesBySha = results.pop();
-    const allRecords = [];
-    TRACKS.forEach((t, i) => allRecords.push(...results[i]));
+  // Both files are always fetched - main to render, develop so the
+  // historical toggle above has something to show the instant it is
+  // checked, with no second round-trip.
+  Promise.all([fetchTrack("main"), fetchTrack("develop"), fetchReleaseShaMap()]).then(([mainRecords, developRecords, releasesBySha]) => {
+    const allRecords = [...mainRecords, ...developRecords];
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="tool-trend-status">No tool-comparison history yet - it is written by CI on the first push to develop or main after this page landed.</p>';
+      root.innerHTML = '<p class="tool-trend-status">No tool-comparison history yet - it is written by CI on the first push to main after this page landed.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -541,10 +530,12 @@ several variants' rows at once via the checkboxes regardless of which chart
 mode is active, so you can compare e.g. `none` against `all` without
 switching the chart back and forth.
 
-`develop` and `main` behave exactly as on [Quality trend](quality-trend.md):
-separate tracks (main only advances on a release promotion), `develop`
-collapsed to its latest commit by default to keep it from crowding `main`
-out, and a 🏷 badge marking a row whose commit was tagged as a release.
+`develop` and `main` behave exactly as on
+[Quality trend](quality-trend.md#reading-it): `main`'s full history is the
+default view, `develop`'s frozen pre-2026-08-25 history is available as an
+explicitly-labelled historical track (dashed, muted) via the same "Show
+historical" control, and a 🏷 badge marks a row whose commit was tagged as a
+release.
 
 **vs FFmpeg** / **vs DEE** are only populated on `landscape` rows — the
 delta between this build's own `auto`-tools E-AC-3 encode (or AC-3's
@@ -562,4 +553,10 @@ Same mechanism as [Quality trend](quality-trend.md#where-the-data-lives): a
 dedicated `quality-history` branch, `external-comparison-<branch>.jsonl`
 this time, written by a job in `ci.yml` (`persist-external-comparison-trend`)
 downstream of `ffmpeg-validate`'s compute-only `trend` step, on direct
-pushes to `develop`/`main` only.
+pushes to `main` only.
+
+`external-comparison-develop.jsonl` stopped gaining rows on 2026-08-24, the
+same migration to trunk-based development that froze
+[Quality trend](quality-trend.md#where-the-data-lives)'s `develop.jsonl` —
+see that page for the detail. It is kept as-is and is what the "Show
+historical" control above reads.

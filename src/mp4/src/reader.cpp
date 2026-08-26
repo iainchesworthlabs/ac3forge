@@ -778,6 +778,22 @@ std::expected<void, DemuxError> walk(ReaderState& s, std::span<const std::byte> 
             s.saw_box = true;
         }
 
+        // §4.2's largesize escape lets a box declare a size up to UINT64_MAX.
+        // box_end below is s.parse_pos + box.size - unchecked, that wraps
+        // past 2^64 for a size this close to it and lands BEHIND the
+        // current position. A container just leaves the box open forever
+        // (harmless), but the streaming Reader's sliding window advances
+        // window_pos to track parse_pos, and the next iteration's
+        // `parse_pos - window_pos` then underflows to a huge std::size_t -
+        // which read_box_header's own "in.size() - at < 8" guard fails to
+        // catch for the same reason, so it indexes far past the buffer. A
+        // size that cannot be added to the current position is not a
+        // length, the same reasoning read_box_header already applies to a
+        // size32 smaller than its own header.
+        if (!box.to_eof && box.size > UINT64_MAX - s.parse_pos) {
+            return std::unexpected(DemuxError::kMalformed);
+        }
+
         const std::uint64_t body_bytes = box.to_eof ? 0 : box.size - box.header_bytes;
         const std::uint64_t box_end = box.to_eof ? 0 : s.parse_pos + box.size;
 
@@ -863,9 +879,15 @@ std::expected<void, DemuxError> walk(ReaderState& s, std::span<const std::byte> 
                 ok = parse_chunk_offsets(box.type, body, s.options, s.pending);
                 break;
             case kTrex:
+                // Body layout past the FullBox header (offset 0): track_ID(4),
+                // default_sample_description_index(8), default_sample_duration(12),
+                // default_sample_size(16), default_sample_flags(20) - ISO/IEC
+                // 14496-12 §8.8.3. Confirmed against this project's own writer
+                // (fragment.cpp's build_trex) and the reader test helper's
+                // independent read_trex().
                 if (body.size() >= 20) {
                     s.trex_track_id = get_u32(body, 4);
-                    s.trex_default_sample_size = get_u32(body, 12);
+                    s.trex_default_sample_size = get_u32(body, 16);
                     s.have_trex = true;
                 }
                 break;

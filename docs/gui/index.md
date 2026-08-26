@@ -28,6 +28,15 @@ on the spot) and a one-sentence tour of the window:
 
 ![The first-run screen](screenshots/firstrun.png)
 
+Any of those, plus dragging a file onto the window or launching `ac3gui path/to/file` from a
+shell, works from the first-run screen or the workbench alike — a WAV becomes a source, an
+already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. An installed
+`ac3gui` also claims `.ac3`/`.ec3` as a file association on Linux (`ac3gui.desktop`'s
+`MimeType=audio/ac3;audio/eac3` plus the `ac3gui-mime.xml` shared-mime-info fragment that declares
+them) and on macOS (`Info.plist`'s `CFBundleDocumentTypes`/`UTExportedTypeDeclarations`, roadmap
+UX2), so opening one from the file manager arrives here the same way the command line does; there
+is no Windows leg. See [Loading a source](loading-a-source.md#01-input).
+
 ## The window
 
 Minimum size 1280×900. Two panes, divided by a vertical rule:
@@ -38,7 +47,8 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   segmented control, a **QC a stream…** button (a separate dialog that measures an
   already-encoded file — see [QC a stream](qc.md)), an **Inspect objects…** button (its decode-side
   counterpart for Dolby Atmos object metadata/audio — see [Inspect objects](inspect-objects.md)),
-  and a **Preferences** button.
+  an **Open stream…** button (plays an already-encoded file and exports its decode — see
+  [Open stream](open-stream.md)), and a **Preferences** button.
 - **Left rail — "the signal"** (always visible, never scrolled away, and never affected by which
   tier is selected): three numbered blocks — **01 Input** (one input, with a **File / Live
   capture** selector, the loaded source list and its totals), **02 Levels** (the channel meters),
@@ -189,6 +199,8 @@ The rest of the guide, in reading order:
    header's own dialog
 9. [Inspect objects](inspect-objects.md) — see the Dolby Atmos object positions and audio a decoder
    actually recovers from an already-encoded file, from the header's own dialog
+10. [Open stream](open-stream.md) — play an already-encoded file and export its decode, from the
+    header's own dialog or a finished run's own **More…** menu
 
 Or start with [Concepts](../concepts/index.md) if terms like "dependent substream" or "JOC" are
 unfamiliar — the GUI uses the same vocabulary as the standards it implements.

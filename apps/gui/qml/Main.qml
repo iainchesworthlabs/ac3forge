@@ -127,6 +127,8 @@ ApplicationWindow {
     readonly property alias qcDialogRef: qcDialog
     // Same reason again - the decode-side object inspector.
     readonly property alias objectInspectorDialogRef: objectInspectorDialog
+    // Same reason again - roadmap UX1's stream player.
+    readonly property alias streamPlayerDialogRef: streamPlayerDialog
 
     Component.onCompleted: {
         Theme.preference = appSettings.theme;
@@ -899,6 +901,59 @@ ApplicationWindow {
         return StandardPaths.writableLocation(StandardPaths.MusicLocation);
     }
 
+    // A run's own recorded path is a plain filesystem string (modelData.path,
+    // used as-is for e.g. playFileToReceiver/"Show in folder" above), not a
+    // URL - QcController.measureFile/ObjectDecodeController.inspectFile both
+    // take one, so the run strip's own "More…" menu needs this conversion
+    // too. Same "file:///" + normalized-slashes convention outputFolderUrl()
+    // above uses, including its own leading-slash strip: on Unix `path` is
+    // already absolute ("/..."), so without stripping that slash first,
+    // "file:///" + "/..." carries a fourth slash past the standard three -
+    // QUrl(...).toLocalFile() then hands it straight back as a literal
+    // doubled leading slash rather than collapsing it, which is exactly the
+    // "//__w/..." tst_stream_player.qml's QcController.filePath comparison
+    // caught. Windows paths ("C:/...") have no leading slash to strip, so
+    // the replace is a no-op there.
+    function runPathUrl(path) {
+        return "file:///" + path.replace(/\\/g, "/").replace(/^\//, "");
+    }
+
+    // The run strip's own "More…" menu items call these rather than
+    // inlining their bodies in onTriggered directly, so a test can invoke
+    // the exact same logic without needing to reach into a live Menu popup
+    // (Menu/MenuItem are not Item-derived, so findChild - which only walks
+    // Item.children - can never locate one; see tst_stream_player.qml's own
+    // comment on this).
+    function openRunInQc(path) {
+        qcDialog.open();
+        QcController.measureFile(runPathUrl(path));
+    }
+    function openRunInInspector(path) {
+        objectInspectorDialog.open();
+        ObjectDecodeController.inspectFile(runPathUrl(path));
+    }
+
+    // Roadmap UX2's single entry point for "a file arrived from outside the
+    // app" - the rail's own DropArea (below) and `ac3gui <file...>`
+    // (main.cpp, via QMetaObject::invokeMethod on this window) both funnel
+    // through here, so there is exactly one place that decides what a
+    // dropped/opened file means rather than two copies of the same suffix
+    // check drifting apart. A WAV becomes a source the same way "+ Add
+    // files…" does - addSourceFile() already falls back to loadSourceFile()
+    // itself when nothing is loaded yet, so the first-file and
+    // add-another-source cases share the one call. An .ac3/.ec3 opens
+    // roadmap UX1's stream player on it instead, the same "play/export what
+    // already exists" path Open stream…'s own header button reaches.
+    function openDroppedFile(url) {
+        const path = url.toString().toLowerCase();
+        if (path.endsWith(".ac3") || path.endsWith(".ec3")) {
+            streamPlayerDialog.open();
+            StreamPlayerController.openFile(url);
+        } else {
+            EncoderController.addSourceFile(url);
+        }
+    }
+
     // The folder actually created once folderDialog accepts - see
     // saveFolderDialog/recordFolderDialog's own onAccepted.
     property string pendingOutputFolderName: ""
@@ -1078,6 +1133,14 @@ ApplicationWindow {
     // the Objects tab.
     ObjectInspectorDialog {
         id: objectInspectorDialog
+    }
+
+    // Roadmap UX1 - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
+    // third of this header's "distinct surface, reachable from the header"
+    // dialogs alongside the two above - see StreamPlayerDialog.qml's own
+    // header comment.
+    StreamPlayerDialog {
+        id: streamPlayerDialog
     }
 
     AboutDialog {
@@ -1336,11 +1399,23 @@ ApplicationWindow {
         // ---- header ----------------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
+            // Margins/spacing trimmed from 20/Theme.space4: a sixth header
+            // action ("Open stream…", roadmap UX1) pushed this row's own
+            // implicit width just far enough over the 1280 px minimum width
+            // that the workbench RowLayout below it - an unrelated sibling,
+            // sharing the same outer ColumnLayout - stopped being clamped to
+            // the window's actual width and rendered wider than it, which at
+            // exactly this window size silently pushed the Guided wizard's
+            // Quality step's third rate card off the right edge (real
+            // pixels, not just visually - a synthetic click at its own
+            // reported centre landed outside the window and hit nothing).
+            // Reclaiming width here is what keeps every Layout.fillWidth
+            // sibling correctly clamped again.
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
             Layout.topMargin: 14
             Layout.bottomMargin: 14
-            spacing: Theme.space4
+            spacing: Theme.space2
 
             Text {
                 text: qsTr("ac3forge")
@@ -1382,6 +1457,11 @@ ApplicationWindow {
                 objectName: "objectInspectorOpenButton"
                 text: qsTr("Inspect objects…")
                 onClicked: objectInspectorDialog.open()
+            }
+            Button {
+                objectName: "streamPlayerOpenButton"
+                text: qsTr("Open stream…")
+                onClicked: streamPlayerDialog.open()
             }
             Button {
                 text: qsTr("Preferences")
@@ -6783,6 +6863,42 @@ ApplicationWindow {
                                             }
                                         }
                                     }
+                                    // Roadmap UX1's own run-chip shortcut: docs/gui/qc.md and
+                                    // docs/gui/inspect-objects.md both used to end by saying
+                                    // there was no way to jump from a finished run straight
+                                    // into either dialog - this is that way. The first Menu
+                                    // in this window (every other run action above is a flat
+                                    // Button); a two-item dropdown reads better here than a
+                                    // third and fourth button competing with Play/Show in
+                                    // folder for the same 34 px lane.
+                                    Button {
+                                        objectName: "runMore-" + modelData.id
+                                        visible: modelData.status === "done"
+                                                 && (modelData.path || "").length > 0
+                                        text: qsTr("More…")
+                                        flat: true
+                                        onClicked: runMoreMenu.open()
+
+                                        Menu {
+                                            id: runMoreMenu
+                                            y: parent.height
+
+                                            MenuItem {
+                                                objectName: "runMoreQc-" + modelData.id
+                                                text: qsTr("QC this run")
+                                                onTriggered: window.openRunInQc(modelData.path)
+                                            }
+                                            MenuItem {
+                                                objectName: "runMoreInspect-" + modelData.id
+                                                text: qsTr("Inspect objects")
+                                                // Same gate `ac3cli decode`'s own objects_dir has:
+                                                // object audio is an E-AC-3/Annex E tool only, so a
+                                                // plain AC-3 run has nothing this dialog can show.
+                                                visible: modelData.eac3 === true
+                                                onTriggered: window.openRunInInspector(modelData.path)
+                                            }
+                                        }
+                                    }
                                     Rectangle {
                                         Layout.preferredWidth: 1
                                         Layout.fillHeight: true
@@ -6957,6 +7073,25 @@ ApplicationWindow {
                         onClicked: window.startEncodeFlow()
                     }
                 }
+            }
+        }
+    }
+
+    // Roadmap UX2 - spans the whole window rather than just the rail, so a
+    // drop lands the same way whether or not a source has ever been chosen
+    // yet (the first-run screen above, or the rail once everHadSource is
+    // true, both sit under this). openDroppedFile() owns the actual
+    // WAV-vs-.ac3/.ec3 routing, shared with `ac3gui <file...>`'s own
+    // launch-time handling (main.cpp) - this handler's only job is turning a
+    // drop event into that same call, once per file.
+    DropArea {
+        objectName: "windowDropArea"
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+
+        onDropped: (drop) => {
+            for (const url of drop.urls) {
+                window.openDroppedFile(url);
             }
         }
     }

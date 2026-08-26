@@ -199,9 +199,10 @@ def main() -> int:
     for name, (data, rms) in streams.items():
         label = "AC-3 5.1 448 kbit/s, coupling" if name == "ac3" else \
                 "E-AC-3 5.1 384 kbit/s, tools=all (AHT + spx + coupling)"
+        stream_name = f"k{name.capitalize()}Stream"
         body += [
             f"// {label} - {len(data)} bytes, {FRAMES} frames.",
-            f"inline constexpr std::array<std::uint8_t, {len(data)}> k{name.capitalize()}Stream{{{{",
+            f"inline constexpr std::array<std::uint8_t, {len(data)}> {stream_name}{{{{",
             hex_array(data),
             "}};",
             "",

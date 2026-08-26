@@ -111,8 +111,8 @@ below for what differs and why).
    reads the manifest plus those four other files once and exposes `gcc_version` / `llvm_version` / `msvc_toolset`
    / `qt_version` / `cmake_min` / `vcpkg_commit` as outputs. Every workflow that used to
    hardcode a `vcpkg-commit: "eaca4a5..."` or `version: "6.8.3"` literal - `_build.yml`,
-   `ci.yml`, `msvc-analysis.yml`, `fuzz.yml`, `codeql.yml` - instead calls it as its own
-   `toolchain-versions` job and reads `needs.toolchain-versions.outputs.*`. Before this,
+   `ci.yml`, `msvc-analysis.yml`, `fuzz.yml`, `codeql.yml`, `interop.yml` - instead calls it as
+   its own `toolchain-versions` job and reads `needs.toolchain-versions.outputs.*`. Before this,
    the vcpkg commit alone was hardcoded independently in nine separate places across five
    workflow files; bumping it meant finding and editing all nine by hand, with no error if
    one was missed. **Bump a version by editing whichever of the four files actually owns

@@ -114,9 +114,9 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 !!! note "Verified in a real browser"
     Both `cmake --preset config-wasm-emscripten` and the full desktop presets configure and build
     clean from the same source tree (confirmed repeatedly across this PR's history, including after
-    merging `develop` and merging #169's own branch in directly). A real Chromium instance loading
-    the built page — both standalone and embedded in the actual `mkdocs build --strict`-built docs
-    site — genuinely decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
+    merging in the then-current integration branch and #169's own branch directly). A real
+    Chromium instance loading the built page — both standalone and embedded in the actual
+    `mkdocs build --strict`-built docs site — genuinely decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
     (`E-AC-3, 48000 Hz, 6 ch (L, C, R, Ls, Rs, LFE), 3 Atmos object(s), 8.0s`, matching what was
     encoded), plays real audio with `AudioContext.currentTime` genuinely advancing, and paints a
     speaker-ring visualization driven by real, time-varying per-channel RMS (confirmed non-degenerate
@@ -130,9 +130,20 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     object's own `object_audio`, (b) differs from every other object's audio, and (c) differs from the
     bed downmix — not just "some audio plays," the *correct* isolated object's audio plays.
 
+!!! note "Automated in CI (roadmap VX18a)"
+    `apps/wasm/tests/` is a small Playwright harness `build-wasm` now runs on every push, right
+    after the demo artifact upload: it serves the just-built `wasm_decode_demo/` directory,
+    loads `index.html` in a real headless Chromium, and drives the `WasmDecoder` Embind API
+    directly (the same calls `demo.js` makes) to decode the bundled fixture and assert on the
+    real values the note above once had to be checked by eye — `E-AC-3, 48000 Hz, 6 channels, 3
+    Atmos objects, 8.0s`, and that the same object's decoded position genuinely differs between
+    its first and last frame. A regression in any of those numbers now fails CI rather than
+    waiting for the next manual pass.
+
 !!! warning "Not yet verified"
     Built and tested on a Windows host only — the toolchain file itself makes no Windows-specific
     assumption, and CI's `build-wasm`/`docs.yml` jobs both run on `ubuntu-latest`, but no macOS run
-    has been attempted anywhere. No automated *browser* test runs this in CI — `build-wasm` proves it
-    compiles, not that it decodes/plays/renders correctly; every functional claim above is manual
-    verification across this PR's sessions, not a repeatable check.
+    has been attempted anywhere. The CI browser test above covers the decode itself, not the page
+    around it: real audio playback (`AudioContext.currentTime` advancing), the speaker-ring and
+    room-view visualizations, the seek bar, and the "Solo object N" buttons' own audio-isolation
+    claim are still manual verification only, not a repeatable check.

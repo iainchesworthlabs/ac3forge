@@ -43,6 +43,18 @@ struct BitAllocCodes {
 [[nodiscard]] AC3FORGE_EXPORT int fast_gain(int fgaincod);
 [[nodiscard]] AC3FORGE_EXPORT int slow_gain(int sgaincod);
 
+// Roadmap EQ7's measured fast-gain curve: the fgaincod a frame at
+// `bitrate_kbps` across `nfchans` full-bandwidth channels should use, in
+// place of §8.2.12's fixed 4.
+//
+// A straight line from 7 at 38 kbit/s per channel to 0 at 128, measured on
+// ViSQOL MOS-LQO over real programme material - see encoder.cpp's own note
+// above fgaincod_for() for the table it was fitted to and the second
+// material that confirmed its low end. Lives here rather than in either
+// encoder because both now use it and a measured constant duplicated across
+// two translation units is a constant that drifts.
+[[nodiscard]] AC3FORGE_EXPORT int rate_adaptive_fgaincod(int bitrate_kbps, int nfchans);
+
 // Table 7.13: the 50-band mask()/bndpsd() index a bitstream bin belongs to.
 // Exposed because a caller validating delta bit allocation segments before
 // compute_bit_allocation() ever sees them (deltoffst/deltlen are

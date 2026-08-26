@@ -18,9 +18,11 @@
 //                      all. Six-block AC-3 and E-AC-3 syncframes carry
 //                      kSamplesPerFrame; a short E-AC-3 syncframe
 //                      (numblkscod 0-2, §E2.3.1.4) carries 256, 512 or 768 -
-//                      eac3::blocks_per_syncframe() * kSamplesPerBlock. This
-//                      encoder emits six-block frames only; the decoder reads
-//                      all four codes. See the "Latency" section of
+//                      eac3::blocks_per_syncframe() * kSamplesPerBlock, which
+//                      is what eac3_latency() reports since roadmap EQ11 made
+//                      the encoder able to emit them (it emitted six-block
+//                      frames only before that). The decoder reads all four
+//                      codes. See the "Latency" section of
 //                      docs/library/encoding-eac3.md.
 //
 //   transform_samples  The MDCT/IMDCT time-domain-alias-cancellation overlap.

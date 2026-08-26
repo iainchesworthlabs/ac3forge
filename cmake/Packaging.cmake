@@ -57,6 +57,41 @@ if(WIN32)
         # for both variables, which generate_icons.py already produces.
         set(CPACK_NSIS_MUI_ICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
         set(CPACK_NSIS_MUI_UNIICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
+
+        # Roadmap UX2: .ac3/.ec3 open in ac3gui - the same "double-click a
+        # stream you already have" gesture the app's own DropArea and
+        # `ac3gui <file>` launch handling (roadmap UX2's other two legs)
+        # already understand once the file reaches the app; this is what
+        # gets it there from Explorer. One ProgID for both extensions - they
+        # are the same stream format (bsid decides AC-3 vs E-AC-3, the same
+        # way every ac3gui/ac3cli command that takes either already does),
+        # so a single "open in ac3gui" entry is the honest description
+        # rather than two identical ones. $INSTDIR\bin matches
+        # CMAKE_INSTALL_BINDIR, where apps/gui/CMakeLists.txt's own
+        # install(TARGETS ac3gui RUNTIME DESTINATION ...) puts it.
+        # SHChangeNotify is what makes Explorer pick the new association up
+        # without a logoff/logon - without it the icon/"Open with" entry
+        # only appears after one. Bracket arguments (CMake's raw-string
+        # syntax) rather than a quoted string: NSIS's own command syntax
+        # already needs both single and double quotes (nested, so an
+        # "open" command's value can itself be double-quoted), and escaping
+        # all of that through CMake's quoted-argument rules would be far
+        # more error-prone than writing the NSIS script exactly as NSIS
+        # wants it.
+        set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
+            WriteRegStr HKCR ".ac3" "" "AC3Forge.Stream"
+            WriteRegStr HKCR ".ec3" "" "AC3Forge.Stream"
+            WriteRegStr HKCR "AC3Forge.Stream" "" "AC-3 / E-AC-3 Stream"
+            WriteRegStr HKCR "AC3Forge.Stream\DefaultIcon" "" "$INSTDIR\bin\ac3gui.exe,0"
+            WriteRegStr HKCR "AC3Forge.Stream\shell\open\command" "" '"$INSTDIR\bin\ac3gui.exe" "%1"'
+            System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+        ]])
+        set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS [[
+            DeleteRegKey HKCR ".ac3"
+            DeleteRegKey HKCR ".ec3"
+            DeleteRegKey HKCR "AC3Forge.Stream"
+            System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+        ]])
     endif()
 elseif(APPLE)
     list(APPEND CPACK_GENERATOR "DragNDrop")

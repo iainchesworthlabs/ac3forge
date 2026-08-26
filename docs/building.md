@@ -108,9 +108,15 @@ which inherits `linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
 `AC3FORGE_SANITIZERS=address,undefined` (see `cmake/Sanitizers.cmake`; MSVC is rejected outright,
 so this only exists for GCC/Clang). See [Verified configuration](#verified-configuration) for what CI says
 about all eighteen. There are also nine `ci-<platform>` `workflowPresets` (Release except for the
-two sanitizer ones and the coverage one, which are Debug-only) that chain
-configure→build→test in one `cmake --workflow --preset ci-windows-msvc` call; that is exactly
-what CI itself runs.
+two sanitizer ones, which are Debug-only) that chain configure→build→test in one
+`cmake --workflow --preset ci-windows-msvc` call. There is no coverage workflow preset — the
+`config-`/`build-`/`test-linux-gcc-coverage` trio exists, but nothing chains it — and CI does not
+call `cmake --workflow` at all: `_build.yml` runs `cmake --preset config-<leg>`,
+`cmake --build --preset build-<leg>` and `ctest --preset test-<leg>` as three separate steps,
+because a leg has per-leg overrides to append (`-DAC3FORGE_BUILD_GUI=ON` on the GUI legs,
+`-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"` on Windows) that a single `--workflow` invocation has
+nowhere to put. The workflow presets are the one-command local equivalent of those three steps,
+not the path CI takes.
 
 There is an eighteenth trio, the ThreadSanitizer sibling of the pair above:
 `config-linux-llvm-tsan` / `build-linux-llvm-tsan` / `test-linux-llvm-tsan`, inheriting
@@ -245,6 +251,9 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_MATROSKA` | `ON` | Build `matroska::matroska` (`src/matroska`), the standalone Matroska container writer. `OFF` only makes sense with the CLI, GUI, tests and examples all `OFF` too — they link it unconditionally, and configure fails with a clear message otherwise (see the root `CMakeLists.txt` guard). |
 | `AC3FORGE_BUILD_MP4` | `ON` | Build `mp4::mp4` (`src/mp4`), the standalone MP4/ISOBMFF container writer. Same all-off constraint as `AC3FORGE_BUILD_MATROSKA`. |
 | `AC3FORGE_BUILD_MPEGTS` | `ON` | Build `mpegts::mpegts` (`src/mpegts`), the standalone MPEG-TS container writer. Same all-off constraint as `AC3FORGE_BUILD_MATROSKA`. |
+| `AC3FORGE_BUILD_IAB` | `ON` | Build `ac3iab::ac3iab` (`src/ac3iab`), the standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader. Same zero-third-party-dependency shape as the three container writers above, so it defaults on the same way; unlike them nothing in `apps/` or `examples/` links it yet, so there is no all-off guard — `tests/CMakeLists.txt` simply adds its test file when this is on. |
+| `AC3FORGE_BUILD_CAPI` | `ON` | Build `ac3::forge_c` (`src/capi`), the C API over the encode/decode core — see [C API](library/c-api.md). Depends on nothing but `ac3::forge_static`, so unlike `AC3FORGE_BUILD_ADM` there is no extra dependency footprint to opt out of. |
+| `AC3FORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `AC3FORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
@@ -288,7 +297,7 @@ Both go through the presets, which you can also drive directly:
 | | Effect |
 |---|---|
 | Decode-only sources | The encoder, the container writers, WAV I/O, the analysis/QC layers and the object *encoder* are not compiled. `src/forge/minimal.cmake` lists what is, with a line on why each file is reachable from a decode. |
-| No direct-form transform tables | `src/core/transform/stub/` replaces `.../reference/`, removing **1,900,544 bytes of `.bss`** — the four (k, n) matrices §8.2.3.2's forward MDCT and §7.9.4.2 step 3's inverse sums need. |
+| No direct-form transform tables | `src/forge/src/core/transform/stub/` replaces `.../reference/`, removing **1,900,544 bytes of `.bss`** — the four (k, n) matrices §8.2.3.2's forward MDCT and §7.9.4.2 step 3's inverse sums need. |
 | `-fno-exceptions -fno-rtti` | The codec's own error mechanism is `std::expected` throughout, so there is nothing of its own to disable. |
 | `-ffunction-sections -fdata-sections`, `--gc-sections` | An integrator linking a subset pays for a subset. |
 
@@ -332,7 +341,7 @@ Three of PF7's requirements are not met, and are recorded here rather than half-
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
 the probe uses) and it leaks nothing, but the steady state is **45 allocations per frame for
-AC-3 and 85 for E-AC-3**, from the per-block geometry vectors inside the decoders and the
+AC-3 and 87 for E-AC-3**, from the per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
 those becoming fixed-capacity storage, which changes the public types — a design change, not a
 build option. The runner gates the number at 100 so the distance from zero cannot grow while the
@@ -498,7 +507,8 @@ alone already has today.
 
 #### What has and has not been verified
 
-**ALSA.** Verified on WSL2 Ubuntu 26.04 with gcc 15.2 and clang 22.1, in every configuration:
+**ALSA.** Verified on WSL2 Ubuntu 26.04 with the local development loop's gcc 15.2 and clang 22.1
+(CI's own Linux legs pin GCC 16 — see [Requirements](#requirements)), in every configuration:
 with libasound present and absent, and under ASan+UBSan with leak detection. The full suite
 passes in all of them. The device-independent halves of the backend — device-name construction,
 channel-status derivation, the negotiation, the render and capture threads, start/stop, and the
@@ -603,14 +613,18 @@ publishes packages for the four `release_package` legs — `windows-msvc`, `linu
 `linux-gcc-arm64` and `macos-llvm`, one canonical build per OS/architecture — whenever a
 `vX.Y.Z` tag is pushed; a packaging failure on any of them blocks the release like any other
 required leg. The release carries GPG signing (optional, off until a key is provisioned),
-keyless Sigstore/OIDC build provenance, an SPDX SBOM, and a GitHub Release; four beta releases
-(v0.2.0-beta.1 through v0.5.0-beta.1) have shipped through this path for real. See
+keyless Sigstore/OIDC build provenance, an SPDX SBOM, and a GitHub Release; nine beta releases
+(v0.2.0-beta.1 through v0.9.0-beta.1) have shipped through this path for real. See
 [docs/releasing.md](releasing.md) for the full process, including how to provision the GPG key.
 
 There is also a staged, unpublished vcpkg port at `packaging/vcpkg-port/ac3forge/`
 (`portfile.cmake`, `usage`, its own `vcpkg.json`), pending submission to the curated
-`microsoft/vcpkg` registry. Today it exposes one feature, `matroska` (on by default); a consumer
-uses the installed package via `find_package(ac3forge)` exactly as
+`microsoft/vcpkg` registry. It exposes three features — `matroska`, `mp4` and `mpegts`, one per
+container writer — and declares no `default-features`, so none of them is on by default: a plain
+`vcpkg install ac3forge` gets the codec alone, and `vcpkg install ac3forge[matroska,mp4,mpegts]`
+(or any subset) opts in. [docs/releasing.md](releasing.md#vcpkg-port) records why — a
+curated-registry port's default features may only enable behaviors, not additional public
+APIs/targets. A consumer uses the installed package via `find_package(ac3forge)` exactly as
 [Using ac3::forge](library/index.md) documents. The per-release submission flow is in
 [docs/releasing.md](releasing.md#vcpkg-port).
 
@@ -654,7 +668,7 @@ The Linux instructions were run on:
 | | |
 |---|---|
 | OS | Ubuntu 26.04 (WSL2) |
-| Compilers | GCC 15.2.0 and Clang 22.1.x, both tried |
+| Compilers | GCC 15.2.0 and Clang 22.1.x, both tried — this is the local development loop, not the CI pin. CI installs GCC 16 (`.github/toolchain/02-gcc-toolchain.sh`), which is what [Requirements](#requirements) and [Linux](platforms/linux.md#toolchains) state; the toolchain files' `find_program` fallback list is why an older GCC still configures and passes. |
 | CMake | ≥ 3.28, Ninja generator |
 | Qt | 6.10.2, apt-packaged (`qt6-base-dev`, `qt6-declarative-dev`) |
 | ALSA | `libasound2-dev`, both present and as the no-ALSA fallback — see [Linux audio](#linux-audio) |
@@ -663,10 +677,10 @@ The Linux instructions were run on:
 
 Result: configure, build and `ctest` all clean on both compilers, GUI and ALSA both included.
 The base suite is `ac3tests` and `ac3perf`'s Catch2 cases plus one ctest entry per example
-program; `AC3FORGE_WITH_ALSA`'s `tests/backend/alsa/` adds 14 entries (or, on a build that
+program; `AC3FORGE_WITH_ALSA`'s `tests/backend/alsa/` adds 15 entries (or, on a build that
 selected pipewire/ instead, `tests/backend/pipewire/` adds 5), and the GUI's Qt Quick
 Test harness (`ac3gui_qmltests`, `apps/gui/tests/CMakeLists.txt`) adds one more per `tst_*.qml`
-suite under `apps/gui/tests/qml/` (18 today) — unlike every other GUI-related target, that one
+suite under `apps/gui/tests/qml/` (21 today) — unlike every other GUI-related target, that one
 harness *does* register its own `ctest` entries, gated on both
 `AC3FORGE_BUILD_GUI` and `AC3FORGE_BUILD_TESTS`. A Linux build with neither ALSA nor the GUI
 runs the base suite; with the GUI on and ALSA off it matches Windows exactly. `ac3gui --smoke`
@@ -705,6 +719,14 @@ merge base and at the PR head on one runner and posts a table of per-workload de
 summary, using the same soft/hard tiers `tools/ci/append_performance_history.py` applies on
 merge. It is informational and never fails a build — the blocking performance checks remain
 `ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
+
+An `abi-gate` job (`ci.yml`) runs on the same advisory footing: on a code-touching change it
+builds `config-linux-llvm-shared` at the last release tag in a git worktree beside HEAD, then
+runs `abidiff` between the two and checks the actual exported dynamic-symbol set
+(`tools/ci/check_abi_symbols.py`, `nm -D --defined-only`) against the checked-in allowlist.
+Like `performance-compare` it is `continue-on-error: true` and deliberately absent from
+`CI Status`'s `needs` list, so it reports without blocking; roadmap AP1's interface freeze is
+what would make it required, by deleting that one line.
 
 No macOS host exists for this project, so `config-macos-llvm`/`config-macos-llvm-debug` are only
 ever exercised by CI (`macos-latest`, Apple Silicon) — never locally. That CI leg is green:
@@ -762,8 +784,8 @@ a directory CMake chooses — never from an `#ifdef`. `src/forge/src/internal/ar
 `ac3/internal/arch/simd.hpp`; `src/forge/CMakeLists.txt` puts exactly one of them on
 `forge_objects`'s private include path, so every `#include "ac3/internal/arch/simd.hpp"` in the
 core resolves to it and no translation unit ever asks what it is being compiled for. This is the
-same mechanism `src/internal/profiling/tracy_{enabled,disabled}/` uses for the profiling seam and
-`src/audio/src/backend/<backend>/` uses for the operating system, and it is what
+same mechanism `src/forge/src/internal/profiling/tracy_{enabled,disabled}/` uses for the
+profiling seam and `src/audio/src/backend/<backend>/` uses for the operating system, and it is what
 `tools/checks/check_platform_macros.ps1` exists to keep true (no preprocessor conditional anywhere
 under `src/` or `apps/`).
 
@@ -861,13 +883,46 @@ still measure 61.83–61.87 dB against 67.73–67.90 dB on x86 — the same numb
 run-to-run noise, as before the flag existed. Contraction is therefore ruled out, not confirmed,
 as the explanation for this gap; the correlation that matters is architecture (aarch64 in all
 three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compiler family or libm
-package. The most likely remaining cause is aarch64's own compiled `libm` (glibc ships an
-architecture-specific `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean
-bit-identical machine code) producing different last-bit results in the transform twiddle tables
-(`kAnalysisWindow`, `Twiddles`, `fft_kernel.hpp`'s `FftTables`) that are all built from `std::cos`/`std::sin` —
-untested as of this change, and the natural next step.
+package.
 
-The flag stays pinned regardless of that result, for an unrelated and unconditional reason: it is
+**Architecture-specific libm `sin`/`cos` — tested directly (roadmap VX11), also ruled out.** The
+standing hypothesis was aarch64's own compiled `libm` (glibc ships an architecture-specific
+`sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean bit-identical machine
+code) producing different last-bit results in the transform twiddle tables. Two things needed
+correcting before that hypothesis could even be tested precisely: `kAnalysisWindow` is not built
+from `std::cos`/`std::sin` at all — it is a `consteval` construction (`ac3/core/window.hpp`) using
+a hand-written `bessel_i0`/`constexpr_sqrt`, evaluated entirely by the compiler's own constant
+interpreter at compile time, so it cannot carry a *runtime* libm difference between architectures
+by construction; the real runtime `std::cos`/`std::sin` call sites are `mdct.cpp`'s `Twiddles`,
+`Twiddles2` and `FastMdctTables` and `fft_kernel.hpp`'s `FftTables`, all `static const` objects
+built once on first use.
+
+Measured (WSL2, real x86-64 hardware; aarch64 via `gcc-16-aarch64-linux-gnu` cross-compiling GCC
+16 — the same major version `linux-gcc-arm64` uses — and `qemu-user`, which implements IEEE-754
+arithmetic in software rather than approximating it): every one of the 2,170 `std::cos`/`std::sin`
+calls those table constructors make at this codec's actual transform sizes (P = 64/128/512, the
+QMF fold at 128) is **bit-identical**, x86-64 GCC to x86-64 Clang to aarch64 GCC under emulation —
+zero differing values, not "close." Going one step further, the real `gold-reference gate` itself
+was run end to end against a real `AC3FORGE_SIMD=aarch64` cross-build (same `-ffp-contract=off`
+flag, same GCC 16, the actual `aarch64-neon` kernel real CI selects) under that same emulation, and
+every one of its 32 checks' SNR numbers — not just the twiddle tables — came back bit-identical to
+the native x86-64 build's, including the three streams this project's own encoder produces
+(channel 4: 67.80/67.82/67.76 dB, matching x86-64 to the reported precision, not the ~61.8 dB every
+real arm64/macOS CI leg measures). A `generic` (scalar reference kernel) build on the same x86-64
+hardware matched both, for the same reason: IEEE-754 correctly-rounded arithmetic has no room for
+two conforming implementations to disagree on `+`, `-`, `*`, or a `round()` pinned bit-exact by its
+own test (`tests/core/test_simd_kernels.cpp`).
+
+So the 6.02 dB gap does **not** reproduce under any standards-conformant aarch64 execution this
+project can construct without the real hardware CI already has. That rules out "the aarch64
+instruction set" as an explanation in the abstract, and narrows what is left to two candidates
+neither locally reproducible: the specific *natively*-packaged aarch64 compiler GitHub's hosted
+arm64/macOS runners use (as opposed to a Debian **cross**-compiler package, the only kind available
+without that hardware — a native package can carry different default codegen/tuning even with
+identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
+`qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
+
+The flag stays pinned regardless of either result, for an unrelated and unconditional reason: it is
 what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
 IEEE-754 add, subtract or multiply so a vectorised kernel is bit-identical to the scalar loop it
 replaced, and that only holds if the scalar loop is not silently getting a fused form the
@@ -878,9 +933,19 @@ also explains the gold-gate gap, which it turns out not to.
 Measured cost: none on x86-64, where the flag is a no-op because baseline x86-64 has no FMA
 instruction to emit — proven, not assumed, by the corpus comparison above coming out
 byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
-inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers. ROADMAP
-VX11 stays open: the contraction hypothesis is now closed out, and the libm hypothesis above is
-where it picks up.
+inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers.
+
+ROADMAP VX11's mystery therefore stays open — both hypotheses proposed for it are now closed out
+by direct measurement rather than by argument — but it is no longer *unwatched*: a cross-platform
+bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
+[the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
+bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so this specific
+divergence — resolved or not — cannot silently change size without a CI failure pointing straight
+at it. `x86_64-sse2` and `generic` are pinned from the measurements above; `aarch64-neon` and the
+macOS kernel are deliberately left unpinned rather than pre-filled from the qemu measurement, since
+that measurement is exactly the evidence that an emulated cross-build is not equivalent to a real
+CI leg — the next person with those CI logs in front of them should pin what the real hardware
+actually produces.
 
 ## Gold-reference correctness gate
 
@@ -894,11 +959,15 @@ strict-decode the result with FFmpeg (`-err_detect crccheck+bitstream+buffer+exp
 via stderr content rather than exit code — confirmed locally that ffmpeg's own process exits 0
 even on a CRC mismatch), decode it again with ac3cli's own decoder, and assert the two decodes
 agree via `tools/checks/compare_wav.py`'s delay-compensated SNR (stdlib-only Python, no numpy — every
-CI-hosted runner already ships Python 3, so this needs no new provisioning). The gate is
-perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing in this
-project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
+CI-hosted runner already ships Python 3, so this needs no new provisioning). The gate's own three
+checks are perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing
+in this project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
 pipeline identically, and the real numbers above show they in fact do not, by a small but
-measurable margin.
+measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after (roadmap
+VX11) and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
+encoded bytes rather than a cross-leg equality assertion — see
+[Floating-point contraction](#floating-point-contraction) above for why the latter cannot pass
+today.
 
 This is a narrow, cross-platform *quality* check — one sample, two codecs, every OS — not a
 conformance sweep. `tools/checks/check_matrix_coverage.py`, `tools/ci/quality_race.py`'s `ci` mode and the

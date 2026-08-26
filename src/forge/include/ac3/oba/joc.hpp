@@ -143,7 +143,7 @@ struct FrameParameters {
         }
         std::size_t offset = 0;
         for (int i = 0; i < object; ++i) {
-            const auto earlier = shapes[static_cast<std::size_t>(i)];
+            const auto& earlier = shapes[static_cast<std::size_t>(i)];
             if (!earlier.present) {
                 continue;
             }
@@ -344,7 +344,8 @@ struct ReconstructionState {
 // of them in a 16-object frame, which is where nearly all of kMdctBand's
 // time goes. Both default to the spec's own direct evaluations, the forms
 // every fast-path test validates against; Eac3Decoder passes
-// DecoderConfig::fast_imdct for the second.
+// DecoderConfig::fast_mdct for the first and DecoderConfig::fast_imdct for
+// the second.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,

@@ -7,12 +7,13 @@
 #   fuzz-regress       Replays fuzz/seeds/ and fuzz/regressions/ with -runs=0
 #                      (no mutation) - a correctness gate: every regression
 #                      corpus entry must still not crash. Seconds, not
-#                      minutes; runs on every push/PR to main/develop and is
+#                      minutes; runs on every push/PR to main and is
 #                      NOT experimental - a regression here means a fixed bug
 #                      came back.
 #   fuzz-short         A bounded mutation budget (60s/target, ~8 minutes
 #                      total), push only, so pull requests are not slowed by
-#                      it.
+#                      it. Required, not experimental (roadmap VX13) - see
+#                      that item for the track record this rests on.
 #   fuzz-differential  Same mutation approach, over the two differential
 #                      harnesses only (fuzz_differential_ac3_decode,
 #                      fuzz_differential_eac3_decode - roadmap G3): decodes
@@ -24,12 +25,21 @@
 #                      disagreement on a malformed frame, and why this job is
 #                      separate rather than folded into fuzz-short (it needs
 #                      ffmpeg on PATH and is much slower per-exec, a real
-#                      FFmpeg process per comparable input).
+#                      FFmpeg process per comparable input). Required, not
+#                      experimental (roadmap VX13).
 #   fuzz-nightly       A longer bounded mutation budget (10 min/target by
 #                      default) on a daily schedule, plus workflow_dispatch
-#                      for an on-demand deeper run with a custom budget. Does
-#                      NOT include the differential harnesses - see
-#                      fuzz-differential above.
+#                      for an on-demand deeper run with a custom budget. Since
+#                      roadmap VX13 this ALSO runs the two differential
+#                      harnesses at the same deeper budget (they stay out of
+#                      the base BASE_TARGETS list run.sh drives here, same as
+#                      fuzz-differential above, so they get their own ffmpeg
+#                      install and regression replay). fuzz/corpus/ persists
+#                      across runs via actions/cache instead of restarting
+#                      from the seed corpus every night - see the job's own
+#                      cache step for the growing-key pattern this needs
+#                      (cache entries are immutable, so there is no such thing
+#                      as "update the existing one").
 #   fuzz-adm-nightly   fuzz_adm_parse on its own, same daily schedule. Its own
 #                      job because it is the only harness here that is not
 #                      built by default: ac3adm needs vcpkg's "adm" feature
@@ -81,11 +91,19 @@
 # set (-Werror included) as every other target - the fuzz build used to be the
 # one exception, on the assumption it carried a sign-conversion/double-promotion
 # debt, but a recount found zero such sites and the exemption was removed.
-# fuzz-short, fuzz-differential, fuzz-nightly and fuzz-adm-nightly stay marked
-# experimental on their own merits: none has multiple clean fuzzing runs
-# behind it yet, which is a question of track record rather than of anything
-# the compiler can check. Promote one by deleting its `continue-on-error:
-# true` line.
+# fuzz-nightly and fuzz-adm-nightly stay marked experimental on their own
+# merits: neither has multiple clean fuzzing runs behind it yet, which is a
+# question of track record rather than of anything the compiler can check.
+# fuzz-short and fuzz-differential were promoted (roadmap VX13, 2026-08-25):
+# fuzz-differential's job history had zero failures across every push run
+# since 2026-08-09, the bar this project's own roadmap set for it.
+# fuzz-short's history over the same window was NOT clean - five real
+# UndefinedBehaviorSanitizer reports in fuzz_mp4_demux, all the same root
+# cause (a box using ISOBMFF's 64-bit largesize escape could make
+# mp4::Reader's parse position wrap past its sliding window, underflowing the
+# next offset computation) - fixed in the same PR that promoted this job,
+# with the crash minimised into fuzz/regressions/fuzz_mp4_demux/. Promote a
+# job again the same way: delete its `continue-on-error: true` line.
 #
 # fuzz-differential additionally installs `ffmpeg` - the same package the
 # gold_reference/sanitizer legs of .github/workflows/_build.yml already
@@ -107,9 +125,9 @@ name: Fuzz
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   schedule:
     # 03:17 UTC - an off-the-hour time so a future second scheduled workflow
     # does not contend with this one for the same runner-queue instant.
@@ -178,7 +196,6 @@ jobs:
     needs: fuzz-regress
     runs-on: ubuntu-latest
     container: ubuntu:26.04
-    continue-on-error: true  # experimental - see the header comment
     env:
       AC3FORGE_FUZZ_SECONDS: 60
     steps:
@@ -215,7 +232,6 @@ jobs:
     needs: fuzz-regress
     runs-on: ubuntu-latest
     container: ubuntu:26.04
-    continue-on-error: true  # experimental - see the header comment
     env:
       AC3FORGE_FUZZ_SECONDS: 60
     steps:
@@ -284,8 +300,47 @@ jobs:
       - name: Install LLVM 22
         run: bash .github/toolchain/03-llvm-toolchain.sh
 
+      # The differential harnesses' own oracle - see fuzz-differential above
+      # for why this is a separate install rather than part of the container
+      # bootstrap every job here pays for.
+      - name: Install ffmpeg
+        run: apt-get install -y -qq --no-install-recommends ffmpeg
+
+      # fuzz/corpus/ is gitignored and, without this, starts empty on every
+      # run - roadmap VX13: a cache entry is immutable once written, so
+      # there is no "update the existing one", only "restore the newest
+      # prior one, then always write a new one keyed by this run". The
+      # restore-keys prefix match picks up last night's entry (or the newest
+      # one still within the repo's cache eviction window) even though
+      # today's key has never been seen before.
+      - name: Restore grown fuzz corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-nightly-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-nightly-
+
       - name: Fuzz (deeper bounded mutation budget)
         run: bash fuzz/run.sh run
+
+      # Its own regression replay first, same shape as fuzz-differential -
+      # not part of BASE_TARGETS, so fuzz-regress above never covers it.
+      - name: Replay differential regression corpus (no mutation)
+        run: bash fuzz/run.sh regress fuzz_differential_ac3_decode fuzz_differential_eac3_decode
+
+      - name: Fuzz differential (deeper bounded mutation budget)
+        run: bash fuzz/run.sh run fuzz_differential_ac3_decode fuzz_differential_eac3_decode
+
+      # Runs whether or not a target crashed above - a night that found a
+      # crash still grew the corpus for every OTHER target, and losing that
+      # growth would make the next run repeat tonight's work.
+      - name: Save grown fuzz corpus
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-nightly-${{ github.run_id }}
 
       - name: Upload crashing inputs
         if: failure()

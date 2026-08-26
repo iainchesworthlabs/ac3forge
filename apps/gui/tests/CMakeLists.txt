@@ -28,17 +28,26 @@ qt_add_executable(ac3gui_qmltests
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
+    stream_player_controller.cpp
+    stream_player_controller.hpp
+    channel_geometry.cpp
+    channel_geometry.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
     ../common/recording_sink.hpp
+    ../common/container_input.cpp
+    ../common/container_input.hpp
     system_theme.cpp
     system_theme.hpp)
 
 # apps/common, for the same reason ../CMakeLists.txt names it: RecordingSink
 # and Fmp4FolderWriter moved there when ac3cli's own takes started streaming
-# through them (roadmap IO9). This target compiles the same files in,
-# exactly as it always did.
+# through them (roadmap IO9), and container_input.cpp joined them the same
+# way for roadmap IO2. This target compiles the same files in, exactly as it
+# always did - qc_controller.cpp/object_decode_controller.cpp call
+# ac3::apps::elementary_stream_from_bytes too, so it needs the same
+# definition ac3gui's own target links.
 target_include_directories(ac3gui_qmltests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 qt_add_qml_module(ac3gui_qmltests

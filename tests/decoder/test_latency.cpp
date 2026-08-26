@@ -395,3 +395,40 @@ TEST_CASE("latency_ms converts at the coded rate, not a fixed 48 kHz", "[latency
     REQUIRE(at_44k < 40.7);
     REQUIRE(ac3::latency_ms(budget, ac3::SampleRate::k32000) > 55.9);
 }
+
+// Roadmap EQ11 gave the E-AC-3 encoder short syncframes (numblkscod 0-2,
+// §E2.3.1.4) and the whole point of them is lower latency - but eac3_latency()
+// went on reporting kSamplesPerFrame for every code, so latency_samples()
+// overstated a one-block frame by 1280 samples (~27 ms at 48 kHz) to exactly
+// the live pipeline that asks in order to size its buffers. Nothing caught it
+// because every latency case here used the default numblkscod.
+//
+// ac3/latency.hpp's own frame_samples note already said what this field means
+// (blocks_per_syncframe() * kSamplesPerBlock); this pins the implementation to
+// it at all four codes.
+TEST_CASE("E-AC-3 latency follows the syncframe length", "[latency][eac3]") {
+    struct Case {
+        int numblkscod;
+        int blocks;
+    };
+    for (const auto [numblkscod, blocks] : {Case{0, 1}, Case{1, 2}, Case{2, 3}, Case{3, 6}}) {
+        CAPTURE(numblkscod, blocks);
+        const ac3::eac3::FrameConfig config{.numblkscod = numblkscod};
+        const auto budget = ac3::eac3::eac3_latency(config);
+        const int expected_frame = blocks * ac3::kSamplesPerBlock;
+
+        CHECK(budget.frame_samples == expected_frame);
+        // The encoder agrees with the free function - a caller can price a
+        // configuration before building one, which is why both exist.
+        ac3::eac3::FrameEncoder encoder{config};
+        CHECK(encoder.latency_samples() == expected_frame + ac3::kTransformDelaySamples);
+        // And it really is shorter: a one-block frame is 5.3 ms of frame term
+        // against six blocks' 32 ms, which is the entire reason to ask for it.
+        CHECK(budget.frame_samples * 6 == ac3::kSamplesPerFrame * blocks);
+    }
+
+    // §3.7's hold-back is one FRAME period, so it tracks the syncframe length
+    // too rather than staying pinned at six blocks.
+    const ac3::eac3::FrameConfig held{.numblkscod = 0, .transient_prenoise = true};
+    CHECK(ac3::eac3::eac3_latency(held).holdback_samples == ac3::kSamplesPerBlock);
+}

@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 51> kOptionTokens{{
+constexpr std::array<OptionToken, 56> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -69,7 +69,8 @@ constexpr std::array<OptionToken, 51> kOptionTokens{{
     {"mode=", "performance (default) or reference - both transforms at once"},
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
-    {"search=", "AC-3 encode: distortion or perceptual bit-allocation search, off (default)"},
+    {"search=", "AC-3 encode, and eac3-encode under CBR: bit-allocation search, off (default)"},
+    {"fgaincod=", "encode: auto (default) or 0..7, §7.2.2.4 fast gain pinned for the whole encode"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
     {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
     {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},
@@ -95,6 +96,10 @@ constexpr std::array<OptionToken, 51> kOptionTokens{{
     {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
     {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
                    "stream"},
+    {"programme2=", "eac3-encode: a second input file, encoded as its own independent substream"},
+    {"programme2-layout=", "eac3-encode: programme2's own layout (default stereo; not 1+1)"},
+    {"programme2-bitrate=", "eac3-encode: programme2's own bitrate in kbit/s"},
+    {"programme2-dialnorm=", "eac3-encode: programme2's own dialnorm, 1..31 (§5.4.2.8)"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already
@@ -152,9 +157,10 @@ void print_unavailable_reasons(std::span<const CommandInfo> commands) {
 
 void print_stdio_topic() {
     fmt::println("");
-    fmt::println("'-' in place of <in.wav>, <out.ac3>, <out.ec3>, <in.ac3|in.ec3> or <out.wav>");
-    fmt::println("       means stdin (an input path) or stdout (an output path) - encode,");
-    fmt::println("       eac3-encode, atmos-encode, decode and probe only. e.g.:");
+    fmt::println("'-' in place of <in.wav>, <in.raw>, <in.mkv|in.mp4|in.ts>, <in.ac3|in.ec3>,");
+    fmt::println("       <out.ac3>, <out.ec3> or <out.wav> means stdin (an input path) or");
+    fmt::println("       stdout (an output path) - encode, eac3-encode, atmos-encode,");
+    fmt::println("       strip-objects, decode, probe, unspdif and demux only. e.g.:");
     fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
 }
 
@@ -319,7 +325,10 @@ void print_qc_topic() {
     fmt::println("       layout=bed (default) meters the independent substream's own Table 5.8");
     fmt::println("       bed (BS.1770 Annex 1); layout=rendered meters the whole assembled");
     fmt::println("       program, every dependent substream's height/wide/rear channels");
-    fmt::println("       included (BS.1770-5 Annex 3's extended algorithm).");
+    fmt::println("       included (BS.1770-5 Annex 3's extended algorithm). objects=<layout>");
+    fmt::println("       additionally re-renders the stream's dynamic objects by their own");
+    fmt::println("       OAMD position onto the named layout and meters that (BS.1770-5");
+    fmt::println("       Annex 4) - only for a dynamic-object-only programme.");
 }
 
 void print_probe_topic() {
@@ -461,17 +470,20 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
                      "default §7.9.4 fast path (identical streams to within ~1e-12 coefficient "
                      "error; the direct form is the validation oracle) - applies wherever this "
-                     "command encodes, incl. atmos/record/live/eac3-sine; eac3-encode alone has a "
-                     "[tools] positional argument whose bare nofastmdct token reaches the same "
+                     "command encodes, incl. atmos/record/live/eac3-sine, AND wherever "
+                     "decode/monitor/live reconstruct JOC objects under joc-domain=mdct (a "
+                     "decode's only forward transform - PF8); eac3-encode alone has a [tools] "
+                     "positional argument whose bare nofastmdct token reaches the same encode-side "
                      "field instead; bare fast-mdct (the old opt-in) is a no-op");
-        fmt::println("  mode=reference    force BOTH transforms onto the spec's own direct "
+        fmt::println("  mode=reference    force every transform onto the spec's own direct "
                      "evaluations (the forms every fast-path test validates against): the §8.2.3.2 "
-                     "forward MDCT wherever this command encodes, and §7.9.4's step-3 inverse in "
-                     "'decode' - for runs where bit-for-bit agreement with the spec's stated "
-                     "arithmetic matters more than speed. mode=performance (the default) keeps "
-                     "both fast paths: 215-285 dB SNR against reference on 180 s programmes, "
-                     "4.5-4.7x faster decodes. Tokens apply in order, so a later fast-mdct=off / "
-                     "fast-imdct=off still adjusts one half on its own");
+                     "forward MDCT wherever this command encodes or reconstructs JOC objects under "
+                     "joc-domain=mdct, and §7.9.4's step-3 inverse in 'decode' - for runs where "
+                     "bit-for-bit agreement with the spec's stated arithmetic matters more than "
+                     "speed. mode=performance (the default) keeps every fast path: 215-285 dB SNR "
+                     "against reference on 180 s programmes, 4.5-4.7x faster decodes. Tokens apply "
+                     "in order, so a later fast-mdct=off / fast-imdct=off still adjusts one half "
+                     "on its own");
         fmt::println("  fast-imdct=off    decode: force just the direct §7.9.4 step-3 inverse "
                      "(mode=reference's decode half); bare fast-imdct names the default");
         fmt::println("  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction "
@@ -481,12 +493,24 @@ void print_option_blocks(std::uint32_t mask) {
                      "part of mode= either way: unlike the two transform switches, these are "
                      "different answers rather than the same one at different speed, and the "
                      "default is already the domain the clause states");
-        fmt::println("  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit "
-                     "allocation parameters per frame from the reconstruction error a decoder "
-                     "will produce, instead of the rate-derived defaults. distortion minimises "
-                     "that error; perceptual weights it by a tonality/masking model first. off "
-                     "(the default) keeps every release before this one's fixed values - costs "
-                     "encode time, see docs/library/quality.md for the measured figures");
+        fmt::println("  search=<what>     choose §7.2.2's transmitted bit allocation parameters "
+                     "per frame from the reconstruction error a decoder will produce, instead of "
+                     "the rate-derived defaults. distortion minimises that error; perceptual "
+                     "weights it by a tonality/masking model first. off (the default) keeps every "
+                     "release before this one's fixed values - costs encode time, see "
+                     "docs/library/quality.md for the measured figures. eac3-encode: CBR only "
+                     "(dbpbcod against kAllocCodes/Table E1.4's two values, and fgaincod against "
+                     "the measured rate curve, each candidate refit against its own side-info "
+                     "cost) - inert under vbr= and under perceptual, same as off");
+        fmt::println("  fgaincod=<code>   pin §7.2.2.4's fast gain (Table 7.11) for the whole "
+                     "encode instead of letting the encoder choose it - auto (the default) or "
+                     "0..7, where a higher code leaks more of the fast masking curve. auto is "
+                     "each codec's own behaviour and they differ: AC-3 follows a measured "
+                     "rate curve, because fgaincod rides an element it already sends every "
+                     "block; E-AC-3 leaves Table E1.4's implied 0x4 and writes nothing, because "
+                     "there any other code opens a per-block fgaincode element in all six "
+                     "blocks (1 + 3*(nchans + cplinu) bits each). Pinning it on eac3-encode "
+                     "pays that cost and takes the code out of search='s candidate set");
         fmt::println("  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per "
                      "channel per block from content - applies wherever this command encodes, "
                      "the same reach as fast-mdct=off; eac3-encode's [tools] positional argument "
@@ -560,6 +584,10 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  layout=rendered   meter the whole assembled program instead, every");
         fmt::println("                    dependent substream's height/wide/rear channels");
         fmt::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
+        fmt::println("  objects=<layout>  re-render dynamic objects by their own OAMD position");
+        fmt::println("                    onto <layout> (51|71|512|514|714) and meter that too");
+        fmt::println("                    (BS.1770-5 Annex 4); dynamic-object-only programmes");
+        fmt::println("                    only");
     }
     if ((mask & topic::kProbe) != 0) {
         fmt::println("");

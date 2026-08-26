@@ -6,10 +6,9 @@ updates:
   # here; osv-scanner.yml covers that gap instead.
   - package-ecosystem: "github-actions"
     directory: "/"
-    # Gitflow only allows release/hotfix/support branches (or develop itself)
-    # to target main - point Dependabot at develop so its PRs land where
-    # feature/bugfix work does, same as every other required check in ci.yml.
-    target-branch: "develop"
+    # Trunk-based: every topic branch, Dependabot's included, targets main
+    # directly - there is no separate integration branch to point at.
+    target-branch: "main"
     schedule:
       interval: "weekly"
     # Wait a week after a new action version is published before opening a PR
@@ -18,10 +17,10 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 10
-    # develop's branch protection is strict (requires the PR branch to be
+    # main's branch protection is strict (requires the PR branch to be
     # up to date before merging - see .github/branch-protection.md), and
     # dependabot-auto-merge.yml relies on Dependabot itself to rebase this
-    # PR whenever develop moves ahead so the auto-merge it enables can
+    # PR whenever main moves ahead so the auto-merge it enables can
     # actually land. "auto" is the default, made explicit here since
     # correctness of the auto-merge workflow depends on it.
     rebase-strategy: "auto"

@@ -225,27 +225,34 @@ struct Options {
     // per invocation rather than as a standing preference - see
     // write_partial_output.
     bool keep_partial = false;
-    // The §7.9.4 fast forward MDCT (plan::Tools::fast_mdct), on by default
-    // like the library configs it feeds; fast-mdct=off forces the direct
-    // §8.2.3.2 reference form wherever this command encodes (encode/sine and
-    // the atmos/record/live session builders), the same key=off shape
-    // surmixlev=/lfemix= already use. E-AC-3's own tools= string reaches the
-    // same field with its own tokens ("nofastmdct" to force direct, matching
-    // "noatten"; the old opt-in "fastmdct" parses as a no-op) - AC-3 has no
-    // tools= string to extend, so this option is its equivalent, the same
-    // relationship 'couple' has to cpl/cpl:N. The bare word 'fast-mdct'
-    // (the opt-in spelling from when this defaulted off) stays accepted and
-    // now names what already happens.
+    // The §7.9.4 fast forward MDCT, on by default like the library configs
+    // it feeds; fast-mdct=off forces the direct §8.2.3.2 reference form
+    // wherever this command encodes (encode/sine and the atmos/record/live
+    // session builders, via plan::Tools::fast_mdct) AND wherever it decodes
+    // JOC's own bed analysis under joc-domain=mdct (via
+    // DecoderConfig::fast_mdct, PF8 - a decode's only forward transform,
+    // reached from 'decode'/'monitor'/'live'; QMF-domain reconstruction,
+    // the default, has no forward/direct choice to make). Same key=off
+    // shape surmixlev=/lfemix= already use. E-AC-3's own tools= string
+    // reaches the encode-side field with its own tokens ("nofastmdct" to
+    // force direct, matching "noatten"; the old opt-in "fastmdct" parses as
+    // a no-op) - AC-3 has no tools= string to extend, so this option is its
+    // equivalent, the same relationship 'couple' has to cpl/cpl:N. The bare
+    // word 'fast-mdct' (the opt-in spelling from when this defaulted off)
+    // stays accepted and now names what already happens.
     bool fast_mdct = true;
-    // The decode-side counterpart: §7.9.4 step 3's complex transform via
-    // the radix-2 FFT instead of the pseudocode's direct sum
-    // (DecoderConfig::fast_imdct - see its own comment for the accepted
-    // quality evidence). On by default like the library config it feeds;
-    // fast-imdct=off - or mode=reference, which turns this AND fast_mdct
-    // off together - forces the direct evaluation for runs where agreement
-    // with the spec's stated arithmetic matters more than speed. 'decode'
-    // reads it; the QC/levels/playback decoders stay on the library
-    // default, where a ~1e-12 difference cannot move a reported figure.
+    // The decode-side counterpart for INVERSE transforms: §7.9.4 step 3's
+    // complex transform via the radix-2 FFT instead of the pseudocode's
+    // direct sum (DecoderConfig::fast_imdct - see its own comment for the
+    // accepted quality evidence). Covers PCM reconstruction, enhanced
+    // coupling and JOC object synthesis; fast_mdct above is the one FORWARD
+    // exception (JOC bed analysis). On by default like the library config
+    // it feeds; fast-imdct=off - or mode=reference, which turns this AND
+    // fast_mdct off together - forces the direct evaluation for runs where
+    // agreement with the spec's stated arithmetic matters more than speed.
+    // 'decode' reads it; the QC/levels/playback decoders stay on the
+    // library default, where a ~1e-12 difference cannot move a reported
+    // figure.
     bool fast_imdct = true;
     // The two verbosity tokens, recorded here as well as in the file-scope
     // flags set_verbosity settles (see above): a command that wants to reason
@@ -276,6 +283,21 @@ struct Options {
     // config it feeds - it costs encode time, and this project does not turn
     // a decision knob on without the numbers. AC-3 encodes only.
     ac3::quality::Criterion search = ac3::quality::Criterion::kNone;
+    // §7.2.2.4 fast gain, Table 7.11 - the OTHER axis search= moves, offered
+    // here as a pin for the runs that want one code held across a whole
+    // encode rather than chosen per frame (plan::Tools::fgaincod, reaching
+    // EncoderConfig::fgaincod and eac3::FrameConfig::fgaincod). -1 is
+    // 'auto', which means different things to the two codecs and
+    // deliberately so: AC-3 hangs fgaincod off an element it already sends
+    // every block, so auto follows ac3::rate_adaptive_fgaincod()'s measured
+    // curve for free; E-AC-3's baie does not carry fgaincod at all, so auto
+    // leaves Table E1.4's implied 0x4 and writes no element. Pinning 0..7
+    // makes E-AC-3 pay for the per-block fgaincode element in all six
+    // blocks - which is exactly the trade this option exists to let a
+    // measurement run put a number on. Not command-scoped, for the same
+    // reason dither=/search= are not: every command that encodes at all can
+    // answer it, in either codec.
+    int fgaincod = -1;
     // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
     // of the human-readable table. Off by default - a bare `ac3cli probe
     // <file>` is meant to be read by a person, and every other command here
@@ -355,6 +377,12 @@ struct Options {
     // every dependent substream's height/wide/rear channels included,
     // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
     bool qc_rendered_layout = false;
+    // 'qc' only: objects=<layout> (roadmap IO12). Set when the stream's
+    // dynamic objects should be re-rendered by their own OAMD position onto
+    // the named advanced sound system layout and metered through BS.1770-5
+    // Annex 4, instead of (or as well as - the two are independent switches)
+    // the channel-based measurement layout= above selects. See run_qc.
+    std::optional<ac3::plan::LayoutId> qc_objects_layout;
 };
 
 // Returns false and prints the offending token on anything unrecognised: a
@@ -592,6 +620,25 @@ std::vector<float> interleave_reordered(std::span<const std::vector<float>> chan
                                         std::span<const std::size_t> order);
 
 std::vector<std::byte> read_all(std::string_view path);
+
+// The elementary stream at `in_path`: `in_path`'s own bytes verbatim if it is
+// already one, or (roadmap IO2) the first AC-3/E-AC-3 track demuxed out of a
+// recognised Matroska/MP4/MPEG-TS container, via apps/common/
+// container_input.hpp's ac3::apps::elementary_stream_from_bytes - the same
+// three readers `ac3cli demux` already streams through, run here in their
+// batch/zero-copy form since every caller has the file resident anyway.
+// `decode`, `qc`, `levels`, `play` and `monitor` all used to call
+// read_all(path) directly and now call this instead, so all five accept a
+// container in place of a raw .ac3/.ec3 with no other change to how they
+// work.
+//
+// Prints its own error and returns empty on ANY failure - a missing file, an
+// unreadable one, or a recognised container with no AC-3/E-AC-3 track - so a
+// caller's own "cannot read" message is not also needed; every existing
+// caller's `if (stream.empty()) { ...; return kExitInput; }` guard already
+// does the right thing with an empty result regardless of which of those it
+// was.
+[[nodiscard]] std::vector<std::byte> read_elementary_stream(std::string_view in_path);
 
 // Wraps ac3::io::read_wav to honor the "-" stdin convention (is_stdio_path
 // above): "-" reads the WAV from stdin, binary mode set first, instead of

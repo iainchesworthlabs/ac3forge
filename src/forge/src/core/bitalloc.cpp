@@ -123,6 +123,15 @@ int slow_gain(int sgaincod) {
     return kSlowGain[static_cast<std::size_t>(std::clamp(sgaincod, 0, 3))];
 }
 
+int rate_adaptive_fgaincod(int bitrate_kbps, int nfchans) {
+    // The line through (38, 7) and (128, 0), rounded rather than truncated.
+    constexpr int kTopKbps = 128;
+    constexpr int kSpanKbps = 90;
+    const int per_channel_kbps = bitrate_kbps / std::max(nfchans, 1);
+    const int numerator = (kTopKbps - per_channel_kbps) * 7 + kSpanKbps / 2;
+    return std::clamp(numerator / kSpanKbps, 0, 7);
+}
+
 int bin_to_band(int bin) {
     return kMaskTab[static_cast<std::size_t>(bin)];
 }

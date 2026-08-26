@@ -199,9 +199,12 @@ CMIXLEV = ["-3", "-4.5", "-6"]
 SURMIXLEV = ["-3", "-6", "off"]
 
 # The two ways a generated configuration can be legitimately refused, keyed by
-# the CLI's own exact words on exit code 1. Both are correct behaviour meeting
-# a real limit, not defects, and neither can be excluded up front - see the
-# per-entry notes.
+# the CLI's own exact words - not by exit code, since the two land on
+# different codes in the CLI's own scheme (roadmap IO8): "header room" is a
+# usage error (1, the configuration itself is invalid), "sub-gate loudness" is
+# a runtime one (5, the configuration is fine but this particular audio has
+# nothing to measure). Both are correct behaviour meeting a real limit, not
+# defects, and neither can be excluded up front - see the per-entry notes.
 #
 # This is an allow-list, not a catch-all: any OTHER non-zero exit is a
 # failure. A blanket "non-zero means skip" would let a crash, or a brand new
@@ -235,6 +238,20 @@ REGRESSION_SEEDS = {
         "stereo 512 kbit/s: a fully valid big-frame stream FFmpeg 8.0's "
         "auto-detection hands to the mpeg demuxer (see the misprobe note "
         "above MIN_STREAM_BYTES); must classify as misprobed, never fail",
+    12337584231652829542:
+        "stereo 576 kbit/s, dialnorm=auto over near-silent generated audio: "
+        "the encoder correctly exits 5 (a runtime refusal, not a usage error) "
+        "for the sub-gate-loudness case - classify() only checked REFUSALS on "
+        "exit code 1, so this legitimate refusal counted as a failure",
+    3600083275727211684:
+        "1+1 48 kbit/s @ 48 kHz, steady/inverted audio: AC-3 at this rate "
+        "codes exactly 192-byte frames - one of MPEG-TS's own three packet "
+        "strides - and the low-entropy signal makes the encoder produce "
+        "near-identical bytes every frame, so 'decode' (roadmap IO2's "
+        "container-sniffing widening) misdetected this perfectly ordinary "
+        "elementary stream as an MPEG-TS capture and refused it; sniff_container "
+        "must check for a valid AC-3/E-AC-3 frame header before trusting the "
+        "packet-grid heuristic, not after",
 }
 
 
@@ -706,10 +723,9 @@ def classify(case, encode, out_path):
     refusals and why neither can be excluded up front; everything else,
     including a zero exit that wrote nothing, is a failure."""
     if encode.returncode != 0:
-        if encode.returncode == 1:
-            for reason, message in REFUSALS.items():
-                if message in encode.stderr:
-                    return Result(case, "refused", encode.stderr.strip(), "encode", reason)
+        for reason, message in REFUSALS.items():
+            if message in encode.stderr:
+                return Result(case, "refused", encode.stderr.strip(), "encode", reason)
         return Result(case, "fail",
                       f"encode exited {encode.returncode}\n{encode.stderr.strip()}", "encode")
     if not out_path.exists() or out_path.stat().st_size == 0:

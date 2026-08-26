@@ -15,18 +15,20 @@ something fails, that is your change or a genuine regression, not noise.
 
 ## Branches and pull requests
 
-The branch model is GitFlow: `main` holds releases, `develop` is where work integrates. Topic
-branches are named `<type>/<short-name>`, with `<type>` one of `feature`, `release`, `hotfix`,
-`bugfix` or `support` — CI's `Branch Name` check enforces
-`^(feature|release|hotfix|bugfix|support)/[a-z0-9._-]+$` on every PR, and its error message
-points back to this file.
+The branch model is trunk-based: `main` is the only long-lived branch, and every topic branch
+merges straight into it — there is no separate integration branch to land on first. Topic
+branches are named `<type>/<short-name>`, with `<type>` one of `feature` or `bugfix` (a hotfix
+is just a `bugfix/*` branch — there is no separate hotfix flow) — CI's `Branch Name` check
+enforces `^(feature|bugfix)/[a-z0-9._-]+$` on every PR, and its error message points back to
+this file.
 
-PRs target `develop`; `hotfix/*` branches target `main`. To merge, a PR must pass the required
-checks: `Branch Name`, the `CI Status` aggregate (every required CI job — the build/test matrix,
-clang-tidy, coverage, the FFmpeg-oracle validation and the rest), CodeQL's `Analyze (C++)`, and
-the `Scan dependency diff` dependency review. The maintainer-side record of the protection rules
-themselves is
-[.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md).
+PRs target `main`. To merge, a PR must pass the required checks: `Branch Name`, the `CI Status`
+aggregate (every required CI job — the build/test matrix, clang-tidy, coverage, the
+FFmpeg-oracle validation and the rest), CodeQL's `Analyze (C++)`, and the `Scan dependency diff`
+dependency review; a merge queue serializes landing when several PRs are ready at once (see
+[.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
+for the full required-check list and the merge-queue rationale). Releases are tags cut directly
+from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
 
 ## The clean-room rule
 

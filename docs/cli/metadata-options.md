@@ -95,14 +95,20 @@ metadata options (any order, after the positional arguments):
                     [tools] positional can also reach this field via a bare nofastmdct token,
                     which wins if both are given; bare fast-mdct (the old opt-in) is a no-op
   fast-imdct=off    decode: force the direct §7.9.4 step-3 inverse instead of the default
-                    radix-2 FFT evaluation - the decode-side mirror of fast-mdct=off above,
+                    radix-4 FFT evaluation - the decode-side mirror of fast-mdct=off above,
                     with the same relationship to its oracle (both codecs; bare fast-imdct,
                     the old opt-in, is a no-op)
-  search=<what>     AC-3 encode only: choose §7.2.2's transmitted bit allocation parameters per
-                    frame, from the error a decoder will reconstruct, instead of taking the
-                    rate-derived defaults. distortion minimises that error; perceptual weights
-                    it by a tonality/masking model first. off (the default) keeps the fixed
-                    values every release before this emitted. Costs encode time - see
+  search=<what>     AC-3 encode (encode/sine) and E-AC-3 encode (eac3-encode/eac3-sine): choose
+                    §7.2.2's transmitted bit allocation parameters per frame, from the error a
+                    decoder will reconstruct, instead of taking the rate-derived defaults.
+                    distortion minimises that error; perceptual weights it by a tonality/masking
+                    model first. off (the default) keeps the fixed values every release before
+                    this emitted. E-AC-3 narrows it: CBR only (silently inert under vbr=),
+                    distortion only (perceptual parses and does nothing), AHT streams excluded
+                    from the measurement, and the candidates are dbpbcod - kAllocCodes' 3
+                    against Table E1.4's 2 - crossed with Table 7.11's rate-adaptive fgaincod,
+                    which unlike AC-3's is not free (it opens the per-block fgaincode element)
+                    and so is scored after a refit rather than assumed. Costs encode time - see
                     docs/library/quality.md for the measured figures
   mode=reference    both switches above in one word: every transform this command runs falls
                     back to the spec's own direct evaluation. mode=performance (the default
@@ -134,14 +140,18 @@ qc options (qc; any order, after the positional arguments):
   layout=rendered   meter the whole assembled program instead, every
                     dependent substream's height/wide/rear channels
                     included (BS.1770-5 Annex 3's extended algorithm)
+  objects=<layout>  re-render dynamic objects by their own OAMD position
+                    onto <layout> (51|71|512|514|714) and meter that too
+                    (BS.1770-5 Annex 4); dynamic-object-only programmes
+                    only
 ```
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
 encoded), and bare `heavy` prefers `compr` where the stream carries it — the decode-time meaning
-of these two tokens is deliberately the mirror of their encode-time meaning. That applies to
-AC-3 decode only: those two tokens are silently inert on `.ec3` input. `fast-imdct=off` and
-`mode=` are the exception — they select the inverse transform's evaluation and apply to both
-codecs' decode alike.
+of these two tokens is deliberately the mirror of their encode-time meaning. Both apply to
+E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
+ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
+both codecs' decode alike.
 
 See [Metadata](../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
@@ -803,7 +813,7 @@ refused, not invented.
 override the value carried from the source, and `dialnorm=auto` measures the *source* the same
 way an encode from a WAV would.
 
-## Qc options (`qc`): `preset=`, `layout=`
+## Qc options (`qc`): `preset=`, `layout=`, `objects=`
 
 ```text
 qc options (qc; any order, after the positional arguments):
@@ -816,6 +826,10 @@ qc options (qc; any order, after the positional arguments):
   layout=rendered   meter the whole assembled program instead, every
                     dependent substream's height/wide/rear channels
                     included (BS.1770-5 Annex 3's extended algorithm)
+  objects=<layout>  re-render dynamic objects by their own OAMD position
+                    onto <layout> (51|71|512|514|714) and meter that too
+                    (BS.1770-5 Annex 4); dynamic-object-only programmes
+                    only
 ```
 
 `preset=<name>` checks `qc`'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
@@ -914,6 +928,53 @@ layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry 
 meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
 a rear centre at M+180, at unity.
 
+### `objects=<layout>`
+
+`layout=` above meters *channels* — the bed, or the whole assembled program with every dependent's channels
+laid over it. Neither sees a dynamic object's own position: this project's own encoder pans every object onto
+the flat 5.1 ring at encode time (`ac3::spatial::pan_room`'s own "a raised object folds onto the ring... at
+full level"), so an object authored directly overhead measures no differently from one on the ring — the bed
+a legacy 5.1 decoder plays has nowhere else to put it.
+
+ITU-R BS.1770-5 (11/2023) Annex 4 covers this: it defines no weighting table of its own, and instead says to
+render object-based (or combined channel- and object-based) audio to a real loudspeaker configuration first,
+then meter *that* through Annexes 1/3 — and to report which configuration and rendering algorithm did the
+rendering, since two reasonable choices can legitimately disagree by several LU (Annex 4's own worked example,
+its Table 6, does exactly that across renderers and layouts). `objects=<layout>` is that: it re-renders each
+dynamic object by its own OAMD position — including height — onto the named layout (`51`, `71`, `512`, `514`
+or `714`) via `ac3::spatial`'s direction-based panner (the same height-aware geometry `ac3::plan`'s
+layout-to-layout channel renderer uses internally), then meters the result through the Annex 3 algorithm
+`layout=rendered` already implements:
+
+```text
+$ ac3cli qc atmos.ec3 objects=514
+qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+  ...
+  objects=5.1.4  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD
+  position, via ac3::spatial's direction panner, then Annex 3)
+  objects: measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):
+  ...
+```
+
+`layout=`/`layout=rendered` and `objects=<layout>` are independent switches — `objects=` adds a third,
+separately-labelled report rather than replacing either of the other two.
+
+Restricted to a **dynamic-object-only** programme — the only shape `atmos-encode` produces, and what Dolby's
+own reference JOC test streams declare. For that shape the decoded bed already IS the objects' 5.1 VBAP fold
+(`oba/oamd.hpp`'s own comment: "the 5.1 downmix IS the objects' VBAP render"), so `objects=` starts every
+full-bandwidth target channel at silence and sums each object's own recovered audio
+(`DecodedAccessUnit::object_audio`) into it, rather than adding to a bed that already carries it and
+double-counting. A bed-and-objects programme — third-party content whose bed may carry independent,
+non-object material this decoder cannot separate back out — is refused rather than risk silently doubling or
+dropping content:
+
+```text
+$ ac3cli qc plain_channel_based.ec3 objects=514
+error: programme 0 carries no dynamic-object-only OAMD - objects= needs OAMD dynamic
+objects (try layout=rendered or layout=bed instead)
+```
+
 Omitting `preset=` entirely leaves `qc` in measure-and-report mode — every number is still printed, there is
 just no PASS/FAIL verdict and nothing to gate on. See [Commands → `qc`](commands.md#decoding-inspection) for the
 full report format and the exit-code convention this drives.
@@ -971,15 +1032,17 @@ Optional positional arguments, when omitted:
 - WAV sample rates: AC-3 takes 32, 44.1 or 48 kHz (Table 5.6); E-AC-3 additionally takes the
   Annex E `fscod2` half rates 16, 22.05 and 24 kHz.
 - The bit rate must be one of the 19 nominal AC-3 rates (Table 5.18), 32 through 640 kbps.
-- `record` captures the first two channels of the endpoint (stereo); a mono device is duplicated
-  across both.
+- `record` (and `live mode=channels`) encodes onto `layout=` — `stereo` by default, anything up
+  to 7.1.4 — and places the endpoint's channels onto it by direction, not by index: a device
+  narrower than the layout leaves the rest silent, a wider one folds down per §7.8. See
+  [`layout=` and `codec=`](#layout-and-codec).
 - The Atmos commands take 1 to 15 objects — the bed's LFE is the 16th, and TS 103 420 §8.3.2.2
   caps the total at 16.
 
 ## Command-specific notes
 
 - **`transcode`/`metadata`/`normalize`/`cut`/`cat`** work on an already-encoded stream rather
-  than on PCM — see [Commands → Stream tools](commands.md#stream-tools--an-encoded-stream-in-an-encoded-stream-out)
+  than on PCM — see [Commands → Stream tools](commands.md#stream-tools-an-encoded-stream-in-an-encoded-stream-out)
   for what each carries across and what it deliberately does not. Only `transcode` re-encodes.
   Every metadata option above that a stream tool does not name is ignored by it, the same way
   `mkv` ignores all of them.
@@ -1029,10 +1092,12 @@ Optional positional arguments, when omitted:
   `fastmdct` tool token — the opt-in spellings from when this defaulted off — still parse and now
   name what already happens.
 - **`fast-imdct=off`**: the decode-side mirror. `decode` runs §7.9.4 step 3 — the inverse
-  transform's one O(N²) part — through a radix-2 FFT by default (the quality evidence that made
-  it the default: 7.8e-14 max peak-normalized relative error against the direct evaluation at the
+  transform's one O(N²) part — through an FFT by default. The kernel
+  (`src/forge/src/core/fft_kernel.hpp`) is radix-4 throughout, ending on a single radix-2 stage
+  only where log2(P) is odd — P = 128 and P = 512, not P = 64. The quality evidence that made it
+  the default: 7.8e-14 max peak-normalized relative error against the direct evaluation at the
   transform level, and over 180-second real-material decodes 214.9 dB SNR agreement for AC-3 /
-  284.7 dB for E-AC-3, with decodes 4.5–4.7× faster). `fast-imdct=off` forces the pseudocode's
+  284.7 dB for E-AC-3, with decodes 4.5–4.7× faster. `fast-imdct=off` forces the pseudocode's
   own direct sum — the reference form, and the oracle the fast path's tests validate against.
   Applies to both codecs; the `qc`, `levels` and playback decoders stay on the library default,
   where a ~1e-12 difference cannot move a reported figure. Encoded output never depends on this

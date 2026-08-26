@@ -250,14 +250,18 @@ TOOL_ATOMS = ["cpl", "spx", "aht", "tpn"]
 DMIXMOD = ["ltrt", "loro", "none"]
 
 # Every way a generated configuration can be legitimately refused by
-# `eac3-encode` or `atmos-encode`, keyed by the CLI's own exact words on exit
-# code 1. Each is correct behaviour meeting a real limit, not a defect, and
-# none can be excluded up front - see the per-entry notes.
+# `eac3-encode` or `atmos-encode`, keyed by the CLI's own exact words - not by
+# exit code, since the CLI's own structured exit codes (roadmap IO8) split
+# these across two: exit 1 ("usage") for a configuration invalid on its face,
+# exit 5 ("runtime") for dialnorm=auto's own loudness measurement finding
+# nothing to measure once it actually reads the file. Each is correct
+# behaviour meeting a real limit, not a defect, and none can be excluded up
+# front - see the per-entry notes.
 #
-# An allow-list, not a catch-all: any OTHER non-zero exit is a failure. That
-# matters more here than in the AC-3 harness, because the first thing this
-# file found was an ABORT that a blanket "non-zero means skip" would have
-# swallowed whole - see classify().
+# An allow-list, not a catch-all: any exit code other than 1 or 5 is a
+# failure. That matters more here than in the AC-3 harness, because the first
+# thing this file found was an ABORT that a blanket "non-zero means skip"
+# would have swallowed whole - see classify().
 REFUSALS = {
     # ac3::eac3's own budget check, reported by the CLI whenever an access
     # unit cannot be built at the chosen settings. Two distinct causes reach
@@ -348,6 +352,15 @@ REGRESSION_SEEDS = {
         "count, so its default one-object-per-channel asks for one more than "
         "TS 103 420 8.3.2.2 allows. A legal WAV, so the refusal is the "
         "behaviour under test - must classify as refused ('object count')",
+    3022538104290477191:
+        "atmos-encode over near-silent generated audio with dialnorm=auto: "
+        "the encoder correctly exits 5 (a runtime refusal, 'unmeasurable "
+        "loudness'), not 1 - classify() used to only check REFUSALS on exit "
+        "code 1, so this legitimate refusal counted as a failure",
+    12516729639780655386:
+        "eac3-encode over near-silent generated audio with dialnorm=auto: "
+        "the same exit-5 gap as above, reached through 'sub-gate loudness' "
+        "instead of atmos-encode's own 'unmeasurable loudness' wording",
 }
 
 
@@ -856,25 +869,34 @@ def classify(case, encode, out_path):
     """Why a non-zero encode is not automatically a failure - and why almost
     every non-zero encode still is. See REFUSALS for the recognised refusals
     and why none can be excluded up front; everything else, including a zero
-    exit that wrote nothing and any exit code that is not 0 or 1, is a
+    exit that wrote nothing and any exit code that is not 0, 1 or 5, is a
     failure.
 
     The exit-code check is not pedantry. The first defect this harness found
     was an assert() firing on a legal-looking configuration - an abort, which
     subprocess reports as 3 or 0x80000003 on Windows and as -6 (SIGABRT) on
-    Linux, never as 1. A plain `!= 0` test with a message allow-list behind it
-    would have reported that as a tolerated refusal the moment the abort
-    happened to print a matching line first."""
+    Linux, never as 1 or 5. A plain `!= 0` test with a message allow-list
+    behind it would have reported that as a tolerated refusal the moment the
+    abort happened to print a matching line first.
+
+    1 and 5 both cover REFUSALS entries because the CLI's own structured exit
+    codes (roadmap IO8) split them across two classes: a configuration that is
+    invalid on its face, checked before any audio is read (header room, frmsiz
+    ceiling, object count - exit 1, "usage") versus dialnorm=auto's own
+    loudness measurement finding nothing to measure once it actually reads the
+    file (sub-gate/unmeasurable loudness - exit 5, "runtime"), regardless of
+    which of eac3-encode/atmos-encode took that path. Only that pair exits 5,
+    which is why every other REFUSALS entry already worked here."""
     if encode.returncode != 0:
-        if encode.returncode == 1:
+        if encode.returncode in (1, 5):
             for reason, message in REFUSALS.items():
                 if message in encode.stderr:
                     return Result(case, "refused", encode.stderr.strip(), "encode", reason)
             return Result(case, "fail",
-                          f"encode exited 1 with an unrecognised error\n{encode.stderr.strip()}",
-                          "encode")
+                          f"encode exited {encode.returncode} with an unrecognised error\n"
+                          f"{encode.stderr.strip()}", "encode")
         return Result(case, "fail",
-                      f"encode exited {encode.returncode} - not a refusal (exit 1) but a "
+                      f"encode exited {encode.returncode} - not a refusal (exit 1 or 5) but a "
                       f"crash or abort\n{encode.stderr.strip()}", "encode")
     if not out_path.exists() or out_path.stat().st_size == 0:
         return Result(case, "fail", "encode exited 0 but wrote no bitstream", "encode")

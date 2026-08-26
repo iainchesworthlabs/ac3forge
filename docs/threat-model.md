@@ -21,12 +21,13 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | AC-3 elementary streams | `ac3::split_frames`, `ac3::FrameDecoder::decode_frame` | yes |
 | E-AC-3 elementary streams, including dependent substreams | `ac3::split_access_units`, `ac3::Eac3Decoder::decode_access_unit` | yes |
 | Format sniffing before any decoder commits | `ac3::io::scan` | yes |
-| EMDF containers in a skip field (§H.2.2) | `ac3::emdf::parse_container` | reached through the E-AC-3 harnesses |
-| OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | reached through the E-AC-3 harnesses |
-| JOC payloads (TS 103 420 §6) | `ac3::joc::parse_payload` | reached through the E-AC-3 harnesses |
+| EMDF containers in a skip field (§H.2.2) | `ac3::emdf::parse_container` | yes — `fuzz_emdf_parse`, plus indirectly through the E-AC-3 harnesses |
+| OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
+| JOC payloads (TS 103 420 §6) | `ac3::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
 | WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
-| ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **no** — see [ADM](#adm-xml-and-bw64) |
-| Object authenticity tags | `ac3::signing::verify_atmos_frame` | no |
+| IEC 61937 bursts off an S/PDIF or HDMI capture | `ac3::iec61937::BurstReader` | yes — `fuzz_iec61937_unwrap` |
+| ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `AC3FORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
+| Object authenticity tags | `ac3::signing::verify_atmos_frame` | yes — `fuzz_signing_verify` (the key is part of the fuzzed input) |
 | Matroska/WebM containers | `matroska::demux`, `matroska::Reader` | yes |
 | MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
 | MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
@@ -68,32 +69,49 @@ the posture is a set of specific properties rather than a language guarantee:
 - **Indexed access is `std::span` and `std::vector`, which are bounds-checked only where the
   standard library's own assertions are on** — MSVC's `_STL_VERIFY` in a debug build, and
   libstdc++/libc++ only under `_GLIBCXX_ASSERTIONS`/`_LIBCPP_HARDENING_MODE`, neither of which
-  this project sets. Of the CI legs only the ASan + UBSan one is a debug build, and that is also
-  the leg that runs the codec matrix, so an out-of-range index there fails the job. Every other
-  leg, and every shipped package, is a release build with no such net — which is why the fuzzers
-  run under ASan rather than relying on the library's own checks. (The WAV over-read fixed
-  alongside this document is exactly that story: caught by `_STL_VERIFY` in a debug build,
+  this project sets. Of the CI legs only the two sanitizer ones are debug builds, and the
+  ASan + UBSan one is also the leg that runs the codec matrix, so an out-of-range index there
+  fails the job (the TSan leg is debug too, but runs only the `concurrency` label — see below).
+  Every other leg, and every shipped package, is a release build with no such net — which is why
+  the fuzzers run under ASan rather than relying on the library's own checks. (The WAV over-read
+  fixed alongside this document is exactly that story: caught by `_STL_VERIFY` in a debug build,
   invisible in a release one.)
 
 What runs against it, continuously:
 
-- **Six libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md),
-  built with ASan + UBSan and `-fno-sanitize-recover=all`. Four drive the decode and parse entry
-  points for crashes and undefined behaviour; two more decode the same mutated bytes with FFmpeg
-  as well and diff the PCM, so a *wrong* decode that does not crash is caught too. `Fuzz Regress`
-  replays the checked-in seed and regression corpora on every push to `develop`/`main` and every
-  pull request into them; `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on
+- **Fourteen libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md),
+  built with ASan + UBSan and `-fno-sanitize-recover=all`. Twelve drive the entry points in the
+  table above for crashes and undefined behaviour — format sniffing (`fuzz_scan`), the three
+  container demuxers (`fuzz_matroska_demux`, `fuzz_mp4_demux`, `fuzz_mpegts_demux`), both
+  elementary-stream decoders (`fuzz_ac3_decode`, `fuzz_eac3_decode`), WAV (`fuzz_wav_read`),
+  IEC 61937 burst de-framing (`fuzz_iec61937_unwrap`), the three object/metadata parsers behind
+  the skip field (`fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse`) and the signature
+  verifier (`fuzz_signing_verify`); two more (`fuzz_differential_ac3_decode`,
+  `fuzz_differential_eac3_decode`) decode the same mutated bytes with FFmpeg as well and diff the
+  PCM, so a *wrong* decode that does not crash is caught too. A fifteenth, `fuzz_adm_parse`, is
+  built only when `AC3FORGE_BUILD_ADM` is on — see [ADM](#adm-xml-and-bw64). `Fuzz Regress`
+  replays the checked-in seed and regression corpora on every push to `main` and every
+  pull request into it; `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on
   pushes, and a nightly job goes deeper.
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
   so the sanitizers see the real command paths rather than only unit tests.
+- **A ThreadSanitizer leg** (roadmap VX16). The codec core is single-threaded and holds no shared
+  state, but the audio layer's lock-free SPSC ring, silence watchdog and drift servo are shared
+  between a real-time callback thread and an encoder thread, and neither ASan nor UBSan can see a
+  race there — the two runtimes are also mutually exclusive, so it is a separate required leg
+  (`Linux LLVM TSan`, `_build.yml`; preset `linux-llvm-tsan`) rather than more entries on the one
+  above. It runs the `concurrency` ctest label only — `tests/audio/` plus
+  `tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
+  times slower and the rest of the suite is single-threaded codec maths. `tsan.supp` at the
+  repository root holds the suppressions and is near-empty.
 - **CodeQL** on the `security-and-quality` suite, **MSVC PREfast** with a warnings gate, **OSV
   scanning** and **OpenSSF Scorecard**.
 
-What is *not* covered: there is no ThreadSanitizer leg. The codec core is single-threaded and
-holds no shared state, but the audio layer's lock-free SPSC ring, silence watchdog and drift
-servo are shared between a real-time callback thread and an encoder thread, and neither ASan nor
-UBSan can see a race there. That is roadmap VX16, and it is an open gap.
+What is *not* covered by that leg: anything threaded that is not tagged `concurrency`. The label
+comes from the Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)`), so a race
+in code whose tests carry a different tag — or in a path with no test at all — is outside what
+TSan sees on every push, and adding a case to the leg means tagging it.
 
 Known history in this class: one real bug of exactly this shape has been found and fixed (commit
 `8386c8f` — a decoder that shifted by an unvalidated exponent and reached undefined behaviour on
@@ -239,7 +257,13 @@ is still clamped to the bytes actually present.
 other parser here, are not this project's own code: the XML and BW64/RF64 reading is vendored
 libadm and libbw64, plus Boost headers. That means:
 
-- **No fuzz harness covers this path**, and the resource limits above do not apply to it. There
+- **The fuzz harness that covers this path is opt-in, not continuous.** `fuzz_adm_parse` drives
+  `ac3adm::parse_bw64` over BW64 chunks plus an arbitrary XML document, but it is built only when
+  `AC3FORGE_BUILD_ADM` is on (`fuzz/run.sh` turns that on via `AC3FORGE_FUZZ_ADM=1`), and the one
+  CI job that runs it — `Fuzz ADM Nightly` — is schedule/dispatch-only and `continue-on-error`,
+  because a vcpkg restore plus the libbw64/libadm `FetchContent` pulls cost more than the mutation
+  budget and most of what the harness reaches is third-party code. It is not one of the fourteen
+  harnesses that run on every push. The resource limits above do not apply here either way: there
   is no document-size cap, no entity-expansion limit and no element-count limit; an enormous or
   deeply nested ADM document is bounded by nothing this project controls.
 - The whole `axml` chunk is materialised as a string and re-parsed from an `istringstream`, so
@@ -249,8 +273,9 @@ libadm and libbw64, plus Boost headers. That means:
   non-zero exit.
 
 **Do not enable the ADM build for untrusted input.** It exists to ingest professional master
-files an operator already trusts. Extending the threat model to cover it means fuzzing the
-vendored parsers and deciding a document-size policy; neither has been done.
+files an operator already trusts. Extending the threat model to cover it means putting the
+vendored parsers under the same every-push fuzzing the rest of the table gets, not a nightly
+advisory job, and deciding a document-size policy; neither has been done.
 
 ### Object signing is authentication, not integrity of the stream
 

@@ -159,6 +159,16 @@ option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src
 # above - apps/cli's `probe` command links it unconditionally.
 option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector (src/ac4)" ON)
 
+# ac3iab::ac3iab (src/ac3iab) - roadmap item IM1 phase 1: a standalone reader for SMPTE
+# ST 2098-2's Immersive Audio Bitstream. Same zero-third-party-dependency shape as the three
+# container writers above (unlike ac3adm, see its own option() below), so it defaults ON the
+# same way; unlike them, nothing in apps/cli, apps/gui or examples/ links it yet (roadmap IM1's
+# phase 3 is what will eventually give it a consumer), so there is no matching FATAL_ERROR
+# guard here - tests/CMakeLists.txt only adds ac3iab's own test file and links ac3iab::ac3iab
+# when this option is on, the same conditional shape it already uses for ac3adm::ac3adm/
+# AC3FORGE_BUILD_ADM.
+option(AC3FORGE_BUILD_IAB "Build the standalone Immersive Audio Bitstream reader (src/ac3iab)" ON)
+
 # Roadmap PF7: the minimum-footprint decoder profile. Not a "build X too"
 # option like the ones above - it REPLACES what src/forge builds with a single
 # decode-only static library for a target with a few hundred kilobytes of RAM
@@ -209,8 +219,8 @@ if(AC3FORGE_MINIMAL_DECODER)
     set(_ac3_minimal_conflicts "")
     foreach(_opt IN ITEMS AC3FORGE_BUILD_CLI AC3FORGE_BUILD_GUI AC3FORGE_BUILD_TESTS
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
-                          AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM
-                          AC3FORGE_BUILD_PYTHON AC3FORGE_BUILD_FUZZERS)
+                          AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_CAPI
+                          AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON AC3FORGE_BUILD_FUZZERS)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()
@@ -337,6 +347,13 @@ endif()
 # its FATAL_ERROR guard above).
 if(AC3FORGE_BUILD_AC4)
     add_subdirectory(src/ac4)
+endif()
+
+# A standalone reader, not a writer like the three container modules above - roadmap item IM1
+# phase 1 ("IAB (SMPTE ST 2098-2) reader", see ROADMAP.md). Gated by AC3FORGE_BUILD_IAB
+# (default ON, see the option() above).
+if(AC3FORGE_BUILD_IAB)
+    add_subdirectory(src/ac3iab)
 endif()
 
 # A standalone BW64/RF64 + Audio Definition Model parser - reader, not writer, but the same

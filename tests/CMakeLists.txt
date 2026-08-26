@@ -88,6 +88,7 @@ add_executable(ac3tests
     decoder/test_output_stage.cpp
     meta/test_loudness.cpp
     core/test_mantissas.cpp
+    containers/test_container_input.cpp
     containers/test_matroska.cpp
     containers/test_matroska_reader.cpp
     core/test_mdct.cpp
@@ -102,6 +103,7 @@ add_executable(ac3tests
     quality/test_distortion.cpp
     quality/test_perceptual.cpp
     quality/test_search.cpp
+    quality/test_eac3_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_resampler.cpp
@@ -299,7 +301,7 @@ endif()
 # `ctest -L concurrency` (roadmap VX16).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
+        cli/test_cli.cpp cli/test_cli_containers.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
         cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
@@ -327,10 +329,19 @@ endif()
 # in a CLI-only build too - and apps/common, unlike apps/gui, is present
 # whatever AC3FORGE_BUILD_GUI says. The test file itself stays under
 # tests/gui/ so its history and its "[gui]" tag are unbroken.
+#
+# container_input.cpp (roadmap IO2) joined the same way for the same reason:
+# ac3::apps::sniff_container/elementary_stream_from_bytes are what
+# decode/qc/levels/play/monitor and the GUI's QC/Inspect pickers all call, so
+# a sniffing regression belongs in the plain Catch2 suite rather than only in
+# the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
+# 3600083275727211684 in tools/ci/fuzz_encoder_space.py) - this file covers it
+# deterministically and without needing ffmpeg on the machine running it.
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
@@ -344,7 +355,8 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # it depends on ac3adm::ac3adm too, and src/admbridge is only add_subdirectory()'d from inside
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
-    target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp)
+    target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
+                                    admbridge/test_adm_bridge_write.cpp)
     target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
@@ -359,6 +371,18 @@ endif()
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
     target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp)
+endif()
+
+# ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
+# (default ON, see the root CMakeLists.txt's own option()) rather than being linked
+# unconditionally in the matroska::matroska/mp4::mp4/mpegts::mpegts list below - nothing else
+# in this test binary depends on it, so there is no FATAL_ERROR guard forcing the option to
+# stay on the way there is for those three; test_ac3iab.cpp is only added, and ac3iab::ac3iab
+# only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
+# as the AC3FORGE_BUILD_ADM block above.
+if(AC3FORGE_BUILD_IAB)
+    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp)
+    target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, default ON - see the root

@@ -9,6 +9,7 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/bitalloc.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/silent_frame.hpp"  // FrameError
@@ -18,6 +19,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 
 // E-AC-3 (Dolby Digital Plus) framing - ATSC A/52:2018 Annex E, bsid 16.
@@ -136,8 +138,9 @@ struct FrameConfig {
     std::uint32_t bitrate_kbps = 192;
     // std::nullopt: CBR, sized from bitrate_kbps (frame_words() below). Set:
     // VBR: bitrate_kbps is not read on the encode path at all - the
-    // cplbegf/spxbegf frequency defaults use vbr->nominal_kbps in its place
-    // (falling back to max_kbps, then kVbrDefaultNominalKbps).
+    // cplbegf/spxbegf frequency defaults use vbr->nominal_kbps in its place,
+    // falling back to vbr->abr->target_kbps, then max_kbps, then
+    // kVbrDefaultNominalKbps (VbrConfig::nominal_kbps states the same chain).
     std::optional<VbrConfig> vbr = std::nullopt;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
@@ -180,6 +183,33 @@ struct FrameConfig {
     // tool in use the tool's start frequency IS the coded bandwidth and
     // chbwcod is not transmitted at all (§E3.3.3).
     int chbwcod = -1;
+
+    // §7.2.2.4 fast gain, Table 7.11 — roadmap EQ7's E-AC-3 half.
+    //
+    // -1 (the default) leaves Table E1.4's implied 0x4 in place: frmfgaincode
+    // stays 0, no fgaincode element is written, and the frame costs exactly
+    // what it did before this option existed. 0..7 pins the code instead,
+    // which opens the element in every block.
+    //
+    // Not defaulted to AC-3's rate-adaptive curve, though
+    // ac3::rate_adaptive_fgaincod() is the same measured line and is right
+    // here for the same reasons — because E-AC-3 charges for it and AC-3
+    // does not. AC-3 hangs fgaincod off the snroffst element it already
+    // sends every block (§5.4.3.x), so moving the code is free; E-AC-3's
+    // baie does not carry fgaincod at all, so a non-default code needs the
+    // separate per-block fgaincode element, and that element has no
+    // persistence rule — a block that omits it reverts to 0x4 rather than
+    // keeping the last value, so the code is paid for in all six blocks.
+    // At 5.1 with coupling that is 132 bits a frame, about 1.1% of a
+    // 384 kbit/s one: real mantissa precision traded for a better masking
+    // curve, which is a measurement rather than an assertion.
+    //
+    // Two ways to make that measurement: pin it here and sweep, or set
+    // `search` (below), whose candidate set now moves fgaincod alongside
+    // dbpbcod against real decoded-domain distortion. Until one of them says
+    // the curve wins on real programme material, the default stays where
+    // §8.2.12 put it.
+    int fgaincod = -1;
 
     // --- substream identity (Table E1.2) -----------------------------------
     // The defaults describe the lone independent substream this encoder has
@@ -348,6 +378,51 @@ struct FrameConfig {
     // reference-mode encode direct end to end.
     bool fast_mdct = true;
 
+    // §7.2.2's transmitted bit allocation parameters (BitAllocCodes,
+    // ac3/core/bitalloc.hpp), searched per frame from the reconstruction
+    // error a decoder will produce, instead of the fixed dbpbcod == 3 EQ3
+    // measured its way to on average (roadmap EQ13; AC-3's own
+    // EncoderConfig::search, encoder.cpp's step 9a, is the model this
+    // mirrors). search=distortion minimises ac3::quality::accumulate_block's
+    // decoded-domain noise, per stream, over the frame's six blocks.
+    //
+    // search=perceptual is accepted but has no effect here: AC-3's own
+    // measurements found that criterion uncompetitive at every rate tried
+    // (docs/library/quality.md), so wiring ac3::quality::PerceptualModel a
+    // second time to chase a criterion already known not to win was scoped
+    // out rather than rushed.
+    //
+    // CBR only (config_.vbr unset): VBR/ABR's own budget-fitting search is a
+    // materially bigger unit to wrap in an outer candidate loop than AC-3's
+    // settle() is - the delta-segment with/without comparison and ABR's
+    // stateful reservoir both assume one committed codes value per frame -
+    // and untangling that was scoped out too; see ROADMAP.md EQ13. Silently
+    // inert under VBR, the same way delta bit allocation is silently inert
+    // on an AHT stream (EQ5) - a documented scope boundary, not a rejected
+    // configuration.
+    //
+    // Two axes, since roadmap EQ7's E-AC-3 half landed. dbpbcod varies
+    // between kAllocCodes' 3 and Table E1.4's 2 - the only two values baie
+    // can carry that this encoder chooses between - and fgaincod varies
+    // between §8.2.12's implied 0x4 and ac3::rate_adaptive_fgaincod()'s
+    // measured value for this frame's rate, the AC-3 search's other axis.
+    //
+    // The two are not symmetric in cost and the search is what settles that.
+    // A dbpbcod candidate is free: baie is transmitted every frame anyway.
+    // An fgaincod candidate is not, because baie does not carry fgaincod at
+    // all - it opens the per-block fgaincode element, in all six blocks (see
+    // FrameConfig::fgaincod for the arithmetic). So each candidate is scored
+    // after a REFIT against its own side-info cost, not against the
+    // incumbent's: the two are not competing for the same number of mantissa
+    // bits. `fgaincod` set explicitly pins the code and takes it out of the
+    // candidate set entirely.
+    //
+    // AHT streams are excluded from the measurement, on the same grounds
+    // EQ5 excludes them from delta bit allocation: the concentration AHT's
+    // own DCT performs reads as quantization error in accumulate_block's
+    // per-block model. Off by default, like every other decision knob here.
+    quality::Criterion search = quality::Criterion::kNone;
+
     // §7.3.4 dithflag, decided per channel per block from content (see
     // src/forge/src/encoder/dither.hpp) - on by default, matching every other
     // config field here, except a frame using spectral extension, which
@@ -431,11 +506,23 @@ using AuxPayload = std::span<const std::byte>;
 // a configuration before building an encoder for it, which is what a live
 // pipeline sizing its buffers actually needs.
 [[nodiscard]] constexpr LatencyBudget eac3_latency(const FrameConfig& config) {
+    // A short syncframe (numblkscod 0-2, §E2.3.1.4) carries 256, 512 or 768
+    // samples, not kSamplesPerFrame - which is the whole point of roadmap
+    // EQ11's low-latency mode, and what ac3/latency.hpp's own frame_samples
+    // note has always said this field means. Reading kSamplesPerFrame here
+    // regardless made latency_samples() overstate a one-block frame by
+    // 1280 samples, ~27 ms at 48 kHz, to exactly the live pipeline that
+    // asks in order to size its buffers.
+    //
+    // The hold-back is one FRAME period for the same reason (§3.7 needs the
+    // previous frame, whatever length it is), so it tracks the same figure
+    // rather than a second, fixed one.
+    const int frame_samples = blocks_per_syncframe(config.numblkscod) * kSamplesPerBlock;
     return LatencyBudget{
-        .frame_samples = kSamplesPerFrame,
+        .frame_samples = frame_samples,
         .transform_samples = kTransformDelaySamples,
         .lookahead_samples = 0,
-        .holdback_samples = config.transient_prenoise ? kSamplesPerFrame : 0};
+        .holdback_samples = config.transient_prenoise ? frame_samples : 0};
 }
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
@@ -482,85 +569,28 @@ class AC3FORGE_EXPORT FrameEncoder {
         std::span<const std::span<const float>> channels, const FrameMetadata& metadata,
         AuxPayload aux = {});
 
-    [[nodiscard]] const FrameConfig& config() const { return config_; }
-    [[nodiscard]] int channel_count() const {
-        return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
-    }
+    [[nodiscard]] const FrameConfig& config() const;
+    [[nodiscard]] int channel_count() const;
     // How many samples per channel one call to encode_frame consumes.
-    [[nodiscard]] int samples_per_frame() const {
-        return blocks_per_syncframe(config_.numblkscod) * kSamplesPerBlock;
-    }
+    [[nodiscard]] int samples_per_frame() const;
 
     // Roadmap PF6 - see ac3/latency.hpp for what each term means and
     // eac3_latency() below for why transient_prenoise is the only field of
     // FrameConfig that moves any of them.
-    [[nodiscard]] LatencyBudget latency() const { return eac3_latency(config_); }
+    [[nodiscard]] LatencyBudget latency() const;
     [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
-    FrameConfig config_;
-    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
-    // §E2.3.1.64: which frame of every 6 / blocks_per_syncframe(numblkscod)
-    // sets convsync - see FrameConfig::numblkscod's own comment. Unused (and
-    // left at 0) at the default numblkscod, where convsync is never written
-    // at all.
-    int convsync_counter_ = 0;
-    // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
-    // across frames, like history_ above.
-    std::vector<TransientDetector> transient_detectors_;
-    // Per-(channel, block) scratch for the MDCT pass, reused rather than
-    // stack-declared inside encode_frame (PREfast's C6262 flagged the
-    // function's stack frame) - see the AC-3 FrameEncoder for why reuse
-    // across iterations and calls changes nothing observable.
-    std::array<double, 512> time_scratch_{};
-    std::array<double, 512> windowed_scratch_{};
-    std::array<double, 128> half1_scratch_{};
-    std::array<double, 128> half2_scratch_{};
-    // Enhanced-coupling reconstruction scratch for encode_frame's ecpl
-    // coordinate search and its spx-blend re-decode check (PREfast's C6262,
-    // alert #25) - both run once per (channel, block) and never concurrently
-    // with each other, so this one set covers both call sites the same way
-    // the MDCT scratch above covers every (channel, block) MDCT call.
-    std::array<double, 256> ecpl_zr_scratch_{};
-    std::array<double, 256> ecpl_zi_scratch_{};
-    std::array<double, 256> ecpl_baseline_a_scratch_{};
-    std::array<double, 256> ecpl_baseline_b_scratch_{};
-    std::array<double, 256> ecpl_prev_scratch_{};
-    std::array<double, 256> ecpl_curr_scratch_{};
-    std::array<double, 256> ecpl_next_scratch_{};
-    std::array<double, 256> ecpl_recon_scratch_{};
-    // encode_frame's per-(stream, block) fixed-point spectra (~43 KB at
-    // 5.1+coupling), a frame-lifetime work buffer under the same reasoning
-    // and single-instance contract as the scratch above: re-assign()ed
-    // (zero-filled, exactly as the fresh vector was) and fully re-derived
-    // every frame, so reuse only removes the re-allocation.
-    std::vector<std::array<std::int32_t, 256>> fixed_scratch_;
-    // encode_frame's whole per-frame plan (the .cpp's Payload - tool
-    // decisions, per-channel exponent/bap/AHT state, mantissa tokens),
-    // ~150 KB of vectors re-allocated every frame before this. Opaque here
-    // because the plan's types are the .cpp's own; reset by
-    // Payload::reset_for_frame to exactly a fresh Payload's state each
-    // frame, keeping only the vectors' storage - see that function's
-    // comment for the every-field contract that makes reuse safe.
-    struct FrameState;
-    std::unique_ptr<FrameState> state_;
-    // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
-    // state only: it changes how fast the search converges, never which
-    // offset it converges to. Negative until a frame has been encoded.
-    int snr_search_hint_ = -1;
-    // The chbwcod last transmitted, rate-limiting how fast the content-
-    // adaptive band edge may fall. Part of the decision rather than a
-    // performance hint - the AC-3 FrameEncoder carries the same field for
-    // the same reason. Negative until a frame has been encoded.
-    int chbwcod_state_ = -1;
-    // Smoothed across frames: see the AC-3 FrameEncoder for why they cannot be
-    // per-frame objects.
-    std::optional<meta::RangeController> range_;
-    std::optional<meta::HeavyCompressor> heavy_;
-    // Ch2's own controllers, present only when acmod is kDualMono.
-    std::optional<meta::RangeController> range2_;
-    std::optional<meta::HeavyCompressor> heavy2_;
+    // Every private data member - config, MDCT history/scratch, the enhanced-
+    // coupling scratch, the per-frame plan, the DRC controllers, EQ13's
+    // codes-search incumbent, all of it - lives behind this one pimpl,
+    // following the same pattern as ac3::io::WavStreamReader/Writer and
+    // ac3::FrameEncoder. Impl is defined in eac3_frame.cpp, so a dllexport
+    // class instantiating every implicit special member is why the
+    // destructor and moves above are declared (not defaulted inline) here:
+    // move-assignment's implicit reset() needs Impl complete.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // One programme: an independent substream and the dependents that extend it.
@@ -644,13 +674,18 @@ struct AC3FORGE_EXPORT AccessUnit {
 class AC3FORGE_EXPORT AccessUnitEncoder {
    public:
     explicit AccessUnitEncoder(const AccessUnitConfig& config);
-    // Move-only, following FrameEncoder above (substreams_ holds those).
-    // Spelled out because a dllexport class has every implicit member
-    // generated whether or not anything calls it - an implicitly-deleted
-    // copy is fine, an implicitly-generated one over a move-only member is
-    // a compile error in every including translation unit.
-    AccessUnitEncoder(AccessUnitEncoder&&) noexcept = default;
-    AccessUnitEncoder& operator=(AccessUnitEncoder&&) noexcept = default;
+    // Declared (and defined in eac3_frame.cpp, where Impl below is complete)
+    // rather than implicit/inline-defaulted: a dllexport class generates
+    // every implicit special member whether or not called, and the
+    // unique_ptr member makes the implicit copy deleted - which is fine -
+    // but move-assignment's implicit reset() needs Impl complete, so it
+    // cannot stay inline once Impl is only forward-declared here. Move-only,
+    // following FrameEncoder above (substreams_ holds those).
+    ~AccessUnitEncoder();
+    AccessUnitEncoder(const AccessUnitEncoder&) = delete;
+    AccessUnitEncoder& operator=(const AccessUnitEncoder&) = delete;
+    AccessUnitEncoder(AccessUnitEncoder&&) noexcept;
+    AccessUnitEncoder& operator=(AccessUnitEncoder&&) noexcept;
 
     // channels: every channel of the access unit grouped by substream in
     // transmission order - the independent's first (AC-3 order, Table 5.8,
@@ -661,7 +696,7 @@ class AC3FORGE_EXPORT AccessUnitEncoder {
     [[nodiscard]] std::expected<AccessUnit, FrameError> encode_access_unit(
         std::span<const std::span<const float>> channels, AuxPayload aux = {});
 
-    [[nodiscard]] const AccessUnitConfig& config() const { return config_; }
+    [[nodiscard]] const AccessUnitConfig& config() const;
     // Summed across every substream of every programme: the span count
     // encode_access_unit expects.
     [[nodiscard]] int channel_count() const;
@@ -678,42 +713,12 @@ class AC3FORGE_EXPORT AccessUnitEncoder {
     [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
-    // One programme's encoders and metadata state. There is one of these per
-    // independent substream (§E2.3.1.2), because dialnorm, DRC and heavy
-    // compression are properties OF A PROGRAMME: a commentary track and the
-    // main mix are levelled independently, and measuring one to gain the
-    // other is exactly the mistake sharing a single set of controllers would
-    // make.
-    struct Programme {
-        std::vector<FrameEncoder> substreams;
-        // Measured on the INDEPENDENT substream's channels. That substream is
-        // by definition a self-sufficient rendering of the whole programme
-        // (§E1.3.1), so measuring it measures the programme - and the answer
-        // does not then depend on how many dependents ride along.
-        std::optional<meta::RangeController> range;
-        std::optional<meta::HeavyCompressor> heavy;
-        // Ch2's own controllers, present only when the independent substream's
-        // acmod is kDualMono. Dual mono never has dependents (1+1 has no
-        // bed/dependent split to make), so "the independent substream" and
-        // "the whole programme" are the same two channels here too.
-        std::optional<meta::RangeController> range2;
-        std::optional<meta::HeavyCompressor> heavy2;
-        // Its own copy of the independent substream's MDCT overlap - the
-        // previous access unit's last 256 samples per channel. The substream
-        // encoder keeps the same window for its transform; this copy exists
-        // because the peak §7.7.2 bounds has to be measured before any
-        // substream runs.
-        std::array<std::array<double, 256>, 6> tail{};
-        // Spans of encode_access_unit's `channels` this programme consumes,
-        // settled once in the constructor alongside the substream identities.
-        std::size_t channel_offset = 0;
-        std::size_t channel_count = 0;
-    };
-
-    AccessUnitConfig config_;
-    // Never empty once the constructor accepted the layout; one entry for the
-    // ordinary single-programme access unit.
-    std::vector<Programme> programmes_;
+    // Every private data member - config and the per-programme encoders/
+    // metadata state - lives behind this one pimpl, following the same
+    // pattern as ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. Impl
+    // is defined in eac3_frame.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace ac3::eac3

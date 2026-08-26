@@ -155,17 +155,18 @@ jobs:
 
           echo "Resolved $version_tag (version $bare_version, prerelease=$is_prerelease, dry_run=$is_dry_run)"
 
-  # Advisory, never gating: by the time a release run starts, the
-  # develop -> main promotion has already merged, so the real gate is the
-  # pre-release checklist step in docs/releasing.md (review develop's own
-  # open alerts BEFORE opening the promotion PR - code-scanning alerts are
-  # tracked per-ref and the Security tab filters to the default branch, so
-  # develop's accumulate invisibly between releases). This job is the
-  # backstop for the case where that step was skipped: it surfaces any open
-  # analysis alerts loudly in the release run's log/summary instead of
-  # letting a release ship with unreviewed findings sitting in the Security
-  # tab - which is how the v0.9.0-beta.1 promotion landed alerts #83-94 on
-  # main unnoticed. Filtered to the code-analysis tools (PREfast, CodeQL):
+  # Advisory, never gating: trunk-based means everything already lands on
+  # main directly, so the real gate is the pre-release checklist step in
+  # docs/releasing.md (review main's own open alerts before tagging -
+  # code-scanning alerts are tracked per-ref and the Security tab filters to
+  # the default branch, so this is now a single check against the branch a
+  # release is actually cut from, not a separate integration branch whose
+  # alerts could accumulate invisibly). This job is the backstop for the
+  # case where that manual step was skipped: it surfaces any open analysis
+  # alerts loudly in the release run's log/summary instead of letting a
+  # release ship with unreviewed findings sitting in the Security tab - the
+  # class of miss that landed alerts #83-94 on main unnoticed under the old
+  # develop->main promotion flow. Filtered to the code-analysis tools (PREfast, CodeQL):
   # Scorecard's advisory alerts (e.g. the branch-protection score) are open
   # deliberately and would otherwise warn on every release forever.
   alert-review:
@@ -208,10 +209,12 @@ jobs:
     # `if:`, so the ceiling still has to be raised or this call is rejected
     # outright before any job starts. actions: read is the same story for
     # check-runners - see ci.yml's identical override and
-    # docs/ci-self-hosted-runners.md.
+    # docs/ci-self-hosted-runners.md. security-events: write is the same story
+    # for build-android's java-kotlin CodeQL analyze step.
     permissions:
       contents: write
       actions: read
+      security-events: write
     with:
       do_package: true
       # Full history + tags: GitVersionDerivation.cmake's `git describe` needs

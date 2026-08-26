@@ -107,19 +107,19 @@ SAMPLES = [
     {
         "path": "ac3/millers_crossing_4.0.ac3",
         "sha256": "faa06c7b1ccbc5cf3c7897afb50004dd3d49feaa19d26bdeb03dc9bb4ec20802",
-        "note": "AC-3 3/1 (L C R S) - an acmod nothing in this tree can encode; "
-                "decode-and-parse only, see `compare`",
-        # No diff. The two decoders produce the same audio in a different
-        # channel ORDER: ac3::io::wav_channel_order deliberately writes 2/1 and
-        # 3/1 in bitstream order (L C R S), on the stated grounds that no WAV
-        # convention claims a mono-surround slot, while FFmpeg maps 3/1 onto
-        # WAVEFORMATEXTENSIBLE's FL/FR/FC/BC and so writes L R C S. Measured:
-        # channel 0 agrees at 48.93 dB and our channels 1 and 2 match FFmpeg's
-        # 2 and 1 to within the same margin. That is a real interop divergence
-        # and it is recorded as such - but changing it is a decision about this
-        # decoder's WAV output convention, not a bug fix this harness should
-        # make on its own, so it stays a decode-and-parse case here.
-        "compare": False,
+        "note": "AC-3 3/1 (L R C S) - an acmod nothing in this tree can encode; "
+                "a near-silent surround, so gated on absolute difference",
+        # This used to be decode-and-parse only: ac3::io::wav_channel_order
+        # wrote 2/1 and 3/1 in bitstream order (L C R S) on the grounds that no
+        # WAV convention claims a mono-surround slot, while FFmpeg maps 3/1
+        # onto WAVEFORMATEXTENSIBLE's FL/FR/FC/BC (SPEAKER_BACK_CENTER, 0x100)
+        # and so wrote L R C S - a real speaker slot the comment's premise had
+        # missed. wav_channel_order now places every acmod by WAV speaker
+        # position, this file's decoders agree on order, and the files diff
+        # cleanly: channel 0 (L) at 48.93 dB, channel 3 (S, -95 dBFS) at
+        # -55.31 dBFS loudest difference. See docs/verification.md's
+        # "Third-party bitstreams" section for the full before/after.
+        "max_diff_dbfs": -46.0,  # measured -55.31 dBFS loudest channel difference
     },
     {
         "path": "eac3/csi_miami_5.1_256_spx_small.eac3",
@@ -207,7 +207,7 @@ def fetch(sample: dict, cache_dir: Path) -> Path:
         if not local.exists():
             url = BASE_URL + sample["path"]
             print(f"    fetching {url}")
-            with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=120) as response:
                 local.write_bytes(response.read())
         actual = sha256_of(local)
         if actual == sample["sha256"]:

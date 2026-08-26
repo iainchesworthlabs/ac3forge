@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
+add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
 
 # ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
 # 'record' and 'live' stream their output through (roadmap IO9), shared
@@ -9,7 +9,8 @@ add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp .
 # apps/common/recording_sink.hpp's own comment for why they sit there and not
 # in either app. Compiled straight in; apps/common has no library target,
 # matching how tests/CMakeLists.txt already compiles the same files into
-# ac3tests.
+# ac3tests. ../common/container_input.cpp (roadmap IO2) is the same shape,
+# for turning a container file into an elementary stream instead.
 target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # ac3cli's platform-specific code: putting stdin/stdout into binary mode for
@@ -46,10 +47,10 @@ endif()
 # reasoning, including why this replaced an earlier #ifdef-based design once
 # tools/checks/check_platform_macros.ps1 was actually run against it.
 if(AC3FORGE_BUILD_ADM)
-    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp)
+    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp)
     target_link_libraries(ac3cli PRIVATE ac3adm::ac3adm ac3::admbridge)
 else()
-    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp)
+    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp adm/disabled/decode_adm.cpp)
 endif()
 
 # ac3::coverage (roadmap VX15) instruments this target's OWN sources. Linking

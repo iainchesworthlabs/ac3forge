@@ -85,22 +85,27 @@ ALSA still comes first](../building.md#why-alsa-still-comes-first).
 
 ### What has and has not been verified
 
-!!! warning "No Linux audio has been tried against real hardware"
-    Both backends were verified **headless only**, on WSL2 Ubuntu 26.04 with GCC 15.2 and Clang
-    22.1: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
+!!! note "ALSA is hardware-confirmed via Raspberry Pi; PipeWire is not, anywhere"
+    The development loop itself — WSL2 Ubuntu 26.04 with GCC 15.2 and Clang 22.1 — is still
+    headless: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
     PipeWire (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
     -DAC3FORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
     default. The full test suite passes in every configuration tried. ALSA's device-independent
     halves (device-name construction, channel-status derivation, negotiation, the render/capture
     threads, start/stop, error mapping) were additionally driven end to end against ALSA's
     software `null` PCM device. WSL2 has no sound devices, no kernel sound modules, and no
-    PipeWire session running at all, so nothing on either backend has ever been bitstreamed to a
-    real S/PDIF or HDMI output, no AV receiver has been asked to lock onto the result, and
-    PipeWire's own enumeration has only ever seen "no session" (`pw_context_connect()` failing
-    fast, not a real graph with real nodes) rather than a genuine node to negotiate a compressed
-    format against. This is a real, current gap, not a minor caveat — whether a given output
-    accepts a bitstream is per-device anyway, and `ac3cli outputs` probes each one and reports
-    what it finds.
+    PipeWire session running at all, so nothing built there has ever been bitstreamed to a real
+    S/PDIF or HDMI output from that environment, and PipeWire's own enumeration has only ever
+    seen "no session" (`pw_context_connect()` failing fast, not a real graph with real nodes)
+    rather than a genuine node to negotiate a compressed format against.
+
+    That gap is now closed for ALSA specifically, on real hardware elsewhere: see
+    [Raspberry Pi → Live HDMI passthrough to a real
+    receiver](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) for a Pi 4B bitstreaming
+    every AC-3/E-AC-3/Atmos shape tried to a real Atmos-capable AVR over HDMI, correctly
+    identified every time. PipeWire remains unconfirmed against real hardware on any platform —
+    this is a real, current gap, not a minor caveat — and whether a given output accepts a
+    bitstream is per-device anyway; `ac3cli outputs` probes each one and reports what it finds.
 
 ## GUI: opt-in, not on by default
 
@@ -156,20 +161,30 @@ has also been produced and inspected on Raspberry Pi hardware (see
 [Raspberry Pi](raspberry-pi.md#verified-configuration)). See
 [Packaging](../building.md#packaging).
 
+A GUI-enabled package also installs `ac3gui.desktop` (`Exec=ac3gui %F`, `MimeType=audio/ac3;
+audio/eac3;`), an AppStream metainfo file, and a shared-mime-info fragment declaring the two media
+types against `*.ac3`/`*.ec3` — `apps/gui/packaging/linux/`, wired into `install()` behind
+`if(LINUX)` in `apps/gui/CMakeLists.txt`. Configure/build-verified only: nobody has installed the
+resulting `.deb`/`.rpm` on a real desktop and double-clicked an `.ac3` file to confirm the
+launcher fires.
+
 ## CI
 
 `linux-gcc` and `linux-llvm` both run on every push and are **required**; both install a Qt6 kit
-and build and smoke-test `ac3gui` in addition to the CLI. A third leg, `linux-llvm-asan-ubsan`
-(AddressSanitizer + UndefinedBehaviorSanitizer), is also required but stays **CLI-only on
-purpose**, to keep a Qt kit out of the sanitizer leg's install time.
+and build and smoke-test `ac3gui` in addition to the CLI. Two sanitizer legs,
+`linux-llvm-asan-ubsan` (AddressSanitizer + UndefinedBehaviorSanitizer) and `linux-llvm-tsan`
+(ThreadSanitizer, over the `concurrency` ctest label only — `tests/audio/` plus
+`tests/cli/test_cli_live.cpp`), are also required and both stay **CLI-only on purpose**, to keep a
+Qt kit out of the sanitizer legs' install time. They are separate presets because the two runtimes
+are mutually exclusive: Clang refuses `-fsanitize=address,thread`.
 
 Two more legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on real ARM hardware
 (GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation) — see
 [Raspberry Pi](raspberry-pi.md), which is the hardware this arch target is validated
 against.
 
-The ALSA backend adds 14 tests of its own (`tests/backend/alsa/`) on top of the base suite: a
+The ALSA backend adds 15 tests of its own (`tests/backend/alsa/`) on top of the base suite: a
 Linux build with the GUI on and `libasound2-dev` absent runs the same suite as Windows, and ALSA
-adds those 14. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your build)
+adds those 15. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your build)
 runs the full suite. See [Verified configuration](../building.md#verified-configuration)
 for the full CI matrix.

@@ -58,7 +58,8 @@ rejects them outright.
 | `coupling`, `cplbegf` | `false`, -1 | §E3.3. With `spx` also on, §E3.3.1 derives the coupling end frequency from `spxbegf`. |
 | `enhanced` | `false` | §E3.5: enhanced coupling instead of standard — 22 sub-bands, amplitude/angle/chaos-quantized coordinates and a phase-restoring reconstruction built on a full DFT, rather than a single per-band scale factor. Only meaningful with `coupling` also set (`cpl+ecpl`); combines with `spx` the same way standard coupling does. This encoder fits real amplitude/angle coordinates per band (an exact 2-variable linear least squares, since §3.5.5.4's reconstruction is linear in the complex gain the pair expresses) and chooses chaos by searching its 8 legal codes against the decoder's own deterministic de-correlation sequence. Two genuinely different channels forced into one narrow coupling band still cost quality — a single coordinate per band has a real, structural limit on what it can separate — but it is no longer the amplitude-only fit's all-or-nothing loss. |
 | `transient_prenoise` | `false` | §3.7 (`tpn`): a post-IMDCT correction that overwrites the pre-echo ahead of a detected transient with a synthesized copy of the clean audio just before it. Reuses the same transient detector block switching relies on, so it only has an effect on channels/frames that also block-switch. See [Decoding](decoding.md) for the one-frame decoder-side latency this introduces and the `flush()` call it requires. |
-| `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. Only the long transform accelerates today; a block-switched channel's short transforms always run direct. |
+| `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. All three forward transforms accelerate — the long one and both halves of a block-switched pair, each down its own independently-derived fold (`ac3/core/mdct.hpp`), and `FrameConfig::fast_mdct` reaches all of them. |
+| `search` | `kNone` | Roadmap EQ13/EQ7: per-frame search over §7.2.2's transmitted bit-allocation parameters against `ac3::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `ac3::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default (roadmap EQ7). Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried (see ROADMAP.md's EQ13 and EQ8 entries), which is what EQ7's axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
 | `mixing` | none | The `mixmdate` group (Table E1.2). E-AC-3 dropped `cmixlev`/`surmixlev` from `bsi` entirely, so without this the stream carries no downmix levels at all. |
 | `strmtyp`, `substreamid`, `chanmap`, `last_dependent` | independent, 0, none, false | Substream identity. Set by `AccessUnitEncoder`; you rarely touch these directly. |
 | `oba_complexity_index` | none | TS 103 420 §8.3 object count in `addbsi`. This is the marker FFmpeg keys its "Dolby Digital Plus + Dolby Atmos" report off. |
@@ -204,18 +205,35 @@ ac3::eac3::FrameEncoder encoder{{
 
 | `VbrConfig` field | Default | Notes |
 |---|---|---|
-| `quality` | `0.5` | `[0, 1]`, linearly maps onto the encoder's own SNR-offset search space. Encoder-relative, not a perceptual scale — and **not linear in bit cost**: cost rises steeply in roughly the top third of the range, so a high quality with no `max_kbps` bound will often refuse ordinary multi-channel material outright (`FrameError::kInvalidBitrate`) rather than produce an oversized frame. |
-| `min_kbps`, `max_kbps` | none, none | Optional hard bounds, same unit as `bitrate_kbps`. When the quality target would need more words than `max_kbps` allows, the encoder falls back to the same search CBR uses, budgeted against the ceiling — so a bounded VBR frame is never worse than the best CBR could do at that rate. `min_kbps` is a pure floor: `finish_frame`'s own padding covers the gap. |
-| `nominal_kbps` | none | Drives the `cplbegf`/`spxbegf` frequency defaults in place of a fixed target rate. Defaults to `max_kbps` if set, else 192. A caller who wants today's CBR tool behaviour at some quality supplies the same number they would have passed as `bitrate_kbps`. |
+| `quality` | `0.5` | `[0, 1]`, linearly maps onto the encoder's own SNR-offset search space. Encoder-relative, not a perceptual scale — and **not linear in bit cost**: cost rises steeply in roughly the top third of the range, so a high quality with no `max_kbps` bound will often refuse ordinary multi-channel material outright (`FrameError::kInvalidBitrate`) rather than produce an oversized frame. **Not read at all when `abr` is set** — see below. |
+| `min_kbps`, `max_kbps` | none, none | Optional hard bounds, same unit as `bitrate_kbps`. When the quality target would need more words than `max_kbps` allows, the encoder falls back to the same search CBR uses, budgeted against the ceiling — so a bounded VBR frame is never worse than the best CBR could do at that rate. `min_kbps` is a pure floor: `finish_frame`'s own padding covers the gap. They bound each individual frame, so they compose with `abr` rather than competing with it. |
+| `nominal_kbps` | none | Drives the `cplbegf`/`spxbegf` frequency defaults in place of a fixed target rate. Unset it resolves to `abr->target_kbps` if there is one, then `max_kbps` if set, else `kVbrDefaultNominalKbps` (192) — under ABR the contracted average is the honest stand-in, where `max_kbps` is only the ceiling one frame may peak to. A caller who wants today's CBR tool behaviour at some quality supplies the same number they would have passed as `bitrate_kbps`. |
+| `abr` | none | `std::optional<AbrConfig>` (roadmap EQ12). Holds a long-run **average** rate while each frame's size still moves with the content — what a streaming ladder rung or a DVB mux contracts for, and what neither CBR nor free-running VBR delivers. See below. |
 
-`bitrate_kbps` itself is not read on the encode path at all once `vbr` is set: when neither
-`nominal_kbps` nor `max_kbps` is given, the frequency defaults fall back to the fixed
-`kVbrDefaultNominalKbps` (192), not to `bitrate_kbps`.
+`bitrate_kbps` itself is not read on the encode path at all once `vbr` is set.
+
+### Average bit rate: `AbrConfig`
+
+Set `VbrConfig::abr` and the encoder holds one composite SNR offset across frames and steers it —
+up while the stream is running under its target, down while it is running over — so a quiet frame
+stays cheap and a busy one is allowed to cost more, with the average landing where it was asked
+to. Underneath that, `window_frames` consecutive frames pool one budget as a hard ceiling, so no
+window can overrun whatever the offset is doing.
+
+| `AbrConfig` field | Default | Notes |
+|---|---|---|
+| `target_kbps` | 192 | The long-run average, same unit and meaning as `bitrate_kbps`. |
+| `window_frames` | 32 | How many consecutive frames share one pooled budget. At 48 kHz a six-block frame is 32 ms, so the default holds the average over about a second — long enough for a bar of music or a spoken phrase to borrow from its neighbours, short enough that a mux's own buffer model still recognises the result. `1` pools nothing, which pins every frame to one frame's share and makes ABR behave as CBR; `0` is refused by `validate()`. |
+
+`quality` is not read under ABR at all: the two are different rate controls — `quality` fixes the
+offset, ABR's whole job is to move it — and the stream's first frame seeds the offset from its own
+budget search rather than from a number a caller guessed.
 
 `AccessUnitConfig` needs no separate VBR field: each substream's own `FrameConfig::vbr` carries
 what it needs, and `plan::eac3_config()` shares one `VbrConfig` across every substream of a
-`plan::Plan`, halving `min_kbps`/`max_kbps`/`nominal_kbps` for dependents the same way it already
-halves `bitrate_kbps` — substreams occupy one frame period, not one frame.
+`plan::Plan`, halving `min_kbps`/`max_kbps`/`nominal_kbps`/`abr->target_kbps` for dependents the
+same way it already halves `bitrate_kbps` — substreams occupy one frame period, not one frame.
+`abr->window_frames` is a count of frames rather than a rate, so it carries over unchanged.
 
 Silent frames (`build_silent_frame`) and AC-3 (`plan::Codec::kAc3`) both reject a `vbr` config
 outright: silence has no content to size a quality target against, and AC-3's `frmsizecod` has no
@@ -288,8 +306,8 @@ gives each location's short name.
 
 The four terms and what each one means are set out in
 [the AC-3 page's Latency section](encoding-ac3.md#latency); everything there applies here too,
-because E-AC-3 uses the same transform, the same frame length and the same
-lookahead-free block-switch decision. What differs is one tool and one shape.
+because E-AC-3 uses the same transform, the same default frame length and the same
+lookahead-free block-switch decision. What differs is one tool, one shape and one option.
 
 **`transient_prenoise` costs a frame of decoder hold-back.** §3.7's correction reaches
 *backwards* out of one frame into the one before it, so a decoder can only realize it while it
@@ -320,17 +338,23 @@ samples of the same program, so the frame and transform terms are shared rather 
 hold-back is per-substream, and `decode_access_unit` cannot assemble a program until its slowest
 substream has released. `AccessUnitEncoder::latency()` reports that.
 
-### Short syncframes (`numblkscod` 0–2) — not yet available
+### Short syncframes (`numblkscod` 0–2)
 
-Annex E §E2.3.1.4 allows a syncframe to carry 1, 2 or 3 blocks instead of 6, which would cut
-`frame_samples` from 1536 to 256, 512 or 768 and the total budget from 1792 samples to 512, 768
-or 1024 — 10.67 ms at 48 kHz for the shortest, against 37.33. That is the low-latency
-configuration for a conferencing or contribution path, and it is the largest single reduction
-available, since framing is by far the biggest term.
+Annex E §E2.3.1.4 allows a syncframe to carry 1, 2 or 3 blocks instead of 6, and
+`FrameConfig::numblkscod` (roadmap EQ11) selects it on the encode side as well as the decode
+side. Framing is by far the biggest latency term, so this is the largest single reduction
+available: a shorter syncframe is a shorter *frame*, and `encode_frame` then wants
+`samples_per_frame()` samples per channel — 256, 512 or 768 — rather than the 1536 a six-block
+frame takes. What it costs is the whole `bsi`/`audfrm` header repeated that much more often,
+which at a fixed bit rate comes straight out of the mantissas, plus the Table E1.3 shortcuts the
+`numblkscod` row in the `FrameConfig` table above sets out (`expstre` implied 1, `ahte` implied
+0, both refused by `validate()` rather than silently dropped).
 
-The decoder here reads all four codes today. **The encoder emits six-block frames only**, so the
-figure above is what this project can currently deliver end to end. Short syncframes are
-roadmap item EQ11; when it lands, this section becomes a configuration rather than a note.
+**`eac3_latency()` does not yet account for it.** `LatencyBudget::frame_samples` is
+`kSamplesPerFrame` unconditionally, so `latency_samples()` still reports 1792 (plus any
+hold-back) on a short-syncframe configuration — the real input granularity is
+`samples_per_frame()`, and a pipeline sizing its buffers against a short syncframe should use
+that rather than the reported budget until the two are reconciled.
 
 ## More than one programme
 
