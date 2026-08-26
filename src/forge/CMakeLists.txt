@@ -172,6 +172,7 @@ target_sources(forge_objects
         src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
         src/verify/selfcheck.cpp
+        src/verify/trace_export.cpp
         src/version.cpp)
 
 add_dependencies(forge_objects ac3forge_version)

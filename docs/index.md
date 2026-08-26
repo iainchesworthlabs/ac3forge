@@ -162,6 +162,20 @@ documented in [Commands](cli/commands.md). Memory is flat in the length of the s
 sides — the input is pulled through a fixed window and the per-frame dump is written as the walk
 produces it.
 
+### Research trace export
+
+`ac3::verify::FrameTrace`/`Eac3AccessUnitTrace` (`ac3/verify/mirror.hpp`, `.../eac3_mirror.hpp`)
+were built for the in-repo encoder/decoder mirror self-check, but a decode alone fills them just
+as well — attach one to `DecoderConfig::trace`/`eac3_trace` and it comes back holding per-block,
+per-stream exponents, bit allocation pointers, the §7.2.2.6 masking curve and the composite SNR
+offset. `ac3/verify/trace_export.hpp`'s `append_trace_csv`/`append_trace_json_lines` turn that into
+one tidy row per (frame, substream, block, stream, kind, index, value) — `kind` distinguishes the
+per-*bin* `exponent`/`bap` curves from the per-*band* `mask` one and the per-stream `snr_offset`
+scalar, rather than forcing three different-length arrays into one fixed-width record. Reachable
+from Python as `ac3.verify.trace_to_csv`/`trace_to_json_lines`; from there,
+`pandas.read_csv`/`read_json(lines=True)` followed by `.to_parquet()` is how Parquet is reached —
+this library does not carry its own Parquet writer for one research-only export path.
+
 ### Other
 
 | Component | What it is |

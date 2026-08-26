@@ -29,6 +29,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "bitalloc_internal.hpp"
 #include "gain.hpp"
 
 namespace ac3 {
@@ -752,6 +753,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     std::vector<ExpStrategy> strategy;
     std::vector<std::uint8_t> groups;
     std::vector<std::vector<std::uint8_t>> bap(max_streams);
+    // Only meaningful when trace != nullptr (see the bit-allocation loop
+    // below) - reused across blocks the same way `bap` above is, so tracing
+    // a whole file costs one allocation rather than one per block.
+    std::vector<std::array<int, 50>> mask(max_streams);
     std::vector<std::array<double, 256>> coeffs(max_streams);
     std::array<double, 512> x;
 
@@ -1173,9 +1178,21 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                                             .snr_all_zero = snr_all_zero,
                                             .delta = delta[static_cast<std::size_t>(s)]};
                 bap[static_cast<std::size_t>(s)].assign(static_cast<std::size_t>(end), 0);
-                compute_bit_allocation(exps[static_cast<std::size_t>(s)], sample_rate, codes,
-                                       csnroffst, fsnroffst[static_cast<std::size_t>(s)],
-                                       bap[static_cast<std::size_t>(s)], region);
+                // The traced form costs nothing extra to compute - it is the
+                // same routine, and `mask` is a value that routine already
+                // derives internally - so tracing this one call is free
+                // beyond the write into `mask[s]` itself; only bother when a
+                // trace is actually being kept (roadmap AP12).
+                if (impl_->config_.trace != nullptr) {
+                    internal::compute_bit_allocation_traced(
+                        exps[static_cast<std::size_t>(s)], sample_rate, codes, csnroffst,
+                        fsnroffst[static_cast<std::size_t>(s)], bap[static_cast<std::size_t>(s)],
+                        region, mask[static_cast<std::size_t>(s)]);
+                } else {
+                    compute_bit_allocation(exps[static_cast<std::size_t>(s)], sample_rate, codes,
+                                           csnroffst, fsnroffst[static_cast<std::size_t>(s)],
+                                           bap[static_cast<std::size_t>(s)], region);
+                }
             }
         }
 
@@ -1203,6 +1220,8 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 stream.exponents = exps[static_cast<std::size_t>(s)];
                 stream.bap = bap[static_cast<std::size_t>(s)];
                 stream.delta = delta[static_cast<std::size_t>(s)];
+                stream.snr_offset = snr_offset(csnroffst, fsnroffst[static_cast<std::size_t>(s)]);
+                stream.mask = mask[static_cast<std::size_t>(s)];
             }
             trace.allocated = true;
         }

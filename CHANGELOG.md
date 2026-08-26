@@ -129,6 +129,12 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
+- **Research trace export, reachable from Python.** The encoder/decoder mirror trace — added for
+  the in-repo self-check — now fills in from an ordinary decode too, and
+  `ac3::verify::append_trace_csv`/`append_trace_json_lines` (`ac3.verify.trace_to_csv`/
+  `trace_to_json_lines` in Python) turn it into one tidy row per (frame, substream, block, stream,
+  kind, index, value): per-frame bap, exponent, the §7.2.2.5 masking curve and the composite SNR
+  offset, ready for `pandas.read_csv`/`read_json` and `.to_parquet()` from there.
 
 **Verification**
 

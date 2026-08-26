@@ -1176,9 +1176,21 @@ directory; there is still no threading anywhere in the codec core.
   an oracle for the codec itself. Needs AP5.
 - [ ] **AP11 (S)** — A consumer-facing diagnostic sink: a callback hook (no iostream) for
   "CRC failed at frame N" or "unknown EMDF payload skipped". Tracy is profiling, not diagnostics.
-- [ ] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
+- [x] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
   mask curves as CSV/JSON/Parquet from the trace (both codecs carry one since `VX2`),
-  reachable from Python.
+  reachable from Python. Done: the trace (`ac3::verify::FrameTrace`/`Eac3AccessUnitTrace`) already
+  carried exponents and bap; SNR-offset and the §7.2.2.5 masking curve did not exist anywhere and
+  were added to `StreamTrace`/`Eac3StreamTrace`, populated decode-side only via a new internal
+  entry point (`ac3::internal::compute_bit_allocation_traced`, `src/core/bitalloc_internal.hpp`)
+  that shares `compute_bit_allocation`'s own implementation rather than changing its exported
+  signature (an ABI break the gate would have flagged for every consumer, not just this one).
+  `ac3/verify/trace_export.hpp`'s `append_trace_csv`/`append_trace_json_lines` write one tidy row
+  per (frame, substream, block, stream, kind, index, value) — bin-indexed `exponent`/`bap` and
+  band-indexed `mask` named apart by `kind` rather than forced into one fixed-width record, since
+  the trace never claimed those two index spaces line up. No C++ Parquet writer: reachable from
+  Python as `ac3.verify.trace_to_csv`/`trace_to_json_lines`, then
+  `pandas.read_csv`/`read_json(lines=True)`/`.to_parquet()` — Python's own, more complete Parquet
+  support, not a second one grown here for one research-only export path.
 
 ## UX. Applications
 
