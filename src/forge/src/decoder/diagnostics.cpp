@@ -1,5 +1,7 @@
 #include "ac3/decoder/diagnostics.hpp"
 
+#include <string_view>
+
 namespace ac3 {
 
 std::string_view describe(DiagnosticEvent event) {
