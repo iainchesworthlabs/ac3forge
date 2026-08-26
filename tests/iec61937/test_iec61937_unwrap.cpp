@@ -15,7 +15,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/io/elementary.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 
 // The de-framing side of ac3::iec61937 (roadmap IO3). Its whole reason to
 // exist is that nothing read a burst back before, so the wrap side - byte-

@@ -3,21 +3,31 @@
 # false: only windows-msvc packages, continuously, as a packaging smoke test)
 # and by release.yml (do_package: true: the release_package legs — one
 # canonical leg per OS/arch — package, and a packaging failure there blocks
-# the release). Modelled on an earlier project's _build.yml.
+# the release). macOS (DR8) is the one platform that no longer fits that
+# "one release_package leg" shape: neither macos-llvm nor macos-llvm-x64
+# carries release_package any more — package-macos-universal, a separate job
+# below, lipo-merges their two single-arch install trees into one universal
+# binary and packages THAT as the release's canonical macOS artifact instead.
+# Modelled on an earlier project's _build.yml.
 #
 # ---------------------------------------------------------------------------
 # On `experimental: true`
 # ---------------------------------------------------------------------------
-# Every leg is proven green now (exact test counts per leg drift as features
-# land - see ci.yml's own status comment rather than trusting a number
-# repeated here; the sanitizer leg also runs the codec-matrix script's full
-# layout/tool/atmos sweep) and required. macos-llvm was the last of these
-# promoted: its first-ever real run surfaced a genuine, fully-understood
-# issue (Homebrew's unpinned LLVM formula flagging Catch2's __COUNTER__ usage
-# under -Wc2y-extensions - see cmake/CompilerWarnings.cmake), fixed in one
-# commit, followed by two consecutive clean runs including the gold-reference
-# gate (tools/checks/verify_gold_reference.sh) at real SNR numbers (60-80s dB) -
-# not just "it compiled." See the table in ci.yml.
+# Every leg but two is proven green now (exact test counts per leg drift as
+# features land - see ci.yml's own status comment rather than trusting a
+# number repeated here; the sanitizer leg also runs the codec-matrix script's
+# full layout/tool/atmos sweep) and required. macos-llvm was promoted first:
+# its first-ever real run surfaced a genuine, fully-understood issue
+# (Homebrew's unpinned LLVM formula flagging Catch2's __COUNTER__ usage under
+# -Wc2y-extensions - see cmake/CompilerWarnings.cmake), fixed in one commit,
+# followed by two consecutive clean runs including the gold-reference gate
+# (tools/checks/verify_gold_reference.sh) at real SNR numbers (60-80s dB) -
+# not just "it compiled." See the table in ci.yml. The two current
+# experimental legs, both DR8, are on runner labels nothing here had used
+# before authoring time and stay continue-on-error until each has shown the
+# same thing macos-llvm did - a real build+test+gold-reference pass, not just
+# a green checkmark on the first attempt: macos-llvm-x64 (macos-15-intel) and
+# windows-msvc-arm64 (windows-11-arm).
 #
 # Experimental legs run with continue-on-error, which reports their real
 # status without making the default branch red on every push. As each one is
@@ -468,14 +478,50 @@ jobs:
           # packages do. cmake/Packaging.cmake's DragNDrop generator needs no
           # change either - it already packages whatever install() rules ran,
           # ac3gui's included, once AC3FORGE_BUILD_GUI is ON.
+          #
+          # No release_package any more (DR8): this leg's own cpack .dmg is
+          # arm64-only and no longer what a release ships as "the" macOS
+          # package - package-macos-universal below lipo-merges this leg's
+          # install tree with macos-llvm-x64's into one universal binary and
+          # that job packages and uploads the canonical release artifact
+          # instead. This leg still packages on every ordinary push
+          # (packageable stays true, and the Package/Upload steps below now
+          # special-case both macOS legs the same way windows-msvc always
+          # has) as its own single-arch smoke test of the packaging path -
+          # just not as a release artifact any more. mac_arch feeds the
+          # per-arch artifact name the do_package-only install/upload steps
+          # below use, so package-macos-universal can download each leg's
+          # tree by exact name.
           - name: "macOS LLVM (Homebrew)"
             runner: '["macos-latest"]'
             preset: macos-llvm
+            mac_arch: arm64
             llvm: true
             gui: true
             packageable: true
-            release_package: true
             gold_reference: true
+
+          # x86_64 half of DR8's macOS universal binaries. macos-15-intel is
+          # real native Intel hardware (confirmed against
+          # docs.github.com/en/actions/reference/runners/github-hosted-runners
+          # directly, not assumed), free for public repos - so this is a real
+          # build, not a cross-compile or Rosetta emulation. Same toolchain
+          # file, same Homebrew install steps, same reasoning as the arm64 leg
+          # above throughout this job; only the preset/triplet (x64-macos-llvm)
+          # and runner label differ. Experimental until proven green for real
+          # on this brand-new runner label, same promotion process as
+          # macos-llvm and build-android before it (see this file's own
+          # header) - remove this line once two consecutive clean runs
+          # (including the gold-reference gate) confirm it.
+          - name: "macOS LLVM x64 (Homebrew, Intel)"
+            runner: '["macos-15-intel"]'
+            preset: macos-llvm-x64
+            mac_arch: x64
+            llvm: true
+            gui: true
+            packageable: true
+            gold_reference: true
+            experimental: true
 
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
@@ -741,7 +787,9 @@ jobs:
             # llvm formula has no versioned pin to check against (see the
             # install step's own comment), so this reports whatever it finds
             # rather than failing a leg that's still proving out its baseline.
-            macos-llvm)   c++ --version | head -1 ;;
+            # Same for macos-llvm-x64 - identical toolchain install step, just
+            # a different CPU architecture underneath.
+            macos-llvm|macos-llvm-x64) c++ --version | head -1 ;;
           esac
 
       - uses: ./.github/actions/setup-vcpkg
@@ -1059,35 +1107,53 @@ jobs:
           ctest --preset test-linux-llvm-shared -LE Performance
 
       # Packaging. windows-msvc always packages, on every push, as a
-      # continuous smoke test of the packaging path itself - the only leg
-      # packaged continuously rather than only at releases. For a real
+      # continuous smoke test of the packaging path itself. For a real
       # release (do_package set, from release.yml), only one leg per
-      # OS/arch actually packages - `release_package: true` on windows-msvc,
-      # linux-gcc, linux-gcc-arm64 and macos-llvm - rather than every
-      # packageable leg. A
-      # release ships one canonical build per platform for people to
-      # download, not a build per compiler-toolchain leg: windows-llvm and
-      # linux-llvm exist to catch compiler-specific bugs in CI, which they
-      # still do in full (build+test, unchanged) - packaging them too would
-      # just be two redundant, unlabelled-as-to-which-is-canonical zips per
-      # OS with nothing to tell a downloader apart. A packaging failure on a
+      # OS/arch actually packages as the release's own canonical artifact -
+      # `release_package: true` on windows-msvc, linux-gcc and
+      # linux-gcc-arm64 - rather than every packageable leg. A release ships
+      # one canonical build per platform for people to download, not a build
+      # per compiler-toolchain leg: windows-llvm and linux-llvm exist to
+      # catch compiler-specific bugs in CI, which they still do in full
+      # (build+test, unchanged) - packaging them too would just be two
+      # redundant, unlabelled-as-to-which-is-canonical zips per OS with
+      # nothing to tell a downloader apart. A packaging failure on a
       # release_package leg blocks like any other leg's would, rather than
       # being absorbed by continue-on-error. linux-llvm-asan-ubsan is never
       # packaged at all (not `packageable` - see the matrix entry): there is
       # no pack-linux-llvm-asan-ubsan preset, a sanitizer-instrumented debug
       # build is a diagnostic tool, not something to ship.
       #
+      # macOS (DR8) is neither of the two shapes above any more: macos-llvm
+      # and macos-llvm-x64 are each `packageable` but never `release_package`
+      # - a release doesn't want either leg's own single-arch .dmg as "the"
+      # macOS package now that a universal one exists. They still package on
+      # every ORDINARY push (the windows-msvc-style continuous smoke test,
+      # extended to both of them - useful as an independent per-arch check
+      # that packaging itself still works), just never on a do_package
+      # release run, where they instead run the install-tree steps below for
+      # package-macos-universal to lipo-merge, and that job uploads the
+      # actual release artifact.
+      #
       # cpack reuses the same build/config-<leg> tree the Configure and Build
       # steps above already produced - pack-<leg> points at the same
       # config-<leg> configurePreset - so this proves the packaging path
       # against the exact build that was just tested, not a separate one.
       - name: Package
-        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package))
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
         run: cpack --preset pack-${{ matrix.preset }}
 
       - name: Upload package artifacts
-        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package))
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-${{ matrix.preset }}
@@ -1120,6 +1186,7 @@ jobs:
             packages/*.dmg.sha512
           if-no-files-found: error
 
+<<<<<<< ours
   # Roadmap DR8 (Reach): a self-contained AppImage for ac3gui, so a user on a
   # distro whose own Qt 6 is too old, or split differently than
   # qt6-declarative-dev/qt6-declarative-dev-tools expect (the `linux-gcc`/
@@ -1498,6 +1565,358 @@ jobs:
           fi
           echo "ac3gui ran clean on debian:12-slim, which never had Qt or any build tool installed"
 
+=======
+      # Feeds package-macos-universal below: a plain `cmake --install` of just
+      # the runtime component (ac3cli/ac3gui, plus the man page/completions -
+      # see cmake/InstallLibrary.cmake's COMPONENT split), not a cpack
+      # invocation - that job lipo-merges this leg's tree against
+      # macos-llvm(-x64)'s counterpart into one universal bundle rather than
+      # either leg shipping its own single-arch .dmg as the release's macOS
+      # package (see the matrix entries' own comments). Gated on
+      # inputs.do_package so an ordinary push never pays for a second install
+      # pass on top of the one ctest already exercised against this same
+      # build tree.
+      #
+      # apps/gui/CMakeLists.txt's qt_generate_deploy_qml_app_script()
+      # install(SCRIPT) needed an explicit COMPONENT runtime added for this
+      # to actually pick up Qt's own copied Frameworks/PlugIns/QML - an
+      # install(SCRIPT) with no COMPONENT only runs during a FULL install,
+      # never a component-filtered one like this (confirmed against CMake's
+      # own install(SCRIPT) documentation), and every packaging path
+      # exercised before this one always did a full install (cpack's
+      # CPACK_MONOLITHIC_INSTALL for DragNDrop, and the archive/DEB/RPM
+      # generators, which install every requested component in the same
+      # pass) - so the gap never showed up until something asked for
+      # --component runtime on its own.
+      - name: Install runtime component (macOS universal merge)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        shell: bash
+        run: cmake --install "build/config-${{ matrix.preset }}" --prefix stage --component runtime
+
+      - name: Upload install tree (macOS universal merge)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-install-runtime-${{ matrix.mac_arch }}
+          path: stage/
+          if-no-files-found: error
+
+      # Nice-to-have companion to the runtime tree above: the library SDK
+      # (headers, static archives, CMake package config, the versioned
+      # .dylib - see cmake/InstallLibrary.cmake) for package-macos-universal
+      # to attempt merging into a universal `ac3forge-dev-*` archive too.
+      # cmake --install takes one --component per invocation, so this is two
+      # calls into the same prefix rather than one. Best-effort: if this
+      # step or the merge job's own dev-archive half fails, the runtime .dmg
+      # above is unaffected - see that job's own comment.
+      - name: Install library components (macOS universal merge, dev archive)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component library
+          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component libruntime
+
+      - name: Upload dev install tree (macOS universal merge)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-install-dev-${{ matrix.mac_arch }}
+          path: stage-dev/
+          if-no-files-found: error
+
+  # DR8: merges macos-llvm's arm64 install tree with macos-llvm-x64's x86_64
+  # one (both plain `cmake --install --component runtime`, uploaded above)
+  # into one universal ac3cli/ac3gui bundle via lipo, then packages it as a
+  # DragNDrop .dmg with hdiutil directly - the same call CPack's own
+  # DragNDrop generator makes under the hood (see cmake/Packaging.cmake's
+  # APPLE branch and cmake/CPackProjectConfig.cmake's CPACK_MONOLITHIC_INSTALL
+  # override), just pointed at an already-merged tree CPack itself never
+  # built, since CPack has no notion of combining two separate install trees
+  # from two separate builds into one package.
+  #
+  # Needs a macOS runner (any label - lipo/hdiutil are the only tools used,
+  # and merging itself has no dependency on which architecture is doing the
+  # merging), gated on inputs.do_package the same way every other
+  # release-only step in this file is (release.yml's call only - ci.yml never
+  # sets it, so this job is skipped, not failed, on every ordinary push/PR).
+  # needs: build, not a narrower dependency on just the two macOS matrix
+  # entries: GitHub Actions has no way to depend on individual matrix
+  # combinations of another job, only the whole job - the same tradeoff
+  # quality-trend below already accepts for the same reason (see its own
+  # header comment).
+  package-macos-universal:
+    name: Package macOS universal (arm64 + x86_64)
+    needs: build
+    if: inputs.do_package
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Download arm64 runtime install tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-install-runtime-arm64
+          path: arm64-runtime
+
+      - name: Download x64 runtime install tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-install-runtime-x64
+          path: x64-runtime
+
+      # rsync -a first, as the baseline: it copies everything including
+      # symlinks (an .app bundle's Frameworks are full of them - e.g.
+      # QtCore.framework/QtCore -> Versions/Current/QtCore) and permissions,
+      # which a plain `find -type f` walk below deliberately does not touch
+      # (find -type f already skips symlinks on its own - they are type l,
+      # not f). The loop then overwrites every REGULAR file that exists on
+      # both sides with a lipo-merged one; whichever side's copy the rsync
+      # baseline left in place for a file unique to x64 stays untouched,
+      # which is correct - there is nothing on the other side to merge it
+      # against. See the verify step below for what actually proves this
+      # produced fat binaries rather than silently reusing one side's thin
+      # ones.
+      - name: lipo-merge the two runtime install trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a x64-runtime/ merged/
+          merge_failed=0
+          while IFS= read -r -d '' f; do
+            rel="${f#arm64-runtime/}"
+            case "$rel" in
+              */_CodeSignature/*)
+                # ac3gui.app's Mach-O executables get ad-hoc code-signed at
+                # build time (Apple Silicon requires at least an ad-hoc
+                # signature to execute at all), which is what produces this
+                # bundle-level manifest - it hashes every file in the bundle
+                # AS IT STOOD on one architecture's build alone, so it is
+                # genuinely different content between the two builds, not a
+                # real divergence to fail on. It is also stale on both sides
+                # regardless of which one "wins" here, the moment any Mach-O
+                # file in the bundle gets lipo-merged below - "Re-sign the
+                # merged .app bundle" further down replaces it with a
+                # manifest computed against the actual merged content.
+                continue
+                ;;
+            esac
+            a="arm64-runtime/$rel"
+            x="x64-runtime/$rel"
+            m="merged/$rel"
+            if [ ! -e "$x" ]; then
+              echo "::warning::$rel present in the arm64 tree only - copying through unmerged"
+              mkdir -p "$(dirname "$m")"
+              cp -p "$a" "$m"
+              continue
+            fi
+            if lipo -info "$a" >/dev/null 2>&1 && lipo -info "$x" >/dev/null 2>&1; then
+              lipo -create "$a" "$x" -output "$m"
+            elif diff -q "$a" "$x" >/dev/null 2>&1; then
+              : # Already byte-identical, and already present via the rsync baseline above.
+            else
+              echo "::error::$rel is not a Mach-O file on both sides and differs between the arm64 and x64 installs - investigate before shipping"
+              merge_failed=1
+            fi
+          done < <(find arm64-runtime -type f -print0)
+          if [ "$merge_failed" -ne 0 ]; then
+            echo "::error::one or more files diverged between the two architectures' install trees outside of expected Mach-O differences"
+            exit 1
+          fi
+
+      # The actual proof this PR asked for: not "the script exited 0", but
+      # that the merged binaries really do carry both architectures' code.
+      # ac3cli and ac3gui.app's own executable are the two entry points;
+      # QtCore is checked too so this also proves the merge over
+      # qt_generate_deploy_qml_app_script()'s copied Frameworks, not just
+      # this project's own two binaries.
+      - name: Verify the merge produced real universal binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          check() {
+            echo "== $1 =="
+            lipo -info "$1"
+            lipo -info "$1" | grep -q 'x86_64' || { echo "::error::$1 is missing an x86_64 slice"; exit 1; }
+            lipo -info "$1" | grep -q 'arm64'  || { echo "::error::$1 is missing an arm64 slice"; exit 1; }
+          }
+          check "merged/bin/ac3cli"
+          gui_bin="merged/ac3gui.app/Contents/MacOS/ac3gui"
+          if [ -f "$gui_bin" ]; then
+            check "$gui_bin"
+            qt_core="$(find "merged/ac3gui.app/Contents/Frameworks" -type f -name QtCore 2>/dev/null | head -1)"
+            if [ -n "$qt_core" ]; then
+              check "$qt_core"
+            else
+              echo "::warning::no QtCore framework binary found under ac3gui.app/Contents/Frameworks - was AC3FORGE_BUILD_GUI actually ON for both legs?"
+            fi
+          else
+            echo "::warning::no ac3gui.app in the merged tree - CLI-only merge, nothing to verify there"
+          fi
+
+      # The merge above skipped ac3gui.app/Contents/_CodeSignature/* rather
+      # than fail on it (see that step's own comment) - which leaves the
+      # bundle carrying whichever architecture's original signature the
+      # rsync baseline happened to copy through, computed against THAT
+      # build's file content, not the merged one. codesign --deep walks in
+      # and re-signs every nested Mach-O (the merged ac3cli's own signature
+      # is untouched by lipo -create - it concatenates already-signed thin
+      # slices without altering their bytes, so this is about the bundle-level
+      # manifest, not the executables' own embedded signatures) and
+      # regenerates _CodeSignature/CodeResources against the real merged
+      # tree. "-" (ad-hoc, no certificate) is the only option available -
+      # DR6 (real Developer ID signing/notarization) is blocked on
+      # certificates this project does not have, same as every other macOS
+      # release artifact. Best-effort: codesign failing here would mean
+      # Gatekeeper's own signature check on the .app is no better/worse than
+      # before this step existed (it already refuses an ad-hoc/unsigned app
+      # outright - see the Homebrew Cask's own caveats), so it does not
+      # block the must-have .dmg below.
+      #
+      # Observed for real, not hypothetical: the first proven run
+      # (v0.0.0-alpha.2 dry run) hit exactly this fallback - codesign
+      # refused with "bundle format is ambiguous (could be app or
+      # framework)" on ac3gui.app/Contents/Frameworks/QtQuickControls2.framework,
+      # one of Qt's own bundled frameworks, not anything this project
+      # controls the layout of. The runtime .dmg still built and shipped
+      # from the same run with a merged, lipo-verified ac3cli/ac3gui/QtCore
+      # (confirmed via lipo -info in that job's log) - only the bundle-level
+      # signature stayed stale. Worth another look if it turns out to matter
+      # in practice; not chased further here since there is no real Mac to
+      # confirm a fix against, and Gatekeeper blocks this app either way
+      # until DR6 lands.
+      - name: Re-sign the merged .app bundle (ad-hoc)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "merged/ac3gui.app" ]; then
+            echo "no ac3gui.app in the merged tree - nothing to re-sign"
+            exit 0
+          fi
+          if codesign --force --deep --sign - "merged/ac3gui.app"; then
+            codesign --verify --deep --strict "merged/ac3gui.app" && echo "codesign: merged ac3gui.app verifies against its own (ad-hoc) signature"
+          else
+            echo "::warning::ad-hoc re-sign of the merged ac3gui.app failed - shipping it with a stale single-architecture signature instead. Gatekeeper already refuses an unsigned/ad-hoc app outright (see the Homebrew Cask's caveats and DR6), so this does not change what a downloader has to do to run it."
+          fi
+
+      # hdiutil, not cpack: CPack's DragNDrop generator only ever packages a
+      # tree IT installed from a single build - there is no CPack entry point
+      # that packages an arbitrary pre-built directory from two separate
+      # builds. cmake/Packaging.cmake's own APPLE branch
+      # (list(APPEND CPACK_GENERATOR "DragNDrop")) is a thin wrapper around
+      # exactly this hdiutil call for a monolithic install
+      # (CPACK_MONOLITHIC_INSTALL, set in cmake/CPackProjectConfig.cmake) -
+      # -format UDZO matches CPack's own DragNDrop default compression.
+      # Filename matches CPACK_PACKAGE_FILE_NAME
+      # (cmake/CPackProjectConfig.cmake: "${CPACK_PACKAGE_NAME}-${MAJOR}.${MINOR}.${PATCH}-${CPACK_SYSTEM_NAME}",
+      # CPACK_SYSTEM_NAME plain "Darwin" on APPLE) exactly, so nothing
+      # downstream - the Homebrew Cask, docs/releasing.md's published-filename
+      # table - needs to change what it expects.
+      - name: Package merged tree as a DragNDrop .dmg
+        shell: bash
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          version_tag="${VERSION_TAG_INPUT:-v0.0.0-dev}"
+          full_version="${version_tag#v}"
+          bare_version="${full_version%%-*}"
+          dmg="ac3forge-${bare_version}-Darwin.dmg"
+          hdiutil create -volname ac3forge -srcfolder merged -ov -format UDZO -o "$dmg"
+          shasum -a 512 "$dmg" > "$dmg.sha512"
+
+      # Best-effort dev archive: library+libruntime installed and lipo-merged
+      # the same way as the runtime tree above, packaged as a plain .zip
+      # (macOS's own CPACK_GENERATOR carries ZIP, not TGZ - see
+      # cmake/Packaging.cmake; unlike Linux/Windows, macOS never gets a
+      # .tar.gz today). Wrapped in continue-on-error at the step level so a
+      # problem here can never take down the runtime .dmg above, which is
+      # the must-have half of this job - see docs/releasing.md's "What gets
+      # published" for why library/libruntime are a secondary download even
+      # on a single-arch build.
+      # No if-no-artifact-found here: the pinned SHA below predates that
+      # input (confirmed for real - v0.0.0-alpha.2's dry run logged
+      # "Unexpected input(s) 'if-no-artifact-found'" and listed the actual
+      # supported set, which does not include it). continue-on-error at the
+      # step level is what actually keeps a genuinely-missing artifact from
+      # failing this job; the next step's own directory check below is what
+      # decides "found" vs "missing" either way, so the input was redundant
+      # even before this.
+      - name: Download arm64/x64 dev install trees
+        id: download_dev
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: macos-install-dev-*
+          path: dev
+          merge-multiple: false
+
+      - name: lipo-merge and package the dev trees
+        continue-on-error: true
+        shell: bash
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          # continue-on-error above means a failed/missing download does not
+          # stop this step from running, so check for the actual directories
+          # here rather than trusting the previous step's outcome.
+          if [ ! -d dev/macos-install-dev-arm64 ] || [ ! -d dev/macos-install-dev-x64 ]; then
+            echo "::warning::one or both dev install trees are missing - skipping the best-effort dev archive (see the runtime .dmg above for the must-have release artifact)"
+            exit 0
+          fi
+          rsync -a dev/macos-install-dev-x64/ merged-dev/
+          while IFS= read -r -d '' f; do
+            rel="${f#dev/macos-install-dev-arm64/}"
+            a="dev/macos-install-dev-arm64/$rel"
+            x="dev/macos-install-dev-x64/$rel"
+            m="merged-dev/$rel"
+            if [ ! -e "$x" ]; then
+              mkdir -p "$(dirname "$m")"
+              cp -p "$a" "$m"
+              continue
+            fi
+            if lipo -info "$a" >/dev/null 2>&1 && lipo -info "$x" >/dev/null 2>&1; then
+              lipo -create "$a" "$x" -output "$m"
+            fi
+            # Deliberately no divergence check here, unlike the runtime merge
+            # above: headers/CMake config are expected to be identical text,
+            # and failing the whole (best-effort) dev archive over that would
+            # defeat the point of it being best-effort.
+          done < <(find dev/macos-install-dev-arm64 -type f -print0)
+
+          version_tag="${VERSION_TAG_INPUT:-v0.0.0-dev}"
+          full_version="${version_tag#v}"
+          zip_name="ac3forge-dev-${full_version}-Darwin.zip"
+          ( cd merged-dev && zip -qry "../${zip_name}" . )
+          shasum -a 512 "$zip_name" > "$zip_name.sha512"
+
+      # Named packages-macos-llvm to match the naming convention every other
+      # leg's own "Upload package artifacts" step already uses
+      # (packages-${{ matrix.preset }} - windows-msvc's is packages-windows-msvc,
+      # linux-gcc's is packages-linux-gcc, and so on) - macos-llvm is the name
+      # that leg's own artifact would have carried had it still been the
+      # release_package leg. release.yml's github-release job downloads every
+      # packages-* artifact with merge-multiple: true into one directory and
+      # globs for *.dmg/*.zip/etc there (confirmed by reading that step, not
+      # assumed) - so this needs no change there at all, and neither macos-llvm
+      # nor macos-llvm-x64 uploads under this same name during a do_package
+      # run any more (their own Package/Upload steps are conditioned on
+      # !inputs.do_package now - see the matrix job's own comment), so there
+      # is no collision.
+      - name: Upload universal macOS package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-macos-llvm
+          path: |
+            ac3forge-*-Darwin.dmg
+            ac3forge-*-Darwin.dmg.sha512
+            ac3forge-dev-*-Darwin.zip
+            ac3forge-dev-*-Darwin.zip.sha512
+          if-no-files-found: error
+
+>>>>>>> theirs
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
   # leg, so it is its own job rather than a `build` matrix entry - there is
   # no config-android/build-android/pack-android preset to reuse, and trying
