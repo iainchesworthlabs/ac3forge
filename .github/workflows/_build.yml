@@ -577,10 +577,33 @@ jobs:
       # Scoped to the same condition as the Package step below (only
       # windows-msvc packages on Windows today) so a leg that never runs
       # cpack doesn't pay for an installer it won't use.
+      #
+      # PowerShell, not bash: both GitHub-hosted windows-latest AND (per a
+      # real CI run) this fleet's self-hosted runners already carry NSIS -
+      # `choco install nsis` reports "already installed" and exits without
+      # running the shim-creation step a fresh install would, so makensis
+      # was on disk but never on PATH, and find_program(makensis) still
+      # missed it (confirmed empirically: cpack packaged ZIP-only with the
+      # cmake/Packaging.cmake warning firing, even though choco reported
+      # success). Probing both Program Files roots and appending to
+      # GITHUB_PATH explicitly - rather than assuming choco's shim exists -
+      # is what actually fixes that, on a fresh runner or an already-primed
+      # one alike.
       - name: Install NSIS (Windows)
         if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
-        shell: bash
-        run: choco install nsis -y --no-progress --requirechecksums
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install nsis -y --no-progress --requirechecksums
+          $nsisDir = @(
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
+            (Join-Path $env:ProgramFiles 'NSIS')
+          ) | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
+          if (-not $nsisDir) {
+            throw "makensis.exe not found under Program Files after 'choco install nsis' - the package layout may have changed."
+          }
+          Write-Host "Adding $nsisDir to PATH"
+          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
       # set them up itself (unlike MSBuild). clang-cl needs them too.
