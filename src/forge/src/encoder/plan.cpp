@@ -943,6 +943,10 @@ EncoderConfig ac3_config(const Plan& plan) {
             .dialnorm2 = cp.bed_acmod == Acmod::kDualMono
                             ? std::optional<int>(plan.meta.dialnorm2)
                             : std::nullopt,
+            // -1 here is EncoderConfig's own "encoder chooses", which for
+            // AC-3 is the measured rate curve - so the default reaches the
+            // same behaviour it had before this field was plumbed.
+            .fgaincod = plan.tools.fgaincod,
             .acmod = cp.bed_acmod,
             .lfe = cp.bed_lfe,
             // Coupling shares coefficients between full-bandwidth channels
@@ -988,9 +992,15 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.fast_mdct = tools.fast_mdct;
     config.dither = tools.dither;
     config.numblkscod = tools.numblkscod;
-    // EQ13: CBR only, dbpbcod only - see FrameConfig::search's own comment
-    // for what search=distortion/perceptual actually do here.
+    // EQ13: CBR only - see FrameConfig::search's own comment for what
+    // search=distortion/perceptual actually do here, and for how the two
+    // axes it now moves are priced against each other.
     config.search = tools.search;
+    // EQ7: -1 leaves Table E1.4's implied 0x4 and writes no element, which
+    // is byte-for-byte the frame this encoder emitted before the field
+    // existed; 0..7 pins the code and pays for the per-block fgaincode
+    // element in all six blocks.
+    config.fgaincod = tools.fgaincod;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its

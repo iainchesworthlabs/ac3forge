@@ -21,7 +21,7 @@ Usage:
   ac3cli encode        <in.wav> <out.ac3> [bitrate_kbps] [layout] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source)
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
-  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source; programme2= adds a second independent substream)
+  ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= is a different thing entirely - a second, independent E-AC-3 substream (its own layout/bitrate/dialnorm via programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one)
   ac3cli decode        <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
   ac3cli probe         <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
@@ -36,8 +36,8 @@ Usage:
   ac3cli unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|->  (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file)
   ac3cli mp4           <in.ac3|in.ec3> <out.mp4>              (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
-  ac3cli fmp4          <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager)
-  ac3cli ts            <in.ac3|in.ec3> <out.ts> [dvb|atsc]    (wrap as an MPEG-2 Transport Stream (DVB profile by default))
+  ac3cli fmp4          <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager; fallback-51 also writes an object-stripped 5.1 companion rendition)
+  ac3cli ts            <in.ac3|in.ec3> <out.ts> [dvb|atsc]    (wrap as an MPEG-2 Transport Stream, DVB profile by default)
   ac3cli demux         <in.mkv|in.mp4|in.ts> <out.ac3|out.ec3> (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
   ac3cli remux         <in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc] (container-to-container: the input is identified by its magic bytes, the output by its extension, and everything either declares is re-derived from the bitstream - the dec3-repair case)
   ac3cli devices                                              (input and loopback capture endpoints)
@@ -149,7 +149,7 @@ with the flag on (the usage block at the top of this page is copied from a *defa
 this row instead reads `UNAVAILABLE HERE`):
 
 ```text
-  ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder object, driven by the file's own authored automation - no keyframe file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+  ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder object, driven by the file's own authored automation - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
 ```
 
 | Command | What it does |
@@ -693,9 +693,10 @@ into once one exists. `layout=`/`codec=` describe a channel session only; `mode=
 encodes the TS 103 420 shape and refuses either.
 
 **Take shape and durability.** `record` and `live` both take `layout=`, `codec=`,
-`container=raw|mkv|ts|spdif` and `watchdog=<seconds>` (see
+`container=raw|mkv|ts|spdif|fmp4` (`cmaf` is an accepted alias for the last) and
+`watchdog=<seconds>` (see
 [Options & grammars](metadata-options.md#recordlive-options-record-live-container-layout-codec-watchdog)).
-All four containers are written **incrementally, as the take runs**, through the same
+All five containers are written **incrementally, as the take runs**, through the same
 `RecordingSink` the GUI's own takes go through — so a take costs one frame of memory rather than
 the whole session, and a crash an hour in leaves an hour of playable file. A capture device that
 stops delivering audio ends the session as a failure (exit `5`) rather than leaving it looking

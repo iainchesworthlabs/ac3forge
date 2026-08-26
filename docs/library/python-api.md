@@ -1,8 +1,9 @@
 # Python bindings
 
 Roadmap **F2**: a pybind11 module (`python/src/ac3forge_ext/bindings.cpp`) bound straight onto
-`ac3::FrameEncoder`, `ac3::FrameDecoder`, `ac3::Eac3Decoder` and `ac3::oba::AtmosEncoder` —
-pybind11-direct, not layered on a separate C API. Install from PyPI:
+`ac3::FrameEncoder`, `ac3::FrameDecoder`, `ac3::Eac3Decoder`, `ac3::eac3::FrameEncoder`,
+`ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder` — pybind11-direct, not layered on a
+separate C API. Install from PyPI:
 
 ```bash
 pip install ac3forge
@@ -95,8 +96,8 @@ the three `fscod2` reduced rates), bitrate, `numblkscod`, `acmod`/`lfe`, the Ann
 (`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), substream identity
 (`strmtyp`/`substreamid`/`chanmap`/`last_dependent`), and `drc`/`heavy`/`drc2`/`heavy2` (the same
 `ac3.Profile`/`ac3.HeavyConfig` types the AC-3 side uses). Not mirrored: the `mixmdate`/`infomdat`
-metadata groups and `vbr`/ABR (`EQ12`) — a real gap, not a design decision, unlike the C API's own
-documented trim.
+metadata groups, `vbr`/ABR (`EQ12`) and `search` (`EQ7`/`EQ13`'s per-frame bit-allocation codes
+search) — real gaps, not design decisions, unlike the C API's own documented trim.
 
 ### Wide layouts: `ac3.eac3.AccessUnitEncoder`
 
@@ -182,9 +183,9 @@ beyond the convenience `channel_labels` list above — deliberately unsupported 
 "say so and say why" convention `CONTRIBUTING.md` asks of the C++ side itself, not a silent gap.
 
 `ac3.eac3.FrameConfig`'s `trace` hook is the same omission as `FrameEncoder`'s above. Its
-`mixmdate`/`infomdat` metadata groups and `vbr`/ABR are unmirrored too, but that one **is** a gap
-rather than a decision (see [Encoding E-AC-3](#encoding-e-ac-3) above) — `AccessUnitConfig` is also
-missing `additional` (further independent programmes, I1-I7).
+`mixmdate`/`infomdat` metadata groups, `vbr`/ABR and `search` are unmirrored too, but those **are**
+gaps rather than decisions (see [Encoding E-AC-3](#encoding-e-ac-3) above) — `AccessUnitConfig` is
+also missing `additional` (further independent programmes, I1-I7).
 
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not

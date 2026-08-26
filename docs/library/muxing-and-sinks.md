@@ -308,11 +308,11 @@ This is exactly what `ac3::io::scan` wants, and re-framing PES payloads into acc
 job, not this module's — doing it here would mean this container-blind module knowing what an
 AC-3 syncframe is.
 
-**Both broadcast signalling profiles**, unlike the writer. `mux` implements DVB only (see above)
-and says why. A reader has no such luxury: an ATSC capture uses `stream_type` 0x81/0x87 instead
-of DVB's descriptors, and a third family of files names the codec through a
-`registration_descriptor`'s `'AC-3'`/`'EAC3'` `format_identifier`. All three are recognised on
-read, reported as `ReadStream::signalling` (`CodecSignalling::kAtscStreamType` /
+**All three signalling forms**, one more than the writer. `mux` chooses between DVB and ATSC
+through `MuxOptions::profile` (see above), and commits to one of them wholly. A reader has no
+such luxury: a third family of files names the codec through neither, using a
+`registration_descriptor`'s `'AC-3'`/`'EAC3'` `format_identifier` instead. All three are
+recognised on read, reported as `ReadStream::signalling` (`CodecSignalling::kAtscStreamType` /
 `kDvbDescriptor` / `kRegistrationDescriptor`) so a caller remuxing back out knows which it was.
 
 **Three packet grids**, detected rather than assumed: 188 bytes (ISO/IEC 13818-1's own), 192
@@ -553,8 +553,8 @@ with its own `describe()`:
 
 ## Demuxer errors
 
-`matroska::demux`/`Reader` return `std::expected` against `matroska::DemuxError`, which has its
-own `describe()` overload beside `MuxError`'s:
+Each module's `demux`/`Reader` returns `std::expected` against its own `DemuxError`, which has
+its own `describe()` overload beside `MuxError`'s:
 
 | Enum | Values |
 |---|---|

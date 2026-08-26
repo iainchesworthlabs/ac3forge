@@ -47,9 +47,9 @@ either tool actually gets, not an internal detail.
 (function () {
   const REPO = "iainchesworthlabs/ac3forge";
   const HISTORY_BRANCH = "quality-history";
-  // Releases only ever happen on main (releasing.md's own promotion flow),
-  // so unlike quality-trend.md/tool-comparison-trend.md there is only one
-  // track to fetch here, not develop+main.
+  // Releases only ever happen on main, which since the 2026-08 move to
+  // trunk-based development is the only branch there is - tagging IS the
+  // release decision (releasing.md). One track to fetch here, not two.
   const BRANCH = "main";
 
   const root = document.getElementById("landscape-app");
@@ -450,9 +450,8 @@ narrower question — not "how much worse", only "could this listener tell them
 apart at all" — with an exact one-sided binomial p-value against the 0.5
 guessing rate. 24 trials per pair puts the p &lt; 0.05 threshold at 17 correct.
 
-**Two preconditions that the committed material does not currently meet**, both
-detected and reported by the stimulus generator rather than left to be
-discovered mid-session:
+**Two limits of the synthetic fixtures**, both detected and reported by the
+stimulus generator rather than left to be discovered mid-session:
 
 - **The anchors do not work on the 5.1 legs.** A low-pass anchor only anchors
   the scale if removing the band above its cutoff is audible.
@@ -460,15 +459,25 @@ discovered mid-session:
   dB) and 0.031% above 7 kHz, so both anchors are near-transparent copies of
   the reference there — a panel would correctly score them near 100, which
   leaves the bottom of the scale undefined and the session unscalable against
-  any other panel's. The stereo leg is fine (−5.0 dB and −11.5 dB). Until
-  roadmap VX7's real programme material lands, that means MUSHRA on the stereo
-  leg and ABX on the 5.1 legs.
+  any other panel's. `reference_stereo.wav` is fine (−5.0 dB and −11.5 dB).
 - **The items are 1.9 seconds long.** BS.1534-3 asks for excerpts of about 10
-  s. The committed fixtures are 2.5–3.0 s before alignment trims them, and
-  they are synthetic — `sin()` and filtered noise, not programme. VX7 again.
+  s. The synthetic fixtures are 2.5–3.0 s before alignment trims them, and
+  they are `sin()` and filtered noise, not programme.
 
 Both are recorded per session in `session.json` alongside the seed, render
 mode and baseline version, so a session's own limits travel with its numbers.
+
+Both were what roadmap VX7 was for, and **VX7 has landed**: two 30 s CC0
+fixtures, full-band speech and music, are committed as
+`tests/golden/audio/programme_{speech,music}_stereo.flac` and carry three legs
+of their own in the external-baseline manifest — `ac3-music-stereo-192`,
+`eac3-music-stereo-96` and `eac3-speech-stereo-64`. `gen_listening_stimuli.py`
+walks every leg in that manifest, so those three already get a stimulus set
+built with no change to the generator; the two limits above are properties of
+the synthetic legs specifically, and a MUSHRA session on the programme stereo
+legs (with ABX still the right method for the synthetic 5.1 ones) is the
+session worth running. What has not happened is the running of it: that is
+human listening time, and roadmap VX9 stays open until it is spent.
 
 **Monitoring.** `--render native` presents the 5.1 legs as 5.1 and needs a 5.1
 setup; `--render stereo` renders them through FFmpeg's own downmix (which

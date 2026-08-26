@@ -109,7 +109,9 @@ Full program: [`examples/atmos_objects.cpp`](https://github.com/iainchesworthlab
 
 | `AtmosConfig` | Default | Notes |
 |---|---|---|
-| `bitrate_kbps` | 448 | Per substream, as everywhere else. |
+| `sample_rate` | `k48000` | Handed straight to the bed's own `eac3::FrameConfig`; nothing in the object layer reads it. |
+| `bitrate_kbps` | 448 | Per substream, as everywhere else. The object metadata competes with the mantissas for the same frame, so an object stream needs headroom a plain 5.1 stream does not. |
+| `dialnorm` | 31 | 1–31 (§5.4.2.8), as on the plain encoders. |
 | `num_bands_idx` | 4 | Index into `joc::kNumBands` (Table 50). More bands cost codewords without giving the matrix anything new to say. |
 | `fine_quant` | `false` | §6.3.3.7's half-step quantizer, roughly one more bit per coefficient. Worth it when objects are nearly degenerate. |
 | `fast_mdct` | `true` | The §7.9.4 fast forward MDCT for the whole object encode: the bed's substream (via `eac3::FrameConfig::fast_mdct`) **and** the per-object `band_energy` transforms feeding the reconstruction-matrix solve. `false` forces the direct §8.2.3.2 reference form everywhere, for validation — the CLI spells that `fast-mdct=off` on the `atmos*` commands. |

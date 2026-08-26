@@ -1,8 +1,10 @@
 # Using ac3::forge
 
-The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link
-`matroska::matroska` and/or `mp4::mp4` as well if you want a container writer, `ac3::signing` if
-you want to apply the EMDF object-signing tag (see [Object signing](signing.md)), or
+The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link any of
+`matroska::matroska`, `mp4::mp4` and `mpegts::mpegts` as well if you want a container writer,
+`ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),
+`ac3iab::ac3iab` if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream (it links nothing
+from `ac3::forge` and knows nothing about AC-3 — roadmap IM1 phase 1), or
 `ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
 `ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
 mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
@@ -29,10 +31,16 @@ target_link_libraries(your_target PRIVATE ac3::forge_static)   # or ac3::forge_s
 
 An installed package has no ambient `BUILD_SHARED_LIBS` default to resolve against, so it
 exports both variants explicitly rather than a bare `ac3::forge` — pick the one you want.
-Neither the package nor the codec itself has any dependency of its own to find: no
-`find_dependency()` calls, no system or third-party library, static or shared. (`ac3adm::ac3adm`
-is the sole exception project-wide — see the note above — and for that reason is not part of the
-installed `find_package(ac3forge)` package at all; consume it via `add_subdirectory` in-tree.)
+The package has nothing for a consumer to find: no `find_dependency()` calls, no system or
+third-party library to resolve, static or shared. The codec is not dependency-free, though —
+`ac3::forge` uses {fmt} for formatting (`cmake/Fmt.cmake`, and this repo's own `vcpkg.json`;
+it stands in for `<format>`, which NDK r26's libc++ does not implement). That link is PRIVATE
+and wrapped in `$<BUILD_INTERFACE:...>`, so it is absorbed at build time and never reaches the
+export graph, which is what leaves the installed package with nothing to declare.
+(`ac3adm::ac3adm` goes further than that and is the one module a *consumer* would have to supply
+a dependency for — several Boost header libraries, see the note above — and for that reason is
+not part of the installed `find_package(ac3forge)` package at all; consume it via
+`add_subdirectory` in-tree.)
 
 `ac3::signing` follows this exact same shape — mandatory, not gated by an
 `AC3FORGE_BUILD_<NAME>` switch, same as `ac3::forge` itself — so it resolves the identical way in
@@ -115,11 +123,12 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Measuring quality](quality.md) — `ac3::quality`, the decoded-domain distortion measure and the
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
-- [Header map](header-map.md) — every public header and what lives in it.
+- [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
   bindings and embedding (roadmap item F1).
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
-  `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder`.
+  `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
+  `eac3::FrameEncoder`/`AccessUnitEncoder`.
 
 ## Conventions
 
@@ -148,8 +157,11 @@ dither state). No encoder or decoder instance is safe for concurrent calls on th
 instance — the headers note that per-frame scratch and history members are reused across
 calls — but separate instances share nothing and are independent.
 
-**Each `encode_frame` call takes exactly `ac3::kSamplesPerFrame` (1536) samples per channel.**
-Short-changing it is a programming error, not a runtime one.
+**Each `encode_frame` call takes exactly one frame of PCM per channel.** For AC-3 that is always
+`ac3::kSamplesPerFrame` (1536); for E-AC-3 it is `FrameEncoder::samples_per_frame()`, which is
+1536 unless `FrameConfig::numblkscod` shortens the syncframe (256, 512 or 768 — see
+[Encoding E-AC-3](encoding-eac3.md)). Short-changing it is a programming error, not a runtime
+one.
 
 **Every class with non-trivial state hides it behind a pimpl.** `struct Impl;
 std::unique_ptr<Impl> impl_;` is the only private member on `FrameEncoder`

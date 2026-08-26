@@ -133,10 +133,58 @@ both encoders decide from content rather than from the bit rate.
   understate itself: real programme material carries *less* energy above 14.7 kHz than
   `reference_51.wav` does, so an SNR-led bandwidth rule narrows harder on real audio than on the
   fixture. `fgaincod` follows a measured line from 7 at 38 kbit/s per channel to 0 at 128,
-  replacing §8.2.12's fixed 4 — **AC-3 only** (`encoder.cpp`'s `fgaincod_for`). E-AC-3 still
-  writes `frmfgaincode = 0` unconditionally (`eac3_frame.cpp`'s `kFrmfgaincode`), so every
-  E-AC-3 channel gets the fixed default; the same rate-dependent curve has not been carried
-  across. Measured locally on sourced CC0/public-domain material — VX7 still wants it packaged.
+  replacing §8.2.12's fixed 4, on AC-3 by default (`encoder.cpp`'s `fgaincod_for`). The curve
+  itself now lives in `ac3::rate_adaptive_fgaincod` (`core/bitalloc.hpp`) so both encoders read
+  one definition of it rather than two.
+
+  **The E-AC-3 half is reachable but not default, and the reason is a real asymmetry rather
+  than an oversight.** AC-3 gets the curve free: §5.4.3.x hangs `fgaincod` off the `snroffst`
+  element it already sends every block. E-AC-3's `baie` does not carry `fgaincod` at all, so a
+  non-default code needs Table E1.4's separate per-block `fgaincode` element — and that element
+  has no persistence rule, so a block that omits it reverts to 0x4 rather than keeping the last
+  value. Holding a code for the frame therefore means paying in all six blocks: 132 bits a frame
+  at coupled 5.1, about 1.1% of a 384 kbit/s one, traded out of mantissa precision. What landed
+  is the mechanism and the measurement path, not a flipped default —
+  `eac3::FrameConfig::fgaincod` pins the code (`-1`, the default, leaves the implied 0x4 and
+  writes no element, byte-for-byte as before), and EQ13's E-AC-3 search now moves `fgaincod`
+  as a real second axis beside `dbpbcod`, scoring each candidate after a refit against *its own*
+  side-info cost — restricted, on the measurement below, to codes *below* the default.
+  Round-tripped through `Eac3MirrorEncoder` at every pinned code including coupled 5.1, where
+  `cplfgaincod` leads the per-channel run and the LFE's closes it — the exact desync the decode
+  side hit against a real DEE stream. Bandwidth measured locally on sourced CC0/public-domain
+  material — VX7 still wants it packaged.
+
+  **Measured, and the curve loses** (`quality_race.py fgaincod`, VX7's CC0 speech and music,
+  E-AC-3 stereo, `tools=none`, FFmpeg as the constant decoder, paired per-4 s-window deltas with
+  standard errors). It does not beat §8.2.12's `0x4` at any rate on either material: ViSQOL
+  MOS-LQO is never significantly positive, and is significantly *negative* where the curve moves
+  furthest — −0.240±0.049 (speech) and −0.105±0.036 (music) at 96 kbit/s, −0.020±0.001 at 128 —
+  flat above. The noise floor here is genuinely zero, because `fgaincod=4` is byte-identical to
+  the default by construction: that leg measures `+0.000±0.000` in every cell, so every non-zero
+  figure is signal.
+
+  The side-info bill turned out not to be the reason, which is the useful part. Sweeping all
+  eight codes prices the element empirically at −0.29 to −0.43 dB SNR and ≈0.00 MOS — codes 0–3
+  pay it and are perceptually indistinguishable from 4 — while the curve's own code at 96 kbit/s
+  loses about sixty times that in MOS. It fails on the *code*, not the cost. The same sweep says
+  why: SNR and MOS are **opposed** along this axis on E-AC-3 (speech/96, SNR rises monotonically
+  25.49 → 27.37 dB from code 4 to 7 while MOS falls 4.619 → 4.127), and the MOS optimum sits
+  exactly on `0x4` on both materials at both 96 and 192. AC-3's curve asks for codes *above* 0x4
+  at precisely the low rates where the divergence is largest, so carrying it across whole is
+  directionally wrong for this codec. **The shipped default was already the right answer**, and
+  EQ7's E-AC-3 half is closed as measured-and-declined rather than left unfinished.
+
+  That result also forced a correction to what EQ13's search does with the axis: an unrestricted
+  distortion-driven search reliably buys SNR it can see and spends quality it cannot, measured at
+  −0.396±0.083 MOS (speech) and −0.097±0.033 (music) against the one-axis search at 96 kbit/s.
+  Only codes below `0x4` — where the two measures agree, worth +3.3 dB SNR at 640 stereo with MOS
+  flat and +1.17 dB/+0.29 MOS at coupled 5.1/640 — are offered now.
+
+  Two caveats on the evidence, recorded rather than glossed: ViSQOL saturates at its ~4.75
+  ceiling from 192 kbit/s up, so flat MOS in the top half of the table is absence of evidence
+  rather than evidence of equality, and SNR/LSD are the only live metrics there; and the 5.1
+  legs are single-window on synthetic material, because no redistributable native 5.1 programme
+  source exists.
 - [ ] **EQ8 (M)** — Close the E-AC-3 stereo/192 gap. Partly addressed: the coded bandwidth is
   no longer fixed at 60 there (EQ7), which is worth 1.2–2.7 dB SNR and up to +0.034 MOS on real
   programme material at that rate and improves the high-band ratio with it. What did not move is
@@ -156,9 +204,16 @@ both encoders decide from content rather than from the bit rate.
   E-AC-3 (see that entry), was measured directly against this gap on VX7's real stereo material -
   `search=distortion` against `search=off`, `none` and `auto` tool sets, 96-640 kbit/s including
   192. Effect negligible everywhere, most points inside the search's own switch margin. `dbpbcod`
-  is not the lever either; see EQ13's entry for why (E-AC-3's `fgaincod` axis, the search's other
-  half on the AC-3 side, is not wired at all yet - EQ7's own remaining gap). The gap stays
-  bit-allocation efficiency in a sense none of EQ2, EQ3 or now EQ13's dbpbcod axis reach.
+  is not the lever either; see EQ13's entry for why. The gap stays bit-allocation efficiency in a
+  sense none of EQ2, EQ3 or EQ13's dbpbcod axis reach.
+
+  Fourth finding, and it closes the "wire the other axis first" caveat the third one left open:
+  `fgaincod` IS wired now (EQ7), and it does not move this gap either. Two-axis against one-axis
+  at 192 kbit/s stereo measures +0.007±0.008 dB SNR and +0.000±0.000 MOS on speech, −0.015±0.020
+  and −0.001±0.000 on music — inert, and correctly so: the curve asks for 2 at that rate, the
+  refit rejects it, and the search reproduces the one-axis answer exactly. So the prerequisite
+  this entry was waiting on has been supplied and spent, and the stereo/192 gap is *still* not a
+  transmitted-bit-allocation-parameter problem in any axis this project can now search.
 - [x] **EQ9 (L)** — Closed-loop tool decisions. `auto` chose cpl/spx/aht from the rate alone;
   two measures taken from the frame's own MDCT coefficients now decide with it — the coupling
   region's fit against the decoder's own rank-one reconstruction, and the energy share above the
@@ -230,9 +285,16 @@ both encoders decide from content rather than from the bit rate.
     every rate tried; wiring `ac3::quality::PerceptualModel` a second time to chase a criterion
     already known not to win was scoped out too. Accepted but inert if set, same reasoning as VBR
     above.
-  - **`dbpbcod` only, not `fgaincod`.** E-AC-3 has no per-frame `fgaincod` to search AT ALL yet -
-    `frmfgaincode` stays 0 unconditionally, EQ7's own still-open E-AC-3 gap - so the candidate set
-    is `{kAllocCodes (3), Table E1.4's 2}`, one axis where AC-3's is two.
+  - **~~`dbpbcod` only, not `fgaincod`~~ — two axes now.** This was the entry's own named
+    blocker and EQ7's E-AC-3 half has since closed it: `eac3::FrameConfig::fgaincod` exists,
+    Table E1.4's per-block `fgaincode` element is written, and the candidate set moves
+    `fgaincod` between §8.2.12's implied 0x4 and `ac3::rate_adaptive_fgaincod`'s value beside
+    `dbpbcod`'s `{3, 2}`. Unlike AC-3's, the two axes are not equally priced — `baie` carries
+    `dbpbcod` for free but not `fgaincod`, which opens an element in all six blocks — so each
+    candidate is scored after a **refit against its own side-info cost** rather than against the
+    incumbent's, since the two are not competing for the same number of mantissa bits. The
+    measurement below predates that and is the one-axis result; re-running it two-axis is what
+    now answers the question.
   - **Measured, not assumed the answer would be no.** Real CC0 material (VX7's `programme_music_
     stereo`/`programme_speech_stereo`), `search=distortion` against `search=off`, both `none` and
     `auto` tool sets, 96-640 kbit/s: effect negligible everywhere tried, −0.06 to +0.29 dB, most
@@ -242,10 +304,23 @@ both encoders decide from content rather than from the bit rate.
     little left to find - the AC-3 search's real win comes from moving BOTH axes together, and
     only one is wired here. `EQ8`'s own stereo/192 gap does not move either, confirming that gap
     is not a `dbpbcod` problem - see its own entry.
-  - **What would actually test this properly:** wiring `frmfgaincode`'s per-channel path (EQ7)
-    first, so a real two-axis E-AC-3 candidate set exists to search over. Left for whoever picks
-    that up; this PR's own mirror-encoder test suite (`tests/quality/test_eac3_search.cpp`) is
-    ready to extend the same way `test_search.cpp`'s is once it does.
+  - **~~What would actually test this properly~~ — done, and it answered against the axis.** The
+    prerequisite this bullet asked for (`frmfgaincode`'s per-channel path, EQ7) was wired,
+    `tests/quality/test_eac3_search.cpp` extended as predicted, and the sweep run on VX7's real
+    material across 96–640 kbit/s with both axes moving. The two-axis search is **inert where it
+    matters and harmful where it acts**: at 192 kbit/s it reproduces the one-axis answer exactly
+    (+0.007±0.008 dB SNR, +0.000 MOS), and at 96 it costs −0.396±0.083 MOS on speech and
+    −0.097±0.033 on music, because the distortion criterion and perceived quality run *opposite*
+    ways along this axis on E-AC-3 (EQ7's entry has the code-by-code numbers). The axis is now
+    restricted to codes below §8.2.12's `0x4`, the half where the two measures agree — worth
+    +3.3 dB SNR at 640 stereo with MOS flat, and +1.17 dB/+0.29 MOS at coupled 5.1/640.
+
+    So this entry's original negative result **stands and is now better explained**: a per-frame
+    search over transmitted bit-allocation parameters has little to find on E-AC-3 not because
+    one axis was missing, but because `dbpbcod` was already settled by EQ3 and `fgaincod`'s
+    SNR-optimal direction is perceptually wrong. What that leaves genuinely open is a search
+    driven by a criterion that tracks perception — `kPerceptual`, still uncalibrated — rather
+    than more axes under `kDistortion`.
 
   5.1 external-metric harness alignment: still open, not attempted this pass.
 

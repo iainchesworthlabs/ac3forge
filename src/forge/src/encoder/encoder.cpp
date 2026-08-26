@@ -123,13 +123,10 @@ int fgaincod_for(const EncoderConfig& config, int nfchans) {
     if (config.fgaincod >= 0) {
         return config.fgaincod;
     }
-    // The line through (38, 7) and (128, 0), rounded rather than truncated.
-    constexpr int kTopKbps = 128;
-    constexpr int kSpanKbps = 90;
-    const int per_channel_kbps =
-        static_cast<int>(config.bitrate_kbps) / std::max(nfchans, 1);
-    const int numerator = (kTopKbps - per_channel_kbps) * 7 + kSpanKbps / 2;
-    return std::clamp(numerator / kSpanKbps, 0, 7);
+    // The curve itself lives in bitalloc.hpp, because the E-AC-3 encoder
+    // takes the same measured line (roadmap EQ7's E-AC-3 half) and a
+    // measured constant stated twice is a constant that drifts.
+    return rate_adaptive_fgaincod(static_cast<int>(config.bitrate_kbps), nfchans);
 }
 
 // Step 9a's candidate set: what the per-frame search over transmitted bit

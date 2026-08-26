@@ -53,11 +53,13 @@ Two hard constraints rule out folding this into either side it bridges:
 shape `ac3::signing` uses for its own `ac3::forge` dependency. It is not part of the installed
 `find_package(ac3forge)` package, for the same reason `ac3adm::ac3adm` itself is not (see
 [ADM / BW64 reading](adm.md)'s own "Why opt-in" section): consume it via `add_subdirectory`
-in-tree. ROADMAP.md's IM1 entry (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is
-now in the roadmap's "not on the list" section for want of a public specification) names this
-module as the "mapping layer" it plans to share once it exists — another reason to keep this logic
-independent of `ac3adm`'s own BW64/ADM-XML-specific parsing, even though
-`ac3adm::AdmDocument` is the only input shape today.
+in-tree. ROADMAP.md's IM1 (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is now
+in the roadmap's "not on the list" section for want of a public specification) names this module
+as the "mapping layer" it intends to share. Its phase 1 has landed — `ac3iab::ac3iab` (`src/ac3iab`)
+parses the §7/§8 bitstream today, default-ON and installed like the container modules — but its
+phase 3, the `atmos-iab` command that maps an `IaFrame` onto this module's `ObjectPath` layer, is
+unstarted, so `ac3adm::AdmDocument` is still the only input shape here. That sharing is another
+reason to keep this logic independent of `ac3adm`'s own BW64/ADM-XML-specific parsing.
 
 ## What gets mapped
 
