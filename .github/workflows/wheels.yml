@@ -39,13 +39,59 @@ permissions:
   contents: read
 
 jobs:
+  # Same self-hosted/GitHub-hosted fan-out _build.yml's own Windows/Linux
+  # legs get (see docs/ci-self-hosted-runners.md), via the shared
+  # decide-runner composite action - this workflow is triggered
+  # independently of ci.yml/_build.yml, so it has no access to that job's
+  # outputs. macOS stays GitHub-hosted unconditionally: there is no
+  # self-hosted macOS capacity, and AWS's Mac instances bill in 24-hour
+  # minimum blocks, a poor fit for a ~5-minute job that runs on every push.
+  check-runners:
+    name: Check self-hosted runner availability
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      windows_runner: ${{ steps.windows.outputs.runner }}
+      linux_runner: ${{ steps.linux.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: windows
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Windows
+          hosted-json: '["windows-latest"]'
+          mode: ${{ vars.RUNNER_WINDOWS_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+      - id: linux
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Linux
+          hosted-json: '["ubuntu-latest"]'
+          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
   build:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build wheels (${{ matrix.name }})
+    needs: check-runners
+    # Belt-and-braces, same as _build.yml's build job: check-runners' own
+    # fork-PR branch already forces hosted labels for a fork PR, so this
+    # only matters if a gap ever opened up in that logic.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - name: windows-latest
+            runner: ${{ needs.check-runners.outputs.windows_runner }}
+          - name: macos-latest
+            runner: '["macos-latest"]'
+          - name: ubuntu-latest
+            runner: ${{ needs.check-runners.outputs.linux_runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,7 +110,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: wheels-${{ matrix.os }}
+          name: wheels-${{ matrix.name }}
           path: wheelhouse/*.whl
           if-no-files-found: error
 
