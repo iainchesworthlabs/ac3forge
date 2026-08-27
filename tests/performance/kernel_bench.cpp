@@ -487,7 +487,7 @@ int main(int argc, char** argv) {
         // cost that grows super-linearly in object count shows up here and
         // nowhere else in this bench.
         {
-            ac3::joc::FrameParameters wide{.objects = 12, .num_bands_idx = 4, .seq_count = 5};
+            ac3::oba::joc::FrameParameters wide{.objects = 12, .num_bands_idx = 4, .seq_count = 5};
             wide.matrix.assign(wide.coefficient_count(), 0.0);
             for (int object = 0; object < wide.objects; ++object) {
                 for (int channel = 0; channel < wide.channels; ++channel) {
@@ -497,17 +497,17 @@ int main(int argc, char** argv) {
                 }
             }
             results.push_back(time_kernel("joc_reconstruct_mdct_12obj", [&] {
-                static ac3::joc::ReconstructionState state;
+                static ac3::oba::joc::ReconstructionState state;
                 const auto out =
-                    ac3::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
-                                          /*fast_imdct=*/true, ac3::joc::Domain::kMdctBand);
+                    ac3::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
+                                          /*fast_imdct=*/true, ac3::oba::joc::Domain::kMdctBand);
                 g_sink += static_cast<double>(out[0][128]);
             }));
             results.push_back(time_kernel("joc_reconstruct_qmf_12obj", [&] {
-                static ac3::joc::ReconstructionState state;
+                static ac3::oba::joc::ReconstructionState state;
                 const auto out =
-                    ac3::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
-                                          /*fast_imdct=*/true, ac3::joc::Domain::kQmf);
+                    ac3::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
+                                          /*fast_imdct=*/true, ac3::oba::joc::Domain::kQmf);
                 g_sink += static_cast<double>(out[0][128]);
             }));
         }
