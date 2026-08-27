@@ -131,6 +131,7 @@ jobs:
     outputs:
       linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
+      linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -152,11 +153,11 @@ jobs:
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - two of each today (Linux GCC/LLVM,
-          # Windows MSVC/LLVM). Bump these, and add a matching numbered
-          # output above and matrix.runner reference below, if a leg is
-          # added or removed.
-          LINUX_LEGS=2
+          # the build matrix below - three Linux (GCC, LLVM, LLVM ASan+UBSan)
+          # and two Windows (MSVC, LLVM) today. Bump these, and add a
+          # matching numbered output above and matrix.runner reference
+          # below, if a leg is added or removed.
+          LINUX_LEGS=3
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -417,7 +418,7 @@ jobs:
           # and there should not be one - a sanitizer-instrumented debug build
           # is a diagnostic tool, not something to ship.
           - name: "Linux LLVM ASan+UBSan"
-            runner: '["ubuntu-latest"]'
+            runner: ${{ needs.check-runners.outputs.linux_runner_3 }}
             container: ubuntu:26.04
             preset: linux-llvm-asan-ubsan
             llvm: true
