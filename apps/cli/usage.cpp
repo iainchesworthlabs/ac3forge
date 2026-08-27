@@ -89,6 +89,8 @@ constexpr std::array<OptionToken, 57> kOptionTokens{{
     {"positions=", "live mode=atmos: osc:[<bind>:]<port> - a real live object-position source"},
     {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1 - "
                 "decode/monitor: loro, ltrt or mono fold the §7.8 output stage"},
+    {"follow=", "play: off refuses a sink that rejects the source format instead of "
+               "transcoding to AC-3 or falling back to decoded PCM"},
     {"preset=", "qc: gate the measurement against a named delivery spec"},
     {"json=", "probe: emit the JSON document instead of the human table"},
     {"detail=", "probe: frames or blocks - add per-access-unit/per-block detail"},
@@ -200,6 +202,21 @@ void print_live_topic() {
     fmt::println("       reads TS 103 420's object layer (OAMD/JOC) and reports an object count,");
     fmt::println("       but this path does not render or export objects, so this is what a");
     fmt::println("       legacy decoder hears, not unmixed objects.");
+}
+
+void print_play_topic() {
+    fmt::println("");
+    fmt::println("play follow: a device_index sink gets asked what it actually accepts before");
+    fmt::println("       'play' commits to a format - its own EDID/ELD (real today only on");
+    fmt::println("       ALSA; other backends fall back to the same live probe 'outputs' uses,");
+    fmt::println("       noted on stderr when that happens). A source format the sink rejects");
+    fmt::println("       gets an automatic fallback rather than a refusal: E-AC-3 on an");
+    fmt::println("       AC-3-only sink is transcoded to AC-3 first (roadmap DC9 feeding this");
+    fmt::println("       same passthrough, the \"no 5.1 PCM over optical\" case in one command");
+    fmt::println("       instead of two); a sink that bitstreams neither format falls back to");
+    fmt::println("       decoded PCM ('monitor's own path, so a wide programme is folded per");
+    fmt::println("       §7.8 to the endpoint's real width rather than left to a shared-mode");
+    fmt::println("       mixer). follow=off restores the plain refusal 'play' always gave.");
 }
 
 void print_take_topic() {
@@ -421,9 +438,10 @@ struct TopicSection {
     void (*print)();
 };
 
-constexpr std::array<TopicSection, 15> kTopicSections{{
+constexpr std::array<TopicSection, 16> kTopicSections{{
     {topic::kStdio, print_stdio_topic},
     {topic::kLive, print_live_topic},
+    {topic::kPlay, print_play_topic},
     {topic::kTake, print_take_topic},
     {topic::kAtmos, print_atmos_topic},
     {topic::kPaths, print_paths_topic},
@@ -587,6 +605,13 @@ void print_option_blocks(std::uint32_t mask) {
                      "(see 'help live' for the OSC address space)");
         fmt::println("  downmix=off       refuse an AC-3-only passthrough endpoint instead of "
                      "running the parallel 5.1 AC-3 leg");
+    }
+    if ((mask & topic::kPlay) != 0) {
+        fmt::println("");
+        fmt::println("play options (play; after the positional arguments):");
+        fmt::println("  follow=off        refuse a sink that rejects the source format instead "
+                     "of");
+        fmt::println("                    transcoding to AC-3 or falling back to decoded PCM");
     }
     if ((mask & topic::kQc) != 0) {
         fmt::println("");

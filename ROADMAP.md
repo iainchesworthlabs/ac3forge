@@ -252,11 +252,10 @@ both encoders decide from content rather than from the bit rate.
   gets.
 - [x] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. `quality_race.py vbr`
   sweeps `VbrConfig::quality` and scores CBR and FFmpeg CBR at the rate each point actually
-  measured; the curve is published in
-  [docs/concepts/ac3-eac3.md](concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
-  Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]` on the CLI): one composite SNR
-  offset held across frames and steered by an integral controller, over a sliding-window bit
-  reservoir that caps any window's pooled budget.
+  measured; the curve is published in `docs/concepts/ac3-eac3.md`'s "E-AC-3 rate control: what
+  VBR and ABR are worth" section. Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]`
+  on the CLI): one composite SNR offset held across frames and steered by an integral controller,
+  over a sliding-window bit reservoir that caps any window's pooled budget.
 - [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
   measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
   against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
@@ -864,16 +863,113 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   are constants and comparisons calibrated against measured MOS-LQO/SNR data on real programme
   material (see `docs/library/encoding-ac3.md`), not arbitrary — moving them, even by adding a
   margin, is a perceptual-tuning change that needs the same kind of re-validation campaign the
-  original tuning did, which this item's own scope did not include. The transient detector's IIR
-  state is the deepest one: making it genuinely platform-invariant means fixed-point-porting a
-  cascaded biquad filter, a substantially larger, riskier change than this item's remaining
-  budget could respons­ibly take on and re-validate. Gating byte-identical gold encodes across
-  *every* leg (the roadmap text's other half) is blocked on roadmap VX11, not on this audit: VX11
-  found that a real, standards-conformant aarch64 build does not reproduce the arm64/macOS gap at
-  all, so the true root cause is still unidentified, and asserting cross-leg byte-equality today
-  would either be vacuously true on the x86 legs (already covered by VX11's
-  `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit cannot name yet.
-  A recorded-decisions replay mode is genuinely independent future work, not attempted here.
+  original tuning did, which this item's own scope did not include.
+
+  **Finding (1) revisited: proven, not just asserted, on today's toolchains.** The transient
+  detector's IIR state was this audit's own named deepest risk, and the full fixed-point port
+  stays future work (scoped precisely below) rather than landed here — but the platform-invariance
+  question underneath it does not have to stay a guess. The reduction that makes it tractable: with
+  `-ffp-contract=off` already project-wide (this document's own "Floating-point contraction"
+  section) and no `-ffast-math`/reassociation flag anywhere in this build, every `+`, `-`, `*`, `/`
+  in `TransientDetector::Biquad::process()` and its coefficient formula is IEEE-754-mandated
+  correctly-rounded, evaluated in the fixed left-to-right grouping C++'s grammar gives a chain of
+  same-precedence operators — none of that has room to disagree between conformant toolchains, on
+  any architecture, after any number of recursive samples. The only two operations in the whole
+  class not so constrained are the constructor's `std::cos`/`std::sin` calls (IEEE-754 does not
+  mandate correctly-rounded transcendental functions), so platform-invariance of the entire
+  recursive filter — coefficients, cascade, and every downstream ratio comparison, for any input
+  signal, at a tie point or nowhere near one — reduces exactly to platform-invariance of those two
+  calls at the six `w0 = 2·π·8000/fs` arguments the six A/52 rates produce.
+
+  Tested directly (VX11's own cos/sin bit-identity methodology, applied here to this file's own
+  call sites rather than the twiddle tables VX11 checked): a minimal harness reproducing
+  `transient.cpp`'s exact constructor and `Biquad::process()`, comparing the raw IEEE-754 bit
+  pattern (not the decimal printout, which would itself round) of every coefficient at all six
+  rates plus a hash of a 2000-sample cascaded recursive drive, across `windows-msvc` (cl
+  19.51.36256, `/fp:precise`), `windows-llvm` (clang-cl 22.1.2, `/clang:-ffp-contract=off`),
+  `linux-gcc` (g++ 15.2.0 x86-64), `linux-llvm` (clang++ 22.1.2 x86-64) and `linux-gcc-arm64`
+  (`aarch64-linux-gnu-gcc-16` cross-compiled, run under `qemu-user` — the same
+  standards-conformant construction VX11 used and already trusts). All five builds produced
+  bit-identical output at every rate, every coefficient and the cascade hash — zero divergent bits.
+  That covers all four of this audit's in-scope x86-64 legs plus the emulated-aarch64 leg VX11
+  already relies on; it does not touch the real native `linux-gcc-arm64`/`linux-llvm-arm64`/
+  `macos-llvm` legs, whose gap is VX11's own open question, not this one's (this entry's closing
+  paragraph, unchanged below, says why that stays out of scope here).
+
+  One incidental finding from the same probe, recorded rather than left implicit: at `k16000`
+  (E-AC-3's lowest half-rate), `kCutoffHz`'s fixed 8000 Hz *is* that rate's Nyquist frequency, so
+  `std::cos(w0)` lands on exactly -1.0 (all five toolchains agree on this too) and the RBJ
+  highpass's own passband collapses to zero width — `b0` and `b2` both compute to exactly `0.0`,
+  the filtered signal is identically zero for any input, and `blksw` is therefore always `false` at
+  this one rate by construction, independent of programme content. Whether that is the intended
+  behaviour for E-AC-3's lowest rate is a spec/perceptual question, not a reproducibility one, and
+  stays outside this audit's scope — it is now a documented, pinned test case rather than an
+  unexamined gap.
+
+  Landed alongside this: `tests/encoder/test_transient.cpp`'s coverage widened from `k48000` alone
+  (every prior test in that file) to all six A/52 rates, in a new
+  `TEST_CASE("a loud onset trips the detector at every A/52 sample rate")` pinning the exact
+  onset-trips/does-not-trip sequence at each rate, `k16000`'s always-false case included with the
+  reasoning above inline. Deliberately booleans, not raw bit patterns: a hard-pinned coefficient
+  hash gated on all seven CI legs would collide with VX11's still-open arm64/macOS question the
+  moment it ran there, where a pinned discrete decision does not, since no CI leg — arm64/macOS
+  included, per the gold-reference gate's own passing SNR numbers on those legs — has ever been
+  observed to flip one. It is a permanent, all-legs-safe regression pin that catches any future
+  change to this exact decision (a formula edit, an accidental FMA reintroduction, an
+  optimiser-flag change) immediately, at the unit-test level, instead of waiting for it to surface
+  as an unexplained shift somewhere downstream. Full suite and the gold-reference gate re-run after
+  the addition: 3,780,657 of 3,780,678 assertions passing, the 21 failing ones all inside
+  `test_cli.cpp` (four test cases, none in `[transient]` or any encoder path) — a live `fgaincod=`
+  CLI wiring gap from a different, already-merged item (`ed6bab71`), pre-existing on `main` before
+  this branch, confirmed by direct repro and flagged separately, not touched here — and the three
+  gold streams hash byte-identical to their pre-change pins (`x86_64-sse2/fast/{ac3,eac3,eac3_cpl}`
+  in `tests/golden/bitstream-hashes.json`), confirming a test-only change moved nothing. The
+  cross-toolchain coefficient/cascade comparison itself is not committed as a permanent script,
+  matching VX11's own precedent (its cos/sin check is documented investigative methodology in this
+  file, not a standing CI gate) — the exact reproduction is `transient.cpp`'s own constructor and
+  `Biquad::process()`, unchanged, built and run with the flags and toolchains listed above.
+
+  **The fixed-point port, scoped precisely rather than left as "substantially larger, riskier":**
+  eliminate the runtime transcendental call rather than porting it — A/52 fixes the sample rate to
+  exactly six values, so all six coefficient sets can be computed once, offline, at full double
+  precision, correctly rounded to a fixed Q-format, and embedded as literal integer constants; no
+  `cos`/`sin` runs for this filter again, at compile time or runtime, which removes the one
+  non-guaranteed operation in the class instead of porting it. Q1.30 signed 32-bit for coefficients
+  and state (`b0`/`b2` ∈ [0, ~0.5], `b1` ∈ [-1, 0], `a1` ∈ [-2, 2], `a2` ∈ [0, 1) at every rate,
+  per the probe's own six coefficient sets above — comfortably inside Q1.30's range); an `int64_t`
+  accumulator for `process()`'s five-term sum (each term at most a 32-by-32-bit product, five sum
+  with wide headroom below `int64_t`'s range); one rounding rule (round-half-up: add
+  `1 << (shift-1)` before the final right shift) applied identically everywhere — integer `+`, `-`,
+  `*` and a fully-specified shift are exact and platform-independent by construction, unlike
+  float's correctly-rounded-but-still-lossy arithmetic, which is what would actually earn
+  "platform-invariant by construction" rather than "platform-invariant on every toolchain tried so
+  far." `kSilenceThreshold`/`kT1`/`kT2`/`kT3` and the peak tree (`peak_abs`, the five ratio
+  comparisons) port the same way: integer `p1`/`p2`/`p3` from the fixed-point cascade,
+  integer-scaled thresholds, comparisons unchanged in shape. The validation gate that would
+  actually justify landing it: an offline bit-exact simulator FIRST (Python/numpy, no C++), diffing
+  its `blksw` decision against today's double implementation block-by-block across the fullest
+  real, broadband corpus available — the in-repo gold WAVs are not enough alone (see "Quality
+  fixtures are band-limited": `reference_51.wav` is 99% energy below 100 Hz, essentially silent
+  through an 8 kHz highpass), so this needs the kind of real material roadmap VX7's
+  versioned-corpus item and this project's other quality work already reach for. Any discrepancy at
+  all is disqualifying — it is exactly the undocumented perceptual-tuning change the constants'
+  calibration note above warns against, not a bug to tune away. Why this round still does not
+  attempt it: today's toolchains now PROVE bit-identical (above) — no live divergence has ever been
+  observed, so the risk this closes is prospective, not a currently-failing gate — and there is no
+  existing fixed-point kernel anywhere else in this otherwise entirely floating-point codec to
+  build on, so the offline-simulator validation step is new infrastructure, not a small addition.
+  Spending this item's remaining budget porting a working, spec-tuned filter against a
+  theoretical-only risk was judged the wrong trade against the item's own re-validation cost — the
+  same call the previous round of this audit made; this round narrows what is actually still open
+  with proof, rather than repeating the same unproven deferral.
+
+  Gating byte-identical gold encodes across *every* leg (the roadmap text's other half) is blocked
+  on roadmap VX11, not on this audit: VX11 found that a real, standards-conformant aarch64 build
+  does not reproduce the arm64/macOS gap at all, so the true root cause is still unidentified, and
+  asserting cross-leg byte-equality today would either be vacuously true on the x86 legs (already
+  covered by VX11's `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit
+  cannot name yet. A recorded-decisions replay mode is genuinely independent future work, not
+  attempted here.
 - [x] **VX13 (S)** — Promote the fuzz jobs. The claimed track record didn't hold up under a real
   check of `gh run list`/job-level history back to 2026-08-09: `fuzz-differential` genuinely had
   zero failures across 218 push runs, but `fuzz-short` had five, all the same
@@ -1162,9 +1258,12 @@ directory; there is still no threading anywhere in the codec core.
   (pybind11-direct, matching every other class here), with `ac3.eac3.access_unit_config_for_layout`
   as the named-layout convenience over `ac3::plan::channel_plan_for` — see
   `docs/library/python-api.md`'s "Encoding E-AC-3" section for what's mirrored and what's a real
-  gap there (mixmdate/infomdat, VBR/ABR, `additional` programmes) rather than a decision. Still
-  missing: `scan`, no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in
-  `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
+  gap there (mixmdate/infomdat, VBR/ABR, `additional` programmes) rather than a decision. ~~Still
+  missing: `scan`~~ done: `ac3.scan()`/`ac3.read_frame_header()` wrap `ac3::io::scan`/
+  `read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/`FrameHeader`, plus
+  `access_unit_timing` and its timing-arithmetic neighbours) — see `docs/library/python-api.md`'s
+  "Scanning a stream" section. Still missing: no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`
+  are off in `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
   `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
   that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
   macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
@@ -1178,9 +1277,33 @@ directory; there is still no threading anywhere in the codec core.
   — today a `develop` docs change is invisible until a release). Note in `header-map.md` that
   `ac3/audio` is not installed.
 - [ ] **AP9 (L)** — A first non-Python binding over the C API: a Rust `-sys` crate plus a safe
-  wrapper. The C API has no consumer but its own test and example — Python is pybind11-direct,
+  wrapper. ~~The C API has no consumer but its own test and example — Python is pybind11-direct,
   WASM is Embind, Android is app-specific JNI over C++ — so the ABI has never crossed a real FFI
-  boundary. .NET, Node N-API and a reusable Android AAR follow the same header.
+  boundary~~ it now has: `rust/ac3forge-sys` (`bindgen`-generated against
+  `src/capi/include/ac3forge_c/ac3forge.h` at build time, so header drift is caught on every PR
+  rather than discovered later) plus `rust/ac3forge`, a safe wrapper covering AC-3 and E-AC-3
+  encode/decode (single substream) with real round-trip tests against synthesized audio. In-tree
+  at `rust/` — never `add_subdirectory()`'d from the root `CMakeLists.txt`, same shape
+  `apps/android`'s Gradle build already established for a second build system living alongside
+  CMake — with its own CI job (`build-rust` in `_build.yml`, Linux-only for this first pass).
+  `ac3forge-sys` links `forge_c_shared` specifically (not `forge_c_static`): that variant exists
+  precisely so a non-CMake consumer links exactly one library instead of independently
+  rediscovering the codec core's transitive static dependencies. Three real header findings, the
+  actual point of this item: `ac3forge_object_placement_t` had no `_init()` unlike every sibling
+  config struct, so a zero-initialized one silently encoded a muted object (fixed,
+  `ac3forge_object_placement_init()` added); four decoded-audio accessors were missing the
+  pointer-lifetime documentation their AC-3 sibling has (fixed, doc-only); and no status/enum in
+  the header says whether it may gain new values in a future minor release, which the Rust
+  wrapper answers by treating `ac3forge_status_t` as an open set (`Error::Other(i32)`) rather
+  than a closed one that would have to panic or misreport on a code from a newer library — see
+  `rust/README.md`'s own "Header defects found" section for the full detail, including what a
+  future .NET, Node N-API or Android AAR binding over the same header would need to answer for
+  itself. **Not done**: `ac3forge_eac3_access_unit_encoder_t` (wide layouts), the Atmos encoder
+  and OAMD/JOC object-audio decode accessors, the stream-framing helpers
+  (`split_frames`/`split_access_units`/`stream_bsid`), and Windows/macOS CI legs — recorded, not
+  silently missing, in the same README. AP5's still-open C API gap (`scan`, caller-buffer `_into`
+  decode forms, metering) needs no design change here: `bindgen` picks up new declarations the
+  moment they land.
 - [ ] **AP10 (L)** — An out-of-tree GStreamer element or FFmpeg external-encoder wrapper over
   the C API, as the way >5.1 and JOC encode reach the transcode ecosystem: FFmpeg's E-AC-3
   encoder has been 5.1-max since [trac #3595](https://trac.ffmpeg.org/ticket/3595) (2014) and
@@ -1197,9 +1320,21 @@ directory; there is still no threading anywhere in the codec core.
   into a successful, concealed result — and `kUnknownEmdfPayload` when a block's EMDF container
   carries a payload id this decoder does not interpret (anything but OAMD/JOC), which previously
   left no trace anywhere at all. Null by default on both decoders.
-- [ ] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
+- [x] **AP12 (S)** — Research instrumentation export: per-frame bap, exponent, SNR-offset and
   mask curves as CSV/JSON/Parquet from the trace (both codecs carry one since `VX2`),
-  reachable from Python.
+  reachable from Python. Done: the trace (`ac3::verify::FrameTrace`/`Eac3AccessUnitTrace`) already
+  carried exponents and bap; SNR-offset and the §7.2.2.5 masking curve did not exist anywhere and
+  were added to `StreamTrace`/`Eac3StreamTrace`, populated decode-side only via a new internal
+  entry point (`ac3::internal::compute_bit_allocation_traced`, `src/core/bitalloc_internal.hpp`)
+  that shares `compute_bit_allocation`'s own implementation rather than changing its exported
+  signature (an ABI break the gate would have flagged for every consumer, not just this one).
+  `ac3/verify/trace_export.hpp`'s `append_trace_csv`/`append_trace_json_lines` write one tidy row
+  per (frame, substream, block, stream, kind, index, value) — bin-indexed `exponent`/`bap` and
+  band-indexed `mask` named apart by `kind` rather than forced into one fixed-width record, since
+  the trace never claimed those two index spaces line up. No C++ Parquet writer: reachable from
+  Python as `ac3.verify.trace_to_csv`/`trace_to_json_lines`, then
+  `pandas.read_csv`/`read_json(lines=True)`/`.to_parquet()` — Python's own, more complete Parquet
+  support, not a second one grown here for one research-only export path.
 
 ## UX. Applications
 
@@ -1239,16 +1374,33 @@ directory; there is still no threading anywhere in the codec core.
 - [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` calls it "a separate, much
   larger undertaking"; the encoders are already proven platform-free (C API, wheels, NDK). A
   drop-a-WAV / capture-a-mic encode page, and a browser-side `qc`.
-- [ ] **UX7 (M)** — macOS loopback capture through Core Audio process/system taps (macOS 14.2+).
-  Capture is input-only there and `start()` refuses `kLoopback`. Needs a real Mac (DR9).
+- [ ] **UX7 (M)** — macOS loopback capture through Core Audio process/system taps
+  (`AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2+). Capture is still input-only
+  there and `start()` still refuses `kLoopback`: the tap itself needs an Objective-C class, a
+  real-time TCC consent prompt under `SystemAudioCaptureRequests`, and — since that prompt is keyed
+  to code-signing identity and does not fire unsigned — DR6 resolved first or nothing to grant it
+  to. Needs a real Mac (DR9) either way; not attempted without one. What landed without one: the
+  loopback gap's documentation corrected (it previously cited macOS 14.4, not the API's real 14.2)
+  and expanded (`docs/platforms/macos.md`), and a pure, CI-verified OS-version gate a future
+  implementation should refuse on before ever touching `CATapDescription`
+  (`ac3::coreaudio::system_audio_tap_api_available()`).
 - [ ] **UX8 (L)** — A Windows Spatial Sound object sink (`ISpatialAudioObjectRenderStream`):
   feed decoded objects as dynamic objects with their OAMD positions and the bed as static ones.
   The one path that lets Dolby's own renderer render this project's reconstructed objects
   without the authenticity gate, and hardware evidence for the object layer (and DC10). A
   per-platform directory, no `#ifdef`.
-- [ ] **UX9 (M)** — `play` that follows the sink: parse EDID short audio descriptors to choose
+- [x] **UX9 (M)** — `play` that follows the sink: parse EDID short audio descriptors to choose
   AC-3, E-AC-3 or PCM, and a one-command transcode-to-passthrough pipeline (DC9's transcode into
-  `PassthroughSink`) for the "no 5.1 PCM over optical" case.
+  `PassthroughSink`) for the "no 5.1 PCM over optical" case. Shipped as
+  `ac3::audio::sink_capabilities` (real on ALSA, reading the HD-audio driver's own
+  `/proc/asound/.../eld#*` text; every other backend reports `kNoBackend` honestly rather than
+  guessing, and `play` falls back to `enumerate_render_devices()`'s live probe there, same as
+  before). `play` tries EDID first, an E-AC-3 source on an AC-3-only sink gets transcoded to AC-3
+  automatically (reusing `transcode` through a temp file, so dialnorm/compr/mix metadata still
+  carry across), and a sink that bitstreams neither format falls back to decoded PCM (`monitor`'s
+  own §7.8-aware path). `follow=off` restores the plain refusal `play` always gave. Not verified
+  against real EDID/ELD hardware this round (no Linux box in the loop) - see
+  `docs/platforms/linux.md`.
 - [ ] **UX10 (rides IM5)** — The TrueHD front ends on the branch (the lossless-lab dialog, its
   QML test, the CLI rows) get their own PR split, a QML test leg and `docs/gui`/`docs/cli` pages.
 
@@ -1305,9 +1457,24 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   `ac3gui.app` and the `.dmg` (a Known gap in every release since 0.8.0-beta.2; Gatekeeper blocks
   it), Authenticode for the Windows binaries and installer. GPG and Sigstore satisfy neither OS.
   Blocked on the certificates, not on code.
-- [ ] **DR7 (S)** — The Windows installer. `Packaging.cmake`'s NSIS block is silently skipped
-  because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
-  then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
+- [x] **DR7 (S)** — The Windows installer. Done: `.github/workflows/_build.yml`'s `windows-msvc`
+  leg now installs `makensis` via Chocolatey — the same fresh-install-every-run pattern already
+  used for ffmpeg/Ninja, deliberate per `docs/ci-self-hosted-runners.md` ("nothing is pre-baked
+  onto the self-hosted image without data justifying it") — and a new step asserts a real `.exe`
+  came out of `cpack`, failing the leg outright if it didn't. WiX was considered and rejected:
+  `Packaging.cmake` already carries NSIS-specific work (the `.ac3`/`.ec3` file-association
+  commands UX2 added) a WiX rewrite would have to redo for no real benefit, on a leg this fix
+  scopes as an afternoon, not a rewrite. `cmake/Packaging.cmake`'s `find_program()` gate now
+  warns instead of degrading silently when `makensis` is absent, for a local dev build that
+  doesn't have it. `docs/releasing.md`'s winget instructions now default the *next* release
+  bump to `InstallerType: nullsoft`; the already-published `0.9.0-beta.1` manifest stays
+  `zip`/`portable` since that release genuinely has no `.exe` to point at — never rewrite a
+  published version to claim an installer it never shipped.
+  `tools/checks/check_packaging_versions.sh` now fails if a future manifest bump declares
+  `nullsoft` without matching `InstallerUrl`/dropping `NestedInstallerType`, or vice versa. The
+  new installer is still unsigned (DR6) and may still trip SmartScreen or the Defender false
+  positive already blocking DR4's winget resubmission — DR7 fixes the build, not the trust
+  story; DR4 stays blocked on DR6.
 - [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
   the distro's Qt 6 and `qml6-module-*` packages) is still open. The other two halves have both
   landed since this item was last written, independently:

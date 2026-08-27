@@ -113,6 +113,7 @@ add_executable(ac3tests
     oba/test_scene_osc.cpp
     verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
+    verify/test_trace_export.cpp
     signing/test_signing.cpp
     spatial/test_spatial.cpp
     core/test_simd_kernels.cpp
@@ -247,7 +248,9 @@ endif()
 # the contract EVERY backend keeps, including the one that refuses everything.
 # ---------------------------------------------------------------------------
 if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
-    target_sources(ac3tests PRIVATE backend/alsa/test_alsa_device_names.cpp)
+    target_sources(ac3tests PRIVATE
+        backend/alsa/test_alsa_device_names.cpp
+        backend/alsa/test_alsa_eld_parsing.cpp)
     # The backend's internal header. Not part of the library's public
     # interface and deliberately not installed - it is on the include path for
     # this target only, and only in this configuration.

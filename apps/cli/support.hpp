@@ -235,6 +235,13 @@ struct Options {
     // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did
     // before roadmap IO9).
     bool downmix_leg = true;
+    // 'play' only: whether a source format the chosen sink does not accept
+    // gets an automatic fallback - an in-memory transcode to AC-3 when the
+    // sink takes AC-3 but not E-AC-3, or a decoded PCM leg over MonitorSink
+    // when it takes neither - or the plain refusal 'play' always gave before
+    // roadmap UX9 (follow=off). Same on-by-default, off-to-restore-the-old-
+    // behaviour shape as downmix_leg above.
+    bool follow_sink = true;
     // Off by default, matching every bare token here - keep whatever frames
     // a failed encode already produced, written beside the intended output
     // as <name>.partial.<ext> instead of discarded outright. The same

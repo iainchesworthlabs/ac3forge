@@ -42,6 +42,14 @@ target_include_directories(ac3audio
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:include>")
 
+# The one platform-independent piece of the backend tree below: describe()
+# for ac3::audio::EdidError. Compiled unconditionally, the same reasoning as
+# ac3::iec61937 staying platform-independent while PassthroughSink is not -
+# see sink_capabilities.hpp's own header comment. Each platform's own
+# read_sink_capabilities() is added alongside that platform's other four
+# backend files, below.
+target_sources(ac3audio PRIVATE src/sink_capabilities.cpp)
+
 target_compile_features(ac3audio PUBLIC cxx_std_23)
 
 # ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see
@@ -60,13 +68,14 @@ target_sources(ac3audio PRIVATE src/live_positions.cpp)
 # ---------------------------------------------------------------------------
 # The backend tree.
 #
-# Live capture, IEC 61937 passthrough, shared-mode monitor playback, and the
-# report saying which of the three exists are the only OS-specific code in
-# the project. Each is one file of the SAME name under src/backend/<backend>/,
-# and CMake compiles exactly one directory of them - so no translation unit
-# ever asks which system it is being built for, and adding a platform means
-# adding a directory rather than editing conditionals scattered through the
-# sources.
+# Live capture, IEC 61937 passthrough, shared-mode monitor playback, reading
+# a render endpoint's own EDID/ELD-carried capabilities (roadmap UX9), and
+# the report saying which of the first three exists are the only OS-specific
+# code in the project. Each is one file of the SAME name under
+# src/backend/<backend>/, and CMake compiles exactly one directory of them -
+# so no translation unit ever asks which system it is being built for, and
+# adding a platform means adding a directory rather than editing conditionals
+# scattered through the sources.
 #
 # The axis is the audio subsystem rather than the operating system, because
 # that is where the answers actually differ: windows/ is WASAPI, alsa/ and
@@ -85,9 +94,9 @@ target_sources(ac3audio PRIVATE src/live_positions.cpp)
 if(NOT WIN32 AND NOT LINUX AND NOT APPLE AND NOT ANDROID)
     message(FATAL_ERROR
         "ac3audio has no backend directory for this system. Add "
-        "src/audio/src/backend/<backend>/{audio_backend,capture,passthrough,monitor}.cpp - "
-        "src/audio/src/backend/posix/ is the no-backend implementation and is a "
-        "working starting point - then select it here.")
+        "src/audio/src/backend/<backend>/{audio_backend,capture,passthrough,monitor,"
+        "sink_capabilities}.cpp - src/audio/src/backend/posix/ is the no-backend "
+        "implementation and is a working starting point - then select it here.")
 endif()
 
 if(WIN32)
@@ -96,7 +105,8 @@ if(WIN32)
             src/backend/windows/audio_backend.cpp
             src/backend/windows/capture.cpp
             src/backend/windows/passthrough.cpp
-            src/backend/windows/monitor.cpp)
+            src/backend/windows/monitor.cpp
+            src/backend/windows/sink_capabilities.cpp)
 
     # How <windows.h> is to be configured wherever it is included: the lean
     # header set, and no min/max macros to collide with <algorithm>. Stated
@@ -232,7 +242,8 @@ if(LINUX)
                 src/backend/alsa/audio_backend.cpp
                 src/backend/alsa/capture.cpp
                 src/backend/alsa/monitor.cpp
-                src/backend/alsa/passthrough.cpp)
+                src/backend/alsa/passthrough.cpp
+                src/backend/alsa/sink_capabilities.cpp)
         target_link_libraries(ac3audio PRIVATE ALSA::ALSA)
         set(AC3FORGE_AUDIO_BACKEND alsa)
         message(STATUS
@@ -244,7 +255,8 @@ if(LINUX)
                 src/backend/pipewire/audio_backend.cpp
                 src/backend/pipewire/capture.cpp
                 src/backend/pipewire/monitor.cpp
-                src/backend/pipewire/passthrough.cpp)
+                src/backend/pipewire/passthrough.cpp
+                src/backend/pipewire/sink_capabilities.cpp)
         target_link_libraries(ac3audio PRIVATE PkgConfig::PipeWire)
         set(AC3FORGE_AUDIO_BACKEND pipewire)
         message(STATUS
@@ -258,7 +270,8 @@ if(LINUX)
                 src/backend/posix/audio_backend.cpp
                 src/backend/posix/capture.cpp
                 src/backend/posix/monitor.cpp
-                src/backend/posix/passthrough.cpp)
+                src/backend/posix/passthrough.cpp
+                src/backend/posix/sink_capabilities.cpp)
         set(AC3FORGE_AUDIO_BACKEND posix)
         message(STATUS
             "Neither ALSA nor PipeWire headers were found; building without live capture, "
@@ -289,7 +302,8 @@ if(APPLE)
             src/backend/macos/audio_backend.cpp
             src/backend/macos/capture.cpp
             src/backend/macos/passthrough.cpp
-            src/backend/macos/monitor.cpp)
+            src/backend/macos/monitor.cpp
+            src/backend/macos/sink_capabilities.cpp)
 
     # CoreAudio: the Audio HAL itself. CoreFoundation: CFStringRef, used
     # throughout coreaudio_support.hpp for every device's persistent UID and
@@ -325,7 +339,8 @@ if(ANDROID)
             src/backend/android/audio_backend.cpp
             src/backend/android/capture.cpp
             src/backend/android/passthrough.cpp
-            src/backend/android/monitor.cpp)
+            src/backend/android/monitor.cpp
+            src/backend/android/sink_capabilities.cpp)
 
     # aaudio: monitor.cpp's native playback API. log: android/log.h, used
     # throughout the backend for diagnostics visible in `adb logcat`.
