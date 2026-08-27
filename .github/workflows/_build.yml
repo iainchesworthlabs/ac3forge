@@ -1891,27 +1891,41 @@ jobs:
       # need shared filesystem visibility for, so it works regardless of
       # whether the two sides' path namespaces line up at all.
       #
-      # libasound2 is installed in the TARGET container deliberately, not
-      # bundled into the AppImage - this is the same boundary the existing
-      # .deb/.rpm already draw, not a new one invented for this job.
-      # cmake/Packaging.cmake sets CPACK_DEBIAN_PACKAGE_SHLIBDEPS/
-      # CPACK_RPM_PACKAGE_AUTOREQPROV ON, which declares libasound2 as a
-      # runtime `Depends:` entry rather than bundling it - because ALSA is
-      # part of the base multimedia stack on effectively every real desktop
-      # Linux install, unlike Qt6/qml6-module-*, which is exactly the piece
+      # A handful of runtime libraries are installed in the TARGET container
+      # deliberately, not bundled into the AppImage - this is the same
+      # boundary the existing .deb/.rpm already draw, not a new one invented
+      # for this job. cmake/Packaging.cmake sets
+      # CPACK_DEBIAN_PACKAGE_SHLIBDEPS/CPACK_RPM_PACKAGE_AUTOREQPROV ON,
+      # which declares every one of these as a runtime `Depends:` entry
+      # rather than bundling it - because ALSA and the X11/GL graphics stack
+      # are both part of the base desktop Linux install on effectively every
+      # real machine, unlike Qt6/qml6-module-*, which is exactly the piece
       # this job exists to stop depending on the host for (see this job's
       # own header comment and docs/platforms/linux.md's AppImage section).
-      # It would also be the wrong fix even if it "worked": ALSA has its own
-      # plugin/config ecosystem tied to the HOST (`/usr/lib/*/alsa-lib/`,
-      # `/etc/asound.conf`), so bundling just libasound.so.2 without it risks
-      # a worse failure mode than not bundling at all - a library that loads
-      # but cannot enumerate a real device. That is also exactly backwards
-      # from Decision 1's own reasoning for AppImage over Flatpak: the point
-      # was ALSA/PipeWire access working like a normally installed binary,
-      # not ac3gui carrying its own private ALSA. debian:12-slim starting
-      # with neither Qt nor ALSA and only gaining the latter here is
-      # therefore the accurate simulation of a real desktop, not a
-      # convenient shortcut.
+      # Bundling them instead would also risk a worse failure than not
+      # bundling at all: ALSA's plugin/config ecosystem and the GL driver
+      # stack are both tied to the HOST (`/usr/lib/*/alsa-lib/`,
+      # `/etc/asound.conf`, Mesa's DRI drivers), so a bundled `.so` with none
+      # of that around it could load and then simply fail to find a real
+      # device/renderer - backwards from Decision 1's own reasoning for
+      # AppImage over Flatpak in the first place (ALSA/PipeWire access
+      # working like a normally installed binary, not a private bundled
+      # copy).
+      #
+      # The list itself is not a guess: linuxdeploy-plugin-qt bundles Qt's
+      # OWN libraries and QML plugins into the AppImage, but never the
+      # underlying system X11/GL/input stack those plugins load at runtime -
+      # confirmed for real (libGLX.so.0 missing, right after libasound.so.2
+      # was fixed) rather than assumed up front. Rather than chase each
+      # missing library one CI round-trip at a time, this is the full
+      # runtime dependency closure of Debian 12's own libqt6gui6 +
+      # libqt6quick6 + libqt6qml6 + libqt6dbus6 packages (`apt-cache
+      # depends`, checked locally against a real debian:12-slim container),
+      # minus Qt's own libraries (bundled by linuxdeploy-plugin-qt already)
+      # and the handful of base-OS libraries (libc6, libstdc++6, zlib1g,
+      # ...) any Debian install already has - i.e. exactly what Debian's own
+      # Qt packaging maintainers already determined a Qt6/QtQuick GUI app
+      # needs on a bare system, not this job's own guess at it.
       - name: Smoke test on a distro that never had Qt installed
         shell: bash
         run: |
@@ -1921,13 +1935,28 @@ jobs:
           echo "pwd: $PWD"
           ls -la "$appimage" fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
 
+          runtime_deps="libasound2 fontconfig libdrm2 libegl1 libfontconfig1 libfreetype6 \
+            libglib2.0-0 libglx0 libharfbuzz0b libice6 libinput10 libjpeg62-turbo libmd4c0 \
+            libmtdev1 libopengl0 libpng16-16 libsm6 libts0 libudev1 libx11-6 libx11-xcb1 \
+            libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-render0 libxcb-shape0 libxcb-shm0 libxcb-sync1 \
+            libxcb-xfixes0 libxcb-xkb1 libxcb1 libxkbcommon-x11-0 libxkbcommon0 libdbus-1-3 \
+            libgl1 libglx-mesa0"
+
           cid="$(docker create -e QT_QPA_PLATFORM=offscreen debian:12-slim \
-            sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends libasound2 \
+            sh -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends $runtime_deps \
               && exec /ac3gui.AppImage --appimage-extract-and-run --smoke \
-                 /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png')"
+                 /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png")"
           docker cp "$appimage" "${cid}:/ac3gui.AppImage"
           docker cp fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav "${cid}:/roundtrip-stereo.wav"
-          docker start --attach "$cid"
+          # `|| true`: `docker start --attach` propagates the CONTAINER's own
+          # exit code as its own (confirmed locally - a nonzero exit here
+          # otherwise trips `set -e` immediately, before the exit-code check
+          # and `docker rm -f` cleanup below ever run, silently leaking the
+          # stopped container and skipping the ::error:: message a real
+          # failure should get). The real signal is `docker inspect` right
+          # after, not this command's own exit status.
+          docker start --attach "$cid" || true
           status="$(docker inspect "$cid" --format='{{.State.ExitCode}}')"
           docker rm -f "$cid" >/dev/null
           echo "container exit status: $status"
@@ -1935,7 +1964,7 @@ jobs:
             echo "::error::AppImage smoke test failed on debian:12-slim (exit $status)"
             exit 1
           fi
-          echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained libasound2 as a normal runtime dependency"
+          echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
   # leg, so it is its own job rather than a `build` matrix entry - there is
