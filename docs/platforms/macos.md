@@ -97,6 +97,44 @@ Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pu
 output has no display EDID to read in the first place. `play` falls back to the live
 `enumerate_render_devices()` probe here, the same as before this roadmap item existed.
 
+## Loopback capture: not yet implemented
+
+`ac3cli devices` never lists a loopback entry here, and `ac3cli record`/`live --loopback` refuse
+outright rather than silently opening a microphone instead — unlike
+[Windows](windows.md) (any render endpoint reopened via WASAPI loopback) or
+[Linux/PipeWire](linux.md#audio-backend-alsa-or-pipewire) (a sink's monitor), the Audio HAL this
+backend otherwise uses has no "capture what a render device is playing" concept at all.
+
+The mechanism Apple provides instead is a Core Audio *audio tap*
+(`AudioHardwareCreateProcessTap` paired with a `CATapDescription`, either scoped to specific
+processes or to the whole system mix), shipped in macOS 14.2 (Sonoma). It is deliberately not
+built here yet, for reasons that are not about API unfamiliarity:
+
+- `CATapDescription` has no C entry point — unlike every other CoreAudio type this backend
+  touches, using it needs an Objective-C class, not a plain C++ translation unit.
+- Creating a tap triggers a real-time **user permission prompt** the first time a session asks for
+  one, under a distinct TCC category (`SystemAudioCaptureRequests`, separate from microphone
+  access) driven by an `NSAudioCaptureUsageDescription` Info.plist key. A denial has to be a clean,
+  explained refusal — the same discipline this backend already applies to `kLoopback` today, just
+  for a different reason once this exists.
+- That prompt is tied to the *requesting binary's own code-signing identity*, and every real-world
+  report surveyed while writing this page says it simply never fires for an unsigned binary.
+  `ac3gui`/`ac3cli` ship unsigned today (see ROADMAP.md's DR6 — blocked on certificates, not on
+  code) — so even a finished tap implementation could not obtain the permission it would ask for,
+  on this project's current release artifacts.
+- Most fundamentally: ROADMAP.md's DR9 records that no real Mac has ever run this backend at all.
+  A permission dialog, a denial path and a live tap's actual behaviour are exactly the kind of
+  thing that cannot be told apart from "written wrong" without a real user, a real machine and a
+  real signed-or-unsigned binary in front of it.
+
+What *is* implemented, and needs none of the above to be true: `ac3::coreaudio::system_audio_tap_api_available()`
+(`src/audio/src/backend/macos/coreaudio_names.hpp`) is a pure macOS-version gate — no permission
+requested, no device touched — that a future implementation should refuse on before ever
+constructing a `CATapDescription`. It is exercised for real on every macOS CI run
+(`tests/backend/macos/test_macos_support.cpp`), the same as the rest of this backend's device-free
+logic; only the tap itself, and the permission flow around it, waits on real hardware. See
+ROADMAP.md's UX7 entry for the full item.
+
 ## Building
 
 ```bash

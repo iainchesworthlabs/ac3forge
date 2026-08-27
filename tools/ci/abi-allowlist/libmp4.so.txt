@@ -1,9 +1,3 @@
-_ZSt12construct_atISt17basic_string_viewIcSt11char_traitsIcEEJRKS3_EQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S6_pispclsr3stdE7declvalIT0_EEEEEPS6_S9_DpOS8_
-_ZSt12construct_atISt17basic_string_viewIcSt11char_traitsIcEEJS3_EQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S4_pispclsr3stdE7declvalIT0_EEEEEPS4_S7_DpOS6_
-_ZSt12construct_atIjJjEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S0_pispclsr3stdE7declvalIT0_EEEEEPS0_S3_DpOS2_
-_ZSt12construct_atImJmEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S0_pispclsr3stdE7declvalIT0_EEEEEPS0_S3_DpOS2_
-bool std::operator==<char, std::char_traits<char> >(std::basic_string_view<char, std::char_traits<char> >, std::type_identity<std::basic_string_view<char, std::char_traits<char> > >::type)
-double const& std::max<double>(double const&, double const&)
 mp4::FragmentWriter::FragmentWriter(mp4::AudioTrack, mp4::FragmentOptions, std::vector<std::byte, std::allocator<std::byte> >)
 mp4::FragmentWriter::close_fragment()
 mp4::FragmentWriter::create(mp4::AudioTrack const&, mp4::FragmentOptions const&)
@@ -36,48 +30,3 @@ mp4::hls_codec_string(mp4::AudioTrack const&)
 mp4::mux(mp4::AudioTrack const&, std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, mp4::MuxOptions const&)
 mp4::mux(mp4::AudioTrack const&, std::span<std::vector<std::byte, std::allocator<std::byte> > const, 18446744073709551615ul>, mp4::MuxOptions const&)
 mp4::segment_info(mp4::MediaSegment const&)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > std::operator+<char, std::char_traits<char>, std::allocator<char> >(char const*, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > std::operator+<char, std::char_traits<char>, std::allocator<char> >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_construct(unsigned long, char)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace(unsigned long, unsigned long, char const*, unsigned long)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace_aux(unsigned long, unsigned long, unsigned long, char)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace_cold(char*, unsigned long, char const*, unsigned long, unsigned long)
-std::__size_to_integer(unsigned long)
-std::__sv_check(unsigned long, unsigned long, char const*)
-std::basic_string_view<char, std::char_traits<char> >* std::__relocate_a<std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::allocator<std::basic_string_view<char, std::char_traits<char> > > >(std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::allocator<std::basic_string_view<char, std::char_traits<char> > >&)
-std::basic_string_view<char, std::char_traits<char> >* std::__relocate_a_1<std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::allocator<std::basic_string_view<char, std::char_traits<char> > > >(std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::allocator<std::basic_string_view<char, std::char_traits<char> > >&)
-std::basic_string_view<char, std::char_traits<char> >* std::__uninitialized_copy_a<std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> > >(std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> >*, std::allocator<std::basic_string_view<char, std::char_traits<char> > >&)
-std::basic_string_view<char, std::char_traits<char> >* std::uninitialized_copy<std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> >*>(std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> > const*, std::basic_string_view<char, std::char_traits<char> >*)
-std::enable_if<std::__is_bitwise_relocatable<unsigned int>::value, unsigned int*>::type std::__relocate_a_1<unsigned int, unsigned int>(unsigned int*, unsigned int*, unsigned int*, std::allocator<unsigned int>&)
-std::enable_if<std::__is_bitwise_relocatable<unsigned long>::value, unsigned long*>::type std::__relocate_a_1<unsigned long, unsigned long>(unsigned long*, unsigned long*, unsigned long*, std::allocator<unsigned long>&)
-std::in_place
-std::isfinite(double)
-std::isfinite(float)
-std::isfinite(long double)
-std::isnan(double)
-std::isnan(float)
-std::nullopt
-std::ranges::_Cpo::data
-std::ranges::_Cpo::iter_move
-std::ranges::_Cpo::size
-std::ranges::distance
-std::signbit(double)
-std::span<std::basic_string_view<char, std::char_traits<char> > const, 18446744073709551615ul>::__v<3ul>
-std::span<unsigned int const, 18446744073709551615ul>::__v<0ul>
-unsigned int* std::__do_uninit_fill_n<unsigned int*, unsigned long, unsigned int>(unsigned int*, unsigned long, unsigned int const&)
-unsigned int* std::__relocate_a<unsigned int*, unsigned int*, std::allocator<unsigned int> >(unsigned int*, unsigned int*, unsigned int*, std::allocator<unsigned int>&)
-unsigned int* std::__uninitialized_default_n<unsigned int*, unsigned long>(unsigned int*, unsigned long)
-unsigned int* std::__uninitialized_default_n_a<unsigned int*, unsigned long, unsigned int>(unsigned int*, unsigned long, std::allocator<unsigned int>&)
-unsigned int* std::__uninitialized_fill_n_a<unsigned int*, unsigned long, unsigned int, unsigned int>(unsigned int*, unsigned long, unsigned int const&, std::allocator<unsigned int>&)
-unsigned int* std::uninitialized_fill_n<unsigned int*, unsigned long, unsigned int>(unsigned int*, unsigned long, unsigned int const&)
-unsigned long const& std::max<unsigned long>(unsigned long const&, unsigned long const&)
-unsigned long const& std::min<unsigned long>(unsigned long const&, unsigned long const&)
-unsigned long* std::__relocate_a<unsigned long*, unsigned long*, std::allocator<unsigned long> >(unsigned long*, unsigned long*, unsigned long*, std::allocator<unsigned long>&)
-void std::_Construct<unsigned int, unsigned int const&>(unsigned int*, unsigned int const&)
-void std::_Construct<unsigned int>(unsigned int*)
-void std::_Destroy<std::basic_string_view<char, std::char_traits<char> >*>(std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*)
-void std::_Destroy<unsigned int*>(unsigned int*, unsigned int*)
-void std::_Destroy<unsigned long*>(unsigned long*, unsigned long*)
-void std::__fill_a1<unsigned int*, unsigned int>(unsigned int*, unsigned int*, unsigned int const&)
-void std::__relocate_object_a<std::basic_string_view<char, std::char_traits<char> >, std::basic_string_view<char, std::char_traits<char> >, std::allocator<std::basic_string_view<char, std::char_traits<char> > > >(std::basic_string_view<char, std::char_traits<char> >*, std::basic_string_view<char, std::char_traits<char> >*, std::allocator<std::basic_string_view<char, std::char_traits<char> > >&)
-void std::destroy_at<std::basic_string_view<char, std::char_traits<char> > >(std::basic_string_view<char, std::char_traits<char> >*)
