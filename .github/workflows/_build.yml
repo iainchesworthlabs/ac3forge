@@ -13,21 +13,25 @@
 # ---------------------------------------------------------------------------
 # On `experimental: true`
 # ---------------------------------------------------------------------------
-# Every leg but two is proven green now (exact test counts per leg drift as
+# Every leg but one is proven green now (exact test counts per leg drift as
 # features land - see ci.yml's own status comment rather than trusting a
 # number repeated here; the sanitizer leg also runs the codec-matrix script's
-# full layout/tool/atmos sweep) and required. macos-llvm was promoted first:
-# its first-ever real run surfaced a genuine, fully-understood issue
-# (Homebrew's unpinned LLVM formula flagging Catch2's __COUNTER__ usage under
-# -Wc2y-extensions - see cmake/CompilerWarnings.cmake), fixed in one commit,
-# followed by two consecutive clean runs including the gold-reference gate
-# (tools/checks/verify_gold_reference.sh) at real SNR numbers (60-80s dB) -
-# not just "it compiled." See the table in ci.yml. The two current
-# experimental legs, both DR8, are on runner labels nothing here had used
-# before authoring time and stay continue-on-error until each has shown the
-# same thing macos-llvm did - a real build+test+gold-reference pass, not just
-# a green checkmark on the first attempt: macos-llvm-x64 (macos-15-intel) and
-# windows-msvc-arm64 (windows-11-arm).
+# full layout/tool/atmos sweep) and required. macos-llvm-x64 (DR8) is the
+# latest promoted: brand new, on a runner label (macos-15-intel) nothing here
+# had used before, it went three consecutive real, hosted-runner runs (two
+# release dry runs plus its own required PR CI) at real gold-reference SNR
+# numbers (67.80/67.82/67.76 dB, matching the x86 baseline every other
+# non-arm64 leg reports) before this line came off - not just "it compiled."
+# macos-llvm itself was promoted the same way earlier: its first-ever real
+# run surfaced a genuine, fully-understood issue (Homebrew's unpinned LLVM
+# formula flagging Catch2's __COUNTER__ usage under -Wc2y-extensions - see
+# cmake/CompilerWarnings.cmake), fixed in one commit, followed by two
+# consecutive clean runs including the gold-reference gate
+# (tools/checks/verify_gold_reference.sh). windows-msvc-arm64 (a separate
+# DR8 half, Windows ARM64, unrelated to this file's own macOS work) is the
+# one leg still experimental, on its own runner label (windows-11-arm)
+# nothing here had used before it either - same bar, not yet met. See the
+# table in ci.yml.
 #
 # Experimental legs run with continue-on-error, which reports their real
 # status without making the default branch red on every push. As each one is
@@ -76,7 +80,7 @@ on:
         default: false
     secrets:
       ATMOS_SIGNING_KEY:
-        description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the Shield app signs Atmos objects at runtime - on any build, debug or release. Unset -> no asset is written and the app streams the safe unsigned bed51. A signed APK contains this key and must never be distributed."
+        description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the DEBUG APK - which is a never-uploaded smoke test - signs Atmos objects at runtime. The asset is deleted again before any release step, and the staged release APK is asserted key-free, so a published .apk is always the safe unsigned bed51 app. Unset -> no asset is written at all. An APK that does carry the asset IS the key and must never be distributed."
         required: false
       ANDROID_KEYSTORE_BASE64:
         description: "Release keystore, base64-encoded. Passed by release.yml only; unset on ci.yml's call, which never sets do_package for a release APK anyway. See build-android's own comment for why the app still builds fine without it."
@@ -513,11 +517,16 @@ jobs:
           # build, not a cross-compile or Rosetta emulation. Same toolchain
           # file, same Homebrew install steps, same reasoning as the arm64 leg
           # above throughout this job; only the preset/triplet (x64-macos-llvm)
-          # and runner label differ. Experimental until proven green for real
-          # on this brand-new runner label, same promotion process as
-          # macos-llvm and build-android before it (see this file's own
-          # header) - remove this line once two consecutive clean runs
-          # (including the gold-reference gate) confirm it.
+          # and runner label differ.
+          #
+          # No longer experimental: three consecutive real, hosted-runner runs
+          # went green on this brand-new macos-15-intel label before this line
+          # came off - the v0.0.0-alpha.1 and v0.0.0-alpha.2 release dry runs
+          # and this feature branch's own required PR CI - each with a real
+          # gold-reference pass (67.80/67.82/67.76 dB, matching the x86
+          # baseline every other non-arm64 leg reports), not just "it
+          # compiled." Same promotion process macos-llvm and build-android
+          # went through before it - see this file's own header.
           - name: "macOS LLVM x64 (Homebrew, Intel)"
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
@@ -526,7 +535,6 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
-            experimental: true
 
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
@@ -1831,6 +1839,24 @@ jobs:
             -no-boot-anim -camera-back none
           script: ./gradlew :app:connectedDebugAndroidTest --console=plain
 
+      # SECURITY: the debug build above is the ONLY thing the key asset exists
+      # for - a smoke test that the on-device signing path loads and runs, on a
+      # never-uploaded APK. The release APK built below IS published, and an APK
+      # carrying this asset is key material (.gitignore, shield_signing_hook.hpp,
+      # docs/releasing.md and this workflow's own ATMOS_SIGNING_KEY input
+      # description all say so). The materialize step above is gated on the
+      # secret being set rather than on do_package, so without this removal it
+      # also lands in the workspace assembleRelease packages from. Deleting it
+      # here, before any release step, is what makes the published APK the safe
+      # unsigned bed51 app. Unconditional on purpose - nothing after this point
+      # legitimately wants the key.
+      - name: Remove the object-signing key before any release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f apps/android/app/src/main/assets/signing.key
+          echo "Object-signing key asset removed - the release APK will be unsigned bed51."
+
       # Only meaningful for a release build with a keystore actually
       # provisioned - release.yml's call passes these four secrets, ci.yml's
       # never does, so this no-ops there the same way GPG signing is off by
@@ -1887,6 +1913,29 @@ jobs:
           cp apps/android/app/build/outputs/apk/release/app-release.apk \
              "packages/ac3forge-shield-${version}.apk"
           ( cd packages && sha512sum "ac3forge-shield-${version}.apk" > "ac3forge-shield-${version}.apk.sha512" )
+
+      # The removal step above is a precaution; THIS is the guard. It inspects
+      # the actual bytes about to be published rather than trusting that the
+      # step ordering above stayed correct, so any future reordering, a Gradle
+      # asset-merge change, or a second materialize step fails the release
+      # instead of shipping the key again. Greps the whole entry list, not just
+      # assets/, since a merged asset can land under a different prefix.
+      - name: Assert the staged APK carries no key material
+        if: inputs.do_package
+        shell: bash
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          version="${VERSION_TAG_INPUT:-0.0.0-dev}"
+          apk="packages/ac3forge-shield-${version}.apk"
+          entries="$(unzip -Z1 "$apk")"
+          if grep -Eq '(^|/)signing\.key$' <<<"$entries"; then
+            echo "::error::$apk contains a signing.key entry - this APK is key material and must not be published."
+            grep -E '(^|/)signing\.key$' <<<"$entries"
+            exit 1
+          fi
+          echo "OK: no signing.key entry in $apk ($(wc -l <<<"$entries") entries scanned)."
 
       - name: Upload package artifacts
         if: inputs.do_package
