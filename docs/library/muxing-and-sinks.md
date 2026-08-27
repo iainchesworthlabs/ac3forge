@@ -630,6 +630,30 @@ from this sink specifically — the one receiver-locking check that has been don
 code path (bursts played as a PCM16 WAV through a passthrough output), not `PassthroughSink`
 itself, and that check has only been tried for AC-3, not E-AC-3.
 
+### `ac3::audio::sink_capabilities` — reading what a sink says it accepts
+
+`ac3/audio/sink_capabilities.hpp` (roadmap UX9). `read_sink_capabilities(device_id)` reads a
+render endpoint's own advertised capabilities — CEA-861 Short Audio Descriptors, the part of
+EDID (over HDMI) or ELD (ALSA's own EDID-Like Data, which carries the same SADs) that says which
+codecs, how many channels and which sample rates a sink accepts — rather than
+`enumerate_render_devices()`'s own live-probe answer (open the device and try). `ac3cli play`
+uses it, EDID first and the probe as the documented fallback, to decide whether a source format
+needs the automatic AC-3/PCM fallback described in
+[Commands → Following the sink](../cli/commands.md#following-the-sink).
+
+Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's own
+`/proc/asound/<card>/eld#<dev>.<port>` text interface (already decoded from the raw CEA-861
+bytes, so there is no byte layout for this project to get wrong — only the driver's own field
+names to read). **Not verified against real HDMI/ELD hardware** — the development environment
+this shipped from has no Linux box with a bitstream-capable receiver attached; see
+[Linux](../platforms/linux.md) for the honest status. Every other backend (Windows, macOS,
+Android, PipeWire, and Linux without ALSA) reports `kNoBackend` rather than guessing: none has a
+documented user-mode API for reading a sink's raw SADs (Windows' WASAPI and macOS' CoreAudio
+both expose negotiated-format questions, the same kind `enumerate_render_devices()` already
+answers, not the sink's own raw descriptor; PipeWire's node properties might carry enough to
+reach the same ALSA ELD file, but no confirmed, version-stable property name was found to code
+against without a live daemon to verify it on).
+
 ### `ac3::audio::MonitorSink` — shared-mode monitor playback
 
 `ac3/audio/monitor.hpp`. The non-exclusive counterpart to `PassthroughSink`: shared-mode PCM

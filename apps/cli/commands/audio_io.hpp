@@ -29,6 +29,17 @@ int run_outputs();
 // bytes back until enough have accumulated to fill a burst (see
 // Eac3BurstPacker's own comment on why - Annex E frames can cover as few as
 // one of the six blocks a burst period spans).
-int run_play(std::string_view in_path, int device_index);
+//
+// Roadmap UX9: when a specific device_index is named, this first asks what
+// it actually accepts - ac3::audio::read_sink_capabilities' EDID read where
+// a backend has one, enumerate_render_devices' own live probe otherwise (see
+// that header's comment for why the two are kept apart). A source format the
+// sink rejects gets an automatic fallback rather than a refusal: E-AC-3 on an
+// AC-3-only sink is transcoded to AC-3 first (roadmap DC9's transcode, feeding
+// this same passthrough path); a sink that bitstreams neither format falls
+// back to decoded PCM (run_monitor). meta.follow_sink (follow=off) restores
+// the plain refusal 'play' always gave before this roadmap item, the same
+// on-by-default shape 'live's downmix_leg (downmix=off) already uses.
+int run_play(std::string_view in_path, int device_index, const ac3cli::Options& meta);
 
 }  // namespace ac3cli::commands
