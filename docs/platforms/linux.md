@@ -251,6 +251,16 @@ own header) reaches GCC 16 on 22.04's older archive with no changes needed; Qt c
 `jurplel/install-qt-action` rather than `apt`, decoupling the Qt version entirely from the base
 image's age, the same way the Windows CI leg already does.
 
+That glibc floor is not the whole portability story, though: GCC 16 also ships a `libstdc++.so.6`
+newer than most distros' own, and `linuxdeploy` normally treats `libstdc++`/`libgcc_s` as safe to
+assume present the same way it treats glibc itself (they're on the standard AppImage excludelist
+its own tooling generates from) — a reasonable default for the AppImage ecosystem's usual case of
+building with an *old* toolchain for backwards compatibility, but wrong here, where the toolchain
+is deliberately the newest one this project pins. `linux-appimage` force-bundles both with
+`linuxdeploy --library` (confirmed necessary against a real run's own `usr/lib/`, not assumed) so
+the AppImage doesn't quietly trade the glibc floor above for a `libstdc++`/`GLIBCXX` one just as
+narrow.
+
 ### How this is verified
 
 Configure/build/package-verified in CI (the `linux-appimage` job in `.github/workflows/_build.yml`,

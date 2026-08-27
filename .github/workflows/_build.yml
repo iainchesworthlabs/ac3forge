@@ -1872,6 +1872,32 @@ jobs:
       # their own child AppImages, and only the environment variable form is
       # guaranteed to reach those child processes too - this runner has no
       # FUSE, same as every other container leg in this file.
+      #
+      # --library forces libstdc++.so.6/libgcc_s.so.1 into the AppDir -
+      # confirmed necessary, not a guess: a real run's smoke test failed
+      # with "libstdc++.so.6: version GLIBCXX_3.4.35 not found", and
+      # inspecting a real built AppImage's usr/lib/ directly showed neither
+      # file present at all. Root cause: both are on the standard AppImage
+      # excludelist linuxdeploy generates its own copy from
+      # (probonopd/AppImages' `excludelist`, referenced from linuxdeploy's
+      # own src/core/generate-excludelist.sh) - normally a safe assumption,
+      # since AppImages are conventionally built with an OLD toolchain
+      # specifically so libstdc++ stays backwards-compatible with whatever
+      # the target has, but this job does the opposite on purpose (GCC 16,
+      # this project's own pin, on a deliberately OLD ubuntu:22.04 base) -
+      # so the assumption the excludelist is built on doesn't hold here.
+      # -l/--library (confirmed against linuxdeploy's own pinned source,
+      # src/main.cpp) calls AppDir::forceDeployLibrary(), which bypasses the
+      # excludelist check entirely - the documented mechanism for exactly
+      # this case, not a workaround. The paths are GCC 16's own runtime
+      # libstdc++6 (installed by "Install GCC 16" above, which upgrades
+      # this exact multiarch path in place) - confirmed for real: `strings`
+      # on this file lists GLIBCXX_3.4.35, the version the smoke test needed.
+      # No further RPATH-ordering fix needed on top of this: ac3gui's own
+      # RUNPATH is $ORIGIN/../lib (confirmed with readelf -d against a real
+      # built binary), which resolves relative to the AppImage's own
+      # usr/bin/ - not LD_LIBRARY_PATH, and not something the host's
+      # system libstdc++ can outrank once a copy is actually bundled here.
       - name: Build the AppImage
         shell: bash
         run: |
@@ -1879,11 +1905,21 @@ jobs:
           version="$(build/config-linux-gcc/bin/ac3cli --version | head -1 | awk '{print $NF}')"
           export VERSION="$version"
           export APPIMAGE_EXTRACT_AND_RUN=1
+          libstdcxx="/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+          libgcc_s="/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+          for f in "$libstdcxx" "$libgcc_s"; do
+            if [ ! -e "$f" ]; then
+              echo "::error::expected GCC 16's own $f - did the toolchain install/layout change?"
+              exit 1
+            fi
+          done
           linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --executable AppDir/usr/bin/ac3gui \
             --desktop-file AppDir/usr/share/applications/ac3gui.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ac3gui.png \
+            --library "$libstdcxx" \
+            --library "$libgcc_s" \
             --plugin qt \
             --output appimage
           ls -la ac3gui-*.AppImage
