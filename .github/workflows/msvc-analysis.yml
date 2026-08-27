@@ -29,6 +29,18 @@ on:
       - "requirements/requirements-docs.in"
       - "requirements/requirements-docs.txt"
       - ".github/workflows/docs.yml"
+  # main's merge queue tests each queue entry on a temporary
+  # gh-readonly-queue/... ref before it merges (see ci.yml's own
+  # merge_group comment) - GitHub only runs workflows that explicitly opt
+  # into this event on that ref. Without it, PREfast never analyzes the
+  # queue's synthetic commit, so the code-scanning-gate-main ruleset (which
+  # requires a PREfast result for whatever commit reaches main) can never
+  # be satisfied for any PR going through the queue - confirmed the hard
+  # way: every queued PR sitting indefinitely on "Code scanning is waiting
+  # for results from PREfast," never resolving, regardless of how green
+  # everything else was.
+  merge_group:
+    branches: [ main ]
   schedule:
     # Weekly, offset from the CodeQL cron (Mon 03:17) to avoid runner
     # contention at the same minute.
