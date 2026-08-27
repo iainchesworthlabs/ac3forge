@@ -47,6 +47,7 @@ from ._ac3forge import (
     split_access_units,
     split_frames,
     stream_bsid,
+    verify,
 )
 
 try:
@@ -100,4 +101,5 @@ __all__ = [
     "split_access_units",
     "split_frames",
     "stream_bsid",
+    "verify",
 ]
