@@ -16,6 +16,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "bitalloc_internal.hpp"
 
 namespace ac3 {
 
@@ -165,9 +166,15 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
     return bndpsd;
 }
 
-void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sample_rate,
-                            const BitAllocCodes& codes, int csnroffst, int fsnroffst,
-                            std::span<std::uint8_t> bap, const BitAllocRegion& region) {
+// Shared by the exported ac3::compute_bit_allocation and
+// ac3::internal::compute_bit_allocation_traced below - the same routine
+// either way, `mask_out` null on the public path (see bitalloc_internal.hpp
+// for why that one is not just an added parameter on the public signature).
+namespace {
+void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate sample_rate,
+                                 const BitAllocCodes& codes, int csnroffst, int fsnroffst,
+                                 std::span<std::uint8_t> bap, const BitAllocRegion& region,
+                                 std::array<int, 50>* mask_out) {
     AC3_ZONE_SCOPED_N("compute_bit_allocation");
     assert(exps.size() == bap.size());
     // A region outside 1..kMaxMantissas allocates nothing, and says so here
@@ -203,6 +210,9 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
     if (exps.empty() || exps.size() > kMaxMantissas || region.start < 0 ||
         static_cast<std::size_t>(region.start) >= exps.size()) {
         std::ranges::fill(bap, std::uint8_t{0});
+        if (mask_out != nullptr) {
+            mask_out->fill(0);
+        }
         return;
     }
     const int end = static_cast<int>(exps.size());
@@ -214,6 +224,9 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
     // all channels, so the caller supplies it.
     if (region.snr_all_zero) {
         std::ranges::fill(bap, std::uint8_t{0});
+        if (mask_out != nullptr) {
+            mask_out->fill(0);
+        }
         return;
     }
 
@@ -281,8 +294,8 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
             fastleak = bndpsd[static_cast<std::size_t>(bin)] - fgain;
             slowleak = bndpsd[static_cast<std::size_t>(bin)] - sgain;
             excite[static_cast<std::size_t>(bin)] = fastleak - lowcomp;
-            if (not_lfe_last(bin) &&
-                bndpsd[static_cast<std::size_t>(bin)] <= bndpsd[static_cast<std::size_t>(bin) + 1]) {
+            if (not_lfe_last(bin) && bndpsd[static_cast<std::size_t>(bin)] <=
+                                         bndpsd[static_cast<std::size_t>(bin) + 1]) {
                 begin = bin + 1;
                 break;
             }
@@ -320,9 +333,8 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
             excite[static_cast<std::size_t>(bin)] +=
                 (dbknee - bndpsd[static_cast<std::size_t>(bin)]) >> 2;
         }
-        mask[static_cast<std::size_t>(bin)] =
-            std::max<int>(excite[static_cast<std::size_t>(bin)],
-                          hth[static_cast<std::size_t>(bin)]);
+        mask[static_cast<std::size_t>(bin)] = std::max<int>(excite[static_cast<std::size_t>(bin)],
+                                                            hth[static_cast<std::size_t>(bin)]);
     }
 
     // §7.2.2.6: delta bit allocation. mask[]/psd[] units are 128 per exponent
@@ -365,6 +377,13 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
         }
     }
 
+    // The masking curve's final state - nothing below reads or writes `mask`
+    // again, only `psd` against it - so this is the value roadmap AP12's
+    // trace export wants, not a snapshot of a routine still in progress.
+    if (mask_out != nullptr) {
+        *mask_out = mask;
+    }
+
     // §7.2.2.7: bap computation. The snroffset/floor/truncation order is
     // normative: subtract snroffset, subtract floor, clamp at zero, truncate
     // with & 0x1fe0, re-add floor.
@@ -373,9 +392,9 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
         int j = kMaskTab[static_cast<std::size_t>(kStart)];
         int lastbin = 0;
         do {
-            lastbin = std::min<int>(kBandStart[static_cast<std::size_t>(j)] +
-                                        kBandSize[static_cast<std::size_t>(j)],
-                                    end);
+            lastbin = std::min<int>(
+                kBandStart[static_cast<std::size_t>(j)] + kBandSize[static_cast<std::size_t>(j)],
+                end);
             int m = mask[static_cast<std::size_t>(j)];
             m -= snroffset;
             m -= floor;
@@ -388,14 +407,21 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                 int address = (psd[static_cast<std::size_t>(i)] - m) >> 5;
                 address = std::min(63, std::max(0, address));
                 bap[static_cast<std::size_t>(i)] =
-                    region.high_efficiency
-                        ? kHeBapTab[static_cast<std::size_t>(address)]
-                        : kBapTab[static_cast<std::size_t>(address)];
+                    region.high_efficiency ? kHeBapTab[static_cast<std::size_t>(address)]
+                                           : kBapTab[static_cast<std::size_t>(address)];
                 ++i;
             }
             ++j;
         } while (end > lastbin);
     }
+}
+}  // namespace
+
+void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sample_rate,
+                            const BitAllocCodes& codes, int csnroffst, int fsnroffst,
+                            std::span<std::uint8_t> bap, const BitAllocRegion& region) {
+    compute_bit_allocation_impl(exps, sample_rate, codes, csnroffst, fsnroffst, bap, region,
+                                nullptr);
 }
 
 DeltaSegments choose_delta_segments(std::span<const double> coefficients,
@@ -509,3 +535,14 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
 }
 
 }  // namespace ac3
+
+namespace ac3::internal {
+
+void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRate sample_rate,
+                                   const BitAllocCodes& codes, int csnroffst, int fsnroffst,
+                                   std::span<std::uint8_t> bap, const BitAllocRegion& region,
+                                   std::array<int, 50>& mask) {
+    compute_bit_allocation_impl(exps, sample_rate, codes, csnroffst, fsnroffst, bap, region, &mask);
+}
+
+}  // namespace ac3::internal
