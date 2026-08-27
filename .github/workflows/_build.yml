@@ -1910,6 +1910,24 @@ jobs:
       # built binary), which resolves relative to the AppImage's own
       # usr/bin/ - not LD_LIBRARY_PATH, and not something the host's
       # system libstdc++ can outrank once a copy is actually bundled here.
+      #
+      # EXTRA_PLATFORM_PLUGINS=offscreen - confirmed necessary, not a guess,
+      # the same way as the two library fixes above: a real run failed with
+      # `qt.qpa.plugin: Could not find the Qt platform plugin "offscreen"`
+      # ("Available platform plugins are: xcb."), and extracting a real
+      # built AppImage showed usr/plugins/platforms/ containing only
+      # libqxcb.so - genuinely never bundled, not an AppRun/hook/env-var
+      # problem at runtime (checked that angle too: the AppDir's qt.conf is
+      # correctly wired, Prefix=../ Plugins=plugins, and
+      # apprun-hooks/linuxdeploy-plugin-qt-hook.sh only ever sets
+      # QT_QPA_PLATFORMTHEME, never touched plugin paths in the first
+      # place - so there was nothing broken to fix there). linuxdeploy-
+      # plugin-qt only bundles libqxcb.so by default; EXTRA_PLATFORM_PLUGINS
+      # (its own documented env var, README.md at the pinned tag) is what
+      # tells it to deploy additional platform plugins - needed here
+      # because nothing at BUILD time otherwise hints that offscreen is the
+      # one this AppImage actually gets run with (QT_QPA_PLATFORM=offscreen
+      # is only ever set later, inside the smoke-test container).
       - name: Build the AppImage
         shell: bash
         run: |
@@ -1917,6 +1935,7 @@ jobs:
           version="$(build/config-linux-gcc/bin/ac3cli --version | head -1 | awk '{print $NF}')"
           export VERSION="$version"
           export APPIMAGE_EXTRACT_AND_RUN=1
+          export EXTRA_PLATFORM_PLUGINS=offscreen
           libstdcxx="/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
           libgcc_s="/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
           for f in "$libstdcxx" "$libgcc_s"; do
@@ -1934,6 +1953,10 @@ jobs:
             --library "$libgcc_s" \
             --plugin qt \
             --output appimage
+          if [ ! -e AppDir/usr/plugins/platforms/libqoffscreen.so ]; then
+            echo "::error::EXTRA_PLATFORM_PLUGINS=offscreen did not put libqoffscreen.so in the AppDir - the smoke test's QT_QPA_PLATFORM=offscreen would fail the same way this was fixed for"
+            exit 1
+          fi
           ls -la ac3gui-*.AppImage
 
       # cmake/Packaging.cmake's CPACK_PACKAGE_CHECKSUM gives every CPack
