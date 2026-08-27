@@ -47,9 +47,39 @@ permissions:
   contents: read
 
 jobs:
+  # Same self-hosted/GitHub-hosted fan-out ci.yml's own check-runner gets
+  # (see docs/ci-self-hosted-runners.md) - this job itself stays on
+  # GitHub-hosted (a single fast API call), but `resolve` below can land on
+  # self-hosted when one is idle. Only takes effect for a caller that grants
+  # `actions: read` on its own `uses:` job (a reusable workflow's jobs run
+  # with the intersection of what the caller and this file each declare, not
+  # this file's permissions alone) - a caller that doesn't grant it just gets
+  # a failed (and safely ignored, per decide-runner's own doc comment) API
+  # call and falls back to GitHub-hosted, same as today.
+  check-runner:
+    name: Check self-hosted runner availability
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.decide.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: decide
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Linux
+          hosted-json: '["ubuntu-latest"]'
+          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
   resolve:
     name: Resolve pinned toolchain versions
-    runs-on: ubuntu-latest
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     outputs:
       gcc_version: ${{ steps.read.outputs.gcc_version }}
       llvm_version: ${{ steps.read.outputs.llvm_version }}
