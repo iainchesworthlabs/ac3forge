@@ -49,6 +49,9 @@ jobs:
     uses: ./.github/workflows/_toolchain-versions.yml
     permissions:
       contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
   # Same self-hosted/GitHub-hosted fan-out _build.yml's own Windows legs get
   # (see docs/ci-self-hosted-runners.md), via the shared decide-runner
