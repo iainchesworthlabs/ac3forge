@@ -117,6 +117,10 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`record` and `live` reach parity with the GUI session**: any layout up to 7.1.4, either codec,
   `container=raw|mkv|ts|spdif|fmp4` written incrementally, a capture-silence watchdog, an object
   slot budget for `mode=atmos`, and a parallel 5.1 leg for an AC-3-only endpoint.
+- **`play` follows the sink**: it reads what a chosen receiver actually accepts (EDID short audio
+  descriptors on ALSA; a live probe elsewhere) and adapts instead of refusing — a source format the
+  sink can't bitstream is transcoded to AC-3 or decoded to PCM automatically, so the "no 5.1 PCM
+  over optical" case now takes one command instead of two. `follow=off` restores the old refusal.
 - **A GUI stream player** — the twin of `ac3cli monitor` — with transport, live meters, the
   soundfield view, and WAV/object export from the same decode pass. A finished run offers **QC
   this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).
@@ -127,7 +131,7 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
 
-**Library, C API and Python**
+**Library, C API, Python and Rust**
 
 - **A pimpl sweep across the exported surface**, so a private-state change is no longer an ABI
   break for anyone linking the shared libraries. [Library overview](docs/library/index.md) records
@@ -135,6 +139,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **An E-AC-3 encoder in the C API and in Python**, covering plain E-AC-3 and the wide
   dependent-substream layouts with the Annex E tools. See [C API](docs/library/c-api.md) and
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
+- **A first Rust binding over the C API**: `ac3forge-sys` (raw, `bindgen`-generated against the C
+  header at build time) plus a safe `ac3forge` wrapper covering AC-3 and E-AC-3 encode/decode. The
+  C API had never crossed a real FFI boundary before — building this found and fixed two real
+  header defects (a missing `ac3forge_object_placement_init()`, undocumented pointer lifetimes on
+  four decoded-audio accessors). See [Rust bindings](docs/library/rust-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
 - **pkg-config files** for every installed component (`ac3forge`, `ac3signing`, `matroska`,
@@ -144,6 +153,17 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   they embed. **A `capi` feature** for the vcpkg port and Conan recipe reaches `ac3::forge_c`
   through either package manager for the first time. See
   [Using ac3::forge](docs/library/index.md).
+- **Stream scanning in Python.** `ac3.scan()`/`ac3.read_frame_header()` read an elementary
+  stream's shape — channel layout, every programme, every access unit's byte range — without
+  decoding any audio, plus timing helpers (`ac3.access_unit_timing`, `stream_duration_seconds`,
+  and neighbours) for a muxer computing where to cut. See [Python API](docs/library/python-api.md)'s
+  "Scanning a stream".
+- **Research trace export, reachable from Python.** The encoder/decoder mirror trace — added for
+  the in-repo self-check — now fills in from an ordinary decode too, and
+  `ac3::verify::append_trace_csv`/`append_trace_json_lines` (`ac3.verify.trace_to_csv`/
+  `trace_to_json_lines` in Python) turn it into one tidy row per (frame, substream, block, stream,
+  kind, index, value): per-frame bap, exponent, the §7.2.2.5 masking curve and the composite SNR
+  offset, ready for `pandas.read_csv`/`read_json` and `.to_parquet()` from there.
 - **`FrameError` gained `describe()`**, matching every other error type. Python's `Ac3EncodeError`
   now carries a real message instead of just the failing enumerator's name.
 
@@ -168,6 +188,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   (no resolvable prebuilt Qt6 ARM64 kit yet) and experimental until proven green over real runs.
 - **An object-reconstruction quality trend**, and listening-test apparatus (no session has been
   run yet).
+- **The block-switch decision's cross-toolchain determinism is proven, not assumed.** The
+  transient detector that decides `blksw` — which reshapes MDCT type, coupling/AHT eligibility
+  and rematrix bands every block, on both encoders — is verified bit-identical across five
+  independent compiler/architecture builds, and its decision is now pinned by tests at all six
+  A/52 sample rates instead of just one.
 
 **Tooling and packaging**
 
@@ -209,6 +234,12 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - Internal: `std::format`/`std::print` replaced with {fmt} throughout, since the NDK's libc++ has
   no usable `<format>`; the WASM demo plays the library's own downmix rather than a hand-rolled
   one.
+- Internal: the macOS backend's loopback-capture gap is documented against Apple's real Core Audio
+  process/system tap API (`AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2 — the
+  in-tree comment previously cited 14.4) and now carries a pure, CI-verified OS-version capability
+  check (`ac3::coreaudio::system_audio_tap_api_available()`) a future implementation should refuse
+  on. Capture there is still input-only; the tap itself needs real Mac hardware to build and
+  verify. See [macOS](docs/platforms/macos.md#loopback-capture-not-yet-implemented).
 
 ### Fixed
 
@@ -282,6 +313,14 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   through this change, fixed with a linker `--exclude-libs` flag rather than shipped. Both the
   licence check and a vcpkg-feature/Conan-option/pkg-config completeness check are now part of
   `tools/checks/check_packaging_versions.sh`.
+- **The Windows installer stopped silently degrading to a ZIP-only package.** `cpack`'s NSIS
+  generator dropped itself whenever `makensis` was missing with no diagnostic anywhere, so the
+  release shipped without an installer for several releases before anyone noticed. CI now
+  installs `makensis` and fails the build if a real `.exe` doesn't come out of `cpack`; a local
+  build without NSIS installed still falls back to ZIP-only, but now says so. The
+  packaging-consistency check also now catches a winget manifest whose `InstallerType` doesn't
+  match its own installer URL or nested-installer fields — the same class of drift a manual
+  copy-forward release bump can introduce.
 
 ## [0.9.0-beta.1] - 2026-08-22
 

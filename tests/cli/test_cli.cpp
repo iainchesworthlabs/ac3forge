@@ -3246,6 +3246,11 @@ TEST_CASE("record/live take options parse or are refused", "[cli][record][live]"
         CHECK(parses("downmix=off") == 0);
         CHECK(parses("downmix=maybe") == 1);
     }
+    SECTION("follow= is on or off") {
+        CHECK(parses("follow=on") == 0);
+        CHECK(parses("follow=off") == 0);
+        CHECK(parses("follow=maybe") == 1);
+    }
 }
 
 TEST_CASE("atmos-encode assembles real objects behind src=/map=",
