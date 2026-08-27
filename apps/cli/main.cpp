@@ -392,11 +392,14 @@ constexpr std::array<Command, 40> kCommands{{
      Needs::kPassthrough,
      [](const Args&) { return run_outputs(); }},
     {"play", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
-     "exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3", topic::kNone,
+     "exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source "
+     "format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off "
+     "for the plain refusal)",
+     topic::kPlay,
      Needs::kPassthrough,
      // -1, not 0: run_play reads a negative index as "the default endpoint",
      // where 0 names the first one 'outputs' lists and demands passthrough of it.
-     [](const Args& x) { return run_play(x.str(1), x.i32(2, -1)); }},
+     [](const Args& x) { return run_play(x.str(1), x.i32(2, -1), x.meta); }},
     {"monitor", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
      "decode and play on an ordinary (non-bitstreamed) output", topic::kDecode | topic::kObjects,
      Needs::kMonitor,
