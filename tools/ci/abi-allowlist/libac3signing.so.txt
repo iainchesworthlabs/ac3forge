@@ -1,5 +1,3 @@
-_ZSt12construct_atIhJhEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S0_pispclsr3stdE7declvalIT0_EEEEEPS0_S3_DpOS2_
-__gnu_cxx::__enable_if<__is_byte<unsigned char>::__value&&(__are_same<unsigned char, unsigned char>::__value||__memcpyable_integer<unsigned char>::__width), void>::__type std::__fill_a1<unsigned char, unsigned char>(unsigned char*, unsigned char*, unsigned char const&)
 ac3::signing::SigningKey::SigningKey(std::vector<std::byte, std::allocator<std::byte> >)
 ac3::signing::SigningKey::~SigningKey()
 ac3::signing::decode_signing_key(std::span<std::byte const, 18446744073709551615ul>)
@@ -11,35 +9,3 @@ ac3::signing::sign_atmos_frame(std::span<std::byte, 18446744073709551615ul>, ac3
 ac3::signing::sign_atmos_stream(std::span<std::byte, 18446744073709551615ul>, ac3::signing::SigningKey const&)
 ac3::signing::verify_atmos_frame(std::span<std::byte const, 18446744073709551615ul>, ac3::signing::SigningKey const&)
 ac3::signing::verify_atmos_stream(std::span<std::byte const, 18446744073709551615ul>, ac3::signing::SigningKey const&)
-bool std::operator==<char, std::char_traits<char> >(std::istreambuf_iterator<char, std::char_traits<char> > const&, std::istreambuf_iterator<char, std::char_traits<char> > const&)
-bool std::operator==<unsigned char*>(std::move_iterator<unsigned char*> const&, std::move_iterator<unsigned char*> const&)
-int std::__bit_width<unsigned long>(unsigned long)
-int std::__countl_zero<unsigned long>(unsigned long)
-long std::__lg<long>(long)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > std::operator+<char, std::char_traits<char>, std::allocator<char> >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&, char const*)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > std::operator+<char, std::char_traits<char>, std::allocator<char> >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)
-std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace_cold(char*, unsigned long, char const*, unsigned long, unsigned long)
-std::__detail::__synth3way
-std::__size_to_integer(unsigned long)
-std::enable_if<std::__is_bitwise_relocatable<unsigned char>::value, unsigned char*>::type std::__relocate_a_1<unsigned char, unsigned char>(unsigned char*, unsigned char*, unsigned char*, std::allocator<unsigned char>&)
-std::in_place
-std::move_iterator<unsigned char*> std::__make_move_if_noexcept_iterator<unsigned char, std::move_iterator<unsigned char*> >(unsigned char*)
-std::nullopt
-std::operator<(std::strong_ordering, std::__cmp_cat::__literal_zero)
-std::ranges::_Cpo::data
-std::ranges::_Cpo::iter_move
-std::ranges::_Cpo::size
-unsigned char* std::__do_uninit_copy<std::move_iterator<unsigned char*>, std::move_iterator<unsigned char*>, unsigned char*>(std::move_iterator<unsigned char*>, std::move_iterator<unsigned char*>, unsigned char*)
-unsigned char* std::__relocate_a<unsigned char*, unsigned char*, std::allocator<unsigned char> >(unsigned char*, unsigned char*, unsigned char*, std::allocator<unsigned char>&)
-unsigned char* std::__uninitialized_copy_a<std::move_iterator<unsigned char*>, std::move_iterator<unsigned char*>, unsigned char*, unsigned char>(std::move_iterator<unsigned char*>, std::move_iterator<unsigned char*>, unsigned char*, std::allocator<unsigned char>&)
-unsigned char* std::__uninitialized_default_n<unsigned char*, unsigned long>(unsigned char*, unsigned long)
-unsigned char* std::__uninitialized_default_n_a<unsigned char*, unsigned long, unsigned char>(unsigned char*, unsigned long, std::allocator<unsigned char>&)
-unsigned char* std::__uninitialized_fill_n_a<unsigned char*, unsigned long, unsigned char, unsigned char>(unsigned char*, unsigned long, unsigned char const&, std::allocator<unsigned char>&)
-unsigned char* std::__uninitialized_move_if_noexcept_a<unsigned char*, unsigned char*, std::allocator<unsigned char> >(unsigned char*, unsigned char*, unsigned char*, std::allocator<unsigned char>&)
-unsigned char* std::uninitialized_copy<std::move_iterator<unsigned char*>, unsigned char*>(std::move_iterator<unsigned char*>, std::move_iterator<unsigned char*>, unsigned char*)
-unsigned char* std::uninitialized_fill_n<unsigned char*, unsigned long, unsigned char>(unsigned char*, unsigned long, unsigned char const&)
-unsigned long const& std::max<unsigned long>(unsigned long const&, unsigned long const&)
-unsigned long const& std::min<unsigned long>(unsigned long const&, unsigned long const&)
-void std::_Construct<unsigned char, unsigned char>(unsigned char*, unsigned char&&)
-void std::_Construct<unsigned char>(unsigned char*)
-void std::_Destroy<unsigned char*>(unsigned char*, unsigned char*)

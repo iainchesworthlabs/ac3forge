@@ -121,6 +121,12 @@ So the backend is genuinely split, unlike the other three:
   (`AudioTrack.isDirectPlaybackSupported`/`isPcmSupported`, called separately per format since
   AC-3 and E-AC-3 need different carrier rates — see `carrier_rate()` in `android_support.hpp`),
   not from a static claim.
+- **`sink_capabilities.cpp`** (roadmap UX9) — reports `kNoBackend`. `AudioTrack`'s own
+  `isDirectPlaybackSupported`/`isPcmSupported` above already answer the "does this sink accept
+  this format" question this app needs, and there is exactly one addressable output route on
+  this hardware (`android_support.hpp`'s `make_render_device_info()`), so a second, lower-level
+  path to the sink's raw EDID would not add anything the existing probe does not already give —
+  see [Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9) for where that read is real.
 
 ## Real-time performance: `RelWithDebInfo`, and a real MDCT bug it uncovered
 

@@ -70,6 +70,25 @@ struct StreamTrace {
     // the wire level and obvious here. Always default-constructed for the LFE,
     // which has no delta bit allocation field at all (§5.4.3.49).
     DeltaSegments delta;
+    // --- roadmap AP12: research trace export --------------------------------
+    // Neither field below is compared by compare()/Field below - they exist
+    // for ac3/verify/trace_export.hpp, not the mirror self-check, and are
+    // populated on the DECODE side only (see mirror.cpp's own comment on
+    // where compute_bit_allocation is called from a real decode rather than
+    // an encoder's rate-control search). Zero on an encoder-only trace.
+    //
+    // §7.2.2.1's composite SNR offset in force for this stream this block -
+    // ac3::snr_offset(csnroffst, fsnroffst), already resolved from the
+    // transmitted codes rather than left for a reader to recompute.
+    int snr_offset = 0;
+    // §7.2.2.5's masking curve, the value bap is actually derived from -
+    // indexed by Table 7.13 band, same convention band_psd()/bin_to_band()
+    // use. A different index space from `exponents`/`bap` above (band, not
+    // bin) - deliberately: collapsing the two would either force a bogus
+    // per-bin repetition of each band's value or lose the curve's own
+    // resolution, and ac3/verify/trace_export.hpp exports both index spaces
+    // as what they are rather than pretending they line up.
+    std::array<int, 50> mask{};
 };
 
 struct BlockTrace {

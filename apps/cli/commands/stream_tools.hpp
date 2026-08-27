@@ -1,9 +1,15 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
+#include "ac3/encoder/plan.hpp"
+#include "ac3/io/elementary.hpp"
 #include "../support.hpp"
 
 // The stream tools (roadmap DC9): commands that operate on an ALREADY-encoded
@@ -22,6 +28,58 @@
 // subject (an encoded stream in, an encoded stream out) that none of the
 // existing groups has.
 namespace ac3cli::commands {
+
+// The whole input, scanned. Every command in this file needs the same two
+// things first - the bytes, and what the bitstream says it is - and reports
+// the same two failures, so this is read once and shared rather than each
+// command re-reading and re-scanning its own file. 'play' (roadmap UX9)
+// shares it too, for its sink-following fallback - see decode_and_render.
+struct LoadedStream {
+    std::vector<std::byte> bytes;
+    ac3::io::ScannedStream scan;
+};
+
+// Reads the whole file at `path` and scans it, reporting either failure
+// (unreadable, or not a scannable AC-3/E-AC-3 elementary stream) to stderr
+// itself.
+[[nodiscard]] std::optional<LoadedStream> load_stream(std::string_view path);
+
+// Tallies decode_and_render() hands back for a caller's own status line -
+// run_transcode's only consumer today, kept as an out-of-band return rather
+// than folded into on_frame() so a caller that does not want them ('play's
+// sink-following fallback) is not forced to thread a status stream through
+// just to discard the printf.
+struct DecodeRenderStats {
+    std::size_t units_in = 0;
+    double dynrng_min_db = 0.0;
+    double dynrng_max_db = 0.0;
+    std::size_t dynrng_words = 0;
+};
+
+// Decodes the whole of `loaded` and renders it through `routing` into
+// complete ac3::kSamplesPerFrame blocks (the last one held-sample-padded, not
+// silence-dropped - see SampleQueue::take in the .cpp), calling `on_frame`
+// for each one. `coded_channels` sizes the buffers `on_frame` receives -
+// independent of the SOURCE's own channel count, which this reads off
+// `loaded.scan` itself.
+//
+// `on_frame` does whatever the caller wants with the rendered PCM - encode
+// it (run_transcode), re-encode and passthrough it, or decode straight to
+// MonitorSink ('play', roadmap UX9) - and returns false to abort, already
+// reported by then; this just unwinds without reporting anything further.
+// `on_abort` is called instead for the DECODE side's own failure (a
+// mid-stream channel count change no one routing can describe), before
+// `on_frame` would run again for it - the default no-op suits a caller with
+// nothing partially written that needs unwinding, unlike run_transcode's own
+// EncodedStreamSink.
+//
+// Returns nullopt on any failure (already reported to stderr, from here or
+// from `on_frame`/`on_abort`'s own caller).
+[[nodiscard]] std::optional<DecodeRenderStats> decode_and_render(
+    std::string_view in_path, const LoadedStream& loaded, const ac3::plan::Routing& routing,
+    std::size_t coded_channels,
+    const std::function<bool(std::span<const std::span<const float>>)>& on_frame,
+    const std::function<void()>& on_abort = [] {});
 
 // Decode and re-encode, preserving dialnorm, DRC and the mix metadata the
 // target codec has room for. The output codec comes from out_path's suffix
