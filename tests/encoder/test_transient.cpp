@@ -5,6 +5,7 @@
 #include <numbers>
 #include <vector>
 
+#include "ac3/core/tables.hpp"
 #include "ac3/encoder/transient.hpp"
 
 namespace {
@@ -25,12 +26,12 @@ std::vector<std::array<float, 256>> segments_of(const std::vector<float>& signal
     return out;
 }
 
-std::vector<float> tone(std::size_t from, std::size_t count, double amplitude) {
+std::vector<float> tone(std::size_t from, std::size_t count, double amplitude,
+                         double fs = 48000.0) {
     std::vector<float> signal(from + count, 0.0F);
     for (std::size_t n = from; n < signal.size(); ++n) {
         signal[n] = static_cast<float>(
-            amplitude *
-            std::sin(2.0 * std::numbers::pi * 1000.0 / 48000.0 * static_cast<double>(n)));
+            amplitude * std::sin(2.0 * std::numbers::pi * 1000.0 / fs * static_cast<double>(n)));
     }
     return signal;
 }
@@ -79,4 +80,48 @@ TEST_CASE("the very first segment a detector sees never trips it", "[transient]"
     ac3::TransientDetector detector(ac3::SampleRate::k48000);
     CHECK_FALSE(detector.detect(segments[0]));
     CHECK_FALSE(detector.detect(segments[1]));
+}
+
+// A loud onset trips the detector at every one of A/52's six sample rates,
+// not just k48000 - the earlier tests above never varied it, so a rate that
+// somehow broke the RBJ coefficient formula (a divide-by-zero, a NaN, a
+// sign flip) had no test that could see it. See roadmap VX12: the biquad's
+// coefficients are runtime std::cos/std::sin calls, and this pins the
+// DISCRETE blksw outcome they feed (not the raw coefficients themselves,
+// which is what a cross-toolchain bit-exactness check operates on instead -
+// see that entry for the empirical result) at every rate this project ships.
+TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transient]") {
+    struct Case {
+        ac3::SampleRate rate;
+        bool onset_trips;
+    };
+    // k16000 is deliberately excluded from "trips": A/52's 8 kHz cutoff
+    // (transient.cpp's kCutoffHz, fixed regardless of rate) IS that rate's
+    // Nyquist frequency exactly, so the RBJ highpass's own passband
+    // collapses to zero width there - std::cos(w0) lands on exactly -1.0,
+    // making b0 and b2 exactly 0.0 and the filtered signal identically zero
+    // for any input. Every ratio test then compares 0 against 0 (and never
+    // even reaches them, since p1 stays below kSilenceThreshold), so blksw
+    // is always false at this one rate by construction. This is a
+    // pre-existing property of the fixed cutoff constant versus a variable
+    // rate, not something this test's own scope changes or fixes - see
+    // roadmap VX12's note on it.
+    const std::array<Case, 6> cases{{
+        {ac3::SampleRate::k48000, true},
+        {ac3::SampleRate::k44100, true},
+        {ac3::SampleRate::k32000, true},
+        {ac3::SampleRate::k24000, true},
+        {ac3::SampleRate::k22050, true},
+        {ac3::SampleRate::k16000, false},
+    }};
+    for (const Case& c : cases) {
+        const double fs = static_cast<double>(ac3::sample_rate_hz(c.rate));
+        const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9, fs));
+        ac3::TransientDetector detector(c.rate);
+        for (std::size_t i = 0; i < 7; ++i) {
+            CHECK_FALSE(detector.detect(segments[i]));
+        }
+        CHECK(detector.detect(segments[7]) == c.onset_trips);
+        CHECK_FALSE(detector.detect(segments[8]));
+    }
 }

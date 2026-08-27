@@ -1,6 +1,6 @@
 #include "ac3/core/tables.hpp"
-#include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/syntax_trace.hpp"
 
 #include <algorithm>
 #include <array>
@@ -37,6 +37,7 @@
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
+#include "bitalloc_internal.hpp"
 #include "gain.hpp"
 
 // E-AC-3 syncframe decoding, ATSC A/52:2018 Annex E Tables E1.2, E1.3 and E1.4.
@@ -74,12 +75,8 @@ constexpr int kMaxSubstreamStreams = kMaxSubstreamChannels + 1;
 // block 1 onwards lands at the wrong bit offset and the frame decodes as
 // noise. Silence cannot expose it, since zero SNR offsets make §7.2.2.1.1
 // zero the allocation before floorcod is ever consulted.
-constexpr BitAllocCodes kBamode0Codes{.sdcycod = 2,
-                                      .fdcycod = 1,
-                                      .sgaincod = 1,
-                                      .dbpbcod = 2,
-                                      .floorcod = 7,
-                                      .fgaincod = 4};
+constexpr BitAllocCodes kBamode0Codes{
+    .sdcycod = 2, .fdcycod = 1, .sgaincod = 1, .dbpbcod = 2, .floorcod = 7, .fgaincod = 4};
 
 struct Bsi {
     StreamType strmtyp = StreamType::kIndependent;
@@ -154,8 +151,8 @@ meta::MixingParameters read_mixing_parameters(BitReader& r) {
                 external.lfe = read_scale();
                 external.dmixscl = read_scale();
                 if (r.read(1) != 0) {  // addche
-                    external.auxiliary = std::array<std::optional<int>, 2>{read_scale(),
-                                                                          read_scale()};
+                    external.auxiliary =
+                        std::array<std::optional<int>, 2>{read_scale(), read_scale()};
                 }
                 mixing.external = external;
             }
@@ -523,14 +520,12 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
         // Table E2.10: one 5-bit code per channel expands to all six blocks.
         // frmcplexpstr precedes the per-channel codes, and is present only
         // when some block in the frame actually couples.
-        const bool cpl_active =
-            std::find(frm.cplinu.begin(), frm.cplinu.begin() + nblks, true) !=
-            frm.cplinu.begin() + nblks;
+        const bool cpl_active = std::find(frm.cplinu.begin(), frm.cplinu.begin() + nblks, true) !=
+                                frm.cplinu.begin() + nblks;
         if (cpl_active) {
             const auto code = static_cast<int>(r.read(5));  // frmcplexpstr
             for (int blk = 0; blk < nblks; ++blk) {
-                frm.cplexpstr[static_cast<std::size_t>(blk)] =
-                    eac3::frame_exp_strategy(code, blk);
+                frm.cplexpstr[static_cast<std::size_t>(blk)] = eac3::frame_exp_strategy(code, blk);
             }
         }
         for (int ch = 0; ch < nfchans; ++ch) {
@@ -584,8 +579,7 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
         // third-party interop checks in tools/checks/verify_gold_reference.sh
         // exist to catch.
         const auto blocks = static_cast<std::size_t>(nblks);
-        const auto ncplblks =
-            std::count(frm.cplinu.begin(), frm.cplinu.begin() + nblks, true);
+        const auto ncplblks = std::count(frm.cplinu.begin(), frm.cplinu.begin() + nblks, true);
         int ncplregs = 0;
         for (std::size_t blk = 0; blk < blocks; ++blk) {
             if (frm.cplstre[blk] || frm.cplexpstr[blk] != ExpStrategy::kReuse) {
@@ -698,8 +692,7 @@ struct Eac3Decoder::Impl {
     static constexpr std::size_t kSubstreamSlots = 32;
     // At most six coded channels each (3/2 plus LFE); value-initialized
     // (zeroed) at first use, exactly as the map's operator[] created it.
-    std::array<std::unique_ptr<std::array<std::array<double, 256>, 6>>, kSubstreamSlots>
-        delay_;
+    std::array<std::unique_ptr<std::array<std::array<double, 256>, 6>>, kSubstreamSlots> delay_;
     // One per substream identity that has ever carried JOC:
     // oba::joc::reconstruct's own matrix-ramp and per-object/per-channel
     // overlap-add state, so a moving object's audio and the frame-to-frame
@@ -835,7 +828,9 @@ Eac3Decoder::~Eac3Decoder() = default;
 Eac3Decoder::Eac3Decoder(Eac3Decoder&&) noexcept = default;
 Eac3Decoder& Eac3Decoder::operator=(Eac3Decoder&&) noexcept = default;
 
-int Eac3Decoder::output_latency_samples() const { return impl_->output_.latency_samples(); }
+int Eac3Decoder::output_latency_samples() const {
+    return impl_->output_.latency_samples();
+}
 
 Eac3Decoder::Eac3Decoder(const DecoderConfig& config) : impl_(std::make_unique<Impl>()) {
     impl_->config_ = internal::resolve_operating_mode(config);
@@ -958,9 +953,9 @@ std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::siz
     out.object_audio.clear();
 
     const int nblks = eac3::blocks_per_syncframe(out.numblkscod);
-    out.channels.assign(static_cast<std::size_t>(nchans),
-                        std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
-                                           0.0f));
+    out.channels.assign(
+        static_cast<std::size_t>(nchans),
+        std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock), 0.0f));
 
     auto& delay_slot = impl_->delay_[slot];
     if (!delay_slot) {
@@ -1003,9 +998,9 @@ std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::siz
         }
     }
 
-    out.concealed = Concealment{.error = error,
-                                .action = repeat ? ConcealmentAction::kRepeatFade
-                                                 : ConcealmentAction::kMute};
+    out.concealed =
+        Concealment{.error = error,
+                    .action = repeat ? ConcealmentAction::kRepeatFade : ConcealmentAction::kMute};
     return out;
 }
 
@@ -1096,8 +1091,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         syn.snroffststr = frm->snroffststr;
         syn.per_block_exp_strategy = frm->expstre;
         for (int stream = 0; stream < kMaxSubstreamStreams; ++stream) {
-            const int slot =
-                stream == kCplStream ? kCouplingSyntaxStream : stream;
+            const int slot = stream == kCplStream ? kCouplingSyntaxStream : stream;
             syn.aht_stream[static_cast<std::size_t>(slot)] =
                 frm->ahtinu[static_cast<std::size_t>(stream)];
         }
@@ -1122,7 +1116,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // the same rule split_access_units delimits them by.
     verify::Eac3SubstreamTrace* trace = nullptr;
     if (impl_->config_.eac3_trace != nullptr) {
-        trace = &impl_->config_.eac3_trace->begin_substream(bsi->strmtyp == StreamType::kIndependent);
+        trace =
+            &impl_->config_.eac3_trace->begin_substream(bsi->strmtyp == StreamType::kIndependent);
         trace->strmtyp = bsi->strmtyp;
         trace->substreamid = bsi->substreamid;
         trace->blocks_coded = nblks;
@@ -1131,15 +1126,15 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         trace->transproce = frm->transproce;
         if (frm->transproce) {
             const auto count = static_cast<std::size_t>(nfchans);
-            trace->chintransproc.assign(frm->chintransproc.begin(),
-                                        frm->chintransproc.begin() +
-                                            static_cast<std::ptrdiff_t>(count));
-            trace->transprocloc.assign(frm->transprocloc.begin(),
-                                       frm->transprocloc.begin() +
-                                           static_cast<std::ptrdiff_t>(count));
-            trace->transproclen.assign(frm->transproclen.begin(),
-                                       frm->transproclen.begin() +
-                                           static_cast<std::ptrdiff_t>(count));
+            trace->chintransproc.assign(
+                frm->chintransproc.begin(),
+                frm->chintransproc.begin() + static_cast<std::ptrdiff_t>(count));
+            trace->transprocloc.assign(
+                frm->transprocloc.begin(),
+                frm->transprocloc.begin() + static_cast<std::ptrdiff_t>(count));
+            trace->transproclen.assign(
+                frm->transproclen.begin(),
+                frm->transproclen.begin() + static_cast<std::ptrdiff_t>(count));
         }
     }
 
@@ -1166,9 +1161,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // impl_->config_.skip_reconstruction stops before the second pass below, so
     // nothing ever writes these - see that option's own comment.
     if (!impl_->config_.skip_reconstruction) {
-        out.channels.assign(static_cast<std::size_t>(nchans),
-                            std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock),
-                                               0.0f));
+        out.channels.assign(
+            static_cast<std::size_t>(nchans),
+            std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock), 0.0f));
     }
 
     // §7.10: whether the block loop below has to keep its last block for a
@@ -1186,8 +1181,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // - is the pair, never the id alone. First use of an identity engages
     // its slot value-initialized (zeroed history), exactly as the map's
     // operator[] this replaced created it.
-    auto& delay_slot =
-        impl_->delay_[static_cast<std::size_t>(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid)];
+    auto& delay_slot = impl_->delay_[static_cast<std::size_t>(static_cast<int>(bsi->strmtyp) * 8 +
+                                                              bsi->substreamid)];
     if (!delay_slot) {
         delay_slot = std::make_unique<std::array<std::array<double, 256>, 6>>();
     }
@@ -1196,6 +1191,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     std::array<int, kMaxSubstreamStreams> endmant{};
     std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> exps;
     std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> bap;
+    // Only meaningful when block_trace != nullptr below (roadmap AP12) - see
+    // decoder.cpp's identical comment on its own `mask` array.
+    std::array<std::array<int, 50>, kMaxSubstreamStreams> mask{};
     BitAllocCodes codes = kBamode0Codes;
     std::array<int, kMaxSubstreamStreams> fgaincod{};
     fgaincod.fill(kBamode0Codes.fgaincod);
@@ -1399,9 +1397,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // The syntax trace's per-block half. Unlike AC-3's, most of what goes
         // in it was settled in audfrm before this loop began, so the strategies
         // and cplinu can be recorded on entry rather than as they are read.
-        BlockSyntax* syntax =
-            impl_->config_.syntax != nullptr ? &impl_->config_.syntax->blocks[static_cast<std::size_t>(blk)]
-                                      : nullptr;
+        BlockSyntax* syntax = impl_->config_.syntax != nullptr
+                                  ? &impl_->config_.syntax->blocks[static_cast<std::size_t>(blk)]
+                                  : nullptr;
         if (syntax != nullptr) {
             syntax->entered = true;
             syntax->coupling = frm->cplinu[static_cast<std::size_t>(blk)];
@@ -1507,17 +1505,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     spx_structure.fill(false);
                     for (int i = 0; i < subband_count; ++i) {
                         spx_structure[static_cast<std::size_t>(i)] =
-                            eac3::kDefaultSpxBandStructure[static_cast<std::size_t>(
-                                begin_subbnd + i)];
+                            eac3::kDefaultSpxBandStructure[static_cast<std::size_t>(begin_subbnd +
+                                                                                    i)];
                     }
                     spx_structure_set = true;
                 }
                 // else: a later block with the bit clear reuses what
                 // spx_structure already holds, untouched.
-                spx_bands = eac3::group_bands(spx_startmant, subband_count,
-                                              eac3::kSpxBinsPerSubBand,
-                                              std::span{spx_structure}.first(
-                                                  static_cast<std::size_t>(subband_count)));
+                spx_bands = eac3::group_bands(
+                    spx_startmant, subband_count, eac3::kSpxBinsPerSubBand,
+                    std::span{spx_structure}.first(static_cast<std::size_t>(subband_count)));
                 for (auto& channel : spxco) {
                     channel.assign(static_cast<std::size_t>(spx_bands.count), 0.0);
                 }
@@ -1632,8 +1629,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     cpl_structure.assign(subbands, false);
                     for (int bnd = 1; bnd < subband_count; ++bnd) {
                         cpl_structure[static_cast<std::size_t>(bnd)] =
-                            eac3::kDefaultCplBandStructure[static_cast<std::size_t>(cplbegf +
-                                                                                    bnd)];
+                            eac3::kDefaultCplBandStructure[static_cast<std::size_t>(cplbegf + bnd)];
                     }
                     cpl_structure_set = true;
                 } else {
@@ -1672,8 +1668,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const auto ecplendf = static_cast<int>(r.read(4));
                     ecpl_end_subbnd = eac3::ecpl_end_subbnd(ecplendf);
                 }
-                if (ecpl_end_subbnd <= ecpl_begin_subbnd ||
-                    ecpl_end_subbnd > eac3::kEcplSubBands) {
+                if (ecpl_end_subbnd <= ecpl_begin_subbnd || ecpl_end_subbnd > eac3::kEcplSubBands) {
                     return std::unexpected(DecodeError::kInvalidStream);
                 }
                 cplstrtmant = eac3::kEcplSubBandTab[static_cast<std::size_t>(ecpl_begin_subbnd)];
@@ -1746,8 +1741,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 auto& channel = cplco[static_cast<std::size_t>(ch)];
                 for (std::size_t bnd = 0; bnd < channel.size(); ++bnd) {
-                    channel[bnd] = band_values[static_cast<std::size_t>(
-                        subband_band[bnd])];
+                    channel[bnd] = band_values[static_cast<std::size_t>(subband_band[bnd])];
                 }
             }
             if (phsflginu && any_new) {
@@ -1825,17 +1819,15 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // gets its own table (§3.3.2), keyed off ecplbegf rather than
                 // cplbegf - a distinct formula, not a parameter substitution,
                 // since its sub-band table starts at a different frequency.
-                const int nrematbd =
-                    frm->cplinu[static_cast<std::size_t>(blk)]
-                        ? (ecplinu_now
-                               ? (ecplbegf == 0   ? 0
-                                  : ecplbegf == 1 ? 1
-                                  : ecplbegf == 2 ? 2
-                                  : ecplbegf < 5  ? 3
-                                                  : 4)
-                               : (cplbegf > 2 ? 4 : (cplbegf > 0 ? 3 : 2)))
-                    : spxinu ? (spxbegf < 2 ? 3 : 4)
-                             : 4;
+                const int nrematbd = frm->cplinu[static_cast<std::size_t>(blk)]
+                                         ? (ecplinu_now ? (ecplbegf == 0   ? 0
+                                                           : ecplbegf == 1 ? 1
+                                                           : ecplbegf == 2 ? 2
+                                                           : ecplbegf < 5  ? 3
+                                                                           : 4)
+                                                        : (cplbegf > 2 ? 4 : (cplbegf > 0 ? 3 : 2)))
+                                     : spxinu ? (spxbegf < 2 ? 3 : 4)
+                                              : 4;
                 rematflg.fill(false);
                 for (int band = 0; band < nrematbd; ++band) {
                     rematflg[static_cast<std::size_t>(band)] = r.read(1) != 0;
@@ -1897,8 +1889,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     std::span{target}.subspan(static_cast<std::size_t>(cplstrtmant)));
                 // §7.2.2.2: exponents are 0..24, and the reconstruction
                 // shifts by them - out of range is undefined behaviour.
-                for (std::size_t bin = static_cast<std::size_t>(cplstrtmant);
-                     bin < target.size(); ++bin) {
+                for (std::size_t bin = static_cast<std::size_t>(cplstrtmant); bin < target.size();
+                     ++bin) {
                     if (target[bin] > kMaxExponent) {
                         return std::unexpected(DecodeError::kInvalidStream);
                     }
@@ -1963,7 +1955,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // kCplStream included.
                 fsnroffst.fill(static_cast<int>(r.read(4)));
             } else {
-
                 // Strategy 0x2: a fine offset per stream, in the order AC-3's
                 // own snroffste group uses - cplfsnroffst first and only
                 // where this block couples, then one per full-bandwidth
@@ -1994,8 +1985,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // same Table E1.4 rule, and unlike this one it IS reached
                 // by a real stream - see its own note.
                 if (frm->cplinu[static_cast<std::size_t>(blk)]) {
-                    fsnroffst[static_cast<std::size_t>(kCplStream)] =
-                        static_cast<int>(r.read(4));
+                    fsnroffst[static_cast<std::size_t>(kCplStream)] = static_cast<int>(r.read(4));
                 }
                 for (int ch = 0; ch < nchans; ++ch) {
                     fsnroffst[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(4));
@@ -2098,7 +2088,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     return std::unexpected(DecodeError::kReservedValue);
                 }
                 if (blk == 0 && cplcode == 0) {
-                    return std::unexpected(DecodeError::kInvalidStream);  // shall not reuse in block 0
+                    return std::unexpected(
+                        DecodeError::kInvalidStream);  // shall not reuse in block 0
                 }
             }
             std::array<int, eac3::chanmap::kMaxSubstreamFullbw> chcodes{};
@@ -2108,7 +2099,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     return std::unexpected(DecodeError::kReservedValue);
                 }
                 if (blk == 0 && chcodes[static_cast<std::size_t>(ch)] == 0) {
-                    return std::unexpected(DecodeError::kInvalidStream);  // shall not reuse in block 0
+                    return std::unexpected(
+                        DecodeError::kInvalidStream);  // shall not reuse in block 0
                 }
             }
             if (cplinu_blk && cplcode == 1) {  // new info follows
@@ -2230,15 +2222,21 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             BitAllocCodes cpl_codes = codes;
             cpl_codes.fgaincod = fgaincod[s];
             bap[s].assign(static_cast<std::size_t>(end), 0);
-            compute_bit_allocation(exps[s], bsi->sample_rate, cpl_codes, csnroffst,
-                                   fsnroffst[s], bap[s],
-                                   {.start = cplstrtmant,
-                                    .coupling = true,
-                                    .cplfleak = cplfleak,
-                                    .cplsleak = cplsleak,
-                                    .snr_all_zero = snr_all_zero,
-                                    .high_efficiency = frm->ahtinu[s],
-                                    .delta = delta[static_cast<std::size_t>(kCplStream)]});
+            const BitAllocRegion cpl_region{.start = cplstrtmant,
+                                            .coupling = true,
+                                            .cplfleak = cplfleak,
+                                            .cplsleak = cplsleak,
+                                            .snr_all_zero = snr_all_zero,
+                                            .high_efficiency = frm->ahtinu[s],
+                                            .delta = delta[static_cast<std::size_t>(kCplStream)]};
+            if (block_trace != nullptr) {
+                internal::compute_bit_allocation_traced(exps[s], bsi->sample_rate, cpl_codes,
+                                                        csnroffst, fsnroffst[s], bap[s], cpl_region,
+                                                        mask[s]);
+            } else {
+                compute_bit_allocation(exps[s], bsi->sample_rate, cpl_codes, csnroffst,
+                                       fsnroffst[s], bap[s], cpl_region);
+            }
         }
         {
             AC3_ZONE_SCOPED_N("eac3_bit_allocation");
@@ -2254,11 +2252,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // delta[ch] for ch == LFE's index is always {} (never written -
                 // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so
                 // the LFE channel has no delta bit allocation field at all).
-                compute_bit_allocation(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
-                                       fsnroffst[uch], bap[uch],
-                                       {.snr_all_zero = snr_all_zero,
-                                        .high_efficiency = frm->ahtinu[uch],
-                                        .delta = delta[uch]});
+                const BitAllocRegion channel_region{.snr_all_zero = snr_all_zero,
+                                                    .high_efficiency = frm->ahtinu[uch],
+                                                    .delta = delta[uch]};
+                if (block_trace != nullptr) {
+                    internal::compute_bit_allocation_traced(
+                        exps[uch], bsi->sample_rate, channel_codes, csnroffst, fsnroffst[uch],
+                        bap[uch], channel_region, mask[uch]);
+                } else {
+                    compute_bit_allocation(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
+                                           fsnroffst[uch], bap[uch], channel_region);
+                }
             }
         }
 
@@ -2304,6 +2308,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // already reads cpldeltbae correctly into delta[kCplStream],
                 // this was only failing to carry it into the trace.
                 stream.delta = delta[s];
+                stream.snr_offset = snr_offset(csnroffst, fsnroffst[s]);
+                stream.mask = mask[s];
                 stream.start = s == static_cast<std::size_t>(kCplStream) ? cplstrtmant : 0;
                 stream.endmant = endmant[s];
                 stream.aht = frm->ahtinu[s];
@@ -2371,7 +2377,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 const int exp = exps[index][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
                     coeffs[index][static_cast<std::size_t>(bin)] =
-                        dither_eligible ? impl_->dither_.next() / static_cast<double>(1u << exp) : 0.0;
+                        dither_eligible ? impl_->dither_.next() / static_cast<double>(1u << exp)
+                                        : 0.0;
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
@@ -2412,10 +2419,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // the encoder's packing.
                 for (std::size_t i = 0; i < gain_carrying_bins.size(); i += 3) {
                     const auto packed = r.read(5);
-                    const std::array<std::uint32_t, 3> mapped = {
-                        packed / 9, (packed % 9) / 3, (packed % 9) % 3};
-                    for (std::size_t t = 0;
-                         t < 3 && i + t < gain_carrying_bins.size(); ++t) {
+                    const std::array<std::uint32_t, 3> mapped = {packed / 9, (packed % 9) / 3,
+                                                                 (packed % 9) % 3};
+                    for (std::size_t t = 0; t < 3 && i + t < gain_carrying_bins.size(); ++t) {
                         gain[static_cast<std::size_t>(gain_carrying_bins[i + t])] =
                             eac3::aht_gaq_gain_from_mapped(static_cast<int>(mapped[t]));
                     }
@@ -2494,7 +2500,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             return {};
         };
-        const auto read_stream_dispatch = [&](int s, int begin) -> std::expected<void, DecodeError> {
+        const auto read_stream_dispatch = [&](int s,
+                                              int begin) -> std::expected<void, DecodeError> {
             const auto us = static_cast<std::size_t>(s);
             if (frm->ahtinu[us]) {
                 if (blk == 0) {
@@ -2562,12 +2569,11 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     // §7.4.1: a set phase flag negates the right channel of a
                     // 2/0 pair across that band, restoring the phase the
                     // coupling sum discarded.
-                    const double sign =
-                        (phsflginu && ch == 1 &&
-                         phsflg[static_cast<std::size_t>(
-                             subband_band[static_cast<std::size_t>(bnd)])])
-                            ? -1.0
-                            : 1.0;
+                    const double sign = (phsflginu && ch == 1 &&
+                                         phsflg[static_cast<std::size_t>(
+                                             subband_band[static_cast<std::size_t>(bnd)])])
+                                            ? -1.0
+                                            : 1.0;
                     const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
                     const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
                     for (int bin = low; bin < high; ++bin) {
@@ -2695,14 +2701,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const auto& prev = (blk > 0 && ecpl_active[static_cast<std::size_t>(blk - 1)])
                                    ? ecpl_all_coeffs[static_cast<std::size_t>(blk - 1)]
                                    : kZero;
-            const auto& next =
-                (blk + 1 < nblks && ecpl_active[static_cast<std::size_t>(blk + 1)])
-                    ? ecpl_all_coeffs[static_cast<std::size_t>(blk + 1)]
-                    : kZero;
+            const auto& next = (blk + 1 < nblks && ecpl_active[static_cast<std::size_t>(blk + 1)])
+                                   ? ecpl_all_coeffs[static_cast<std::size_t>(blk + 1)]
+                                   : kZero;
             auto& zr = impl_->ecpl_spectrum_real_;
             auto& zi = impl_->ecpl_spectrum_imag_;
-            eac3::ecpl_channel_spectrum(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)],
-                                        next, zr, zi, impl_->config_.fast_imdct);
+            eac3::ecpl_channel_spectrum(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)], next,
+                                        zr, zi, impl_->config_.fast_imdct);
 
             const int bins = tail.cplendmant - tail.cplstrtmant;
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -2718,8 +2723,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                       tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);
                 eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
                                   tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
-                                  tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise,
-                                  angle_bin, tail.ecplangleintrp);
+                                  tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise, angle_bin,
+                                  tail.ecplangleintrp);
                 eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
                                                 tail.cplendmant, coeffs[uch]);
             }
@@ -2785,8 +2790,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const auto ubnd = static_cast<std::size_t>(bnd);
                     const int size = tail.spx_bands.size[ubnd];
                     const int low = tail.spx_bands.start[ubnd];
-                    const double nratio =
-                        eac3::spx_noise_ratio(low, size, tail.spx_endmant, blend);
+                    const double nratio = eac3::spx_noise_ratio(low, size, tail.spx_endmant, blend);
                     const double nscale = band_rms[ubnd] * std::sqrt(nratio);
                     const double sscale = std::sqrt(1.0 - nratio);
                     const double coordinate = tail.spxco[static_cast<std::size_t>(ch)][ubnd] * 32.0;
@@ -2832,10 +2836,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const bool second_programme = bsi->acmod == Acmod::kDualMono && ch == 1;
             const double drc =
                 second_programme
-                    ? internal::block_gain(impl_->config_, out.dynrng2[static_cast<std::size_t>(blk)],
-                                           out.compr2)
-                    : internal::block_gain(impl_->config_, out.dynrng[static_cast<std::size_t>(blk)],
-                                           out.compr);
+                    ? internal::block_gain(impl_->config_,
+                                           out.dynrng2[static_cast<std::size_t>(blk)], out.compr2)
+                    : internal::block_gain(impl_->config_,
+                                           out.dynrng[static_cast<std::size_t>(blk)], out.compr);
             if (drc != 1.0) {
                 for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
                     value *= drc;
@@ -2868,7 +2872,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // straight into impl_->retained_: this frame may still be refused
                 // further down, and a refused frame must not become what the
                 // NEXT loss is reconstructed from.
-                if (retain_last_block && blk == nblks - 1 && index < impl_->conceal_scratch_.size()) {
+                if (retain_last_block && blk == nblks - 1 &&
+                    index < impl_->conceal_scratch_.size()) {
                     std::copy(x.begin(), x.end(), impl_->conceal_scratch_[index].begin());
                 }
             }
@@ -2920,10 +2925,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     if (!joc_slot) {
                         joc_slot = std::make_unique<oba::joc::ReconstructionState>();
                     }
-                    out.object_audio = oba::joc::reconstruct(bed_joc_order, *params, *joc_slot,
-                                                        impl_->config_.fast_mdct,
-                                                        impl_->config_.fast_imdct,
-                                                        impl_->config_.joc_domain);
+                    out.object_audio = oba::joc::reconstruct(
+                        bed_joc_order, *params, *joc_slot, impl_->config_.fast_mdct,
+                        impl_->config_.fast_imdct, impl_->config_.joc_domain);
                     out.object_indices = indices;
                 }
             }
@@ -2945,8 +2949,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             retained = std::make_unique<Impl::RetainedSubstream>();
         }
         retained->nchans = nchans;
-        for (int ch = 0; ch < nchans && static_cast<std::size_t>(ch) < impl_->conceal_scratch_.size();
-             ++ch) {
+        for (int ch = 0;
+             ch < nchans && static_cast<std::size_t>(ch) < impl_->conceal_scratch_.size(); ++ch) {
             retained->last_block[static_cast<std::size_t>(ch)] =
                 impl_->conceal_scratch_[static_cast<std::size_t>(ch)];
         }
@@ -3066,7 +3070,7 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         const auto layout = eac3::chanmap::expand(substream.location_map());
         impl_->output_.apply(views, layout, substream.acmod, substream.lfe,
-                      mix_levels(substream.mixing), substream.dialnorm);
+                             mix_levels(substream.mixing), substream.dialnorm);
         substream.channels.resize(
             output_channel_count(impl_->config_.output, substream.acmod, substream.lfe));
     }
@@ -3087,10 +3091,10 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
 // the result's own vectors, or the caller's spans when decode_access_unit_into
 // supplied them. A no-op unless DecoderConfig::output asks for something, and
 // the one place the fold happens for the access-unit forms.
-void Eac3Decoder::apply_output(DecodedAccessUnit& out,
-                               std::span<const std::span<float>> external) {
+void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span<float>> external) {
     if (impl_->config_.output.target == DownmixTarget::kAsCoded &&
-        impl_->config_.output.mode == OperatingMode::kCustom && !impl_->config_.output.apply_dialnorm) {
+        impl_->config_.output.mode == OperatingMode::kCustom &&
+        !impl_->config_.output.apply_dialnorm) {
         return;
     }
     // impl_->config_.skip_reconstruction leaves `out.channels` empty (harmless below)
@@ -3101,8 +3105,8 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out,
     if (impl_->config_.skip_reconstruction) {
         return;
     }
-    const auto slots = out.channels.empty() ? static_cast<std::size_t>(out.layout.count)
-                                            : out.channels.size();
+    const auto slots =
+        out.channels.empty() ? static_cast<std::size_t>(out.layout.count) : out.channels.size();
     impl_->au_views_.clear();
     if (external.empty()) {
         for (auto& channel : out.channels) {
@@ -3119,8 +3123,8 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out,
     // seats the layout filled), but passing the rendered answer keeps the two
     // in agreement.
     const bool rendered_lfe = out.layout.index_of(eac3::chanmap::Location::kLfe) >= 0;
-    impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe, mix_levels(out.mixing),
-                  out.dialnorm);
+    impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
+                         mix_levels(out.mixing), out.dialnorm);
     if (!external.empty()) {
         return;
     }
