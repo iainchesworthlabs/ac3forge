@@ -1,13 +1,18 @@
 #include "audio_io.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fmt/base.h>
 #include <memory>
+#include <optional>
+#include <random>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -18,6 +23,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/sink_capabilities.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -25,7 +31,9 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "live_audio.hpp"
 #include "recording_sink.hpp"
+#include "stream_tools.hpp"
 
 namespace ac3cli::commands {
 
@@ -553,7 +561,150 @@ int run_outputs() {
     return 0;
 }
 
-int run_play(std::string_view in_path, int device_index) {
+namespace {
+
+// Reads `path` as a bare elementary stream and splits it into passthrough
+// units - the one thing both the original file and the AC-3 fallback's own
+// temp file need done to them the same way, so 'play' does not carry two
+// slightly different copies of this. Owns `bytes` itself (rather than the
+// caller keeping a separate buffer alive) since `units` is only ever spans
+// into it - the fallback path in particular has nowhere else convenient to
+// keep the temp file's bytes alive for the duration of the play loop.
+struct SplitStream {
+    std::vector<std::byte> bytes;
+    std::vector<std::span<const std::byte>> units;
+    std::uint32_t content_rate = 0;
+};
+
+[[nodiscard]] std::optional<SplitStream> split_playable_stream(std::string_view path, bool eac3) {
+    SplitStream result;
+    result.bytes = read_elementary_stream(path);
+    if (result.bytes.empty()) {
+        return std::nullopt;
+    }
+    if (eac3) {
+        const auto split = ac3::split_access_units(result.bytes);
+        if (!split || split->empty()) {
+            fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", path);
+            return std::nullopt;
+        }
+        result.units = *split;
+    } else {
+        const auto split = ac3::split_frames(result.bytes);
+        if (!split || split->empty()) {
+            fmt::println(stderr, "error: {} is not a valid AC-3 stream", path);
+            return std::nullopt;
+        }
+        result.units = *split;
+    }
+    result.content_rate = sample_rate_hz(
+        static_cast<ac3::SampleRate>(std::to_integer<std::uint32_t>(result.units[0][4]) >> 6));
+    return result;
+}
+
+// Wraps `units` into IEC 61937 bursts and feeds them to `sink`, already
+// started - the tail every 'play' path shares: native passthrough, and
+// roadmap UX9's AC-3 transcode fallback.
+int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
+                         std::span<const std::span<const std::byte>> units, bool eac3) {
+    ac3::iec61937::Eac3BurstPacker eac3_packer;
+    for (const auto& unit : units) {
+        std::vector<std::byte> burst;
+        if (eac3) {
+            auto result = eac3_packer.push(unit);
+            if (!result) {
+                fmt::println(stderr, "error: burst wrap failed");
+                return kExitRuntime;
+            }
+            if (!*result) {
+                continue;  // accumulating; nothing to submit yet
+            }
+            burst = std::move(**result);
+        } else {
+            const auto wrapped = ac3::iec61937::wrap_frame(unit);
+            if (!wrapped) {
+                fmt::println(stderr, "error: burst wrap failed");
+                return kExitRuntime;
+            }
+            burst = *wrapped;
+        }
+        // Wait for room rather than racing ahead: the render thread consumes
+        // in real time, one burst per burst period.
+        while (!sink.submit(burst)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+    }
+    // Let the queue drain before tearing the endpoint down.
+    while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return kExitOk;
+}
+
+// A path unique across concurrent processes and repeated calls within one -
+// same technique src/ac3adm/src/adm.cpp's make_temp_path() uses (a
+// high-resolution clock reading XORed with a random_device draw and an
+// in-process counter), duplicated locally rather than shared across modules
+// for one temp file each.
+[[nodiscard]] std::filesystem::path make_temp_ac3_path() {
+    static std::atomic<std::uint64_t> counter{0};
+    std::random_device rd;
+    const auto unique =
+        (static_cast<std::uint64_t>(rd()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
+        counter.fetch_add(1, std::memory_order_relaxed);
+    return std::filesystem::temp_directory_path() / ("ac3play_" + std::to_string(unique) + ".ac3");
+}
+
+// Roadmap UX9's transcode-to-passthrough leg: DC9's transcode produces an
+// AC-3 file the sink already confirmed it accepts, then that file plays
+// exactly the way a plain AC-3 source file already does - the two commands
+// this was "two commands and knowing why" before, run back to back with the
+// middle file held in a temp path instead of one the operator has to name
+// and clean up themselves. 448 kbps matches the project's own transcode
+// examples throughout docs/cli/commands.md; the metadata options 'play's own
+// caller gave (dialnorm=, drc=, ...) still apply, carried through `meta`
+// exactly as they would to a direct 'transcode' invocation.
+int play_via_ac3_transcode(std::string_view in_path, const std::string& device_id,
+                           std::string_view device_name, const Options& meta) {
+    const auto temp_path = make_temp_ac3_path();
+    const auto temp_path_str = temp_path.string();
+    const auto transcoded = run_transcode(in_path, temp_path_str, 448, "", meta);
+    if (transcoded != 0) {
+        std::error_code ec;
+        std::filesystem::remove(temp_path, ec);
+        return kExitRuntime;
+    }
+
+    const auto split = split_playable_stream(temp_path_str, /*eac3=*/false);
+    if (!split) {
+        std::error_code ec;
+        std::filesystem::remove(temp_path, ec);
+        return kExitRuntime;
+    }
+
+    ac3::audio::PassthroughSink sink;
+    const auto started =
+        sink.start(device_id, split->content_rate, ac3::audio::BitstreamFormat::kAc3);
+    std::error_code ec;
+    std::filesystem::remove(temp_path, ec);
+    if (!started) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+        return kExitUnavailable;
+    }
+    status_println(status_stream(), "streaming {} frames to \"{}\" ({} Hz carrier)…",
+                   split->units.size(), device_name, split->content_rate);
+    const auto result = submit_units_to_sink(sink, split->units, /*eac3=*/false);
+    const auto stats = sink.stats();
+    sink.stop();
+    status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",
+                   stats.bursts_submitted, stats.bursts_rendered, stats.underruns);
+    return result;
+}
+
+}  // namespace
+
+int run_play(std::string_view in_path, int device_index, const Options& meta) {
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
@@ -603,23 +754,68 @@ int run_play(std::string_view in_path, int device_index) {
     }
     std::string device_id;
     std::string device_name = "default endpoint";
+    const ac3::audio::RenderDeviceInfo* chosen = nullptr;
     if (device_index >= 0) {
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
             fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
                          device_index);
             return kExitUsage;
         }
-        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
-        device_id = chosen.id;
-        device_name = chosen.name;
-        const bool supported =
-            eac3 ? chosen.supports_eac3_passthrough : chosen.supports_ac3_passthrough;
-        if (!supported) {
-            fmt::println(stderr,
-                         "error: \"{}\" does not accept {} over IEC 61937 (see 'ac3cli outputs')",
-                         chosen.name, eac3 ? "E-AC-3" : "AC-3");
-            return kExitUnavailable;
+        chosen = &(*devices)[static_cast<std::size_t>(device_index)];
+        device_id = chosen->id;
+        device_name = chosen->name;
+    }
+
+    // Roadmap UX9: what the chosen sink actually accepts. The default
+    // endpoint (chosen == nullptr) is taken at its word, exactly as before -
+    // its capabilities were never probed either, and there is no id to read
+    // EDID from. EDID first (real only on ALSA today -
+    // sink_capabilities.hpp's own comment says why the others fall back), a
+    // live probe otherwise - either way the sink's own answer, not a guess.
+    bool takes_native = true;
+    bool takes_ac3 = false;
+    bool takes_pcm = false;
+    if (chosen != nullptr) {
+        const auto edid = ac3::audio::read_sink_capabilities(chosen->id);
+        if (edid) {
+            takes_native = eac3 ? edid->eac3 : edid->ac3;
+            takes_ac3 = edid->ac3;
+            takes_pcm = edid->pcm;
+        } else {
+            status_println(status_stream(),
+                           "note: could not read \"{}\"'s EDID ({}); using a live probe instead",
+                           chosen->name, ac3::audio::describe(edid.error()));
+            takes_native =
+                eac3 ? chosen->supports_eac3_passthrough : chosen->supports_ac3_passthrough;
+            takes_ac3 = chosen->supports_ac3_passthrough;
+            takes_pcm = chosen->supports_exclusive_pcm;
         }
+    }
+
+    if (chosen != nullptr && !takes_native) {
+        const bool ac3_leg = eac3 && takes_ac3 && meta.follow_sink;
+        const bool pcm_leg = !ac3_leg && takes_pcm && meta.follow_sink;
+        if (ac3_leg) {
+            status_println(status_stream(),
+                           "\"{}\" does not accept E-AC-3 over IEC 61937; transcoding to AC-3 "
+                           "instead (roadmap DC9/UX9)",
+                           chosen->name);
+            return play_via_ac3_transcode(in_path, device_id, device_name, meta);
+        }
+        if (pcm_leg) {
+            status_println(status_stream(),
+                           "\"{}\" does not accept {} over IEC 61937; falling back to decoded "
+                           "PCM",
+                           chosen->name, eac3 ? "E-AC-3" : "AC-3");
+            return run_monitor(in_path, device_index, meta);
+        }
+        fmt::println(stderr,
+                     "error: \"{}\" does not accept {} over IEC 61937 (see 'ac3cli outputs'){}",
+                     chosen->name, eac3 ? "E-AC-3" : "AC-3",
+                     !meta.follow_sink && (takes_ac3 || takes_pcm)
+                         ? " (drop follow=off to let play fall back instead of refusing)"
+                         : "");
+        return kExitUnavailable;
     }
 
     ac3::audio::PassthroughSink sink;
@@ -634,42 +830,12 @@ int run_play(std::string_view in_path, int device_index) {
                  eac3 ? "access units" : "frames", device_name, content_rate,
                  eac3 ? ", carrier 4x that" : " carrier");
 
-    ac3::iec61937::Eac3BurstPacker eac3_packer;
-    for (const auto& unit : units) {
-        std::vector<std::byte> burst;
-        if (eac3) {
-            auto result = eac3_packer.push(unit);
-            if (!result) {
-                fmt::println(stderr, "error: burst wrap failed");
-                return kExitRuntime;
-            }
-            if (!*result) {
-                continue;  // accumulating; nothing to submit yet
-            }
-            burst = std::move(**result);
-        } else {
-            const auto wrapped = ac3::iec61937::wrap_frame(unit);
-            if (!wrapped) {
-                fmt::println(stderr, "error: burst wrap failed");
-                return kExitRuntime;
-            }
-            burst = *wrapped;
-        }
-        // Wait for room rather than racing ahead: the render thread consumes
-        // in real time, one burst per burst period.
-        while (!sink.submit(burst)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(4));
-        }
-    }
-    // Let the queue drain before tearing the endpoint down.
-    while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    const auto result = submit_units_to_sink(sink, units, eac3);
     const auto stats = sink.stats();
     sink.stop();
     status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",
                    stats.bursts_submitted, stats.bursts_rendered, stats.underruns);
-    return kExitOk;
+    return result;
 }
 
 }  // namespace ac3cli::commands

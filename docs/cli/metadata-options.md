@@ -659,6 +659,41 @@ ac3cli live out.ec3 0 30 448 -2 1 channels layout=714      # capped 5.1 AC-3 to 
 ac3cli live out.ec3 0 30 448 -2 1 channels layout=714 downmix=off
 ```
 
+## Play options (`play`): `follow=`
+
+```text
+play options (play; after the positional arguments):
+  follow=off        refuse a sink that rejects the source format instead of
+                    transcoding to AC-3 or falling back to decoded PCM
+```
+
+### `follow=`
+
+Roadmap UX9. When `play` is given a `device_index`, it asks what that sink actually accepts —
+its own EDID/ELD-carried Short Audio Descriptors where a backend can read them (real today only
+on ALSA; see [Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere
+else. By default (`follow=on`, the implicit default), a source format the sink rejects gets an
+automatic fallback:
+
+- E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (`transcode`, roadmap DC9, through a
+  temporary file — dialnorm, `compr` and the mix metadata carry across exactly as a direct
+  `ac3cli transcode` call would), then plays as AC-3. This is the "no 5.1 PCM over optical"
+  case: an optical link can carry compressed AC-3 but never multichannel PCM, so a 5.1 E-AC-3
+  source has no other way through.
+- A sink that bitstreams neither format falls back to decoded PCM (`monitor`'s own §7.8-aware
+  path, so a wide programme is folded to the endpoint's real width rather than left to a
+  shared-mode mixer to average down however it sees fit).
+
+`follow=off` disables both and restores the plain refusal `play` always gave — the escape hatch
+for a script that wants a hard failure rather than an automatic re-encode. The default endpoint
+(no `device_index` given) is unaffected either way: its capabilities were never probed before
+this option existed either, and it is taken at its word exactly as before.
+
+```bash
+ac3cli play programme.ec3 2                # follows the sink (the default)
+ac3cli play programme.ec3 2 follow=off     # the old plain refusal instead
+```
+
 ## Common options (every command): `quiet`, `verbose`
 
 ```text
