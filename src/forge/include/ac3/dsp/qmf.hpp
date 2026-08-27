@@ -8,7 +8,7 @@
 
 // The 64-band complex QMF that TS 103 420 §7.1 puts the JOC reconstruction
 // in - the filterbank this tree did not have, and whose absence made
-// joc::reconstruct apply §6.6.6's matrix in the MDCT domain instead.
+// oba::joc::reconstruct apply §6.6.6's matrix in the MDCT domain instead.
 //
 // Why a decoder needs a COMPLEX filterbank here rather than reusing the
 // MDCT: the MDCT is critically sampled and real, so its subbands rely on

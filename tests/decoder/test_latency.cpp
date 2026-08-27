@@ -314,7 +314,7 @@ TEST_CASE("An access unit's budget is the worst its substreams impose", "[latenc
 TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[latency]") {
     // The claim: an object waveform lags its input by 832 samples, not 256 -
     // the bed's own transform_samples (256) plus the §7.1 QMF filterbank's
-    // analysis+synthesis delay (dsp::kQmfDelay, 576), because joc::reconstruct
+    // analysis+synthesis delay (dsp::kQmfDelay, 576), because oba::joc::reconstruct
     // pulls objects out of the decoded bed in a 64-band complex QMF domain
     // rather than the MDCT's (see ac3/dsp/qmf.hpp and AtmosEncoder::latency's
     // own comment for why an MDCT-domain matrix would leave TDAC aliasing
