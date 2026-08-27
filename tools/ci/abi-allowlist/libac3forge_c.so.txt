@@ -381,6 +381,7 @@ ac3forge_encoder_latency_samples
 ac3forge_heavy_config_init
 ac3forge_latency_ms
 ac3forge_latency_total_samples
+ac3forge_object_placement_init
 ac3forge_spans_count
 ac3forge_spans_destroy
 ac3forge_spans_get
