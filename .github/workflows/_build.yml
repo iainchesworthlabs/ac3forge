@@ -80,7 +80,7 @@ on:
         default: false
     secrets:
       ATMOS_SIGNING_KEY:
-        description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the Shield app signs Atmos objects at runtime - on any build, debug or release. Unset -> no asset is written and the app streams the safe unsigned bed51. A signed APK contains this key and must never be distributed."
+        description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the DEBUG APK - which is a never-uploaded smoke test - signs Atmos objects at runtime. The asset is deleted again before any release step, and the staged release APK is asserted key-free, so a published .apk is always the safe unsigned bed51 app. Unset -> no asset is written at all. An APK that does carry the asset IS the key and must never be distributed."
         required: false
       ANDROID_KEYSTORE_BASE64:
         description: "Release keystore, base64-encoded. Passed by release.yml only; unset on ci.yml's call, which never sets do_package for a release APK anyway. See build-android's own comment for why the app still builds fine without it."
@@ -1790,6 +1790,24 @@ jobs:
             -no-boot-anim -camera-back none
           script: ./gradlew :app:connectedDebugAndroidTest --console=plain
 
+      # SECURITY: the debug build above is the ONLY thing the key asset exists
+      # for - a smoke test that the on-device signing path loads and runs, on a
+      # never-uploaded APK. The release APK built below IS published, and an APK
+      # carrying this asset is key material (.gitignore, shield_signing_hook.hpp,
+      # docs/releasing.md and this workflow's own ATMOS_SIGNING_KEY input
+      # description all say so). The materialize step above is gated on the
+      # secret being set rather than on do_package, so without this removal it
+      # also lands in the workspace assembleRelease packages from. Deleting it
+      # here, before any release step, is what makes the published APK the safe
+      # unsigned bed51 app. Unconditional on purpose - nothing after this point
+      # legitimately wants the key.
+      - name: Remove the object-signing key before any release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f apps/android/app/src/main/assets/signing.key
+          echo "Object-signing key asset removed - the release APK will be unsigned bed51."
+
       # Only meaningful for a release build with a keystore actually
       # provisioned - release.yml's call passes these four secrets, ci.yml's
       # never does, so this no-ops there the same way GPG signing is off by
@@ -1846,6 +1864,29 @@ jobs:
           cp apps/android/app/build/outputs/apk/release/app-release.apk \
              "packages/ac3forge-shield-${version}.apk"
           ( cd packages && sha512sum "ac3forge-shield-${version}.apk" > "ac3forge-shield-${version}.apk.sha512" )
+
+      # The removal step above is a precaution; THIS is the guard. It inspects
+      # the actual bytes about to be published rather than trusting that the
+      # step ordering above stayed correct, so any future reordering, a Gradle
+      # asset-merge change, or a second materialize step fails the release
+      # instead of shipping the key again. Greps the whole entry list, not just
+      # assets/, since a merged asset can land under a different prefix.
+      - name: Assert the staged APK carries no key material
+        if: inputs.do_package
+        shell: bash
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          version="${VERSION_TAG_INPUT:-0.0.0-dev}"
+          apk="packages/ac3forge-shield-${version}.apk"
+          entries="$(unzip -Z1 "$apk")"
+          if grep -Eq '(^|/)signing\.key$' <<<"$entries"; then
+            echo "::error::$apk contains a signing.key entry - this APK is key material and must not be published."
+            grep -E '(^|/)signing\.key$' <<<"$entries"
+            exit 1
+          fi
+          echo "OK: no signing.key entry in $apk ($(wc -l <<<"$entries") entries scanned)."
 
       - name: Upload package artifacts
         if: inputs.do_package
