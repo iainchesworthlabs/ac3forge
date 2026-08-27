@@ -1911,8 +1911,8 @@ jobs:
       # usr/bin/ - not LD_LIBRARY_PATH, and not something the host's
       # system libstdc++ can outrank once a copy is actually bundled here.
       #
-      # EXTRA_PLATFORM_PLUGINS=offscreen - confirmed necessary, not a guess,
-      # the same way as the two library fixes above: a real run failed with
+      # EXTRA_PLATFORM_PLUGINS - confirmed necessary, not a guess, the same
+      # way as the two library fixes above: a real run failed with
       # `qt.qpa.plugin: Could not find the Qt platform plugin "offscreen"`
       # ("Available platform plugins are: xcb."), and extracting a real
       # built AppImage showed usr/plugins/platforms/ containing only
@@ -1928,6 +1928,17 @@ jobs:
       # because nothing at BUILD time otherwise hints that offscreen is the
       # one this AppImage actually gets run with (QT_QPA_PLATFORM=offscreen
       # is only ever set later, inside the smoke-test container).
+      #
+      # The value is the real FILENAME, not Qt's own short platform key -
+      # confirmed against linuxdeploy-plugin-qt's own source
+      # (src/deployers/PlatformPluginsDeployer.cpp), not just guessed from
+      # the README's wording: it does
+      # `qtPluginsPath / "platforms" / platformToDeploy` with zero name
+      # translation, so `offscreen` alone (Qt's own QT_QPA_PLATFORM value,
+      # a different naming convention) 404s as a literal missing file -
+      # confirmed for real on a first attempt: "Cannot deploy non-existing
+      # library file: .../plugins/platforms/offscreen". libqoffscreen.so is
+      # the actual file at that path.
       - name: Build the AppImage
         shell: bash
         run: |
@@ -1935,7 +1946,7 @@ jobs:
           version="$(build/config-linux-gcc/bin/ac3cli --version | head -1 | awk '{print $NF}')"
           export VERSION="$version"
           export APPIMAGE_EXTRACT_AND_RUN=1
-          export EXTRA_PLATFORM_PLUGINS=offscreen
+          export EXTRA_PLATFORM_PLUGINS=libqoffscreen.so
           libstdcxx="/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
           libgcc_s="/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
           for f in "$libstdcxx" "$libgcc_s"; do
@@ -1954,7 +1965,7 @@ jobs:
             --plugin qt \
             --output appimage
           if [ ! -e AppDir/usr/plugins/platforms/libqoffscreen.so ]; then
-            echo "::error::EXTRA_PLATFORM_PLUGINS=offscreen did not put libqoffscreen.so in the AppDir - the smoke test's QT_QPA_PLATFORM=offscreen would fail the same way this was fixed for"
+            echo "::error::EXTRA_PLATFORM_PLUGINS did not put libqoffscreen.so in the AppDir - the smoke test's QT_QPA_PLATFORM=offscreen would fail the same way this was fixed for"
             exit 1
           fi
           ls -la ac3gui-*.AppImage
