@@ -864,16 +864,113 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   are constants and comparisons calibrated against measured MOS-LQO/SNR data on real programme
   material (see `docs/library/encoding-ac3.md`), not arbitrary — moving them, even by adding a
   margin, is a perceptual-tuning change that needs the same kind of re-validation campaign the
-  original tuning did, which this item's own scope did not include. The transient detector's IIR
-  state is the deepest one: making it genuinely platform-invariant means fixed-point-porting a
-  cascaded biquad filter, a substantially larger, riskier change than this item's remaining
-  budget could respons­ibly take on and re-validate. Gating byte-identical gold encodes across
-  *every* leg (the roadmap text's other half) is blocked on roadmap VX11, not on this audit: VX11
-  found that a real, standards-conformant aarch64 build does not reproduce the arm64/macOS gap at
-  all, so the true root cause is still unidentified, and asserting cross-leg byte-equality today
-  would either be vacuously true on the x86 legs (already covered by VX11's
-  `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit cannot name yet.
-  A recorded-decisions replay mode is genuinely independent future work, not attempted here.
+  original tuning did, which this item's own scope did not include.
+
+  **Finding (1) revisited: proven, not just asserted, on today's toolchains.** The transient
+  detector's IIR state was this audit's own named deepest risk, and the full fixed-point port
+  stays future work (scoped precisely below) rather than landed here — but the platform-invariance
+  question underneath it does not have to stay a guess. The reduction that makes it tractable: with
+  `-ffp-contract=off` already project-wide (this document's own "Floating-point contraction"
+  section) and no `-ffast-math`/reassociation flag anywhere in this build, every `+`, `-`, `*`, `/`
+  in `TransientDetector::Biquad::process()` and its coefficient formula is IEEE-754-mandated
+  correctly-rounded, evaluated in the fixed left-to-right grouping C++'s grammar gives a chain of
+  same-precedence operators — none of that has room to disagree between conformant toolchains, on
+  any architecture, after any number of recursive samples. The only two operations in the whole
+  class not so constrained are the constructor's `std::cos`/`std::sin` calls (IEEE-754 does not
+  mandate correctly-rounded transcendental functions), so platform-invariance of the entire
+  recursive filter — coefficients, cascade, and every downstream ratio comparison, for any input
+  signal, at a tie point or nowhere near one — reduces exactly to platform-invariance of those two
+  calls at the six `w0 = 2·π·8000/fs` arguments the six A/52 rates produce.
+
+  Tested directly (VX11's own cos/sin bit-identity methodology, applied here to this file's own
+  call sites rather than the twiddle tables VX11 checked): a minimal harness reproducing
+  `transient.cpp`'s exact constructor and `Biquad::process()`, comparing the raw IEEE-754 bit
+  pattern (not the decimal printout, which would itself round) of every coefficient at all six
+  rates plus a hash of a 2000-sample cascaded recursive drive, across `windows-msvc` (cl
+  19.51.36256, `/fp:precise`), `windows-llvm` (clang-cl 22.1.2, `/clang:-ffp-contract=off`),
+  `linux-gcc` (g++ 15.2.0 x86-64), `linux-llvm` (clang++ 22.1.2 x86-64) and `linux-gcc-arm64`
+  (`aarch64-linux-gnu-gcc-16` cross-compiled, run under `qemu-user` — the same
+  standards-conformant construction VX11 used and already trusts). All five builds produced
+  bit-identical output at every rate, every coefficient and the cascade hash — zero divergent bits.
+  That covers all four of this audit's in-scope x86-64 legs plus the emulated-aarch64 leg VX11
+  already relies on; it does not touch the real native `linux-gcc-arm64`/`linux-llvm-arm64`/
+  `macos-llvm` legs, whose gap is VX11's own open question, not this one's (this entry's closing
+  paragraph, unchanged below, says why that stays out of scope here).
+
+  One incidental finding from the same probe, recorded rather than left implicit: at `k16000`
+  (E-AC-3's lowest half-rate), `kCutoffHz`'s fixed 8000 Hz *is* that rate's Nyquist frequency, so
+  `std::cos(w0)` lands on exactly -1.0 (all five toolchains agree on this too) and the RBJ
+  highpass's own passband collapses to zero width — `b0` and `b2` both compute to exactly `0.0`,
+  the filtered signal is identically zero for any input, and `blksw` is therefore always `false` at
+  this one rate by construction, independent of programme content. Whether that is the intended
+  behaviour for E-AC-3's lowest rate is a spec/perceptual question, not a reproducibility one, and
+  stays outside this audit's scope — it is now a documented, pinned test case rather than an
+  unexamined gap.
+
+  Landed alongside this: `tests/encoder/test_transient.cpp`'s coverage widened from `k48000` alone
+  (every prior test in that file) to all six A/52 rates, in a new
+  `TEST_CASE("a loud onset trips the detector at every A/52 sample rate")` pinning the exact
+  onset-trips/does-not-trip sequence at each rate, `k16000`'s always-false case included with the
+  reasoning above inline. Deliberately booleans, not raw bit patterns: a hard-pinned coefficient
+  hash gated on all seven CI legs would collide with VX11's still-open arm64/macOS question the
+  moment it ran there, where a pinned discrete decision does not, since no CI leg — arm64/macOS
+  included, per the gold-reference gate's own passing SNR numbers on those legs — has ever been
+  observed to flip one. It is a permanent, all-legs-safe regression pin that catches any future
+  change to this exact decision (a formula edit, an accidental FMA reintroduction, an
+  optimiser-flag change) immediately, at the unit-test level, instead of waiting for it to surface
+  as an unexplained shift somewhere downstream. Full suite and the gold-reference gate re-run after
+  the addition: 3,780,657 of 3,780,678 assertions passing, the 21 failing ones all inside
+  `test_cli.cpp` (four test cases, none in `[transient]` or any encoder path) — a live `fgaincod=`
+  CLI wiring gap from a different, already-merged item (`ed6bab71`), pre-existing on `main` before
+  this branch, confirmed by direct repro and flagged separately, not touched here — and the three
+  gold streams hash byte-identical to their pre-change pins (`x86_64-sse2/fast/{ac3,eac3,eac3_cpl}`
+  in `tests/golden/bitstream-hashes.json`), confirming a test-only change moved nothing. The
+  cross-toolchain coefficient/cascade comparison itself is not committed as a permanent script,
+  matching VX11's own precedent (its cos/sin check is documented investigative methodology in this
+  file, not a standing CI gate) — the exact reproduction is `transient.cpp`'s own constructor and
+  `Biquad::process()`, unchanged, built and run with the flags and toolchains listed above.
+
+  **The fixed-point port, scoped precisely rather than left as "substantially larger, riskier":**
+  eliminate the runtime transcendental call rather than porting it — A/52 fixes the sample rate to
+  exactly six values, so all six coefficient sets can be computed once, offline, at full double
+  precision, correctly rounded to a fixed Q-format, and embedded as literal integer constants; no
+  `cos`/`sin` runs for this filter again, at compile time or runtime, which removes the one
+  non-guaranteed operation in the class instead of porting it. Q1.30 signed 32-bit for coefficients
+  and state (`b0`/`b2` ∈ [0, ~0.5], `b1` ∈ [-1, 0], `a1` ∈ [-2, 2], `a2` ∈ [0, 1) at every rate,
+  per the probe's own six coefficient sets above — comfortably inside Q1.30's range); an `int64_t`
+  accumulator for `process()`'s five-term sum (each term at most a 32-by-32-bit product, five sum
+  with wide headroom below `int64_t`'s range); one rounding rule (round-half-up: add
+  `1 << (shift-1)` before the final right shift) applied identically everywhere — integer `+`, `-`,
+  `*` and a fully-specified shift are exact and platform-independent by construction, unlike
+  float's correctly-rounded-but-still-lossy arithmetic, which is what would actually earn
+  "platform-invariant by construction" rather than "platform-invariant on every toolchain tried so
+  far." `kSilenceThreshold`/`kT1`/`kT2`/`kT3` and the peak tree (`peak_abs`, the five ratio
+  comparisons) port the same way: integer `p1`/`p2`/`p3` from the fixed-point cascade,
+  integer-scaled thresholds, comparisons unchanged in shape. The validation gate that would
+  actually justify landing it: an offline bit-exact simulator FIRST (Python/numpy, no C++), diffing
+  its `blksw` decision against today's double implementation block-by-block across the fullest
+  real, broadband corpus available — the in-repo gold WAVs are not enough alone (see "Quality
+  fixtures are band-limited": `reference_51.wav` is 99% energy below 100 Hz, essentially silent
+  through an 8 kHz highpass), so this needs the kind of real material roadmap VX7's
+  versioned-corpus item and this project's other quality work already reach for. Any discrepancy at
+  all is disqualifying — it is exactly the undocumented perceptual-tuning change the constants'
+  calibration note above warns against, not a bug to tune away. Why this round still does not
+  attempt it: today's toolchains now PROVE bit-identical (above) — no live divergence has ever been
+  observed, so the risk this closes is prospective, not a currently-failing gate — and there is no
+  existing fixed-point kernel anywhere else in this otherwise entirely floating-point codec to
+  build on, so the offline-simulator validation step is new infrastructure, not a small addition.
+  Spending this item's remaining budget porting a working, spec-tuned filter against a
+  theoretical-only risk was judged the wrong trade against the item's own re-validation cost — the
+  same call the previous round of this audit made; this round narrows what is actually still open
+  with proof, rather than repeating the same unproven deferral.
+
+  Gating byte-identical gold encodes across *every* leg (the roadmap text's other half) is blocked
+  on roadmap VX11, not on this audit: VX11 found that a real, standards-conformant aarch64 build
+  does not reproduce the arm64/macOS gap at all, so the true root cause is still unidentified, and
+  asserting cross-leg byte-equality today would either be vacuously true on the x86 legs (already
+  covered by VX11's `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit
+  cannot name yet. A recorded-decisions replay mode is genuinely independent future work, not
+  attempted here.
 - [x] **VX13 (S)** — Promote the fuzz jobs. The claimed track record didn't hold up under a real
   check of `gh run list`/job-level history back to 2026-08-09: `fuzz-differential` genuinely had
   zero failures across 218 push runs, but `fuzz-short` had five, all the same
