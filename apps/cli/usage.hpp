@@ -69,8 +69,10 @@ inline constexpr std::uint32_t kProbe = 1U << 16;
 inline constexpr std::uint32_t kStreamTools = 1U << 17;
 // decode/qc/levels: which programme of a multi-programme stream (programme=).
 inline constexpr std::uint32_t kProgramme = 1U << 18;
+// play's sink-following fallback: follow=.
+inline constexpr std::uint32_t kPlay = 1U << 19;
 
-inline constexpr std::uint32_t kAll = 0x7FFFFU;
+inline constexpr std::uint32_t kAll = 0xFFFFFU;
 
 }  // namespace topic
 

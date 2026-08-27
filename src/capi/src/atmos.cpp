@@ -36,6 +36,18 @@ void ac3forge_atmos_config_init(ac3forge_atmos_config_t* config) {
                                        .fast_mdct = defaults.fast_mdct ? 1 : 0};
 }
 
+void ac3forge_object_placement_init(ac3forge_object_placement_t* placement) {
+    if (placement == nullptr) {
+        return;
+    }
+    const ac3::oba::ObjectPlacement defaults{};
+    *placement = ac3forge_object_placement_t{.x = defaults.position.x,
+                                              .y = defaults.position.y,
+                                              .z = defaults.position.z,
+                                              .gain = defaults.gain,
+                                              .lfe_send = defaults.lfe_send};
+}
+
 ac3forge_status_t ac3forge_atmos_encoder_create(const ac3forge_atmos_config_t* config,
                                                  int object_count,
                                                  ac3forge_atmos_encoder_t** out_encoder) {

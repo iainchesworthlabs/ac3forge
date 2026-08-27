@@ -79,3 +79,10 @@ fuzz-eac3-encoder-artifacts/
 # record, never a checked-in copy of what it produced. The default --out path
 # in the docs and in _build.yml's own step.
 dist/
+
+# Rust bindings (rust/, roadmap AP9). Cargo.lock IS committed (a workspace of
+# library crates this project itself builds and tests in CI, not one published
+# for others to pick their own dependency versions against - reproducible CI
+# matters more here, the same reasoning requirements/*.txt's --require-hashes
+# pins Python tooling).
+rust/target/

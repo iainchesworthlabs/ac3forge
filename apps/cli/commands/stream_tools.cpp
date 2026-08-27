@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -37,24 +38,12 @@ namespace ac3cli::commands {
 
 namespace plan = ac3::plan;
 
-namespace {
-
-// --- shared plumbing --------------------------------------------------------
-
-// The whole input, scanned. Every command here needs the same two things
-// first - the bytes, and what the bitstream says it is - and reports the same
-// two failures.
-//
 // The INPUT is read whole, the same way decode/mkv/mp4/ts/spdif already read
 // theirs: an elementary stream has to be framed before anything can be done
 // with it, and there is no seek. What the 0.9.0 memory work fixed, and what
 // every command here keeps, is the OUTPUT side - bytes leave through
-// EncodedStreamSink as they are produced rather than accumulating.
-struct LoadedStream {
-    std::vector<std::byte> bytes;
-    ac3::io::ScannedStream scan;
-};
-
+// EncodedStreamSink (or, for 'play's fallback, a hardware sink) as they are
+// produced rather than accumulating.
 std::optional<LoadedStream> load_stream(std::string_view path) {
     LoadedStream loaded;
     loaded.bytes = read_all(path);
@@ -70,6 +59,8 @@ std::optional<LoadedStream> load_stream(std::string_view path) {
     loaded.scan = std::move(*scanned);
     return loaded;
 }
+
+namespace {
 
 std::string_view codec_label(ac3::io::StreamKind kind) {
     return kind == ac3::io::StreamKind::kEac3 ? "E-AC-3" : "AC-3";
@@ -332,6 +323,191 @@ class TranscodeEncoder {
 
 }  // namespace
 
+std::optional<DecodeRenderStats> decode_and_render(
+    std::string_view in_path, const LoadedStream& loaded, const plan::Routing& routing,
+    std::size_t coded_channels,
+    const std::function<bool(std::span<const std::span<const float>>)>& on_frame,
+    const std::function<void()>& on_abort) {
+    const bool eac3_source = loaded.scan.kind == ac3::io::StreamKind::kEac3;
+    const auto source_channels = static_cast<std::size_t>(loaded.scan.channels);
+
+    // Planar buffers, allocated once: the queue feeds `source`, plan::render
+    // writes `coded`, on_frame reads it.
+    SampleQueue queue;
+    queue.reset(source_channels);
+    std::vector<std::vector<float>> source(source_channels,
+                                           std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> coded(coded_channels,
+                                          std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> in(source_channels);
+    std::vector<std::span<float>> out(coded_channels);
+    std::vector<std::span<const float>> views(coded_channels);
+    std::vector<std::span<float>> source_spans(source_channels);
+    for (std::size_t c = 0; c < source_channels; ++c) {
+        in[c] = source[c];
+        source_spans[c] = source[c];
+    }
+    for (std::size_t c = 0; c < coded_channels; ++c) {
+        out[c] = coded[c];
+        views[c] = coded[c];
+    }
+
+    // Whole frames out of the queue as soon as there are any, so neither the
+    // decoded programme nor whatever on_frame does with it is ever held
+    // whole.
+    const auto drain = [&](bool flush) -> bool {
+        while (queue.available() >= static_cast<std::size_t>(ac3::kSamplesPerFrame) ||
+               (flush && queue.available() > 0)) {
+            const auto count =
+                std::min<std::size_t>(queue.available(), ac3::kSamplesPerFrame);
+            queue.take(count, source_spans);
+            plan::render(routing, in, out, ac3::kSamplesPerFrame);
+            if (!on_frame(views)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    DecodeRenderStats stats;
+    const auto track_dynrng = [&](std::span<const std::uint8_t> words) {
+        for (const auto word : words) {
+            const double db = ac3::meta::to_db(ac3::meta::dynrng_gain(word));
+            stats.dynrng_min_db = stats.dynrng_words == 0 ? db : std::min(stats.dynrng_min_db, db);
+            stats.dynrng_max_db = stats.dynrng_words == 0 ? db : std::max(stats.dynrng_max_db, db);
+            ++stats.dynrng_words;
+        }
+    };
+
+    // A stream whose channel count changes part-way through would leave the
+    // queue's channels at different lengths and silently truncate at the
+    // shortest, so it is refused with a reason instead. `routing` was fixed
+    // from the scan's own channel count before the first decode.
+    const auto require_width = [&](std::size_t got) -> bool {
+        if (got == source_channels) {
+            return true;
+        }
+        fmt::println(stderr,
+                     "error: {}: the programme changes from {} channels to {} part-way through, "
+                     "which one routing cannot describe",
+                     in_path, source_channels, got);
+        on_abort();
+        return false;
+    };
+
+    if (eac3_source) {
+        // Heap-allocated for the same C6262 reason measure_qc_eac3 gives.
+        auto decoder = std::make_unique<ac3::Eac3Decoder>();
+        // The programme's Table E2.5 layout and the WAV position each of its
+        // slots occupies, fixed from the first access unit that decodes -
+        // the flush below needs both, and by then there is no access unit
+        // left to read them off.
+        ac3::eac3::chanmap::Layout programme_layout{};
+        std::vector<std::size_t> slot_to_wav;
+        for (const auto& unit : loaded.scan.access_units) {
+            const auto decoded = decoder->decode_access_unit(unit);
+            if (!decoded) {
+                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
+                on_abort();
+                return std::nullopt;
+            }
+            if (!decoded->has_value()) {
+                // §3.7 transient pre-noise hold-back - nothing ready yet.
+                continue;
+            }
+            const auto& programme = **decoded;
+            ++stats.units_in;
+            track_dynrng(std::span{programme.dynrng}.first(static_cast<std::size_t>(
+                ac3::eac3::blocks_per_syncframe(programme.numblkscod))));
+            if (slot_to_wav.empty()) {
+                programme_layout = programme.layout;
+                // The decoded programme is in Table E2.5 slot order; the
+                // routing was built for a source in WAV order, the same
+                // reconciliation `decode` makes before writing a WAV. Dual
+                // mono has no Table E2.5 location at all (Ch1 and Ch2 are
+                // programmes, not directions), so it stays in coded order.
+                const auto order =
+                    programme.acmod == ac3::Acmod::kDualMono
+                        ? std::vector<std::size_t>{}
+                        : plan::wav_order(std::span{programme_layout.items}.first(
+                              static_cast<std::size_t>(programme_layout.count)));
+                slot_to_wav.assign(programme.channels.size(), 0);
+                for (std::size_t wav = 0; wav < slot_to_wav.size(); ++wav) {
+                    slot_to_wav[order.empty() ? wav : order[wav]] = wav;
+                }
+            }
+            if (!require_width(programme.channels.size())) {
+                return std::nullopt;
+            }
+            for (std::size_t slot = 0; slot < programme.channels.size(); ++slot) {
+                queue.push(slot_to_wav[slot], programme.channels[slot]);
+            }
+            if (!drain(false)) {
+                return std::nullopt;
+            }
+        }
+        // Whatever transient pre-noise processing was still holding back
+        // (§3.7). flush() returns raw per-substream results rather than
+        // assembled access units, so each substream's channels are placed at
+        // the slot its own Table E2.5 location occupies in the programme
+        // layout - exactly as decode_access_unit's own §E3.8.2 assembly
+        // would have. Appending them by coded index instead would write a
+        // dependent's height channels over the bed's L/R.
+        const auto flushed = decoder->flush();
+        if (!flushed.empty() && slot_to_wav.empty()) {
+            fmt::println(stderr,
+                         "error: {}: no access unit ever completed, so there is no programme "
+                         "layout to place the held-back frames into",
+                         in_path);
+            on_abort();
+            return std::nullopt;
+        }
+        for (const auto& substream : flushed) {
+            if (substream.strmtyp == ac3::eac3::StreamType::kIndependent) {
+                ++stats.units_in;
+            }
+            const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
+            for (int i = 0; i < locations.count; ++i) {
+                const int slot = programme_layout.index_of(locations[i]);
+                if (slot < 0 || static_cast<std::size_t>(slot) >= slot_to_wav.size()) {
+                    continue;
+                }
+                queue.push(slot_to_wav[static_cast<std::size_t>(slot)],
+                           substream.channels[static_cast<std::size_t>(i)]);
+            }
+        }
+        if (!flushed.empty() && !drain(false)) {
+            return std::nullopt;
+        }
+    } else {
+        ac3::FrameDecoder decoder;
+        const auto order = ac3::io::wav_channel_order(loaded.scan.acmod, loaded.scan.lfe);
+        for (const auto& frame : loaded.scan.access_units) {
+            const auto decoded = decoder.decode_frame(frame);
+            if (!decoded) {
+                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
+                on_abort();
+                return std::nullopt;
+            }
+            ++stats.units_in;
+            track_dynrng(decoded->dynrng);
+            if (!require_width(decoded->channels.size())) {
+                return std::nullopt;
+            }
+            for (std::size_t i = 0; i < order.size(); ++i) {
+                queue.push(i, decoded->channels[order[i]]);
+            }
+            if (!drain(false)) {
+                return std::nullopt;
+            }
+        }
+    }
+    if (!drain(true)) {
+        return std::nullopt;
+    }
+    return stats;
+}
+
 int run_transcode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   std::string_view layout, const Options& meta) {
     const auto loaded = load_stream(in_path);
@@ -351,7 +527,6 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     // status_stream(out_path): stderr instead of stdout when the encoded
     // bytes themselves are going to stdout.
     const auto status = status_stream(out_path);
-    const bool eac3_source = loaded->scan.kind == ac3::io::StreamKind::kEac3;
     const auto source_rate = ac3::sample_rate_hz(loaded->scan.sample_rate);
     const auto rate = wav_sample_rate(
         source_rate, *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3",
@@ -448,184 +623,17 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         return 1;
     }
     const auto coded_channels = encoder.coded_channels();
-
-    // Planar buffers, allocated once: the queue feeds `source`, plan::render
-    // writes `coded`, the encoder reads it.
-    SampleQueue queue;
-    queue.reset(source_channels);
-    std::vector<std::vector<float>> source(source_channels,
-                                           std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> coded(coded_channels,
-                                          std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::span<const float>> in(source_channels);
-    std::vector<std::span<float>> out(coded_channels);
-    std::vector<std::span<const float>> views(coded_channels);
-    std::vector<std::span<float>> source_spans(source_channels);
-    for (std::size_t c = 0; c < source_channels; ++c) {
-        in[c] = source[c];
-        source_spans[c] = source[c];
-    }
-    for (std::size_t c = 0; c < coded_channels; ++c) {
-        out[c] = coded[c];
-        views[c] = coded[c];
-    }
     const auto coded_plan = plan::resolve(p);
     ac3::analysis::LevelMeter meter{coded_plan.bed_acmod, coded_plan.bed_lfe, source_rate};
 
-    // Whole frames out of the queue as soon as there are any, so neither the
-    // decoded programme nor the encoded stream is ever held whole.
-    const auto drain = [&](bool flush) -> bool {
-        while (queue.available() >= static_cast<std::size_t>(ac3::kSamplesPerFrame) ||
-               (flush && queue.available() > 0)) {
-            const auto count =
-                std::min<std::size_t>(queue.available(), ac3::kSamplesPerFrame);
-            queue.take(count, source_spans);
-            plan::render(*routing, in, out, ac3::kSamplesPerFrame);
+    const auto stats = decode_and_render(
+        in_path, *loaded, *routing, coded_channels,
+        [&](std::span<const std::span<const float>> views) {
             meter.process(views);
-            if (!encoder.encode(views)) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    std::size_t units_in = 0;
-    double dynrng_min_db = 0.0;
-    double dynrng_max_db = 0.0;
-    std::size_t dynrng_words = 0;
-    const auto track_dynrng = [&](std::span<const std::uint8_t> words) {
-        for (const auto word : words) {
-            const double db = ac3::meta::to_db(ac3::meta::dynrng_gain(word));
-            dynrng_min_db = dynrng_words == 0 ? db : std::min(dynrng_min_db, db);
-            dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
-            ++dynrng_words;
-        }
-    };
-
-    // A stream whose channel count changes part-way through would leave the
-    // queue's channels at different lengths and silently truncate the encode
-    // at the shortest, so it is refused with a reason instead. The routing
-    // was fixed from the scan's own channel count before the first decode.
-    const auto require_width = [&](std::size_t got) -> bool {
-        if (got == source_channels) {
-            return true;
-        }
-        fmt::println(stderr,
-                     "error: {}: the programme changes from {} channels to {} part-way through, "
-                     "which one routing cannot describe",
-                     in_path, source_channels, got);
-        encoder.abort();
-        return false;
-    };
-
-    if (eac3_source) {
-        // Heap-allocated for the same C6262 reason measure_qc_eac3 gives.
-        auto decoder = std::make_unique<ac3::Eac3Decoder>();
-        // The programme's Table E2.5 layout and the WAV position each of its
-        // slots occupies, fixed from the first access unit that decodes -
-        // the flush below needs both, and by then there is no access unit
-        // left to read them off.
-        ac3::eac3::chanmap::Layout programme_layout{};
-        std::vector<std::size_t> slot_to_wav;
-        for (const auto& unit : loaded->scan.access_units) {
-            const auto decoded = decoder->decode_access_unit(unit);
-            if (!decoded) {
-                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
-                encoder.abort();
-                return 1;
-            }
-            if (!decoded->has_value()) {
-                // §3.7 transient pre-noise hold-back - nothing ready yet.
-                continue;
-            }
-            const auto& programme = **decoded;
-            ++units_in;
-            track_dynrng(std::span{programme.dynrng}.first(static_cast<std::size_t>(
-                ac3::eac3::blocks_per_syncframe(programme.numblkscod))));
-            if (slot_to_wav.empty()) {
-                programme_layout = programme.layout;
-                // The decoded programme is in Table E2.5 slot order; the
-                // routing was built for a source in WAV order, the same
-                // reconciliation `decode` makes before writing a WAV. Dual
-                // mono has no Table E2.5 location at all (Ch1 and Ch2 are
-                // programmes, not directions), so it stays in coded order.
-                const auto order =
-                    programme.acmod == ac3::Acmod::kDualMono
-                        ? std::vector<std::size_t>{}
-                        : plan::wav_order(std::span{programme_layout.items}.first(
-                              static_cast<std::size_t>(programme_layout.count)));
-                slot_to_wav.assign(programme.channels.size(), 0);
-                for (std::size_t wav = 0; wav < slot_to_wav.size(); ++wav) {
-                    slot_to_wav[order.empty() ? wav : order[wav]] = wav;
-                }
-            }
-            if (!require_width(programme.channels.size())) {
-                return 1;
-            }
-            for (std::size_t slot = 0; slot < programme.channels.size(); ++slot) {
-                queue.push(slot_to_wav[slot], programme.channels[slot]);
-            }
-            if (!drain(false)) {
-                return 1;
-            }
-        }
-        // Whatever transient pre-noise processing was still holding back
-        // (§3.7). flush() returns raw per-substream results rather than
-        // assembled access units, so each substream's channels are placed at
-        // the slot its own Table E2.5 location occupies in the programme
-        // layout - exactly as decode_access_unit's own §E3.8.2 assembly
-        // would have. Appending them by coded index instead would write a
-        // dependent's height channels over the bed's L/R.
-        const auto flushed = decoder->flush();
-        if (!flushed.empty() && slot_to_wav.empty()) {
-            fmt::println(stderr,
-                         "error: {}: no access unit ever completed, so there is no programme "
-                         "layout to place the held-back frames into",
-                         in_path);
-            encoder.abort();
-            return 1;
-        }
-        for (const auto& substream : flushed) {
-            if (substream.strmtyp == ac3::eac3::StreamType::kIndependent) {
-                ++units_in;
-            }
-            const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
-            for (int i = 0; i < locations.count; ++i) {
-                const int slot = programme_layout.index_of(locations[i]);
-                if (slot < 0 || static_cast<std::size_t>(slot) >= slot_to_wav.size()) {
-                    continue;
-                }
-                queue.push(slot_to_wav[static_cast<std::size_t>(slot)],
-                           substream.channels[static_cast<std::size_t>(i)]);
-            }
-        }
-        if (!flushed.empty() && !drain(false)) {
-            return 1;
-        }
-    } else {
-        ac3::FrameDecoder decoder;
-        const auto order = ac3::io::wav_channel_order(loaded->scan.acmod, loaded->scan.lfe);
-        for (const auto& frame : loaded->scan.access_units) {
-            const auto decoded = decoder.decode_frame(frame);
-            if (!decoded) {
-                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
-                encoder.abort();
-                return 1;
-            }
-            ++units_in;
-            track_dynrng(decoded->dynrng);
-            if (!require_width(decoded->channels.size())) {
-                return 1;
-            }
-            for (std::size_t i = 0; i < order.size(); ++i) {
-                queue.push(i, decoded->channels[order[i]]);
-            }
-            if (!drain(false)) {
-                return 1;
-            }
-        }
-    }
-    if (!drain(true)) {
+            return encoder.encode(views);
+        },
+        [&] { encoder.abort(); });
+    if (!stats) {
         return 1;
     }
     if (!encoder.close()) {
@@ -633,7 +641,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     fmt::println(status, "transcoded {} {} access units -> {} {} frames ({} kbps, {} Hz) in {}",
-                 units_in, codec_label(loaded->scan.kind), encoder.frames(),
+                 stats->units_in, codec_label(loaded->scan.kind), encoder.frames(),
                  *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3", bitrate, source_rate,
                  out_path);
     fmt::println(status, "  layout {} <- {} source channels", label, source_channels);
@@ -651,10 +659,10 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     // to produce its own rather than copy the source's - there is no bsi
     // field to stamp it into the way compr has. Reported so the difference is
     // visible rather than discovered.
-    if (dynrng_words > 0 && (dynrng_min_db != 0.0 || dynrng_max_db != 0.0)) {
+    if (stats->dynrng_words > 0 && (stats->dynrng_min_db != 0.0 || stats->dynrng_max_db != 0.0)) {
         fmt::println(status,
                      "  dynrng   source carried {:+.2f} .. {:+.2f} dB; the re-encode {}",
-                     dynrng_min_db, dynrng_max_db,
+                     stats->dynrng_min_db, stats->dynrng_max_db,
                      p.meta.drc ? "derives its own from drc=" : "writes none (pass drc=<profile>)");
     }
     print_channel_summary(meter, status);
