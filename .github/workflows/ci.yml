@@ -473,9 +473,9 @@ jobs:
   # configuration and no analysis-only preset is needed.
   static-analysis:
     name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -553,9 +553,9 @@ jobs:
   # margin proves generous.
   coverage:
     name: Coverage (Linux, GCC)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
