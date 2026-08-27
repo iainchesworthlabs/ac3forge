@@ -136,7 +136,6 @@ jobs:
       linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
-      linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -158,11 +157,12 @@ jobs:
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
-          # LLVM TSan) and two Windows (MSVC, LLVM) today. Bump these, and
-          # add a matching numbered output above and matrix.runner reference
-          # below, if a leg is added or removed.
-          LINUX_LEGS=4
+          # the build matrix below - three Linux (GCC, LLVM, LLVM ASan+UBSan)
+          # and two Windows (MSVC, LLVM) today. LLVM TSan stays GitHub-hosted
+          # (see its own matrix entry) so it is not one of these three. Bump
+          # these, and add a matching numbered output above and matrix.runner
+          # reference below, if a leg is added or removed.
+          LINUX_LEGS=3
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -455,8 +455,14 @@ jobs:
           # driving every layout/tool combination through ac3cli is an
           # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
           # same reasoning as the ASan+UBSan leg's own comment above.
+          # Stays GitHub-hosted, deliberately: ThreadSanitizer needs to
+          # disable ASLR to instrument memory correctly, and the self-hosted
+          # image's container fails with "unable to disable ASLR (perhaps
+          # sandboxing is enabled?)" - confirmed the hard way. GitHub-hosted's
+          # container security profile permits it; self-hosted's does not,
+          # for reasons not yet understood.
           - name: "Linux LLVM TSan"
-            runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
+            runner: '["ubuntu-latest"]'
             container: ubuntu:26.04
             preset: linux-llvm-tsan
             llvm: true
