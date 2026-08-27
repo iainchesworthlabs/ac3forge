@@ -1939,6 +1939,34 @@ jobs:
       # confirmed for real on a first attempt: "Cannot deploy non-existing
       # library file: .../plugins/platforms/offscreen". libqoffscreen.so is
       # the actual file at that path.
+      #
+      # QML_SOURCES_PATHS - same story again, confirmed necessary against a
+      # real failure ("module QtQuick.Controls plugin qtquickcontrols2plugin
+      # not found") rather than added preemptively. apps/gui/CMakeLists.txt's
+      # Windows windeployqt step already documents exactly this class of
+      # problem and passes --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" for
+      # the same underlying reason: ac3gui's QML is AOT-compiled into the Qt
+      # resource system (qrc:/qt/qml/Ac3Forge/Main.qml), never present as
+      # loose .qml files anywhere in the built/installed tree. linuxdeploy-
+      # plugin-qt's own qmlimportscanner-based deployer
+      # (src/qml.cpp:getQmlImports, deployQml) scans the AppDir itself by
+      # default with nothing else configured - which has no .qml files
+      # either, for the same reason - so it silently finds zero imports and
+      # bundles nothing. QML_SOURCES_PATHS (src/qml.h's own
+      # ENV_KEY_QML_SOURCES_PATHS, confirmed against source rather than
+      # guessed from windeployqt's differently-named flag) is linuxdeploy-
+      # plugin-qt's equivalent of windeployqt's --qmldir: extra paths added
+      # to (not replacing) that default AppDir scan, so pointing it at the
+      # real source tree's apps/gui/qml - the same directory the Windows
+      # step already uses - lets the scanner see the actual `import
+      # QtQuick.Controls` statements and bundle the plugin they need.
+      #
+      # QQuickStyle::setStyle("Fusion") (apps/gui/main.cpp) is a runtime C++
+      # call no static QML scan can ever see either, the same gap
+      # windeployqt's own comment in that CMakeLists.txt documents - watch
+      # for a Fusion-specific missing-style failure surfacing next, the same
+      # way each of the fixes above surfaced one layer at a time; not
+      # pre-empted here since it hasn't actually failed yet.
       - name: Build the AppImage
         shell: bash
         run: |
@@ -1947,6 +1975,7 @@ jobs:
           export VERSION="$version"
           export APPIMAGE_EXTRACT_AND_RUN=1
           export EXTRA_PLATFORM_PLUGINS=libqoffscreen.so
+          export QML_SOURCES_PATHS="$PWD/apps/gui/qml"
           libstdcxx="/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
           libgcc_s="/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
           for f in "$libstdcxx" "$libgcc_s"; do
@@ -1966,6 +1995,10 @@ jobs:
             --output appimage
           if [ ! -e AppDir/usr/plugins/platforms/libqoffscreen.so ]; then
             echo "::error::EXTRA_PLATFORM_PLUGINS did not put libqoffscreen.so in the AppDir - the smoke test's QT_QPA_PLATFORM=offscreen would fail the same way this was fixed for"
+            exit 1
+          fi
+          if ! find AppDir/usr/qml -iname '*qtquickcontrols2plugin*' 2>/dev/null | grep -q .; then
+            echo "::error::QML_SOURCES_PATHS did not get the QtQuick.Controls plugin bundled under AppDir/usr/qml - the smoke test's QML load would fail the same way this was fixed for"
             exit 1
           fi
           ls -la ac3gui-*.AppImage
