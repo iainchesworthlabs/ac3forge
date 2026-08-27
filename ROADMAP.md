@@ -252,11 +252,10 @@ both encoders decide from content rather than from the bit rate.
   gets.
 - [x] **EQ12 (M)** — E-AC-3 VBR characterisation and an average-rate mode. `quality_race.py vbr`
   sweeps `VbrConfig::quality` and scores CBR and FFmpeg CBR at the rate each point actually
-  measured; the curve is published in
-  [docs/concepts/ac3-eac3.md](concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
-  Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]` on the CLI): one composite SNR
-  offset held across frames and steered by an integral controller, over a sliding-window bit
-  reservoir that caps any window's pooled budget.
+  measured; the curve is published in `docs/concepts/ac3-eac3.md`'s "E-AC-3 rate control: what
+  VBR and ABR are worth" section. Average-rate mode is `eac3::AbrConfig` (`avg:kbps[,win:frames]`
+  on the CLI): one composite SNR offset held across frames and steered by an integral controller,
+  over a sliding-window bit reservoir that caps any window's pooled budget.
 - [ ] **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. PARTIAL: the
   measure exists and is validated (`ac3::quality`, decoded-domain distortion pinned bit-exact
   against §7.3's real quantizer, plus a cited/tested Johnston+MPEG-1-model-2 tonality/masking
