@@ -615,13 +615,15 @@ jobs:
       # and a prior job on that same long-lived box may already have installed
       # it too - either way, a match means this step can skip the ~10+ minute
       # download+install outright. A mismatch (wrong version, or nothing
-      # installed) removes any existing C:\Program Files\LLVM first, so the
-      # installer always writes into an empty directory - NSIS `/S` overwrites
-      # same-named files but never uninstalls first, so installing straight
-      # over a *different* version can leave stale compiler-rt builtins/libs
-      # behind that silently break linking far downstream (see
-      # iainchesworthlabs/ci-runners#9, which hit exactly this on a long-lived
-      # self-hosted runner after a toolchain version bump).
+      # installed) renames any existing C:\Program Files\LLVM out of the way
+      # first (see the run block's own comment for why a rename, not a
+      # delete), so the installer always writes into a fresh directory -
+      # NSIS `/S` overwrites same-named files but never uninstalls first, so
+      # installing straight over a *different* version can leave stale
+      # compiler-rt builtins/libs behind that silently break linking far
+      # downstream (see iainchesworthlabs/ci-runners#9, which hit exactly
+      # this on a long-lived self-hosted runner after a toolchain version
+      # bump).
       - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }} (Windows)
         if: matrix.llvm && runner.os == 'Windows'
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
@@ -650,19 +652,27 @@ jobs:
             Write-Host "LLVM $version already installed at $clangCl - skipping download/install"
           } else {
             if (Test-Path $llvmDir) {
-              Write-Host "Existing LLVM install does not match $version - removing before reinstalling"
-              # NOT Remove-Item -Recurse -Force: GitHub-hosted windows-latest
-              # images ship their own pre-installed LLVM at this same path, and
-              # PowerShell's Remove-Item -Recurse is known to be pathologically
-              # slow (effectively hangs) walking a large, unfamiliar directory
-              # tree - confirmed the hard way, it ran the full 90-minute CI
-              # timeout with zero progress. cmd's rd /s /q calls the native
-              # Win32 directory-removal APIs directly and doesn't share that
-              # problem.
-              & cmd.exe /c "rd /s /q `"$llvmDir`""
-              if (Test-Path $llvmDir) {
-                throw "Failed to remove $llvmDir before reinstalling LLVM $version"
-              }
+              # NOT a delete. GitHub-hosted windows-latest images ship their
+              # own pre-installed LLVM at this same path, and BOTH
+              # Remove-Item -Recurse -Force and cmd's rd /s /q hung
+              # indefinitely against it - confirmed the hard way, twice, each
+              # running the full 90-minute CI timeout with zero progress
+              # after printing this line. Since two independently-implemented
+              # deletion paths hit the identical wall, this isn't a
+              # PowerShell-recursion-algorithm problem, it's something (most
+              # likely realtime antivirus scanning, possibly a lingering
+              # handle from image provisioning) holding the tree busy on a
+              # per-file basis. A rename is a single directory-level metadata
+              # operation - no per-file access at all - so it sidesteps
+              # whatever that is entirely, and is effectively instant
+              # regardless of tree size (confirmed: 9ms against a real test
+              # tree). The renamed-away copy is simply abandoned: harmless on
+              # windows-latest (VM is discarded after the job) and expected
+              # to be rare on self-hosted post ci-runners#10 (only happens
+              # between an ac3forge pin bump and the next template rebuild).
+              $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+              Write-Host "Existing LLVM install does not match $version - renaming out of the way ($staleName) before reinstalling"
+              Rename-Item -Path $llvmDir -NewName $staleName
             }
             $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
             $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
