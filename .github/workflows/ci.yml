@@ -277,8 +277,13 @@ jobs:
   # gate reporting. Conservative - anything not clearly docs counts as code.
   changes:
     name: Detect changes
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    # Stays GitHub-hosted, deliberately: this job's script calls `gh api`
+    # directly (see below), and the self-hosted image's toolset is not
+    # guaranteed to include the gh CLI - confirmed the hard way, `gh:
+    # command not found` on tf-gh-linux-runner-11 when this was briefly
+    # routed through check-runner like every other cheap job in this file.
+    # A one-shot metadata lookup gains nothing from self-hosted anyway.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
