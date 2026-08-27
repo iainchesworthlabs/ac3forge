@@ -49,6 +49,15 @@
 #                                     runs. No longer experimental. GUI now
 #                                     on too (Homebrew's qt formula), same
 #                                     opt-in shape as the Linux legs.
+#   macos-llvm-x64          GREEN     DR8: real GitHub Actions runs on
+#                                     macos-15-intel, native Intel hardware,
+#                                     not Rosetta. Went three consecutive
+#                                     clean runs (build+test+gold-reference)
+#                                     before promotion, same bar macos-llvm
+#                                     was held to. Merged with macos-llvm's
+#                                     arm64 build into one universal .dmg by
+#                                     _build.yml's package-macos-universal
+#                                     job on a real release.
 #
 # ---------------------------------------------------------------------------
 # Gold-reference correctness gate (added alongside the macos-llvm promotion)
@@ -92,6 +101,17 @@
 # also VX11) now pins the ENCODED bytes of every gold-reference stream per
 # kernel/mode so this specific gap - resolved or not - cannot silently
 # change without CI noticing.
+#
+# Update (DR8): macos-llvm-x64, the x86_64-on-macOS leg added alongside
+# macos-llvm for the macOS universal-binary work, is a genuinely new data
+# point on the OS-vs-architecture question above - same OS and Homebrew
+# LLVM/Qt stack as macos-llvm, x86_64 instead of arm64. It measures
+# 67.80/67.82/67.76 dB across its first three real runs, matching the x86
+# baseline every non-arm64 leg reports, not macos-llvm's ~61.8 dB. That rules
+# out an OS-specific contributor: the same OS/toolchain now sits on both
+# sides of the split, differing only by CPU architecture. See ROADMAP.md's
+# VX11 entry for the fuller note; the underlying mechanism itself is still
+# open.
 #
 # Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
 # ctest entry per tst_*.qml suite (label "gui") that Quick-Test-drives the
@@ -257,8 +277,13 @@ jobs:
   # gate reporting. Conservative - anything not clearly docs counts as code.
   changes:
     name: Detect changes
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    # Stays GitHub-hosted, deliberately: this job's script calls `gh api`
+    # directly (see below), and the self-hosted image's toolset is not
+    # guaranteed to include the gh CLI - confirmed the hard way, `gh:
+    # command not found` on tf-gh-linux-runner-11 when this was briefly
+    # routed through check-runner like every other cheap job in this file.
+    # A one-shot metadata lookup gains nothing from self-hosted anyway.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
