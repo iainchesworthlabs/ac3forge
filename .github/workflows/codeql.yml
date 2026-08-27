@@ -84,6 +84,9 @@ jobs:
     uses: ./.github/workflows/_toolchain-versions.yml
     permissions:
       contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
   # `display`, not `language`, in the job name - and "C++" spelled exactly as it
   # was before this became a matrix. The check name a branch-protection ruleset
