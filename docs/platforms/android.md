@@ -392,11 +392,14 @@ The app builds alongside the desktop packages rather than only ever being hand-b
 version, `26.1.10909125`, the same "don't trust whatever the image happens to cache" reasoning
 every other toolchain step in that workflow already follows) — a continuous smoke test proving the
 Gradle/CMake/NDK toolchain and every native source file still build, the same role `windows-msvc`'s
-always-on packaging step plays for the desktop legs. **Object signing is gated purely on the
-`ATMOS_SIGNING_KEY` secret, not on whether this is a release.** Both `ci.yml` and `release.yml`
-forward that secret, so if it is set, *every* Shield build — the always-on debug APK included —
-bundles the key asset and signs; with no secret the step is skipped and the build is the unsigned
-bed51 app.
+always-on packaging step plays for the desktop legs. **Object signing in CI reaches the debug APK
+only.** Both `ci.yml` and `release.yml` forward `ATMOS_SIGNING_KEY`, and when it is set the
+materialize step writes the key asset so the debug build — which is never uploaded anywhere — is a
+live smoke test of the on-device signing path. The asset is then deleted again before the release
+keystore is even decoded, and the staged release APK is asserted to contain no `signing.key` entry
+before it can be uploaded, so **a published `.apk` is always the unsigned `bed51` app**. With no
+secret, the materialize step is skipped and every build is unsigned.
+
 
 For an actual release (`release.yml`, `do_package: true`), the same job also builds and stages the
 **release** variant (`CMAKE_BUILD_TYPE=Release`) as `ac3forge-shield-<version>.apk`. A separate,
@@ -454,8 +457,10 @@ every other required leg.
     physical device.
 
     Both the release (unsigned) and local-signed debug builds install and launch without crashing;
-    the release build's logcat confirms `object container: bed51 (omitted, unsigned build)` — the
-    safe public default actually takes effect, not just compiles. `build-android` has itself now run
+    that locally-built, keyless release build's logcat confirms `object container: bed51 (omitted,
+    unsigned build)` — the safe public default actually takes effect, not just compiles. Note this
+    was verified on a **local** release build, which never had a key asset; what CI publishes is
+    covered by the key-free assertion in [Release / CI](#release-ci) instead. `build-android` has itself now run
     green three consecutive times on GitHub's hosted runners — see [Release / CI](#release-ci) above.
 
 !!! note "Automated in CI (roadmap VX18b)"
