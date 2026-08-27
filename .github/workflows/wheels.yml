@@ -39,13 +39,18 @@ permissions:
   contents: read
 
 jobs:
-  # Same self-hosted/GitHub-hosted fan-out _build.yml's own Windows/Linux
-  # legs get (see docs/ci-self-hosted-runners.md), via the shared
-  # decide-runner composite action - this workflow is triggered
-  # independently of ci.yml/_build.yml, so it has no access to that job's
-  # outputs. macOS stays GitHub-hosted unconditionally: there is no
-  # self-hosted macOS capacity, and AWS's Mac instances bill in 24-hour
+  # Windows-only fan-out onto self-hosted (see docs/ci-self-hosted-runners.md),
+  # via the shared decide-runner composite action - this workflow is
+  # triggered independently of ci.yml/_build.yml, so it has no access to
+  # that job's outputs. macOS stays GitHub-hosted unconditionally: there is
+  # no self-hosted macOS capacity, and AWS's Mac instances bill in 24-hour
   # minimum blocks, a poor fit for a ~5-minute job that runs on every push.
+  # Linux stays GitHub-hosted too, for now: the self-hosted Linux pool's
+  # Python toolchain has no pip (`No module named pip`, confirmed against a
+  # real run - cibuildwheel needs to install itself into a venv before it
+  # can do anything), unlike ubuntu-latest's image. Re-enable once that
+  # image gets a pip-complete Python, the same way the Windows leg below
+  # already works today.
   check-runners:
     name: Check self-hosted runner availability
     runs-on: ubuntu-latest
@@ -54,7 +59,6 @@ jobs:
       actions: read
     outputs:
       windows_runner: ${{ steps.windows.outputs.runner }}
-      linux_runner: ${{ steps.linux.outputs.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,13 +69,6 @@ jobs:
           os-label: Windows
           hosted-json: '["windows-latest"]'
           mode: ${{ vars.RUNNER_WINDOWS_MODE || 'auto' }}
-          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
-      - id: linux
-        uses: ./.github/actions/decide-runner
-        with:
-          os-label: Linux
-          hosted-json: '["ubuntu-latest"]'
-          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
           org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
   build:
@@ -91,7 +88,7 @@ jobs:
           - name: macos-latest
             runner: '["macos-latest"]'
           - name: ubuntu-latest
-            runner: ${{ needs.check-runners.outputs.linux_runner }}
+            runner: '["ubuntu-latest"]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

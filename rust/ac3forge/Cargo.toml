@@ -1,0 +1,12 @@
+[package]
+name = "ac3forge"
+description = "Safe, idiomatic Rust bindings for ac3forge's C API - AC-3/E-AC-3 encode and decode"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ac3forge-sys = { path = "../ac3forge-sys", version = "0.1.0" }

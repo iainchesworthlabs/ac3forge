@@ -110,6 +110,10 @@ command's own help (or the full listing when no command was named).
   [Linux](../platforms/linux.md), [Raspberry Pi](../platforms/raspberry-pi.md),
   [macOS](../platforms/macos.md), [Android](../platforms/android.md)) for what's actually
   hardware-confirmed on each OS.
+- **`play` follows the sink** (roadmap UX9): given a `device_index`, it reads that endpoint's own
+  advertised capabilities before committing to a format. That read is itself backend-specific —
+  real today only on ALSA, a live probe everywhere else, same per-OS pages above — see
+  [Commands → Following the sink](commands.md#following-the-sink).
 
 ## Next
 

@@ -64,6 +64,17 @@ is deliberately explicit about the difference.
     itself); the same trick now exists for E-AC-3 (`ac3cli spdif`/`monitor`/`live`, branching on
     bsid) but has not itself been tried against a receiver either.
 
+!!! note "No EDID/ELD backend on Windows (roadmap UX9)"
+    `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
+    see [CLI → Following the sink](../cli/commands.md#following-the-sink) — and that read
+    (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
+    [Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9)). WASAPI answers "will this
+    endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
+    uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
+    user-mode code — the driver consumes them internally to decide what to offer and no
+    documented public API was found that hands the source data back. `play` falls back to the
+    same `IsFormatSupported` probe here, exactly as it always has.
+
 ### Passthrough capture
 
 The reverse direction — a WASAPI endpoint *delivering* IEC 61937 rather than PCM, which is what
@@ -131,18 +142,22 @@ you opt into the `adm`/`profiling` features; see [building.md](../building.md)).
 cpack --preset pack-windows-msvc
 ```
 
-Produces a ZIP, plus an NSIS installer on top if `makensis` is on `PATH`. `pack-windows-llvm` is
-the clang-cl equivalent, and `pack-windows-msvc-arm64` the ARM64 one (below). `windows-msvc` is
-the only leg packaged continuously — CI packages it on every push and uploads the result as a
-workflow artifact, a standing smoke test of the packaging path; tagged releases package every
-`release_package` leg (Windows x64/arm64, Linux x64/arm64, macOS). See
+Produces a ZIP, plus an NSIS installer on top if `makensis` is on `PATH` (CI's `windows-msvc` leg
+installs it via Chocolatey automatically and fails the leg if the installer doesn't come out the
+other end — see [releasing.md](../releasing.md#winget-manifest); locally, install NSIS yourself
+or `cpack` falls back to ZIP-only with a `message(WARNING ...)` explaining why).
+`pack-windows-llvm` is the clang-cl equivalent, and `pack-windows-msvc-arm64` the ARM64 one
+(below). `windows-msvc` is the only leg packaged continuously — CI packages it on every push and
+uploads the result as a workflow artifact, a standing smoke test of the packaging path; tagged
+releases package every `release_package` leg (Windows x64/arm64, Linux x64/arm64, macOS). See
 [Packaging](../building.md#packaging).
 
 The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
 `shell\open\command` at the installed `ac3gui.exe` and nudging Explorer to pick up the change with
 `SHChangeNotify`, and reverses both keys on uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/
-`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. Configure/build-verified only: no `makensis`
-locally to actually run the installer and double-click a `.ac3` file afterwards.
+`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. CI now builds and verifies the installer itself
+on every push; running it and double-clicking a `.ac3` file to confirm the file association end
+to end is still a manual, unautomated check.
 
 ## ARM64 (roadmap DR8)
 
