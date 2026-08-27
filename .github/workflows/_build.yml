@@ -132,6 +132,7 @@ jobs:
       linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
+      linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -153,11 +154,11 @@ jobs:
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - three Linux (GCC, LLVM, LLVM ASan+UBSan)
-          # and two Windows (MSVC, LLVM) today. Bump these, and add a
-          # matching numbered output above and matrix.runner reference
+          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
+          # LLVM TSan) and two Windows (MSVC, LLVM) today. Bump these, and
+          # add a matching numbered output above and matrix.runner reference
           # below, if a leg is added or removed.
-          LINUX_LEGS=3
+          LINUX_LEGS=4
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -235,6 +236,9 @@ jobs:
     uses: ./.github/workflows/_toolchain-versions.yml
     permissions:
       contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
   build:
     name: ${{ matrix.name }}
@@ -448,7 +452,7 @@ jobs:
           # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
           # same reasoning as the ASan+UBSan leg's own comment above.
           - name: "Linux LLVM TSan"
-            runner: '["ubuntu-latest"]'
+            runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
             container: ubuntu:26.04
             preset: linux-llvm-tsan
             llvm: true
