@@ -94,7 +94,7 @@ different speed.
 
 One thing changes for callers: reconstructed object audio lags the bed by 576 samples in the QMF
 domain rather than 256, which is the filterbank pair's own algorithmic delay (a 640-tap window
-less one 64-sample hop) and cannot be shortened. `joc::reconstruction_delay(domain)` is the single
+less one 64-sample hop) and cannot be shortened. `oba::joc::reconstruction_delay(domain)` is the single
 place either number is written down.
 
 The filterbank itself is `ac3::dsp::QmfAnalysis` / `QmfSynthesis`. Its prototype filter is
