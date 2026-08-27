@@ -1890,6 +1890,28 @@ jobs:
       # over the same client/daemon connection a bind mount would otherwise
       # need shared filesystem visibility for, so it works regardless of
       # whether the two sides' path namespaces line up at all.
+      #
+      # libasound2 is installed in the TARGET container deliberately, not
+      # bundled into the AppImage - this is the same boundary the existing
+      # .deb/.rpm already draw, not a new one invented for this job.
+      # cmake/Packaging.cmake sets CPACK_DEBIAN_PACKAGE_SHLIBDEPS/
+      # CPACK_RPM_PACKAGE_AUTOREQPROV ON, which declares libasound2 as a
+      # runtime `Depends:` entry rather than bundling it - because ALSA is
+      # part of the base multimedia stack on effectively every real desktop
+      # Linux install, unlike Qt6/qml6-module-*, which is exactly the piece
+      # this job exists to stop depending on the host for (see this job's
+      # own header comment and docs/platforms/linux.md's AppImage section).
+      # It would also be the wrong fix even if it "worked": ALSA has its own
+      # plugin/config ecosystem tied to the HOST (`/usr/lib/*/alsa-lib/`,
+      # `/etc/asound.conf`), so bundling just libasound.so.2 without it risks
+      # a worse failure mode than not bundling at all - a library that loads
+      # but cannot enumerate a real device. That is also exactly backwards
+      # from Decision 1's own reasoning for AppImage over Flatpak: the point
+      # was ALSA/PipeWire access working like a normally installed binary,
+      # not ac3gui carrying its own private ALSA. debian:12-slim starting
+      # with neither Qt nor ALSA and only gaining the latter here is
+      # therefore the accurate simulation of a real desktop, not a
+      # convenient shortcut.
       - name: Smoke test on a distro that never had Qt installed
         shell: bash
         run: |
@@ -1900,8 +1922,9 @@ jobs:
           ls -la "$appimage" fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
 
           cid="$(docker create -e QT_QPA_PLATFORM=offscreen debian:12-slim \
-            /ac3gui.AppImage --appimage-extract-and-run --smoke \
-            /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png)"
+            sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends libasound2 \
+              && exec /ac3gui.AppImage --appimage-extract-and-run --smoke \
+                 /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png')"
           docker cp "$appimage" "${cid}:/ac3gui.AppImage"
           docker cp fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav "${cid}:/roundtrip-stereo.wav"
           docker start --attach "$cid"
@@ -1912,7 +1935,7 @@ jobs:
             echo "::error::AppImage smoke test failed on debian:12-slim (exit $status)"
             exit 1
           fi
-          echo "ac3gui ran clean on debian:12-slim, which never had Qt or any build tool installed"
+          echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained libasound2 as a normal runtime dependency"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
   # leg, so it is its own job rather than a `build` matrix entry - there is

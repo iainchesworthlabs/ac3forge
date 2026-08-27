@@ -231,11 +231,24 @@ which runs on every push, the same "standing smoke test of the packaging path" r
 step further than a plain `.deb`/`.rpm` gets, actually run: the same job then launches the built
 AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
 container that never had Qt or a single build tool installed** — `debian:12-slim`, reached via
-`docker run` against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That
-is the concrete answer to "does this actually run on a distro whose own Qt packages were never
+Docker against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That is the
+concrete answer to "does this actually run on a distro whose own Qt packages were never
 installed", not just "did packaging exit 0". No real desktop has installed the produced
 `.AppImage` and double-clicked an `.ac3` file, the same caveat the `.deb`/`.rpm` packaging above
 carries.
+
+One package is still installed in that second container first: `libasound2`, ALSA's runtime
+library, which `debian:12-slim` doesn't ship at all. This is deliberate, not a gap in the AppImage
+— it draws the exact same boundary the `.deb`/`.rpm` already draw (`CPACK_DEBIAN_PACKAGE_SHLIBDEPS`/
+`CPACK_RPM_PACKAGE_AUTOREQPROV` in `cmake/Packaging.cmake` declare `libasound2` as a runtime
+package dependency rather than bundling it), because ALSA is part of the base multimedia stack on
+effectively every real desktop Linux install, unlike Qt6, which is exactly the piece this AppImage
+exists to stop depending on the host for. Bundling `libasound.so.2` instead would also risk a
+worse failure than not bundling it: ALSA's plugin/config ecosystem
+(`/usr/lib/*/alsa-lib/`, `/etc/asound.conf`) is tied to the *host* system, so a bundled `.so` with
+none of that around it could load and then simply fail to enumerate any real device — the opposite
+of the point made above for why AppImage was chosen over Flatpak in the first place ("ALSA/PipeWire
+access works exactly like a normal installed binary").
 
 ## CI
 
