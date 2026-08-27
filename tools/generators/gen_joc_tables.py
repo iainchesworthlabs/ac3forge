@@ -141,7 +141,7 @@ def main():
            '// value, holding the codeword in the low `bits` bits, MSB first - which is',
            '// the order §6.6.3 reads them in ("starting with the MSB").',
            '',
-           'namespace ac3::joc {', '',
+           'namespace ac3::oba::joc {', '',
            'struct HuffCode {',
            '    std::uint32_t code;',
            '    std::uint8_t bits;',
@@ -175,7 +175,7 @@ def main():
         out.append('    {{' + ', '.join(str(v) for v in row) + '}},')
     out.append('}};')
     out.append('')
-    out.append('}  // namespace ac3::joc')
+    out.append('}  // namespace ac3::oba::joc')
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text('\n'.join(out) + '\n', encoding='utf-8')
     print(f'wrote {OUT.relative_to(REPO)} ({len(TABLES)} tables)')

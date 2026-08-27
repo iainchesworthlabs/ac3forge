@@ -274,7 +274,7 @@ struct Options {
     // not silently pick the worse one. mode=reference has nothing to add
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
-    ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
+    ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
     // The per-frame search over §7.2.2's transmitted bit allocation
     // parameters, judged on the reconstruction error the decoder will
     // produce (EncoderConfig::search, ac3/quality/distortion.hpp).
