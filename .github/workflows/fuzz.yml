@@ -165,6 +165,13 @@ jobs:
   fuzz-regress:
     name: Fuzz Regress (seeds + regression corpus, no mutation)
     runs-on: ubuntu-latest
+    # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable pause on
+    # non-required PR-time checks during a merge-queue drain, freeing hosted
+    # runner concurrency for the checks that actually gate merging (see
+    # .github/branch-protection.md's required list, which this is not on).
+    # push:main/schedule runs are untouched. Clear/remove the variable to
+    # revert - no code change needed.
+    if: github.event_name != 'pull_request' || vars.PAUSE_NONESSENTIAL_CI != 'true'
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container

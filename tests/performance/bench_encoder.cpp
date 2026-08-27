@@ -158,11 +158,11 @@ Result bench_eac3_auto(std::string name, perf::FrameSource& source, ac3::Acmod a
 // plain_51 has to plain_51_fast_mdct), so the trend series stay continuous
 // across a default change instead of taking a step nobody can read later.
 Result bench_atmos_4obj(perf::FrameSource& source, bool fast_mdct,
-                        ac3::joc::Domain domain = ac3::joc::Domain::kMdctBand) {
+                        ac3::oba::joc::Domain domain = ac3::oba::joc::Domain::kMdctBand) {
     ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = 448, .fast_mdct = fast_mdct, .joc_domain = domain}, kObjects};
     const char* name = "atmos_4obj";
-    if (domain == ac3::joc::Domain::kQmf) {
+    if (domain == ac3::oba::joc::Domain::kQmf) {
         name = fast_mdct ? "atmos_4obj_qmf_fast_mdct" : "atmos_4obj_qmf";
     } else if (fast_mdct) {
         name = "atmos_4obj_fast_mdct";
@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
     // step nobody can read later.
     if (wanted("atmos_4obj_qmf_fast_mdct")) {
         results.push_back(
-            bench_atmos_4obj(four_object, /*fast_mdct=*/true, ac3::joc::Domain::kQmf));
+            bench_atmos_4obj(four_object, /*fast_mdct=*/true, ac3::oba::joc::Domain::kQmf));
     }
     if (wanted("ac3_51_decode")) {
         results.push_back(bench_ac3_decode(ac3_stream));

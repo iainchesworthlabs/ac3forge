@@ -39,7 +39,7 @@
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/scene.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
 #include "matroska/matroska.hpp"
 #include "mp4/dash.hpp"

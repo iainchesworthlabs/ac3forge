@@ -31,7 +31,7 @@
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/oamd.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
 
 namespace ac3cli::commands {
