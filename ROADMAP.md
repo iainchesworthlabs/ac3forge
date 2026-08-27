@@ -1323,8 +1323,16 @@ directory; there is still no threading anywhere in the codec core.
 - [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` calls it "a separate, much
   larger undertaking"; the encoders are already proven platform-free (C API, wheels, NDK). A
   drop-a-WAV / capture-a-mic encode page, and a browser-side `qc`.
-- [ ] **UX7 (M)** — macOS loopback capture through Core Audio process/system taps (macOS 14.2+).
-  Capture is input-only there and `start()` refuses `kLoopback`. Needs a real Mac (DR9).
+- [ ] **UX7 (M)** — macOS loopback capture through Core Audio process/system taps
+  (`AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2+). Capture is still input-only
+  there and `start()` still refuses `kLoopback`: the tap itself needs an Objective-C class, a
+  real-time TCC consent prompt under `SystemAudioCaptureRequests`, and — since that prompt is keyed
+  to code-signing identity and does not fire unsigned — DR6 resolved first or nothing to grant it
+  to. Needs a real Mac (DR9) either way; not attempted without one. What landed without one: the
+  loopback gap's documentation corrected (it previously cited macOS 14.4, not the API's real 14.2)
+  and expanded (`docs/platforms/macos.md`), and a pure, CI-verified OS-version gate a future
+  implementation should refuse on before ever touching `CATapDescription`
+  (`ac3::coreaudio::system_audio_tap_api_available()`).
 - [ ] **UX8 (L)** — A Windows Spatial Sound object sink (`ISpatialAudioObjectRenderStream`):
   feed decoded objects as dynamic objects with their OAMD positions and the bed as static ones.
   The one path that lets Dolby's own renderer render this project's reconstructed objects
