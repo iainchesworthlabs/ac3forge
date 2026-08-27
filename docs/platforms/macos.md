@@ -7,17 +7,17 @@
     and `macos-llvm-x64`, on GitHub's `macos-15-intel` runners (real native Intel hardware, not
     Rosetta emulation — confirmed against
     [docs.github.com's hosted-runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)),
-    configuring `config-macos-llvm-x64` / `config-macos-llvm-x64-debug`. `macos-llvm` is no longer
-    experimental: its first-ever run surfaced one genuine, fully-understood issue (Homebrew's
+    configuring `config-macos-llvm-x64` / `config-macos-llvm-x64-debug`. Neither is experimental any
+    more. `macos-llvm`'s first-ever run surfaced one genuine, fully-understood issue (Homebrew's
     unpinned `llvm` formula flagging Catch2's `__COUNTER__` usage under `-Wc2y-extensions` — see
     `cmake/CompilerWarnings.cmake`), fixed in one commit, followed by two consecutive clean runs.
-    The `continue-on-error` escape hatch has since been removed
+    `macos-llvm-x64` (DR8's new leg, on a brand-new `macos-15-intel` runner label never exercised
+    before this project used it) went three consecutive clean runs — two `release.yml` dry runs and
+    this feature branch's own required PR CI — at real gold-reference SNR numbers
+    (67.80/67.82/67.76 dB, matching the x86 baseline every other non-arm64 leg reports) before its
+    own `continue-on-error` escape hatch came off the same way
     (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)),
-    so a `macos-llvm` failure blocks like every other required leg now. `macos-llvm-x64` is DR8's
-    new leg (brand-new `macos-15-intel` runner label, never exercised before this project used it)
-    and stays `experimental: true` until it has shown the same thing — a real build+test+
-    gold-reference pass, not just a first green run — before its own `continue-on-error` escape
-    hatch comes off the same way.
+    so a failure on either leg blocks like every other required leg now.
 
 ## Toolchain
 
@@ -225,13 +225,13 @@ section) traced it to every real arm64/aarch64 CI leg, `macos-llvm` included, la
 same ~6.0 dB offset from every x86 leg regardless of OS or C library, which rules out a
 macOS-specific explanation; the gap tracks CPU architecture, and the actual mechanism is still
 open pending real hardware access neither this project nor `qemu-user` emulation can substitute
-for. `macos-llvm-x64` is new data for exactly this question: same OS, same Homebrew Qt/LLVM stack
-as `macos-llvm`, x86_64 instead of arm64. If its own gold-reference numbers land with the other
-x86 legs (~67.8 dB) rather than the ~61.8 dB every arm64/aarch64 leg reports, that's further
-evidence the offset is architecture-bound, not OS-bound — see `ci.yml`'s VX11 comment for whether
-that has been confirmed yet. `macos-llvm-x64` is `experimental: true` as of this writing (see the
-note at the top of this page), so its own numbers are not yet a required, blocking signal the way
-`macos-llvm`'s are.
+for. `macos-llvm-x64` turned out to be new, confirmed data for exactly this question: same OS,
+same Homebrew Qt/LLVM stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
+numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separate real runs — not
+with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
+evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same
+toolchain now sit on opposite sides of the split, purely by CPU architecture. See `ci.yml`'s VX11
+comment and [ROADMAP.md](../roadmap.md)'s VX11 entry for the fuller record.
 
 ---
 
