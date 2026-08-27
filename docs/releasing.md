@@ -322,31 +322,46 @@ the vcpkg `--overlay-ports` flow above.
 
 ## winget manifest
 
-A winget manifest for `ac3forge` (`ac3cli` and `ac3gui` together, from the existing release
-`.zip`) is staged in-tree at
+A winget manifest for `ac3forge` (`ac3cli` and `ac3gui` together) is staged in-tree at
 [`packaging/winget/manifests/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget/manifests),
 at the exact `manifests/<first-letter>/<publisher>/<package>/<version>/` path a
 `microsoft/winget-pkgs` submission uses, so the version directory can be copied straight into a
-fork of that repo. It uses `InstallerType: zip` with `NestedInstallerType: portable` against the
-release's `ac3forge-X.Y.Z-win64.zip` rather than a dedicated installer - that archive already
-contains both `bin/ac3cli.exe` and `bin/ac3gui.exe` (CPack's `runtime` component - see [What
-gets published](#what-gets-published) below), and this release doesn't produce an NSIS `.exe`
-(`makensis` wasn't on the runner - see `cmake/Packaging.cmake`). If a future release does
-produce one, switch `InstallerType` to `nullsoft` and drop `NestedInstallerType`/
-`NestedInstallerFiles` at that point rather than keeping both paths maintained.
+fork of that repo.
+
+As of DR7, `.github/workflows/_build.yml`'s `windows-msvc` leg installs `makensis` via
+Chocolatey and `cpack` produces a real NSIS `.exe` installer on every push - the leg fails
+outright if it doesn't (see `cmake/Packaging.cmake`'s `find_program(makensis)` gate and the
+"Assert the NSIS installer was produced" step). **The next release tag onward**, bump the
+manifest with `InstallerType: nullsoft` against that release's `ac3forge-X.Y.Z-win64.exe`,
+dropping `NestedInstallerType`/`NestedInstallerFiles` entirely - a real installer replaces the
+nested-portable-zip shape, it doesn't add to it.
+
+Every version directory published **before** DR7 landed (`0.9.0-beta.1` and earlier) legitimately
+keeps `InstallerType: zip` with `NestedInstallerType: portable` against that release's
+`win64.zip`: those releases really did ship without an NSIS `.exe` (`makensis` wasn't on the
+runner yet), and a staged manifest must describe what a release actually shipped, not what a
+later fix made possible. Never rewrite an already-published version directory to claim an
+installer that release never produced.
 
 **Every release tag** needs a new version directory, since winget-pkgs versions each release
 independently rather than tracking a moving tag the way vcpkg's `version-semver` does:
 
 1. Copy `packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<prev-version>/` to a new
    `<new-version>/` directory, updating `PackageVersion` in all three files to match.
-2. Update the installer manifest's `InstallerUrl` to the new release's `win64.zip` and
-   `InstallerSha256` to match (`sha256sum` the zip - winget wants SHA256, unlike the
-   `SHA512SUMS` `release.yml` publishes for every artifact, see [What gets
-   published](#what-gets-published) below).
+2. Update the installer manifest to `InstallerType: nullsoft`, its `InstallerUrl` to the new
+   release's `win64.exe` and `InstallerSha256` to match (`sha256sum` the `.exe` - winget wants
+   SHA256, unlike the `SHA512SUMS` `release.yml` publishes for every artifact, see [What gets
+   published](#what-gets-published) below), and remove `NestedInstallerType`/
+   `NestedInstallerFiles`.
 3. Validate locally first (see below) before touching a fork.
 4. Copy the new version directory into the `microsoft/winget-pkgs` fork at the matching
    `manifests/i/iainchesworthlabs/ac3forge/<new-version>/` path and open the submission PR.
+
+The binaries inside that `.exe` are unsigned (roadmap DR6, blocked on code-signing
+certificates) - the installer building at all does not by itself resolve DR4's winget
+resubmission block, which cites an unsigned-binary Defender false positive as the likely cause.
+An unsigned NSIS installer may trip the same detection, or Windows SmartScreen on top of it;
+resolve DR6 before assuming a DR4 resubmission will go through clean.
 
 **Validating the manifest locally**, with the `winget` CLI (ships with Windows 10/11):
 
@@ -404,22 +419,37 @@ tarball) to validate a CMake option added since the last tag.
 ## What gets published
 
 One package per OS **and architecture**, not one per compiler-toolchain leg: `_build.yml`'s matrix
-builds and tests both Windows toolchains (MSVC, clang-cl) and both Linux toolchains (GCC, Clang) - on
-both x64 and arm64 for Linux - on every push, but only the leg marked `release_package: true` per
-OS/arch actually packages for a release - windows-msvc, linux-gcc, linux-gcc-arm64 and macos-llvm.
-windows-llvm, linux-llvm and linux-llvm-arm64 still catch compiler-specific bugs in full, every push;
-they just don't produce a second, redundantly canonical archive that a downloader would have no way
-to choose between. `cmake/Packaging.cmake` arch-qualifies the Linux archive filename
-(`ac3forge-X.Y.Z-Linux-x86_64.tar.gz` vs. `...-Linux-aarch64.tar.gz`) specifically so the two Linux
-architectures' TGZ/ZIP downloads never collide; DEB/RPM already carry their arch in their own
-filenames.
+builds and tests both Windows toolchains (MSVC, clang-cl), both Linux toolchains (GCC, Clang) - on
+both x64 and arm64 - and, since DR8, both macOS architectures (arm64 and x86_64) on every push. For
+Windows and Linux, only the leg marked `release_package: true` per OS/arch actually packages for a
+release - windows-msvc, linux-gcc and linux-gcc-arm64. windows-llvm, linux-llvm and
+linux-llvm-arm64 still catch compiler-specific bugs in full, every push; they just don't produce a
+second, redundantly canonical archive that a downloader would have no way to choose between.
+`cmake/Packaging.cmake` arch-qualifies the Linux archive filename (`ac3forge-X.Y.Z-Linux-x86_64.tar.gz`
+vs. `...-Linux-aarch64.tar.gz`) specifically so the two Linux architectures' TGZ/ZIP downloads never
+collide; DEB/RPM already carry their arch in their own filenames.
+
+macOS doesn't fit the "one `release_package` leg" shape at all: neither `macos-llvm` (arm64) nor
+`macos-llvm-x64` (x86_64, on GitHub's native-Intel `macos-15-intel` runner - real hardware, not
+Rosetta) carries `release_package`. A separate `package-macos-universal` job instead
+`cmake --install`s each leg's `runtime` component, `lipo -create`s every Mach-O file the two trees
+have in common (`ac3cli`, `ac3gui`, and every dylib/framework binary
+`qt_generate_deploy_qml_app_script` copies into `ac3gui.app/Contents/Frameworks/`), and packages the
+merged tree with `hdiutil` directly - the same call CPack's own DragNDrop generator makes under the
+hood. So there is still exactly one macOS end-user package per release, just built from two legs'
+output rather than one leg's own `cpack` run - which is also why it ships as a `.dmg` only, not the
+`.zip` a single-arch leg's own `cpack --preset pack-macos-llvm` also produces alongside its `.dmg`:
+nothing merges a second, redundant plain-archive form of the same universal binary today. The
+matching `ac3forge-dev-*` library archive is attempted the same way (`library`/`libruntime`
+components instead of `runtime`) but is best-effort - see `package-macos-universal`'s own comment in
+`_build.yml` - so it may be missing from a given release; check that job's log if it's absent.
 
 | Platform | Arch | Leg | End-user packages | Library (`ac3forge-dev-*`) |
 |---|---|---|---|---|
-| Windows | x64 | windows-msvc | `.zip`, `.exe` (NSIS, if `makensis` is on the runner) | `.zip` |
+| Windows | x64 | windows-msvc | `.zip`, `.exe` (NSIS) | `.zip` |
 | Linux | x86_64 | linux-gcc | `.tar.gz`, `.deb`, `.rpm` | `.tar.gz`, plus real system packages: `libac3forge0`/`ac3forge-devel` (RPM) and `libac3forge0`/`libac3forge-dev` (DEB) |
 | Linux | aarch64 (Raspberry Pi 4/5 and other arm64 targets) | linux-gcc-arm64 | `.tar.gz`, `.deb`, `.rpm` | same split as x86_64, above |
-| macOS | arm64 (Apple Silicon) | macos-llvm | `.tar.gz`, `.dmg` | `.tar.gz` |
+| macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
 The end-user packages are `ac3cli`/`ac3gui` (CPack's `runtime` component) on desktop, or the

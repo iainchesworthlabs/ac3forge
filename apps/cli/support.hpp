@@ -216,6 +216,13 @@ struct Options {
     // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did
     // before roadmap IO9).
     bool downmix_leg = true;
+    // 'play' only: whether a source format the chosen sink does not accept
+    // gets an automatic fallback - an in-memory transcode to AC-3 when the
+    // sink takes AC-3 but not E-AC-3, or a decoded PCM leg over MonitorSink
+    // when it takes neither - or the plain refusal 'play' always gave before
+    // roadmap UX9 (follow=off). Same on-by-default, off-to-restore-the-old-
+    // behaviour shape as downmix_leg above.
+    bool follow_sink = true;
     // Off by default, matching every bare token here - keep whatever frames
     // a failed encode already produced, written beside the intended output
     // as <name>.partial.<ext> instead of discarded outright. The same
@@ -274,7 +281,7 @@ struct Options {
     // not silently pick the worse one. mode=reference has nothing to add
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
-    ac3::joc::Domain joc_domain = ac3::joc::Domain::kQmf;
+    ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
     // The per-frame search over §7.2.2's transmitted bit allocation
     // parameters, judged on the reconstruction error the decoder will
     // produce (EncoderConfig::search, ac3/quality/distortion.hpp).

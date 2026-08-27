@@ -655,6 +655,8 @@ AC3FORGEC_EXPORT size_t ac3forge_decoded_substream_channel_count(
     const ac3forge_decoded_substream_t* substream);
 AC3FORGEC_EXPORT size_t ac3forge_decoded_substream_samples_per_channel(
     const ac3forge_decoded_substream_t* substream);
+/* channel_index in [0, channel_count()). The returned pointer is valid until `substream` is
+ * destroyed, same convention as ac3forge_decoded_frame_channel_samples() above. */
 AC3FORGEC_EXPORT const float* ac3forge_decoded_substream_channel_samples(
     const ac3forge_decoded_substream_t* substream, size_t channel_index);
 AC3FORGEC_EXPORT int ac3forge_decoded_substream_block_switched(
@@ -686,7 +688,9 @@ AC3FORGEC_EXPORT void ac3forge_decoded_substream_dynamic_object(
 
 /* JOC's reconstructed per-object audio, parallel to the dynamic objects
  * above (same index = same object) — 0 when no JOC payload rode alongside
- * the OAMD one. Each waveform is samples_per_channel() samples long. */
+ * the OAMD one. Each waveform is samples_per_channel() samples long, and the returned pointer is
+ * valid until `substream` is destroyed, same convention as
+ * ac3forge_decoded_frame_channel_samples() above. */
 AC3FORGEC_EXPORT size_t ac3forge_decoded_substream_object_audio_count(
     const ac3forge_decoded_substream_t* substream);
 AC3FORGEC_EXPORT const float* ac3forge_decoded_substream_object_audio(
@@ -760,6 +764,8 @@ AC3FORGEC_EXPORT size_t ac3forge_decoded_access_unit_channel_count(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT size_t ac3forge_decoded_access_unit_samples_per_channel(
     const ac3forge_decoded_access_unit_t* unit);
+/* channel_index in [0, channel_count()). The returned pointer is valid until `unit` is
+ * destroyed, same convention as ac3forge_decoded_frame_channel_samples() above. */
 AC3FORGEC_EXPORT const float* ac3forge_decoded_access_unit_channel_samples(
     const ac3forge_decoded_access_unit_t* unit, size_t channel_index);
 
@@ -785,6 +791,8 @@ AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_program_dynamic_object_count(
 AC3FORGEC_EXPORT void ac3forge_decoded_access_unit_dynamic_object(
     const ac3forge_decoded_access_unit_t* unit, int object_index, double* out_x, double* out_y,
     double* out_z, double* out_gain_db);
+/* The returned pointer is valid until `unit` is destroyed, same convention as
+ * ac3forge_decoded_frame_channel_samples() above. */
 AC3FORGEC_EXPORT size_t ac3forge_decoded_access_unit_object_audio_count(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT const float* ac3forge_decoded_access_unit_object_audio(
@@ -836,7 +844,7 @@ typedef struct ac3forge_atmos_config {
     ac3forge_sample_rate_t sample_rate;
     uint32_t bitrate_kbps; /* default 448 */
     int dialnorm;
-    int num_bands_idx; /* index into joc::kNumBands (Table 50); default 4 */
+    int num_bands_idx; /* index into ac3::oba::joc::kNumBands (Table 50); default 4 */
     int fine_quant;
     int emit_object_metadata; /* default 1 — see AtmosConfig's own comment on turning this off */
     int fast_mdct;
@@ -852,6 +860,15 @@ typedef struct ac3forge_object_placement {
     double gain;     /* linear, default 1.0 */
     double lfe_send; /* linear, default 0.0 — the only route an object reaches the LFE */
 } ac3forge_object_placement_t;
+
+/* Fills `placement` with the same defaults ac3::oba::ObjectPlacement's own default member
+ * initializers give — room-centre position (x 0.5, y 0.5, z 0.0), unity gain, no LFE send —
+ * call this before setting only the fields you need, the same convention every
+ * ac3forge_*_config_init() above follows. Without it, a zero-initialized
+ * ac3forge_object_placement_t silently encodes gain 0.0 (a muted object) rather than the
+ * documented default of unity gain, and a position at the room's front-left-floor corner rather
+ * than its centre. */
+AC3FORGEC_EXPORT void ac3forge_object_placement_init(ac3forge_object_placement_t* placement);
 
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_atmos_encoder_create(
     const ac3forge_atmos_config_t* config, int object_count,

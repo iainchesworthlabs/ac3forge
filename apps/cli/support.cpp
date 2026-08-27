@@ -502,11 +502,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "joc-domain") {
             if (value == "qmf") {
-                out.joc_domain = ac3::joc::Domain::kQmf;
+                out.joc_domain = ac3::oba::joc::Domain::kQmf;
                 continue;
             }
             if (value == "mdct") {
-                out.joc_domain = ac3::joc::Domain::kMdctBand;
+                out.joc_domain = ac3::oba::joc::Domain::kMdctBand;
                 continue;
             }
             fmt::println(stderr,
@@ -660,6 +660,20 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                              "(§7.8.2, Dolby Surround compatible)/'mono' (decode/monitor) "
                              "(got '{}')",
                              token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "follow") {
+            // 'play' only: the sink-following fallback (roadmap UX9) toggle.
+            // Unlike downmix=, no other command reads this key, so there is
+            // no value space to disambiguate against.
+            if (value == "on") {
+                out.follow_sink = true;
+            } else if (value == "off") {
+                out.follow_sink = false;
+            } else {
+                fmt::println(stderr, "error: follow is 'on'/'off' (got '{}')", token);
                 return false;
             }
             continue;

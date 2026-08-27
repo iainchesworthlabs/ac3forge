@@ -95,6 +95,13 @@ struct Eac3StreamTrace {
     // the mantissas come out wrong.
     int gaqmod = 0;
     std::vector<std::uint8_t> gain;
+    // --- roadmap AP12: research trace export --------------------------------
+    // See ac3::verify::StreamTrace's own pair of these (ac3/verify/mirror.hpp)
+    // for what they hold and why they are not part of compare(). Same
+    // decode-side-only population, same band-indexed `mask` against a
+    // bin-indexed `exponents`/`bap`.
+    int snr_offset = 0;
+    std::array<int, 50> mask{};
 };
 
 // One full-bandwidth channel's per-block tool state. Separate from

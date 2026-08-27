@@ -64,15 +64,18 @@
 #include <vector>
 
 #include "ac3/audio/ring_buffer.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "alsa_support.hpp"
+#include "candidates.hpp"
 #include "device_names.hpp"
 
 namespace ac3::audio {
 
 namespace {
 
+using alsa::Candidate;
 using alsa::DigitalOutput;
+using alsa::find_candidates;
 using alsa::HwParams;
 using alsa::Pcm;
 using alsa::SwParams;
@@ -121,15 +124,6 @@ PassthroughError open_failure(int error) {
             return PassthroughError::kComFailure;
     }
 }
-
-// A digital output found by walking the cards, before it has been probed.
-struct Candidate {
-    int card = 0;
-    DigitalOutput kind = DigitalOutput::kNone;
-    std::string name;       // "iec958:CARD=PCH,DEV=0" - no channel status yet
-    std::string hw_name;    // "hw:CARD=PCH,DEV=1" - the control probe's target
-    std::string friendly;   // for a device list a person reads
-};
 
 // Configure an open PCM for the IEC 61937 carrier: 16-bit stereo at the link
 // rate, no conversion of any kind in the path.
@@ -239,41 +233,6 @@ bool probe_format(std::string_view base, BitstreamFormat format, std::uint32_t c
     const std::uint32_t carrier = alsa::carrier_rate(format, content_rate);
     const auto name = alsa::passthrough_device_name(base, carrier);
     return name.has_value() && probe(*name, carrier);
-}
-
-// Every digital output on the machine, in card then device order.
-//
-// The `hdmi:`/`iec958:` plugins take a logical index - the card's first HDMI
-// PCM is hdmi:DEV=0 whatever hardware device number it happens to have - so
-// the two are counted separately per card as the walk goes.
-std::vector<Candidate> find_candidates() {
-    std::vector<Candidate> candidates;
-    int counted_card = -1;
-    unsigned hdmi_index = 0;
-    unsigned spdif_index = 0;
-
-    alsa::for_each_pcm(SND_PCM_STREAM_PLAYBACK, [&](const alsa::PcmEntry& entry) {
-        if (entry.card != counted_card) {
-            counted_card = entry.card;
-            hdmi_index = 0;
-            spdif_index = 0;
-        }
-        const DigitalOutput kind =
-            alsa::classify_digital_output(entry.device_name, entry.card_id, entry.card_name);
-        if (kind == DigitalOutput::kNone) {
-            return;
-        }
-        unsigned& index = kind == DigitalOutput::kHdmi ? hdmi_index : spdif_index;
-        candidates.push_back(Candidate{
-            .card = entry.card,
-            .kind = kind,
-            .name = alsa::config_device_name(kind, entry.card_id, index),
-            .hw_name = alsa::hw_device_name(entry.card_id, entry.device),
-            .friendly = fmt::format("{}: {}", entry.card_name, entry.device_name),
-        });
-        ++index;
-    });
-    return candidates;
 }
 
 }  // namespace
