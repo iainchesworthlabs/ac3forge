@@ -146,6 +146,11 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   four decoded-audio accessors). See [Rust bindings](docs/library/rust-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
+- **Stream scanning in Python.** `ac3.scan()`/`ac3.read_frame_header()` read an elementary
+  stream's shape — channel layout, every programme, every access unit's byte range — without
+  decoding any audio, plus timing helpers (`ac3.access_unit_timing`, `stream_duration_seconds`,
+  and neighbours) for a muxer computing where to cut. See [Python API](docs/library/python-api.md)'s
+  "Scanning a stream".
 - **Research trace export, reachable from Python.** The encoder/decoder mirror trace — added for
   the in-repo self-check — now fills in from an ordinary decode too, and
   `ac3::verify::append_trace_csv`/`append_trace_json_lines` (`ac3.verify.trace_to_csv`/

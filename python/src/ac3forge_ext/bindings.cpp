@@ -32,6 +32,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -101,6 +102,12 @@ struct DecodeFailure : std::runtime_error {
         : std::runtime_error("ac3forge decode failed: " + std::string(ac3::describe(c))), code(c) {}
 };
 
+struct ScanFailure : std::runtime_error {
+    ac3::io::ScanError code;
+    explicit ScanFailure(ac3::io::ScanError c)
+        : std::runtime_error("ac3forge scan failed: " + std::string(ac3::io::describe(c))), code(c) {}
+};
+
 // --- buffer / array plumbing -------------------------------------------------
 
 std::vector<std::byte> to_bytes(const py::buffer& buf) {
@@ -115,6 +122,118 @@ std::vector<std::byte> to_bytes(const py::buffer& buf) {
         std::memcpy(out.data(), info.ptr, total);
     }
     return out;
+}
+
+// --- scan() plumbing ----------------------------------------------------------
+//
+// ac3::io::ScannedStream/ScannedProgramme's own `access_units` are std::span<const std::byte>
+// pointing into the CALLER's buffer (documented on ScannedStream itself) - here, that buffer is
+// `to_bytes(stream)`'s local copy inside the scan() lambda below, which does not outlive that
+// call. Rather than tie a returned Python object's lifetime to a buffer it does not own (the
+// pattern this file's decode-output views use, where the buffer genuinely IS the returned
+// object's own memory), every access unit is copied into an ordinary self-contained py::bytes
+// right here, once, while the source buffer is still alive - same reasoning split_frames/
+// split_access_units already copy their own spans into py::bytes for, just applied to every span
+// scan() itself produces instead of only the top-level list.
+struct ScanProgrammeInfo {
+    int substreamid = 0;
+    ac3::Acmod acmod = ac3::Acmod::k2_0;
+    bool lfe = false;
+    int channels = 0;
+    int bsid = 0;
+    int bsmod = 0;
+    std::size_t substreams_per_unit = 0;
+    std::optional<int> oba_complexity_index;
+    std::vector<py::bytes> access_units;
+};
+
+// Everything ac3::io::ScannedStream reports, with access_units (both its own and every
+// programme's) already converted to owned py::bytes - see ScanProgrammeInfo's comment above for
+// why. access_unit_timing()/stream_duration_samples() and friends (bound as free functions
+// below) only ever read `access_unit_samples`/`sample_rate` off a ScannedStream (confirmed
+// against src/forge/src/io/elementary.cpp), so they reconstruct a throwaway
+// ac3::io::ScannedStream from those two fields alone rather than needing this struct to keep the
+// real one, spans and all, alive.
+struct ScanResult {
+    ac3::io::StreamKind kind = ac3::io::StreamKind::kAc3;
+    ac3::SampleRate sample_rate = ac3::SampleRate::k48000;
+    ac3::Acmod acmod = ac3::Acmod::k2_0;
+    bool lfe = false;
+    int channels = 0;
+    std::vector<py::bytes> access_units;
+    std::vector<std::uint32_t> access_unit_samples;
+    std::size_t substreams_per_unit = 0;
+    std::vector<ScanProgrammeInfo> programmes;
+    int bsid = 0;
+    int bsmod = 0;
+    int bit_rate_code = 0;
+    std::optional<int> oba_complexity_index;
+    bool bsmod_present = false;
+    int dsurmod = 0;
+    bool mix_metadata = false;
+    std::uint8_t independent_substreams = 0;
+    std::vector<ac3::io::SubstreamService> associated_substreams;
+    std::uint16_t channel_map = 0;
+};
+
+std::vector<py::bytes> to_bytes_list(const std::vector<std::span<const std::byte>>& spans) {
+    std::vector<py::bytes> out;
+    out.reserve(spans.size());
+    for (const auto span : spans) {
+        out.emplace_back(reinterpret_cast<const char*>(span.data()), span.size());
+    }
+    return out;
+}
+
+ScanProgrammeInfo to_programme_info(const ac3::io::ScannedProgramme& p) {
+    ScanProgrammeInfo info;
+    info.substreamid = p.substreamid;
+    info.acmod = p.acmod;
+    info.lfe = p.lfe;
+    info.channels = p.channels;
+    info.bsid = p.bsid;
+    info.bsmod = p.bsmod;
+    info.substreams_per_unit = p.substreams_per_unit;
+    info.oba_complexity_index = p.oba_complexity_index;
+    info.access_units = to_bytes_list(p.access_units);
+    return info;
+}
+
+ScanResult to_scan_result(const ac3::io::ScannedStream& s) {
+    ScanResult out;
+    out.kind = s.kind;
+    out.sample_rate = s.sample_rate;
+    out.acmod = s.acmod;
+    out.lfe = s.lfe;
+    out.channels = s.channels;
+    out.access_units = to_bytes_list(s.access_units);
+    out.access_unit_samples = s.access_unit_samples;
+    out.substreams_per_unit = s.substreams_per_unit;
+    out.programmes.reserve(s.programmes.size());
+    for (const auto& p : s.programmes) {
+        out.programmes.push_back(to_programme_info(p));
+    }
+    out.bsid = s.bsid;
+    out.bsmod = s.bsmod;
+    out.bit_rate_code = s.bit_rate_code;
+    out.oba_complexity_index = s.oba_complexity_index;
+    out.bsmod_present = s.bsmod_present;
+    out.dsurmod = s.dsurmod;
+    out.mix_metadata = s.mix_metadata;
+    out.independent_substreams = s.independent_substreams;
+    out.associated_substreams.assign(s.associated_substreams.begin(), s.associated_substreams.end());
+    out.channel_map = s.channel_map;
+    return out;
+}
+
+// The minimal reconstruction access_unit_timing()/stream_duration_samples()/etc. below need - see
+// ScanResult's own comment on why this is safe (those free functions only ever touch these two
+// fields of the ScannedStream they're given).
+ac3::io::ScannedStream timing_view(const ScanResult& s) {
+    ac3::io::ScannedStream stream;
+    stream.sample_rate = s.sample_rate;
+    stream.access_unit_samples = s.access_unit_samples;
+    return stream;
 }
 
 // channels: a Python sequence of 1-D array-likes, one per audio channel, AC-3 order (Table 5.8,
@@ -268,6 +387,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     static py::exception<std::runtime_error> ac3_error(m, "Ac3Error", PyExc_RuntimeError);
     static py::exception<std::runtime_error> encode_error(m, "Ac3EncodeError", ac3_error.ptr());
     static py::exception<std::runtime_error> decode_error(m, "Ac3DecodeError", ac3_error.ptr());
+    static py::exception<std::runtime_error> scan_error(m, "Ac3ScanError", ac3_error.ptr());
 
     // Constructing through PyObject_CallFunction rather than py::exception<T>'s own operator()
     // (deprecated, and only ever sets a plain string message) - this needs a real INSTANCE so
@@ -288,6 +408,11 @@ PYBIND11_MODULE(_ac3forge, m) {
                 PyObject_CallFunction(decode_error.ptr(), "s", e.what()));
             exc.attr("error") = py::cast(e.code);
             PyErr_SetObject(decode_error.ptr(), exc.ptr());
+        } catch (const ScanFailure& e) {
+            py::object exc =
+                py::reinterpret_steal<py::object>(PyObject_CallFunction(scan_error.ptr(), "s", e.what()));
+            exc.attr("error") = py::cast(e.code);
+            PyErr_SetObject(scan_error.ptr(), exc.ptr());
         }
     });
 
@@ -333,6 +458,23 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kDependent", ac3::eac3::StreamType::kDependent)
         .value("kConvertible", ac3::eac3::StreamType::kConvertible);
 
+    // ac3::io::StreamKind - roadmap AP6's scan(). A different question from StreamType above
+    // (which frames belong to which E-AC-3 substream role); this is "is the stream AC-3, E-AC-3,
+    // or an AC-3 core carrying E-AC-3 dependent extensions" - see ac3::io::StreamKind's own
+    // header comment for kAc3CoreEac3Extension.
+    py::enum_<ac3::io::StreamKind>(m, "StreamKind")
+        .value("kAc3", ac3::io::StreamKind::kAc3)
+        .value("kEac3", ac3::io::StreamKind::kEac3)
+        .value("kAc3CoreEac3Extension", ac3::io::StreamKind::kAc3CoreEac3Extension);
+
+    py::enum_<ac3::io::ScanError>(m, "ScanError")
+        .value("kEmpty", ac3::io::ScanError::kEmpty)
+        .value("kLostSync", ac3::io::ScanError::kLostSync)
+        .value("kUnsupportedBsid", ac3::io::ScanError::kUnsupportedBsid)
+        .value("kReservedValue", ac3::io::ScanError::kReservedValue)
+        .value("kTruncated", ac3::io::ScanError::kTruncated)
+        .value("kUnsupportedStructure", ac3::io::ScanError::kUnsupportedStructure);
+
     py::enum_<ac3::meta::ProfileId>(m, "ProfileId",
                                     "Conventional Dolby DRC profiles (ac3.profile_for)")
         .value("kFilmStandard", ac3::meta::ProfileId::kFilmStandard)
@@ -364,6 +506,9 @@ PYBIND11_MODULE(_ac3forge, m) {
           py::arg("error"), "Text for a DecodeError value");
     m.def("describe", static_cast<std::string_view (*)(ac3::FrameError)>(&ac3::describe),
           py::arg("error"), "Text for a FrameError value");
+    m.def(
+        "describe", [](ac3::io::ScanError e) { return std::string(ac3::io::describe(e)); },
+        py::arg("error"), "Text for a ScanError value");
     m.def(
         "profile_for", [](ac3::meta::ProfileId id) { return ac3::meta::profile(id); },
         py::arg("id"), "The ac3.Profile for one of the conventional ac3.ProfileId presets");
@@ -417,6 +562,168 @@ PYBIND11_MODULE(_ac3forge, m) {
             return *result;
         },
         py::arg("frame"));
+
+    // --- scan() and friends (roadmap AP6) - ac3::io/elementary.hpp -------------------------
+    py::class_<ac3::io::SubstreamService>(
+        m, "SubstreamService",
+        "One associated independent substream's own bed, as ScannedStream.associated_substreams "
+        "reports it for the MPEG-TS/ATSC registry descriptors.")
+        .def_readonly("present", &ac3::io::SubstreamService::present)
+        .def_readonly("bsmod", &ac3::io::SubstreamService::bsmod)
+        .def_readonly("bsmod_present", &ac3::io::SubstreamService::bsmod_present)
+        .def_readonly("acmod", &ac3::io::SubstreamService::acmod)
+        .def_readonly("lfe", &ac3::io::SubstreamService::lfe)
+        .def_readonly("mix_metadata", &ac3::io::SubstreamService::mix_metadata);
+
+    py::class_<ac3::io::FrameHeader>(
+        m, "FrameHeader",
+        "One syncframe's bit stream information, read without decoding any audio - "
+        "read_frame_header()'s own return type.")
+        .def_readonly("kind", &ac3::io::FrameHeader::kind)
+        .def_readonly("bytes", &ac3::io::FrameHeader::bytes)
+        .def_readonly("bsid", &ac3::io::FrameHeader::bsid)
+        .def_readonly("bsmod", &ac3::io::FrameHeader::bsmod)
+        .def_readonly("bsmod_present", &ac3::io::FrameHeader::bsmod_present)
+        .def_readonly("dsurmod", &ac3::io::FrameHeader::dsurmod)
+        .def_readonly("sample_rate", &ac3::io::FrameHeader::sample_rate)
+        .def_readonly("acmod", &ac3::io::FrameHeader::acmod)
+        .def_readonly("lfe", &ac3::io::FrameHeader::lfe)
+        .def_readonly("dialnorm", &ac3::io::FrameHeader::dialnorm)
+        .def_readonly("compr", &ac3::io::FrameHeader::compr)
+        .def_readonly("dialnorm2", &ac3::io::FrameHeader::dialnorm2)
+        .def_readonly("compr2", &ac3::io::FrameHeader::compr2)
+        .def_readonly("strmtyp", &ac3::io::FrameHeader::strmtyp)
+        .def_readonly("substreamid", &ac3::io::FrameHeader::substreamid)
+        .def_readonly("numblkscod", &ac3::io::FrameHeader::numblkscod)
+        .def_readonly("reduced_rate", &ac3::io::FrameHeader::reduced_rate)
+        .def_readonly("chanmap", &ac3::io::FrameHeader::chanmap)
+        .def_readonly("oba_complexity_index", &ac3::io::FrameHeader::oba_complexity_index)
+        .def_readonly("mix_metadata", &ac3::io::FrameHeader::mix_metadata)
+        .def_readonly("bit_rate_code", &ac3::io::FrameHeader::bit_rate_code)
+        .def_readonly("bitrate_kbps", &ac3::io::FrameHeader::bitrate_kbps)
+        .def_property_readonly("coded_channels", &ac3::io::FrameHeader::coded_channels);
+
+    py::class_<ac3::io::AccessUnitTiming>(
+        m, "AccessUnitTiming",
+        "Where one access unit starts and how long it lasts - access_unit_timing()'s own return "
+        "type. The integer accessors avoid the drift a running sum of per-frame durations would "
+        "have, by always computing from the absolute sample position.")
+        .def_readonly("start_sample", &ac3::io::AccessUnitTiming::start_sample)
+        .def_readonly("duration_samples", &ac3::io::AccessUnitTiming::duration_samples)
+        .def_readonly("sample_rate", &ac3::io::AccessUnitTiming::sample_rate)
+        .def_property_readonly("start_seconds", &ac3::io::AccessUnitTiming::start_seconds)
+        .def_property_readonly("duration_seconds", &ac3::io::AccessUnitTiming::duration_seconds)
+        .def("start_in_timescale", &ac3::io::AccessUnitTiming::start_in_timescale, py::arg("timescale"))
+        .def("duration_in_timescale", &ac3::io::AccessUnitTiming::duration_in_timescale,
+             py::arg("timescale"));
+
+    py::class_<ScanProgrammeInfo>(
+        m, "ScannedProgramme",
+        "One programme scan() found: an independent substream (or, for StreamKind."
+        "kAc3CoreEac3Extension, the AC-3 core standing in for one) plus the dependents that "
+        "extend it, across every frame period the stream covers.")
+        .def_readonly("substreamid", &ScanProgrammeInfo::substreamid)
+        .def_readonly("acmod", &ScanProgrammeInfo::acmod)
+        .def_readonly("lfe", &ScanProgrammeInfo::lfe)
+        .def_readonly("channels", &ScanProgrammeInfo::channels)
+        .def_readonly("bsid", &ScanProgrammeInfo::bsid)
+        .def_readonly("bsmod", &ScanProgrammeInfo::bsmod)
+        .def_readonly("substreams_per_unit", &ScanProgrammeInfo::substreams_per_unit)
+        .def_readonly("oba_complexity_index", &ScanProgrammeInfo::oba_complexity_index)
+        .def_readonly("access_units", &ScanProgrammeInfo::access_units,
+                       "This programme's access units, in stream order, each the independent "
+                       "substream's bytes followed immediately by its dependents' - the input "
+                       "shape Eac3Decoder.decode_access_unit expects.");
+
+    py::class_<ScanResult>(
+        m, "ScannedStream",
+        "What scan() learns about an elementary stream without decoding any audio - shape, "
+        "channel layout, every programme, and the raw syntax values a container muxer needs "
+        "(see ac3::io::ScannedStream's own header comment). Every scalar field below describes "
+        "the FIRST (or only) programme; see `programmes` for the rest.")
+        .def_readonly("kind", &ScanResult::kind)
+        .def_readonly("sample_rate", &ScanResult::sample_rate)
+        .def_readonly("acmod", &ScanResult::acmod)
+        .def_readonly("lfe", &ScanResult::lfe)
+        .def_readonly("channels", &ScanResult::channels)
+        .def_readonly("access_units", &ScanResult::access_units,
+                       "The first programme's access units - split_access_units's own input, "
+                       "already split for you.")
+        .def_readonly("access_unit_samples", &ScanResult::access_unit_samples)
+        .def_readonly("substreams_per_unit", &ScanResult::substreams_per_unit)
+        .def_readonly("programmes", &ScanResult::programmes)
+        .def_readonly("bsid", &ScanResult::bsid)
+        .def_readonly("bsmod", &ScanResult::bsmod)
+        .def_readonly("bit_rate_code", &ScanResult::bit_rate_code)
+        .def_readonly("oba_complexity_index", &ScanResult::oba_complexity_index)
+        .def_readonly("bsmod_present", &ScanResult::bsmod_present)
+        .def_readonly("dsurmod", &ScanResult::dsurmod)
+        .def_readonly("mix_metadata", &ScanResult::mix_metadata)
+        .def_readonly("independent_substreams", &ScanResult::independent_substreams)
+        .def_readonly("associated_substreams", &ScanResult::associated_substreams)
+        .def_readonly("channel_map", &ScanResult::channel_map);
+
+    m.def(
+        "read_frame_header",
+        [](const py::buffer& at) {
+            const auto bytes = to_bytes(at);
+            const auto result = ac3::io::read_frame_header(bytes);
+            if (!result) {
+                throw ScanFailure(result.error());
+            }
+            return *result;
+        },
+        py::arg("at"),
+        "The header of the syncframe starting at `at` - `at` must begin with a sync word and "
+        "hold at least the whole of bsi; it may be longer, same contract as ac3::io::"
+        "read_frame_header.");
+
+    m.def(
+        "scan",
+        [](const py::buffer& stream) {
+            const auto bytes = to_bytes(stream);
+            const auto result = ac3::io::scan(bytes);
+            if (!result) {
+                throw ScanFailure(result.error());
+            }
+            return to_scan_result(*result);
+        },
+        py::arg("stream"),
+        "Read an AC-3/E-AC-3 elementary stream's shape - access units, channel layout, every "
+        "programme - without decoding any audio.");
+
+    m.def(
+        "access_unit_timing",
+        [](const ScanResult& s, std::size_t index) {
+            return ac3::io::access_unit_timing(timing_view(s), index);
+        },
+        py::arg("stream"), py::arg("index"), "Access unit `index`'s own timing, or None past the end.");
+    m.def(
+        "stream_duration_samples",
+        [](const ScanResult& s) { return ac3::io::stream_duration_samples(timing_view(s)); },
+        py::arg("stream"));
+    m.def(
+        "stream_duration_seconds",
+        [](const ScanResult& s) { return ac3::io::stream_duration_seconds(timing_view(s)); },
+        py::arg("stream"));
+    m.def(
+        "access_unit_at_sample",
+        [](const ScanResult& s, std::uint64_t sample) {
+            return ac3::io::access_unit_at_sample(timing_view(s), sample);
+        },
+        py::arg("stream"), py::arg("sample"),
+        "The access unit covering `sample`, or None past the end of the stream.");
+    m.def(
+        "access_unit_at_seconds",
+        [](const ScanResult& s, double seconds) {
+            return ac3::io::access_unit_at_seconds(timing_view(s), seconds);
+        },
+        py::arg("stream"), py::arg("seconds"), "Same question as access_unit_at_sample, in seconds.");
+    m.def(
+        "uniform_access_unit_samples",
+        [](const ScanResult& s) { return ac3::io::uniform_access_unit_samples(timing_view(s)); },
+        py::arg("stream"),
+        "The one access-unit length every unit in the stream shares, or None when they differ.");
 
     // --- plain data types (kwargs-constructible where a caller builds one) -------------------
     // --- latency (roadmap PF6) ---------------------------------------------

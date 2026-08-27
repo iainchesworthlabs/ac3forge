@@ -77,6 +77,41 @@ structs themselves, added here purely for convenience.
 `ac3/decoder/decoder.hpp` — splitting a raw elementary stream (or one already known to be E-AC-3)
 into individual syncframes or access units before decoding each one.
 
+## Scanning a stream
+
+Roadmap **AP6**: `ac3.scan()` wraps `ac3::io::scan` (`ac3/io/elementary.hpp`) — reading an
+elementary stream's shape (channel layout, every programme, every access unit's byte range)
+without decoding any audio, the same walk `ac3cli probe`/a muxer's own input stage does:
+
+```python
+result = ac3.scan(stream)
+print(result.kind, result.acmod, result.lfe, result.channels)
+print(f"{len(result.access_units)} access units, {ac3.stream_duration_seconds(result):.2f}s")
+
+decoder = ac3.FrameDecoder()  # or Eac3Decoder, for an E-AC-3/kAc3CoreEac3Extension stream
+for unit in result.access_units:
+    decoded = decoder.decode_frame(unit)
+```
+
+`result.access_units` is `ac3.ScannedStream`'s first (or only) programme's access units, already
+split — `Eac3Decoder.decode_access_unit`'s own input shape, or `FrameDecoder.decode_frame`'s for
+plain AC-3. `result.kind` is `ac3.StreamKind` — `kAc3`, `kEac3`, or `kAc3CoreEac3Extension` for an
+AC-3 core carrying Annex E dependent extensions (§E2.3.1.2); every scalar field describes that
+first programme, same as the C++ `ScannedStream`'s own convention. A stream carrying more than one
+independent substream (broadcast DD+'s alternate-language/commentary services) reports each as
+its own entry in `result.programmes` — a parallel sequence, not more entries in `access_units`,
+since two programmes are never one spliced timeline.
+
+`ac3.access_unit_timing(result, index)` and `ac3.stream_duration_samples`/`stream_duration_seconds`/
+`access_unit_at_sample`/`access_unit_at_seconds`/`uniform_access_unit_samples` mirror
+`ac3::io::access_unit_timing` and its neighbours — all free functions taking a `ScannedStream`,
+matching the C++ shape, useful for a container muxer computing where to cut. `ac3.read_frame_header`
+(`ac3::io::read_frame_header`) reads one syncframe's header — everything `scan()` reports about
+the first frame, without walking the rest of the stream.
+
+A malformed stream raises `ac3.Ac3ScanError` (`.error: ac3.ScanError`) — same exception-translation
+convention as encode/decode failures, see [Errors](#errors) below.
+
 ## Research trace export
 
 Roadmap AP12. `ac3.verify.FrameTrace`/`Eac3AccessUnitTrace` are caller-owned handles that
@@ -190,18 +225,24 @@ does not need to import wholesale).
 |---|---|---|
 | `ac3.Ac3EncodeError` | `FrameEncoder.encode_frame`, `AtmosEncoder.encode_frame`, `ac3.eac3.FrameEncoder.encode_frame`, `ac3.eac3.AccessUnitEncoder.encode_access_unit` | `ac3.FrameError` |
 | `ac3.Ac3DecodeError` | `FrameDecoder.decode_frame`, `Eac3Decoder.decode_substream`/`decode_access_unit`, `ac3.split_frames`/`split_access_units`/`stream_bsid` | `ac3.DecodeError` |
+| `ac3.Ac3ScanError` | `ac3.scan`, `ac3.read_frame_header` | `ac3.ScanError` |
 
-Both derive from `ac3.Ac3Error(RuntimeError)`. `ac3.FrameError` has no C++-side `describe()`
+All three derive from `ac3.Ac3Error(RuntimeError)`. `ac3.FrameError` has no C++-side `describe()`
 (see [docs/library/index.md](index.md#conventions)'s own note — some codec-level failures never
 got a text description on the C++ side either), so an `Ac3EncodeError`'s message is the
-enumerator's own name; `ac3.DecodeError` does have one (`ac3.describe`), so an `Ac3DecodeError`'s
-message is real spec-level text.
+enumerator's own name; `ac3.DecodeError`/`ac3.ScanError` both do (`ac3.describe`, overloaded for
+either), so an `Ac3DecodeError`/`Ac3ScanError`'s message is real spec-level text.
 
 A wrong-length channel array (not `ac3.SAMPLES_PER_FRAME` samples) raises a plain `ValueError`
 instead — that is a Python-level usage error, not a codec-level failure the C++ side can report at
 all (short-changing `encode_frame` is documented as "a programming error, not a runtime one").
 
 ## What isn't exposed
+
+`ac3::io::dash_channel_configuration`/`build_codec_config_box` (`ac3/io/dec3.hpp`) — DASH/ISOBMFF
+codec-config-box helpers built on top of a `ScannedStream` — are not here; they belong with the
+container writers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`), which this binding does not build at all
+yet (see ROADMAP.md's AP6 entry), rather than with `scan()` itself.
 
 `FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`ac3::verify::FrameTrace`) and
 `AtmosEncoder`'s `bed()`/`parameters()` introspection accessors are internal verification
