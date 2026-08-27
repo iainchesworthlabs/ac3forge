@@ -645,11 +645,17 @@ Then, in the GitHub repo, go to Settings > Secrets and variables > Actions and a
 `ATMOS_SIGNING_KEY` - the full contents of `atmos.key.b64` - and delete the local
 `atmos.key.b64` afterward.
 
-!!! danger "A signed APK carries the key"
-    Because the app signs on-device, **any** Shield build with this secret set — the debug APK CI
-    produces on every push included, not just releases — bundles the key as an asset. Treat every
-    such APK as key material: it must never be distributed. A build without the secret is the safe
-    unsigned app.
+!!! danger "An APK carrying the `signing.key` asset *is* the key"
+    Because the app signs on-device, any Shield build made **with the asset present** bundles the
+    key and is therefore key material: it must never be distributed. In CI that is the debug APK
+    only — a smoke test that never leaves the runner. `build-android` deletes the asset before any
+    release step and then asserts the staged `.apk` contains no `signing.key` entry, so the
+    published release asset is always the unsigned `bed51` app. Locally, a build with your own
+    `signing.key` dropped in is as sensitive as the key itself: sideload it to your own Shield and
+    nothing else.
+
+    Treat `ATMOS_SIGNING_KEY` as rotatable: regenerate it and re-set the secret whenever you have
+    any reason to think a build carrying the asset left a machine you control.
 
 ## Verifying a download
 
