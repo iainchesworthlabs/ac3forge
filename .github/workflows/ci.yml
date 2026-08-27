@@ -498,9 +498,9 @@ jobs:
   # configuration and no analysis-only preset is needed.
   static-analysis:
     name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions, check-runner]
+    needs: [changes, toolchain-versions]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -578,9 +578,9 @@ jobs:
   # margin proves generous.
   coverage:
     name: Coverage (Linux, GCC)
-    needs: [changes, toolchain-versions, check-runner]
+    needs: [changes, toolchain-versions]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1358,9 +1358,9 @@ jobs:
   # to the vcpkg commit and the LLVM/GCC versions.
   ffmpeg-validate:
     name: FFmpeg Validate
-    needs: [changes, toolchain-versions, check-runner]
+    needs: [changes, toolchain-versions]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
