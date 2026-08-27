@@ -38,6 +38,7 @@
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/verify/trace_export.hpp"
 
 namespace py = pybind11;
 
@@ -57,7 +58,7 @@ class KwargBinder {
     explicit KwargBinder(py::kwargs kwargs) : kwargs_(std::move(kwargs)) {}
 
     template <typename V>
-    KwargBinder& field(const char* name, V T::*member) {
+    KwargBinder& field(const char* name, V T::* member) {
         if (kwargs_.contains(name)) {
             // kwargs_[name] is an access through the implicit this-> of a class template, so
             // two-phase lookup treats it as dependent regardless of kwargs_'s own (non-dependent)
@@ -114,7 +115,8 @@ std::vector<std::byte> to_bytes(const py::buffer& buf) {
     if (info.ndim != 1) {
         throw py::value_error("expected a 1-D bytes-like object");
     }
-    const auto total = static_cast<std::size_t>(info.size) * static_cast<std::size_t>(info.itemsize);
+    const auto total =
+        static_cast<std::size_t>(info.size) * static_cast<std::size_t>(info.itemsize);
     std::vector<std::byte> out(total);
     if (total > 0) {
         std::memcpy(out.data(), info.ptr, total);
@@ -239,7 +241,7 @@ ac3::io::ScannedStream timing_view(const ScanResult& s) {
 // skips the length check (used nowhere today, kept for the one call site that legitimately has
 // no fixed length).
 std::vector<std::vector<float>> extract_channels(const py::sequence& channels,
-                                                  std::size_t expected_len) {
+                                                 std::size_t expected_len) {
     std::vector<std::vector<float>> out;
     out.reserve(static_cast<std::size_t>(py::len(channels)));
     for (const auto& item : channels) {
@@ -250,7 +252,7 @@ std::vector<std::vector<float>> extract_channels(const py::sequence& channels,
         const auto n = static_cast<std::size_t>(arr.shape(0));
         if (expected_len != 0 && n != expected_len) {
             throw py::value_error("each channel must have exactly " + std::to_string(expected_len) +
-                                   " samples (ac3.SAMPLES_PER_FRAME)");
+                                  " samples (ac3.SAMPLES_PER_FRAME)");
         }
         const float* data = arr.data();
         out.emplace_back(data, data + n);
@@ -356,7 +358,8 @@ ac3::eac3::AccessUnitConfig access_unit_config_for_layout(
             // built from a chanmap this always resolves) - guarded rather than
             // asserted so a future LayoutId addition fails loudly in Python
             // instead of silently building an incomplete access unit.
-            throw py::value_error("no acmod/lfe combination codes this layout's dependent channels");
+            throw py::value_error(
+                "no acmod/lfe combination codes this layout's dependent channels");
         }
         ac3::eac3::FrameConfig dependent;
         dependent.sample_rate = sample_rate;
@@ -396,13 +399,13 @@ PYBIND11_MODULE(_ac3forge, m) {
         try {
             std::rethrow_exception(p);
         } catch (const EncodeFailure& e) {
-            py::object exc =
-                py::reinterpret_steal<py::object>(PyObject_CallFunction(encode_error.ptr(), "s", e.what()));
+            py::object exc = py::reinterpret_steal<py::object>(
+                PyObject_CallFunction(encode_error.ptr(), "s", e.what()));
             exc.attr("error") = py::cast(e.code);
             PyErr_SetObject(encode_error.ptr(), exc.ptr());
         } catch (const DecodeFailure& e) {
-            py::object exc =
-                py::reinterpret_steal<py::object>(PyObject_CallFunction(decode_error.ptr(), "s", e.what()));
+            py::object exc = py::reinterpret_steal<py::object>(
+                PyObject_CallFunction(decode_error.ptr(), "s", e.what()));
             exc.attr("error") = py::cast(e.code);
             PyErr_SetObject(decode_error.ptr(), exc.ptr());
         } catch (const ScanFailure& e) {
@@ -472,7 +475,8 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kTruncated", ac3::io::ScanError::kTruncated)
         .value("kUnsupportedStructure", ac3::io::ScanError::kUnsupportedStructure);
 
-    py::enum_<ac3::meta::ProfileId>(m, "ProfileId", "Conventional Dolby DRC profiles (ac3.profile_for)")
+    py::enum_<ac3::meta::ProfileId>(m, "ProfileId",
+                                    "Conventional Dolby DRC profiles (ac3.profile_for)")
         .value("kFilmStandard", ac3::meta::ProfileId::kFilmStandard)
         .value("kFilmLight", ac3::meta::ProfileId::kFilmLight)
         .value("kMusicStandard", ac3::meta::ProfileId::kMusicStandard)
@@ -506,10 +510,11 @@ PYBIND11_MODULE(_ac3forge, m) {
         "describe", [](ac3::io::ScanError e) { return std::string(ac3::io::describe(e)); },
         py::arg("error"), "Text for a ScanError value");
     m.def(
-        "profile_for", [](ac3::meta::ProfileId id) { return ac3::meta::profile(id); }, py::arg("id"),
-        "The ac3.Profile for one of the conventional ac3.ProfileId presets");
+        "profile_for", [](ac3::meta::ProfileId id) { return ac3::meta::profile(id); },
+        py::arg("id"), "The ac3.Profile for one of the conventional ac3.ProfileId presets");
     m.def(
-        "profile_name", [](ac3::meta::ProfileId id) { return std::string(ac3::meta::profile_name(id)); },
+        "profile_name",
+        [](ac3::meta::ProfileId id) { return std::string(ac3::meta::profile_name(id)); },
         py::arg("id"));
 
     m.def(
@@ -543,7 +548,8 @@ PYBIND11_MODULE(_ac3forge, m) {
             return out;
         },
         py::arg("stream"),
-        "Group an E-AC-3 elementary stream's syncframes into access units (Eac3Decoder.decode_access_unit's own input shape)");
+        "Group an E-AC-3 elementary stream's syncframes into access units "
+        "(Eac3Decoder.decode_access_unit's own input shape)");
 
     m.def(
         "stream_bsid",
@@ -800,7 +806,8 @@ PYBIND11_MODULE(_ac3forge, m) {
                    ", z=" + std::to_string(p.z) + ")";
         });
 
-    py::class_<ac3::oba::ObjectPlacement>(m, "ObjectPlacement", "One object's placement for one frame")
+    py::class_<ac3::oba::ObjectPlacement>(m, "ObjectPlacement",
+                                          "One object's placement for one frame")
         .def(py::init([](py::kwargs kwargs) {
             return KwargBinder<ac3::oba::ObjectPlacement>(std::move(kwargs))
                 .field("position", &ac3::oba::ObjectPlacement::position)
@@ -822,7 +829,8 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("bed", &ac3::oba::Program::bed)
         .def_readonly("dynamic_objects", &ac3::oba::Program::dynamic_objects);
 
-    py::class_<ac3::oba::DecodedProgram>(m, "DecodedProgram", "Decoded OAMD: programme shape plus every object")
+    py::class_<ac3::oba::DecodedProgram>(m, "DecodedProgram",
+                                         "Decoded OAMD: programme shape plus every object")
         .def_readonly("program", &ac3::oba::DecodedProgram::program)
         .def_readonly("objects", &ac3::oba::DecodedProgram::objects);
 
@@ -872,7 +880,8 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def(
             "encode_frame",
             [](ac3::FrameEncoder& self, const py::sequence& channels) {
-                auto owned = extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                auto owned =
+                    extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
                 if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
                     throw py::value_error("expected " + std::to_string(self.channel_count()) +
                                           " channels (self.channel_count), got " +
@@ -898,13 +907,102 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly("latency", &ac3::FrameEncoder::latency)
         .def_property_readonly("latency_samples", &ac3::FrameEncoder::latency_samples);
 
+    // --- research trace export (ac3::verify, roadmap AP12) ---------------------
+    // The encoder/decoder mirror trace (ac3/verify/mirror.hpp, .../eac3_mirror.hpp),
+    // added for the in-repo self-check, exported here in a form a caller doing
+    // codec research can put in a DataFrame: per-frame bap, exponent, SNR-offset
+    // and masking-curve values. FrameTrace/Eac3AccessUnitTrace are opaque handles
+    // - construct one, pass it to DecoderConfig(trace=...)/(eac3_trace=...), decode,
+    // then read it back out with trace_to_csv/trace_to_json_lines below. See
+    // ac3/verify/trace_export.hpp for the row schema (frame, substream, block,
+    // stream, kind, index, value) and why there is no direct Parquet writer here -
+    // pandas.read_csv(...)/pandas.read_json(..., lines=True) then .to_parquet() is
+    // the intended route, so Python's own, more complete Parquet support is used
+    // rather than a second one grown in this library for one export path.
+    py::module_ verify_module =
+        m.def_submodule("verify",
+                        "ac3::verify - the encoder/decoder mirror trace and its research export "
+                        "(roadmap AP12).");
+
+    py::class_<ac3::verify::FrameTrace>(
+        verify_module, "FrameTrace",
+        "Caller-owned AC-3 decode trace. Pass to DecoderConfig(trace=...); after "
+        "FrameDecoder.decode_frame it holds exponents/bap/mask/snr_offset per block per "
+        "stream, read back with trace_to_csv/trace_to_json_lines.")
+        .def(py::init<>());
+
+    py::class_<ac3::verify::Eac3AccessUnitTrace>(
+        verify_module, "Eac3AccessUnitTrace",
+        "Caller-owned E-AC-3 decode trace, the counterpart of FrameTrace. Pass to "
+        "DecoderConfig(eac3_trace=...); after Eac3Decoder.decode_substream it holds one "
+        "substream's worth of exponents/bap/mask/snr_offset per block per stream.")
+        .def(py::init<>());
+
+    verify_module.def("trace_csv_header", &ac3::verify::trace_csv_header,
+                      "\"frame,substream,block,stream,kind,index,value\\n\" - write once, "
+                      "before the first trace_to_csv row, for a self-describing file.");
+
+    verify_module.def(
+        "trace_to_csv",
+        [](const ac3::verify::FrameTrace& trace, std::uint64_t frame_index) {
+            std::string out;
+            ac3::verify::append_trace_csv(trace, frame_index, out);
+            return out;
+        },
+        py::arg("trace"), py::arg("frame_index"),
+        "One AC-3 frame's trace as CSV rows (no header - see trace_csv_header()).");
+    verify_module.def(
+        "trace_to_csv",
+        [](const ac3::verify::Eac3AccessUnitTrace& trace, std::uint64_t frame_index) {
+            std::string out;
+            ac3::verify::append_trace_csv(trace, frame_index, out);
+            return out;
+        },
+        py::arg("trace"), py::arg("frame_index"),
+        "One E-AC-3 access unit's trace as CSV rows (no header - see trace_csv_header()).");
+
+    verify_module.def(
+        "trace_to_json_lines",
+        [](const ac3::verify::FrameTrace& trace, std::uint64_t frame_index) {
+            std::string out;
+            ac3::verify::append_trace_json_lines(trace, frame_index, out);
+            return out;
+        },
+        py::arg("trace"), py::arg("frame_index"),
+        "One AC-3 frame's trace as JSON Lines - the same rows trace_to_csv writes, one "
+        "compact JSON object per line.");
+    verify_module.def(
+        "trace_to_json_lines",
+        [](const ac3::verify::Eac3AccessUnitTrace& trace, std::uint64_t frame_index) {
+            std::string out;
+            ac3::verify::append_trace_json_lines(trace, frame_index, out);
+            return out;
+        },
+        py::arg("trace"), py::arg("frame_index"), "One E-AC-3 access unit's trace as JSON Lines.");
+
     // --- decoder ---------------------------------------------------------------
     py::class_<ac3::DecoderConfig>(m, "DecoderConfig")
         .def(py::init([](py::kwargs kwargs) {
-            return KwargBinder<ac3::DecoderConfig>(std::move(kwargs))
-                .field("drc_scale", &ac3::DecoderConfig::drc_scale)
-                .field("heavy_compression", &ac3::DecoderConfig::heavy_compression)
-                .finish();
+            // trace/eac3_trace (roadmap AP12) hold pointers into caller-owned
+            // ac3.verify.FrameTrace/Eac3AccessUnitTrace objects, not a shape
+            // KwargBinder's generic value-member field() handles - popped by
+            // hand before the rest goes through it exactly as before, so
+            // finish()'s unexpected-keyword check never sees them and does
+            // not reject them as unknown.
+            py::object trace_obj = kwargs.attr("pop")("trace", py::none());
+            py::object eac3_trace_obj = kwargs.attr("pop")("eac3_trace", py::none());
+            ac3::DecoderConfig config =
+                KwargBinder<ac3::DecoderConfig>(std::move(kwargs))
+                    .field("drc_scale", &ac3::DecoderConfig::drc_scale)
+                    .field("heavy_compression", &ac3::DecoderConfig::heavy_compression)
+                    .finish();
+            if (!trace_obj.is_none()) {
+                config.trace = trace_obj.cast<ac3::verify::FrameTrace*>();
+            }
+            if (!eac3_trace_obj.is_none()) {
+                config.eac3_trace = eac3_trace_obj.cast<ac3::verify::Eac3AccessUnitTrace*>();
+            }
+            return config;
         }))
         .def_readwrite("drc_scale", &ac3::DecoderConfig::drc_scale)
         .def_readwrite("heavy_compression", &ac3::DecoderConfig::heavy_compression);
@@ -918,11 +1016,14 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("compr", &ac3::DecodedFrame::compr)
         .def_readonly("dialnorm2", &ac3::DecodedFrame::dialnorm2)
         .def_readonly("compr2", &ac3::DecodedFrame::compr2)
-        .def_property_readonly("dynrng", [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng); })
-        .def_property_readonly("dynrng2", [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng2); })
-        .def_property_readonly("blksw", [](const ac3::DecodedFrame& f) { return blksw_to_list(f.blksw); })
-        .def_property_readonly("channels",
-                                [](const ac3::DecodedFrame& f) { return channels_to_list(f.channels); })
+        .def_property_readonly("dynrng",
+                               [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng); })
+        .def_property_readonly("dynrng2",
+                               [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng2); })
+        .def_property_readonly("blksw",
+                               [](const ac3::DecodedFrame& f) { return blksw_to_list(f.blksw); })
+        .def_property_readonly(
+            "channels", [](const ac3::DecodedFrame& f) { return channels_to_list(f.channels); })
         .def_property_readonly("channel_labels", [](const ac3::DecodedFrame& f) {
             return ac3_channel_labels(f.acmod, f.lfe);
         });
@@ -941,14 +1042,17 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("chanmap", &ac3::DecodedSubstream::chanmap)
         .def_readonly("last_dependent", &ac3::DecodedSubstream::last_dependent)
         .def_readonly("object_metadata", &ac3::DecodedSubstream::object_metadata)
-        .def_property_readonly("dynrng", [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng); })
-        .def_property_readonly("dynrng2", [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng2); })
-        .def_property_readonly("blksw",
-                                [](const ac3::DecodedSubstream& s) { return blksw_to_list(s.blksw); })
-        .def_property_readonly("channels",
-                                [](const ac3::DecodedSubstream& s) { return channels_to_list(s.channels); })
+        .def_property_readonly("dynrng",
+                               [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng); })
+        .def_property_readonly("dynrng2",
+                               [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng2); })
         .def_property_readonly(
-            "object_audio", [](const ac3::DecodedSubstream& s) { return channels_to_list(s.object_audio); })
+            "blksw", [](const ac3::DecodedSubstream& s) { return blksw_to_list(s.blksw); })
+        .def_property_readonly(
+            "channels", [](const ac3::DecodedSubstream& s) { return channels_to_list(s.channels); })
+        .def_property_readonly(
+            "object_audio",
+            [](const ac3::DecodedSubstream& s) { return channels_to_list(s.object_audio); })
         .def_property_readonly("channel_labels", [](const ac3::DecodedSubstream& s) {
             return chanmap_labels(s.location_map());
         });
@@ -962,11 +1066,13 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("object_metadata", &ac3::DecodedAccessUnit::object_metadata)
         .def_readonly("substream_count", &ac3::DecodedAccessUnit::substream_count)
         .def_property_readonly("dynrng",
-                                [](const ac3::DecodedAccessUnit& u) { return to_vec(u.dynrng); })
+                               [](const ac3::DecodedAccessUnit& u) { return to_vec(u.dynrng); })
         .def_property_readonly(
-            "object_audio", [](const ac3::DecodedAccessUnit& u) { return channels_to_list(u.object_audio); })
-        .def_property_readonly("channels",
-                                [](const ac3::DecodedAccessUnit& u) { return channels_to_list(u.channels); })
+            "object_audio",
+            [](const ac3::DecodedAccessUnit& u) { return channels_to_list(u.object_audio); })
+        .def_property_readonly(
+            "channels",
+            [](const ac3::DecodedAccessUnit& u) { return channels_to_list(u.channels); })
         .def_property_readonly("channel_labels", [](const ac3::DecodedAccessUnit& u) {
             // Dual mono has no Table E2.5 layout at all (DecodedAccessUnit::layout's own
             // comment) - fall back to the plain AC-3 acmod labels, same as
@@ -1001,7 +1107,8 @@ PYBIND11_MODULE(_ac3forge, m) {
             },
             py::arg("frame"), "Decode exactly one AC-3 syncframe")
         .def_property_readonly(
-            "latency_samples", [](const ac3::FrameDecoder&) { return ac3::FrameDecoder::latency_samples(); },
+            "latency_samples",
+            [](const ac3::FrameDecoder&) { return ac3::FrameDecoder::latency_samples(); },
             "The delay this decoder adds on top of the encoder's budget: always 0 for AC-3.");
 
     py::class_<ac3::Eac3Decoder>(m, "Eac3Decoder")
@@ -1087,7 +1194,8 @@ PYBIND11_MODULE(_ac3forge, m) {
                 auto owned =
                     extract_channels(objects, static_cast<std::size_t>(ac3::kSamplesPerFrame));
                 if (owned.size() != static_cast<std::size_t>(self.dynamic_object_count())) {
-                    throw py::value_error("expected " + std::to_string(self.dynamic_object_count()) +
+                    throw py::value_error("expected " +
+                                          std::to_string(self.dynamic_object_count()) +
                                           " objects (self.dynamic_object_count), got " +
                                           std::to_string(owned.size()));
                 }
@@ -1105,8 +1213,10 @@ PYBIND11_MODULE(_ac3forge, m) {
             },
             py::arg("objects"), py::arg("placement"),
             "objects: one mono ac3.SAMPLES_PER_FRAME array per object, in construction order. "
-            "placement: one ac3.ObjectPlacement per object. Returns one E-AC-3 access unit as bytes.")
-        .def_property_readonly("dynamic_object_count", &ac3::oba::AtmosEncoder::dynamic_object_count)
+            "placement: one ac3.ObjectPlacement per object. Returns one E-AC-3 access unit as "
+            "bytes.")
+        .def_property_readonly("dynamic_object_count",
+                               &ac3::oba::AtmosEncoder::dynamic_object_count)
         .def_property_readonly("program", &ac3::oba::AtmosEncoder::program)
         .def_property_readonly(
             "latency", &ac3::oba::AtmosEncoder::latency,
@@ -1125,8 +1235,9 @@ PYBIND11_MODULE(_ac3forge, m) {
     // surface. pybind11-direct on ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every
     // other class here (see this file's own header comment) - not layered on the C API.
     py::module_ eac3 = m.def_submodule(
-        "eac3", "ac3::eac3::FrameEncoder/AccessUnitEncoder - E-AC-3 encoding, including wide "
-                 "layouts past 5.1 via dependent substreams.");
+        "eac3",
+        "ac3::eac3::FrameEncoder/AccessUnitEncoder - E-AC-3 encoding, including wide "
+        "layouts past 5.1 via dependent substreams.");
 
     // ac3.StreamType (registered above, shared with DecodedSubstream.strmtyp) is reused here
     // rather than re-bound - pybind11 has one C++-type-to-Python-type mapping process-wide, and a
@@ -1254,7 +1365,7 @@ PYBIND11_MODULE(_ac3forge, m) {
                     py::gil_scoped_release release;
                     auto spans = as_spans(owned);
                     auto result = metadata ? self.encode_frame(spans, *metadata, aux_bytes)
-                                            : self.encode_frame(spans, aux_bytes);
+                                           : self.encode_frame(spans, aux_bytes);
                     if (!result) {
                         throw EncodeFailure(result.error());
                     }
@@ -1292,12 +1403,12 @@ PYBIND11_MODULE(_ac3forge, m) {
     py::class_<ac3::eac3::AccessUnit>(
         eac3, "AccessUnit", "One encoded access unit: every substream's bytes, concatenated.")
         .def_property_readonly("bytes",
-                                [](const ac3::eac3::AccessUnit& u) {
-                                    return py::bytes(reinterpret_cast<const char*>(u.bytes.data()),
-                                                      u.bytes.size());
-                                })
+                               [](const ac3::eac3::AccessUnit& u) {
+                                   return py::bytes(reinterpret_cast<const char*>(u.bytes.data()),
+                                                    u.bytes.size());
+                               })
         .def_readonly("substream_bytes", &ac3::eac3::AccessUnit::substream_bytes,
-                       "Byte length of each substream (independent first); sums to len(bytes).")
+                      "Byte length of each substream (independent first); sums to len(bytes).")
         .def_property_readonly("substream_count", &ac3::eac3::AccessUnit::substream_count);
 
     py::class_<ac3::eac3::AccessUnitEncoder>(
@@ -1340,10 +1451,10 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly("latency_samples", &ac3::eac3::AccessUnitEncoder::latency_samples);
 
     eac3.def("access_unit_config_for_layout", &access_unit_config_for_layout, py::arg("layout"),
-              py::arg("bitrate_kbps"), py::arg("dependent_bitrate_kbps") = py::none(),
-              py::arg("sample_rate") = ac3::SampleRate::k48000,
-              "A ready AccessUnitConfig for a named LayoutId (e.g. eac3.LayoutId.k71), without "
-              "hand-building a dependent's chanmap - see ac3::plan::channel_plan_for(). "
-              "dependent_bitrate_kbps defaults to half of bitrate_kbps, applied to every "
-              "dependent.");
+             py::arg("bitrate_kbps"), py::arg("dependent_bitrate_kbps") = py::none(),
+             py::arg("sample_rate") = ac3::SampleRate::k48000,
+             "A ready AccessUnitConfig for a named LayoutId (e.g. eac3.LayoutId.k71), without "
+             "hand-building a dependent's chanmap - see ac3::plan::channel_plan_for(). "
+             "dependent_bitrate_kbps defaults to half of bitrate_kbps, applied to every "
+             "dependent.");
 }

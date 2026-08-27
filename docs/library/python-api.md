@@ -112,6 +112,34 @@ the first frame, without walking the rest of the stream.
 A malformed stream raises `ac3.Ac3ScanError` (`.error: ac3.ScanError`) — same exception-translation
 convention as encode/decode failures, see [Errors](#errors) below.
 
+## Research trace export
+
+Roadmap AP12. `ac3.verify.FrameTrace`/`Eac3AccessUnitTrace` are caller-owned handles that
+`DecoderConfig(trace=...)`/`(eac3_trace=...)` fills, per block per stream, as a real decode runs —
+exponents, bit allocation pointers, the §7.2.2.6 masking curve and the composite SNR offset.
+`ac3.verify.trace_to_csv`/`trace_to_json_lines` turn one of those into text, one tidy row per
+(frame, substream, block, stream, kind, index, value):
+
+```python
+trace = ac3.verify.FrameTrace()
+decoder = ac3.FrameDecoder(ac3.DecoderConfig(trace=trace))
+
+csv_text = ac3.verify.trace_csv_header()
+for frame in range(FRAME_COUNT):
+    decoder.decode_frame(frame_bytes[frame])
+    # decode_frame refills `trace` from scratch each call - read it back out
+    # once per frame rather than accumulated across the loop.
+    csv_text += ac3.verify.trace_to_csv(trace, frame_index=frame)
+```
+
+Full program: [`examples/python/trace_export.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/trace_export.py).
+
+`kind` distinguishes the per-*bin* `exponent`/`bap` curves from the per-*band* `mask` curve and
+the per-stream `snr_offset` scalar — different index spaces, named rather than forced together.
+Load the CSV/JSON Lines text with `pandas.read_csv`/`read_json(lines=True)` and call
+`.to_parquet()` from there for Parquet; this binding has no Parquet writer of its own; see
+`ac3/verify/trace_export.hpp` for why.
+
 ## Encoding E-AC-3
 
 Roadmap **AP6**: `ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `ac3::eac3::FrameEncoder`/
@@ -218,12 +246,16 @@ yet (see ROADMAP.md's AP6 entry), rather than with `scan()` itself.
 
 `FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`ac3::verify::FrameTrace`) and
 `AtmosEncoder`'s `bed()`/`parameters()` introspection accessors are internal verification
-tooling, not part of this binding's surface. `DecodedAccessUnit`/`DecodedSubstream`'s full
-Table E2.5 channel-map machinery (`chanmap`, `location_map()`, `layout`) is likewise not exposed
-beyond the convenience `channel_labels` list above — deliberately unsupported for now, the same
-"say so and say why" convention `CONTRIBUTING.md` asks of the C++ side itself, not a silent gap.
+tooling, not part of this binding's surface — the DECODE-side `trace`/`eac3_trace` on
+`DecoderConfig` above is a different thing (roadmap AP12's research export, not the
+encoder/decoder mirror self-check `ac3::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
+in-repo) and is exposed. `DecodedAccessUnit`/`DecodedSubstream`'s full Table E2.5 channel-map
+machinery (`chanmap`, `location_map()`, `layout`) is likewise not exposed beyond the convenience
+`channel_labels` list above — deliberately unsupported for now, the same "say so and say why"
+convention `CONTRIBUTING.md` asks of the C++ side itself, not a silent gap.
 
-`ac3.eac3.FrameConfig`'s `trace` hook is the same omission as `FrameEncoder`'s above. Its
+`ac3.eac3.FrameConfig`'s `trace` hook is the same ENCODE-side omission as `FrameEncoder`'s above -
+`ac3.verify.Eac3AccessUnitTrace` is decode-only from Python too, same as its AC-3 counterpart. Its
 `mixmdate`/`infomdat` metadata groups, `vbr`/ABR and `search` are unmirrored too, but those **are**
 gaps rather than decisions (see [Encoding E-AC-3](#encoding-e-ac-3) above) — `AccessUnitConfig` is
 also missing `additional` (further independent programmes, I1-I7).

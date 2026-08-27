@@ -32,24 +32,48 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Itanium-mangled prefixes for namespaces that are compiler/libstdc++
+# implementation detail, not anything AC3FORGE_EXPORT controls. Which
+# template gets instantiated - and therefore lands in the dynamic table at
+# all, since CXX_VISIBILITY_PRESET hidden does not extend to system-header
+# templates - shifts with every compiler/libstdc++ version, unrelated to
+# any change this project makes. `_ZSt`/`_ZNSt` cover both the compressed
+# "St" substitution and the nested-name form of std::; `_ZN9__gnu_cxx`
+# covers libstdc++'s internal namespace (length-prefixed "__gnu_cxx", 9
+# chars); `_ZN11__cxxabiv1` covers the C++ ABI runtime (RTTI/exception
+# internals another shared library using polymorphism can just as easily
+# leak).
+_STDLIB_MANGLED_PREFIXES = ("_ZSt", "_ZNSt", "_ZN9__gnu_cxx", "_ZN11__cxxabiv1")
+
 
 def exported_symbols(library: Path) -> list[str]:
-    """Demangled dynamic symbols `library` defines, sorted, de-duplicated.
+    """Demangled dynamic symbols `library` defines, sorted, de-duplicated,
+    excluding standard-library/runtime internals (see
+    _STDLIB_MANGLED_PREFIXES above).
 
     nm -D --defined-only lists exactly the dynamic symbol table's defined
     entries - undefined (imported) symbols are excluded by --defined-only,
     and anything hidden by CXX_VISIBILITY_PRESET never appears in the
-    dynamic table to begin with. -C demangles in the same pass, so the
-    allowlist reads as C++ names a reviewer can recognise rather than
-    mangled ones a separate c++filt pass would otherwise be needed for.
+    dynamic table to begin with.
+
+    The stdlib filter runs on the RAW mangled name, before demangling,
+    because a demangled function-template instantiation shows its return
+    type ahead of the qualified name (e.g. "long std::__lg<long>(long)") -
+    a prefix or substring check on demangled text would either miss these
+    or, worse, wrongly exclude a real project export whose signature merely
+    mentions a std:: type it returns (e.g. mp4::fragment's
+    std::expected<...> return type). The mangled encoding always puts the
+    symbol's own qualified name first, so a prefix check there is
+    unambiguous. c++filt then demangles only the survivors, so the
+    allowlist still reads as C++ names a reviewer can recognise.
     """
     result = subprocess.run(
-        ["nm", "-D", "--defined-only", "-C", str(library)],
+        ["nm", "-D", "--defined-only", str(library)],
         capture_output=True,
         text=True,
         check=True,
     )
-    names = set()
+    raw_names = []
     for line in result.stdout.splitlines():
         # Format: "<address> <type-char> <name>" - address and type are not
         # part of the ABI contract this checks (a symbol moving address is
@@ -57,9 +81,18 @@ def exported_symbols(library: Path) -> list[str]:
         # would already show up as a different signature in the abidiff
         # step this script's own CI job pairs it with).
         parts = line.split(maxsplit=2)
-        if len(parts) == 3:
-            names.add(parts[2])
-    return sorted(names)
+        if len(parts) == 3 and not parts[2].startswith(_STDLIB_MANGLED_PREFIXES):
+            raw_names.append(parts[2])
+    if not raw_names:
+        return []
+    demangled = subprocess.run(
+        ["c++filt"],
+        input="\n".join(raw_names),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return sorted(set(demangled.stdout.splitlines()))
 
 
 def allowlist_path(allowlist_dir: Path, library: Path) -> Path:

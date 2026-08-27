@@ -343,6 +343,28 @@ class Eac3Decoder:
     def decode_access_unit(self, unit: bytes) -> DecodedAccessUnit | None: ...
     def flush(self) -> list[DecodedSubstream]: ...
 
+# ac3::verify - the encoder/decoder mirror trace and its research export (roadmap AP12). A real
+# submodule (m.def_submodule) at runtime, stubbed as a nested-class namespace here for the same
+# reason `eac3` below is. Pass a FrameTrace/Eac3AccessUnitTrace to DecoderConfig(trace=...)/
+# (eac3_trace=...), decode, then read it back out with trace_to_csv/trace_to_json_lines.
+class verify:
+    class FrameTrace:
+        def __init__(self) -> None: ...
+
+    class Eac3AccessUnitTrace:
+        def __init__(self) -> None: ...
+
+    @staticmethod
+    def trace_csv_header() -> str: ...
+    @staticmethod
+    def trace_to_csv(
+        trace: verify.FrameTrace | verify.Eac3AccessUnitTrace, frame_index: int
+    ) -> str: ...
+    @staticmethod
+    def trace_to_json_lines(
+        trace: verify.FrameTrace | verify.Eac3AccessUnitTrace, frame_index: int
+    ) -> str: ...
+
 class AtmosConfig:
     sample_rate: SampleRate
     bitrate_kbps: int

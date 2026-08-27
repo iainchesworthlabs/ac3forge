@@ -63,6 +63,7 @@ from ._ac3forge import (
     stream_duration_samples,
     stream_duration_seconds,
     uniform_access_unit_samples,
+    verify,
 )
 
 try:
@@ -132,4 +133,5 @@ __all__ = [
     "stream_duration_samples",
     "stream_duration_seconds",
     "uniform_access_unit_samples",
+    "verify",
 ]
