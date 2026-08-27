@@ -81,9 +81,9 @@ add_executable(ac3tests
     core/test_fft.cpp
     containers/test_fmp4.cpp
     core/test_frame.cpp
-    sinks/test_iec61937.cpp
+    iec61937/test_iec61937.cpp
     decoder/test_latency.cpp
-    sinks/test_iec61937_unwrap.cpp
+    iec61937/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
     decoder/test_output_stage.cpp
     meta/test_loudness.cpp

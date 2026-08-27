@@ -28,7 +28,7 @@
 // separation, and its quality depends entirely on how well-separated the
 // objects were in the downmix.
 
-namespace ac3::joc {
+namespace ac3::oba::joc {
 
 // Table 47 / Table 48. This encoder only ever writes 5.X - 7.X needs Lb/Rb in
 // the downmix, which costs a dependent substream - but a decoder meets all
@@ -351,4 +351,4 @@ struct ReconstructionState {
     ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
     Domain domain = Domain::kQmf);
 
-}  // namespace ac3::joc
+}  // namespace ac3::oba::joc
