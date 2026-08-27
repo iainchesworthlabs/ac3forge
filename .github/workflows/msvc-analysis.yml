@@ -50,10 +50,39 @@ jobs:
     permissions:
       contents: read
 
+  # Same self-hosted/GitHub-hosted fan-out _build.yml's own Windows legs get
+  # (see docs/ci-self-hosted-runners.md), via the shared decide-runner
+  # composite action rather than _build.yml's own check-runners job - this
+  # workflow is triggered independently of ci.yml/_build.yml, so it has no
+  # access to that job's outputs.
+  check-runner:
+    name: Check self-hosted runner availability
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.decide.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: decide
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Windows
+          hosted-json: '["windows-latest"]'
+          mode: ${{ vars.RUNNER_WINDOWS_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
   analyze:
     name: MSVC Code Analysis
-    needs: toolchain-versions
-    runs-on: windows-latest
+    needs: [toolchain-versions, check-runner]
+    # Belt-and-braces, same as _build.yml's build job: check-runner's own
+    # fork-PR branch already forces windows-latest for a fork PR, so this
+    # only matters if a gap ever opened up in that logic.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     permissions:
       actions: read
       contents: read
