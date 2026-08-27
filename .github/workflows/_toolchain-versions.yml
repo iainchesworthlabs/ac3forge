@@ -20,6 +20,17 @@ name: Resolve pinned toolchain versions
 
 on:
   workflow_call:
+    # Optional; used only by this file's own check-runner job below for the
+    # org-level half of the idle-runner count (see decide-runner's own
+    # description). A reusable workflow may only reference a secret it
+    # declares here - an undeclared secrets.* reference is a hard parse-time
+    # failure for every caller, not a soft/empty one. required: false so a
+    # caller that omits it (every caller but ci.yml today) still resolves
+    # cleanly; decide-runner already treats an empty org-token as "skip the
+    # org-level check", not an error.
+    secrets:
+      ORG_RUNNERS_TOKEN:
+        required: false
     outputs:
       gcc_version:
         description: 'Pinned GCC major version, e.g. "15" (from .github/toolchain/02-gcc-toolchain.sh).'
