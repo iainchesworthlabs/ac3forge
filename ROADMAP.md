@@ -1373,9 +1373,18 @@ directory; there is still no threading anywhere in the codec core.
   The one path that lets Dolby's own renderer render this project's reconstructed objects
   without the authenticity gate, and hardware evidence for the object layer (and DC10). A
   per-platform directory, no `#ifdef`.
-- [ ] **UX9 (M)** — `play` that follows the sink: parse EDID short audio descriptors to choose
+- [x] **UX9 (M)** — `play` that follows the sink: parse EDID short audio descriptors to choose
   AC-3, E-AC-3 or PCM, and a one-command transcode-to-passthrough pipeline (DC9's transcode into
-  `PassthroughSink`) for the "no 5.1 PCM over optical" case.
+  `PassthroughSink`) for the "no 5.1 PCM over optical" case. Shipped as
+  `ac3::audio::sink_capabilities` (real on ALSA, reading the HD-audio driver's own
+  `/proc/asound/.../eld#*` text; every other backend reports `kNoBackend` honestly rather than
+  guessing, and `play` falls back to `enumerate_render_devices()`'s live probe there, same as
+  before). `play` tries EDID first, an E-AC-3 source on an AC-3-only sink gets transcoded to AC-3
+  automatically (reusing `transcode` through a temp file, so dialnorm/compr/mix metadata still
+  carry across), and a sink that bitstreams neither format falls back to decoded PCM (`monitor`'s
+  own §7.8-aware path). `follow=off` restores the plain refusal `play` always gave. Not verified
+  against real EDID/ELD hardware this round (no Linux box in the loop) - see
+  `docs/platforms/linux.md`.
 - [ ] **UX10 (rides IM5)** — The TrueHD front ends on the branch (the lossless-lab dialog, its
   QML test, the CLI rows) get their own PR split, a QML test leg and `docs/gui`/`docs/cli` pages.
 
