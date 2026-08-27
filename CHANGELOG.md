@@ -264,6 +264,14 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   workflow on two platforms. The C++ value was correct; the test had drifted.
 - **Packaging manifests and the Homebrew tap** were two releases behind, and **several pages
   described shipped work as still pending** — both corrected.
+- **The Windows installer stopped silently degrading to a ZIP-only package.** `cpack`'s NSIS
+  generator dropped itself whenever `makensis` was missing with no diagnostic anywhere, so the
+  release shipped without an installer for several releases before anyone noticed. CI now
+  installs `makensis` and fails the build if a real `.exe` doesn't come out of `cpack`; a local
+  build without NSIS installed still falls back to ZIP-only, but now says so. The
+  packaging-consistency check also now catches a winget manifest whose `InstallerType` doesn't
+  match its own installer URL or nested-installer fields — the same class of drift a manual
+  copy-forward release bump can introduce.
 
 ## [0.9.0-beta.1] - 2026-08-22
 

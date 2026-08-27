@@ -1292,9 +1292,24 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   `ac3gui.app` and the `.dmg` (a Known gap in every release since 0.8.0-beta.2; Gatekeeper blocks
   it), Authenticode for the Windows binaries and installer. GPG and Sigstore satisfy neither OS.
   Blocked on the certificates, not on code.
-- [ ] **DR7 (S)** — The Windows installer. `Packaging.cmake`'s NSIS block is silently skipped
-  because `makensis` is not on the runner, so winget ships a zip. Install it (or switch to WiX),
-  then flip the manifest's `InstallerType` to `nullsoft` as `docs/releasing.md` instructs.
+- [x] **DR7 (S)** — The Windows installer. Done: `.github/workflows/_build.yml`'s `windows-msvc`
+  leg now installs `makensis` via Chocolatey — the same fresh-install-every-run pattern already
+  used for ffmpeg/Ninja, deliberate per `docs/ci-self-hosted-runners.md` ("nothing is pre-baked
+  onto the self-hosted image without data justifying it") — and a new step asserts a real `.exe`
+  came out of `cpack`, failing the leg outright if it didn't. WiX was considered and rejected:
+  `Packaging.cmake` already carries NSIS-specific work (the `.ac3`/`.ec3` file-association
+  commands UX2 added) a WiX rewrite would have to redo for no real benefit, on a leg this fix
+  scopes as an afternoon, not a rewrite. `cmake/Packaging.cmake`'s `find_program()` gate now
+  warns instead of degrading silently when `makensis` is absent, for a local dev build that
+  doesn't have it. `docs/releasing.md`'s winget instructions now default the *next* release
+  bump to `InstallerType: nullsoft`; the already-published `0.9.0-beta.1` manifest stays
+  `zip`/`portable` since that release genuinely has no `.exe` to point at — never rewrite a
+  published version to claim an installer it never shipped.
+  `tools/checks/check_packaging_versions.sh` now fails if a future manifest bump declares
+  `nullsoft` without matching `InstallerUrl`/dropping `NestedInstallerType`, or vice versa. The
+  new installer is still unsigned (DR6) and may still trip SmartScreen or the Defender false
+  positive already blocking DR4's winget resubmission — DR7 fixes the build, not the trust
+  story; DR4 stays blocked on DR6.
 - [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
   the distro's Qt 6 and `qml6-module-*` packages) is still open. The other two halves have both
   landed since this item was last written, independently:

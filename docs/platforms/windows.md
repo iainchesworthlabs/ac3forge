@@ -131,18 +131,22 @@ you opt into the `adm`/`profiling` features; see [building.md](../building.md)).
 cpack --preset pack-windows-msvc
 ```
 
-Produces a ZIP, plus an NSIS installer on top if `makensis` is on `PATH`. `pack-windows-llvm` is
-the clang-cl equivalent, and `pack-windows-msvc-arm64` the ARM64 one (below). `windows-msvc` is
-the only leg packaged continuously — CI packages it on every push and uploads the result as a
-workflow artifact, a standing smoke test of the packaging path; tagged releases package every
-`release_package` leg (Windows x64/arm64, Linux x64/arm64, macOS). See
+Produces a ZIP, plus an NSIS installer on top if `makensis` is on `PATH` (CI's `windows-msvc` leg
+installs it via Chocolatey automatically and fails the leg if the installer doesn't come out the
+other end — see [releasing.md](../releasing.md#winget-manifest); locally, install NSIS yourself
+or `cpack` falls back to ZIP-only with a `message(WARNING ...)` explaining why).
+`pack-windows-llvm` is the clang-cl equivalent, and `pack-windows-msvc-arm64` the ARM64 one
+(below). `windows-msvc` is the only leg packaged continuously — CI packages it on every push and
+uploads the result as a workflow artifact, a standing smoke test of the packaging path; tagged
+releases package every `release_package` leg (Windows x64/arm64, Linux x64/arm64, macOS). See
 [Packaging](../building.md#packaging).
 
 The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
 `shell\open\command` at the installed `ac3gui.exe` and nudging Explorer to pick up the change with
 `SHChangeNotify`, and reverses both keys on uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/
-`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. Configure/build-verified only: no `makensis`
-locally to actually run the installer and double-click a `.ac3` file afterwards.
+`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. CI now builds and verifies the installer itself
+on every push; running it and double-clicking a `.ac3` file to confirm the file association end
+to end is still a manual, unautomated check.
 
 ## ARM64 (roadmap DR8)
 
