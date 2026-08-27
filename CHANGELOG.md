@@ -311,6 +311,14 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   match its own installer URL or nested-installer fields — the same class of drift a manual
   copy-forward release bump can introduce.
 
+### Security
+
+- **Build-time key material can no longer reach a published Shield APK.** The EMDF object-signing
+  key asset is now deleted after the debug smoke build and before any release step, and the staged
+  release APK is asserted to contain no `signing.key` entry before it can be uploaded. The check
+  reads the APK's actual entry list rather than trusting step ordering, so a reordering or a Gradle
+  asset-merge change fails the release instead of shipping the asset.
+
 ## [0.9.0-beta.1] - 2026-08-22
 
 Ninth tagged release. The headline is the memory-usage optimization programme landing in full:
