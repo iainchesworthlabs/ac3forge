@@ -1,0 +1,101 @@
+name: Decide self-hosted vs GitHub-hosted runner
+description: >-
+  Counts idle self-hosted runners (repo-level, plus org-level if a token is
+  given) carrying the given OS label, and picks self-hosted if any are idle,
+  GitHub-hosted otherwise. Fork PRs always get GitHub-hosted, no live check
+  needed - untrusted code must never land on a persistent runner. Mirrors
+  _build.yml's own check-runners job (see that file's header for the full
+  design and docs/ci-self-hosted-runners.md); factored out here so a single
+  caller needing exactly one leg per OS - msvc-analysis.yml, wheels.yml -
+  does not have to duplicate the decision logic a second and third time.
+  _build.yml's own check-runners job is left as its own inline
+  implementation rather than migrated to call this: it fans multiple legs
+  per OS across one idle count (leg 1, leg 2, ... against a single count),
+  which this single-leg action does not model, and it is the one piece of
+  this infrastructure every currently-open PR depends on - not worth the
+  risk of touching working, load-bearing logic to deduplicate it.
+
+inputs:
+  os-label:
+    description: "Linux or Windows - matched against the runner's own OS label."
+    required: true
+  hosted-json:
+    description: 'GitHub-hosted fallback, as a JSON array, e.g. ["windows-latest"].'
+    required: true
+  mode:
+    description: >-
+      auto (live-check), self-hosted, or github-hosted - an explicit
+      override skips the live check entirely, the same escape hatch
+      _build.yml's RUNNER_LINUX_MODE/RUNNER_WINDOWS_MODE vars give that job.
+    default: auto
+  org-token:
+    description: >-
+      Optional org-scoped PAT/App token with "Self-hosted runners: read" on
+      iainchesworthlabs (see _build.yml's own ORG_RUNNERS_TOKEN secret).
+      Unset -> only this repo's own runner list is checked, not an error.
+    required: false
+
+outputs:
+  runner:
+    description: JSON array of labels for runs-on.
+    value: ${{ steps.decide.outputs.runner }}
+
+runs:
+  using: composite
+  steps:
+    - id: decide
+      shell: bash
+      # Every input read through env:, not interpolated straight into the
+      # script text, the same reasoning setup-vcpkg's own action.yml gives
+      # for VCPKG_COMMIT: a value substituted directly into a run: block is
+      # shell CODE, not data (zizmor: template-injection).
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ORG_TOKEN: ${{ inputs.org-token }}
+        REPO: ${{ github.repository }}
+        ORG: iainchesworthlabs
+        OS_LABEL: ${{ inputs.os-label }}
+        HOSTED_JSON: ${{ inputs.hosted-json }}
+        MODE: ${{ inputs.mode }}
+        IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      run: |
+        set -uo pipefail
+        SELF_JSON="[\"self-hosted\",\"$OS_LABEL\",\"X64\"]"
+
+        # Untrusted fork-PR code never touches self-hosted infra, full stop -
+        # no live check needed, same as _build.yml's own fork-PR branch.
+        if [ "$IS_FORK_PR" = "true" ]; then
+          echo "runner=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
+          echo "Fork PR - staying on GitHub-hosted."
+          exit 0
+        fi
+
+        case "$MODE" in
+          self-hosted)   echo "runner=$SELF_JSON" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          github-hosted) echo "runner=$HOSTED_JSON" >> "$GITHUB_OUTPUT"; exit 0 ;;
+        esac
+
+        # Same accounting as _build.yml's check-runners: online, idle
+        # runners carrying both "self-hosted" and $OS_LABEL, summed across
+        # repo-level and (if ORG_TOKEN is set) org-level lists. Never fails
+        # this step: a missing/errored API response just counts as zero, so
+        # this check being unavailable is never a reason to block the job.
+        idle_count() {
+          local scope="$1" json count
+          json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || { echo 0; return; }
+          count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and .busy==false and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$OS_LABEL\"))] | length" 2>/dev/null)" || { echo 0; return; }
+          echo "${count:-0}"
+        }
+
+        idle="$(idle_count "repos/$REPO")"
+        if [ -n "${ORG_TOKEN:-}" ]; then
+          idle=$((idle + $(GH_TOKEN="$ORG_TOKEN" idle_count "orgs/$ORG")))
+        fi
+
+        if [ "$idle" -ge 1 ]; then
+          echo "runner=$SELF_JSON" >> "$GITHUB_OUTPUT"
+          echo "$idle idle self-hosted $OS_LABEL runner(s) - using self-hosted."
+        else
+          echo "runner=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
+          echo "No idle self-hosted $OS_LABEL runners - using GitHub-hosted."
+        fi

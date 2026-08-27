@@ -30,7 +30,13 @@ permissions:
 
 jobs:
   scan-pr:
-    if: github.event_name == 'pull_request'
+    # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable pause on
+    # non-required PR-time checks during a merge-queue drain, freeing hosted
+    # runner concurrency for the checks that actually gate merging (see
+    # .github/branch-protection.md's required list, which this is not on).
+    # scan-scheduled below is untouched, so main still gets this weekly
+    # regardless. Clear/remove the variable to revert - no code change needed.
+    if: github.event_name == 'pull_request' && vars.PAUSE_NONESSENTIAL_CI != 'true'
     permissions:
       actions: read
       contents: read

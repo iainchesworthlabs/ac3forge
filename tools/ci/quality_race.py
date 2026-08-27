@@ -1660,16 +1660,16 @@ OBJECT_LEGS = [
     {"name": "atmos-objects-448", "kbps": 448},
 ]
 
-# joc::reconstruct is a DELAYED identity, not an instantaneous one: two
+# oba::joc::reconstruct is a DELAYED identity, not an instantaneous one: two
 # stacked algorithmic delays - 256 samples from the real encode+decode of
 # the bed itself, plus reconstruct()'s own pass over that decoded bed. That
 # second delay depends on the domain reconstruct() runs in, and these legs
 # exercise the CLI's default (AtmosConfig::joc_domain / DecoderConfig::
-# joc_domain = ac3::joc::Domain::kQmf, apps/cli/support.hpp), which is
+# joc_domain = ac3::oba::joc::Domain::kQmf, apps/cli/support.hpp), which is
 # ac3::dsp::kQmfDelay = kQmfTaps - kQmfHop = 576 samples (src/forge/include/
 # ac3/dsp/qmf.hpp), not the 256-sample MDCT round trip the older
 # Domain::kMdctBand path used. 256 + 576 = 832.
-# ac3::joc::reconstruction_delay(domain) is the single place either number
+# ac3::oba::joc::reconstruction_delay(domain) is the single place either number
 # is derived (src/forge/include/ac3/oba/joc.hpp); tests/oba/test_atmos.cpp
 # calls it rather than hard-coding a figure, and its comment carries the
 # full reasoning. Fixed here rather than searched for by cross-correlation

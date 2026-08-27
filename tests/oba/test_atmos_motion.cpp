@@ -46,7 +46,7 @@ std::complex<double> project(std::span<const float> x, double hz) {
 
 int band_of(double hz, int num_bands_idx) {
     const auto subband = static_cast<std::size_t>(hz / (24000.0 / 64.0));
-    return ac3::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
+    return ac3::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
 }
 
 std::complex<double> reconstruct_at(const ac3::oba::AtmosEncoder& encoder, int object, double hz,
