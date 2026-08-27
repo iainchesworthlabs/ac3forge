@@ -677,7 +677,7 @@ each OS.
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
 | `record` | Captures from a device straight to a file, metering live. `layout=`/`codec=` choose the shape (any layout up to 7.1.4, AC-3 or E-AC-3), `container=` the wrapper (`raw`, `mkv`, `ts`, `spdif`, `fmp4`), `watchdog=` how long a silent device is tolerated. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
-| `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or (roadmap IO2) inside a container — `bsid` decides AC-3 vs. E-AC-3 |
+| `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or (roadmap IO2) inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink (roadmap UX9): a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below |
 | `monitor` | Decodes an existing file, bare or (roadmap IO2) inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
 | `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has. Everything `record` takes, plus a second clock-conformed capture device (`capture2=`), an object-slot budget and `map=` binding (`objects=`, `mode=atmos`), and a parallel 5.1 AC-3 leg for an AC-3-only receiver (`downmix=`) |
 
@@ -713,6 +713,38 @@ unit.
 `passthrough_device` only bitstreams plain AC-3, `live` sends it a parallel 5.1 AC-3 encode of the
 bed the main plan already computed, while the file and the monitor still carry the full stream.
 `downmix=off` restores the plain refusal.
+
+### Following the sink
+
+Roadmap UX9. When `play` is given a `device_index`, it first asks what that sink actually
+accepts before committing to a format — its own EDID/ELD-carried CEA-861 Short Audio
+Descriptors where a backend can read them (real today only on ALSA — see
+[Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere else, noted on
+stderr when that fallback happens. A source format the sink rejects then gets an automatic
+fallback instead of a plain refusal:
+
+- **E-AC-3 on an AC-3-only sink** is transcoded to AC-3 first (`transcode`, roadmap DC9, run
+  against a temporary file and cleaned up afterwards — dialnorm, `compr` and the mix metadata
+  carry across exactly as a direct `ac3cli transcode` call would), then that AC-3 plays the way
+  a plain AC-3 source file always has. This is the "no 5.1 PCM over optical" case: an optical
+  link can carry compressed AC-3 up to 640 kbit/s but never multichannel PCM, so a 5.1 E-AC-3
+  source has no other way through — what used to take `ac3cli transcode in.ec3 tmp.ac3 448`
+  followed by `ac3cli play tmp.ac3 <device_index>` is now one command.
+- **A sink that bitstreams neither AC-3 nor E-AC-3** falls back to decoded PCM instead —
+  `ac3cli monitor`'s own path, which folds a wide programme down to the endpoint's real channel
+  count per §7.8 rather than handing it to a shared-mode mixer to average down however it sees
+  fit.
+- **A sink that accepts neither a bitstream fallback nor PCM** gets the plain refusal `play` has
+  always given.
+
+`follow=off` disables all of the above and restores that plain refusal unconditionally — the
+escape hatch for a script that wants a hard failure rather than an automatic re-encode. The
+default endpoint (no `device_index` given) is unaffected either way: its capabilities were
+never probed before this either, and it is taken at its word exactly as before.
+
+```bash
+ac3cli play programme.ec3 2 follow=off   # refuse instead of adapting
+```
 
 `live container=fmp4`: the output path names a **folder**, written as the session runs rather than
 at the end — `init.mp4` first, then a `segment*.m4s` for each fragment as it closes, with
