@@ -150,6 +150,22 @@ jobs:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
       - name: Initialize CodeQL
+        # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable
+        # pause on the two non-required legs during PR/merge-queue
+        # validation only, during a merge-queue drain. C++ is main's own
+        # required check (see this file's own comment above on why renaming
+        # it is not free) and always runs; push:main/schedule runs of every
+        # language are untouched either way. Clear/remove the variable to
+        # revert - no code change needed. (Job-level `if:` can't reference
+        # `matrix` - github.com/actions/runner/issues on context
+        # availability - so this and the analyze step below carry the
+        # condition instead of the job itself; checkout above still runs
+        # but costs a couple of seconds, not the minutes CodeQL init/analyze
+        # would.)
+        if: >-
+          matrix.language == 'cpp' ||
+          vars.PAUSE_NONESSENTIAL_CI != 'true' ||
+          (github.event_name != 'pull_request' && github.event_name != 'merge_group')
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           languages: ${{ matrix.language }}
@@ -183,6 +199,12 @@ jobs:
         run: cmake --build --preset build-linux-gcc -- -k 0
 
       - name: Perform CodeQL Analysis
+        # Same condition as "Initialize CodeQL" above - both skip together,
+        # or neither does.
+        if: >-
+          matrix.language == 'cpp' ||
+          vars.PAUSE_NONESSENTIAL_CI != 'true' ||
+          (github.event_name != 'pull_request' && github.event_name != 'merge_group')
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           category: "/language:${{ matrix.language }}"
