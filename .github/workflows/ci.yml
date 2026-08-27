@@ -160,8 +160,9 @@ jobs:
   # cannot merge.
   branch-name:
     name: Branch Name
+    needs: check-runner
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     steps:
       - name: Validate head branch name
         shell: bash
@@ -191,7 +192,8 @@ jobs:
   # the directory ever appears in a tracked tree on main.
   no-quarantine:
     name: No Quarantine On Main
-    runs-on: ubuntu-latest
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -206,6 +208,36 @@ jobs:
           fi
           echo "No quarantined signer in the tree."
 
+  # Same self-hosted/GitHub-hosted fan-out MSVC Code Analysis's own
+  # check-runner gets (see docs/ci-self-hosted-runners.md), via the shared
+  # decide-runner composite action - covers this workflow's own cheap,
+  # container-free jobs below (everything except platform-macros, which
+  # needs pwsh and the self-hosted Linux image's shell is unverified, and
+  # the heavier container-based jobs, which already ride _build.yml's own
+  # check-runners fan-out via build-and-test). Fork-PR safety is handled
+  # entirely inside decide-runner itself, so the jobs below don't each need
+  # their own belt-and-braces `if` the way msvc-analysis.yml's single
+  # self-hosted-eligible job does.
+  check-runner:
+    name: Check self-hosted runner availability
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.decide.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: decide
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Linux
+          hosted-json: '["ubuntu-latest"]'
+          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
   # Single source of truth for the tool-version pins several jobs below need
   # for their own direct setup-vcpkg call (build-and-test gets its copy from
   # _build.yml's own internal job of the same name instead) - see
@@ -214,6 +246,9 @@ jobs:
     uses: ./.github/workflows/_toolchain-versions.yml
     permissions:
       contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
   # Classify the change so a docs-only edit skips a five-platform matrix. This
   # is a job rather than a workflow-level paths-ignore on purpose: a filtered-out
@@ -222,7 +257,8 @@ jobs:
   # gate reporting. Conservative - anything not clearly docs counts as code.
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     permissions:
       contents: read
       pull-requests: read
@@ -289,7 +325,8 @@ jobs:
   # it in CI while it kept working from a normal local checkout.
   packaging-consistency:
     name: Packaging Consistency
-    runs-on: ubuntu-latest
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -315,7 +352,8 @@ jobs:
   # packaging-consistency above.
   fixture-corpus:
     name: Fixture Corpus
-    runs-on: ubuntu-latest
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -349,7 +387,8 @@ jobs:
   # `run:` block - which no other check in this repo looks at at all.
   script-lint:
     name: Script Lint
-    runs-on: ubuntu-latest
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -438,9 +477,9 @@ jobs:
   # configuration and no analysis-only preset is needed.
   static-analysis:
     name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -518,9 +557,9 @@ jobs:
   # margin proves generous.
   coverage:
     name: Coverage (Linux, GCC)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1287,9 +1326,9 @@ jobs:
   # to the vcpkg commit and the LLVM/GCC versions.
   ffmpeg-validate:
     name: FFmpeg Validate
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container

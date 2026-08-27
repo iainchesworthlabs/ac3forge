@@ -68,6 +68,39 @@ if [ -d "$winget_root" ]; then
         if ! echo "$sha" | grep -qE '^[0-9A-Fa-f]{64}$'; then
             note "winget $version: InstallerSha256 is not 64 hex characters ($sha)"
         fi
+
+        # DR7: InstallerType and the shape it implies must agree, so a manual
+        # copy-forward bump (docs/releasing.md's per-release winget steps)
+        # can't leave a `nullsoft` manifest pointing at a .zip, or a `zip`
+        # manifest missing the NestedInstallerType/NestedInstallerFiles a zip
+        # install needs - either is a manifest winget would reject or silently
+        # mis-install from, and neither is caught by the checks above. Only
+        # the two shapes this project has ever shipped are modelled; a future
+        # InstallerType (msi, exe/burn, ...) is deliberately left unchecked
+        # here rather than guessed at.
+        installer_type="$(grep -m1 '^InstallerType:' "$installer" | sed 's/^InstallerType:[[:space:]]*//')"
+        case "$installer_type" in
+            nullsoft)
+                case "$url" in
+                    *.exe) ;;
+                    *) note "winget $version: InstallerType is nullsoft but InstallerUrl does not point at a .exe ($url)" ;;
+                esac
+                if grep -q '^NestedInstallerType:' "$installer"; then
+                    note "winget $version: InstallerType is nullsoft but NestedInstallerType is still set - see docs/releasing.md#winget-manifest"
+                fi
+                ;;
+            zip)
+                case "$url" in
+                    *.zip) ;;
+                    *) note "winget $version: InstallerType is zip but InstallerUrl does not point at a .zip ($url)" ;;
+                esac
+                nested_type="$(grep -m1 '^NestedInstallerType:' "$installer" | sed 's/^NestedInstallerType:[[:space:]]*//')"
+                if [ "$nested_type" != "portable" ]; then
+                    note "winget $version: InstallerType is zip but NestedInstallerType is '$nested_type', expected portable"
+                fi
+                grep -q 'RelativeFilePath:' "$installer" || note "winget $version: InstallerType is zip but no NestedInstallerFiles entries were found"
+                ;;
+        esac
     done
 else
     note "winget manifest root not found: $winget_root"
