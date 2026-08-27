@@ -107,6 +107,34 @@ ALSA still comes first](../building.md#why-alsa-still-comes-first).
     this is a real, current gap, not a minor caveat — and whether a given output accepts a
     bitstream is per-device anyway; `ac3cli outputs` probes each one and reports what it finds.
 
+## Reading a sink's own EDID/ELD (roadmap UX9)
+
+`ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
+to a format — see [CLI → Following the sink](../cli/commands.md#following-the-sink). On Linux
+that read is real on ALSA only: the HD-audio kernel driver populates
+`/proc/asound/<card>/eld#<dev>.<port>` with the sink's own CEA-861 Short Audio Descriptors,
+already decoded into text fields, for every HDMI/DisplayPort output — a documented, stable
+kernel interface, not a private one this project reaches around. `ac3::audio::sink_capabilities`
+locates the right card/device the same way `enumerate_render_devices()` already does
+(`src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
+
+PipeWire has no equivalent here, on purpose rather than by omission: an ALSA-backed PipeWire
+node likely carries enough in its own properties to find the same `/proc/asound` file, but no
+property name was found confirmed stable across PipeWire versions and session-manager
+configurations without a live daemon available to verify it against — the same caution this
+page already applies to PipeWire's passthrough negotiation itself. `play` falls back to the live
+probe `outputs` already uses when EDID/ELD is not available, on PipeWire and everywhere else.
+
+**Not verified against real hardware.** Like the passthrough gap above, the parser
+(`parse_eld_proc_text`, `tests/backend/alsa/test_alsa_eld_parsing.cpp`) is unit-tested against
+synthesized fixture text matching real-world `/proc/asound` output found in the wild, but this
+development loop has no Linux box with a real HDMI/DisplayPort sink attached to confirm the file
+path resolution and field parsing against. It is also not yet taught to disambiguate multiple
+HDMI ports on one card beyond the raw hardware device index embedded in the ALSA device name —
+the same numbering [Raspberry Pi](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)
+found one real classifier bug in already (vc4-hdmi's identically-named PCMs), worth a second
+look once real multi-port hardware is available to test against.
+
 ## GUI: opt-in, not on by default
 
 Unlike Windows, where `AC3FORGE_BUILD_GUI` defaults **ON**, both Linux presets default it

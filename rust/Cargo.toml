@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["ac3forge-sys", "ac3forge"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98.0"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/iainchesworthlabs/ac3forge"
+authors = ["ac3forge contributors"]
