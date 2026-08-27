@@ -816,6 +816,15 @@ an AC-3 input-space fuzzer already exist. What remains is mostly what the tree n
   has those real CI logs in front of them, since pre-filling them from the qemu measurement would
   pin the wrong number by this item's own finding. `docs/building.md` and `ci.yml`'s header both
   carry the corrected history in place of the stale libm explanation.
+  **Update (DR8):** `macos-llvm-x64`, a new x86_64-on-macOS leg added for DR8's universal
+  binaries, is a genuinely new data point along the OS-vs-architecture axis - same OS and Homebrew
+  LLVM/Qt stack as `macos-llvm`, x86_64 instead of arm64. Across three real CI runs it measured
+  67.80/67.82/67.76 dB, matching the x86 baseline every non-arm64 leg reports, not the ~61.8 dB
+  `macos-llvm` and every other arm64/aarch64 leg reports. That rules out "something about macOS
+  specifically" as a contributing factor: the same OS and toolchain now sit on both sides of the
+  split, differing only by CPU architecture, which is now confirmed rather than merely the leading
+  hypothesis. The underlying mechanism is still open - this narrows what it could be, it doesn't
+  name it.
 - [ ] **VX12 (L)** — Reproducible bitstreams across toolchains. PARTIAL. Audited every discrete,
   bitstream-affecting decision in `src/forge/src/encoder/` (and the one shared call it makes into
   `bitalloc.cpp`'s delta-segment bucketing) that a floating-point comparison, argmin or threshold
@@ -1507,10 +1516,13 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
     framework binary in the CI log, not assumed from a green checkmark) and packages the result as
     the release's one canonical macOS `.dmg` — neither single-arch leg's own `cpack` output ships
     as the release artifact any more, a deliberate change from before. The Homebrew Cask dropped
-    its `depends_on arch: :arm64`. `macos-llvm-x64` stays `experimental: true` until proven green
-    the same way `macos-llvm` was; see
-    [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) and
-    [docs/releasing.md](releasing.md#what-gets-published).
+    its `depends_on arch: :arm64`. `macos-llvm-x64` went three consecutive clean real runs (two
+    `release.yml` dry runs plus its own required PR CI, each including a real gold-reference pass)
+    before its `experimental: true` came off, the same promotion bar `macos-llvm` itself was held
+    to; see [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) and
+    [docs/releasing.md](releasing.md#what-gets-published). Unplanned bonus: `macos-llvm-x64`'s
+    real gold-reference numbers (67.80/67.82/67.76 dB) turned out to be new evidence for VX11
+    below — see that entry.
 - [ ] **DR9** — Hardware confirmation (was `E3`), restated per backend because the one-line
   version hid a contradiction:
   - **Linux/ALSA: confirmed.** `docs/platforms/raspberry-pi.md` ("Live HDMI passthrough to a
