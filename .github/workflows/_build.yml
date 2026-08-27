@@ -132,6 +132,7 @@ jobs:
       linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
+      linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -153,11 +154,11 @@ jobs:
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - three Linux (GCC, LLVM, LLVM ASan+UBSan)
-          # and two Windows (MSVC, LLVM) today. Bump these, and add a
-          # matching numbered output above and matrix.runner reference
+          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
+          # LLVM TSan) and two Windows (MSVC, LLVM) today. Bump these, and
+          # add a matching numbered output above and matrix.runner reference
           # below, if a leg is added or removed.
-          LINUX_LEGS=3
+          LINUX_LEGS=4
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -235,6 +236,9 @@ jobs:
     uses: ./.github/workflows/_toolchain-versions.yml
     permissions:
       contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
   build:
     name: ${{ matrix.name }}
@@ -448,7 +452,7 @@ jobs:
           # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
           # same reasoning as the ASan+UBSan leg's own comment above.
           - name: "Linux LLVM TSan"
-            runner: '["ubuntu-latest"]'
+            runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
             container: ubuntu:26.04
             preset: linux-llvm-tsan
             llvm: true
@@ -746,6 +750,44 @@ jobs:
       - name: Install ffmpeg (macOS)
         if: matrix.gold_reference && runner.os == 'macOS'
         run: brew install ffmpeg
+
+      # DR7: makensis is what turns the NSIS block in cmake/Packaging.cmake
+      # from a graceful, silent no-op into a real installer. Installed fresh
+      # here rather than baked into the ci-runners Packer image, same
+      # reasoning as ffmpeg/Ninja above - see
+      # docs/ci-self-hosted-runners.md's "Measuring whether it's actually
+      # worth it": nothing is pre-baked onto the self-hosted image without
+      # data justifying it, and there is none for NSIS specifically yet.
+      # Scoped to the same condition as the Package step below (only
+      # windows-msvc packages on Windows today) so a leg that never runs
+      # cpack doesn't pay for an installer it won't use.
+      #
+      # PowerShell, not bash: both GitHub-hosted windows-latest AND (per a
+      # real CI run) this fleet's self-hosted runners already carry NSIS -
+      # `choco install nsis` reports "already installed" and exits without
+      # running the shim-creation step a fresh install would, so makensis
+      # was on disk but never on PATH, and find_program(makensis) still
+      # missed it (confirmed empirically: cpack packaged ZIP-only with the
+      # cmake/Packaging.cmake warning firing, even though choco reported
+      # success). Probing both Program Files roots and appending to
+      # GITHUB_PATH explicitly - rather than assuming choco's shim exists -
+      # is what actually fixes that, on a fresh runner or an already-primed
+      # one alike.
+      - name: Install NSIS (Windows)
+        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install nsis -y --no-progress --requirechecksums
+          $nsisDir = @(
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
+            (Join-Path $env:ProgramFiles 'NSIS')
+          ) | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
+          if (-not $nsisDir) {
+            throw "makensis.exe not found under Program Files after 'choco install nsis' - the package layout may have changed."
+          }
+          Write-Host "Adding $nsisDir to PATH"
+          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
       # set them up itself (unlike MSBuild). clang-cl needs them too.
@@ -1204,6 +1246,27 @@ jobs:
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
         run: cpack --preset pack-${{ matrix.preset }}
+
+      # DR7: the whole point of installing makensis above is that its
+      # absence stops being silent. cmake/Packaging.cmake's find_program()
+      # gate degrades to a ZIP-only package with just a message(WARNING ...)
+      # rather than failing cpack outright - the right behaviour for a local
+      # dev build without NSIS installed, the wrong one here, where makensis
+      # was just installed on purpose and a missing .exe means that install
+      # broke rather than a deliberate choice. Failing loudly on this leg is
+      # what keeps DR7 fixed instead of quietly regressing the same way
+      # again - see docs/releasing.md#winget-manifest.
+      - name: Assert the NSIS installer was produced (Windows)
+        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          exes=(packages/*.exe)
+          if [ ${#exes[@]} -eq 0 ]; then
+            echo "::error::cpack produced no NSIS installer (.exe) - makensis is missing or cmake/Packaging.cmake's find_program() gate silently dropped NSIS again. Check the 'Install NSIS (Windows)' step and the configure log's warnings above."
+            exit 1
+          fi
 
       - name: Upload package artifacts
         if: >-
@@ -1913,6 +1976,56 @@ jobs:
           WASM_DEMO_DIR: ${{ github.workspace }}/build/config-wasm-emscripten/bin/wasm_decode_demo
           CI: "1"
         run: npm test
+
+  # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
+  # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
+  # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
+  # of the `build` matrix's steps apply (no ctest suite, no cpack package, no gold-reference
+  # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
+  # ac3::forge_c_shared rather than reusing a desktop preset.
+  #
+  # Linux-only for this first pass, matching build-wasm/build-footprint each being single-OS
+  # too: build.rs links libac3forge_c.so dynamically and copies it next to cargo's own build
+  # output (see rust/README.md's "how linking works") - a real CI run on the simplest platform
+  # first, before widening to the Windows/macOS legs that approach hasn't been proven on yet.
+  #
+  # No toolchain-selection step: rustup (preinstalled on this runner image) auto-detects and
+  # installs rust/rust-toolchain.toml's pinned channel plus its clippy/rustfmt components the
+  # moment `cargo`/`rustup` is invoked from inside rust/ - one canonical version pin, not one
+  # duplicated into this file too, the same "no second copy of a version string" reasoning
+  # _toolchain-versions.yml's own header states for the C/C++ toolchains.
+  build-rust:
+    name: Rust bindings (ac3forge-sys, ac3forge)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Install pinned Rust toolchain
+        working-directory: rust
+        run: rustup show
+
+      - name: cargo build
+        working-directory: rust
+        run: cargo build --workspace --locked
+
+      - name: cargo test
+        working-directory: rust
+        run: cargo test --workspace --locked
+
+      - name: cargo clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # Mirrors ac3::warnings' project-wide "warnings are errors" stance (clippy above) and
+      # .clang-format's "checked in, run it" rule (rustfmt here).
+      - name: cargo fmt --check
+        working-directory: rust
+        run: cargo fmt --check
 
   # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
