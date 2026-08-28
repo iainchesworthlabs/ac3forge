@@ -724,12 +724,27 @@ merge. It is informational and never fails a build — the blocking performance 
 `ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
 
 An `abi-gate` job (`ci.yml`) runs on the same advisory footing: on a code-touching change it
-builds `config-linux-llvm-shared` at the last release tag in a git worktree beside HEAD, then
+builds `config-linux-llvm-shared` at a comparison point in a git worktree beside HEAD, then
 runs `abidiff` between the two and checks the actual exported dynamic-symbol set
 (`tools/ci/check_abi_symbols.py`, `nm -D --defined-only`) against the checked-in allowlist.
-Like `performance-compare` it is `continue-on-error: true` and deliberately absent from
-`CI Status`'s `needs` list, so it reports without blocking; roadmap AP1's interface freeze is
-what would make it required, by deleting that one line.
+On a pull request the comparison point is the PR's own merge base — the same ref
+`performance-compare` uses, and the only one that answers "what does this branch do to the
+ABI"; on a push or a tag it is the last release tag instead, which is the release-notes view.
+`abidiff` runs under `tools/ci/abi-suppressions.ini`, which drops the libstdc++ template
+instantiations that are not part of any ABI this project controls.
+
+Both checks report into the job summary and leave the job green, gated on a single
+`ABI_ENFORCE: 'false'` job-level variable; roadmap AP1's interface freeze is what would make
+the gate required, by flipping that one value. When enforcing, `abidiff` fails only on an
+*incompatible* change — a pure addition passes. The job is deliberately absent from
+`CI Status`'s `needs` list either way.
+
+`ABI_ENFORCE` deliberately replaces the `continue-on-error: true` this job used to carry.
+That setting stops a failing job from failing the *workflow run*, but GitHub still reports the
+job's own check run as `failure` — so the gate showed a red X on every pull request while
+blocking nothing, and it hid genuine build failures behind the same state as an expected
+pre-1.0 ABI change. With it gone, anything unexpected in this job is red and a policy finding
+is not.
 
 No macOS host exists for this project, so `config-macos-llvm`/`config-macos-llvm-debug` are only
 ever exercised by CI (`macos-latest`, Apple Silicon) — never locally. That CI leg is green:
