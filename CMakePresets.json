@@ -228,6 +228,7 @@
         "AC3FORGE_BUILD_MP4": "OFF",
         "AC3FORGE_BUILD_MPEGTS": "OFF",
         "AC3FORGE_BUILD_IAB": "OFF",
+        "AC3FORGE_BUILD_IAMF": "OFF",
         "AC3FORGE_BUILD_CAPI": "OFF",
         "AC3FORGE_BUILD_AC4": "OFF"
       }

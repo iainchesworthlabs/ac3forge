@@ -29,6 +29,7 @@ ColumnLayout {
         }
         SegmentedControl {
             objectName: "rateModeControl"
+            accessibleName: qsTr("Rate mode")
             model: [{ value: "cbr", label: qsTr("Constant") },
                     { value: "vbr", label: qsTr("Variable") }]
             currentValue: EncoderController.vbrEnabled ? "vbr" : "cbr"
@@ -81,6 +82,8 @@ ColumnLayout {
                     EncoderController.vbrQuality = Math.round(value);
                     EncoderController.formatDefaultsTouched = true;
                 }
+                Accessible.name: qsTr("Quality")
+                Accessible.description: qsTr("%1 / 100").arg(EncoderController.vbrQuality)
             }
             Text {
                 text: qsTr("100 · best")
@@ -108,6 +111,7 @@ ColumnLayout {
                 enabled: vbrMinCheck.checked
                 value: EncoderController.vbrMinKbps
                 onValueModified: EncoderController.vbrMinKbps = value
+                Accessible.name: vbrMinCheck.text
             }
 
             CheckBox {
@@ -125,6 +129,7 @@ ColumnLayout {
                 enabled: vbrMaxCheck.checked
                 value: EncoderController.vbrMaxKbps
                 onValueModified: EncoderController.vbrMaxKbps = value
+                Accessible.name: vbrMaxCheck.text
             }
             Item { Layout.fillWidth: true }
         }

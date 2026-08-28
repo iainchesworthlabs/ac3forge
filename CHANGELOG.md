@@ -108,6 +108,12 @@ a concrete API-freeze plan for v1.0 now exists.
 - **A JOC → ADM BWF writer.** `decode … adm_out` writes a Dolby Atmos Master ADM Profile BW64
   from a decoded stream's own bed LFE and reconstructed objects, positioned by their real OAMD
   timeline. Scoped to dynamic-object-only programmes. Needs `-DAC3FORGE_BUILD_ADM=ON`.
+- **`iamf`, a writer for AOM's IAMF (Immersive Audio Model and Formats) v1.1.0.** E-AC-3 can never
+  be an IAMF codec, so this decodes a 7.1.4 stream and re-wraps it as a channel-based IAMF Audio
+  Element carrying `ipcm` substreams, in IAMF's own ISO-BMFF encapsulation — a direct route to the
+  IAMF/Eclipsa Audio ecosystem alongside the indirect one the ADM writer above already opens
+  (AOM's `iamf-tools` encoder accepts ADM-BWF input). Object elements and a reader are not
+  started. See [IAMF writing](docs/library/iamf.md).
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
@@ -145,10 +151,25 @@ a concrete API-freeze plan for v1.0 now exists.
   this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).
 - **Desktop integration**: drag-and-drop, `ac3gui <file>`, and `.ac3`/`.ec3` file associations on
   Windows, macOS and Linux, so the app appears in application menus instead of being launch-only.
+- **A self-contained Linux AppImage for `ac3gui`**, bundling its own Qt 6 instead of depending on
+  the host distro's own `qt6-base-dev`/`qml6-module-*` split, alongside the existing `.deb`/`.rpm`.
+  See [Linux](docs/platforms/linux.md#appimage).
 - **Loudness of the rendered layout and of objects.** Metering follows BS.1770-5's extended
   algorithm for advanced sound systems, weighting channels by position, and can re-render an
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
+- **GUI localisation.** A Preferences **Language** picker switches the app live between English
+  and five real languages (Français, Deutsch, Español, العربية, עברית, יידיש — the same set the
+  sibling CountdownSolver project ships), with right-to-left mirroring and bundled Noto Sans
+  Arabic/Hebrew faces for the three languages that need them. Coverage is partial today (window
+  chrome, tab names, the Guided wizard, all of Preferences) and tracked, not hidden — see
+  [Localisation](docs/gui/localisation.md). A pseudo-locale QA fixture proves the extraction/
+  compile/load pipeline end to end independent of real-language completeness, and CI now fails if
+  a `qsTr()` change isn't reflected in the committed translation catalogue.
+- **GUI accessibility.** Every custom control and every control in the main window now reports a
+  real `Accessible` name, role and description to screen readers, built from the same live state
+  the visuals already read rather than a static copy of a label — channel meters, QC gates, the
+  Guided wizard's cards, the object-placement room and timeline views, run-strip chips, all of it.
 - **`ac3cli spatial`, a Windows Spatial Sound object sink.** Every JOC-reconstructed object goes
   out as a dynamic object at its real OAMD position, and the bed's LFE as a static one, through
   `ISpatialAudioObjectRenderStream`. This is the one path that lets Dolby's own renderer engage
@@ -191,6 +212,14 @@ a concrete API-freeze plan for v1.0 now exists.
   four decoded-audio accessors). See [Rust bindings](docs/library/rust-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
+- **Zero-copy numpy encode/decode in Python**, plus caller-buffer decoding. Every `encode_frame`/
+  `encode_access_unit` call accepts a 2-D `(n_channels, n_samples)` array as well as a sequence of
+  1-D arrays, and reads directly out of whichever is passed when it is already contiguous
+  `float32`; decoded `.channels`/`.object_audio` are read-only views onto the decoded object's own
+  memory instead of a fresh copy on every access; `FrameDecoder.decode_frame_into`/
+  `Eac3Decoder.decode_access_unit_into` write PCM into caller-supplied buffers for a realtime
+  embedder or tight batch loop that wants to reuse them. See [Python API](docs/library/python-api.md)'s
+  "Zero-copy numpy and buffer reuse".
 - **Stream scanning in Python.** `ac3.scan()`/`ac3.read_frame_header()` read an elementary
   stream's shape — channel layout, every programme, every access unit's byte range — without
   decoding any audio, plus timing helpers (`ac3.access_unit_timing`, `stream_duration_seconds`,
@@ -370,6 +399,56 @@ a concrete API-freeze plan for v1.0 now exists.
   packaging-consistency check also now catches a winget manifest whose `InstallerType` doesn't
   match its own installer URL or nested-installer fields — the same class of drift a manual
   copy-forward release bump can introduce.
+
+**Shield Atmos Demo (Android)**
+
+- **The encode loop kept streaming to the receiver after the demo left the screen.** It stopped only
+  in `onDestroy`, so pressing HOME left a cached process pushing E-AC-3 bursts into the AVR with no
+  UI and nothing to stop it. Now stopped in `onStop`, without tearing down the stream for the app's
+  own About screen. Both on-screen render loops likewise ran behind other windows.
+- **"Waiting for receiver" cleared on a capability probe rather than on audio flowing**, so a failed
+  sink open left a fully-drawn dashboard over permanent silence. Readiness now means the encode loop
+  is confirmed running, with a distinct "starting" state in between, and the waiting screen reports
+  what the HDMI route actually advertises — including whether it claims the Atmos (JOC) profile.
+- **A native library load failure crashed instead of showing its own failure screen**, because a
+  throwing static initializer marks the class erroneous and the later `NoClassDefFoundError` is not
+  what the call sites caught.
+- **A partial `AudioTrack` write duplicated bytes into the IEC 61937 stream**, since a short write
+  was retried by resubmitting the whole burst. Now resumed from.
+- **Precise placement was impossible**: a flat per-axis deadzone with no rescaling meant the
+  smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
+  seeded from the device's own declared flat range. Right-stick height is resolved by probing which
+  axis the device declares rather than assuming.
+- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
+  and draws what a decoder finds in them — the lead object's intended height against the height read
+  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
+  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
+  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
+  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
+- **The status line now reports whole-frame occupancy**, not just `encode_frame()`. The previously
+  quoted figure excluded synthesis, the limiter, both meters, signing, stripping, the packer and the
+  JNI submit — most of the frame.
+- **The real-time encode thread no longer attaches to and detaches from the JVM once per frame**, and
+  both worker threads now have explicit priorities instead of inheriting whatever started them.
+- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
+  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
+  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
+  between; and once left idle it walks them itself rather than just inviting the next person.
+- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
+  gesture forever — still pushable, still springing back to itself.
+- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
+  passing through the listening position.
+- **New: a settings panel and a phone remote.** Every control was previously an undocumented
+  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
+  drive the object from their own phone. The remote is **off by default** and has no authentication
+  — it starts only when switched on, and stops when the demo leaves the screen.
+- **`isDirectPlaybackSupported` was called unguarded on a minSdk-26 app**, so on any API 26–28
+  device — a 2015/2017 Shield on Android 9, for instance — the app's most load-bearing platform
+  query threw `NoSuchMethodError` rather than degrading. Guarded.
+- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
+  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
+  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
+  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
 
 ### Security
 

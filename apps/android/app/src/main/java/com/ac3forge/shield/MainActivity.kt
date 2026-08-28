@@ -22,6 +22,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -41,6 +42,16 @@ private const val ORIENTATION_CUE_MS = 5000L
 // person rather than just sit there having already made its point.
 private const val IDLE_PROMPT_MS = 14000L
 private const val IDLE_CHECK_INTERVAL_MS = 2000L
+
+// The guided tour: once the demo has been left alone past IDLE_PROMPT_MS it
+// stops waiting to be picked up and starts showing itself, walking the scenes
+// with their own "listen for this" line. Long enough per scene to actually
+// hear what the line points at - a flyover pass takes about 9s - and to sit
+// still afterwards rather than feeling like a slideshow.
+private const val TOUR_SCENE_MS = 24000L
+
+// How long a scene announcement stays up after a scene change.
+private const val SCENE_CUE_MS = 4500L
 
 // How long the overlay cue's fade in/out takes - fast enough not to feel
 // laggy, slow enough to read as an intentional transition rather than a
@@ -67,6 +78,24 @@ private const val RECEIVER_CHECK_INTERVAL_MS = 2500L
 // comment for the rest of this state machine.
 private const val START_ATTEMPT_GRACE_MS = 3000L
 
+// How long a first BACK press stays "armed" - long enough to read the
+// confirmation and press again deliberately, short enough that a BACK press
+// minutes later isn't silently treated as the second half of a pair.
+private const val BACK_CONFIRM_MS = 3000L
+
+private const val WAITING_HEADLINE = "Waiting for receiver…"
+private const val WAITING_DETAIL =
+    "Turn on your AVR/receiver and select this HDMI input.\n" +
+        "The demo starts on its own once it's detected - no need to restart the app."
+
+// Shown between asking for the encode loop and the loop confirming it is up.
+// Short-lived on a healthy route; if it persists, the AudioTrack is failing to
+// open even though the route said it would accept the format - a materially
+// different problem from "no receiver", and one that should not look the same.
+private const val STARTING_HEADLINE = "Starting…"
+private const val STARTING_DETAIL =
+    "The receiver accepted the format - opening the audio stream…"
+
 // The E-AC3 IEC61937 carrier rate for this app's fixed 48kHz content rate
 // (live_cursor.cpp's kSampleRate) - carrier = 4x content for E-AC3, per
 // android_audio::carrier_rate() on the native side (see
@@ -74,6 +103,18 @@ private const val START_ATTEMPT_GRACE_MS = 3000L
 // that relationship is computed once in C++ and just duplicated as a
 // constant here rather than exposed over JNI for a single call site).
 private const val EAC3_CARRIER_RATE_HZ = 192000
+
+// Fraction of screen width kept clear inside the edge-to-edge bars - see
+// MainActivity.overscanInset. 2% is the conservative end of the range TV
+// overscan actually crops; the room cards below already inset themselves.
+private const val OVERSCAN_FRACTION = 0.02f
+
+// Room-fraction per phone-remote update at full deflection. Lower than
+// InputController's own INPUT_SPEED because the page sends roughly one update
+// per ITS animation frame over the network, which arrives less regularly than
+// a local ticker - a smaller step keeps a burst of queued updates from
+// throwing the object across the room.
+private const val REMOTE_SPEED = 0.010f
 
 /**
  * Loads the native library, registers the [PassthroughBridge], runs the
@@ -117,7 +158,31 @@ class MainActivity : Activity() {
     // wherever this feature's other members get touched, same pattern
     // already used for overlayCue.
     private lateinit var waitingOverlay: View
-    private var receiverReady = false
+    private lateinit var waitingHeadline: TextView
+    private lateinit var waitingDetail: TextView
+    private lateinit var waitingCapability: TextView
+
+    /**
+     * Three states, not two.
+     *
+     * The overlay used to clear on [PassthroughBridge.isDirectPlaybackSupported]
+     * alone - "this route could accept E-AC-3" - which is a different claim
+     * from "audio is flowing". If `PassthroughSink::start()` then failed, the
+     * loop's thread exited immediately, the next reconcile still found the
+     * route capable, the old setReceiverReady(true) short-circuited as
+     * no-change, and the user got a fully-drawn dashboard over permanent
+     * silence. Worse, before the first encode frame every object is at its
+     * default position, so all three dots sit stacked at the origin: a
+     * plausible-looking picture, not an obviously broken one.
+     *
+     * READY now means `nativeIsLiveCursorRunning()`, which becomes true only
+     * after the sink actually opened. STARTING covers the gap between asking
+     * and knowing, so a slow AVR handshake reads as progress rather than as
+     * either a lie or a stall.
+     */
+    private enum class ReceiverState { WAITING, STARTING, READY }
+
+    private var receiverState = ReceiverState.WAITING
     // The first-launch orientation cue used to show unconditionally at the
     // end of onCreate; now it shows the first time the receiver actually
     // becomes ready (which may be immediately, or after some waiting) - this
@@ -136,6 +201,59 @@ class MainActivity : Activity() {
     private var startAttemptPending = false
     private var startAttemptAtMs = 0L
 
+    // Set immediately before launching one of this app's OWN Activities, so
+    // onStop can tell "the user left the demo" from "the About screen came
+    // forward" and avoid tearing down a locked AVR connection for the latter.
+    // Cleared by the onStop it was set for.
+    private var launchingOwnActivity = false
+
+    // BACK-to-exit confirmation. The hints bar promises "Press any button to
+    // take control", and BACK is the one button that instead ends the demo
+    // mid-sentence - on a Shield remote it sits directly under the D-pad. A
+    // second press within this window still exits, so nobody is trapped.
+    private var backPressedAtMs = 0L
+    // Gates the idle checker off the shared overlay while the BACK
+    // confirmation owns it, exactly as orientationCueShowing already does -
+    // otherwise the next idle tick (<=2s away) either hides the confirmation
+    // or overwrites it with the attract prompt.
+    private var backConfirmShowing = false
+
+    // The scene announcement owns the shared overlay while it is up, the same
+    // way the orientation cue and the BACK confirmation do.
+    private var sceneCueShowing = false
+    private val sceneCueTimeout = Runnable {
+        sceneCueShowing = false
+        hideOverlayCue()
+    }
+
+    // Whether the guided tour is currently driving the scene. Started by the
+    // idle checker, stopped by the first real input.
+    private var tourActive = false
+    private val tourAdvance = object : Runnable {
+        override fun run() {
+            if (!tourActive) return
+            inputController.stepScene(1)
+            mainHandler.postDelayed(this, TOUR_SCENE_MS)
+        }
+    }
+
+    // The settings panel, and the phone remote it makes discoverable. Both
+    // are built in onCreate and both are inert until asked for - see
+    // WebRemote's own comment on why a demo app must not open a listening
+    // socket just because it launched.
+    private lateinit var settings: SettingsOverlay
+    private val webRemote = WebRemote { command -> mainHandler.post { applyRemote(command) } }
+
+    // Whether startFileReplay's worker is in flight - see onDestroy.
+    @Volatile
+    private var fileReplayRunning = false
+
+    private val backConfirmTimeout = Runnable {
+        backConfirmShowing = false
+        backPressedAtMs = 0L
+        hideOverlayCue()
+    }
+
     // Fast path: the system broadcasts this whenever the HDMI audio route's
     // capabilities change (receiver on/off, input switched, EDID
     // renegotiated) - see AudioManager.ACTION_HDMI_AUDIO_PLUG's own
@@ -144,6 +262,9 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.i(TAG, "ACTION_HDMI_AUDIO_PLUG received - re-checking receiver capability")
             reconcileReceiverState()
+            // The broadcast means the route's capabilities changed, which is
+            // exactly when the advertised-capability line is stale.
+            refreshCapabilityLine()
         }
     }
 
@@ -168,11 +289,13 @@ class MainActivity : Activity() {
             // overlayCue is ever built - guard rather than crash, since
             // onResume/onPause still run normally in that mode too.
             if (!::overlayCue.isInitialized) return
-            if (!orientationCueShowing) {
+            if (!orientationCueShowing && !backConfirmShowing && !sceneCueShowing) {
                 val idleMs = SystemClock.elapsedRealtime() - lastInputAtMs
-                if (idleMs >= IDLE_PROMPT_MS && overlayCue.visibility != View.VISIBLE) {
-                    setOverlayCueText("Press any button to take control")
-                    showOverlayCue()
+                if (idleMs >= IDLE_PROMPT_MS && !tourActive) {
+                    // Left alone: stop waiting to be picked up and start
+                    // showing the room off instead. The prompt still says how
+                    // to take over.
+                    startGuidedTour()
                 } else if (idleMs < IDLE_PROMPT_MS && overlayCue.visibility == View.VISIBLE) {
                     hideOverlayCue()
                 }
@@ -184,21 +307,29 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val version = try {
-            NativeBridge.nativeVersionString()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "native library failed to load/link", e)
-            "(native link failed - see logcat)"
+        // A live demo that is only interesting while it is on screen, on a TV
+        // that will otherwise dim and sleep underneath it - and this app
+        // deliberately fires an attract prompt after 14s of no input (see
+        // IDLE_PROMPT_MS), which is exactly the state the screen saver would
+        // otherwise interrupt.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Nothing below this point works without the native library, and
+        // limping on produces a fully-drawn dashboard reading zeroes rather
+        // than an explanation - see NativeBridge.available's own comment for
+        // why the failure is caught there rather than thrown from a static
+        // initializer.
+        if (!NativeBridge.available) {
+            Log.e(TAG, "native library unavailable - showing the failure screen instead of the dashboard")
+            setContentView(buildNativeFailureView())
+            return
         }
+
+        val version = NativeBridge.nativeVersionString()
         Log.i(TAG, "ac3::forge version reported by native library: $version")
 
-        val capabilities = try {
-            NativeBridge.registerPassthroughBridge(passthroughBridge)
-            NativeBridge.nativeProbePassthroughCapabilities()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "passthrough capability probe failed", e)
-            "(capability probe failed - see logcat)"
-        }
+        NativeBridge.registerPassthroughBridge(passthroughBridge)
+        val capabilities = NativeBridge.nativeProbePassthroughCapabilities()
         Log.i(TAG, "passthrough capability probe:\n$capabilities")
 
         val playFilePath = intent.getStringExtra("play_file")
@@ -211,11 +342,7 @@ class MainActivity : Activity() {
         // bundled lead-voice sample once at startup, on its own thread; a
         // late call would just miss it (see NativeBridge.nativeSetAssetManager's
         // own doc comment - missing this is a graceful fallback, not a crash).
-        try {
-            NativeBridge.nativeSetAssetManager(assets)
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "nativeSetAssetManager failed - lead object will use its live-synthesized voice", e)
-        }
+        NativeBridge.nativeSetAssetManager(assets)
 
         // nativeStartLiveCursor() is NOT called unconditionally here anymore
         // - it's gated on the receiver actually being ready, via
@@ -309,6 +436,9 @@ class MainActivity : Activity() {
             ))
         }
 
+        settings = SettingsOverlay(this)
+        settings.setItems(buildSettingsItems())
+
         waitingOverlay = buildWaitingOverlay()
         // A sibling of `root`, not a child - it fully covers the dashboard
         // (including the title bar) while waiting, rather than requiring
@@ -324,10 +454,34 @@ class MainActivity : Activity() {
                 addView(waitingOverlay, FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
                 ))
+                // Above the waiting overlay: the settings panel is reachable
+                // even while waiting for a receiver, which is exactly when
+                // someone might want to check what this thing can do.
+                addView(settings.view, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
+                ))
             },
         )
 
         inputController.onInputActivity = { onUserInputActivity() }
+        inputController.onRecordStateChanged = { state ->
+            when (state) {
+                NativeBridge.RECORD_RECORDING -> showTransientCue(
+                    "Recording your path",
+                    "Fly the object where you want it - press R2 again to loop it",
+                )
+                NativeBridge.RECORD_PLAYING -> showTransientCue(
+                    "Looping your path",
+                    "It is still pushable - R2 again to go back to the scene",
+                )
+                else -> showTransientCue("Back to the scene's own course", null)
+            }
+        }
+        inputController.onSceneChanged = { scene ->
+            // During the tour the announcement is prefixed, so a viewer can
+            // tell "the demo is walking itself" from "someone pressed a key".
+            showSceneCue(scene, prefix = if (tourActive) "Guided tour ·" else null)
+        }
         lastInputAtMs = SystemClock.elapsedRealtime()
         // Establishes the initial waiting/ready state and starts the encode
         // loop immediately if a receiver is already there - see this
@@ -336,6 +490,154 @@ class MainActivity : Activity() {
         // unconditionally at this point - showing it while still waiting
         // for a receiver would just be confusing.
         reconcileReceiverState()
+        // setReceiverState(WAITING) short-circuits on the very first call -
+        // WAITING is already receiverState's starting value - so the initial
+        // read has to be kicked off explicitly rather than relying on a
+        // transition that never happens.
+        refreshCapabilityLine()
+    }
+
+    /**
+     * The settings rows. Everything here is something the demo could already
+     * do from an undocumented keypress, plus the phone remote, which nothing
+     * on screen would otherwise reveal.
+     *
+     * Deliberately absent: bitrate, object count and the JOC domain. All three
+     * are fixed when `AtmosEncoder` is constructed, so changing them means
+     * rebuilding the encoder mid-stream - per-object QMF filterbank allocation
+     * on a thread holding a 32ms deadline. A settings row that silently risks
+     * the frame budget is worse than no row.
+     */
+    private fun buildSettingsItems(): List<SettingsOverlay.Item> = listOf(
+        SettingsOverlay.Item(
+            title = "Scene",
+            value = {
+                val scene = currentScene()
+                val name = try {
+                    NativeBridge.nativeGetSceneText(scene).substringBefore('\t')
+                } catch (e: UnsatisfiedLinkError) {
+                    "?"
+                }
+                "$name  (${scene + 1}/${sceneCount()})"
+            },
+            onChange = { delta -> inputController.stepScene(if (delta < 0) -1 else 1) },
+        ),
+        SettingsOverlay.Item(
+            title = "Ambient tones",
+            value = { if (ambientMutedNow()) "muted" else "playing" },
+            onChange = { NativeBridge.nativeSetAmbientMuted(!ambientMutedNow()) },
+        ),
+        SettingsOverlay.Item(
+            title = "Object layer",
+            value = { if (objectsOffNow()) "STRIPPED (plain DD+)" else "on (Atmos)" },
+            detail = {
+                if (!signedBuild()) {
+                    "no signing key in this build - the object container is not emitted at all"
+                } else {
+                    null
+                }
+            },
+            onChange = { NativeBridge.nativeSetObjectsOff(!objectsOffNow()) },
+        ),
+        SettingsOverlay.Item(
+            title = "Phone remote",
+            value = { if (webRemote.isRunning) "on" else "off" },
+            detail = {
+                if (webRemote.isRunning) {
+                    webRemote.url?.let { "open $it on a phone on the same network" }
+                        ?: "running, but no network address could be determined"
+                } else {
+                    "opens a page anyone in the room can drive the object from"
+                }
+            },
+            onChange = { if (webRemote.isRunning) webRemote.stop() else webRemote.start() },
+        ),
+        SettingsOverlay.Item(
+            title = "Guided tour",
+            value = { if (tourActive) "running" else "starts when idle" },
+            onChange = { if (tourActive) stopGuidedTour() else startGuidedTour() },
+        ),
+    )
+
+    private fun sceneCount(): Int = try {
+        NativeBridge.nativeGetSceneCount()
+    } catch (e: UnsatisfiedLinkError) {
+        1
+    }
+
+    private fun ambientMutedNow(): Boolean = try {
+        NativeBridge.nativeGetAmbientMuted()
+    } catch (e: UnsatisfiedLinkError) {
+        false
+    }
+
+    private fun objectsOffNow(): Boolean = try {
+        NativeBridge.nativeGetObjectsOff()
+    } catch (e: UnsatisfiedLinkError) {
+        false
+    }
+
+    // Whether this build carries a signing key, inferred from the one thing
+    // that reports it: a signed stream says so on the stats line.
+    private fun signedBuild(): Boolean = try {
+        NativeBridge.nativeGetStreamStatsText().contains("signed")
+    } catch (e: UnsatisfiedLinkError) {
+        false
+    }
+
+    /** Applies one phone-remote command, already posted to the main thread. */
+    private fun applyRemote(command: WebRemote.Command) {
+        if (!NativeBridge.available) return
+        onUserInputActivity()
+        when (command) {
+            is WebRemote.Command.Move ->
+                // Scaled the same way InputController scales a stick: this is
+                // one frame's worth of bias, not an absolute position.
+                NativeBridge.nativeDeflectSelectedObject(
+                    command.dx * REMOTE_SPEED,
+                    command.dy * REMOTE_SPEED,
+                    command.dz * REMOTE_SPEED,
+                )
+            is WebRemote.Command.Scene -> inputController.stepScene(command.delta)
+            WebRemote.Command.ToggleObjects -> NativeBridge.nativeSetObjectsOff(!objectsOffNow())
+            WebRemote.Command.Snap -> NativeBridge.nativeSnapSelectedToCourse()
+        }
+        if (settings.isOpen) settings.refresh()
+    }
+
+    // Shown instead of the dashboard when ac3forge_jni did not load at all.
+    // Everything this app does is on the other side of that library, so the
+    // honest failure is a screen saying so - not a dashboard of zeroes that
+    // looks like a receiver problem.
+    private fun buildNativeFailureView(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setBackgroundColor(Theme.colorBackground)
+        addView(TextView(this@MainActivity).apply {
+            text = "ac3forge — Shield Atmos Demo"
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Theme.colorTextSecondary)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 32)
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = "Native library failed to load"
+            textSize = 30f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Theme.colorWarn)
+            gravity = Gravity.CENTER_HORIZONTAL
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = "libac3forge_jni.so could not be loaded on this device.\n" +
+                "Check that the APK's ABI matches (release builds are arm64-v8a only) " +
+                "and see logcat, tag $TAG, for the loader's own error."
+            textSize = 16f
+            setTextColor(Theme.colorTextSecondary)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setLineSpacing(6f, 1f)
+            setPadding(64, 28, 64, 0)
+        })
     }
 
     // Shown whenever the current HDMI route doesn't accept E-AC3 passthrough
@@ -353,30 +655,44 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, 0, 0, 32)
         })
-        addView(TextView(this@MainActivity).apply {
-            text = "Waiting for receiver…"
+        waitingHeadline = TextView(this@MainActivity).apply {
+            text = WAITING_HEADLINE
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextPrimary)
             gravity = Gravity.CENTER_HORIZONTAL
-        })
-        addView(TextView(this@MainActivity).apply {
-            text = "Turn on your AVR/receiver and select this HDMI input.\n" +
-                "The demo starts on its own once it's detected - no need to restart the app."
+        }
+        addView(waitingHeadline)
+        waitingDetail = TextView(this@MainActivity).apply {
+            text = WAITING_DETAIL
             textSize = 16f
             setTextColor(Theme.colorTextSecondary)
             gravity = Gravity.CENTER_HORIZONTAL
             setLineSpacing(6f, 1f)
             setPadding(64, 28, 64, 0)
-        })
-        // VISIBLE by default, matching receiverReady's own default (false,
-        // i.e. "not ready") - setReceiverReady() only touches this view on
-        // an actual CHANGE (`ready == receiverReady` short-circuits
-        // otherwise), so if this started GONE while receiverReady started
-        // false, a capability check that finds "not ready" on the very
-        // first call (false -> false, no change) would never flip it on at
-        // all - confirmed on a real device: the full dashboard rendered
-        // instead of the waiting screen despite no receiver being capable.
+        }
+        addView(waitingDetail)
+        // What the route itself advertises, as opposed to the single bit
+        // isDirectPlaybackSupported returns - see CapabilityProbe. This is the
+        // line that tells "the AVR is off" apart from "the AVR is on and does
+        // not do E-AC-3", which the old screen could not distinguish.
+        waitingCapability = TextView(this@MainActivity).apply {
+            text = ""
+            textSize = 15f
+            setTextColor(Theme.colorAccent)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setLineSpacing(5f, 1f)
+            setPadding(64, 26, 64, 0)
+        }
+        addView(waitingCapability)
+        // VISIBLE by default, matching receiverState's own default (WAITING)
+        // - setReceiverState() only touches this view on an actual CHANGE
+        // (`state == receiverState` short-circuits otherwise), so if this
+        // started GONE while receiverState started WAITING, a capability
+        // check that finds "not ready" on the very first call (WAITING ->
+        // WAITING, no change) would never flip it on at all - confirmed on a
+        // real device: the full dashboard rendered instead of the waiting
+        // screen despite no receiver being capable.
         visibility = View.VISIBLE
     }
 
@@ -425,11 +741,11 @@ class MainActivity : Activity() {
                     "receiver likely gone, stopping the encode loop")
                 NativeBridge.nativeStopLiveCursor()
                 lastSeenUnderrunCount = 0L
-                setReceiverReady(false)
+                setReceiverState(ReceiverState.WAITING)
                 return
             }
             lastSeenUnderrunCount = underruns
-            setReceiverReady(true)
+            setReceiverState(ReceiverState.READY)
             return
         }
 
@@ -444,6 +760,13 @@ class MainActivity : Activity() {
         // instead of probing again.
         if (startAttemptPending) {
             if (SystemClock.elapsedRealtime() - startAttemptAtMs < START_ATTEMPT_GRACE_MS) {
+                // Asked, not yet confirmed. Deliberately NOT reported as
+                // ready: nativeStartLiveCursor returns JNI_TRUE
+                // unconditionally by design - it returns as soon as the worker
+                // is spawned - and making it wait for that worker's outcome is
+                // exactly the main-thread hang this grace period exists to
+                // avoid.
+                setReceiverState(ReceiverState.STARTING)
                 return
             }
             // Grace period elapsed and still not running - the attempt
@@ -461,15 +784,51 @@ class MainActivity : Activity() {
             startAttemptPending = true
             startAttemptAtMs = SystemClock.elapsedRealtime()
             lastSeenUnderrunCount = 0L
+            // Capable, and asked - but nothing is flowing until the worker
+            // says so. This is the case that used to clear the overlay
+            // outright and leave a silent dashboard behind it.
+            setReceiverState(ReceiverState.STARTING)
+        } else {
+            setReceiverState(ReceiverState.WAITING)
         }
-        setReceiverReady(capable)
     }
 
-    private fun setReceiverReady(ready: Boolean) {
-        if (ready == receiverReady) return
-        receiverReady = ready
-        Log.i(TAG, "receiver state changed: ${if (ready) "ready" else "waiting"}")
+    /**
+     * Refreshes the advertised-capability line. Off the main thread (see
+     * [CapabilityProbe]) with the result posted back, and only while the
+     * overlay is actually up: nothing reads it while streaming, and the fewer
+     * questions asked of the audio route during a live direct track, the
+     * better.
+     */
+    private fun refreshCapabilityLine() {
+        if (!::waitingCapability.isInitialized) return
+        CapabilityProbe.probeAsync(applicationContext) { report ->
+            mainHandler.post {
+                if (::waitingCapability.isInitialized && receiverState != ReceiverState.READY) {
+                    waitingCapability.text = report.describe()
+                }
+            }
+        }
+    }
+
+    private fun setReceiverState(state: ReceiverState) {
+        if (state == receiverState) return
+        val wasReady = receiverState == ReceiverState.READY
+        receiverState = state
+        Log.i(TAG, "receiver state changed: $state")
+
+        val ready = state == ReceiverState.READY
         waitingOverlay.visibility = if (ready) View.GONE else View.VISIBLE
+        if (!ready) {
+            val starting = state == ReceiverState.STARTING
+            waitingHeadline.text = if (starting) STARTING_HEADLINE else WAITING_HEADLINE
+            waitingDetail.text = if (starting) STARTING_DETAIL else WAITING_DETAIL
+            // Only re-read the route on a real transition into a non-ready
+            // state, not on every reconcile tick (one every 2.5s).
+            if (wasReady || !starting) {
+                refreshCapabilityLine()
+            }
+        }
         if (ready && !hasShownOrientationCueOnce) {
             hasShownOrientationCueOnce = true
             lastInputAtMs = SystemClock.elapsedRealtime()
@@ -497,7 +856,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextPrimary)
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(24, 20, 24, 2)
+            setPadding(overscanInset(), 20, overscanInset(), 2)
         })
         addView(TextView(this@MainActivity).apply {
             text = "LIVE DOLBY ATMOS OBJECT DEMO"
@@ -529,17 +888,12 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f),
                 )
                 addView(TextView(this@MainActivity).apply {
-                    text = "Stick/D-pad: push the lead object off its course, it drifts back " +
-                        "when you let go   •   Right stick / L1+R1: height   •   Press A/center: " +
-                        "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
-                        "lead   •   Play: bring the ambient tones back   •   Info: About\n" +
-                        "● lead (yours to push around)   ● ● two ambient tones, always on their " +
-                        "own course"
+                    text = buildHintsText()
                     textSize = 12f
                     gravity = Gravity.CENTER
                     setTextColor(Theme.colorTextSecondary)
                     setLineSpacing(5f, 1f)
-                    setPadding(20, 14, 24, 14)
+                    setPadding(overscanInset(), 14, overscanInset(), 14)
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f))
             },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
@@ -548,6 +902,64 @@ class MainActivity : Activity() {
 
     private fun dividerView(): View = View(this).apply {
         setBackgroundColor(Theme.colorSurfaceBorder)
+    }
+
+    /**
+     * Horizontal breathing room for content inside the edge-to-edge bars.
+     *
+     * The room cards already float `Theme.spacingUnit` in from the screen
+     * edge, but the title and hints bars run to the bezel with only their own
+     * ~20px of text padding - and a TV that still overscans crops a few
+     * percent of every edge, which is far more than 20px on a 4K panel. This
+     * is what actually gets clipped, so this is where the inset belongs.
+     */
+    private fun overscanInset(): Int =
+        (resources.displayMetrics.widthPixels * OVERSCAN_FRACTION).toInt()
+
+    /**
+     * The control hints, with each legend bullet drawn in the colour that
+     * object is actually plotted in.
+     *
+     * The line reads "● lead … ● ● two ambient tones", and the whole TextView
+     * was one flat secondary grey - three identical grey bullets standing in
+     * for the coral, green and blue dots on screen, which is a legend that
+     * identifies nothing.
+     */
+    private fun buildHintsText(): CharSequence {
+        val controls = "Stick/D-pad: push the lead object off its course, it drifts back " +
+            "when you let go   •   Right stick / L1+R1: height   •   Press A/center: " +
+            "D-pad up/down toggles between depth and height   •   Pause: isolate the " +
+            "lead   •   Play: bring the ambient tones back   •   X/Menu: OBJECTS OFF " +
+            "(watch the receiver drop to DD+)   •   Y/B or channel up/down: change scene   " +
+            "•   R2: record a path, then loop it   •   L2/Guide: settings & phone " +
+            "remote   •   Info: About\n"
+        val legendLead = "● lead (yours to push around)   "
+        val legendAmbient = "● ● two ambient tones, always on their own course"
+        val text = SpannableString(controls + legendLead + legendAmbient)
+
+        // Index 0 is the lead, 1 and 2 the ambients - the same ordering
+        // live_cursor.cpp's kObjects uses and RoomView already draws with.
+        val leadBullet = controls.length
+        text.setSpan(
+            ForegroundColorSpan(Theme.objectColors[0]),
+            leadBullet,
+            leadBullet + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        val ambientBullet = controls.length + legendLead.length
+        text.setSpan(
+            ForegroundColorSpan(Theme.objectColors[1]),
+            ambientBullet,
+            ambientBullet + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        text.setSpan(
+            ForegroundColorSpan(Theme.objectColors[2]),
+            ambientBullet + 2,
+            ambientBullet + 3,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        return text
     }
 
     // Builds overlayCue's text as a two-tier Spannable (a larger bold
@@ -587,11 +999,72 @@ class MainActivity : Activity() {
     // this class, not InputController, owns the actual UI reaction.
     private fun onUserInputActivity() {
         lastInputAtMs = SystemClock.elapsedRealtime()
+        // Whoever just pressed something is now driving, not the tour. The
+        // scene it had reached is deliberately kept - yanking them back to
+        // scene 0 the instant they touch a stick would be worse than leaving
+        // them wherever the tour got to.
+        if (tourActive) stopGuidedTour()
         if (orientationCueShowing) {
             hideOrientationCue()
         } else if (overlayCue.visibility == View.VISIBLE) {
             hideOverlayCue()
         }
+    }
+
+    /**
+     * Announces a scene: its name, and the one line saying what to listen for.
+     * Both come from native so the text lives beside the trajectory it
+     * describes (`kScenes`) rather than drifting from it over here.
+     */
+    private fun showSceneCue(scene: Int, prefix: String? = null) {
+        if (!::overlayCue.isInitialized) return
+        val parts = try {
+            NativeBridge.nativeGetSceneText(scene).split('\t')
+        } catch (e: UnsatisfiedLinkError) {
+            return
+        }
+        val name = parts.getOrNull(0).orEmpty()
+        val hint = parts.getOrNull(1).orEmpty()
+        sceneCueShowing = true
+        setOverlayCueText(if (prefix != null) "$prefix  $name" else name, hint)
+        showOverlayCue()
+        mainHandler.removeCallbacks(sceneCueTimeout)
+        mainHandler.postDelayed(sceneCueTimeout, SCENE_CUE_MS)
+    }
+
+    /**
+     * A short announcement over the room view, using the same shared overlay
+     * the scene cue does - and taking the same ownership flag, so the idle
+     * checker does not hide it or overwrite it two seconds later.
+     */
+    private fun showTransientCue(headline: String, subtitle: String?) {
+        if (!::overlayCue.isInitialized) return
+        sceneCueShowing = true
+        setOverlayCueText(headline, subtitle)
+        showOverlayCue()
+        mainHandler.removeCallbacks(sceneCueTimeout)
+        mainHandler.postDelayed(sceneCueTimeout, SCENE_CUE_MS)
+    }
+
+    private fun startGuidedTour() {
+        if (tourActive) return
+        tourActive = true
+        Log.i(TAG, "idle - starting the guided tour")
+        // Announce the scene it is already on before moving, so the tour
+        // begins by explaining what is on screen rather than by changing it.
+        showSceneCue(currentScene(), prefix = "Guided tour ·")
+        mainHandler.postDelayed(tourAdvance, TOUR_SCENE_MS)
+    }
+
+    private fun stopGuidedTour() {
+        tourActive = false
+        mainHandler.removeCallbacks(tourAdvance)
+    }
+
+    private fun currentScene(): Int = try {
+        NativeBridge.nativeGetScene()
+    } catch (e: UnsatisfiedLinkError) {
+        0
     }
 
     private fun hideOrientationCue() {
@@ -614,12 +1087,15 @@ class MainActivity : Activity() {
             setBackgroundColor(Theme.colorBackground)
         }
         setContentView(status)
+        fileReplayRunning = true
         thread(name = "file-replay") {
             val ok = try {
                 NativeBridge.nativePlayEac3File(path)
             } catch (e: UnsatisfiedLinkError) {
                 Log.e(TAG, "file replay failed to start", e)
                 false
+            } finally {
+                fileReplayRunning = false
             }
             Log.i(TAG, "file replay finished: ok=$ok")
             runOnUiThread {
@@ -631,7 +1107,12 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        inputController.start()
+        // The native-failure screen has no room view, no encode loop and no
+        // JNI to deflect anything in - starting the input ticker there would
+        // drive nativeDeflectSelectedObject straight into the
+        // UnsatisfiedLinkError the failure screen exists to avoid.
+        if (!NativeBridge.available) return
+        inputController.start(this)
         lastInputAtMs = SystemClock.elapsedRealtime()
         mainHandler.postDelayed(idleChecker, IDLE_CHECK_INTERVAL_MS)
 
@@ -654,8 +1135,13 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        if (!NativeBridge.available) {
+            super.onPause()
+            return
+        }
         inputController.stop()
         mainHandler.removeCallbacks(idleChecker)
+        stopGuidedTour()
         if (::waitingOverlay.isInitialized) {
             mainHandler.removeCallbacks(receiverChecker)
             unregisterReceiver(hdmiPlugReceiver)
@@ -663,10 +1149,65 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    /**
+     * Where the encode loop actually stops when the demo leaves the screen.
+     *
+     * It used to stop only in [onDestroy], so pressing HOME left a cached
+     * process pushing E-AC-3 bursts into the AVR indefinitely with no UI, no
+     * notification and no way to stop it short of force-stopping the app -
+     * the receiver stays locked to a bitstream nothing on screen accounts for.
+     *
+     * `onStop`, not `onPause`: [AboutActivity] is a full-screen Activity of
+     * this same app, and pausing for it should not tear down the AudioTrack
+     * and force the receiver to re-lock (a visible dropout, and a bounce back
+     * through the "Waiting for receiver…" interstitial) just because someone
+     * read the About screen for four seconds. `launchingOwnActivity` carries
+     * that intent across the stop, and `isChangingConfigurations` covers the
+     * recreation case for the same reason.
+     */
+    override fun onStop() {
+        if (::waitingOverlay.isInitialized && !isChangingConfigurations && !launchingOwnActivity) {
+            // A listening socket must not outlive the visible demo.
+            webRemote.stop()
+            settings.close()
+            Log.i(TAG, "leaving the foreground - stopping the encode loop")
+            NativeBridge.nativeStopLiveCursor()
+            // The next reconcileReceiverState() (onResume) probes fresh and
+            // restarts. Reset the state machine so it does, rather than
+            // leaving it believing a receiver is still streaming.
+            startAttemptPending = false
+            lastSeenUnderrunCount = 0L
+            setReceiverState(ReceiverState.WAITING)
+        }
+        launchingOwnActivity = false
+        super.onStop()
+    }
+
     override fun onDestroy() {
-        NativeBridge.nativeStopLiveCursor()
+        webRemote.stop()
+        if (NativeBridge.available) {
+            NativeBridge.nativeStopLiveCursor()
+            // Diagnostic (play_file) mode: the replay runs on its own thread
+            // and, before it had a stop flag, outlived the Activity that
+            // started it. Non-blocking - it ends at its next wait point.
+            if (fileReplayRunning) {
+                NativeBridge.nativeStopFileReplay()
+            }
+        }
         passthroughBridge.close()
         super.onDestroy()
+    }
+
+    /**
+     * A key held as the window loses focus delivers its up event to whatever
+     * took focus, not to this Activity - so the digital axis it latched would
+     * stay latched. See [InputController.clearMovement].
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus && NativeBridge.available) {
+            inputController.clearMovement()
+        }
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
@@ -682,9 +1223,38 @@ class MainActivity : Activity() {
         // this is a MainActivity-level UI reaction, the same reasoning
         // onUserInputActivity's own comment gives for keeping UI reactions
         // here rather than inside InputController.
+        // The settings panel eats every key it recognises while open, so the
+        // demo's own controls do not fire underneath it.
+        if (settings.isOpen) {
+            if (settings.onKey(keyCode)) return true
+        }
+        if (keyCode == KeyEvent.KEYCODE_SETTINGS || keyCode == KeyEvent.KEYCODE_GUIDE ||
+            keyCode == KeyEvent.KEYCODE_BUTTON_L2
+        ) {
+            if (settings.isOpen) settings.close() else settings.open()
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_INFO) {
+            launchingOwnActivity = true
             startActivity(Intent(this, AboutActivity::class.java))
             return true
+        }
+        // See backPressedAtMs. Deliberately a confirmation rather than a
+        // block: a demo nobody can leave is worse than one that exits by
+        // accident.
+        if (keyCode == KeyEvent.KEYCODE_BACK && ::overlayCue.isInitialized) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - backPressedAtMs > BACK_CONFIRM_MS) {
+                backPressedAtMs = now
+                backConfirmShowing = true
+                setOverlayCueText("Press BACK again to exit the demo")
+                showOverlayCue()
+                mainHandler.removeCallbacks(backConfirmTimeout)
+                mainHandler.postDelayed(backConfirmTimeout, BACK_CONFIRM_MS)
+                return true
+            }
+            mainHandler.removeCallbacks(backConfirmTimeout)
+            backConfirmShowing = false
         }
         if (keyEvent != null && inputController.onKeyDown(keyCode, keyEvent)) {
             return true
@@ -693,6 +1263,10 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyUp(keyCode: Int, keyEvent: KeyEvent?): Boolean {
+        // Swallow the up half of anything the open panel consumed on the way
+        // down, so a D-pad release does not clear a movement axis the panel
+        // never set in the first place.
+        if (settings.isOpen) return true
         if (inputController.onKeyUp(keyCode)) {
             return true
         }

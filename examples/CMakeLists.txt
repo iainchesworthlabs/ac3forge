@@ -51,6 +51,15 @@ if(AC3FORGE_BUILD_ADM)
     list(APPEND AC3FORGE_EXAMPLES encode_iab)
 endif()
 
+# mux_iamf demonstrates roadmap IM3 phase 1's decode -> IAMF bridge: it encodes a synthetic
+# 7.1.4 E-AC-3 stream, decodes it back with ac3::Eac3Decoder, permutes the result into iamf::'s
+# own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH ac3::forge
+# and the standalone writer module together, and only exists to build when AC3FORGE_BUILD_IAMF
+# (default ON, see the root CMakeLists.txt's own option()) turned iamf::iamf on.
+if(AC3FORGE_BUILD_IAMF)
+    list(APPEND AC3FORGE_EXAMPLES mux_iamf)
+endif()
+
 # read_iab demonstrates ac3iab::ac3iab (src/ac3iab), roadmap IM1 phases 1-2 - "standalone" meaning
 # zero dependency on ac3::forge, the same shape read_adm has for ac3adm::ac3adm above. Unlike
 # AC3FORGE_BUILD_ADM (default OFF), AC3FORGE_BUILD_IAB defaults ON, so this is unconditional like
@@ -71,6 +80,8 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
         # (AtmosEncoder) and the ADM modules (parse/bridge) at the same time.
         target_link_libraries(${example} PRIVATE ac3::forge ac3adm::ac3adm ac3::admbridge
                                                   ac3::warnings ac3::fmt)
+    elseif(example STREQUAL "mux_iamf")
+        target_link_libraries(${example} PRIVATE ac3::forge iamf::iamf ac3::warnings ac3::fmt)
     elseif(example STREQUAL "read_iab")
         # No ac3::forge here either - src/ac3iab is deliberately independent of it (see
         # src/ac3iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
