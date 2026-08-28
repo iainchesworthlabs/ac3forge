@@ -139,7 +139,7 @@ class InputController {
 
     /** Call from Activity.onGenericMotionEvent. Returns true if handled. */
     fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        if (event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK) {
+        if ((event.source and InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK) {
             return false
         }
         stickX = deadzone(event.getAxisValue(MotionEvent.AXIS_X))

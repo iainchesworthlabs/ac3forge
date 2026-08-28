@@ -14,7 +14,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0, both decoders gain a
 consumer output stage, all three containers become readable as well as writable, and the
-verification estate extends to E-AC-3. The repository also moved to trunk-based development.
+verification estate extends to E-AC-3. The repository also moved to trunk-based development, and
+a concrete API-freeze plan for v1.0 now exists.
 
 ### Added
 
@@ -85,6 +86,14 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`ac3cli probe`**: what a stream declares — layout, substream map, tools in use, metadata
   ranges, CRC validity — without decoding audio. `json=1` emits a versioned schema.
   [Command reference](docs/cli/commands.md).
+- **`ac3cli probe` reads AC-4 too**, auto-detected. A new standalone `ac4::` library parses the
+  sync frame, table of contents, presentation and substream-group framing (ETSI TS 103 190-1/-2)
+  — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike, including
+  7.0.4 through 22.2 channel-based immersive layouts — bitstream inspection, not decoding: audio
+  content is reported by byte range, never decoded, and `oamd_common_data()` is refused cleanly
+  rather than misparsed. Backed by an independent Python transcription, real Dolby Encoding
+  Engine fixtures for the channel-coded path, and synthetic hand-built vectors for A-JOC/object/
+  OAMD, no real fixture being reachable for that path. See [Validation](docs/verification.md#ac-4).
 - **IEC 61937 de-framing.** A burst parser and `ac3cli unspdif`, plus capture-side recognition, so
   a loopback of a bitstreaming player records the elementary stream rather than PCM.
 - **A streaming fMP4/CMAF fragmenter** with a rolling HLS playlist and dynamic MPD, the DASH
@@ -102,10 +111,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
-  sample corpus. **Now also reads real MXF IAB Track Files** (`ac3iab::parse_mxf_iab`), not just a
-  bare elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
-  which clip-wraps the whole bitstream as a single KLV. The bridge onto the ADM/Atmos layer is not
-  started.
+  sample corpus. Reads real MXF IAB Track Files too (`ac3iab::parse_mxf_iab`), not just a bare
+  elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
+  which clip-wraps the whole bitstream as a single KLV.
+- **`atmos-iab`: a real Dolby Atmos cinema/IMF master straight to DD+ JOC E-AC-3.** Every Bed
+  channel/Object an IAB file (or MXF Track File) names becomes an `AtmosEncoder` object, driven by
+  the file's own authored per-frame panning — `ac3::admbridge::build_iab`, the IAB counterpart to
+  the existing `atmos-adm`/ADM bridge. Needs `-DAC3FORGE_BUILD_ADM=ON`.
 - **One object-scene timeline type** (`ac3::oba::ObjectScene`) shared by `atmos-path`, the GUI and
   the examples, replacing four ad-hoc formats.
 - **Object extent, channel lock and zone constraints on encode**, mapped from the ADM bridge.
@@ -117,6 +129,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **`record` and `live` reach parity with the GUI session**: any layout up to 7.1.4, either codec,
   `container=raw|mkv|ts|spdif|fmp4` written incrementally, a capture-silence watchdog, an object
   slot budget for `mode=atmos`, and a parallel 5.1 leg for an AC-3-only endpoint.
+- **Live object positioning over OSC**, replacing the synthetic orbit `live mode=atmos` and the
+  GUI's live room used to fake motion with. `ac3cli live ... mode=atmos positions=osc:<port>`
+  and a "Drive objects from OSC" toggle on the GUI's Live session card both drive object
+  placement from a show-control rig or a DAW in real time (`/object/<n>/xyz|gain|lfe|release`,
+  0-based), room markers greying out while a live update owns them. Loopback-only by default;
+  `positions=osc:any:<port>` opts into every interface. MIDI and a desktop game controller are
+  follow-ons under the same `positions=<scheme>:...` grammar, not implemented yet.
 - **`play` follows the sink**: it reads what a chosen receiver actually accepts (EDID short audio
   descriptors on ALSA; a live probe elsewhere) and adapts instead of refusing — a source format the
   sink can't bitstream is transcoded to AC-3 or decoded to PCM automatically, so the "no 5.1 PCM
@@ -131,6 +150,15 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
 
+**Browser (WASM)**
+
+- **An in-browser encode demo**, alongside the existing decode one: drop a `.wav` file and get back
+  a real AC-3/E-AC-3 elementary stream, encoded entirely client-side by the same codec compiled to
+  WebAssembly, plus a real BS.1770 loudness/true-peak QC verdict against the same five delivery
+  presets `ac3cli qc` checks — computed on the same PCM, in the page. A round-trip preview decodes
+  the produced stream through the existing decode module to prove it's real. Headless-browser CI
+  coverage (Playwright) now spans both demos, not just decode.
+
 **Library, C API, Python and Rust**
 
 - **A pimpl sweep across the exported surface**, so a private-state change is no longer an ABI
@@ -139,6 +167,16 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
 - **An E-AC-3 encoder in the C API and in Python**, covering plain E-AC-3 and the wide
   dependent-substream layouts with the Annex E tools. See [C API](docs/library/c-api.md) and
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
+- **Stream scan, caller-buffer decode, and loudness/level/QC metering, all now in the C API.**
+  `ac3forge_scan` reports what a stream actually contains — layout, every programme, the
+  DVB/ATSC service fields a muxer's descriptors want — without decoding any audio.
+  `ac3forge_decoder_decode_frame_into`/`ac3forge_eac3_decoder_decode_access_unit_into` decode
+  into caller-owned buffers instead of allocating per call, for the realtime embedder this C
+  surface exists for, and preserve the §3.7 transient pre-noise hold-back exactly (a held-back
+  frame leaves the caller's spans untouched). `ac3forge_loudness_meter_t`/
+  `ac3forge_level_meter_t`/`ac3forge_qc_preset`/`ac3forge_evaluate_qc_gate` mirror the library's
+  BS.1770-5 loudness meter, level meter and named delivery-QC gates. See
+  [C API](docs/library/c-api.md).
 - **A first Rust binding over the C API**: `ac3forge-sys` (raw, `bindgen`-generated against the C
   header at build time) plus a safe `ac3forge` wrapper covering AC-3 and E-AC-3 encode/decode. The
   C API had never crossed a real FFI boundary before — building this found and fixed two real
@@ -166,6 +204,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   offset, ready for `pandas.read_csv`/`read_json` and `.to_parquet()` from there.
 - **`FrameError` gained `describe()`**, matching every other error type. Python's `Ac3EncodeError`
   now carries a real message instead of just the failing enumerator's name.
+- **A concrete API-freeze plan for v1.0** ([docs/library/api-stability.md](docs/library/api-stability.md),
+  roadmap `AP1`): a Public/Internal/Diagnostic/Experimental tier for every header under `ac3/`, a
+  SemVer/deprecation policy, a C config struct growth policy, and release criteria. The C API
+  gained a compile-time version alongside its existing runtime-only `ac3forge_version()`:
+  `AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`.
+  `SOVERSION` and an ABI-tagging inline namespace are deliberately deferred to the `v1.0.0` cut
+  itself — see the page's own reasoning.
 
 **Verification**
 
@@ -193,6 +238,21 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   and rematrix bands every block, on both encoders — is verified bit-identical across five
   independent compiler/architecture builds, and its decision is now pinned by tests at all six
   A/52 sample rates instead of just one.
+
+**Release engineering**
+
+- **The packaging manifests bump themselves after a release.** A new post-release job downloads
+  the release's own source tarball and platform assets, computes the digests the vcpkg port, the
+  Homebrew formula and cask, the winget manifest and the Conan recipe each need, cross-checks the
+  ones that are real built packages against the release's own published `SHA512SUMS`, opens a PR
+  bumping all four together, and pushes the Homebrew formula/cask straight to the live tap. This
+  is what had gone stale two releases in a row before it existed. Testable without cutting a
+  release: it is also directly runnable by hand in dry-run mode against any already-shipped tag.
+- **GitHub Release notes are drawn from CHANGELOG.md**, not drafted from the commit list — the
+  matching dated section becomes the release body directly, since that curation already happens
+  in CHANGELOG.md as part of normal development.
+- **`check_packaging_versions.sh` gained a latest-tag advisory**: a warning, not a failure, when
+  a manifest does not yet match the most recent release.
 
 **Tooling and packaging**
 

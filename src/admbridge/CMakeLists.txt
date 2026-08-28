@@ -55,7 +55,8 @@ endif()
 target_sources(admbridge_objects
     PRIVATE
         src/coordinates.cpp
-        src/bridge.cpp)
+        src/bridge.cpp
+        src/iab_bridge.cpp)
 
 target_include_directories(admbridge_objects
     PUBLIC
@@ -65,10 +66,11 @@ target_include_directories(admbridge_objects
 
 target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 
-# PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp) name types from both
-# ac3::oba (ac3::forge) and ac3adm::ac3adm in their signatures (ac3::oba::ObjectPath,
-# ac3adm::AdmDocument, ...), so anything linking ac3::admbridge needs both transitively -
-# the same PUBLIC-link-its-dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
+# PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp, iab_bridge.hpp) name
+# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (roadmap IM1 phase 3) ac3iab::ac3iab in
+# their signatures (ac3::oba::ObjectPath, ac3adm::AdmDocument, ac3iab::IABitstreamFrame, ...), so
+# anything linking ac3::admbridge needs all three transitively - the same PUBLIC-link-its-
+# dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
 #
 # ac3adm::ac3adm_shared explicitly, not the ambient ac3adm::ac3adm alias: this file's header
 # comment explains why - the alias tracks BUILD_SHARED_LIBS and would resolve to ac3adm_static
@@ -76,11 +78,13 @@ target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 # AC3FORGE_BUILD_ADM=ON is exercised in CI today), which is never in any export set under
 # ac3adm's shared-only design. Pinning here mirrors src/capi/CMakeLists.txt's forge_c precedent
 # of embedding one fixed variant regardless of the ambient default, just for a PUBLIC dependency
-# instead of a PRIVATE one.
+# instead of a PRIVATE one. ac3iab is NOT pinned the same way: it is default-ON with both
+# variants in the install/export set, so the ambient alias is exactly right for it.
 target_link_libraries(admbridge_objects
     PUBLIC
         ac3::forge
         ac3adm::ac3adm_shared
+        ac3iab::ac3iab
     PRIVATE
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")

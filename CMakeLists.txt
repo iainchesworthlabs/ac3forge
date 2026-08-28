@@ -154,6 +154,10 @@ option(AC3FORGE_BUILD_FUZZERS "Build libFuzzer harnesses (Clang only; see fuzz/)
 option(AC3FORGE_BUILD_MATROSKA "Build the standalone Matroska container writer (src/matroska)" ON)
 option(AC3FORGE_BUILD_MP4 "Build the standalone MP4/ISOBMFF container writer (src/mp4)" ON)
 option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src/mpegts)" ON)
+# Roadmap IM4: the AC-4 sync-frame/TOC/presentation/substream-group bitstream
+# inspector (src/ac4). Same "own option, defaults ON" treatment as the three
+# above - apps/cli's `probe` command links it unconditionally.
+option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector (src/ac4)" ON)
 
 # ac3iab::ac3iab (src/ac3iab) - roadmap item IM1 phase 1: a standalone reader for SMPTE
 # ST 2098-2's Immersive Audio Bitstream. Same zero-third-party-dependency shape as the three
@@ -200,6 +204,10 @@ if(NOT AC3FORGE_BUILD_MPEGTS AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR
         "AC3FORGE_BUILD_GUI, AC3FORGE_BUILD_TESTS and AC3FORGE_BUILD_EXAMPLES to all be OFF too - "
         "they all link mpegts::mpegts unconditionally.")
 endif()
+if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_TESTS))
+    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_CLI and "
+        "AC3FORGE_BUILD_TESTS to both be OFF too - they both link ac4::ac4 unconditionally.")
+endif()
 
 # AC3FORGE_MINIMAL_DECODER's own version of the three guards above. Everything listed here
 # either links the full ac3::forge (CLI, GUI, tests, examples, the C API) or is a module the
@@ -212,7 +220,8 @@ if(AC3FORGE_MINIMAL_DECODER)
     foreach(_opt IN ITEMS AC3FORGE_BUILD_CLI AC3FORGE_BUILD_GUI AC3FORGE_BUILD_TESTS
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
                           AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_CAPI
-                          AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON AC3FORGE_BUILD_FUZZERS)
+                          AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON AC3FORGE_BUILD_FUZZERS
+                          AC3FORGE_BUILD_AC4)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()
@@ -333,6 +342,14 @@ if(AC3FORGE_BUILD_MPEGTS)
     add_subdirectory(src/mpegts)
 endif()
 
+# A fourth standalone module, same "depends on nothing of ac3::forge" shape
+# as the three container writers above - roadmap IM4's AC-4 bitstream
+# inspector. Gated by AC3FORGE_BUILD_AC4 (default ON, see the option() and
+# its FATAL_ERROR guard above).
+if(AC3FORGE_BUILD_AC4)
+    add_subdirectory(src/ac4)
+endif()
+
 # A standalone reader, not a writer like the three container modules above - roadmap item IM1
 # phase 1 ("IAB (SMPTE ST 2098-2) reader", see ROADMAP.md). Gated by AC3FORGE_BUILD_IAB
 # (default ON, see the option() above).
@@ -344,13 +361,25 @@ endif()
 # "depends on nothing of ac3::forge" shape as the three container writers above. Gated by
 # AC3FORGE_BUILD_ADM (default OFF, unlike the three above - see the option() itself for why).
 if(AC3FORGE_BUILD_ADM)
+    # roadmap item IM1 phase 3: ac3::admbridge's own IAB mapping (src/admbridge/src/iab_bridge.cpp)
+    # names ac3iab::IABitstreamFrame in a public header, so it needs the src/ac3iab add_subdirectory()
+    # above to have actually run. AC3FORGE_BUILD_IAB defaults ON, unlike AC3FORGE_BUILD_ADM, so this
+    # is the one combination that can silently fail to configure without an explicit guard - every
+    # other AC3FORGE_BUILD_ADM consequence below only ever depends on flags that are already
+    # unconditionally true (ac3::forge) or already checked by this same if() (ac3adm::ac3adm).
+    if(NOT AC3FORGE_BUILD_IAB)
+        message(FATAL_ERROR "AC3FORGE_BUILD_ADM=ON requires AC3FORGE_BUILD_IAB=ON (default ON) - "
+                             "ac3::admbridge's IAB mapping (roadmap IM1 phase 3) depends on ac3iab::ac3iab")
+    endif()
+
     add_subdirectory(src/ac3adm)
 
     # ac3::admbridge - roadmap item B1 phase 2: maps ac3adm's parsed ADM graph onto
-    # ac3::oba::AtmosEncoder. Depends on BOTH ac3::forge (added above) and ac3adm::ac3adm (just
-    # added), so it is meaningless without AC3FORGE_BUILD_ADM - gated by the same flag rather
-    # than a new option of its own; see src/admbridge/CMakeLists.txt's own header comment for
-    # the full reasoning, including why this is a separate module from either side.
+    # ac3::oba::AtmosEncoder. Depends on ac3::forge (added above), ac3adm::ac3adm (just added) and
+    # (roadmap IM1 phase 3) ac3iab::ac3iab (added earlier, guarded above), so it is meaningless
+    # without AC3FORGE_BUILD_ADM - gated by the same flag rather than a new option of its own; see
+    # src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this
+    # is a separate module from every side it bridges.
     add_subdirectory(src/admbridge)
 endif()
 

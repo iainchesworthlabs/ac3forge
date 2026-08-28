@@ -45,6 +45,7 @@ if(NOT Catch2_FOUND)
 endif()
 
 add_executable(ac3tests
+    ac4/test_ac4.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -106,9 +107,11 @@ add_executable(ac3tests
     quality/test_eac3_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
+    audio/test_live_positions.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
     oba/test_scene.cpp
+    oba/test_scene_osc.cpp
     verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
     verify/test_trace_export.cpp
@@ -196,6 +199,12 @@ target_compile_definitions(ac3tests
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
 
+# tests/ac4/test_ac4.cpp reads the real DEE-produced AC-4 fixtures under
+# here (tools/generators/gen_ac4_baseline.py) - same reasoning as the two
+# defines above.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
+
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
 # subject the way their old per-subject temp directories were.
@@ -278,6 +287,15 @@ elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "macos")
     target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 endif()
 
+# audio/test_live_positions.cpp needs UdpSocket (src/audio/src/net/udp_socket.hpp)
+# to send itself test datagrams over real loopback - internal to ac3::audio,
+# not installed, on the include path the same way a backend's own internal
+# header is above (AC3FORGE_AUDIO_NET_DIR, published by src/audio/CMakeLists.txt
+# next to AC3FORGE_AUDIO_BACKEND_DIR). No separate ws2_32 link is needed on
+# Windows: ac3audio already carries that requirement for any static-library
+# consumer, ac3tests included.
+target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
+
 # ---------------------------------------------------------------------------
 # ac3cli integration tests (cli/test_cli.cpp). main.cpp compiles straight into
 # the ac3cli executable with everything in an anonymous namespace, so there
@@ -353,7 +371,8 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
     target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
-                                    admbridge/test_adm_bridge_write.cpp)
+                                    admbridge/test_adm_bridge_write.cpp
+                                    admbridge/test_iab_bridge.cpp)
     target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
@@ -367,7 +386,7 @@ endif()
 # (AC3CLI_EXE might not be defined at all, e.g. AC3FORGE_BUILD_CLI=OFF) is sufficient by itself -
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp)
 endif()
 
 # ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
@@ -400,6 +419,7 @@ target_link_libraries(ac3tests
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
+        ac4::ac4
         ac3::warnings
         ac3::coverage
         ac3::fmt

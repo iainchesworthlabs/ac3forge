@@ -26,6 +26,7 @@ set(AC3FORGE_EXAMPLES
     custom_layout
     multi_source_assignment
     scripted_object_motion
+    osc_object_control
     object_signing
     level_metering
     decode_robustness
@@ -42,6 +43,12 @@ set(AC3FORGE_EXAMPLES
 # present the way it can for e.g. mux_mkv.
 if(AC3FORGE_BUILD_ADM)
     list(APPEND AC3FORGE_EXAMPLES read_adm encode_adm)
+    # encode_iab (roadmap IM1 phase 3) needs ac3::admbridge's own IAB mapping (build_iab), gated
+    # the same way encode_adm needs the ADM one - see src/admbridge/CMakeLists.txt's own header
+    # comment for why that whole module rides AC3FORGE_BUILD_ADM. Unlike encode_adm it does NOT
+    # need ac3adm::ac3adm directly (ac3iab::ac3iab, its own container reader, is always available -
+    # AC3FORGE_BUILD_IAB defaults ON).
+    list(APPEND AC3FORGE_EXAMPLES encode_iab)
 endif()
 
 # read_iab demonstrates ac3iab::ac3iab (src/ac3iab), roadmap IM1 phases 1-2 - "standalone" meaning
@@ -68,6 +75,12 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
         # No ac3::forge here either - src/ac3iab is deliberately independent of it (see
         # src/ac3iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
         target_link_libraries(${example} PRIVATE ac3iab::ac3iab ac3::warnings ac3::fmt)
+    elseif(example STREQUAL "encode_iab")
+        # The one example (and roadmap IM1's own phase-3 deliverable) needing ac3::forge
+        # (AtmosEncoder), ac3iab::ac3iab (its own container reader) and ac3::admbridge (build_iab)
+        # at the same time - the IAB mirror of encode_adm above.
+        target_link_libraries(${example} PRIVATE ac3::forge ac3iab::ac3iab ac3::admbridge
+                                                  ac3::warnings ac3::fmt)
     else()
         target_link_libraries(${example} PRIVATE ac3::forge ac3::warnings ac3::fmt)
     endif()

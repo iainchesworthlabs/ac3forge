@@ -62,7 +62,14 @@ In rough order of strength:
    The object and metadata layer is driven directly rather than through the decoder: separate
    harnesses over `emdf::parse_container`, `oba::parse_payload`, `oba::joc::parse_payload`,
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
-   seeded from the real payloads inside this project's own Atmos streams. That matters because
+   seeded from the real payloads inside this project's own Atmos streams. A sixth,
+   `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
+   (roadmap UX4), driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
+   covered the same direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list
+   and so covered by CI exactly as the five above are; its own seeds are hand-built OSC packets
+   (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos stream, since there is no
+   bitstream to extract them from. See [Threat model](threat-model.md#trust-boundary). That
+   matters because
    the indirect route was mostly closed: both decoders check their CRC words before reading the
    frame behind them, so a mutation landing in a skip field died at the checksum. The two decode
    harnesses now carry a custom mutator that re-stamps crc1 and crc2 after mutating — crc1
@@ -555,6 +562,92 @@ Regenerating with the toolchain the manifest names reproduces every hash exactly
 generator asserts that with `--check-determinism` rather than assuming it.
 
 See [Conformance vectors](conformance-vectors.md).
+
+## AC-4
+
+`ac4::` (roadmap IM4) is a bitstream inspector, not a decoder: it parses the sync frame, table of
+contents, presentation and substream-group framing (ETSI TS 103 190-1/-2) — channel-coded,
+A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
+as byte ranges without decoding them. That narrower scope changes which of this page's usual
+checks apply.
+
+**Where real AC-4 streams come from.** Nothing open encodes AC-4 — the same gap this page states
+for AC-3/E-AC-3, just with no third-party corpus to fall back on either, since neither ATSC nor
+ETSI publish AC-4 conformance vectors. The substitute is the same tool this project already
+treats as a licensed, local-only, never-in-CI oracle for the AC-3/E-AC-3 "Committed" tier: Dolby
+Encoding Engine 6.5.4, whose install here also carries `dee_ac4_encoder.exe` (2.0/5.1/7.1 and
+5.1.4 channel-based-immersive) and `dee_ac4ajoc_encoder.exe`/`dee_ac4ims_encoder.exe` (A-JOC and
+object-based encodes this parser does not read — see below). `tools/generators/gen_ac4_baseline.py`
+generates `tests/golden/external-baseline/ac4-*/dee.ac4` from it, the same local-generation,
+committed-output pattern `gen_external_baseline.py` uses.
+
+**What is actually verified**, in the same "how much does this prove" ordering CONTRIBUTING.md's
+Oracles list uses:
+
+1. **Annex G's CRC-16**, over every sync frame of the committed DEE fixtures — not a
+   self-consistency check, since the polynomial, initial state and no-reflection/no-final-XOR are
+   transcribed from the standard and computed independently of whatever produced the bytes. A
+   frame this project did not write passing this check is real evidence the sync-frame layer
+   (`sync_word`, `frame_size`, `crc_word`) is read correctly.
+2. **MediaInfo**, bundled with the same DEE install, reads the committed fixtures through its own
+   `dlb_ac4lib`-based AC-4 support (channel count, channel layout, bitstream_version, presentation
+   and substream-group counts). `tests/ac4/test_ac4.cpp` asserts `ac4::parse_raw_frame`'s fields
+   against exactly what MediaInfo reports for the same file — an independent second reader, not
+   just a self-consistent round trip.
+3. **`tools/references/ac4_parse.py`**, an independent Python transcription of the same clauses,
+   used the same way `eac3_parse.py` is: to catch a transcription slip a self-consistent parse
+   cannot. It is what caught three of this parser's own bugs during development — a missing
+   `emdf_reserved()` call, `substream_index_table()`'s `b_more_bits`-before-`substream_size` field
+   order, and a Table 56 extended `channel_mode` prefix code that read a fixed-width chunk
+   regardless of which 7-bit prefix it followed, silently misreading every 9.x/22.2 layout — each
+   found by disagreeing with what the real DEE fixture actually contained, not by inspection.
+
+**What is not verified, and why.** Dolby's own AC-4 *decoder* — the Reference Player's
+`dlbac4dec` GStreamer element, the same install's `dlbac3dec` already used as an AC-3/E-AC-3
+oracle — parses a real DEE-encoded frame's framing cleanly (`dlbac4parse` reports correct
+`audio/x-ac4-raw` caps, no CRC or sync errors) but returns zero PCM samples for every frame in
+testing, with and without explicit `out-ch-config`/`out-cplx-level`/`main-assoc-mode` overrides.
+Whether that is a license/entitlement gap specific to AC-4 decode (as opposed to AC-3/E-AC-3
+decode, confirmed working on the same install) or something else was not resolved. It does not
+block this parser's own scope, since parse-and-inspect never claims to decode audio content
+either — but it does mean **no tool available to this project can currently decode AC-4 audio**,
+so nothing here can be checked against rendered PCM the way AC-3/E-AC-3's SNR gates are. If that
+gap closes later, it would upgrade tier 2 above (framing-only) to an audio-content check.
+
+**A-JOC / direct-coded-object / OAMD substream groups** (`b_channel_coded == 0`, TS 103 190-2
+clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`, `ac4_substream_info_obj()`,
+`bed_dyn_obj_assignment()`, `oamd_substream_info()`) are parsed the same way the channel-coded
+path is, as of the IM4 follow-up that added them. Their verification story is narrower than tier
+1/2/3 above, though, because no real stream reaches this path: `dee_ac4ajoc_encoder.exe` accepts
+only an Atmos ADM BWF mezzanine as input, and this project has no tooling that produces one DEE
+accepts (the same "gates on content provenance, not syntax" limit this page already states for
+the AC-3/E-AC-3 JOC side); `dee_ac4ims_encoder.exe` — the other locally available object-adjacent
+encoder, despite its "immersive stereo" name — was confirmed to stay channel-coded regardless of
+input. What stands in for a real fixture is a set of **synthetic, hand-built bitstreams**
+(`tests/ac4/test_ac4.cpp`), each assembled by a from-scratch `BitWriter` sharing no code with
+either `ac4::` or `tools/references/ac4_parse.py`, field-traced against the spec text (including
+Table 64/65's array-position-to-bit-index mapping, cross-checked against §6.3.2.10.8's own worked
+EXAMPLE 2/3 values) rather than against an external reader. This is weaker evidence than tiers
+2-3 — a shared misreading of the spec between this parser and its own test vectors cannot be
+ruled out the way MediaInfo or DEE's own output rules it out for the channel-coded path — but it
+is stronger than self-consistency alone: the vectors caught two real bugs during construction (an
+array-index formula that was reversed for one of the two flag-array widths, and this parser's own
+handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
+branch but excluded for `bed_dyn_obj_assignment()`'s, a genuine spec difference this project's
+first draft assumed away). If `dee_ac4ajoc_encoder.exe`'s provenance gate or `dee_ac4ims_encoder.exe`'s
+behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1,
+reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
+out of scope either way — a large separate metadata structure (bed assignment, DRC, target-device
+categories, dialogue enhancement) a stream setting that flag is refused cleanly
+(`Error::kOamdCommonDataPresent`) rather than misparsed.
+
+**The `bitstream_version <= 1` legacy path**
+(`ac4_toc()`/`ac4_presentation_info()` as TS 103 190-1 alone defines them) is transcribed and
+checked against the published spec text (including a page-rendered visual check of Table 4/5,
+not just the PDF's extracted text) but never against a real stream — every DEE 6.5.4 encode
+observed writes `bitstream_version == 2`, so no sample exercises this branch. It is exactly the
+kind of gap tier 3 above exists to narrow and tier 1/2 cannot: two transcriptions can share a
+misreading neither catches.
 
 ## What untrusted input is checked against
 
