@@ -1566,14 +1566,22 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   new installer is still unsigned (DR6) and may still trip SmartScreen or the Defender false
   positive already blocking DR4's winget resubmission — DR7 fixes the build, not the trust
   story; DR4 stays blocked on DR6.
-- [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
-  the distro's Qt 6 and `qml6-module-*` packages) is still open. The other two halves have both
-  landed since this item was last written, independently:
-  - ~~A Windows ARM64 leg on the hosted `windows-11-arm` runner~~ `windows-msvc-arm64` builds and
-    tests `ac3cli` on real ARM64 hardware (CLI-only — no resolvable Qt6 ARM64 Windows kit for the
-    pinned version yet, see `docs/platforms/windows.md`'s ARM64 section) and packages a
-    `win-arm64` release archive; `experimental: true` until it proves itself green over real runs,
-    the same promotion path `macos-llvm` went through.
+- [x] **DR8 (M)** — Reach, restated per sub-item now that all three have landed:
+  - **AppImage: done.** `ac3gui` ships as a self-contained AppImage (`linuxdeploy` +
+    `linuxdeploy-plugin-qt`, built in an `ubuntu:22.04` container deliberately older than every
+    other Linux CI leg's `ubuntu:26.04`, so its glibc floor stays lower) alongside the existing
+    `.deb`/`.rpm`, so a distro whose own Qt 6/`qml6-module-*` split is too old or cut differently
+    no longer blocks running `ac3gui` at all. `linux-appimage` in `.github/workflows/_build.yml`
+    builds it on every push and then launches it inside a second container that never had Qt
+    installed, proving the claim rather than just the build. Flatpak was decided against outright
+    rather than deferred — `ac3gui`'s own reason to exist is `ac3::audio`'s exclusive-mode ALSA/
+    PipeWire passthrough, which needs exactly the raw device access a Flatpak sandbox exists to
+    take away — see `docs/platforms/linux.md`'s own AppImage section for the full reasoning.
+  - **Windows ARM64: done, CLI-only.** `windows-msvc-arm64` builds and tests `ac3cli` on real
+    ARM64 hardware (no resolvable Qt6 ARM64 Windows kit for the pinned version yet, see
+    `docs/platforms/windows.md`'s ARM64 section) and packages a `win-arm64` release archive;
+    `experimental: true` until it proves itself green over real runs, the same promotion path
+    `macos-llvm` went through.
   - **macOS universal binaries: landed.** This item originally called them "a separate decision,
     not a given," skeptical because the Cask was arm64-only and Intel demand looked doubtful —
     that skepticism was written without checking current GitHub runner availability, and it turned
