@@ -1380,11 +1380,24 @@ directory; there is still no threading anywhere in the codec core.
   `enabled` state instead), and a `Dialog`/`Popup` root is not itself an `Item` — `Accessible.*`
   has to attach to its `contentItem`, not the `Dialog` itself, or it throws a runtime warning on
   every window that ever instantiates the dialog, not just when it opens.
-- [ ] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
-  room — OSC first, then MIDI and a desktop game controller. `apps/cli/main.cpp` still describes
-  the synthetic orbit as "the hook a real live position source drops into once one exists"; the
-  Shield app is the only controller-driven path. Lands on `ac3::oba::SceneCursor`, the live half
-  of IM7's scene type, which exists for exactly this.
+- [x] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
+  room — OSC, as the roadmap asked for first: `ac3::oba::parse_osc_packet`/`apply()`
+  (`src/forge/src/oba/scene_osc.cpp`) is a third, pure reader of a scene update beside the JSON
+  and keyframe-text forms `scene.hpp` already had, and `ac3::audio::LivePositionSource`
+  (`src/audio`) is the UDP listener and per-object mailbox that drains into an
+  `ac3::oba::SceneCursor` once per encode frame — the live seam `SceneCursor` was built for
+  (IM7) and had sat unused until now. `ac3cli live mode=atmos positions=osc:<port>` and the
+  GUI's live room (a "Drive objects from OSC" toggle on the Live session card, room markers
+  greyed and undraggable while a network update owns them) both land on it; the CLI's synthetic
+  orbit and the GUI's manual placement are both unchanged when `positions=` is off. The address
+  space is `/object/<n>/xyz|gain|lfe|release` (0-based, literal match, no OSC glob patterns) —
+  see `docs/library/spatial-and-atmos.md`'s "The live half" section. Default bind is loopback;
+  `positions=osc:any:<port>` opts into every interface. Fuzzed (`fuzz/fuzz_osc_parse.cpp`) and
+  covered by the ThreadSanitizer leg (`tests/audio/test_live_positions.cpp`, `[concurrency]`).
+  MIDI and a desktop game controller remain: the `positions=<scheme>:...` grammar is
+  scheme-prefixed for exactly this (`positions=midi:...`, `positions=gamepad:...` land as new
+  schemes, not a new token), but neither is implemented — the Shield app stays the only
+  controller-driven path anywhere in the project until one is.
 - [ ] **UX5 (L)** — WASM as a reusable streaming decoder: a push-frame API over
   `decode_access_unit_into`, an AudioWorklet, multichannel output or DC1's downmix, published as
   a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3
