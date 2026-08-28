@@ -87,8 +87,8 @@ struct AudioTrack {
     std::uint32_t samples_per_frame = 1024;  // this writer's own choice; IAMF does not mandate one
     // IAMF §3.7: every sub-mix SHALL include loudness for the Stereo (Sound System A) layout, in
     // addition to whatever layout(s) the content actually is.
-    LoudnessInfo stereo_loudness;
-    LoudnessInfo layout_714_loudness;
+    LoudnessInfo stereo_loudness{};
+    LoudnessInfo layout_714_loudness{};
     // Written into moov's hdlr name field (ISO/IEC 14496-12 §8.4.3), matching
     // mp4::MuxOptions::writing_app's own use.
     std::string writing_app{"ac3forge"};
