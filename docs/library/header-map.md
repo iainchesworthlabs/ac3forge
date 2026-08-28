@@ -4,7 +4,8 @@ The headers a caller normally reaches for, and what lives in each. Not the compl
 `src/*/include/` — the pure table headers (`ac3/core/aht_tables.hpp`, `bitalloc_tables.hpp`,
 `oba/joc_tables.hpp`), the primitives the ones below are built out of (`ac3/core/crc16.hpp`,
 `fft.hpp`) and a handful of narrow internals are installed but nothing here discusses them
-directly.
+directly. See [API stability](api-stability.md) for which of the rows below (and which of those
+omitted internals) is actually part of the frozen surface once `v1.0.0` ships.
 
 | Header | Contents |
 |---|---|
