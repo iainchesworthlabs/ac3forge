@@ -15,6 +15,12 @@ ColumnLayout {
 
     spacing: Theme.space3
 
+    // A named section of the rail (INPUT/LEVELS/SOUNDFIELD) - grouped so a
+    // screen reader can jump between them the way a sighted user jumps
+    // between the rule-separated blocks.
+    Accessible.role: Accessible.Grouping
+    Accessible.name: root.label
+
     RowLayout {
         Layout.fillWidth: true
         spacing: Theme.space2

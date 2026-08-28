@@ -589,14 +589,31 @@ jobs:
       # see that file's own header. qt6-declarative-dev-tools/qt6-base-dev-tools
       # pull in qmlcachegen and the other build-time QML tooling
       # qt_add_qml_module needs; without them the GUI configure step fails
-      # rather than quietly building without AOT-compiled QML.
+      # rather than quietly building without AOT-compiled QML. The LinguistTools
+      # component (roadmap UX3) needs BOTH of two separate Debian/Ubuntu
+      # packages, confirmed via packages.ubuntu.com's file lists after the
+      # single-package version of this line still failed on arm64 with the
+      # exact symptom below: qt6-l10n-tools ships only the lupdate/lrelease/
+      # lconvert binaries and phrasebooks (no CMake integration at all),
+      # while Qt6LinguistToolsConfig.cmake - the file that actually defines
+      # qt_add_translations()/qt6_add_lupdate()/qt6_add_lrelease() - ships in
+      # qt6-tools-dev instead, bundled there with the unrelated Designer/
+      # Assistant tools upstream's own qttools repo groups it with. Missing
+      # qt6-tools-dev doesn't fail find_package(Qt6 ... COMPONENTS ...
+      # LinguistTools) itself (Core/Gui/Qml/Quick/QuickControls2/Concurrent
+      # all resolve fine, so the REQUIRED call as a whole reports success);
+      # it instead leaves qt_add_translations undefined, surfacing much
+      # later as "Unknown CMake command" at the call site in
+      # apps/gui/CMakeLists.txt - a confusing error to trace back to a
+      # missing apt package, which is why this comment spells it out.
       - name: Install Qt6 (Linux GUI)
         if: matrix.gui && runner.os == 'Linux'
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq --no-install-recommends \
-            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev
 
       # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
       # split qt6-base-dev/qt6-declarative-dev): one install pulls in
@@ -646,6 +663,23 @@ jobs:
       # 26.04 archive carries (see toolchain-versions.json's own comment), so
       # both LLVM legs are on one version. Chocolatey is deliberately avoided:
       # its llvm package tracks whatever is newest and would drift off the pin.
+      #
+      # Checks the installed version before downloading anything: GitHub-hosted
+      # windows-latest is always a fresh VM (never a match, always installs),
+      # but a self-hosted runner's own Packer template now bakes this exact
+      # pinned version in (see ci-runners' scripts/windows/03-llvm-toolchain.ps1)
+      # and a prior job on that same long-lived box may already have installed
+      # it too - either way, a match means this step can skip the ~10+ minute
+      # download+install outright. A mismatch (wrong version, or nothing
+      # installed) renames any existing C:\Program Files\LLVM out of the way
+      # first (see the run block's own comment for why a rename, not a
+      # delete), so the installer always writes into a fresh directory -
+      # NSIS `/S` overwrites same-named files but never uninstalls first, so
+      # installing straight over a *different* version can leave stale
+      # compiler-rt builtins/libs behind that silently break linking far
+      # downstream (see iainchesworthlabs/ci-runners#9, which hit exactly
+      # this on a long-lived self-hosted runner after a toolchain version
+      # bump).
       - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }} (Windows)
         if: matrix.llvm && runner.os == 'Windows'
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
@@ -659,12 +693,51 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = $env:LLVM_WINDOWS_VERSION
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
-          $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
-          Invoke-WebRequest -Uri $url -OutFile $exe
-          # NSIS installer; /S is a silent install into the default location.
-          Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow
-          "$env:ProgramFiles\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $llvmDir = "$env:ProgramFiles\LLVM"
+          $clangCl = "$llvmDir\bin\clang-cl.exe"
+
+          $alreadyCurrent = $false
+          if (Test-Path $clangCl) {
+            $verLine = & $clangCl --version 2>&1 | Select-Object -First 1
+            if ($verLine -match 'version (\S+)' -and $matches[1] -eq $version) {
+              $alreadyCurrent = $true
+            }
+          }
+
+          if ($alreadyCurrent) {
+            Write-Host "LLVM $version already installed at $clangCl - skipping download/install"
+          } else {
+            if (Test-Path $llvmDir) {
+              # NOT a delete. GitHub-hosted windows-latest images ship their
+              # own pre-installed LLVM at this same path, and BOTH
+              # Remove-Item -Recurse -Force and cmd's rd /s /q hung
+              # indefinitely against it - confirmed the hard way, twice, each
+              # running the full 90-minute CI timeout with zero progress
+              # after printing this line. Since two independently-implemented
+              # deletion paths hit the identical wall, this isn't a
+              # PowerShell-recursion-algorithm problem, it's something (most
+              # likely realtime antivirus scanning, possibly a lingering
+              # handle from image provisioning) holding the tree busy on a
+              # per-file basis. A rename is a single directory-level metadata
+              # operation - no per-file access at all - so it sidesteps
+              # whatever that is entirely, and is effectively instant
+              # regardless of tree size (confirmed: 9ms against a real test
+              # tree). The renamed-away copy is simply abandoned: harmless on
+              # windows-latest (VM is discarded after the job) and expected
+              # to be rare on self-hosted post ci-runners#10 (only happens
+              # between an ac3forge pin bump and the next template rebuild).
+              $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+              Write-Host "Existing LLVM install does not match $version - renaming out of the way ($staleName) before reinstalling"
+              Rename-Item -Path $llvmDir -NewName $staleName
+            }
+            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
+            $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
+            Invoke-WebRequest -Uri $url -OutFile $exe
+            # NSIS installer; /S is a silent install into the default location.
+            Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow
+          }
+
+          "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       # Homebrew's core "llvm" formula has no versioned sibling the way
       # apt.llvm.org or the official win64 installer do (there is no "llvm@21"
@@ -1053,6 +1126,38 @@ jobs:
           else
             "$bin" "${smoke_args[@]}"
           fi
+
+      # Roadmap UX3's own literal ask: "newly added strings cannot silently
+      # fall out of the catalogue". Re-runs lupdate (the ac3gui_lupdate
+      # target qt_add_translations() creates - apps/gui/CMakeLists.txt)
+      # against the same QML/C++ sources it scans at release time, then
+      # fails if that changed any of the six real .ts files - a qsTr()
+      # string added or edited without re-running lupdate would otherwise
+      # rot silently until someone happened to notice. Only runs once (this
+      # leg) since extraction doesn't depend on OS/compiler - the sources it
+      # scans are identical everywhere gui: true builds ac3gui.
+      #
+      # Deliberately NOT the stricter "zero unfinished" gate the sibling
+      # CountdownSolver project runs (R:\CountdownSolver's own
+      # .github/workflows/ci.yml, "Translations complete") - translation
+      # coverage here is real but partial by design (docs/gui/
+      # localisation.md tracks exactly what), so that bar would fail today
+      # on content nobody has touched. Tightening to it is the natural next
+      # step once coverage is complete, not before.
+      - name: Check translations are up to date
+        if: matrix.gui && matrix.name == 'Linux GCC'
+        shell: bash
+        run: |
+          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
+          echo "::group::translations git diff debug"
+          pwd
+          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory '*'
+          git rev-parse --show-toplevel || echo "rev-parse failed"
+          echo "::endgroup::"
+          cd "${GITHUB_WORKSPACE}"
+          git diff --exit-code -- apps/gui/translations
 
       # Sanitizers only catch what actually executes. ctest's cases exercise
       # encoder/decoder logic in isolation; this drives the real CLI across
@@ -1634,6 +1739,539 @@ jobs:
             ac3forge-dev-*-Darwin.zip
             ac3forge-dev-*-Darwin.zip.sha512
           if-no-files-found: error
+
+  # Roadmap DR8 (Reach): a self-contained AppImage for ac3gui, so a user on a
+  # distro whose own Qt 6 is too old, or split differently than
+  # qt6-declarative-dev/qt6-declarative-dev-tools expect (the `linux-gcc`/
+  # `linux-llvm` legs' own "Install Qt6 (Linux GUI)" step above), can still
+  # run it - the `.deb`/`.rpm` cmake/Packaging.cmake already produces both
+  # depend on whatever the host distro's package manager resolves for those
+  # names, and nothing in ac3gui's own install() rules controls that.
+  #
+  # AppImage over Flatpak, decided and not re-litigated here: ac3gui's whole
+  # point is ac3::audio's IEC 61937 passthrough - exclusive-mode ALSA
+  # `iec958:...,AES0=0x06` device args or PipeWire's native
+  # `SPA_MEDIA_SUBTYPE_iec958` straight to an AVR (docs/platforms/linux.md's
+  # "Why ALSA still comes first"). That needs raw device access a sandbox
+  # exists specifically to take away; getting it back would mean
+  # `--device=all`/`--filesystem=host` blanket opt-outs that defeat
+  # Flatpak's own reason to exist, on top of Flathub's review process and a
+  # second Qt6 runtime (KDE's) to track. AppImage has no sandbox, so ALSA/
+  # PipeWire access works exactly like any other installed binary - see
+  # docs/platforms/linux.md's own "AppImage" section for the full writeup.
+  #
+  # Its own job, not a `build` matrix entry: the base image, the Qt install
+  # method and the packaging tool below all genuinely differ from every
+  # other Linux leg, not just one cacheVariable.
+  #
+  # ubuntu:22.04 (glibc 2.35), deliberately OLDER than the ubuntu:26.04
+  # every other Linux leg pins (see the `build` matrix's own container
+  # comment) - an AppImage's entire reason to exist is running on a distro
+  # whose own glibc/Qt is older than what built it; compiling against
+  # 26.04's much newer glibc would make the result LESS portable than the
+  # `.deb`/`.rpm` it exists to supplement, defeating the point outright.
+  # 02-gcc-toolchain.sh already has a fallback path for exactly this case
+  # (its own header comment): it probes the base image's own archive for
+  # gcc-16 first and only reaches for the ubuntu-toolchain-r PPA when that
+  # comes up empty, which is exactly what happens on 22.04's older archive -
+  # nothing about that script needed to change to make this work.
+  #
+  # Runs on every push, not just do_package, for the same reason
+  # windows-msvc packages continuously (docs/platforms/windows.md's
+  # Packaging section): a standing smoke test of the packaging path itself,
+  # not just something exercised once at release time.
+  linux-appimage:
+    name: Linux AppImage (ac3gui)
+    needs: [toolchain-versions]
+    runs-on: ubuntu-latest
+    # See the `build` matrix's own container comment for why this is pinned
+    # at all; unlike that matrix, this is the one Linux leg that pins an
+    # OLDER base on purpose.
+    container: ubuntu:22.04
+    timeout-minutes: 90
+
+    steps:
+      # Same reasoning as the `build` matrix's own "Bootstrap container"
+      # step: the bare ubuntu:22.04 image has no git (actions/checkout
+      # silently degrades to a REST tarball download without it) and none of
+      # the rest of this either. python3/python3-pip is aqtinstall's own
+      # runtime (installed by "Install Qt (prebuilt)" below); the Docker CLI
+      # is installed separately, right before the step that needs it. sudo
+      # is a real package here, not just a PATH probe: this container has no
+      # sudo binary at all (unlike a GitHub-hosted runner's own host OS), and
+      # "Install Qt (prebuilt)" below shells out to `sudo apt-get ...`
+      # internally for its own system dependencies - already running as
+      # root makes every sudo call here a no-op passthrough, so installing
+      # the package is the whole fix.
+      #
+      # Prepending /usr/bin to PATH here matters for a second, less obvious
+      # reason: a GitHub-hosted runner pre-populates PATH with a Python from
+      # its own hosted tool cache (bind-mounted into this container from the
+      # host, not part of the ubuntu:22.04 image at all) ahead of /usr/bin,
+      # and that Python is linked against a newer glibc than this
+      # DELIBERATELY older container ships - the same class of "too new for
+      # this floor" problem this whole job exists to avoid, just hitting the
+      # tooling instead of the product. This alone is necessary but not
+      # sufficient - install-qt-action's own composite action.yml (not just
+      # its JS action, src/main.ts) runs a plain actions/setup-python step
+      # first, which re-prepends the hosted-cache Python's bin dir ahead of
+      # this one via core.addPath() - see the "Install Qt (prebuilt)" step's
+      # own comment for that half of the fix (setup-python: false).
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates curl file git gnupg \
+            libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip \
+            software-properties-common sudo tar unzip wget zip
+          echo "/usr/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Install GCC 16
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/02-gcc-toolchain.sh
+          else bash .github/toolchain/02-gcc-toolchain.sh; fi
+
+      # 22.04's own archive caps out around CMake 3.22, below this project's
+      # cmakeMinimumRequired - apt.kitware.com is Kitware's own repository of
+      # current CMake releases for Ubuntu, the standard fix for exactly this
+      # gap (rather than a hand-rolled binary download from cmake.org, which
+      # would need its own integrity pin and its own upgrade path). No exact
+      # version is pinned here the way GCC/LLVM/Qt are - same as every other
+      # leg, which only asserts CMAKE_MIN as a floor (see the `build`
+      # matrix's "Report and assert toolchain versions" step) rather than
+      # pinning CMake's own version exactly.
+      - name: Install CMake
+        shell: bash
+        env:
+          CMAKE_MIN: ${{ needs.toolchain-versions.outputs.cmake_min }}
+        run: |
+          set -euo pipefail
+          wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc \
+            | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' \
+            > /etc/apt/sources.list.d/kitware.list
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends cmake
+          cmake --version
+          cat > "${RUNNER_TEMP}/assert-cmake-version.cmake" <<EOF
+          if(CMAKE_VERSION VERSION_LESS ${CMAKE_MIN})
+            message(FATAL_ERROR "CMake \${CMAKE_VERSION} is too old; ac3forge needs >= ${CMAKE_MIN}")
+          endif()
+          EOF
+          cmake -P "${RUNNER_TEMP}/assert-cmake-version.cmake"
+
+      # Decouples the Qt version entirely from the base image's age (the
+      # same tool, same pinned commit and same version input the Windows leg
+      # above already uses) - 22.04's own qt6-base-dev is both too old for
+      # this project's find_package(Qt6 6.5 REQUIRED ...) floor and beside
+      # the point anyway: an apt-installed Qt would tie the AppImage right
+      # back to the one distro it was built on, the exact problem this job
+      # exists to route around.
+      #
+      # setup-python: false turns off this action's OWN top-level
+      # composite step (its action.yml, not the JS action src/main.ts a
+      # source read alone would show): a plain `actions/setup-python@v6`
+      # step, `python-version: '>=3.9.0 <=3.13.3'`, that runs before the
+      # real Qt-install step and unconditionally on by default. It resolves
+      # that version from the GitHub-hosted runner's own hosted tool cache
+      # (`/opt/hostedtoolcache`, bind-mounted into this container from the
+      # host, not part of the ubuntu:22.04 image at all) and calls
+      # core.addPath() on its bin dir - which, running AFTER "Bootstrap
+      # container" above already prepended /usr/bin to PATH, wins and
+      # silently puts the hosted-cache Python back in front for the actual
+      # aqtinstall step that follows. That cached Python is linked against a
+      # newer glibc than this deliberately-older container ships (confirmed
+      # against a real CI failure: GLIBC_2.38 not found), the same class of
+      # "too new for this floor" problem this whole job exists to keep out
+      # of the product, just landing on the tooling instead. Disabling this
+      # input is the documented way to skip that whole step, so the
+      # apt-installed, container-glibc-linked python3 "Bootstrap container"
+      # already put ahead on PATH is the one that actually gets used.
+      - name: Install Qt (prebuilt)
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: ${{ needs.toolchain-versions.outputs.qt_version }}
+          cache: true
+          setup-python: false
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      # -DCMAKE_PREFIX_PATH: same override the Windows leg above needs and
+      # for the same reason - install-qt-action installs into a
+      # runner-specific path cmake/FindQt6.cmake's own local search roots
+      # don't cover.
+      - name: Configure
+        shell: bash
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          extra_args=()
+          if [ -n "$VERSION_TAG_INPUT" ]; then
+            extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
+          fi
+          cmake --preset config-linux-gcc \
+            -DAC3FORGE_BUILD_GUI=ON \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            "${extra_args[@]}"
+
+      - name: Build
+        run: cmake --build --preset build-linux-gcc -- -k 0
+
+      - name: Test
+        run: ctest --preset test-linux-gcc
+
+      # apps/gui/CMakeLists.txt's `if(LINUX)` block already install()s the
+      # whole XDG/AppDir-shaped layout (.desktop, metainfo, mime, hicolor
+      # icons) under COMPONENT runtime - this IS an AppDir the moment it
+      # lands under AppDir/usr, no extra CMake work needed.
+      #
+      # library/libruntime (cmake/Packaging.cmake's other two components)
+      # are for BUILD_SHARED_LIBS=ON, which the plain linux-gcc preset used
+      # here does not set (only config-linux-llvm-shared does - see that
+      # preset's own description) - so ac3::forge/matroska/mp4/mpegts should
+      # all be linked straight into the ac3gui binary already. Checked with
+      # ldd rather than just assumed, so a future default flip doesn't
+      # silently ship an AppImage missing a .so it now needs.
+      - name: Install into AppDir
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component runtime
+          echo "ldd build/config-linux-gcc/bin/ac3gui:"
+          ldd build/config-linux-gcc/bin/ac3gui
+          if ldd build/config-linux-gcc/bin/ac3gui | grep -qE 'libac3forge|libmatroska\.so|libmp4\.so|libmpegts\.so'; then
+            echo "ac3gui links a project .so - installing the library/libruntime components too"
+            cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component library
+            cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component libruntime
+          else
+            echo "ac3gui links every project library statically - the runtime component alone is enough"
+          fi
+
+      # The actual glibc floor this AppImage ships with - what
+      # docs/platforms/linux.md's AppImage section reports, and what makes
+      # the "Smoke test" step below's debian:12-slim choice (glibc 2.36, not
+      # ubuntu:20.04's 2.31) the right one rather than an arbitrary one - see
+      # that step's own comment.
+      - name: Report glibc floor
+        run: ldd --version | head -1
+
+      # linuxdeploy/linuxdeploy-plugin-qt/linuxdeploy-plugin-appimage ship no
+      # SemVer tags - only a force-updated `continuous` tag (reset on every
+      # commit to master, so pinning it would not actually pin anything) and
+      # periodic dated snapshot tags whose assets, unlike `continuous`, never
+      # change once published. Pinned to the latest such dated tag per repo
+      # instead of `continuous`, with an explicit SHA256 check as the
+      # integrity pin every other external tool in this repo gets from its
+      # exact version/commit alone. linuxdeploy's own asset digest came back
+      # from the GitHub API directly; the two plugins' releases predate
+      # GitHub backfilling that field, so those two hashes were computed by
+      # hand from the downloaded bytes at the pinned URL below and recorded
+      # here - if either upstream asset ever changes, this fails loudly
+      # instead of silently building with different bytes.
+      - name: Download linuxdeploy tools
+        shell: bash
+        env:
+          LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
+          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+          LINUXDEPLOY_QT_URL: https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage
+          LINUXDEPLOY_QT_SHA256: 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
+          LINUXDEPLOY_APPIMAGE_URL: https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-x86_64.AppImage
+          LINUXDEPLOY_APPIMAGE_SHA256: 992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3
+        run: |
+          set -euo pipefail
+          tools_dir="${RUNNER_TEMP}/linuxdeploy-tools"
+          mkdir -p "$tools_dir"
+          fetch() {
+            local url="$1" sha="$2" out="$3"
+            curl -fsSL -o "$out" "$url"
+            echo "${sha}  ${out}" | sha256sum -c -
+            chmod +x "$out"
+          }
+          # Plugin discovery (linuxdeploy's --plugin qt / --output appimage
+          # below) scans PATH for linuxdeploy-plugin-<name>* - the upstream
+          # asset names already match that pattern, so nothing here renames
+          # them.
+          fetch "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA256" "$tools_dir/linuxdeploy-x86_64.AppImage"
+          fetch "$LINUXDEPLOY_QT_URL" "$LINUXDEPLOY_QT_SHA256" "$tools_dir/linuxdeploy-plugin-qt-x86_64.AppImage"
+          fetch "$LINUXDEPLOY_APPIMAGE_URL" "$LINUXDEPLOY_APPIMAGE_SHA256" "$tools_dir/linuxdeploy-plugin-appimage-x86_64.AppImage"
+          echo "$tools_dir" >> "$GITHUB_PATH"
+
+      # linuxdeploy's own version string (ac3cli's, actually - see the
+      # conformance-vectors step above for why querying the built binary
+      # rather than re-deriving the tag independently is the established
+      # pattern in this file) names the output ac3gui-<VERSION>-x86_64.AppImage.
+      # APPIMAGE_EXTRACT_AND_RUN=1 is an environment variable, not a CLI flag,
+      # deliberately: linuxdeploy spawns the qt and appimage plugins above as
+      # their own child AppImages, and only the environment variable form is
+      # guaranteed to reach those child processes too - this runner has no
+      # FUSE, same as every other container leg in this file.
+      #
+      # --library forces libstdc++.so.6/libgcc_s.so.1 into the AppDir -
+      # confirmed necessary, not a guess: a real run's smoke test failed
+      # with "libstdc++.so.6: version GLIBCXX_3.4.35 not found", and
+      # inspecting a real built AppImage's usr/lib/ directly showed neither
+      # file present at all. Root cause: both are on the standard AppImage
+      # excludelist linuxdeploy generates its own copy from
+      # (probonopd/AppImages' `excludelist`, referenced from linuxdeploy's
+      # own src/core/generate-excludelist.sh) - normally a safe assumption,
+      # since AppImages are conventionally built with an OLD toolchain
+      # specifically so libstdc++ stays backwards-compatible with whatever
+      # the target has, but this job does the opposite on purpose (GCC 16,
+      # this project's own pin, on a deliberately OLD ubuntu:22.04 base) -
+      # so the assumption the excludelist is built on doesn't hold here.
+      # -l/--library (confirmed against linuxdeploy's own pinned source,
+      # src/main.cpp) calls AppDir::forceDeployLibrary(), which bypasses the
+      # excludelist check entirely - the documented mechanism for exactly
+      # this case, not a workaround. The paths are GCC 16's own runtime
+      # libstdc++6 (installed by "Install GCC 16" above, which upgrades
+      # this exact multiarch path in place) - confirmed for real: `strings`
+      # on this file lists GLIBCXX_3.4.35, the version the smoke test needed.
+      # No further RPATH-ordering fix needed on top of this: ac3gui's own
+      # RUNPATH is $ORIGIN/../lib (confirmed with readelf -d against a real
+      # built binary), which resolves relative to the AppImage's own
+      # usr/bin/ - not LD_LIBRARY_PATH, and not something the host's
+      # system libstdc++ can outrank once a copy is actually bundled here.
+      #
+      # EXTRA_PLATFORM_PLUGINS - confirmed necessary, not a guess, the same
+      # way as the two library fixes above: a real run failed with
+      # `qt.qpa.plugin: Could not find the Qt platform plugin "offscreen"`
+      # ("Available platform plugins are: xcb."), and extracting a real
+      # built AppImage showed usr/plugins/platforms/ containing only
+      # libqxcb.so - genuinely never bundled, not an AppRun/hook/env-var
+      # problem at runtime (checked that angle too: the AppDir's qt.conf is
+      # correctly wired, Prefix=../ Plugins=plugins, and
+      # apprun-hooks/linuxdeploy-plugin-qt-hook.sh only ever sets
+      # QT_QPA_PLATFORMTHEME, never touched plugin paths in the first
+      # place - so there was nothing broken to fix there). linuxdeploy-
+      # plugin-qt only bundles libqxcb.so by default; EXTRA_PLATFORM_PLUGINS
+      # (its own documented env var, README.md at the pinned tag) is what
+      # tells it to deploy additional platform plugins - needed here
+      # because nothing at BUILD time otherwise hints that offscreen is the
+      # one this AppImage actually gets run with (QT_QPA_PLATFORM=offscreen
+      # is only ever set later, inside the smoke-test container).
+      #
+      # The value is the real FILENAME, not Qt's own short platform key -
+      # confirmed against linuxdeploy-plugin-qt's own source
+      # (src/deployers/PlatformPluginsDeployer.cpp), not just guessed from
+      # the README's wording: it does
+      # `qtPluginsPath / "platforms" / platformToDeploy` with zero name
+      # translation, so `offscreen` alone (Qt's own QT_QPA_PLATFORM value,
+      # a different naming convention) 404s as a literal missing file -
+      # confirmed for real on a first attempt: "Cannot deploy non-existing
+      # library file: .../plugins/platforms/offscreen". libqoffscreen.so is
+      # the actual file at that path.
+      #
+      # QML_SOURCES_PATHS - same story again, confirmed necessary against a
+      # real failure ("module QtQuick.Controls plugin qtquickcontrols2plugin
+      # not found") rather than added preemptively. apps/gui/CMakeLists.txt's
+      # Windows windeployqt step already documents exactly this class of
+      # problem and passes --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" for
+      # the same underlying reason: ac3gui's QML is AOT-compiled into the Qt
+      # resource system (qrc:/qt/qml/Ac3Forge/Main.qml), never present as
+      # loose .qml files anywhere in the built/installed tree. linuxdeploy-
+      # plugin-qt's own qmlimportscanner-based deployer
+      # (src/qml.cpp:getQmlImports, deployQml) scans the AppDir itself by
+      # default with nothing else configured - which has no .qml files
+      # either, for the same reason - so it silently finds zero imports and
+      # bundles nothing. QML_SOURCES_PATHS (src/qml.h's own
+      # ENV_KEY_QML_SOURCES_PATHS, confirmed against source rather than
+      # guessed from windeployqt's differently-named flag) is linuxdeploy-
+      # plugin-qt's equivalent of windeployqt's --qmldir: extra paths added
+      # to (not replacing) that default AppDir scan, so pointing it at the
+      # real source tree's apps/gui/qml - the same directory the Windows
+      # step already uses - lets the scanner see the actual `import
+      # QtQuick.Controls` statements and bundle the plugin they need.
+      #
+      # QQuickStyle::setStyle("Fusion") (apps/gui/main.cpp) is a runtime C++
+      # call no static QML scan can ever see either, the same gap
+      # windeployqt's own comment in that CMakeLists.txt documents - watch
+      # for a Fusion-specific missing-style failure surfacing next, the same
+      # way each of the fixes above surfaced one layer at a time; not
+      # pre-empted here since it hasn't actually failed yet.
+      - name: Build the AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(build/config-linux-gcc/bin/ac3cli --version | head -1 | awk '{print $NF}')"
+          export VERSION="$version"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export EXTRA_PLATFORM_PLUGINS=libqoffscreen.so
+          export QML_SOURCES_PATHS="$PWD/apps/gui/qml"
+          libstdcxx="/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+          libgcc_s="/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+          for f in "$libstdcxx" "$libgcc_s"; do
+            if [ ! -e "$f" ]; then
+              echo "::error::expected GCC 16's own $f - did the toolchain install/layout change?"
+              exit 1
+            fi
+          done
+          linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/ac3gui \
+            --desktop-file AppDir/usr/share/applications/ac3gui.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ac3gui.png \
+            --library "$libstdcxx" \
+            --library "$libgcc_s" \
+            --plugin qt \
+            --output appimage
+          if [ ! -e AppDir/usr/plugins/platforms/libqoffscreen.so ]; then
+            echo "::error::EXTRA_PLATFORM_PLUGINS did not put libqoffscreen.so in the AppDir - the smoke test's QT_QPA_PLATFORM=offscreen would fail the same way this was fixed for"
+            exit 1
+          fi
+          if ! find AppDir/usr/qml -iname '*qtquickcontrols2plugin*' 2>/dev/null | grep -q .; then
+            echo "::error::QML_SOURCES_PATHS did not get the QtQuick.Controls plugin bundled under AppDir/usr/qml - the smoke test's QML load would fail the same way this was fixed for"
+            exit 1
+          fi
+          ls -la ac3gui-*.AppImage
+
+      # cmake/Packaging.cmake's CPACK_PACKAGE_CHECKSUM gives every CPack
+      # product a SHA512 side-car for free; the AppImage isn't a CPack
+      # product; so it gets one the same way by hand, for parity.
+      - name: Checksum the AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(ls ac3gui-*.AppImage)"
+          sha512sum "$appimage" > "${appimage}.sha512"
+          cat "${appimage}.sha512"
+
+      # packages-* is the exact prefix release.yml's github-release job
+      # downloads (pattern: packages-*, merge-multiple: true) - this rides
+      # along into release-artifacts/ next to every CPack product with no
+      # further wiring needed there beyond the *.AppImage glob additions
+      # release.yml itself needs (see that file).
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-linux-appimage
+          path: |
+            ac3gui-*.AppImage
+            ac3gui-*.AppImage.sha512
+          if-no-files-found: error
+
+      # The actual claim under test: not "did cpack/linuxdeploy exit 0" but
+      # "does this run somewhere the distro's own Qt/qml6-module-* packages
+      # were never installed", the concrete gap DR8 opens with. A GitHub-
+      # hosted runner's Docker daemon is reachable from inside a job
+      # container too (the docker.sock the runner bind-mounts into every job
+      # container) - this image just doesn't ship the `docker` client
+      # binary that talks to it, so install only that.
+      - name: Install Docker CLI
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get install -y -qq --no-install-recommends docker.io
+
+      # debian:12-slim (glibc 2.36), not ubuntu:20.04: 20.04 ships glibc
+      # 2.31, OLDER than this job's own ubuntu:22.04 build container
+      # (2.35, "Report glibc floor" above) - running there would fail with
+      # an unrelated "GLIBC_2.3x not found" error on ac3gui's own binary
+      # before ever reaching the question this step actually asks. That
+      # question needs a target that (a) never had Qt or a single build
+      # tool installed and (b) is otherwise new enough that only the
+      # AppImage's own bundled-Qt claim is what passes or fails it -
+      # debian:12-slim is a different distro family entirely, satisfying
+      # (a), with a glibc new enough to satisfy (b) too.
+      # docker cp, not `docker run -v "$PWD:/work"`: this step's own `docker`
+      # CLI runs INSIDE this job's ubuntu:22.04 container, talking to the
+      # HOST's daemon over the bind-mounted socket ("Install Docker CLI"
+      # above) - docker-outside-of-docker, not docker-in-docker. A `-v`
+      # bind mount asks the DAEMON to resolve $PWD against its own (the
+      # HOST's) filesystem, and there is no guarantee that path means
+      # anything there even when it very much exists in this container's own
+      # shell (confirmed for real: `ls ac3gui-*.AppImage` here finds the
+      # file, but the mount landed on an empty directory - the daemon and
+      # this container simply don't agree on what that path is). `docker
+      # cp` sidesteps the question entirely: it streams the file's bytes
+      # over the same client/daemon connection a bind mount would otherwise
+      # need shared filesystem visibility for, so it works regardless of
+      # whether the two sides' path namespaces line up at all.
+      #
+      # A handful of runtime libraries are installed in the TARGET container
+      # deliberately, not bundled into the AppImage - this is the same
+      # boundary the existing .deb/.rpm already draw, not a new one invented
+      # for this job. cmake/Packaging.cmake sets
+      # CPACK_DEBIAN_PACKAGE_SHLIBDEPS/CPACK_RPM_PACKAGE_AUTOREQPROV ON,
+      # which declares every one of these as a runtime `Depends:` entry
+      # rather than bundling it - because ALSA and the X11/GL graphics stack
+      # are both part of the base desktop Linux install on effectively every
+      # real machine, unlike Qt6/qml6-module-*, which is exactly the piece
+      # this job exists to stop depending on the host for (see this job's
+      # own header comment and docs/platforms/linux.md's AppImage section).
+      # Bundling them instead would also risk a worse failure than not
+      # bundling at all: ALSA's plugin/config ecosystem and the GL driver
+      # stack are both tied to the HOST (`/usr/lib/*/alsa-lib/`,
+      # `/etc/asound.conf`, Mesa's DRI drivers), so a bundled `.so` with none
+      # of that around it could load and then simply fail to find a real
+      # device/renderer - backwards from Decision 1's own reasoning for
+      # AppImage over Flatpak in the first place (ALSA/PipeWire access
+      # working like a normally installed binary, not a private bundled
+      # copy).
+      #
+      # The list itself is not a guess: linuxdeploy-plugin-qt bundles Qt's
+      # OWN libraries and QML plugins into the AppImage, but never the
+      # underlying system X11/GL/input stack those plugins load at runtime -
+      # confirmed for real (libGLX.so.0 missing, right after libasound.so.2
+      # was fixed) rather than assumed up front. Rather than chase each
+      # missing library one CI round-trip at a time, this is the full
+      # runtime dependency closure of Debian 12's own libqt6gui6 +
+      # libqt6quick6 + libqt6qml6 + libqt6dbus6 packages (`apt-cache
+      # depends`, checked locally against a real debian:12-slim container),
+      # minus Qt's own libraries (bundled by linuxdeploy-plugin-qt already)
+      # and the handful of base-OS libraries (libc6, libstdc++6, zlib1g,
+      # ...) any Debian install already has - i.e. exactly what Debian's own
+      # Qt packaging maintainers already determined a Qt6/QtQuick GUI app
+      # needs on a bare system, not this job's own guess at it.
+      - name: Smoke test on a distro that never had Qt installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(ls ac3gui-*.AppImage)"
+          chmod +x "$appimage"
+          echo "pwd: $PWD"
+          ls -la "$appimage" fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
+
+          runtime_deps="libasound2 fontconfig libdrm2 libegl1 libfontconfig1 libfreetype6 \
+            libglib2.0-0 libglx0 libharfbuzz0b libice6 libinput10 libjpeg62-turbo libmd4c0 \
+            libmtdev1 libopengl0 libpng16-16 libsm6 libts0 libudev1 libx11-6 libx11-xcb1 \
+            libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-render0 libxcb-shape0 libxcb-shm0 libxcb-sync1 \
+            libxcb-xfixes0 libxcb-xkb1 libxcb1 libxkbcommon-x11-0 libxkbcommon0 libdbus-1-3 \
+            libgl1 libglx-mesa0"
+
+          cid="$(docker create -e QT_QPA_PLATFORM=offscreen debian:12-slim \
+            sh -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends $runtime_deps \
+              && exec /ac3gui.AppImage --appimage-extract-and-run --smoke \
+                 /roundtrip-stereo.wav /ac3gui-smoke.ac3 /ac3gui-smoke.png")"
+          docker cp "$appimage" "${cid}:/ac3gui.AppImage"
+          docker cp fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav "${cid}:/roundtrip-stereo.wav"
+          # `|| true`: `docker start --attach` propagates the CONTAINER's own
+          # exit code as its own (confirmed locally - a nonzero exit here
+          # otherwise trips `set -e` immediately, before the exit-code check
+          # and `docker rm -f` cleanup below ever run, silently leaking the
+          # stopped container and skipping the ::error:: message a real
+          # failure should get). The real signal is `docker inspect` right
+          # after, not this command's own exit status.
+          docker start --attach "$cid" || true
+          status="$(docker inspect "$cid" --format='{{.State.ExitCode}}')"
+          docker rm -f "$cid" >/dev/null
+          echo "container exit status: $status"
+          if [ "$status" != "0" ]; then
+            echo "::error::AppImage smoke test failed on debian:12-slim (exit $status)"
+            exit 1
+          fi
+          echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
   # leg, so it is its own job rather than a `build` matrix entry - there is

@@ -21,6 +21,7 @@ ColumnLayout {
         rowSpacing: Theme.gap
 
         Text {
+            id: drcLabel
             text: qsTr("DRC profile")
             color: Theme.text
             font.pixelSize: Theme.fontNormal
@@ -34,9 +35,11 @@ ColumnLayout {
                 EncoderController.drcIndex = currentIndex;
                 EncoderController.loudnessTouched = true;
             }
+            Accessible.name: drcLabel.text
         }
 
         Text {
+            id: dialnormLabel
             text: qsTr("dialnorm")
             color: Theme.text
             font.pixelSize: Theme.fontNormal
@@ -50,6 +53,7 @@ ColumnLayout {
                 EncoderController.dialnorm = value;
                 EncoderController.loudnessTouched = true;
             }
+            Accessible.name: dialnormLabel.text
         }
 
         // Spans both columns rather than sharing the spinbox's own cell:
@@ -92,6 +96,7 @@ ColumnLayout {
         visible: EncoderController.dualMono
 
         Text {
+            id: drc2Label
             text: qsTr("DRC profile — programme 2")
             color: Theme.text
             font.pixelSize: Theme.fontNormal
@@ -105,9 +110,11 @@ ColumnLayout {
                 EncoderController.drc2Index = currentIndex;
                 EncoderController.loudnessTouched = true;
             }
+            Accessible.name: drc2Label.text
         }
 
         Text {
+            id: dialnorm2Label
             text: qsTr("dialnorm — programme 2")
             color: Theme.text
             font.pixelSize: Theme.fontNormal
@@ -121,6 +128,7 @@ ColumnLayout {
                 EncoderController.dialnorm2 = value;
                 EncoderController.loudnessTouched = true;
             }
+            Accessible.name: dialnorm2Label.text
         }
 
         CheckBox {

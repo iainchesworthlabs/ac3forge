@@ -31,6 +31,22 @@ RowLayout {
 
     spacing: 6
 
+    // Same discipline as ChannelMeter's own Accessible.description: built
+    // from the exact same hasValue/value/gated/pass state the value text and
+    // the fill colour already read, so the announcement and the drawing can
+    // never disagree - the regression this dialog's own test suite already
+    // guards for gateMeterPassAndFailAreVisuallyDistinguishable, extended to
+    // what a screen reader reports rather than only what is drawn.
+    Accessible.role: Accessible.Indicator
+    Accessible.name: root.label
+    Accessible.description: !root.hasValue
+        ? qsTr("n/a")
+        : (root.gated
+            ? (root.pass
+                ? qsTr("%1 %2, within limit").arg(root.value.toFixed(2)).arg(root.unit)
+                : qsTr("%1 %2, outside limit").arg(root.value.toFixed(2)).arg(root.unit))
+            : qsTr("%1 %2").arg(root.value.toFixed(2)).arg(root.unit))
+
     Text {
         Layout.preferredWidth: 130
         text: root.label

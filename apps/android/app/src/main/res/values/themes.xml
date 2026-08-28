@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app ran on the stock DeviceDefault.NoActionBar theme, whose
+         window background is the platform default - so launching flashed a
+         light window for a frame or two before the near-black dashboard drew
+         over it, on a TV, in a room dim enough to read an AVR's front panel.
+         Setting only windowBackground keeps everything else inherited. -->
+    <style name="Theme.ShieldAtmosDemo" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/demo_background</item>
+    </style>
+</resources>

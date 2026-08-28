@@ -642,8 +642,26 @@ machine-readable output and a single failure exit code. Users arrive with contai
   re-wrap, which is what this decoder already produces. Phase 1: an `iamf::` OBU/ISOBMFF writer
   with `ipcm` substreams for a channel-based 7.1.4 element from the E-AC-3 decode. Phase 2:
   object elements once v2.0 is final. Phase 3: an OBU reader (`ipcm`/FLAC) onto
-  `FrameConfig`/`AtmosEncoder`. `libiamf` and OAR are oracles, not sources. IM2 first is the
-  cheaper route to the same ecosystem.
+  `FrameConfig`/`AtmosEncoder`. `libiamf` and OAR are oracles, not sources. IM2 (shipped above) is
+  the cheaper, indirect route to the same ecosystem — a decoded programme already reaches
+  AOM's own `iamf-tools` encoder via ADM-BWF, no code in this repo needed — but that only carries
+  IM2's own scope (dynamic-object-only programmes, cartesian positions) and depends on a
+  second, external encoder. IM3 writes the IAMF bitstream directly, for any 7.1.4-coded
+  programme this decoder can render, with nothing else in the chain.
+  *Phase 1 done: `iamf::` (`src/iamf`) writes a channel-based Audio Element (7.1.4ch,
+  loudspeaker_layout 7, 5 coupled + 2 non-coupled `ipcm` substreams in the §3.6.3.3 order) plus a
+  Mix Presentation carrying both the mandatory Stereo loudness layout and the 7.1.4 one, wrapped
+  in IAMF's ISO-BMFF encapsulation (`iamf`-branded `ftyp`, an `iamf` sample entry's `iacb` box).
+  Codec-blind like `mp4::mp4`/`ac3iab::ac3iab` (no `ac3::forge` dependency); default-on
+  (`AC3FORGE_BUILD_IAMF`), installed/exported the same way. `examples/mux_iamf.cpp` is the
+  decode → permute → `iamf::mux()` round trip: it encodes a synthetic 7.1.4 E-AC-3 stream,
+  decodes it with `Eac3Decoder`, and reorders Table E2.5's bit order into §3.6.2's own
+  L/C/R/Lss/Rss/Lrs/Rrs/Ltf/Rtf/Ltb/Rtb/LFE via `Layout::index_of`. Tested with an independent
+  OBU/ISOBMFF walker built into `test_iamf.cpp` itself (no `libiamf` dependency added to the
+  build) — deliberately proven able to fail: a substream/channel-pairing swap was reintroduced
+  and confirmed to break the PCM round-trip test before being reverted. No Parameter Block OBUs,
+  no Temporal Delimiter OBU, no trimming, batch API only — see `iamf/iamf.hpp`'s own header for
+  the full phase-1 boundary. Phases 2 and 3 are unstarted.*
 - [ ] **IM4 (L)** — AC-4 parse-and-inspect (was `D4`). The blocking question is resolved: nothing
   open encodes AC-4, but the Dolby Encoding Engine already licensed and used for the AC-3/E-AC-3
   external-baseline tier includes `dee_ac4_encoder.exe`/`dee_ac4ajoc_encoder.exe`, and the Dolby
@@ -1305,12 +1323,22 @@ directory; there is still no threading anywhere in the codec core.
   missing: `scan`~~ done: `ac3.scan()`/`ac3.read_frame_header()` wrap `ac3::io::scan`/
   `read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/`FrameHeader`, plus
   `access_unit_timing` and its timing-arithmetic neighbours) — see `docs/library/python-api.md`'s
-  "Scanning a stream" section. Still missing: no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`
-  are off in `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
-  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
-  that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
-  macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
-- [x] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
+  "Scanning a stream" section. ~~Zero-copy numpy in both directions (both paths
+  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`~~ done: encode
+  input (AC-3, E-AC-3 and `AtmosEncoder`) accepts either a 2-D `(n_channels, n_samples)` array or
+  a sequence of 1-D arrays and is read directly out of whichever is passed when it's already
+  contiguous float32; decoded `.channels`/`.object_audio` are read-only zero-copy views over the
+  decoded instance's own memory instead of a fresh `memcpy`'d list every property access;
+  `FrameDecoder.decode_frame_into`/`Eac3Decoder.decode_access_unit_into` write PCM into
+  caller-supplied buffers (`ac3.MAX_AC3_CHANNELS`/`ac3.eac3.MAX_RENDER_CHANNELS` size them) —
+  see `docs/library/python-api.md`'s "Zero-copy numpy and buffer reuse" section. No
+  `decode_substream_into`: `ac3::Eac3Decoder` itself only exposes a caller-buffer form for the
+  two calls that assemble a full programme, not the single-substream one. Still missing: no
+  containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in `pyproject.toml`), no metering, no
+  signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
+  `.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
+  platform with no wheel.
+- [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
   pins `AC3FORGE_BUILD_CAPI=OFF`); and the licence identifier drift (`pyproject.toml` says
@@ -1395,9 +1423,32 @@ directory; there is still no threading anywhere in the codec core.
 - [x] **UX2 (M)** — Desktop integration: drag-and-drop, `ac3gui <file>`, file associations
   (the installer's registry keys, `CFBundleDocumentTypes`, a `.desktop` entry plus AppStream
   metainfo and MIME XML for the `.deb`/`.rpm` — `ac3gui` is absent from Linux application menus).
-- [ ] **UX3 (M)** — Localisation and accessibility foundations: 676 `qsTr()` strings with no
-  `QTranslator` or `lupdate` target, and zero `Accessible.*` properties on the custom controls.
-  Both get harder to retrofit as `Main.qml` grows.
+- [x] **UX3 (M)** — Localisation and accessibility foundations. Done: `qt_add_translations()`
+  wires `apps/gui/translations/*.ts` through `lupdate`/`lrelease` into a `:/i18n` resource,
+  `LanguageManager` (`language_manager.{hpp,cpp}`) loads the active language at startup and on a
+  live Preferences switch, and RTL layout mirroring plus bundled Noto Sans Arabic/Hebrew faces
+  cover Arabic, Hebrew and Yiddish. The canonical language set — French, German, Spanish, Arabic,
+  Hebrew, Yiddish — matches the one the sibling CountdownSolver project already ships, rather than
+  inventing a second one; coverage today is 98 of 758 extracted messages per language (window
+  chrome, tab names, the Guided wizard's step titles, all of Preferences), the rest left in
+  English exactly like any real partial translation — see `docs/gui/localisation.md` for the
+  tracked remainder, and completing it is the natural follow-on, not a hidden gap. A pseudo-locale
+  QA fixture (`tools/generators/gen_pseudo_locale.py`, `ac3gui_xx.ts`) mechanically decorates every
+  extracted string and is loaded only under `AC3GUI_LOCALE=xx` in `tst_localisation_pipeline.qml`,
+  proving the whole pipeline end to end independent of the six real languages' completeness and
+  catching any string that bypasses `qsTr()` entirely. CI's "Check translations are up to date"
+  step reruns `lupdate` and fails on drift — the literal ask behind the item's original wording —
+  deliberately short of CountdownSolver's own stricter "zero unfinished" gate, since that would
+  fail today on content nobody has touched yet.
+  Every custom control and every ad-hoc control in `Main.qml` now carries `Accessible.role`/
+  `name`/`description`, built from the same live properties the visual state already reads (never
+  a static duplicate of a label) — the QC preset regression's own lesson, now enforced by
+  `tst_accessibility.qml` and targeted additions to `tst_main_shell.qml`/`tst_qc_panel.qml`. Two
+  genuine Qt API surprises found doing this, both worth knowing before touching this again:
+  `Accessible` has no `disabled` property (Qt's own accessibility bridge reads the item's real
+  `enabled` state instead), and a `Dialog`/`Popup` root is not itself an `Item` — `Accessible.*`
+  has to attach to its `contentItem`, not the `Dialog` itself, or it throws a runtime warning on
+  every window that ever instantiates the dialog, not just when it opens.
 - [x] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
   room — OSC, as the roadmap asked for first: `ac3::oba::parse_osc_packet`/`apply()`
   (`src/forge/src/oba/scene_osc.cpp`) is a third, pure reader of a scene update beside the JSON
@@ -1563,14 +1614,22 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   new installer is still unsigned (DR6) and may still trip SmartScreen or the Defender false
   positive already blocking DR4's winget resubmission — DR7 fixes the build, not the trust
   story; DR4 stays blocked on DR6.
-- [ ] **DR8 (M)** — Reach: an AppImage and/or Flatpak for `ac3gui` (the `.deb`/`.rpm` depend on
-  the distro's Qt 6 and `qml6-module-*` packages) is still open. The other two halves have both
-  landed since this item was last written, independently:
-  - ~~A Windows ARM64 leg on the hosted `windows-11-arm` runner~~ `windows-msvc-arm64` builds and
-    tests `ac3cli` on real ARM64 hardware (CLI-only — no resolvable Qt6 ARM64 Windows kit for the
-    pinned version yet, see `docs/platforms/windows.md`'s ARM64 section) and packages a
-    `win-arm64` release archive; `experimental: true` until it proves itself green over real runs,
-    the same promotion path `macos-llvm` went through.
+- [x] **DR8 (M)** — Reach, restated per sub-item now that all three have landed:
+  - **AppImage: done.** `ac3gui` ships as a self-contained AppImage (`linuxdeploy` +
+    `linuxdeploy-plugin-qt`, built in an `ubuntu:22.04` container deliberately older than every
+    other Linux CI leg's `ubuntu:26.04`, so its glibc floor stays lower) alongside the existing
+    `.deb`/`.rpm`, so a distro whose own Qt 6/`qml6-module-*` split is too old or cut differently
+    no longer blocks running `ac3gui` at all. `linux-appimage` in `.github/workflows/_build.yml`
+    builds it on every push and then launches it inside a second container that never had Qt
+    installed, proving the claim rather than just the build. Flatpak was decided against outright
+    rather than deferred — `ac3gui`'s own reason to exist is `ac3::audio`'s exclusive-mode ALSA/
+    PipeWire passthrough, which needs exactly the raw device access a Flatpak sandbox exists to
+    take away — see `docs/platforms/linux.md`'s own AppImage section for the full reasoning.
+  - **Windows ARM64: done, CLI-only.** `windows-msvc-arm64` builds and tests `ac3cli` on real
+    ARM64 hardware (no resolvable Qt6 ARM64 Windows kit for the pinned version yet, see
+    `docs/platforms/windows.md`'s ARM64 section) and packages a `win-arm64` release archive;
+    `experimental: true` until it proves itself green over real runs, the same promotion path
+    `macos-llvm` went through.
   - **macOS universal binaries: landed.** This item originally called them "a separate decision,
     not a given," skeptical because the Cask was arm64-only and Intel demand looked doubtful —
     that skepticism was written without checking current GitHub runner availability, and it turned

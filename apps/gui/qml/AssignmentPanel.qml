@@ -268,6 +268,10 @@ ColumnLayout {
                         root.assignDestination(row.modelData.source,
                                                row.modelData.channel, currentValue);
                     }
+                    Accessible.name: qsTr("Destination for %1 channel %2")
+                        .arg(row.modelData.sourceLabel).arg(row.modelData.channel + 1)
+                    Accessible.description: root.thenText(row.modelData.destToken,
+                                                          row.modelData.touched === true)
                 }
                 Text {
                     Layout.fillWidth: true
@@ -305,6 +309,8 @@ ColumnLayout {
                                                                 row.modelData.channel, value);
                         }
                     }
+                    Accessible.name: qsTr("Trim for %1 channel %2, dB")
+                        .arg(row.modelData.sourceLabel).arg(row.modelData.channel + 1)
                 }
                 Text {
                     text: qsTr("dB")
