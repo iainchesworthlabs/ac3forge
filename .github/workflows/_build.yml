@@ -136,6 +136,7 @@ jobs:
       linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
+      linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -157,12 +158,11 @@ jobs:
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - three Linux (GCC, LLVM, LLVM ASan+UBSan)
-          # and two Windows (MSVC, LLVM) today. LLVM TSan stays GitHub-hosted
-          # (see its own matrix entry) so it is not one of these three. Bump
-          # these, and add a matching numbered output above and matrix.runner
-          # reference below, if a leg is added or removed.
-          LINUX_LEGS=3
+          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
+          # LLVM TSan) and two Windows (MSVC, LLVM) today. Bump these, and
+          # add a matching numbered output above and matrix.runner reference
+          # below, if a leg is added or removed.
+          LINUX_LEGS=4
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -455,14 +455,18 @@ jobs:
           # driving every layout/tool combination through ac3cli is an
           # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
           # same reasoning as the ASan+UBSan leg's own comment above.
-          # Stays GitHub-hosted, deliberately: ThreadSanitizer needs to
-          # disable ASLR to instrument memory correctly, and the self-hosted
-          # image's container fails with "unable to disable ASLR (perhaps
-          # sandboxing is enabled?)" - confirmed the hard way. GitHub-hosted's
-          # container security profile permits it; self-hosted's does not,
-          # for reasons not yet understood.
+          # Self-hosted-capable again (reverted to ubuntu-latest in #460).
+          # The failure was Docker's default seccomp profile rejecting the
+          # personality(ADDR_NO_RANDOMIZE) call TSan uses to disable ASLR
+          # from inside a container. The fleet image now sets
+          # kernel.randomize_va_space=0 on the VM (ci-runners#13, deployed
+          # 2026-08-28) - the sysctl is not namespaced, the container
+          # inherits it, and TSan never needs the blocked syscall. If this
+          # leg ever fails that way again, the fleet image regressed; the
+          # per-job fallback is container options --security-opt
+          # seccomp=unconfined, which is a much blunter instrument.
           - name: "Linux LLVM TSan"
-            runner: '["ubuntu-latest"]'
+            runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
             container: ubuntu:26.04
             preset: linux-llvm-tsan
             llvm: true

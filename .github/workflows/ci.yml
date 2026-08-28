@@ -277,13 +277,16 @@ jobs:
   # gate reporting. Conservative - anything not clearly docs counts as code.
   changes:
     name: Detect changes
-    # Stays GitHub-hosted, deliberately: this job's script calls `gh api`
-    # directly (see below), and the self-hosted image's toolset is not
-    # guaranteed to include the gh CLI - confirmed the hard way, `gh:
-    # command not found` on tf-gh-linux-runner-11 when this was briefly
-    # routed through check-runner like every other cheap job in this file.
-    # A one-shot metadata lookup gains nothing from self-hosted anyway.
-    runs-on: ubuntu-latest
+    # Routed through check-runner like the other cheap gate jobs. This job
+    # calls `gh api` directly, which briefly broke on self-hosted ("gh:
+    # command not found" on tf-gh-linux-runner-11, reverted in #459) - the
+    # fleet image now ships the GitHub CLI (ci-runners#12, deployed
+    # 2026-08-28), so that constraint is gone. Routing matters here more
+    # than for the other cheap jobs: everything heavy needs this job's
+    # output, so when the hosted queue is saturated an ubuntu-latest
+    # `changes` stalls the whole run behind it.
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     permissions:
       contents: read
       pull-requests: read
@@ -498,9 +501,9 @@ jobs:
   # configuration and no analysis-only preset is needed.
   static-analysis:
     name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -580,6 +583,14 @@ jobs:
     name: Coverage (Linux, GCC)
     needs: [changes, toolchain-versions]
     if: needs.changes.outputs.code == 'true'
+    # Stays GitHub-hosted for now - the one leg of the #460 revert that is
+    # NOT re-enabled with the rest. Its self-hosted failure ("The runner has
+    # received a shutdown signal" 34s in) was a runner-lifecycle kill, not
+    # the gh/profile/ASLR class fixed in ci-runners#12/#13, and remains
+    # undiagnosed (suspected --replace eviction race in the supervisor's
+    # recycle loop). If it is re-routed and the failure recurs, capture
+    # `journalctl -u github-runner.service` off the affected VM before the
+    # fleet replaces it - that is the missing evidence.
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
@@ -1347,9 +1358,9 @@ jobs:
   # to the vcpkg commit and the LLVM/GCC versions.
   ffmpeg-validate:
     name: FFmpeg Validate
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container

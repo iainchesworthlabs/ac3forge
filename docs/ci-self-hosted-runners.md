@@ -1,13 +1,17 @@
 # Self-hosted CI runners
 
-The four plain Windows/Linux legs in [`_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)'s
-`build` matrix (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM) can each run on a
+The six plain Windows/Linux legs in [`_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)'s
+`build` matrix (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM, Linux LLVM ASan+UBSan,
+Linux LLVM TSan) can each run on a
 self-hosted runner instead of a GitHub-hosted one - but only when one is actually online and
 idle right now, and only up to however many are idle: with, say, one idle self-hosted Linux
 runner and two Linux legs, one leg lands on self-hosted and the other fans out onto
 GitHub-hosted in the same run, rather than both piling onto self-hosted and one of them
-queuing behind the other. macOS and the two arm64 Linux legs always stay on GitHub-hosted
-runners; there's no self-hosted equivalent for either.
+queuing behind the other. macOS and the arm64 legs always stay on GitHub-hosted
+runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
+(Detect changes, Static Analysis, FFmpeg Validate, and the cheap gate jobs) route the same
+way through its `check-runner` job; Coverage deliberately does not - see its own comment in
+`ci.yml` for the undiagnosed shutdown-signal failure that keeps it on GitHub-hosted.
 
 This page describes what ac3forge's CI does with a self-hosted runner once one exists. It
 does not describe how one comes to exist - the fleet itself (Packer images, provisioning
@@ -19,7 +23,7 @@ this one.
 ## How the decision gets made
 
 A `check-runners` job runs before the `build` matrix on every push/PR/release, decides a
-runner-label set for each of the two Linux legs and each of the two Windows legs
+runner-label set for each of the four Linux legs and each of the two Windows legs
 individually, and the matrix picks those up via `runs-on: ${{ fromJSON(matrix.runner) }}`.
 Per OS, in order:
 
@@ -44,8 +48,8 @@ Per OS, in order:
      in place; until then it's simply skipped, not an error.
 
    Both counts only include runners that are `online`, not `busy`, and labelled with both
-   `self-hosted` and the right OS (`Linux` or `Windows`). Of that OS's two legs, the first
-   `idle_count` (capped at 2) get the self-hosted label set (`self-hosted, Linux, X64` /
+   `self-hosted` and the right OS (`Linux` or `Windows`). Of that OS's legs, the first
+   `idle_count` (capped at the leg count) get the self-hosted label set (`self-hosted, Linux, X64` /
    `self-hosted, Windows, X64` - the exact labels the `ci-runners` fleet registers with); the
    rest get GitHub-hosted (`ubuntu-latest` / `windows-latest`). An idle count of zero, or the
    API call itself failing for any reason, sends every leg of that OS to GitHub-hosted - this
