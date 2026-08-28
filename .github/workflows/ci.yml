@@ -344,6 +344,13 @@ jobs:
   # violation is reported even while the porting legs are still red.
   platform-macros:
     name: Platform Macros
+    # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
+    # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
+    # does not - confirmed live ("pwsh: command not found" on
+    # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
+    # it only if/when ci-runners bakes PowerShell into the Linux template -
+    # same follow-the-toolchain rule as build-wasm/android/rust in
+    # _build.yml.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -730,9 +737,9 @@ jobs:
   # AC3FORGE_BUILD_GUI already defaults OFF on this preset.
   adm-validate:
     name: ADM Module (Linux, GCC)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1088,9 +1095,9 @@ jobs:
   #     repetitions are a rounding error next to the two builds.
   performance-compare:
     name: Performance vs merge base
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
     env:
@@ -1208,9 +1215,9 @@ jobs:
   #     with no tag yet to abidiff against.
   abi-gate:
     name: ABI diff vs last release
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
     steps:

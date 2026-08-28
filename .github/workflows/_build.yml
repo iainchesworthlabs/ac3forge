@@ -143,6 +143,7 @@ jobs:
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
       linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
+      linux_runner_5: ${{ steps.decide.outputs.linux_runner_5 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -165,10 +166,12 @@ jobs:
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
           # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
-          # LLVM TSan) and two Windows (MSVC, LLVM) today. Bump these, and
-          # add a matching numbered output above and matrix.runner reference
-          # below, if a leg is added or removed.
-          LINUX_LEGS=4
+          # LLVM TSan) and two Windows (MSVC, LLVM) today - plus, as leg 5,
+          # the standalone containerised build-footprint job below the
+          # matrix. Bump these, and add a matching numbered output above and
+          # matrix.runner (or job runs-on) reference below, if a leg is
+          # added or removed.
+          LINUX_LEGS=5
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -2721,7 +2724,16 @@ jobs:
   # commit). A leg that only ran before releases would have found them then.
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
-    runs-on: ubuntu-latest
+    # Leg 5 of check-runners' Linux fan-out: everything here runs inside the
+    # pinned ubuntu:26.04 container (arm-none-eabi + QEMU apt-installed into
+    # it below), so the job is runner-agnostic the same way the matrix's
+    # container legs are. build-wasm / build-android / build-rust stay on
+    # ubuntu-latest deliberately: they run bare and lean on toolchains the
+    # GitHub-hosted image pre-bakes (emsdk cache, Android SDK/NDK, rustup)
+    # that the self-hosted image does not - route them only if/when
+    # ci-runners bakes those toolchains into the fleet image.
+    needs: check-runners
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_5) }}
     container: ubuntu:26.04
     permissions:
       contents: read

@@ -88,6 +88,35 @@ jobs:
     secrets:
       ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
+  # Same self-hosted/GitHub-hosted routing ci.yml's check-runner gives its
+  # single-leg jobs (see docs/ci-self-hosted-runners.md). The C++ analyze
+  # leg is a full tracer build inside the same pinned ubuntu:26.04
+  # container the CI matrix uses, so it runs identically on either pool;
+  # the interpreted legs are seconds long either way. The job itself is
+  # control-plane, routed by vars.CONTROL_RUNNER_JSON with the same
+  # delete-the-variable kill switch and the same unconditional fork-PR pin
+  # to GitHub-hosted as ci.yml's check-runner (it executes decide-runner
+  # from a checkout of the fork's merge ref - fork-controlled code).
+  check-runner:
+    name: Check self-hosted runner availability
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.decide.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: decide
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Linux
+          hosted-json: '["ubuntu-latest"]'
+          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
   # `display`, not `language`, in the job name - and "C++" spelled exactly as it
   # was before this became a matrix. The check name a branch-protection ruleset
   # selects is this rendered string, and .github/branch-protection.md requires
@@ -96,8 +125,8 @@ jobs:
   # admin edited the ruleset. Adding legs is free; renaming one is not.
   analyze:
     name: Analyze (${{ matrix.display }})
-    needs: toolchain-versions
-    runs-on: ubuntu-latest
+    needs: [toolchain-versions, check-runner]
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     # Empty for every interpreted leg, so only the C++ one pays for the pinned
     # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that follow).
     container: ${{ matrix.container }}
