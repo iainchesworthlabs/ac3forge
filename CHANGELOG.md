@@ -86,6 +86,14 @@ a concrete API-freeze plan for v1.0 now exists.
 - **`ac3cli probe`**: what a stream declares — layout, substream map, tools in use, metadata
   ranges, CRC validity — without decoding audio. `json=1` emits a versioned schema.
   [Command reference](docs/cli/commands.md).
+- **`ac3cli probe` reads AC-4 too**, auto-detected. A new standalone `ac4::` library parses the
+  sync frame, table of contents, presentation and substream-group framing (ETSI TS 103 190-1/-2)
+  — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike, including
+  7.0.4 through 22.2 channel-based immersive layouts — bitstream inspection, not decoding: audio
+  content is reported by byte range, never decoded, and `oamd_common_data()` is refused cleanly
+  rather than misparsed. Backed by an independent Python transcription, real Dolby Encoding
+  Engine fixtures for the channel-coded path, and synthetic hand-built vectors for A-JOC/object/
+  OAMD, no real fixture being reachable for that path. See [Validation](docs/verification.md#ac-4).
 - **IEC 61937 de-framing.** A burst parser and `ac3cli unspdif`, plus capture-side recognition, so
   a loopback of a bitstreaming player records the elementary stream rather than PCM.
 - **A streaming fMP4/CMAF fragmenter** with a rolling HLS playlist and dynamic MPD, the DASH
