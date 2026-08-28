@@ -202,6 +202,21 @@ a concrete API-freeze plan for v1.0 now exists.
   independent compiler/architecture builds, and its decision is now pinned by tests at all six
   A/52 sample rates instead of just one.
 
+**Release engineering**
+
+- **The packaging manifests bump themselves after a release.** A new post-release job downloads
+  the release's own source tarball and platform assets, computes the digests the vcpkg port, the
+  Homebrew formula and cask, the winget manifest and the Conan recipe each need, cross-checks the
+  ones that are real built packages against the release's own published `SHA512SUMS`, opens a PR
+  bumping all four together, and pushes the Homebrew formula/cask straight to the live tap. This
+  is what had gone stale two releases in a row before it existed. Testable without cutting a
+  release: it is also directly runnable by hand in dry-run mode against any already-shipped tag.
+- **GitHub Release notes are drawn from CHANGELOG.md**, not drafted from the commit list — the
+  matching dated section becomes the release body directly, since that curation already happens
+  in CHANGELOG.md as part of normal development.
+- **`check_packaging_versions.sh` gained a latest-tag advisory**: a warning, not a failure, when
+  a manifest does not yet match the most recent release.
+
 **Tooling and packaging**
 
 - **macOS release packages are now universal (arm64 + x86_64) binaries.** A new CI leg builds a
