@@ -53,7 +53,8 @@ endif()
 target_sources(admbridge_objects
     PRIVATE
         src/coordinates.cpp
-        src/bridge.cpp)
+        src/bridge.cpp
+        src/iab_bridge.cpp)
 
 target_include_directories(admbridge_objects
     PUBLIC
@@ -63,14 +64,16 @@ target_include_directories(admbridge_objects
 
 target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 
-# PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp) name types from both
-# ac3::oba (ac3::forge) and ac3adm::ac3adm in their signatures (ac3::oba::ObjectPath,
-# ac3adm::AdmDocument, ...), so anything linking ac3::admbridge needs both transitively -
-# the same PUBLIC-link-its-dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
+# PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp, iab_bridge.hpp) name
+# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (roadmap IM1 phase 3) ac3iab::ac3iab in
+# their signatures (ac3::oba::ObjectPath, ac3adm::AdmDocument, ac3iab::IABitstreamFrame, ...), so
+# anything linking ac3::admbridge needs all three transitively - the same PUBLIC-link-its-
+# dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
 target_link_libraries(admbridge_objects
     PUBLIC
         ac3::forge
         ac3adm::ac3adm
+        ac3iab::ac3iab
     PRIVATE
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")

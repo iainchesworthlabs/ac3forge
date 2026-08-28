@@ -371,7 +371,8 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
     target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
-                                    admbridge/test_adm_bridge_write.cpp)
+                                    admbridge/test_adm_bridge_write.cpp
+                                    admbridge/test_iab_bridge.cpp)
     target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
@@ -385,7 +386,7 @@ endif()
 # (AC3CLI_EXE might not be defined at all, e.g. AC3FORGE_BUILD_CLI=OFF) is sufficient by itself -
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp)
 endif()
 
 # ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
