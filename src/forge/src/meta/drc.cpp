@@ -119,6 +119,14 @@ double smoothing_coeff(double time_ms, SampleRate rate) {
     return 1.0 - std::exp(-block_ms / time_ms);
 }
 
+// Per-frame dB step for a release rate stated as dB/second - one syncframe is
+// kSamplesPerFrame samples regardless of sample rate.
+double release_step(double release_db_per_second, SampleRate rate) {
+    const double frame_s =
+        static_cast<double>(kSamplesPerFrame) / static_cast<double>(sample_rate_hz(rate));
+    return release_db_per_second * frame_s;
+}
+
 }  // namespace
 
 struct RangeController::Impl {
@@ -164,12 +172,10 @@ struct HeavyCompressor::Impl {
 };
 
 HeavyCompressor::HeavyCompressor(const HeavyConfig& config, SampleRate rate)
-    : impl_(std::make_unique<Impl>()) {
-    impl_->config_ = config;
-    const double frame_s =
-        static_cast<double>(kSamplesPerFrame) / static_cast<double>(sample_rate_hz(rate));
-    impl_->release_step_db_ = config.release_db_per_second * frame_s;
-}
+    : impl_(std::make_unique<Impl>(Impl{
+          .config_ = config,
+          .release_step_db_ = release_step(config.release_db_per_second, rate),
+      })) {}
 
 HeavyCompressor::~HeavyCompressor() = default;
 HeavyCompressor::HeavyCompressor(HeavyCompressor&&) noexcept = default;

@@ -64,6 +64,14 @@ dispatched build fetches full history (or gets the version stamped directly via
 3. Releases must be **cut from main** - `resolve-version` checks this with
    `git merge-base --is-ancestor` and fails otherwise (dry runs are exempt).
 4. Decide the tag.
+5. **Update [CHANGELOG.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md)**
+   - move `## [Unreleased]`'s content down to a `## [x.y.z] - YYYY-MM-DD` section matching the
+     tag from step 4, [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, grouped by
+     user-facing area with bold lead-in bullets. This has to happen *before* tagging, not after:
+     `github-release`'s "Render release notes from CHANGELOG.md" step
+     (`tools/release/render_release_notes.py`, see [Post-release](#post-release)) extracts this
+     exact section for the release body the moment the tag is pushed, and hard-fails the release
+     if it cannot find one.
 
 ## Option A: tag-based release (the normal path)
 
@@ -96,43 +104,71 @@ run from any branch - use it to validate a packaging change before merging.
 
 ## Post-release
 
-`gh release create --generate-notes` drafts release notes from merged PRs/commits since the
-previous tag - a first draft only. Curating it to the established pattern is a required step,
-not optional polish:
+Most of what used to be a manual post-release checklist here is now automated (roadmap DR2):
 
-1. Update [CHANGELOG.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md) first, if it isn't already current - a `## [x.y.z] -
-   YYYY-MM-DD` section (moved down from `## [Unreleased]` if the changes were already logged
-   there), [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. This is the
-   authoritative, human-curated record; the GitHub Release body mirrors it, not the other way
-   round.
-2. Write the GitHub Release body from that CHANGELOG.md section, in this order:
-   1. `## What's Changed` (first release) or `## What's Changed since v<prev>`.
-   2. A one-line summary of the release.
-   3. The changes as `###` subsections - grouped by subsystem, or as *Added*/*Changed*/*Fixed* -
-      with **bold lead-in** bullets in user-facing terms, mirrored from the CHANGELOG.md
-      section. A short release may use a flat bold-lead-in bullet list instead of subsections.
-   4. An `## Artifacts` section: the packages listed under [What gets
-      published](#what-gets-published) below, with their SHA-512 checksums, plus a pointer to
-      `ac3cli --help`/[docs/quickstart.md](quickstart.md).
-   5. `**Full Changelog**: …/compare/v<prev>...v<this>` (keep the one `--generate-notes`
-      produced; omit for the first release - there is no previous tag).
-   6. For a prerelease, a trailing `> **Pre-release.**` caveat blockquote noting the biggest
-      open gap (see [Known gaps](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md#known-gaps) in the matching CHANGELOG.md
-      section).
-3. Apply it:
+1. **Release notes come from CHANGELOG.md, not `--generate-notes`.** The `github-release` job's
+   "Render release notes from CHANGELOG.md" step
+   (`tools/release/render_release_notes.py`) extracts the `## [x.y.z] - YYYY-MM-DD` section
+   matching the tag being released and uses it as the release body, followed by a
+   `**Full Changelog**: …/compare/v<prev>...v<this>` line (omitted for the first release). This
+   is why [updating CHANGELOG.md](#pre-release-checklist) moved into the pre-release checklist,
+   as its own step: it used to be listed here, as a post-release step done any time before
+   finishing the curated release notes by hand - now it is a hard prerequisite of tagging itself,
+   since a missing section fails the release outright with a clear error rather than falling back
+   to a commit-list draft. [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+   format, grouped by user-facing area with **bold lead-in** bullets, same as always; that
+   curation now happens exactly once, in CHANGELOG.md, as part of normal development.
 
-   ```bash
-   gh release edit vX.Y.Z[-beta.N] --notes-file notes.md
-   ```
+   Two things this deliberately does not reconstruct, left as optional manual polish via
+   `gh release edit vX.Y.Z[-beta.N] --notes-file notes.md` afterward if wanted: an `## Artifacts`
+   section with per-package checksums (every package already carries its own `*.sha512` file and
+   an aggregate `SHA512SUMS` as separate release assets - see [What gets
+   published](#what-gets-published) - so restating them in prose is a second place to keep in
+   sync, not new information), and a prerelease's `> **Pre-release.**` caveat blockquote (picking
+   the single biggest open gap to headline is a judgement call, not an extraction).
+2. Verify the release page has all expected artifacts, and that the notes render and read well.
+3. **The four packaging manifests bump themselves.** Once `github-release` has published the
+   release and uploaded every asset, the `manifest-bump` job calls
+   [`.github/workflows/manifest-bump.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/manifest-bump.yml),
+   which downloads the release's own source tarball and (where they exist)
+   `ac3forge-*-Darwin.dmg`/`ac3forge-*-win64.zip`, computes the digests each manifest needs,
+   cross-checks the two platform-asset digests against the release's published `SHA512SUMS` (the
+   source tarball has none to check against - see that workflow's own comments), and opens a PR
+   bumping [vcpkg port](#vcpkg-port), [Homebrew formula and cask](#homebrew-formula-and-cask),
+   [winget manifest](#winget-manifest) and [Conan recipe](#conan-recipe) together. It also pushes
+   the Formula/Cask straight to the live `iainchesworthlabs/homebrew-ac3forge` tap, if
+   `HOMEBREW_TAP_TOKEN` is provisioned (see below) - that tap has no review gate of its own, same
+   as a maintainer copying the file in and pushing by hand used to.
 
-4. Verify the release page has all expected artifacts, and that the curated notes render and
-   read well.
-5. Bump the four packaging manifests - each has its own **Every release tag** steps below, and
-   none of them happen automatically:
-   [vcpkg port](#vcpkg-port), [Homebrew formula and cask](#homebrew-formula-and-cask),
-   [winget manifest](#winget-manifest), [Conan recipe](#conan-recipe). Nothing in CI checks these
-   against the latest tag, so a release is not actually done until all four point at it - three
-   were caught stale for a full release cycle before this line existed.
+   Merging that PR is still a separate, reviewed step - this closes the gap between "tagged" and
+   "the bump has started", not the whole gap, which is why
+   `tools/checks/check_packaging_versions.sh`'s latest-tag advisory (below) stays a warning, not
+   a hard gate. What is **not** automated, because it means writing to a repository this project
+   does not own: each manifest's own **Every release tag** section below still lists a follow-up
+   PR to `microsoft/vcpkg` (once the port is merged upstream), `conan-center-index` (once the
+   recipe is merged upstream) or `microsoft/winget-pkgs`, plus Homebrew's local, macOS-only
+   `brew audit`/`brew install --build-from-source`/`brew test` validation - there is no Homebrew,
+   and no macOS runner, on any of this project's CI.
+
+   **Testing this without cutting a release**: `manifest-bump.yml` is also directly
+   `workflow_dispatch`-able (Actions > Manifest Bump > Run workflow), with `dry_run: true` by
+   default. Point it at any already-shipped tag (e.g. the current latest) to exercise the full
+   download/digest/cross-check pipeline and see the manifest diffs it would produce, with nothing
+   written, committed, pushed or opened - this is release-path automation that otherwise cannot
+   be exercised except by shipping a real release.
+
+   **`HOMEBREW_TAP_TOKEN`** (optional): a fine-grained GitHub PAT scoped to `Contents: Read and
+   write` on `iainchesworthlabs/homebrew-ac3forge` only. Without it, the tap push step warns and
+   skips cleanly - the in-tree PR still opens - and the PR body says so. Add it the same way as
+   any other repo secret (Settings > Secrets and variables > Actions); nobody but a human with
+   access to GitHub's secret store should ever generate or handle it. The in-tree PR itself needs
+   no new secret - it opens with the same built-in `GITHUB_TOKEN` every other job here already
+   uses - but does need "Allow GitHub Actions to create and approve pull requests" enabled under
+   Settings > Actions > General > Workflow permissions, if it is not already.
+4. `tools/checks/check_packaging_versions.sh -r .` also carries a latest-tag advisory now (still
+   run as `ci.yml`'s `packaging-consistency` job on every push): a `::warning::`, never a failure,
+   per manifest that does not yet match the latest tag - see that script's own header for why
+   this stayed a warning rather than becoming a hard gate.
 
 ## vcpkg port
 
@@ -185,7 +221,9 @@ feature to `packaging/vcpkg-port/ac3forge/vcpkg.json` and one line to `portfile.
 
 **Every release tag, once the port has been merged upstream**, needs a follow-up PR to
 `microsoft/vcpkg` - the curated registry has no mechanism to track a moving `main`, so a new
-`ac3forge` release is invisible to `vcpkg install` until this happens:
+`ac3forge` release is invisible to `vcpkg install` until this happens. Step 1 below is now done
+by [`manifest-bump.yml`'s PR](#post-release) (roadmap DR2) rather than by hand; steps 2-3 still
+are, since they write to a repository this project does not own:
 
 1. Bump `packaging/vcpkg-port/ac3forge/vcpkg.json`'s `version-semver` to the new tag, and
    `portfile.cmake`'s `vcpkg_from_github()` `REF`/`SHA512` to match (`sha512sum` the tag's
@@ -283,7 +321,10 @@ once [GUI on macOS](platforms/macos.md#gui-on-macos) landed - so the cask's `ver
 are now pinned from a real release rather than placeholders; see the cask file's own header
 comment.
 
-**Every release tag** needs a follow-up update to the formula, same shape as the vcpkg port's:
+**Every release tag** needs a follow-up update to the formula, same shape as the vcpkg port's.
+Steps 1 and 3 are now done by [`manifest-bump.yml`'s PR and tap push](#post-release) (roadmap
+DR2) rather than by hand - step 2, local `brew` validation, still is, since there is no Homebrew
+on any of this project's CI runners:
 
 1. Bump `packaging/homebrew/Formula/ac3forge.rb`'s `url` to the new tag and `sha256` to match
    (`sha256sum` the tag's release tarball - the same tarball the vcpkg port's `SHA512` already
@@ -344,7 +385,10 @@ later fix made possible. Never rewrite an already-published version directory to
 installer that release never produced.
 
 **Every release tag** needs a new version directory, since winget-pkgs versions each release
-independently rather than tracking a moving tag the way vcpkg's `version-semver` does:
+independently rather than tracking a moving tag the way vcpkg's `version-semver` does. Steps 1-2
+are now done by [`manifest-bump.yml`'s PR](#post-release) (roadmap DR2), which renders all three
+files fresh from a template rather than copying the previous version directory - step 3, local
+`winget validate`, still needs a human with the `winget` CLI:
 
 1. Copy `packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<prev-version>/` to a new
    `<new-version>/` directory, updating `PackageVersion` in all three files to match.
@@ -387,7 +431,8 @@ at the config `cmake/InstallLibrary.cmake` already installs - see `conanfile.py`
 
 **Every release tag**, once the recipe has been merged upstream, needs a follow-up PR to
 `conan-center-index` - ConanCenter has no mechanism to track a moving `main` either, same as
-vcpkg's curated registry:
+vcpkg's curated registry. Step 1 is now done by [`manifest-bump.yml`'s PR](#post-release)
+(roadmap DR2) rather than by hand; steps 2-3 still are:
 
 1. Add a new entry to `packaging/conan/conandata.yml`'s `sources` map, keyed by the new
    version, with the tag's release tarball `url` and `sha256` (same tarball the vcpkg port's
@@ -513,7 +558,10 @@ signing key is provisioned (next section); their absence doesn't block a release
 ## Provisioning the GPG signing key (optional, one-time)
 
 GPG signing is off by default - the release workflow checks whether `REPO_GPG_PRIVATE_KEY` is
-set and skips the signing steps cleanly if it isn't. **Nobody should ever paste a private key
+set and skips the signing steps cleanly if it isn't. The `SHA512SUMS` manifest itself is
+generated either way, unconditionally, in its own step ahead of the GPG-gated one - GPG only adds
+a detached signature over it and over each artifact; `manifest-bump.yml` (roadmap DR2) depends on
+`SHA512SUMS` existing for every release, signed or not. **Nobody should ever paste a private key
 into chat with an agent, or ask one to generate/handle key material** - do this yourself,
 locally:
 

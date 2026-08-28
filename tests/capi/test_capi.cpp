@@ -17,6 +17,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +26,7 @@
 #include <string_view>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3forge_c/ac3forge.h"
@@ -212,10 +214,19 @@ TEST_CASE("ac3forge_decoder_decode_frame reports the same errors ac3::FrameDecod
     ac3forge_decoder_config_t config;
     ac3forge_decoder_config_init(&config);
     ac3forge_decoder_t* decoder = nullptr;
+    CHECK(ac3forge_decoder_create(nullptr, &decoder) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_create(&config, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(decoder == nullptr);
     REQUIRE(ac3forge_decoder_create(&config, &decoder) == AC3FORGE_OK);
 
     const std::vector<uint8_t> garbage(16, 0xAB);
     ac3forge_decoded_frame_t* decoded = nullptr;
+    CHECK(ac3forge_decoder_decode_frame(nullptr, garbage.data(), garbage.size(), &decoded) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame(decoder, nullptr, 0, &decoded) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame(decoder, garbage.data(), garbage.size(), nullptr) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
     const auto status =
         ac3forge_decoder_decode_frame(decoder, garbage.data(), garbage.size(), &decoded);
     // Not asserting which specific DecodeError this garbage maps to - that's an
@@ -1147,7 +1158,13 @@ TEST_CASE("every ac3forge status code carries its own message", "[capi]") {
                                            AC3FORGE_ERROR_DECODE_BAD_CRC,
                                            AC3FORGE_ERROR_DECODE_RESERVED_VALUE,
                                            AC3FORGE_ERROR_DECODE_UNSUPPORTED,
-                                           AC3FORGE_ERROR_DECODE_INVALID_STREAM};
+                                           AC3FORGE_ERROR_DECODE_INVALID_STREAM,
+                                           AC3FORGE_ERROR_SCAN_EMPTY,
+                                           AC3FORGE_ERROR_SCAN_LOST_SYNC,
+                                           AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID,
+                                           AC3FORGE_ERROR_SCAN_RESERVED_VALUE,
+                                           AC3FORGE_ERROR_SCAN_TRUNCATED,
+                                           AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE};
     for (const auto code : codes) {
         const char* message = ac3forge_status_message(code);
         REQUIRE(message != nullptr);
@@ -1570,4 +1587,985 @@ TEST_CASE("the C latency accessors tolerate null the way the rest of the surface
     ac3forge_atmos_encoder_bed_latency(nullptr, &sentinel);
     CHECK(sentinel.frame_samples == -7);
     CHECK(sentinel.holdback_samples == -7);
+}
+
+// --- decode_frame_into / decode_access_unit_into (roadmap AP5) -----------
+
+TEST_CASE("ac3forge_decoder_decode_frame_into writes the same samples the value form allocates",
+          "[capi]") {
+    ac3forge_encoder_config_t encoder_config;
+    ac3forge_encoder_config_init(&encoder_config);
+    encoder_config.bitrate_kbps = 192;
+    encoder_config.acmod = AC3FORGE_ACMOD_2_0;
+
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&encoder_config, &encoder) == AC3FORGE_OK);
+    REQUIRE(ac3forge_encoder_channel_count(encoder) == 2);
+
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_decoder_t* value_decoder = nullptr;
+    ac3forge_decoder_t* into_decoder = nullptr;
+    REQUIRE(ac3forge_decoder_create(&decoder_config, &value_decoder) == AC3FORGE_OK);
+    REQUIRE(ac3forge_decoder_create(&decoder_config, &into_decoder) == AC3FORGE_OK);
+
+    std::array<std::vector<float>, AC3FORGE_DECODER_MAX_CHANNELS> into_storage;
+    for (auto& v : into_storage) v.assign(AC3FORGE_SAMPLES_PER_FRAME, -99.0f);
+    std::array<float*, AC3FORGE_DECODER_MAX_CHANNELS> into_ptrs{};
+    for (std::size_t i = 0; i < into_storage.size(); ++i) into_ptrs[i] = into_storage[i].data();
+
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+
+    for (int frame = 0; frame < 4; ++frame) {
+        fill_tone(left.data(), 1000.0, frame, 48000.0);
+        fill_tone(right.data(), 800.0, frame, 48000.0);
+        const float* channels[2] = {left.data(), right.data()};
+
+        ac3forge_bytes_t* encoded = nullptr;
+        REQUIRE(ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                               &encoded) == AC3FORGE_OK);
+
+        ac3forge_decoded_frame_t* value_result = nullptr;
+        REQUIRE(ac3forge_decoder_decode_frame(value_decoder, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded),
+                                              &value_result) == AC3FORGE_OK);
+        REQUIRE(value_result != nullptr);
+        REQUIRE(ac3forge_decoded_frame_channel_count(value_result) == 2);
+
+        ac3forge_decoded_frame_t* into_result = nullptr;
+        REQUIRE(ac3forge_decoder_decode_frame_into(
+                    into_decoder, ac3forge_bytes_data(encoded), ac3forge_bytes_size(encoded),
+                    into_ptrs.data(), AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                    &into_result) == AC3FORGE_OK);
+        REQUIRE(into_result != nullptr);
+
+        // The _into form's own handle carries every field EXCEPT the PCM.
+        CHECK(ac3forge_decoded_frame_channel_count(into_result) == 0);
+        CHECK(ac3forge_decoded_frame_acmod(into_result) == ac3forge_decoded_frame_acmod(value_result));
+        CHECK(ac3forge_decoded_frame_dialnorm(into_result) ==
+              ac3forge_decoded_frame_dialnorm(value_result));
+
+        for (std::size_t ch = 0; ch < 2; ++ch) {
+            const float* expected = ac3forge_decoded_frame_channel_samples(value_result, ch);
+            REQUIRE(expected != nullptr);
+            for (int n = 0; n < AC3FORGE_SAMPLES_PER_FRAME; ++n) {
+                CHECK(into_storage[ch][static_cast<std::size_t>(n)] == expected[n]);
+            }
+        }
+        // This layout codes only 2 of the 6 documented spans; the rest stay
+        // exactly the sentinel they started as.
+        for (std::size_t ch = 2; ch < AC3FORGE_DECODER_MAX_CHANNELS; ++ch) {
+            CHECK(into_storage[ch][0] == -99.0f);
+        }
+
+        ac3forge_decoded_frame_destroy(value_result);
+        ac3forge_decoded_frame_destroy(into_result);
+        ac3forge_bytes_destroy(encoded);
+    }
+
+    ac3forge_decoder_destroy(value_decoder);
+    ac3forge_decoder_destroy(into_decoder);
+    ac3forge_encoder_destroy(encoder);
+}
+
+TEST_CASE(
+    "ac3forge_decoder_decode_frame_into rejects bad arguments and a mismatched channel/sample count",
+    "[capi]") {
+    ac3forge_encoder_config_t encoder_config;
+    ac3forge_encoder_config_init(&encoder_config);
+    encoder_config.acmod = AC3FORGE_ACMOD_2_0;
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&encoder_config, &encoder) == AC3FORGE_OK);
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME, 0.1f);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME, 0.1f);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_bytes_t* encoded = nullptr;
+    REQUIRE(ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                          &encoded) == AC3FORGE_OK);
+    ac3forge_encoder_destroy(encoder);
+
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_decoder_create(&decoder_config, &decoder) == AC3FORGE_OK);
+
+    std::array<std::vector<float>, AC3FORGE_DECODER_MAX_CHANNELS> storage;
+    for (auto& v : storage) v.assign(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    std::array<float*, AC3FORGE_DECODER_MAX_CHANNELS> ptrs{};
+    for (std::size_t i = 0; i < storage.size(); ++i) ptrs[i] = storage[i].data();
+
+    ac3forge_decoded_frame_t* out = nullptr;
+    CHECK(ac3forge_decoder_decode_frame_into(nullptr, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded), ptrs.data(),
+                                              AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                                              &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame_into(decoder, nullptr, 0, ptrs.data(),
+                                              AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                                              &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame_into(decoder, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded), nullptr,
+                                              AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                                              &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame_into(decoder, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded), ptrs.data(),
+                                              AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                                              nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    // Too few spans - the caller must always supply the documented maximum,
+    // not merely enough for this particular frame.
+    CHECK(ac3forge_decoder_decode_frame_into(decoder, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded), ptrs.data(), 2,
+                                              AC3FORGE_SAMPLES_PER_FRAME,
+                                              &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_decoder_decode_frame_into(decoder, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded), ptrs.data(),
+                                              AC3FORGE_DECODER_MAX_CHANNELS,
+                                              AC3FORGE_SAMPLES_PER_FRAME / 2,
+                                              &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    ptrs[0] = nullptr;
+    CHECK(ac3forge_decoder_decode_frame_into(decoder, ac3forge_bytes_data(encoded),
+                                              ac3forge_bytes_size(encoded), ptrs.data(),
+                                              AC3FORGE_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                                              &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(out == nullptr);
+    ptrs[0] = storage[0].data();
+
+    // A genuine bitstream failure reports a decode-error code, same as the
+    // value form does - not merely a mismatched-argument rejection.
+    const std::vector<uint8_t> garbage(16, 0xAB);
+    const auto status = ac3forge_decoder_decode_frame_into(
+        decoder, garbage.data(), garbage.size(), ptrs.data(), AC3FORGE_DECODER_MAX_CHANNELS,
+        AC3FORGE_SAMPLES_PER_FRAME, &out);
+    CHECK(status >= AC3FORGE_ERROR_DECODE_TRUNCATED);
+    CHECK(status <= AC3FORGE_ERROR_DECODE_INVALID_STREAM);
+    CHECK(out == nullptr);
+
+    ac3forge_bytes_destroy(encoded);
+    ac3forge_decoder_destroy(decoder);
+}
+
+TEST_CASE(
+    "ac3forge_eac3_decoder_decode_access_unit_into writes the same programme the value form "
+    "allocates",
+    "[capi][eac3]") {
+    // 5.1.2, same layout as the dependent-substream test above - eight
+    // rendered channels out of the sixteen documented spans, so the unused
+    // trailing spans staying untouched is exercised for real.
+    const ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+        .dependents = {{.bitrate_kbps = 192,
+                        .acmod = ac3::Acmod::k2_0,
+                        .chanmap = ac3::eac3::chanmap::k512Height}}};
+    ac3::eac3::AccessUnitEncoder encoder{config};
+    REQUIRE(encoder.channel_count() == 8);
+
+    const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
+    std::vector<std::vector<float>> block(8, std::vector<float>(AC3FORGE_SAMPLES_PER_FRAME));
+    std::vector<std::span<const float>> views(8);
+    std::vector<uint8_t> stream;
+    for (int frame = 0; frame < 3; ++frame) {
+        for (std::size_t ch = 0; ch < 8; ++ch) {
+            fill_tone(block[ch].data(), tones[ch], frame, 48000.0);
+            views[ch] = block[ch];
+        }
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        const auto* data = reinterpret_cast<const uint8_t*>(unit->bytes.data());
+        stream.insert(stream.end(), data, data + unit->bytes.size());
+    }
+
+    ac3forge_spans_t* units = nullptr;
+    REQUIRE(ac3forge_split_access_units(stream.data(), stream.size(), &units) == AC3FORGE_OK);
+    REQUIRE(ac3forge_spans_count(units) == 3);
+
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_eac3_decoder_t* value_decoder = nullptr;
+    ac3forge_eac3_decoder_t* into_decoder = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&decoder_config, &value_decoder) == AC3FORGE_OK);
+    REQUIRE(ac3forge_eac3_decoder_create(&decoder_config, &into_decoder) == AC3FORGE_OK);
+
+    std::array<std::vector<float>, AC3FORGE_EAC3_DECODER_MAX_CHANNELS> into_storage;
+    for (auto& v : into_storage) v.assign(AC3FORGE_SAMPLES_PER_FRAME, -99.0f);
+    std::array<float*, AC3FORGE_EAC3_DECODER_MAX_CHANNELS> into_ptrs{};
+    for (std::size_t i = 0; i < into_storage.size(); ++i) into_ptrs[i] = into_storage[i].data();
+
+    for (std::size_t i = 0; i < ac3forge_spans_count(units); ++i) {
+        const auto span = ac3forge_spans_get(units, i);
+
+        ac3forge_decoded_access_unit_t* value_result = nullptr;
+        REQUIRE(ac3forge_eac3_decoder_decode_access_unit(value_decoder, stream.data() + span.offset,
+                                                         span.length,
+                                                         &value_result) == AC3FORGE_OK);
+        REQUIRE(value_result != nullptr);
+        REQUIRE(ac3forge_decoded_access_unit_channel_count(value_result) == 8);
+
+        ac3forge_decoded_access_unit_t* into_result = nullptr;
+        REQUIRE(ac3forge_eac3_decoder_decode_access_unit_into(
+                    into_decoder, stream.data() + span.offset, span.length, into_ptrs.data(),
+                    AC3FORGE_EAC3_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+                    &into_result) == AC3FORGE_OK);
+        REQUIRE(into_result != nullptr);
+        CHECK(ac3forge_decoded_access_unit_channel_count(into_result) == 0);
+        CHECK(ac3forge_decoded_access_unit_substream_count(into_result) ==
+              ac3forge_decoded_access_unit_substream_count(value_result));
+
+        for (std::size_t ch = 0; ch < 8; ++ch) {
+            const float* expected = ac3forge_decoded_access_unit_channel_samples(value_result, ch);
+            REQUIRE(expected != nullptr);
+            for (int n = 0; n < AC3FORGE_SAMPLES_PER_FRAME; ++n) {
+                CHECK(into_storage[ch][static_cast<std::size_t>(n)] == expected[n]);
+            }
+        }
+        for (std::size_t ch = 8; ch < AC3FORGE_EAC3_DECODER_MAX_CHANNELS; ++ch) {
+            CHECK(into_storage[ch][0] == -99.0f);
+        }
+
+        ac3forge_decoded_access_unit_destroy(value_result);
+        ac3forge_decoded_access_unit_destroy(into_result);
+    }
+
+    ac3forge_eac3_decoder_destroy(value_decoder);
+    ac3forge_eac3_decoder_destroy(into_decoder);
+    ac3forge_spans_destroy(units);
+}
+
+TEST_CASE(
+    "ac3forge_eac3_decoder_decode_access_unit_into leaves the spans untouched across a hold-back "
+    "and releases identically",
+    "[capi][eac3][transient_prenoise]") {
+    // Mirrors tests/decoder/test_eac3_decoder.cpp's C++ test of the same name -
+    // see the C API's own version of this table on the AC-3 flush test above
+    // for what the silent/transient split is standing in for.
+    ac3::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .transient_prenoise = true}};
+
+    ac3forge_decoder_config_t config;
+    ac3forge_decoder_config_init(&config);
+    ac3forge_eac3_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&config, &decoder) == AC3FORGE_OK);
+
+    std::array<std::vector<float>, AC3FORGE_EAC3_DECODER_MAX_CHANNELS> storage;
+    for (auto& v : storage) v.assign(AC3FORGE_SAMPLES_PER_FRAME, -99.0f);
+    std::array<float*, AC3FORGE_EAC3_DECODER_MAX_CHANNELS> ptrs{};
+    for (std::size_t i = 0; i < storage.size(); ++i) ptrs[i] = storage[i].data();
+
+    const std::vector<float> silence(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    const std::vector<std::span<const float>> silent_views{silence, silence};
+    const auto decode_one = [&](const std::vector<std::byte>& frame,
+                                ac3forge_decoded_access_unit_t** out) {
+        return ac3forge_eac3_decoder_decode_access_unit_into(
+            decoder, reinterpret_cast<const uint8_t*>(frame.data()), frame.size(), ptrs.data(),
+            AC3FORGE_EAC3_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME, out);
+    };
+
+    for (int f = 0; f < 2; ++f) {
+        const auto frame = encoder.encode_frame(silent_views);
+        REQUIRE(frame.has_value());
+        ac3forge_decoded_access_unit_t* unit = nullptr;
+        REQUIRE(decode_one(*frame, &unit) == AC3FORGE_OK);
+        REQUIRE(unit != nullptr);
+        ac3forge_decoded_access_unit_destroy(unit);
+    }
+
+    constexpr int kOnset = 960;
+    std::vector<float> transient(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    for (int n = kOnset; n < AC3FORGE_SAMPLES_PER_FRAME; ++n) {
+        transient[static_cast<std::size_t>(n)] = static_cast<float>(
+            0.9 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
+    }
+    const std::vector<std::span<const float>> transient_views{transient, transient};
+    const auto transient_frame = encoder.encode_frame(transient_views);
+    REQUIRE(transient_frame.has_value());
+
+    // Sentinel-fill right before the held-back call, so any write at all -
+    // partial or full - would be caught.
+    for (auto& v : storage) std::ranges::fill(v, -77.0f);
+
+    ac3forge_decoded_access_unit_t* held = nullptr;
+    REQUIRE(decode_one(*transient_frame, &held) == AC3FORGE_OK);
+    CHECK(held == nullptr);
+    for (const auto& v : storage) {
+        for (float sample : v) {
+            CHECK(sample == -77.0f);
+        }
+    }
+
+    // The releasing call writes real audio through the same spans.
+    const auto after = encoder.encode_frame(silent_views);
+    REQUIRE(after.has_value());
+    ac3forge_decoded_access_unit_t* released = nullptr;
+    REQUIRE(decode_one(*after, &released) == AC3FORGE_OK);
+    REQUIRE(released != nullptr);
+    CHECK(ac3forge_decoded_access_unit_channel_count(released) == 0);
+    bool any_written = false;
+    for (std::size_t ch = 0; ch < 2; ++ch) {
+        for (float sample : storage[ch]) {
+            if (sample != -77.0f) any_written = true;
+        }
+    }
+    CHECK(any_written);
+    ac3forge_decoded_access_unit_destroy(released);
+
+    ac3forge_eac3_decoder_destroy(decoder);
+}
+
+TEST_CASE(
+    "ac3forge_eac3_decoder_decode_access_unit_into rejects bad arguments and a mismatched "
+    "channel/sample count",
+    "[capi][eac3]") {
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    const auto stream = encode_eac3_stream(encoder, {1000.0, 800.0}, 1);
+
+    ac3forge_decoder_config_t config;
+    ac3forge_decoder_config_init(&config);
+    ac3forge_eac3_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&config, &decoder) == AC3FORGE_OK);
+
+    std::array<std::vector<float>, AC3FORGE_EAC3_DECODER_MAX_CHANNELS> storage;
+    for (auto& v : storage) v.assign(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    std::array<float*, AC3FORGE_EAC3_DECODER_MAX_CHANNELS> ptrs{};
+    for (std::size_t i = 0; i < storage.size(); ++i) ptrs[i] = storage[i].data();
+
+    ac3forge_decoded_access_unit_t* out = nullptr;
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(
+              nullptr, stream.bytes.data(), stream.bytes.size(), ptrs.data(),
+              AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+              AC3FORGE_SAMPLES_PER_FRAME, &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(decoder, nullptr, 0, ptrs.data(),
+                                                         AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+                                                         AC3FORGE_SAMPLES_PER_FRAME,
+                                                         &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(
+              decoder, stream.bytes.data(), stream.bytes.size(), nullptr,
+              AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+              AC3FORGE_SAMPLES_PER_FRAME, &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(
+              decoder, stream.bytes.data(), stream.bytes.size(), ptrs.data(),
+              AC3FORGE_EAC3_DECODER_MAX_CHANNELS, AC3FORGE_SAMPLES_PER_FRAME,
+              nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(
+              decoder, stream.bytes.data(), stream.bytes.size(), ptrs.data(), 4,
+              AC3FORGE_SAMPLES_PER_FRAME, &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(
+              decoder, stream.bytes.data(), stream.bytes.size(), ptrs.data(),
+              AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+              AC3FORGE_SAMPLES_PER_FRAME / 2, &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    ptrs[0] = nullptr;
+    CHECK(ac3forge_eac3_decoder_decode_access_unit_into(
+              decoder, stream.bytes.data(), stream.bytes.size(), ptrs.data(),
+              AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+              AC3FORGE_SAMPLES_PER_FRAME, &out) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(out == nullptr);
+    ptrs[0] = storage[0].data();
+
+    // A genuine bitstream failure reports a decode-error code, same as the
+    // value form does - not merely a mismatched-argument rejection.
+    const std::vector<uint8_t> garbage(16, 0xAB);
+    const auto status = ac3forge_eac3_decoder_decode_access_unit_into(
+        decoder, garbage.data(), garbage.size(), ptrs.data(), AC3FORGE_EAC3_DECODER_MAX_CHANNELS,
+        AC3FORGE_SAMPLES_PER_FRAME, &out);
+    CHECK(status >= AC3FORGE_ERROR_DECODE_TRUNCATED);
+    CHECK(status <= AC3FORGE_ERROR_DECODE_INVALID_STREAM);
+    CHECK(out == nullptr);
+
+    ac3forge_eac3_decoder_destroy(decoder);
+}
+
+// --- scan / ScannedStream (roadmap AP5) -----------------------------------
+
+TEST_CASE("ac3forge_scan reports the same shape ac3::io::scan does for an AC-3 stream",
+          "[capi][scan]") {
+    ac3forge_encoder_config_t config;
+    ac3forge_encoder_config_init(&config);
+    config.acmod = AC3FORGE_ACMOD_2_0;
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&config, &encoder) == AC3FORGE_OK);
+
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<uint8_t> stream;
+    for (int frame = 0; frame < 3; ++frame) {
+        fill_tone(left.data(), 1000.0, frame, 48000.0);
+        fill_tone(right.data(), 800.0, frame, 48000.0);
+        const float* channels[2] = {left.data(), right.data()};
+        ac3forge_bytes_t* encoded = nullptr;
+        REQUIRE(ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                               &encoded) == AC3FORGE_OK);
+        const auto* data = ac3forge_bytes_data(encoded);
+        stream.insert(stream.end(), data, data + ac3forge_bytes_size(encoded));
+        ac3forge_bytes_destroy(encoded);
+    }
+    ac3forge_encoder_destroy(encoder);
+
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    REQUIRE(ac3forge_scan(stream.data(), stream.size(), &scanned) == AC3FORGE_OK);
+    REQUIRE(scanned != nullptr);
+
+    CHECK(ac3forge_scanned_stream_kind(scanned) == AC3FORGE_STREAM_KIND_AC3);
+    CHECK(ac3forge_scanned_stream_sample_rate(scanned) == AC3FORGE_SAMPLE_RATE_48000);
+    CHECK(ac3forge_scanned_stream_acmod(scanned) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_lfe(scanned) == 0);
+    CHECK(ac3forge_scanned_stream_channels(scanned) == 2);
+    CHECK(ac3forge_scanned_stream_substreams_per_unit(scanned) == 1);
+    CHECK(ac3forge_scanned_stream_bsid(scanned) <= 8);
+    CHECK(ac3forge_scanned_stream_bsmod(scanned) == 0);  // no bsmod configured
+    CHECK(ac3forge_scanned_stream_bit_rate_code(scanned) < 19);  // Table 5.18 has 19 entries
+    CHECK(ac3forge_scanned_stream_bsmod_present(scanned) == 1);  // AC-3 always transmits bsmod
+    CHECK(ac3forge_scanned_stream_dsurmod(scanned) == 0);  // not indicated for a 2/0 stream
+    CHECK(ac3forge_scanned_stream_mix_metadata(scanned) == 0);
+    CHECK(ac3forge_scanned_stream_independent_substreams(scanned) == 0);  // AC-3 has no substreams
+    CHECK(ac3forge_scanned_stream_has_oba_complexity_index(scanned) == 0);  // no Atmos container
+    CHECK(ac3forge_scanned_stream_oba_complexity_index(scanned) == 0);
+
+    REQUIRE(ac3forge_scanned_stream_access_unit_count(scanned) == 3);
+    std::size_t offset_sum = 0;
+    for (std::size_t i = 0; i < 3; ++i) {
+        const auto span = ac3forge_scanned_stream_access_unit(scanned, i);
+        CHECK(span.offset == offset_sum);
+        CHECK(span.length > 0);
+        CHECK(ac3forge_scanned_stream_access_unit_samples(scanned, i) == AC3FORGE_SAMPLES_PER_FRAME);
+        offset_sum += span.length;
+    }
+    CHECK(offset_sum == stream.size());
+    CHECK(ac3forge_scanned_stream_access_unit(scanned, 3).length == 0);  // out of range
+    CHECK(ac3forge_scanned_stream_access_unit_samples(scanned, 3) == 0);  // out of range
+
+    // AC-3 has no independent substream 1-3 to be an associated one - both a
+    // present-but-unseen index and an out-of-range one take the same default.
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod_present(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_acmod(scanned, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_associated_substream_lfe(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_mix_metadata(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, -1) == 0);  // out of range
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 3) == 0);   // out of range
+
+    REQUIRE(ac3forge_scanned_stream_programme_count(scanned) == 1);
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_lfe(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_bsid(scanned, 0) <= 8);
+    CHECK(ac3forge_scanned_stream_programme_bsmod(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 0) == 1);
+    CHECK(ac3forge_scanned_stream_programme_has_oba_complexity_index(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_oba_complexity_index(scanned, 0) == 0);
+    REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 0) == 3);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 0).offset == 0);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 3).length == 0);  // out of range
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 1, 0).length == 0);  // no 2nd programme
+    CHECK(ac3forge_scanned_stream_programme_access_unit_count(scanned, 1) == 0);      // no 2nd programme
+    // Every programme_* accessor takes its no-such-programme default the same way.
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 1) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_lfe(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsid(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsmod(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_has_oba_complexity_index(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_programme_oba_complexity_index(scanned, 1) == 0);
+
+    CHECK(ac3forge_scanned_stream_duration_samples(scanned) == 3 * AC3FORGE_SAMPLES_PER_FRAME);
+    uint32_t uniform = 0;
+    REQUIRE(ac3forge_scanned_stream_uniform_access_unit_samples(scanned, &uniform) == 1);
+    CHECK(uniform == AC3FORGE_SAMPLES_PER_FRAME);
+
+    uint64_t start = 999;
+    uint32_t duration = 0;
+    uint32_t rate = 0;
+    REQUIRE(ac3forge_scanned_stream_access_unit_timing(scanned, 1, &start, &duration, &rate) == 1);
+    CHECK(start == AC3FORGE_SAMPLES_PER_FRAME);
+    CHECK(duration == AC3FORGE_SAMPLES_PER_FRAME);
+    CHECK(rate == 48000);
+    CHECK(ac3forge_scanned_stream_access_unit_timing(scanned, 3, nullptr, nullptr, nullptr) == 0);
+
+    std::size_t index = 999;
+    REQUIRE(ac3forge_scanned_stream_access_unit_at_sample(scanned, AC3FORGE_SAMPLES_PER_FRAME,
+                                                           &index) == 1);
+    CHECK(index == 1);
+    CHECK(ac3forge_scanned_stream_access_unit_at_sample(
+              scanned, 3u * AC3FORGE_SAMPLES_PER_FRAME, &index) == 0);
+
+    index = 999;
+    REQUIRE(ac3forge_scanned_stream_access_unit_at_seconds(scanned, 0.0, &index) == 1);
+    CHECK(index == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_at_seconds(scanned, 999.0, &index) == 0);
+
+    ac3forge_scanned_stream_destroy(scanned);
+}
+
+TEST_CASE(
+    "ac3forge_scan reports programme and substream detail for an E-AC-3 access unit with a "
+    "dependent",
+    "[capi][scan][eac3]") {
+    const ac3::eac3::AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+        .dependents = {{.bitrate_kbps = 192,
+                        .acmod = ac3::Acmod::k2_0,
+                        .chanmap = ac3::eac3::chanmap::k512Height}}};
+    ac3::eac3::AccessUnitEncoder encoder{config};
+    REQUIRE(encoder.channel_count() == 8);
+
+    const std::vector<double> tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0, 2000.0, 1300.0};
+    std::vector<std::vector<float>> block(8, std::vector<float>(AC3FORGE_SAMPLES_PER_FRAME));
+    std::vector<std::span<const float>> views(8);
+    std::vector<uint8_t> stream;
+    for (int frame = 0; frame < 2; ++frame) {
+        for (std::size_t ch = 0; ch < 8; ++ch) {
+            fill_tone(block[ch].data(), tones[ch], frame, 48000.0);
+            views[ch] = block[ch];
+        }
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        const auto* data = reinterpret_cast<const uint8_t*>(unit->bytes.data());
+        stream.insert(stream.end(), data, data + unit->bytes.size());
+    }
+
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    REQUIRE(ac3forge_scan(stream.data(), stream.size(), &scanned) == AC3FORGE_OK);
+    REQUIRE(scanned != nullptr);
+
+    CHECK(ac3forge_scanned_stream_kind(scanned) == AC3FORGE_STREAM_KIND_EAC3);
+    CHECK(ac3forge_scanned_stream_acmod(scanned) == AC3FORGE_ACMOD_3_2);
+    CHECK(ac3forge_scanned_stream_lfe(scanned) == 1);
+    CHECK(ac3forge_scanned_stream_channels(scanned) == 8);  // bed + Vhl/Vhr folded in
+    CHECK(ac3forge_scanned_stream_substreams_per_unit(scanned) == 2);
+    CHECK(ac3forge_scanned_stream_channel_map(scanned) ==
+          (ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, true) | ac3::eac3::chanmap::k512Height));
+
+    REQUIRE(ac3forge_scanned_stream_access_unit_count(scanned) == 2);
+    CHECK(ac3forge_scanned_stream_access_unit(scanned, 0).offset == 0);
+
+    REQUIRE(ac3forge_scanned_stream_programme_count(scanned) == 1);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 0) == 8);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 0) == 2);
+    REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 0).offset ==
+          ac3forge_scanned_stream_access_unit(scanned, 0).offset);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 0).length ==
+          ac3forge_scanned_stream_access_unit(scanned, 0).length);
+
+    ac3forge_scanned_stream_destroy(scanned);
+}
+
+TEST_CASE(
+    "ac3forge_scan reports independent_substreams and associated-substream fields for a "
+    "multi-programme stream",
+    "[capi][scan][eac3]") {
+    // Two independent substreams (I0, I1), each its own single-syncframe
+    // programme - a broadcast "second service" (§5.4.2.2), not a dependent
+    // widening one bed. Concatenated frame by frame, the same wire shape
+    // ac3forge_split_access_units already delimits into four access units.
+    ac3::eac3::FrameEncoder programme0{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
+    ac3::eac3::FrameEncoder programme1{
+        {.bitrate_kbps = 96, .acmod = ac3::Acmod::k1_0, .substreamid = 1}};
+
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> centre(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<uint8_t> stream;
+    for (int frame = 0; frame < 2; ++frame) {
+        fill_tone(left.data(), 1000.0, frame, 48000.0);
+        fill_tone(right.data(), 800.0, frame, 48000.0);
+        fill_tone(centre.data(), 1200.0, frame, 48000.0);
+        const std::vector<std::span<const float>> views0{left, right};
+        const std::vector<std::span<const float>> views1{centre};
+
+        const auto frame0 = programme0.encode_frame(views0);
+        REQUIRE(frame0.has_value());
+        const auto* data0 = reinterpret_cast<const uint8_t*>(frame0->data());
+        stream.insert(stream.end(), data0, data0 + frame0->size());
+
+        const auto frame1 = programme1.encode_frame(views1);
+        REQUIRE(frame1.has_value());
+        const auto* data1 = reinterpret_cast<const uint8_t*>(frame1->data());
+        stream.insert(stream.end(), data1, data1 + frame1->size());
+    }
+
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    REQUIRE(ac3forge_scan(stream.data(), stream.size(), &scanned) == AC3FORGE_OK);
+    REQUIRE(scanned != nullptr);
+
+    // Bit 0 (substream 0) and bit 1 (substream 1) both seen somewhere in the stream.
+    CHECK(ac3forge_scanned_stream_independent_substreams(scanned) == 0x03);
+
+    REQUIRE(ac3forge_scanned_stream_programme_count(scanned) == 2);
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_bsid(scanned, 0) == 16);
+    REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 0) == 2);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 0, 0).offset == 0);
+
+    CHECK(ac3forge_scanned_stream_programme_substream_id(scanned, 1) == 1);
+    CHECK(ac3forge_scanned_stream_programme_acmod(scanned, 1) == AC3FORGE_ACMOD_1_0);
+    CHECK(ac3forge_scanned_stream_programme_channels(scanned, 1) == 1);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(scanned, 1) == 1);
+    REQUIRE(ac3forge_scanned_stream_programme_access_unit_count(scanned, 1) == 2);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(scanned, 1, 0).length > 0);
+
+    // Independent substream 1 (index 0 - substreams 1-3 map to indices 0-2) is
+    // a real, present associated substream; substreams 2 and 3 were never seen.
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 0) == 1);
+    CHECK(ac3forge_scanned_stream_associated_substream_acmod(scanned, 0) == AC3FORGE_ACMOD_1_0);
+    CHECK(ac3forge_scanned_stream_associated_substream_lfe(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod_present(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_mix_metadata(scanned, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 1) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(scanned, 2) == 0);
+
+    ac3forge_scanned_stream_destroy(scanned);
+}
+
+TEST_CASE("ac3forge_scan rejects bad arguments and reports ScanError codes", "[capi][scan]") {
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    CHECK(ac3forge_scan(nullptr, 0, &scanned) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    const std::vector<uint8_t> garbage(4, 0xAB);
+    CHECK(ac3forge_scan(garbage.data(), garbage.size(), nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+
+    CHECK(ac3forge_scan(garbage.data(), 0, &scanned) == AC3FORGE_ERROR_SCAN_EMPTY);
+    CHECK(scanned == nullptr);
+
+    const std::vector<uint8_t> no_sync(64, 0x00);  // no 0x0B77 anywhere in this buffer
+    CHECK(ac3forge_scan(no_sync.data(), no_sync.size(), &scanned) == AC3FORGE_ERROR_SCAN_LOST_SYNC);
+    CHECK(scanned == nullptr);
+
+    // A real frame cut short after its sync word: enough to find sync, not
+    // enough to hold the rest of bsi.
+    ac3forge_encoder_config_t config;
+    ac3forge_encoder_config_init(&config);
+    config.acmod = AC3FORGE_ACMOD_2_0;
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&config, &encoder) == AC3FORGE_OK);
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME, 0.1f);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME, 0.1f);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_bytes_t* encoded = nullptr;
+    REQUIRE(ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                          &encoded) == AC3FORGE_OK);
+    ac3forge_encoder_destroy(encoder);
+    // Not pinning which specific ScanError this lands on - same "the parser's
+    // own business" stance the C++ DecodeError tests above take - only that
+    // it is a real scan failure past the empty/lost-sync gate (scan() needs
+    // at least 6 bytes just to look for a sync word at all).
+    const auto status = ac3forge_scan(ac3forge_bytes_data(encoded), 8, &scanned);
+    CHECK(status >= AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID);
+    CHECK(status <= AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE);
+    CHECK(scanned == nullptr);
+    ac3forge_bytes_destroy(encoded);
+}
+
+// --- Loudness / level / QC metering (roadmap AP5) -------------------------
+
+TEST_CASE("ac3forge_loudness_meter measures a stereo tone", "[capi][loudness]") {
+    ac3forge_loudness_meter_t* meter = nullptr;
+    REQUIRE(ac3forge_loudness_meter_create(AC3FORGE_SAMPLE_RATE_48000, AC3FORGE_ACMOD_2_0, 0,
+                                           &meter) == AC3FORGE_OK);
+    REQUIRE(meter != nullptr);
+    CHECK(ac3forge_loudness_meter_channel_count(meter) == 2);
+    CHECK(ac3forge_loudness_meter_has_integrated_lkfs(meter) == 0);
+
+    // 100 frames of 1536 samples at 48 kHz is 3.2 s - enough for every window
+    // (400 ms momentary, 3 s short-term, and Loudness Range's own short-term
+    // population) to have something to report.
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    for (int frame = 0; frame < 100; ++frame) {
+        fill_tone(left.data(), 1000.0, frame, 48000.0);
+        fill_tone(right.data(), 1000.0, frame, 48000.0);
+        const float* channels[2] = {left.data(), right.data()};
+        REQUIRE(ac3forge_loudness_meter_push(meter, channels, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
+                AC3FORGE_OK);
+    }
+
+    REQUIRE(ac3forge_loudness_meter_has_integrated_lkfs(meter) == 1);
+    const double integrated = ac3forge_loudness_meter_integrated_lkfs(meter);
+    // A sanity bound on the C boundary's plumbing, not a re-derivation of
+    // BS.1770 - a 0.5-amplitude full-band tone reads well inside this band.
+    CHECK(integrated > -20.0);
+    CHECK(integrated < 0.0);
+
+    REQUIRE(ac3forge_loudness_meter_has_momentary_lkfs(meter) == 1);
+    CHECK(ac3forge_loudness_meter_momentary_lkfs(meter) < 0.0);
+    REQUIRE(ac3forge_loudness_meter_has_short_term_lkfs(meter) == 1);
+    CHECK(ac3forge_loudness_meter_short_term_lkfs(meter) < 0.0);
+    // A constant-amplitude tone has no loudness variation, so the gated
+    // population's 95th and 10th percentiles coincide: LRA reads ~0 LU.
+    REQUIRE(ac3forge_loudness_meter_has_loudness_range(meter) == 1);
+    CHECK(std::abs(ac3forge_loudness_meter_loudness_range(meter)) < 1.0);
+    REQUIRE(ac3forge_loudness_meter_has_true_peak_dbtp(meter) == 1);
+    CHECK(ac3forge_loudness_meter_true_peak_dbtp(meter) < 0.0);  // 0.5 amplitude, under full scale
+
+    ac3forge_loudness_meter_destroy(meter);
+}
+
+TEST_CASE("ac3forge_loudness_meter_create_for_chanmap mirrors the C++ Annex 3 constructor",
+          "[capi][loudness]") {
+    ac3forge_loudness_meter_t* meter = nullptr;
+    CHECK(ac3forge_loudness_meter_create_for_chanmap(AC3FORGE_SAMPLE_RATE_48000,
+                                                      AC3FORGE_CHANMAP_512_HEIGHT,
+                                                      nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    REQUIRE(ac3forge_loudness_meter_create_for_chanmap(
+                AC3FORGE_SAMPLE_RATE_48000, AC3FORGE_CHANMAP_512_HEIGHT, &meter) == AC3FORGE_OK);
+    REQUIRE(meter != nullptr);
+    CHECK(ac3forge_loudness_meter_channel_count(meter) == 2);  // Vhl, Vhr
+    ac3forge_loudness_meter_destroy(meter);
+
+    CHECK(ac3forge_loudness_meter_create_for_chanmap(AC3FORGE_SAMPLE_RATE_48000, 0, &meter) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+}
+
+TEST_CASE("ac3forge_loudness_meter_create/push reject bad arguments", "[capi][loudness]") {
+    ac3forge_loudness_meter_t* meter = nullptr;
+    CHECK(ac3forge_loudness_meter_create(AC3FORGE_SAMPLE_RATE_48000, AC3FORGE_ACMOD_2_0, 0,
+                                         nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    REQUIRE(ac3forge_loudness_meter_create(AC3FORGE_SAMPLE_RATE_48000, AC3FORGE_ACMOD_2_0, 0,
+                                           &meter) == AC3FORGE_OK);
+    CHECK(ac3forge_loudness_meter_push(nullptr, nullptr, 0, 0) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_loudness_meter_push(meter, nullptr, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    const float* channels[2] = {nullptr, nullptr};
+    CHECK(ac3forge_loudness_meter_push(meter, channels, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    ac3forge_loudness_meter_destroy(meter);
+}
+
+TEST_CASE("ac3forge_dialnorm_from_lkfs mirrors ac3::meta::dialnorm_from_lkfs", "[capi][loudness]") {
+    CHECK(ac3forge_dialnorm_from_lkfs(-24.0) == 24);
+    CHECK(ac3forge_dialnorm_from_lkfs(-1.0) == 1);
+    CHECK(ac3forge_dialnorm_from_lkfs(0.0) == 1);     // louder than -1 LKFS clamps
+    CHECK(ac3forge_dialnorm_from_lkfs(-40.0) == 31);  // quieter than -31 clamps
+}
+
+TEST_CASE("ac3forge_level_meter_ballistics_init matches MeterBallistics{}'s own defaults",
+          "[capi][levels]") {
+    ac3forge_level_meter_ballistics_t ballistics;
+    ac3forge_level_meter_ballistics_init(&ballistics);
+    CHECK(ballistics.rms_integration_ms == 300.0);
+    CHECK(ballistics.peak_decay_db_per_s == 20.0);
+    CHECK(ballistics.peak_hold_ms == 1200.0);
+
+    // A custom ballistics struct is honoured, not silently replaced with the
+    // defaults - faster RMS integration and peak decay than the default.
+    ballistics.rms_integration_ms = 50.0;
+    ballistics.peak_decay_db_per_s = 40.0;
+    ac3forge_level_meter_t* meter = nullptr;
+    REQUIRE(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 0, &ballistics, &meter) ==
+            AC3FORGE_OK);
+    REQUIRE(meter != nullptr);
+    ac3forge_level_meter_destroy(meter);
+}
+
+TEST_CASE("ac3forge_level_meter measures peak and RMS of a known tone", "[capi][levels]") {
+    ac3forge_level_meter_t* meter = nullptr;
+    REQUIRE(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 0, nullptr, &meter) ==
+            AC3FORGE_OK);
+    REQUIRE(meter != nullptr);
+    CHECK(ac3forge_level_meter_acmod(meter) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_level_meter_lfe(meter) == 0);
+    CHECK(ac3forge_level_meter_channel_count(meter) == 2);
+    CHECK(ac3forge_level_meter_sample_rate(meter) == 48000);
+
+    // A 0.5-amplitude sine peaks at -6.02 dBFS and never clips.
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    fill_tone(left.data(), 1000.0, 0, 48000.0);
+    fill_tone(right.data(), 1000.0, 0, 48000.0);
+    const float* channels[2] = {left.data(), right.data()};
+    REQUIRE(ac3forge_level_meter_process(meter, channels, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
+            AC3FORGE_OK);
+
+    const auto summary = ac3forge_level_meter_summary(meter, 0);
+    CHECK(std::abs(summary.peak - 0.5) < 0.01);
+    CHECK(std::abs(summary.peak_db - (-6.02)) < 0.1);
+    CHECK(summary.clipped_samples == 0);
+    CHECK(summary.samples == AC3FORGE_SAMPLES_PER_FRAME);
+    // Out of range takes the documented empty default.
+    const auto summary_out_of_range = ac3forge_level_meter_summary(meter, 99);
+    CHECK(summary_out_of_range.samples == 0);
+    CHECK(summary_out_of_range.peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
+
+    const auto level = ac3forge_level_meter_level(meter, 0);
+    CHECK(level.clipped == 0);
+    CHECK(level.peak_db < 0.0);
+    // Out of range takes the documented floor.
+    const auto out_of_range = ac3forge_level_meter_level(meter, 99);
+    CHECK(out_of_range.peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
+
+    ac3forge_level_meter_reset(meter);
+    const auto reset_summary = ac3forge_level_meter_summary(meter, 0);
+    CHECK(reset_summary.samples == 0);
+    CHECK(reset_summary.peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
+
+    ac3forge_level_meter_destroy(meter);
+}
+
+TEST_CASE("ac3forge_level_meter detects clipping and a wider explicit channel count",
+          "[capi][levels]") {
+    ac3forge_level_meter_t* meter = nullptr;
+    REQUIRE(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 4, nullptr, &meter) ==
+            AC3FORGE_OK);
+    CHECK(ac3forge_level_meter_channel_count(meter) == 4);  // wider than acmod's own 2
+
+    const std::vector<float> full_scale(AC3FORGE_SAMPLES_PER_FRAME, 1.0f);
+    const float* channels[1] = {full_scale.data()};
+    REQUIRE(ac3forge_level_meter_process(meter, channels, 1, AC3FORGE_SAMPLES_PER_FRAME) ==
+            AC3FORGE_OK);
+    const auto summary = ac3forge_level_meter_summary(meter, 0);
+    CHECK(summary.clipped_samples == AC3FORGE_SAMPLES_PER_FRAME);
+
+    ac3forge_level_meter_destroy(meter);
+}
+
+TEST_CASE("ac3forge_level_meter_process rejects bad arguments", "[capi][levels]") {
+    ac3forge_level_meter_t* meter = nullptr;
+    CHECK(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 0, nullptr, nullptr) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    REQUIRE(ac3forge_level_meter_create(AC3FORGE_ACMOD_2_0, 0, 48000, 0, nullptr, &meter) ==
+            AC3FORGE_OK);
+    CHECK(ac3forge_level_meter_process(nullptr, nullptr, 0, 0) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_level_meter_process(meter, nullptr, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    const float* channels[2] = {nullptr, nullptr};
+    CHECK(ac3forge_level_meter_process(meter, channels, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    ac3forge_level_meter_destroy(meter);
+}
+
+TEST_CASE("ac3forge_qc_preset/name/parse mirror ac3::meta::qc's table", "[capi][qc]") {
+    CHECK(ac3forge_qc_preset_count() == 5);
+
+    const auto atsc = ac3forge_qc_preset(AC3FORGE_QC_PRESET_ATSC_A85);
+    CHECK(atsc.target_lkfs == -24.0);
+    CHECK(atsc.tolerance_lu == 2.0);
+    CHECK(atsc.max_true_peak_dbtp == -2.0);
+    CHECK(atsc.loudness_limit == AC3FORGE_QC_LOUDNESS_BAND);
+    REQUIRE(atsc.source != nullptr);
+    CHECK(std::string_view(atsc.source).find("A/85") != std::string_view::npos);
+
+    const auto apple = ac3forge_qc_preset(AC3FORGE_QC_PRESET_APPLE_MUSIC_ATMOS);
+    CHECK(apple.loudness_limit == AC3FORGE_QC_LOUDNESS_CEILING);
+
+    CHECK(std::string_view(ac3forge_qc_preset_name(AC3FORGE_QC_PRESET_ATSC_A85)) == "atsc-a85");
+
+    ac3forge_qc_preset_id_t parsed{};
+    REQUIRE(ac3forge_parse_qc_preset("netflix", &parsed) == 1);
+    CHECK(parsed == AC3FORGE_QC_PRESET_NETFLIX);
+    CHECK(ac3forge_parse_qc_preset("not-a-preset", &parsed) == 0);
+    CHECK(ac3forge_parse_qc_preset(nullptr, &parsed) == 0);
+    CHECK(ac3forge_parse_qc_preset("netflix", nullptr) == 0);
+}
+
+TEST_CASE("ac3forge_evaluate_qc_gate passes/fails the same way ac3::meta::evaluate_qc_gate does",
+          "[capi][qc]") {
+    const auto preset = ac3forge_qc_preset(AC3FORGE_QC_PRESET_NETFLIX);  // -27 +/-2 LU, -2 dBTP ceiling
+
+    auto verdict = ac3forge_evaluate_qc_gate(&preset, 1, -27.0, 1, -3.0);
+    CHECK(verdict.has_loudness_delta_lu == 1);
+    CHECK(verdict.loudness_delta_lu == 0.0);
+    CHECK(verdict.loudness_pass == 1);
+    CHECK(verdict.has_true_peak_margin_dbtp == 1);
+    CHECK(verdict.true_peak_margin_dbtp == 1.0);
+    CHECK(verdict.true_peak_pass == 1);
+    CHECK(ac3forge_qc_verdict_pass(&verdict) == 1);
+
+    // 17 LU too hot fails the band; a true peak above the ceiling fails too.
+    verdict = ac3forge_evaluate_qc_gate(&preset, 1, -10.0, 1, -1.0);
+    CHECK(verdict.loudness_pass == 0);
+    CHECK(verdict.true_peak_pass == 0);
+    CHECK(ac3forge_qc_verdict_pass(&verdict) == 0);
+
+    // No measurement at all - not a false pass.
+    verdict = ac3forge_evaluate_qc_gate(&preset, 0, 0.0, 0, 0.0);
+    CHECK(verdict.has_loudness_delta_lu == 0);
+    CHECK(verdict.loudness_pass == 0);
+    CHECK(verdict.has_true_peak_margin_dbtp == 0);
+    CHECK(verdict.true_peak_pass == 0);
+
+    CHECK(ac3forge_qc_verdict_pass(nullptr) == 0);
+    const ac3forge_qc_verdict_t empty{};
+    CHECK(ac3forge_evaluate_qc_gate(nullptr, 1, -27.0, 1, -3.0).loudness_pass ==
+          empty.loudness_pass);
+
+    // The ceiling preset: quieter than the target passes, louder fails.
+    const auto ceiling = ac3forge_qc_preset(AC3FORGE_QC_PRESET_APPLE_MUSIC_ATMOS);  // <= -18 LKFS
+    CHECK(ac3forge_evaluate_qc_gate(&ceiling, 1, -25.0, 1, -5.0).loudness_pass == 1);
+    CHECK(ac3forge_evaluate_qc_gate(&ceiling, 1, -10.0, 1, -5.0).loudness_pass == 0);
+}
+
+TEST_CASE("scan/metering C accessors take their documented defaults on null handles",
+          "[capi][scan][loudness][levels]") {
+    ac3forge_scanned_stream_destroy(nullptr);
+    ac3forge_loudness_meter_destroy(nullptr);
+    ac3forge_level_meter_destroy(nullptr);
+    ac3forge_level_meter_reset(nullptr);
+
+    CHECK(ac3forge_scanned_stream_kind(nullptr) == AC3FORGE_STREAM_KIND_AC3);
+    CHECK(ac3forge_scanned_stream_sample_rate(nullptr) == AC3FORGE_SAMPLE_RATE_48000);
+    CHECK(ac3forge_scanned_stream_acmod(nullptr) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_lfe(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_channels(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_count(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_access_unit(nullptr, 0).length == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_samples(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_substreams_per_unit(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bsid(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bsmod(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bit_rate_code(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_has_oba_complexity_index(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_oba_complexity_index(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_bsmod_present(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_dsurmod(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_mix_metadata(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_independent_substreams(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_channel_map(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_present(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_bsmod_present(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_acmod(nullptr, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_associated_substream_lfe(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_associated_substream_mix_metadata(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_count(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substream_id(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_acmod(nullptr, 0) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_scanned_stream_programme_lfe(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_channels(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsid(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_bsmod(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_substreams_per_unit(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_has_oba_complexity_index(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_oba_complexity_index(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_access_unit_count(nullptr, 0) == 0);
+    CHECK(ac3forge_scanned_stream_programme_access_unit(nullptr, 0, 0).length == 0);
+    CHECK(ac3forge_scanned_stream_duration_samples(nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_duration_seconds(nullptr) == 0.0);
+    CHECK(ac3forge_scanned_stream_access_unit_timing(nullptr, 0, nullptr, nullptr, nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_at_sample(nullptr, 0, nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_access_unit_at_seconds(nullptr, 0.0, nullptr) == 0);
+    CHECK(ac3forge_scanned_stream_uniform_access_unit_samples(nullptr, nullptr) == 0);
+
+    CHECK(ac3forge_loudness_meter_channel_count(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_has_integrated_lkfs(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_integrated_lkfs(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_momentary_lkfs(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_momentary_lkfs(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_short_term_lkfs(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_short_term_lkfs(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_loudness_range(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_loudness_range(nullptr) == 0.0);
+    CHECK(ac3forge_loudness_meter_has_true_peak_dbtp(nullptr) == 0);
+    CHECK(ac3forge_loudness_meter_true_peak_dbtp(nullptr) == 0.0);
+
+    CHECK(ac3forge_level_meter_channel_count(nullptr) == 0);
+    CHECK(ac3forge_level_meter_acmod(nullptr) == AC3FORGE_ACMOD_2_0);
+    CHECK(ac3forge_level_meter_lfe(nullptr) == 0);
+    CHECK(ac3forge_level_meter_sample_rate(nullptr) == 0);
+    CHECK(ac3forge_level_meter_summary(nullptr, 0).samples == 0);
+    CHECK(ac3forge_level_meter_level(nullptr, 0).peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
+
+    ac3forge_level_meter_ballistics_init(nullptr);  // documented no-op
 }

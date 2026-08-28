@@ -86,6 +86,14 @@ a concrete API-freeze plan for v1.0 now exists.
 - **`ac3cli probe`**: what a stream declares — layout, substream map, tools in use, metadata
   ranges, CRC validity — without decoding audio. `json=1` emits a versioned schema.
   [Command reference](docs/cli/commands.md).
+- **`ac3cli probe` reads AC-4 too**, auto-detected. A new standalone `ac4::` library parses the
+  sync frame, table of contents, presentation and substream-group framing (ETSI TS 103 190-1/-2)
+  — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike, including
+  7.0.4 through 22.2 channel-based immersive layouts — bitstream inspection, not decoding: audio
+  content is reported by byte range, never decoded, and `oamd_common_data()` is refused cleanly
+  rather than misparsed. Backed by an independent Python transcription, real Dolby Encoding
+  Engine fixtures for the channel-coded path, and synthetic hand-built vectors for A-JOC/object/
+  OAMD, no real fixture being reachable for that path. See [Validation](docs/verification.md#ac-4).
 - **IEC 61937 de-framing.** A burst parser and `ac3cli unspdif`, plus capture-side recognition, so
   a loopback of a bitstreaming player records the elementary stream rather than PCM.
 - **A streaming fMP4/CMAF fragmenter** with a rolling HLS playlist and dynamic MPD, the DASH
@@ -109,10 +117,13 @@ a concrete API-freeze plan for v1.0 now exists.
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
-  sample corpus. **Now also reads real MXF IAB Track Files** (`ac3iab::parse_mxf_iab`), not just a
-  bare elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
-  which clip-wraps the whole bitstream as a single KLV. The bridge onto the ADM/Atmos layer is not
-  started.
+  sample corpus. Reads real MXF IAB Track Files too (`ac3iab::parse_mxf_iab`), not just a bare
+  elementary `.iab` file — the wrapping is governed by a separate standard, SMPTE ST 2067-201,
+  which clip-wraps the whole bitstream as a single KLV.
+- **`atmos-iab`: a real Dolby Atmos cinema/IMF master straight to DD+ JOC E-AC-3.** Every Bed
+  channel/Object an IAB file (or MXF Track File) names becomes an `AtmosEncoder` object, driven by
+  the file's own authored per-frame panning — `ac3::admbridge::build_iab`, the IAB counterpart to
+  the existing `atmos-adm`/ADM bridge. Needs `-DAC3FORGE_BUILD_ADM=ON`.
 - **One object-scene timeline type** (`ac3::oba::ObjectScene`) shared by `atmos-path`, the GUI and
   the examples, replacing four ad-hoc formats.
 - **Object extent, channel lock and zone constraints on encode**, mapped from the ADM bridge.
@@ -145,6 +156,15 @@ a concrete API-freeze plan for v1.0 now exists.
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
 
+**Browser (WASM)**
+
+- **An in-browser encode demo**, alongside the existing decode one: drop a `.wav` file and get back
+  a real AC-3/E-AC-3 elementary stream, encoded entirely client-side by the same codec compiled to
+  WebAssembly, plus a real BS.1770 loudness/true-peak QC verdict against the same five delivery
+  presets `ac3cli qc` checks — computed on the same PCM, in the page. A round-trip preview decodes
+  the produced stream through the existing decode module to prove it's real. Headless-browser CI
+  coverage (Playwright) now spans both demos, not just decode.
+
 **Library, C API, Python and Rust**
 
 - **A pimpl sweep across the exported surface**, so a private-state change is no longer an ABI
@@ -153,6 +173,16 @@ a concrete API-freeze plan for v1.0 now exists.
 - **An E-AC-3 encoder in the C API and in Python**, covering plain E-AC-3 and the wide
   dependent-substream layouts with the Annex E tools. See [C API](docs/library/c-api.md) and
   [Python API](docs/library/python-api.md) for what is deliberately not mirrored.
+- **Stream scan, caller-buffer decode, and loudness/level/QC metering, all now in the C API.**
+  `ac3forge_scan` reports what a stream actually contains — layout, every programme, the
+  DVB/ATSC service fields a muxer's descriptors want — without decoding any audio.
+  `ac3forge_decoder_decode_frame_into`/`ac3forge_eac3_decoder_decode_access_unit_into` decode
+  into caller-owned buffers instead of allocating per call, for the realtime embedder this C
+  surface exists for, and preserve the §3.7 transient pre-noise hold-back exactly (a held-back
+  frame leaves the caller's spans untouched). `ac3forge_loudness_meter_t`/
+  `ac3forge_level_meter_t`/`ac3forge_qc_preset`/`ac3forge_evaluate_qc_gate` mirror the library's
+  BS.1770-5 loudness meter, level meter and named delivery-QC gates. See
+  [C API](docs/library/c-api.md).
 - **A first Rust binding over the C API**: `ac3forge-sys` (raw, `bindgen`-generated against the C
   header at build time) plus a safe `ac3forge` wrapper covering AC-3 and E-AC-3 encode/decode. The
   C API had never crossed a real FFI boundary before — building this found and fixed two real
@@ -160,6 +190,14 @@ a concrete API-freeze plan for v1.0 now exists.
   four decoded-audio accessors). See [Rust bindings](docs/library/rust-api.md).
 - **A latency budget** exposed through every binding, and **a minimum-footprint decoder profile**
   (`AC3FORGE_MINIMAL_DECODER`) proven on a cross-compiled bare-metal target.
+- **Zero-copy numpy encode/decode in Python**, plus caller-buffer decoding. Every `encode_frame`/
+  `encode_access_unit` call accepts a 2-D `(n_channels, n_samples)` array as well as a sequence of
+  1-D arrays, and reads directly out of whichever is passed when it is already contiguous
+  `float32`; decoded `.channels`/`.object_audio` are read-only views onto the decoded object's own
+  memory instead of a fresh copy on every access; `FrameDecoder.decode_frame_into`/
+  `Eac3Decoder.decode_access_unit_into` write PCM into caller-supplied buffers for a realtime
+  embedder or tight batch loop that wants to reuse them. See [Python API](docs/library/python-api.md)'s
+  "Zero-copy numpy and buffer reuse".
 - **Stream scanning in Python.** `ac3.scan()`/`ac3.read_frame_header()` read an elementary
   stream's shape — channel layout, every programme, every access unit's byte range — without
   decoding any audio, plus timing helpers (`ac3.access_unit_timing`, `stream_duration_seconds`,
@@ -207,6 +245,21 @@ a concrete API-freeze plan for v1.0 now exists.
   and rematrix bands every block, on both encoders — is verified bit-identical across five
   independent compiler/architecture builds, and its decision is now pinned by tests at all six
   A/52 sample rates instead of just one.
+
+**Release engineering**
+
+- **The packaging manifests bump themselves after a release.** A new post-release job downloads
+  the release's own source tarball and platform assets, computes the digests the vcpkg port, the
+  Homebrew formula and cask, the winget manifest and the Conan recipe each need, cross-checks the
+  ones that are real built packages against the release's own published `SHA512SUMS`, opens a PR
+  bumping all four together, and pushes the Homebrew formula/cask straight to the live tap. This
+  is what had gone stale two releases in a row before it existed. Testable without cutting a
+  release: it is also directly runnable by hand in dry-run mode against any already-shipped tag.
+- **GitHub Release notes are drawn from CHANGELOG.md**, not drafted from the commit list — the
+  matching dated section becomes the release body directly, since that curation already happens
+  in CHANGELOG.md as part of normal development.
+- **`check_packaging_versions.sh` gained a latest-tag advisory**: a warning, not a failure, when
+  a manifest does not yet match the most recent release.
 
 **Tooling and packaging**
 

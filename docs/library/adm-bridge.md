@@ -54,12 +54,15 @@ shape `ac3::signing` uses for its own `ac3::forge` dependency. It is not part of
 `find_package(ac3forge)` package, for the same reason `ac3adm::ac3adm` itself is not (see
 [ADM / BW64 reading](adm.md)'s own "Why opt-in" section): consume it via `add_subdirectory`
 in-tree. ROADMAP.md's IM1 (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is now
-in the roadmap's "not on the list" section for want of a public specification) names this module
-as the "mapping layer" it intends to share. Its phase 1 has landed — `ac3iab::ac3iab` (`src/ac3iab`)
-parses the §7/§8 bitstream today, default-ON and installed like the container modules — but its
-phase 3, the `atmos-iab` command that maps an `IaFrame` onto this module's `ObjectPath` layer, is
-unstarted, so `ac3adm::AdmDocument` is still the only input shape here. That sharing is another
-reason to keep this logic independent of `ac3adm`'s own BW64/ADM-XML-specific parsing.
+in the roadmap's "not on the list" section for want of a public specification) named this module
+as the "mapping layer" it intended to share, and phase 3 has now landed: `build_iab()`
+(`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame` sequence — from
+either of `ac3iab::ac3iab`'s two readers (`src/ac3iab`, phases 1-2: a bare elementary `.iab` file
+or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `ac3cli
+atmos-iab` (see [Commands](../cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
+IABitstreamFrame` are therefore both input shapes here, sharing the coordinate-conversion and
+`ObjectPath`-construction logic this module exists to keep independent of either container's own
+parsing — see "Bridging IAB" below for exactly what differs between the two.
 
 ## What gets mapped
 
@@ -145,6 +148,73 @@ an object in the downmix would have the receiving renderer spread it a second ti
 caller constructing paths directly can set them; it is only the ADM-derived route that leaves them
 at their defaults.
 
+## Bridging IAB (roadmap IM1 phase 3)
+
+`build_iab(std::span<const ac3iab::IABitstreamFrame> frames)` maps a whole parsed Immersive Audio
+Bitstream sequence — `ac3iab::parse_iabitstream()` or `ac3iab::parse_mxf_iab()`'s own return value,
+unmodified — onto the identical destination shape `build()` produces for ADM, in a new header,
+`ac3/admbridge/iab_bridge.hpp`.
+
+IAB has no whole-file object graph the way ADM's `audioProgramme → audioContent → audioObject` tree
+does — it is a flat sequence of self-contained `IaFrame`s, each carrying its own Bed/Object metadata
+scoped to that frame alone (§9.2/§9.4). `build_iab()` therefore does its own two-pass walk: an
+identity pass unions every unconditionally-Activated top-level Bed channel/Object across every
+frame, keyed by §10.3.1's own MetaID ("the ID that allows the system to track metadata information
+between audio frames" — for a Bed channel, combined with its own ChannelID per §10.3.5's note on
+ST 2098-1's Channel Identifier function) — fixing `AtmosEncoder`'s channel count and order once, the
+same role `collect_leaf_objects()` plays for `build()`'s own ADM walk. A timeline pass then builds
+one `ObjectPath` per identity spanning the whole sequence: a frame where that identity is absent, or
+only conditionally Activated (an alternate-target-environment mix per §10.3.2/§10.5.1's own
+Activation/UseCase fields — the same "pick the one primary set" choice `build()` already makes among
+several `audioProgramme`s), contributes no new keyframe — silence-filled PCM, the timeline simply
+holds/interpolates through the gap — rather than shrinking the channel count.
+
+Only top-level `IaFrame::beds`/`objects` are walked — nested `BedDefinition`/`BedRemap`/
+`ObjectDefinition`/`ObjectZoneDefinition19` children (§9 Table 4) are deliberately not recursed
+into: Annex C.1's own nesting allowance exists for alternate/derived submixes, not the primary
+content this bridge selects one of.
+
+**Bed channels have no per-block position data at all** (unlike ADM's `audioBlockFormat` sequence)
+— a Bed channel's own ChannelID (§10.3.5 Table 19) is a closed, physical-position vocabulary
+resolved once via `ac3::oba::bed_label_position()`, the same pinned-placement convention bed
+channels already get from ADM's `speakerLabel`; only `ChannelGain` (§10.3.8) can legitimately vary
+frame to frame, so a Bed channel's timeline is one keyframe per frame it is present in. An LFE Bed
+channel (ChannelID `0xD`, or `0x86`/`0x87`'s BS.2051-2 `LFE1`/`LFE2` aliases) routes at gain 0 /
+`lfe_send` 1, the same convention `build_channel_path()` documents for ADM.
+
+**Table 19's cinema channel vocabulary is richer than `ac3::oba::BedLabel`'s own consumer-layout
+one in exactly one place**: it names three distinct surround zones per side (Side Surround,
+Surround, Rear Surround) where `BedLabel` has only two slots (`kLs`/`kRs`, `kLb`/`kRb`).
+"Surround" (`0x6`/`0xA`) maps to `kLs`/`kRs` (the canonical 5.1 pair) and "Rear Surround"
+(`0x7`/`0x8`) to `kLb`/`kRb` (7.1's additional back pair, the closest conceptual match); "Side
+Surround" (`0x5`/`0x9`) has no equivalent and is refused — `BridgeError::kUnsupportedIabChannel`,
+not silently collapsed onto an existing slot. Several other Table 19 codes (Left/Right Center,
+Center Height, the `*Height` variants of Side/Rear Surround, Left/Right Top Surround, Top
+Surround, and the whole `0x18`-`0x7F` D-Cinema-reserved range) are refused the same way,
+deliberately, rather than guessed at without the external documents Table 19 itself defers to
+(SMPTE ST 428-12/ST 2098-5) for their exact geometry.
+
+**Position conversion needs no formula at all.** `iab_position_to_room()` (`coordinates.hpp`) is a
+direct passthrough: §11.1's `x`/`y` (0 left/front wall to 1 right/back wall) already match
+`ac3::oba::Position`'s own convention exactly, and its `z` — "0 corresponds to a horizontal plane
+at... the height of the main screen Loudspeakers... 1 corresponds to the ceiling" — anchors its
+zero at the same screen/ear-height reference `oba::Position`'s own `z = 0` does, just never
+expressing anything below it (IAB's `[0, 1]` is the upper half of `oba::Position::z`'s own
+`[-1 floor, +1 ceiling]` range). This is this bridge's own judgement call — no clause states the
+two specs share a reference height — the same status the ADM conversion's own one undocumented gap
+has above.
+
+`ObjectSpread` (§10.5.15-17) and the 9-zone `ObjectZoneControl` (§10.5.11-14) are not mapped, for
+the identical reason ADM's own `width`/`height`/`depth`/`zoneExclusion` are not (see "What does not
+get mapped" above): spreading an object in the downmix would have the receiving renderer spread it
+a second time, and `ZoneConstraint`'s six named presets have no clean image for either IAB shape.
+
+`IabBridgeResult` is a **new** struct, not a reuse of `BridgeResult`: PCM is concatenated across
+many independently-parsed frames, so `IabBridgeResult::pcm` is **owned**
+(`std::vector<std::vector<float>>`), not borrowed the way `BridgeResult::pcm` is from a single
+caller-owned `AdmDocument` — there is no equivalent single upstream object here to borrow spans
+from once `build_iab()` returns.
+
 ## Write direction (roadmap IM2)
 
 `write()` takes a `WriteInput` — a sample rate plus one `WriteChannel` per channel to place in the
@@ -184,6 +254,7 @@ enum class BridgeError : std::uint8_t {
     kNoProgramme, kProgrammeNotFound, kUnresolvedReference, kObjectReferenceCycle,
     kUnsupportedType, kChannelTrackMismatch, kNoAudioForTrack, kEmptyBlockSequence,
     kTooManyChannels, kEmptyInput,
+    kEmptyIabStream, kUnsupportedIabChannel, kNoIabEssenceForChannel,  // build_iab() only
 };
 std::string_view describe(BridgeError error);
 
@@ -205,6 +276,18 @@ ac3adm::CartesianPosition polar_to_adm_cartesian(const ac3adm::PolarPosition& po
 ac3::oba::Position adm_cartesian_to_room(const ac3adm::CartesianPosition& cartesian);
 ac3::oba::Position adm_position_to_room(const ac3adm::Position& position);
 ac3adm::CartesianPosition room_to_adm_cartesian(const ac3::oba::Position& room);
+ac3::oba::Position iab_position_to_room(const ac3iab::Position& position);  // direct passthrough
+
+struct IabBridgeResult {
+    std::vector<std::string> channel_ids;
+    std::vector<bool> is_bed;
+    std::vector<bool> is_lfe;
+    std::vector<ac3::oba::ObjectPath> paths;
+    std::vector<std::vector<float>> pcm;       // OWNED - see "Bridging IAB" above
+    std::uint32_t sample_rate = 0;
+};
+std::expected<IabBridgeResult, BridgeError> build_iab(
+    std::span<const ac3iab::IABitstreamFrame> frames);
 
 struct WriteObjectUpdate {
     std::uint64_t sample_offset = 0;
@@ -261,9 +344,22 @@ just the library API in isolation — plus two error-path cases (`BridgeError::k
 malformed/non-RIFF file) confirming `describe()` reaches the terminal rather than an opaque crash
 or exit code.
 
+`tests/admbridge/test_iab_bridge.cpp` covers `iab_position_to_room`'s cardinal points, the Table 19
+→ `BedLabel` mapping (both the codes that resolve and the ones `build_iab()` refuses), MetaID
+cross-frame identity (the same MetaID+ChannelID across several frames is one channel, not several;
+an absent frame silence-fills rather than shrinking the channel count), sub-block keyframe timing
+(a dedicated fixture proving each active sub block's keyframe lands at its own *end* time, not its
+start), and one flagship test with the identical rigor `test_adm_bridge.cpp`'s own holds itself to
+— a real byte-level IAB fixture (one Bed Center channel, one Object holding hard right then
+jumping hard left), parsed with the real `ac3iab::parse_iabitstream()`, bridged, and driven through
+a real `AtmosEncoder`/`Eac3Decoder` round trip confirming decoded channel energy lands where
+authored. `tests/cli/test_cli_atmos_iab.cpp` (phase 3's own CLI wiring) covers the same fixture
+shape one level up, the same way `test_cli_atmos_adm.cpp` does for `atmos-adm`.
+
 ---
 
-See also: [ADM / BW64 reading](adm.md) — the phase-1 parser this module consumes; [Spatial &
+See also: [ADM / BW64 reading](adm.md) — the phase-1 parser this module consumes; [IAB
+reading](iab.md) — `ac3iab::ac3iab`, the other parser this module consumes (phases 1-2); [Spatial &
 Atmos objects](spatial-and-atmos.md) — `ac3::oba::AtmosEncoder`, `ac3::oba::motion`, and
 `ac3::oba::Position`'s own room-anchored coordinate convention this module's `coordinates.hpp`
 converts into.

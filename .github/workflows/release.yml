@@ -308,6 +308,22 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      # Unconditional - not folded into the GPG-gated step below the way it used to be.
+      # GPG signing is optional (docs/releasing.md#provisioning-the-gpg-signing-key), but
+      # manifest-bump.yml (roadmap DR2) cross-checks the Homebrew cask's and winget's
+      # digests against this file for every release, signed or not; gating it on a key
+      # that may not be provisioned would silently break that cross-check instead of the
+      # digests it protects.
+      - name: Generate SHA512SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
+                     release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
+                     release-artifacts/*.apk)
+          ( cd release-artifacts && sha512sum "${artifacts[@]##release-artifacts/}" > SHA512SUMS )
+
       - name: Import GPG signing key
         if: env.HAVE_GPG_KEY == 'true'
         env:
@@ -337,7 +353,7 @@ jobs:
           gpgconf --kill gpg-agent
 
       # Exports the public key so a downloader can verify without trusting
-      # GitHub, signs an aggregate SHA512SUMS manifest AND each artifact
+      # GitHub, signs the SHA512SUMS manifest generated above AND each artifact
       # individually (standard release practice - a manifest signature lets
       # you check everything in one step, per-artifact signatures let you
       # verify a single downloaded file without the rest). The passphrase is
@@ -363,7 +379,6 @@ jobs:
                 --detach-sign "$1" 3<<<"$REPO_GPG_PASSPHRASE"
           }
 
-          ( cd release-artifacts && sha512sum "${artifacts[@]##release-artifacts/}" > SHA512SUMS )
           sign release-artifacts/SHA512SUMS
           for f in "${artifacts[@]}"; do
             sign "$f"
@@ -465,6 +480,25 @@ jobs:
           git tag "$TAG"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$TAG"
 
+      # docs/releasing.md's Post-release checklist has always said CHANGELOG.md is the
+      # authoritative, human-curated record and the release body should mirror it, not
+      # the other way round - `--generate-notes` drafted a commit list instead, which is
+      # why curating a second, hand-written body used to be listed as a required (not
+      # optional) follow-up step. That curation already happens where it belongs, in
+      # CHANGELOG.md, as normal development practice (grouped by user-facing area, bold
+      # lead-in bullets - see tools/release/render_release_notes.py's own docstring for
+      # what this deliberately does not try to reconstruct on top of that).
+      - name: Render release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/release/render_release_notes.py \
+            --version "$VERSION" --tag "$VERSION_TAG" --repo "$REPO" --output notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -479,7 +513,7 @@ jobs:
           fi
           gh release create "$VERSION_TAG" \
             --title "$VERSION_TAG" \
-            --generate-notes \
+            --notes-file notes.md \
             $prerelease_flag
 
       # Deliberately a separate step from Create GitHub Release, not
@@ -549,3 +583,25 @@ jobs:
           else
             echo "No tag $TAG on origin; nothing to clean up"
           fi
+
+  # Roadmap DR2. Runs for real (dry_run: false) only once github-release has actually
+  # published the release AND uploaded every asset - "Upload release assets" is that
+  # job's last step, so by the time this job's `needs` is satisfied the SHA512SUMS,
+  # Darwin.dmg and win64.zip assets manifest-bump.yml downloads and cross-checks are
+  # all there to find. A failure here never unwinds the release itself: the release is
+  # already fully published by this point, and a failed bump just means the packaging
+  # manifests still need the manual per-ecosystem steps in docs/releasing.md, same as
+  # every release before this automation existed.
+  manifest-bump:
+    name: Bump packaging manifests
+    needs: [ resolve-version, github-release ]
+    if: needs.resolve-version.outputs.is_dry_run != 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/manifest-bump.yml
+    with:
+      version_tag: ${{ needs.resolve-version.outputs.version_tag }}
+      dry_run: false
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

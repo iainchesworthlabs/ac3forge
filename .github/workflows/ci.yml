@@ -353,9 +353,12 @@ jobs:
         shell: pwsh
         run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 
-  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan) - NOT "is it
-  # current", see the script's own header for why that's the wrong check. Same shape as
-  # platform-macros above: cheap, fast, ungated.
+  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
+  # latest-tag advisory (roadmap DR2) - see the script's own header for the split
+  # between the two and why only the first one fails the job. fetch-depth: 0, unlike
+  # platform-macros above: the advisory half needs `git describe --tags` to see the
+  # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
+  # it in CI while it kept working from a normal local checkout.
   packaging-consistency:
     name: Packaging Consistency
     needs: check-runner
@@ -363,6 +366,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Check packaging manifests are internally consistent
         shell: bash

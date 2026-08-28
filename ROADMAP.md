@@ -591,7 +591,7 @@ machine-readable output and a single failure exit code. Users arrive with contai
 
 ## IM. Immersive and other formats
 
-- [ ] **IM1 (XL)** — IAB (SMPTE ST 2098-2) reader — the public-spec replacement for the DAMF
+- [x] **IM1 (XL)** — IAB (SMPTE ST 2098-2) reader — the public-spec replacement for the DAMF
   item. SMPTE made its entire standards catalogue free on 2026-06-17, so ST 2098-2:2022 — the
   Immersive Audio Bitstream that Netflix takes inside IMF (ST 2067-201) — is a plain PDF with the
   full element syntax (IAFrame, BedDefinition, ObjectDefinition with per-sub-block position,
@@ -602,8 +602,11 @@ machine-readable output and a single failure exit code. Users arrive with contai
   track files — `ac3iab::parse_mxf_iab` (`mxf.hpp`), governed by SMPTE ST 2067-201, a separate and
   much shorter standard than ST 2098-2 itself; its own §5.5 clip-wraps the whole bitstream as a
   single KLV, so extraction needs none of the base MXF standards' Header Metadata object graph or
-  Index Tables. **Done.** Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer.
-  Reader and ingest only; rendering stays with Cavern.
+  Index Tables. **Done.** Phase 3: `atmos-iab`, mapping onto `ac3::admbridge`'s `ObjectPath` layer
+  (`build_iab()`) — Table 19 `ChannelID` resolved to `ac3::oba::BedLabel`, §10.3.1 MetaID tracking
+  channel identity across the frame sequence, `iab_position_to_room()` a direct passthrough since
+  §11.1's own axes already match `oba::Position`'s. **Done.** Reader and ingest only; rendering
+  stays with Cavern.
   *Phase 1 done: `ac3iab::` (`src/ac3iab`) parses the full §7/§8 Preamble+IAFrame segment
   framing and every element in §9's Table 4 tree — IAFrame, BedDefinition (+ recursive
   BedDefinition/BedRemap children), ObjectDefinition (+ recursive ObjectDefinition/
@@ -618,7 +621,8 @@ machine-readable output and a single failure exit code. Users arrive with contai
   reader's parsed header (SampleRate/BitDepth/FrameRate/FrameCount/MaxRendered) matches that
   tool's own reference JSON exactly on all 10 streams sampled, and every frame across all ten
   streams parses without error (one stream alone carries 720 real AudioDataDLC elements and 240
-  ObjectDefinitions). Phases 2 (MXF/KLV) and 3 (`atmos-iab`/`admbridge`) are unstarted.*
+  ObjectDefinitions). Phase 2 (MXF/KLV, `ac3iab::parse_mxf_iab`) and phase 3 (`atmos-iab`,
+  `ac3::admbridge::build_iab`) have since landed too — IM1 is complete.*
 - [x] **IM2 (L)** — JOC → ADM BWF writer. `decode … adm_out` writes a Dolby Atmos Master ADM
   Profile BW64 (cartesian coordinates, `audioBlockFormat` automation, `chna`) from
   `Eac3Decoder`'s object metadata, object audio and the bed's own LFE, round-tripped through
@@ -658,13 +662,27 @@ machine-readable output and a single failure exit code. Users arrive with contai
   and confirmed to break the PCM round-trip test before being reverted. No Parameter Block OBUs,
   no Temporal Delimiter OBU, no trimming, batch API only — see `iamf/iamf.hpp`'s own header for
   the full phase-1 boundary. Phases 2 and 3 are unstarted.*
-- [ ] **IM4 (L)** — AC-4 parse-and-inspect (was `D4`). Nothing in the tree. ETSI TS 103 190-1
-  V1.3.1 and -2 V1.3.1 (2025-07) and ATSC A/342-2:2024 are free. An `ac4::` TOC / presentation /
-  substream parser feeding IO1, an independent Python reference parser in the
-  `tools/references` mould, and a separable carriage slice: `ac-4` sample entry and `dac4` box in
-  `mp4::`, the AC-4 descriptor in `mpegts::`, DASH-IF §5.3.4 signalling. `ac3::emdf` is reusable
-  (AC-4 carries the same container). Decide first where real AC-4 test streams come from —
-  nothing open encodes it.
+- [ ] **IM4 (L)** — AC-4 parse-and-inspect (was `D4`). The blocking question is resolved: nothing
+  open encodes AC-4, but the Dolby Encoding Engine already licensed and used for the AC-3/E-AC-3
+  external-baseline tier includes `dee_ac4_encoder.exe`/`dee_ac4ajoc_encoder.exe`, and the Dolby
+  Reference Player's `dlbac4parse` GStreamer element frames (though does not yet decode PCM from)
+  real AC-4 output on this machine — see docs/verification.md's AC-4 section. TOC / presentation /
+  channel-coded substream-group parsing landed: a standalone `ac4::` library (deliberately not
+  under `ac3::` — it depends on nothing of `ac3::forge`, including `ac3::emdf`, whose classic
+  Annex H sync+length+protection framing turned out not to be what AC-4's own `emdf_info()`/
+  `emdf_payloads_substream()` actually use), an independent Python reference parser
+  (`tools/references/ac4_parse.py`), real DEE fixtures (`tools/generators/gen_ac4_baseline.py`),
+  and `ac3cli probe` support (table + `json=1`, both bitstream_version <= 1 legacy and >= 2
+  extended TOC paths, 7.0.4 through 22.2 channel-based immersive). A-JOC/direct-coded-object/OAMD
+  substream group parsing (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`,
+  `ac4_substream_info_obj()`, `bed_dyn_obj_assignment()`, `oamd_substream_info()`) landed as a
+  follow-up: no real fixture reaches this path (`dee_ac4ajoc_encoder.exe` gates on Atmos mezzanine
+  provenance this project's tooling cannot produce; `dee_ac4ims_encoder.exe` stays channel-coded
+  despite its name), so it is verified against synthetic hand-built vectors instead — see
+  docs/verification.md's AC-4 section. `oamd_common_data()` (§6.2.8.1) remains explicitly out of
+  scope, refused cleanly (`Error::kOamdCommonDataPresent`) rather than misparsed. What remains: the
+  separable carriage slice (`ac-4` sample entry and `dac4` box in `mp4::`, the AC-4 descriptor in
+  `mpegts::`, DASH-IF §5.3.4 signalling).
 - [ ] **IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module (was `D1`).
   `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, 41 commits behind `develop`)
   is far past the old `D1` text: a complete internal lossless codec — stream assembler, PMQ matrix
@@ -1278,16 +1296,24 @@ directory; there is still no threading anywhere in the codec core.
   public) makes `check_abi_symbols.py` fail with `+
   ac3::internal::resolve_operating_mode(ac3::DecoderConfig const&) (newly exported, not in
   allowlist)`; reverted before merging.
-- [ ] **AP5 (L)** — C API completeness. ~~It has an AC-3 encoder, an Atmos encoder and both
+- [x] **AP5 (L)** — C API completeness. Done: ~~It has an AC-3 encoder, an Atmos encoder and both
   decoders, and no E-AC-3 encoder at all~~ `ac3forge_eac3_encoder_t`/
-  `ac3forge_eac3_access_unit_encoder_t` now cover plain E-AC-3 and dependent-substream wide
+  `ac3forge_eac3_access_unit_encoder_t` cover plain E-AC-3 and dependent-substream wide
   layouts (7.1/5.1.2/5.1.4/7.1.4) with the Annex E tools including `auto`, mirroring
-  `ac3::eac3::FrameEncoder`/`AccessUnitEncoder` — see `docs/library/c-api.md`'s "E-AC-3 encoding"
-  section for the fields deliberately left out of the C mirror (mixmdate/infomdat, VBR,
-  `numblkscod`). Still missing: `scan`/`ScannedStream` (only `stream_bsid` and `split_*` exist),
-  the caller-buffer `_into` decode forms the memory programme added for exactly the real-time
-  embedder the C API serves, and loudness/level/QC metering (`docs/library/c-api.md` calls the
-  custom DRC profile a deliberate omission — revisit at 1.0).
+  `ac3::eac3::FrameEncoder`/`AccessUnitEncoder`. ~~`scan`/`ScannedStream` (only `stream_bsid` and
+  `split_*` exist)~~ `ac3forge_scan` now reads layout, every programme and the DVB/ATSC service
+  fields a muxer's descriptors want, without decoding audio. ~~The caller-buffer `_into` decode
+  forms the memory programme added for exactly the real-time embedder the C API serves~~
+  `ac3forge_decoder_decode_frame_into`/`ac3forge_eac3_decoder_decode_access_unit_into` decode into
+  caller-owned planar storage, preserving §3.7's transient pre-noise hold-back exactly (a
+  held-back frame leaves the caller's spans untouched, same as the value form leaves its result
+  unpopulated). ~~Loudness/level/QC metering~~ `ac3forge_loudness_meter_t`/`ac3forge_level_meter_t`/
+  `ac3forge_qc_preset`/`ac3forge_evaluate_qc_gate` mirror `ac3::meta::LoudnessMeter`/
+  `ac3::analysis::LevelMeter`/`ac3::meta::qc`. See `docs/library/c-api.md` for what every one of
+  these deliberately trims (mixmdate/infomdat, VBR, `numblkscod`, `process_interleaved`, the
+  presentational level-meter string/geometry helpers, `AccessUnitTiming`'s one-line
+  seconds/timescale conversions) and for the custom DRC profile, still a deliberate omission to
+  revisit at 1.0.
 - [ ] **AP6 (L)** — Python completeness. ~~The same four classes; no E-AC-3 encoder~~
   `ac3.eac3.FrameEncoder`/`AccessUnitEncoder` now wrap the E-AC-3 encoder directly
   (pybind11-direct, matching every other class here), with `ac3.eac3.access_unit_config_for_layout`
@@ -1297,11 +1323,21 @@ directory; there is still no threading anywhere in the codec core.
   missing: `scan`~~ done: `ac3.scan()`/`ac3.read_frame_header()` wrap `ac3::io::scan`/
   `read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/`FrameHeader`, plus
   `access_unit_timing` and its timing-arithmetic neighbours) — see `docs/library/python-api.md`'s
-  "Scanning a stream" section. Still missing: no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`
-  are off in `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
-  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
-  that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
-  macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
+  "Scanning a stream" section. ~~Zero-copy numpy in both directions (both paths
+  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`~~ done: encode
+  input (AC-3, E-AC-3 and `AtmosEncoder`) accepts either a 2-D `(n_channels, n_samples)` array or
+  a sequence of 1-D arrays and is read directly out of whichever is passed when it's already
+  contiguous float32; decoded `.channels`/`.object_audio` are read-only zero-copy views over the
+  decoded instance's own memory instead of a fresh `memcpy`'d list every property access;
+  `FrameDecoder.decode_frame_into`/`Eac3Decoder.decode_access_unit_into` write PCM into
+  caller-supplied buffers (`ac3.MAX_AC3_CHANNELS`/`ac3.eac3.MAX_RENDER_CHANNELS` size them) —
+  see `docs/library/python-api.md`'s "Zero-copy numpy and buffer reuse" section. No
+  `decode_substream_into`: `ac3::Eac3Decoder` itself only exposes a caller-buffer form for the
+  two calls that assemble a full programme, not the single-substream one. Still missing: no
+  containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in `pyproject.toml`), no metering, no
+  signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
+  `.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
+  platform with no wheel.
 - [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
@@ -1406,9 +1442,31 @@ directory; there is still no threading anywhere in the codec core.
   a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3
   ([video.js http-streaming #1297](https://github.com/videojs/http-streaming/issues/1297) is
   open); the docs demo becomes a consumer of the package.
-- [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` calls it "a separate, much
-  larger undertaking"; the encoders are already proven platform-free (C API, wheels, NDK). A
-  drop-a-WAV / capture-a-mic encode page, and a browser-side `qc`.
+- [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` used to call it "a separate,
+  much larger undertaking"; measured instead of assumed (WSL2/Emscripten 6.0.6, the same toolchain
+  `build-wasm` uses), that turned out not to be true. A combined AC-3 + E-AC-3 + Atmos/JOC + QC
+  Embind module (`apps/wasm/encoder_bindings.cpp`) is 390 KB raw / 149 KB gzip, comparable to the
+  decode-only module's own 372 KB/130 KB — not worth a further module split. Timed under Node/V8,
+  single-threaded, no SIMD: AC-3 2.0 at 385x real-time, E-AC-3 3/2+LFE at 120x, 4-object Atmos/JOC
+  at 82x — enough headroom that neither product needs `pthreads`/`SharedArrayBuffer`, and a future
+  microphone-capture encoder is a plumbing problem, not a CPU one. QC needed no new DSP:
+  `ac3::meta::LoudnessMeter`/`evaluate_qc_gate` are `ac3cli qc`'s own functions, bound directly.
+  **Landed so far**: the encode module (full binding surface, including Atmos/JOC even though no
+  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — coding-mode/rate/bitrate
+  controls, the five-preset QC verdict table, and a round-trip preview through the existing decode
+  module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
+  known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).
+  See [docs/platforms/wasm.md#encode-module](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/wasm.md#encode-module)
+  for the full numbers. **Still open**: capture-a-mic (real-time capture/buffering plumbing —
+  `getUserMedia`/`AudioWorklet` — the CPU budget is proven, this is UX work); an object-authoring
+  UI on top of the already-bound `WasmAtmosBedEncoder`; wider channel layouts (7.1, height
+  channels) than the mono/stereo/5.1 the drop-a-WAV page reorders today. Dialnorm is left at
+  §5.4.2.8's unmeasured default (31) rather than derived from the QC pass's own measured
+  loudness — the QC verdict itself measures the source PCM directly so this does not affect it,
+  but a real decoder's dialnorm normalisation would under-attenuate loud content this page
+  produces. VX18(a)'s browser-test coverage now spans both demos, but neither demo's visual/
+  interactive surface (drag-and-drop, the QC table's rendering, the decode side's visualizations)
+  is CI-tested — see `wasm.md`'s own "Not yet verified" note.
 - [ ] **UX7 (M)** — macOS loopback capture through Core Audio process/system taps
   (`AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2+). Capture is still input-only
   there and `start()` still refuses `kLoopback`: the tap itself needs an Objective-C class, a
@@ -1458,11 +1516,27 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
   fabricated); `tools/checks/check_packaging_versions.sh` passes. The live tap
   (`iainchesworthlabs/homebrew-ac3forge`) is pushed to match. Still the second cycle in a row these
   went stale — DR2 is the fix for that.
-- [ ] **DR2 (M)** — Post-release automation: release notes from the matching CHANGELOG section
-  (`release.yml` still uses `--generate-notes`), a post-release job that computes the digests and
-  opens the manifest-bump PR, and a latest-tag advisory extending
-  `tools/checks/check_packaging_versions.sh` — which deliberately does not check the latest tag
-  because the bump was manual; automating the bump removes that objection.
+- [x] **DR2 (M)** — Post-release automation. Done: `release.yml`'s `github-release` job now
+  renders the release body from CHANGELOG.md's matching `## [x.y.z]` section
+  (`tools/release/render_release_notes.py`) instead of `--generate-notes`, and `SHA512SUMS` is
+  generated unconditionally (previously only alongside GPG signing) so the step below always has
+  something to cross-check against. A new `manifest-bump` job calls
+  `.github/workflows/manifest-bump.yml` after every real (non-dry-run) release: it downloads the
+  release's source tarball and, where they exist, `ac3forge-*-Darwin.dmg`/`ac3forge-*-win64.zip`,
+  computes the digests `tools/release/bump_manifests.py` needs, cross-checks the two platform
+  assets against the release's own `SHA512SUMS` (never fabricated — the source tarball has no
+  entry to check against, it isn't a CI-built package), opens a PR bumping all four staged
+  manifests together, and pushes the Homebrew Formula/Cask to the live
+  `iainchesworthlabs/homebrew-ac3forge` tap when `HOMEBREW_TAP_TOKEN` is provisioned. That
+  workflow is also directly `workflow_dispatch`-able with `dry_run: true` (the default), so the
+  whole download/digest/cross-check pipeline is exercisable against any already-shipped tag
+  without cutting a release — verified locally against the real v0.9.0-beta.1 release assets
+  before this shipped. `tools/checks/check_packaging_versions.sh` now carries the latest-tag
+  advisory too (a `::warning::`, not a gate — merging the bump PR is still a separate, reviewed
+  step), and `ci.yml`'s `packaging-consistency` job fetches full history so it can see tags at
+  all. Still manual, because it means writing to a repository this project does not own: the
+  vcpkg/Conan/winget upstream fork PRs, and Homebrew's local macOS-only `brew audit`/`brew
+  install`/`brew test` validation. See `docs/releasing.md`'s Post-release section.
 - [ ] **DR3 (S)** — A vcpkg git registry (`ports/ac3forge` + `versions/`) now, so consumers get
   `vcpkg install ac3forge` through `vcpkg-configuration.json` instead of overlay-ports from a
   source clone; keep #53470 as a draft to re-request around 2027-02. The reviewer also cited
