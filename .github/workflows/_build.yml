@@ -589,14 +589,31 @@ jobs:
       # see that file's own header. qt6-declarative-dev-tools/qt6-base-dev-tools
       # pull in qmlcachegen and the other build-time QML tooling
       # qt_add_qml_module needs; without them the GUI configure step fails
-      # rather than quietly building without AOT-compiled QML.
+      # rather than quietly building without AOT-compiled QML. The LinguistTools
+      # component (roadmap UX3) needs BOTH of two separate Debian/Ubuntu
+      # packages, confirmed via packages.ubuntu.com's file lists after the
+      # single-package version of this line still failed on arm64 with the
+      # exact symptom below: qt6-l10n-tools ships only the lupdate/lrelease/
+      # lconvert binaries and phrasebooks (no CMake integration at all),
+      # while Qt6LinguistToolsConfig.cmake - the file that actually defines
+      # qt_add_translations()/qt6_add_lupdate()/qt6_add_lrelease() - ships in
+      # qt6-tools-dev instead, bundled there with the unrelated Designer/
+      # Assistant tools upstream's own qttools repo groups it with. Missing
+      # qt6-tools-dev doesn't fail find_package(Qt6 ... COMPONENTS ...
+      # LinguistTools) itself (Core/Gui/Qml/Quick/QuickControls2/Concurrent
+      # all resolve fine, so the REQUIRED call as a whole reports success);
+      # it instead leaves qt_add_translations undefined, surfacing much
+      # later as "Unknown CMake command" at the call site in
+      # apps/gui/CMakeLists.txt - a confusing error to trace back to a
+      # missing apt package, which is why this comment spells it out.
       - name: Install Qt6 (Linux GUI)
         if: matrix.gui && runner.os == 'Linux'
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq --no-install-recommends \
-            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev
 
       # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
       # split qt6-base-dev/qt6-declarative-dev): one install pulls in
@@ -1053,6 +1070,38 @@ jobs:
           else
             "$bin" "${smoke_args[@]}"
           fi
+
+      # Roadmap UX3's own literal ask: "newly added strings cannot silently
+      # fall out of the catalogue". Re-runs lupdate (the ac3gui_lupdate
+      # target qt_add_translations() creates - apps/gui/CMakeLists.txt)
+      # against the same QML/C++ sources it scans at release time, then
+      # fails if that changed any of the six real .ts files - a qsTr()
+      # string added or edited without re-running lupdate would otherwise
+      # rot silently until someone happened to notice. Only runs once (this
+      # leg) since extraction doesn't depend on OS/compiler - the sources it
+      # scans are identical everywhere gui: true builds ac3gui.
+      #
+      # Deliberately NOT the stricter "zero unfinished" gate the sibling
+      # CountdownSolver project runs (R:\CountdownSolver's own
+      # .github/workflows/ci.yml, "Translations complete") - translation
+      # coverage here is real but partial by design (docs/gui/
+      # localisation.md tracks exactly what), so that bar would fail today
+      # on content nobody has touched. Tightening to it is the natural next
+      # step once coverage is complete, not before.
+      - name: Check translations are up to date
+        if: matrix.gui && matrix.name == 'Linux GCC'
+        shell: bash
+        run: |
+          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
+          echo "::group::translations git diff debug"
+          pwd
+          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory '*'
+          git rev-parse --show-toplevel || echo "rev-parse failed"
+          echo "::endgroup::"
+          cd "${GITHUB_WORKSPACE}"
+          git diff --exit-code -- apps/gui/translations
 
       # Sanitizers only catch what actually executes. ctest's cases exercise
       # encoder/decoder logic in isolation; this drives the real CLI across

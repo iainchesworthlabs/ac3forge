@@ -225,6 +225,23 @@ QtObject {
         const installed = Qt.fontFamilies();
         return installed.indexOf("Archivo") >= 0 ? "Archivo" : Application.font.family;
     }
+
+    // Roadmap UX3: Arabic/Hebrew (and Yiddish, written in Hebrew script) need
+    // a face with actual glyph coverage - Archivo has none. Named here as a
+    // single source of truth (and for parity with CountdownSolver's own
+    // Theme.qml, which threads the equivalent map through every Text's
+    // font.family), but unlike that app ac3gui's controls mostly take their
+    // font from the QGuiApplication-wide default rather than an explicit
+    // per-Text binding - LanguageManager::installTranslators() swaps that
+    // application-wide default font's family directly on every language
+    // change, so the whole window follows without every Text needing its
+    // own Theme.rtlFonts lookup. This map stays as the documented pairing
+    // those two places must agree on.
+    readonly property var rtlFonts: ({
+        "ar": "Noto Sans Arabic",
+        "he": "Noto Sans Hebrew",
+        "yi": "Noto Sans Hebrew",
+    })
     readonly property string monoFamily: {
         const installed = Qt.fontFamilies();
         if (installed.indexOf("Cascadia Mono") >= 0) return "Cascadia Mono";

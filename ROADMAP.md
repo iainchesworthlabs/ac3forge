@@ -1398,9 +1398,32 @@ directory; there is still no threading anywhere in the codec core.
 - [x] **UX2 (M)** — Desktop integration: drag-and-drop, `ac3gui <file>`, file associations
   (the installer's registry keys, `CFBundleDocumentTypes`, a `.desktop` entry plus AppStream
   metainfo and MIME XML for the `.deb`/`.rpm` — `ac3gui` is absent from Linux application menus).
-- [ ] **UX3 (M)** — Localisation and accessibility foundations: 676 `qsTr()` strings with no
-  `QTranslator` or `lupdate` target, and zero `Accessible.*` properties on the custom controls.
-  Both get harder to retrofit as `Main.qml` grows.
+- [x] **UX3 (M)** — Localisation and accessibility foundations. Done: `qt_add_translations()`
+  wires `apps/gui/translations/*.ts` through `lupdate`/`lrelease` into a `:/i18n` resource,
+  `LanguageManager` (`language_manager.{hpp,cpp}`) loads the active language at startup and on a
+  live Preferences switch, and RTL layout mirroring plus bundled Noto Sans Arabic/Hebrew faces
+  cover Arabic, Hebrew and Yiddish. The canonical language set — French, German, Spanish, Arabic,
+  Hebrew, Yiddish — matches the one the sibling CountdownSolver project already ships, rather than
+  inventing a second one; coverage today is 98 of 758 extracted messages per language (window
+  chrome, tab names, the Guided wizard's step titles, all of Preferences), the rest left in
+  English exactly like any real partial translation — see `docs/gui/localisation.md` for the
+  tracked remainder, and completing it is the natural follow-on, not a hidden gap. A pseudo-locale
+  QA fixture (`tools/generators/gen_pseudo_locale.py`, `ac3gui_xx.ts`) mechanically decorates every
+  extracted string and is loaded only under `AC3GUI_LOCALE=xx` in `tst_localisation_pipeline.qml`,
+  proving the whole pipeline end to end independent of the six real languages' completeness and
+  catching any string that bypasses `qsTr()` entirely. CI's "Check translations are up to date"
+  step reruns `lupdate` and fails on drift — the literal ask behind the item's original wording —
+  deliberately short of CountdownSolver's own stricter "zero unfinished" gate, since that would
+  fail today on content nobody has touched yet.
+  Every custom control and every ad-hoc control in `Main.qml` now carries `Accessible.role`/
+  `name`/`description`, built from the same live properties the visual state already reads (never
+  a static duplicate of a label) — the QC preset regression's own lesson, now enforced by
+  `tst_accessibility.qml` and targeted additions to `tst_main_shell.qml`/`tst_qc_panel.qml`. Two
+  genuine Qt API surprises found doing this, both worth knowing before touching this again:
+  `Accessible` has no `disabled` property (Qt's own accessibility bridge reads the item's real
+  `enabled` state instead), and a `Dialog`/`Popup` root is not itself an `Item` — `Accessible.*`
+  has to attach to its `contentItem`, not the `Dialog` itself, or it throws a runtime warning on
+  every window that ever instantiates the dialog, not just when it opens.
 - [x] **UX4 (M)** — A real live object-position source for `live mode=atmos` and the GUI live
   room — OSC, as the roadmap asked for first: `ac3::oba::parse_osc_packet`/`apply()`
   (`src/forge/src/oba/scene_osc.cpp`) is a third, pure reader of a scene update beside the JSON

@@ -239,4 +239,27 @@ TestCase {
         compare(String(failFill.color), String(Theme.bad));
         verify(String(passFill.color) !== String(failFill.color));
     }
+
+    // Roadmap UX3: the same pass/fail distinction above, for what a screen
+    // reader reports rather than what is drawn - QcGateMeter's own
+    // Accessible.description is built from the identical hasValue/gated/
+    // pass properties the fill colour reads, so a pass and a fail can never
+    // read the same way there either (see tst_accessibility.qml for the
+    // fuller, live-data-driven coverage of QcGateMeter and the other
+    // reusable controls).
+    function test_gateMeterAccessibleDescriptionSaysPassOrFail() {
+        const passMeter = createTemporaryObject(gateMeterComponent, testCase, {
+            hasValue: true, value: -23.0, minValue: -40, maxValue: 0,
+            bandLow: -24.0, bandHigh: -22.0, pass: true
+        });
+        const failMeter = createTemporaryObject(gateMeterComponent, testCase, {
+            hasValue: true, value: -10.0, minValue: -40, maxValue: 0,
+            bandLow: -24.0, bandHigh: -22.0, pass: false
+        });
+        verify(passMeter !== null && failMeter !== null);
+        verify(passMeter.Accessible.description.indexOf("within limit") >= 0,
+               passMeter.Accessible.description);
+        verify(failMeter.Accessible.description.indexOf("outside limit") >= 0,
+               failMeter.Accessible.description);
+    }
 }
