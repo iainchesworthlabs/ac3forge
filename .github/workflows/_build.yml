@@ -128,7 +128,13 @@ jobs:
   # this check being unavailable is never a reason to block CI.
   check-runners:
     name: Check self-hosted runner availability
-    runs-on: ubuntu-latest
+    # Control-plane job: routed by vars.CONTROL_RUNNER_JSON with the
+    # delete-the-variable kill switch and unconditional fork-PR pin to
+    # GitHub-hosted - see _toolchain-versions.yml's jobs comment for the
+    # rationale and ci.yml's check-runner for the fork-checkout concern
+    # (this job has no checkout, but the guard is kept uniform so no future
+    # step addition can silently create the exposure).
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read

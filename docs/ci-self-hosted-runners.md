@@ -13,6 +13,18 @@ runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg
 way through its `check-runner` job; Coverage deliberately does not - see its own comment in
 `ci.yml` for the undiagnosed shutdown-signal failure that keeps it on GitHub-hosted.
 
+Control-plane jobs - the `check-runner`/`check-runners` deciders themselves,
+`_toolchain-versions.yml`'s `resolve`, and the `CI Status` aggregator - route separately,
+via the repository variable `CONTROL_RUNNER_JSON` (a runner-label JSON array, e.g.
+`["self-hosted","Linux","X64"]`; unset means `ubuntu-latest`). These are seconds-long jobs
+that everything else waits on, and leaving them on the shared hosted pool meant that under
+saturation a 9-second decider queued for hours behind 25-minute build legs before the run
+could even choose runners (observed 2026-08-28). Deleting the variable is the kill switch
+that returns them all to GitHub-hosted - it is evaluated fresh on every run, so a dead
+self-hosted fleet can never lock the escape hatch shut. Fork PRs are pinned to
+GitHub-hosted unconditionally here too: `check-runner` executes `decide-runner` from a
+checkout of the fork's merge ref, which is fork-controlled code.
+
 This page describes what ac3forge's CI does with a self-hosted runner once one exists. It
 does not describe how one comes to exist - the fleet itself (Packer images, provisioning
 scripts, the org they register against) lives in

@@ -240,7 +240,15 @@ jobs:
   # self-hosted-eligible job does.
   check-runner:
     name: Check self-hosted runner availability
-    runs-on: ubuntu-latest
+    # Control-plane job: routed by vars.CONTROL_RUNNER_JSON (delete the
+    # variable to send it back to ubuntu-latest - see
+    # _toolchain-versions.yml's jobs comment for the full rationale). This
+    # 9-second job deciding where the real work runs is worthless if it
+    # itself queues for hours behind saturated hosted runners - observed
+    # 2026-08-28. Fork PRs stay on GitHub-hosted unconditionally: this job
+    # checks out the fork's merge ref and runs ./.github/actions/decide-runner
+    # FROM that checkout, i.e. fork-controlled code.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read
@@ -1910,7 +1918,14 @@ jobs:
     name: CI Status
     if: always()
     needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
-    runs-on: ubuntu-latest
+    # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
+    # switch as check-runner above. This is the required check every PR
+    # waits on LAST - when the hosted pool is saturated, a run whose every
+    # real job passed still reported nothing for hours because this
+    # seconds-long aggregator was queued behind build legs (PR #447,
+    # 2026-08-28). No checkout, no untrusted code - the fork guard is
+    # consistency, not necessity.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     steps:
       - name: Gate on required job results
         shell: bash
