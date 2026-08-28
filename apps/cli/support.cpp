@@ -1346,6 +1346,56 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.live_objects = static_cast<std::size_t>(n);
             continue;
         }
+        if (key == "positions") {
+            // <scheme>:[<bind>:]<port> - see PositionSourceSpec's own
+            // comment in support.hpp for the grammar and why it is
+            // scheme-prefixed. Split on the FIRST ':' for the scheme, then
+            // (if a second ':' remains) the LAST ':' for bind vs port - an
+            // IPv4 dotted-quad has no colons of its own, so this never
+            // misreads one as part of the port.
+            const auto scheme_end = value.find(':');
+            if (scheme_end == std::string_view::npos) {
+                fmt::println(stderr, "error: positions= needs a scheme (positions=osc:<port>)");
+                return false;
+            }
+            const auto scheme = value.substr(0, scheme_end);
+            if (scheme != "osc") {
+                fmt::println(stderr,
+                             "error: positions= scheme must be 'osc' (got '{}'; MIDI and a "
+                             "game controller are not implemented yet)",
+                             scheme);
+                return false;
+            }
+            const auto rest = value.substr(scheme_end + 1);
+            std::string_view bind_token = "local";
+            std::string_view port_token = rest;
+            if (const auto bind_end = rest.rfind(':'); bind_end != std::string_view::npos) {
+                bind_token = rest.substr(0, bind_end);
+                port_token = rest.substr(bind_end + 1);
+            }
+            std::string bind_address;
+            if (bind_token == "local") {
+                bind_address = "127.0.0.1";
+            } else if (bind_token == "any") {
+                bind_address = "0.0.0.0";
+            } else {
+                bind_address = std::string{bind_token};
+            }
+            std::uint32_t port_value = 0;
+            const auto [ptr, ec] =
+                std::from_chars(port_token.data(), port_token.data() + port_token.size(), port_value);
+            if (ec != std::errc{} || ptr != port_token.data() + port_token.size() ||
+                port_value < 1 || port_value > 65535) {
+                fmt::println(stderr,
+                             "error: positions=osc:[local|any|<ipv4>:]<port> needs a port from "
+                             "1 to 65535");
+                return false;
+            }
+            out.positions = PositionSourceSpec{.scheme = std::string{scheme},
+                                               .bind = std::move(bind_address),
+                                               .port = static_cast<std::uint16_t>(port_value)};
+            continue;
+        }
         if (key == "fmp4-window") {
             std::uint32_t segments = 0;
             const auto [ptr, ec] =

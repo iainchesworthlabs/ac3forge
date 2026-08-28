@@ -128,7 +128,13 @@ jobs:
   # this check being unavailable is never a reason to block CI.
   check-runners:
     name: Check self-hosted runner availability
-    runs-on: ubuntu-latest
+    # Control-plane job: routed by vars.CONTROL_RUNNER_JSON with the
+    # delete-the-variable kill switch and unconditional fork-PR pin to
+    # GitHub-hosted - see _toolchain-versions.yml's jobs comment for the
+    # rationale and ci.yml's check-runner for the fork-checkout concern
+    # (this job has no checkout, but the guard is kept uniform so no future
+    # step addition can silently create the exposure).
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read
@@ -136,6 +142,7 @@ jobs:
       linux_runner_1: ${{ steps.decide.outputs.linux_runner_1 }}
       linux_runner_2: ${{ steps.decide.outputs.linux_runner_2 }}
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
+      linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -157,12 +164,11 @@ jobs:
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - three Linux (GCC, LLVM, LLVM ASan+UBSan)
-          # and two Windows (MSVC, LLVM) today. LLVM TSan stays GitHub-hosted
-          # (see its own matrix entry) so it is not one of these three. Bump
-          # these, and add a matching numbered output above and matrix.runner
-          # reference below, if a leg is added or removed.
-          LINUX_LEGS=3
+          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
+          # LLVM TSan) and two Windows (MSVC, LLVM) today. Bump these, and
+          # add a matching numbered output above and matrix.runner reference
+          # below, if a leg is added or removed.
+          LINUX_LEGS=4
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -174,46 +180,57 @@ jobs:
             exit 0
           fi
 
-          # Online, idle self-hosted runners carrying both "self-hosted" and
-          # $2 (the OS label), summed across repo-level and (if ORG_TOKEN is
-          # set) org-level runner lists - the two are always disjoint under
-          # this org's model (a runner is registered at one scope or the
-          # other, never both), so summing them can't double-count. The
-          # count, not just whether it's non-zero, is what lets legs fan out
-          # across self-hosted before overflowing onto GitHub-hosted. Never
-          # fails the job: a missing/errored API response (e.g. no runner
+          # ONLINE self-hosted runners - busy or not, deliberately - carrying
+          # both "self-hosted" and $2 (the OS label), summed across
+          # repo-level and (if ORG_TOKEN is set) org-level runner lists -
+          # the two are always disjoint under this org's model (a runner is
+          # registered at one scope or the other, never both), so summing
+          # them can't double-count. Idleness used to be the predicate
+          # (busy==false) and it was wrong for this fleet: the runners are
+          # ephemeral (--ephemeral, one job per registration), so between
+          # jobs a runner DEREGISTERS and is simply absent from the API for
+          # ~10s per recycle. Under a churn of short jobs each runner is
+          # invisible a large fraction of the time (measured ~40% on one
+          # runner's supervisor journal, 2026-08-28), so an "idle right now"
+          # sample systematically undercounted a mostly-free fleet and
+          # spilled heavy legs onto a saturated hosted pool. A busy runner
+          # still proves the fleet is alive and frees in minutes; queueing
+          # behind it is far cheaper than hosted starvation. Never fails
+          # the job: a missing/errored API response (e.g. no runner
           # registered against this repo yet, or ORG_TOKEN unset) just counts
           # as zero.
-          runner_idle_count() {
+          runner_online_count() {
             local scope="$1" os_label="$2" json count
             json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || { echo 0; return; }
-            count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and .busy==false and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$os_label\"))] | length" 2>/dev/null)" || { echo 0; return; }
+            count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$os_label\"))] | length" 2>/dev/null)" || { echo 0; return; }
             echo "${count:-0}"
           }
 
           # Emits $5 lines, one runner-label set per leg: self-hosted for as
-          # many legs as there are currently idle self-hosted runners
-          # (capped at $5), GitHub-hosted for the rest. E.g. one idle
-          # self-hosted Linux runner and two Linux legs sends leg 1 to
-          # self-hosted and fans leg 2 out to GitHub-hosted immediately,
-          # rather than queuing it behind whatever's already busy on the
-          # self-hosted pool.
+          # many legs as there are online self-hosted runners (capped at
+          # $5), GitHub-hosted for the rest. With the fleet at its normal
+          # size (13 Linux / 7 Windows online vs 4/2 legs) that means every
+          # leg goes self-hosted whenever the fleet is registered at all;
+          # the per-leg fan-out only still matters as graceful degradation
+          # when most of the fleet is genuinely gone (e.g. 1 surviving
+          # runner -> 1 leg self-hosted, the rest overflow to GitHub-hosted
+          # rather than queueing behind a single runner).
           decide_labels_for_os() {
             local mode="$1" os_label="$2" hosted="$3" self_hosted="$4" leg_count="$5"
-            local idle=0
+            local online=0
             case "$mode" in
-              self-hosted)   idle="$leg_count" ;;
-              github-hosted) idle=0 ;;
+              self-hosted)   online="$leg_count" ;;
+              github-hosted) online=0 ;;
               *)
-                idle="$(runner_idle_count "repos/$REPO" "$os_label")"
+                online="$(runner_online_count "repos/$REPO" "$os_label")"
                 if [ -n "${ORG_TOKEN:-}" ]; then
-                  idle=$((idle + $(GH_TOKEN="$ORG_TOKEN" runner_idle_count "orgs/$ORG" "$os_label")))
+                  online=$((online + $(GH_TOKEN="$ORG_TOKEN" runner_online_count "orgs/$ORG" "$os_label")))
                 fi
                 ;;
             esac
             local i
             for i in $(seq 1 "$leg_count"); do
-              if [ "$i" -le "$idle" ]; then printf '%s\n' "$self_hosted"; else printf '%s\n' "$hosted"; fi
+              if [ "$i" -le "$online" ]; then printf '%s\n' "$self_hosted"; else printf '%s\n' "$hosted"; fi
             done
           }
 
@@ -455,14 +472,18 @@ jobs:
           # driving every layout/tool combination through ac3cli is an
           # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
           # same reasoning as the ASan+UBSan leg's own comment above.
-          # Stays GitHub-hosted, deliberately: ThreadSanitizer needs to
-          # disable ASLR to instrument memory correctly, and the self-hosted
-          # image's container fails with "unable to disable ASLR (perhaps
-          # sandboxing is enabled?)" - confirmed the hard way. GitHub-hosted's
-          # container security profile permits it; self-hosted's does not,
-          # for reasons not yet understood.
+          # Self-hosted-capable again (reverted to ubuntu-latest in #460).
+          # The failure was Docker's default seccomp profile rejecting the
+          # personality(ADDR_NO_RANDOMIZE) call TSan uses to disable ASLR
+          # from inside a container. The fleet image now sets
+          # kernel.randomize_va_space=0 on the VM (ci-runners#13, deployed
+          # 2026-08-28) - the sysctl is not namespaced, the container
+          # inherits it, and TSan never needs the blocked syscall. If this
+          # leg ever fails that way again, the fleet image regressed; the
+          # per-job fallback is container options --security-opt
+          # seccomp=unconfined, which is a much blunter instrument.
           - name: "Linux LLVM TSan"
-            runner: '["ubuntu-latest"]'
+            runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
             container: ubuntu:26.04
             preset: linux-llvm-tsan
             llvm: true

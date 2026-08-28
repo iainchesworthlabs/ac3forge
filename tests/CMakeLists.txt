@@ -106,9 +106,11 @@ add_executable(ac3tests
     quality/test_eac3_search.cpp
     oba/test_oba.cpp
     encoder/test_plan.cpp
+    audio/test_live_positions.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
     oba/test_scene.cpp
+    oba/test_scene_osc.cpp
     verify/test_eac3_selfcheck.cpp
     verify/test_selfcheck.cpp
     verify/test_trace_export.cpp
@@ -277,6 +279,15 @@ elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "macos")
     target_sources(ac3tests PRIVATE backend/macos/test_macos_support.cpp)
     target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 endif()
+
+# audio/test_live_positions.cpp needs UdpSocket (src/audio/src/net/udp_socket.hpp)
+# to send itself test datagrams over real loopback - internal to ac3::audio,
+# not installed, on the include path the same way a backend's own internal
+# header is above (AC3FORGE_AUDIO_NET_DIR, published by src/audio/CMakeLists.txt
+# next to AC3FORGE_AUDIO_BACKEND_DIR). No separate ws2_32 link is needed on
+# Windows: ac3audio already carries that requirement for any static-library
+# consumer, ac3tests included.
+target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 
 # ---------------------------------------------------------------------------
 # ac3cli integration tests (cli/test_cli.cpp). main.cpp compiles straight into

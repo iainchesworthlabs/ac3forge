@@ -94,6 +94,19 @@ TEST_CASE("ac3forge_version reports a sane version", "[capi]") {
     CHECK(version.full != nullptr);
 }
 
+// AC3FORGE_C_VERSION_* (AP1) is the SDK version this file compiled against;
+// ac3forge_version() is what actually got linked. In this test binary - built
+// and linked from the same tree in the same invocation - the two must agree.
+TEST_CASE("AC3FORGE_C_VERSION macros agree with the linked runtime version", "[capi]") {
+    const ac3forge_version_t version = ac3forge_version();
+    CHECK(AC3FORGE_C_VERSION_MAJOR == version.major);
+    CHECK(AC3FORGE_C_VERSION_MINOR == version.minor);
+    CHECK(AC3FORGE_C_VERSION_PATCH == version.patch);
+    static_assert(AC3FORGE_C_VERSION ==
+                  AC3FORGE_C_VERSION_MAJOR * 1000000 + AC3FORGE_C_VERSION_MINOR * 1000 +
+                      AC3FORGE_C_VERSION_PATCH);
+}
+
 TEST_CASE("ac3forge_status_message never returns null", "[capi]") {
     // Not testing an out-of-range cast to ac3forge_status_t here: for an
     // unfixed enum, a value outside the range its enumerators need is

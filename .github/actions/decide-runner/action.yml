@@ -1,8 +1,15 @@
 name: Decide self-hosted vs GitHub-hosted runner
 description: >-
-  Counts idle self-hosted runners (repo-level, plus org-level if a token is
-  given) carrying the given OS label, and picks self-hosted if any are idle,
-  GitHub-hosted otherwise. Fork PRs always get GitHub-hosted, no live check
+  Counts ONLINE self-hosted runners (busy or not; repo-level, plus org-level
+  if a token is given) carrying the given OS label, and picks self-hosted if
+  any are online, GitHub-hosted otherwise. Online-not-idle is deliberate:
+  the fleet's runners are ephemeral (--ephemeral, one job per registration),
+  so between jobs a runner DEREGISTERS and is absent from the API for ~10s
+  per recycle - under a churn of short jobs each runner is invisible a large
+  fraction of the time (measured ~40% on 2026-08-28), and an "idle right
+  now" count systematically undercounts a mostly-free fleet. A busy runner
+  still proves the fleet is alive and frees up in minutes; queueing behind
+  it is far cheaper than the hours a saturated hosted pool costs. Fork PRs always get GitHub-hosted, no live check
   needed - untrusted code must never land on a persistent runner. Mirrors
   _build.yml's own check-runners job (see that file's header for the full
   design and docs/ci-self-hosted-runners.md); factored out here so a single
@@ -75,27 +82,29 @@ runs:
           github-hosted) echo "runner=$HOSTED_JSON" >> "$GITHUB_OUTPUT"; exit 0 ;;
         esac
 
-        # Same accounting as _build.yml's check-runners: online, idle
-        # runners carrying both "self-hosted" and $OS_LABEL, summed across
-        # repo-level and (if ORG_TOKEN is set) org-level lists. Never fails
-        # this step: a missing/errored API response just counts as zero, so
-        # this check being unavailable is never a reason to block the job.
-        idle_count() {
+        # Same accounting as _build.yml's check-runners: ONLINE runners
+        # (busy or not - see the description above for why idleness is the
+        # wrong predicate for an ephemeral fleet) carrying both
+        # "self-hosted" and $OS_LABEL, summed across repo-level and (if
+        # ORG_TOKEN is set) org-level lists. Never fails this step: a
+        # missing/errored API response just counts as zero, so this check
+        # being unavailable is never a reason to block the job.
+        online_count() {
           local scope="$1" json count
           json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || { echo 0; return; }
-          count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and .busy==false and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$OS_LABEL\"))] | length" 2>/dev/null)" || { echo 0; return; }
+          count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$OS_LABEL\"))] | length" 2>/dev/null)" || { echo 0; return; }
           echo "${count:-0}"
         }
 
-        idle="$(idle_count "repos/$REPO")"
+        online="$(online_count "repos/$REPO")"
         if [ -n "${ORG_TOKEN:-}" ]; then
-          idle=$((idle + $(GH_TOKEN="$ORG_TOKEN" idle_count "orgs/$ORG")))
+          online=$((online + $(GH_TOKEN="$ORG_TOKEN" online_count "orgs/$ORG")))
         fi
 
-        if [ "$idle" -ge 1 ]; then
+        if [ "$online" -ge 1 ]; then
           echo "runner=$SELF_JSON" >> "$GITHUB_OUTPUT"
-          echo "$idle idle self-hosted $OS_LABEL runner(s) - using self-hosted."
+          echo "$online online self-hosted $OS_LABEL runner(s) - using self-hosted."
         else
           echo "runner=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
-          echo "No idle self-hosted $OS_LABEL runners - using GitHub-hosted."
+          echo "No online self-hosted $OS_LABEL runners - using GitHub-hosted."
         fi

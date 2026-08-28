@@ -166,6 +166,7 @@ target_sources(forge_objects
         src/oba/oamd.cpp
         src/oba/scene.cpp
         src/oba/scene_json.cpp
+        src/oba/scene_osc.cpp
         src/oba/scene_text.cpp
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
