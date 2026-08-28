@@ -3,11 +3,11 @@
 The six plain Windows/Linux legs in [`_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)'s
 `build` matrix (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM, Linux LLVM ASan+UBSan,
 Linux LLVM TSan) can each run on a
-self-hosted runner instead of a GitHub-hosted one - but only when one is actually online and
-idle right now, and only up to however many are idle: with, say, one idle self-hosted Linux
-runner and two Linux legs, one leg lands on self-hosted and the other fans out onto
-GitHub-hosted in the same run, rather than both piling onto self-hosted and one of them
-queuing behind the other. macOS and the arm64 legs always stay on GitHub-hosted
+self-hosted runner instead of a GitHub-hosted one - whenever the fleet is *online* at all,
+and up to however many runners are online: with the fleet at its normal size (13 Linux, 7
+Windows) that means every leg, and the per-leg fan-out only reappears as graceful
+degradation when most of the fleet is genuinely gone (one surviving runner takes one leg,
+the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
 (Detect changes, Static Analysis, FFmpeg Validate, and the cheap gate jobs) route the same
 way through its `check-runner` job; Coverage deliberately does not - see its own comment in
@@ -47,8 +47,8 @@ Per OS, in order:
    `self-hosted`, or `github-hosted`. A forced mode skips the live check entirely and applies
    to every leg of that OS - if you force `self-hosted` and nothing is actually online, the
    job queues and waits, which is the expected cost of an explicit override.
-3. **`auto` counts idle runners, then fans legs across both pools.** The count comes from up
-   to two API calls, summed:
+3. **`auto` counts online runners, then fans legs across both pools.** The count comes from
+   up to two API calls, summed:
    - This repo's own registered runners (`GET /repos/iainchesworthlabs/ac3forge/actions/runners`,
      using the workflow's own `GITHUB_TOKEN` - no extra setup). Empty until a runner is
      actually registered directly against this repo, which may never happen under the
@@ -59,13 +59,14 @@ Per OS, in order:
      actually starts mattering once the org migration and runner group in `ci-runners` are
      in place; until then it's simply skipped, not an error.
 
-   Both counts only include runners that are `online`, not `busy`, and labelled with both
-   `self-hosted` and the right OS (`Linux` or `Windows`). Of that OS's legs, the first
-   `idle_count` (capped at the leg count) get the self-hosted label set (`self-hosted, Linux, X64` /
-   `self-hosted, Windows, X64` - the exact labels the `ci-runners` fleet registers with); the
-   rest get GitHub-hosted (`ubuntu-latest` / `windows-latest`). An idle count of zero, or the
-   API call itself failing for any reason, sends every leg of that OS to GitHub-hosted - this
-   check being unavailable is never a reason to block CI.
+   Both counts include every runner that is `online` - busy or not, deliberately; see the
+   next section - and labelled with both `self-hosted` and the right OS (`Linux` or
+   `Windows`). Of that OS's legs, the first `online_count` (capped at the leg count) get the
+   self-hosted label set (`self-hosted, Linux, X64` / `self-hosted, Windows, X64` - the
+   exact labels the `ci-runners` fleet registers with); the rest get GitHub-hosted
+   (`ubuntu-latest` / `windows-latest`). An online count of zero, or the API call itself
+   failing for any reason, sends every leg of that OS to GitHub-hosted - this check being
+   unavailable is never a reason to block CI.
 
 Today, before any runner is registered against ac3forge under either model, every leg simply
 keeps building on GitHub-hosted runners - a deliberate no-op, not a bug: the mechanism is
@@ -80,17 +81,29 @@ right now". With `ci-runners`' runners shared across every repo in the org, "con
 "available" can genuinely differ moment to moment, so the live check is what keeps a leg from
 silently queuing behind another repo's job instead of falling back.
 
-## Why a count, not a bool
+## Why online, not idle
 
-An earlier version of this check asked only "is at least one self-hosted runner idle" and, if
-so, sent *every* leg of that OS to self-hosted - both Linux legs, or both Windows legs,
-together. With a shared, org-wide pool that can easily have only one idle runner at a time
-(the other two of the three Linux runners busy on someone else's job, say), that meant the
-second leg queued behind the first instead of ever touching GitHub-hosted at all, even though
-GitHub-hosted capacity was sitting right there unused. Counting idle runners and capping the
-self-hosted assignment at that count - rather than at "all of them" - is what lets a run
-actually fan out across both pools: self-hosted for as many legs as there's room for right
-now, GitHub-hosted for the rest, no queuing either way.
+The check originally counted runners that were online *and not busy* - "how many could pick
+a job up this instant". That predicate is wrong for this fleet, and the failure was measured
+rather than theorised (2026-08-28): the runners are **ephemeral** (`--ephemeral`, one job
+per registration), so after every job a runner deregisters, resets its workspace, and
+re-registers - and for that ~10-second recycle window it is *absent from the runners API
+entirely*: not busy, not offline, just missing. Under a churn of short jobs (the cheap gate
+jobs take seconds each) a runner completes a full cycle every ~25 seconds, which left each
+runner invisible to the count roughly 40% of the time - one runner's supervisor journal
+showed exactly that. Sampling 13 such runners at one instant therefore reported a small
+"idle" number while the pool was mostly free, and heavy legs (TSan, the second Windows leg)
+were spilled onto a GitHub-hosted pool that was hours-deep in queue. The cheaper the gate
+jobs, the worse the undercount - the opposite of intuition.
+
+Counting *online* runners - busy included - fixes this: a busy runner proves the fleet is
+alive and frees up in minutes, and queueing a leg behind it (or behind a 10-second recycle)
+is far cheaper than hosted starvation. The count is still capped per leg, so the fan-out
+survives as graceful degradation when most of the fleet is genuinely dead: one surviving
+runner takes one leg and the rest overflow to GitHub-hosted rather than queueing behind a
+single machine. A fleet that is entirely absent (zero online, busy or not) still sends
+everything to GitHub-hosted, and the `RUNNER_*_MODE` variables remain the manual override
+for anything the heuristic gets wrong.
 
 ## Measuring whether it's actually worth it
 

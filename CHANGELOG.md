@@ -14,7 +14,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0, both decoders gain a
 consumer output stage, all three containers become readable as well as writable, and the
-verification estate extends to E-AC-3. The repository also moved to trunk-based development.
+verification estate extends to E-AC-3. The repository also moved to trunk-based development, and
+a concrete API-freeze plan for v1.0 now exists.
 
 ### Added
 
@@ -178,6 +179,13 @@ verification estate extends to E-AC-3. The repository also moved to trunk-based 
   offset, ready for `pandas.read_csv`/`read_json` and `.to_parquet()` from there.
 - **`FrameError` gained `describe()`**, matching every other error type. Python's `Ac3EncodeError`
   now carries a real message instead of just the failing enumerator's name.
+- **A concrete API-freeze plan for v1.0** ([docs/library/api-stability.md](docs/library/api-stability.md),
+  roadmap `AP1`): a Public/Internal/Diagnostic/Experimental tier for every header under `ac3/`, a
+  SemVer/deprecation policy, a C config struct growth policy, and release criteria. The C API
+  gained a compile-time version alongside its existing runtime-only `ac3forge_version()`:
+  `AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`.
+  `SOVERSION` and an ABI-tagging inline namespace are deliberately deferred to the `v1.0.0` cut
+  itself — see the page's own reasoning.
 
 **Verification**
 

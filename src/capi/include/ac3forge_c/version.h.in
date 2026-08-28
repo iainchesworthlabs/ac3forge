@@ -1,0 +1,18 @@
+#pragma once
+
+/* Compile-time version macros for ac3forge's C API (AP1). Generated from
+ * version.h.in by src/capi/CMakeLists.txt - do not edit the generated copy.
+ *
+ * These are the SDK version a caller built against, known at preprocessor
+ * time (#if AC3FORGE_C_VERSION >= ...) - not what ac3forge_version() reports,
+ * which is the library actually linked at runtime and may differ before
+ * v1.0's ABI promise exists (see ac3forge.h's own header comment). */
+
+#define AC3FORGE_C_VERSION_MAJOR @AC3FORGEC_VERSION_MAJOR@
+#define AC3FORGE_C_VERSION_MINOR @AC3FORGEC_VERSION_MINOR@
+#define AC3FORGE_C_VERSION_PATCH @AC3FORGEC_VERSION_PATCH@
+
+/* The three fields above, comparable as a single integer:
+ * `#if AC3FORGE_C_VERSION >= 1002003` instead of a three-part comparison. */
+#define AC3FORGE_C_VERSION \
+    (AC3FORGE_C_VERSION_MAJOR * 1000000 + AC3FORGE_C_VERSION_MINOR * 1000 + AC3FORGE_C_VERSION_PATCH)
