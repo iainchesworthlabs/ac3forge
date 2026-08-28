@@ -183,6 +183,42 @@ land on, and a finished take has a **Show in folder**. Monitor-only checks delib
 of the history, watchdog failures included: only a take on disk or a receiver leg opens the entry
 in the first place.
 
+## Live position input over OSC
+
+Object mode's pre-flight card (the same idle Card [Starting a capture](#starting-a-capture)
+describes above, visible only while `atmosEnabled` — a channel session has no objects to drive)
+carries three more controls: a **Drive objects from OSC** checkbox, a **port** field (default
+9000), and an **any interface** checkbox, off by default — loopback only, the same security
+posture as the CLI's `local`/`any` split (see [CLI → Commands → Live &
+hardware](../cli/commands.md#live-hardware) for why that default matters and the full OSC address
+space). All three are pre-flight-only, exactly like **Also write the take to disk** and **Raw-WAV
+safety copy** on the same Card: **Start session** reads them once, and they are fixed for that
+session's lifetime — toggling the checkbox mid-session does nothing until the *next* session
+starts.
+
+Once a session with OSC on is running:
+
+- The transport row (Stop session, RUNNING/FRAMES/DROPPED) gains an **OSC** counter reading
+  `N updates, N dropped`.
+- In the Live room, an object a live OSC update currently owns is drawn greyed out and stops
+  responding to drag — a click or drag there is refused outright rather than fought over — and its
+  marker instead tracks whatever the network feed most recently sent. An object nothing has
+  addressed is still an ordinary, draggable, manually-placed object exactly as before this feature
+  existed, so one session can freely mix network-driven and manually-placed objects.
+- `/object/<n>/release` from the network side hands that object back to manual control — its
+  marker un-greys and starts responding to drag again.
+
+!!! note "No screenshot of OSC-driven markers here"
+    The same reasoning as [the running transport's own note](#starting-a-capture) applies: showing
+    a network-driven marker mid-session would mean recording actual network traffic into a
+    screenshot just to illustrate a UI state, so the grey-and-undraggable marker behaviour is
+    described from the implementation rather than photographed.
+
+This page's job is the GUI controls; the wire protocol behind them — the `positions=` grammar, the
+`/object/<n>/xyz|gain|lfe|release` address space, and the loopback-vs-any-interface security
+note — is identical on both front ends and documented once, on the CLI side: see
+[CLI → Commands → Live & hardware](../cli/commands.md#live-hardware).
+
 ## Take durability
 
 A live session writes each encoded unit to disk as it is produced — never accumulating the whole
