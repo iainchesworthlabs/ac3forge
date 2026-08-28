@@ -642,8 +642,26 @@ machine-readable output and a single failure exit code. Users arrive with contai
   re-wrap, which is what this decoder already produces. Phase 1: an `iamf::` OBU/ISOBMFF writer
   with `ipcm` substreams for a channel-based 7.1.4 element from the E-AC-3 decode. Phase 2:
   object elements once v2.0 is final. Phase 3: an OBU reader (`ipcm`/FLAC) onto
-  `FrameConfig`/`AtmosEncoder`. `libiamf` and OAR are oracles, not sources. IM2 first is the
-  cheaper route to the same ecosystem.
+  `FrameConfig`/`AtmosEncoder`. `libiamf` and OAR are oracles, not sources. IM2 (shipped above) is
+  the cheaper, indirect route to the same ecosystem — a decoded programme already reaches
+  AOM's own `iamf-tools` encoder via ADM-BWF, no code in this repo needed — but that only carries
+  IM2's own scope (dynamic-object-only programmes, cartesian positions) and depends on a
+  second, external encoder. IM3 writes the IAMF bitstream directly, for any 7.1.4-coded
+  programme this decoder can render, with nothing else in the chain.
+  *Phase 1 done: `iamf::` (`src/iamf`) writes a channel-based Audio Element (7.1.4ch,
+  loudspeaker_layout 7, 5 coupled + 2 non-coupled `ipcm` substreams in the §3.6.3.3 order) plus a
+  Mix Presentation carrying both the mandatory Stereo loudness layout and the 7.1.4 one, wrapped
+  in IAMF's ISO-BMFF encapsulation (`iamf`-branded `ftyp`, an `iamf` sample entry's `iacb` box).
+  Codec-blind like `mp4::mp4`/`ac3iab::ac3iab` (no `ac3::forge` dependency); default-on
+  (`AC3FORGE_BUILD_IAMF`), installed/exported the same way. `examples/mux_iamf.cpp` is the
+  decode → permute → `iamf::mux()` round trip: it encodes a synthetic 7.1.4 E-AC-3 stream,
+  decodes it with `Eac3Decoder`, and reorders Table E2.5's bit order into §3.6.2's own
+  L/C/R/Lss/Rss/Lrs/Rrs/Ltf/Rtf/Ltb/Rtb/LFE via `Layout::index_of`. Tested with an independent
+  OBU/ISOBMFF walker built into `test_iamf.cpp` itself (no `libiamf` dependency added to the
+  build) — deliberately proven able to fail: a substream/channel-pairing swap was reintroduced
+  and confirmed to break the PCM round-trip test before being reverted. No Parameter Block OBUs,
+  no Temporal Delimiter OBU, no trimming, batch API only — see `iamf/iamf.hpp`'s own header for
+  the full phase-1 boundary. Phases 2 and 3 are unstarted.*
 - [ ] **IM4 (L)** — AC-4 parse-and-inspect (was `D4`). The blocking question is resolved: nothing
   open encodes AC-4, but the Dolby Encoding Engine already licensed and used for the AC-3/E-AC-3
   external-baseline tier includes `dee_ac4_encoder.exe`/`dee_ac4ajoc_encoder.exe`, and the Dolby

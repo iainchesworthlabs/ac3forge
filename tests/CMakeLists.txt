@@ -401,6 +401,14 @@ if(AC3FORGE_BUILD_IAB)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
+# iamf::iamf (roadmap IM3 phase 1, src/iamf) is gated by its own AC3FORGE_BUILD_IAMF (default ON,
+# see the root CMakeLists.txt's own option()), same conditional shape as the AC3FORGE_BUILD_IAB
+# block immediately above.
+if(AC3FORGE_BUILD_IAMF)
+    target_sources(ac3tests PRIVATE iamf/test_iamf.cpp)
+    target_link_libraries(ac3tests PRIVATE iamf::iamf)
+endif()
+
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, default ON - see the root
 # CMakeLists.txt) - test_capi.cpp (roadmap F1) only exists to build when it was actually built,
 # the same shape as the AC3FORGE_BUILD_ADM-gated sources above.

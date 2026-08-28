@@ -108,6 +108,12 @@ a concrete API-freeze plan for v1.0 now exists.
 - **A JOC → ADM BWF writer.** `decode … adm_out` writes a Dolby Atmos Master ADM Profile BW64
   from a decoded stream's own bed LFE and reconstructed objects, positioned by their real OAMD
   timeline. Scoped to dynamic-object-only programmes. Needs `-DAC3FORGE_BUILD_ADM=ON`.
+- **`iamf`, a writer for AOM's IAMF (Immersive Audio Model and Formats) v1.1.0.** E-AC-3 can never
+  be an IAMF codec, so this decodes a 7.1.4 stream and re-wraps it as a channel-based IAMF Audio
+  Element carrying `ipcm` substreams, in IAMF's own ISO-BMFF encapsulation — a direct route to the
+  IAMF/Eclipsa Audio ecosystem alongside the indirect one the ADM writer above already opens
+  (AOM's `iamf-tools` encoder accepts ADM-BWF input). Object elements and a reader are not
+  started. See [IAMF writing](docs/library/iamf.md).
 - **`ac3iab`, a reader for SMPTE ST 2098-2's Immersive Audio Bitstream** — the frame framing and
   every element in the format's element tree, with positions, spreads and gains resolved. Its
   lossless coder is read by identity only. Validated against the DTS reference validator's own
