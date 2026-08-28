@@ -65,6 +65,7 @@ if(AC3FORGE_INSTALL_BOTH_LINKAGES)
     set(_ac3forge_mp4_install_targets mp4_objects mp4_static mp4_shared)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_static mpegts_shared)
     set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_static ac3iab_shared)
+    set(_ac3forge_iamf_install_targets iamf_objects iamf_static iamf_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static forge_c_shared)
 elseif(BUILD_SHARED_LIBS)
     # ac3::forge_c (src/capi/CMakeLists.txt) statically embeds ac3::forge_static PRIVATE
@@ -86,6 +87,7 @@ elseif(BUILD_SHARED_LIBS)
     set(_ac3forge_mp4_install_targets mp4_objects mp4_shared)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_shared)
     set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_shared)
+    set(_ac3forge_iamf_install_targets iamf_objects iamf_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_shared)
 else()
     set(_ac3forge_forge_install_targets forge_objects forge_static)
@@ -94,6 +96,7 @@ else()
     set(_ac3forge_mp4_install_targets mp4_objects mp4_static)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_static)
     set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_static)
+    set(_ac3forge_iamf_install_targets iamf_objects iamf_static)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static)
 endif()
 
@@ -243,6 +246,26 @@ if(AC3FORGE_BUILD_IAB)
         COMPONENT library)
 endif()
 
+# iamf::iamf is an optional component (AC3FORGE_BUILD_IAMF, see the root CMakeLists.txt) - same
+# shape as ac3iab immediately above, a writer rather than a reader. No vcpkg feature of its own
+# yet, same reasoning as ac3iab's own comment: new in this PR, no downstream consumer to wait on
+# yet.
+if(AC3FORGE_BUILD_IAMF)
+    install(TARGETS ${_ac3forge_iamf_install_targets}
+        EXPORT iamfTargets
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
+
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/iamf/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        COMPONENT library)
+
+    install(FILES "${CMAKE_BINARY_DIR}/src/iamf/generated/iamf/export.hpp"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iamf"
+        COMPONENT library)
+endif()
+
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, see the root CMakeLists.txt) - same
 # shape as matroska::matroska/mp4::mp4/mpegts::mpegts above. Roadmap item F1's whole point is a
 # stable C-callable surface for OTHER toolchains, so its header (ac3forge_c/ac3forge.h) installs
@@ -332,6 +355,14 @@ if(AC3FORGE_BUILD_IAB)
     install(EXPORT iabTargets
         FILE iabTargets.cmake
         NAMESPACE ac3iab::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        COMPONENT library)
+endif()
+
+if(AC3FORGE_BUILD_IAMF)
+    install(EXPORT iamfTargets
+        FILE iamfTargets.cmake
+        NAMESPACE iamf::
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
         COMPONENT library)
 endif()

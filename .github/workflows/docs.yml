@@ -62,21 +62,33 @@ jobs:
 
       - run: pip install --require-hashes -r requirements/requirements-docs.txt
 
-      # docs/assets/wasm-decode-demo/ is a committed fallback for a local `mkdocs build` (and
-      # this job's own strict build below) - see the deploy job's "Rebuild WASM decode demo"
-      # step for why the *published* site never depends on this staying in sync. But
-      # index.html/demo.js/the favicons have no reason to differ from apps/wasm/ at all -
-      # they are plain copies (see apps/wasm/CMakeLists.txt's POST_BUILD step), not
+      # docs/assets/wasm-decode-demo/ and docs/assets/wasm-encode-demo/ are committed fallbacks for
+      # a local `mkdocs build` (and this job's own strict build below) - see the deploy job's
+      # "Rebuild WASM demos" step for why the *published* site never depends on either staying in
+      # sync. But each demo's page files have no reason to differ from apps/wasm/'s own source at
+      # all - they are plain copies (see apps/wasm/CMakeLists.txt's two POST_BUILD steps), not
       # Emscripten output, so nothing here needs the toolchain this job deliberately doesn't
-      # install. ac3forge_decode.js/.wasm are the genuine build artifacts and have no
-      # source-tree counterpart to diff against, so they're not part of this check.
-      - name: Check WASM demo fallback is in sync with apps/wasm/
+      # install. The genuine build artifacts (each demo's .js/.wasm) have no source-tree
+      # counterpart to diff against, so they're not part of this check.
+      - name: Check WASM demo fallbacks are in sync with apps/wasm/
         run: |
           set -euo pipefail
           status=0
           for f in index.html demo.js favicon.svg favicon-32.png assets/demo.ec3; do
             if ! cmp -s "apps/wasm/$f" "docs/assets/wasm-decode-demo/$f"; then
               echo "::error file=docs/assets/wasm-decode-demo/$f::Out of sync with apps/wasm/$f - re-copy it (see docs/platforms/wasm.md)."
+              status=1
+            fi
+          done
+          for f in index.html app.js; do
+            if ! cmp -s "apps/wasm/encode/$f" "docs/assets/wasm-encode-demo/$f"; then
+              echo "::error file=docs/assets/wasm-encode-demo/$f::Out of sync with apps/wasm/encode/$f - re-copy it (see docs/platforms/wasm.md)."
+              status=1
+            fi
+          done
+          for f in favicon.svg favicon-32.png; do
+            if ! cmp -s "apps/wasm/$f" "docs/assets/wasm-encode-demo/$f"; then
+              echo "::error file=docs/assets/wasm-encode-demo/$f::Out of sync with apps/wasm/$f - re-copy it (see docs/platforms/wasm.md)."
               status=1
             fi
           done
@@ -108,31 +120,32 @@ jobs:
 
       - run: pip install --require-hashes -r requirements/requirements-docs.txt
 
-      # Rebuilds the WASM decode demo (apps/wasm, roadmap F3) fresh and
-      # overwrites the committed docs/assets/wasm-decode-demo/ copy before
-      # `mkdocs gh-deploy` runs its own `mkdocs build` internally - so what
-      # actually gets published always reflects current source, not
-      # whatever happened to be committed. The committed copy stays in the
+      # Rebuilds both WASM demos (apps/wasm, roadmap F3 and UX6) fresh and
+      # overwrites the committed docs/assets/wasm-{decode,encode}-demo/ copies
+      # before `mkdocs gh-deploy` runs its own `mkdocs build` internally - so
+      # what actually gets published always reflects current source, not
+      # whatever happened to be committed. The committed copies stay in the
       # tree as a working fallback for local `mkdocs build` (and this job's
       # own `build` dependency above, which never installs Emscripten) - see
-      # docs/wasm-demo.md and docs/platforms/wasm.md for the full reasoning.
-      # ninja-build isn't assumed present on this job's runner the way
-      # _build.yml's Linux legs can assume it (this workflow never otherwise
-      # touches a C++ toolchain), so it's installed explicitly here rather
-      # than trusted.
+      # docs/wasm-demo.md, docs/wasm-encode-demo.md and docs/platforms/wasm.md
+      # for the full reasoning. ninja-build isn't assumed present on this
+      # job's runner the way _build.yml's Linux legs can assume it (this
+      # workflow never otherwise touches a C++ toolchain), so it's installed
+      # explicitly here rather than trusted.
       - name: Install Ninja
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ninja-build
 
       - uses: ./.github/actions/setup-emscripten
 
-      - name: Rebuild WASM decode demo
+      - name: Rebuild WASM demos
         run: |
           set -euo pipefail
           cmake --preset config-wasm-emscripten
           cmake --build build/config-wasm-emscripten
-          rm -rf docs/assets/wasm-decode-demo
-          mkdir -p docs/assets/wasm-decode-demo
+          rm -rf docs/assets/wasm-decode-demo docs/assets/wasm-encode-demo
+          mkdir -p docs/assets/wasm-decode-demo docs/assets/wasm-encode-demo
           cp -r build/config-wasm-emscripten/bin/wasm_decode_demo/. docs/assets/wasm-decode-demo/
+          cp -r build/config-wasm-emscripten/bin/wasm_encode_demo/. docs/assets/wasm-encode-demo/
 
       - name: Configure git for gh-deploy
         env:

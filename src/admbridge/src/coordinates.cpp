@@ -29,6 +29,13 @@ ac3adm::CartesianPosition room_to_adm_cartesian(const ac3::oba::Position& room) 
     return {.x = 2.0 * room.x - 1.0, .y = 1.0 - 2.0 * room.y, .z = room.z};
 }
 
+ac3::oba::Position iab_position_to_room(const ac3iab::Position& position) {
+    // Direct passthrough - see coordinates.hpp's own comment on iab_position_to_room for why no
+    // formula is needed: x/y already share oba::Position's convention exactly, and z is already
+    // anchored at the same screen/ear-height zero, just never negative.
+    return {.x = position.x, .y = position.y, .z = position.z};
+}
+
 ac3::oba::Position adm_position_to_room(const ac3adm::Position& position) {
     return std::visit(
         [](const auto& p) -> ac3::oba::Position {
