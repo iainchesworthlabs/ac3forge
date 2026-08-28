@@ -344,8 +344,14 @@ jobs:
   # violation is reported even while the porting legs are still red.
   platform-macros:
     name: Platform Macros
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
+    # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
+    # does not - confirmed live ("pwsh: command not found" on
+    # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
+    # it only if/when ci-runners bakes PowerShell into the Linux template -
+    # same follow-the-toolchain rule as build-wasm/android/rust in
+    # _build.yml.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
