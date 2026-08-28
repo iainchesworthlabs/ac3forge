@@ -1305,11 +1305,21 @@ directory; there is still no threading anywhere in the codec core.
   missing: `scan`~~ done: `ac3.scan()`/`ac3.read_frame_header()` wrap `ac3::io::scan`/
   `read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/`FrameHeader`, plus
   `access_unit_timing` and its timing-arithmetic neighbours) — see `docs/library/python-api.md`'s
-  "Scanning a stream" section. Still missing: no containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`
-  are off in `pyproject.toml`), no metering, no signing. Zero-copy numpy in both directions (both paths
-  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`, a context manager
-  that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written `.pyi`; manylinux aarch64 and
-  macOS x86_64/universal wheels — Raspberry Pi is a documented platform with no wheel.
+  "Scanning a stream" section. ~~Zero-copy numpy in both directions (both paths
+  `memcpy` today), a 2-D planar array instead of a list, `decode_*_into(out=)`~~ done: encode
+  input (AC-3, E-AC-3 and `AtmosEncoder`) accepts either a 2-D `(n_channels, n_samples)` array or
+  a sequence of 1-D arrays and is read directly out of whichever is passed when it's already
+  contiguous float32; decoded `.channels`/`.object_audio` are read-only zero-copy views over the
+  decoded instance's own memory instead of a fresh `memcpy`'d list every property access;
+  `FrameDecoder.decode_frame_into`/`Eac3Decoder.decode_access_unit_into` write PCM into
+  caller-supplied buffers (`ac3.MAX_AC3_CHANNELS`/`ac3.eac3.MAX_RENDER_CHANNELS` size them) —
+  see `docs/library/python-api.md`'s "Zero-copy numpy and buffer reuse" section. No
+  `decode_substream_into`: `ac3::Eac3Decoder` itself only exposes a caller-buffer form for the
+  two calls that assemble a full programme, not the single-substream one. Still missing: no
+  containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in `pyproject.toml`), no metering, no
+  signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
+  `.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
+  platform with no wheel.
 - [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
