@@ -1089,7 +1089,7 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="414"/>
-        <location filename="../qml/Main.qml" line="6730"/>
+        <location filename="../qml/Main.qml" line="6813"/>
         <source>Format</source>
         <translation>פֿורמאַט</translation>
     </message>
@@ -1110,7 +1110,7 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="436"/>
-        <location filename="../qml/Main.qml" line="6809"/>
+        <location filename="../qml/Main.qml" line="6892"/>
         <source>on</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1307,7 +1307,7 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="1191"/>
-        <location filename="../qml/Main.qml" line="6963"/>
+        <location filename="../qml/Main.qml" line="7046"/>
         <source>Cancel</source>
         <translation>אָפּזאָגן</translation>
     </message>
@@ -1547,7 +1547,7 @@
     <message>
         <location filename="../qml/Main.qml" line="1989"/>
         <location filename="../qml/Main.qml" line="5932"/>
-        <location filename="../qml/Main.qml" line="6804"/>
+        <location filename="../qml/Main.qml" line="6887"/>
         <source>Monitor</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1949,7 +1949,7 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="3550"/>
-        <location filename="../qml/Main.qml" line="6985"/>
+        <location filename="../qml/Main.qml" line="7068"/>
         <source>Play</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2139,7 +2139,7 @@
     <message>
         <location filename="../qml/Main.qml" line="4012"/>
         <location filename="../qml/Main.qml" line="4013"/>
-        <location filename="../qml/Main.qml" line="6809"/>
+        <location filename="../qml/Main.qml" line="6892"/>
         <source>off</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2302,21 +2302,21 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="4610"/>
-        <location filename="../qml/Main.qml" line="6401"/>
+        <location filename="../qml/Main.qml" line="6470"/>
         <source>%1 object(s); drag a selected marker to place it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="4630"/>
         <location filename="../qml/Main.qml" line="4844"/>
-        <location filename="../qml/Main.qml" line="6423"/>
+        <location filename="../qml/Main.qml" line="6492"/>
         <source>front</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="4638"/>
         <location filename="../qml/Main.qml" line="4852"/>
-        <location filename="../qml/Main.qml" line="6431"/>
+        <location filename="../qml/Main.qml" line="6500"/>
         <source>rear</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2325,14 +2325,14 @@
         <location filename="../qml/Main.qml" line="4716"/>
         <location filename="../qml/Main.qml" line="5061"/>
         <location filename="../qml/Main.qml" line="5645"/>
-        <location filename="../qml/Main.qml" line="6481"/>
-        <location filename="../qml/Main.qml" line="6499"/>
+        <location filename="../qml/Main.qml" line="6563"/>
+        <location filename="../qml/Main.qml" line="6581"/>
         <source>obj %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="4700"/>
-        <location filename="../qml/Main.qml" line="6483"/>
+        <location filename="../qml/Main.qml" line="6565"/>
         <source>x %1, y %2</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2589,349 +2589,384 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6004"/>
-        <source>Stop session</source>
+        <location filename="../qml/Main.qml" line="6007"/>
+        <source>Drive objects from OSC</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6011"/>
-        <source>RUNNING</source>
+        <location filename="../qml/Main.qml" line="6013"/>
+        <source>port</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="6027"/>
+        <source>OSC port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6033"/>
+        <source>any interface</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6043"/>
+        <source>Objects an OSC message addresses (/object/&lt;n&gt;/xyz, 0-based) move live; anything it never addresses stays where you left it. &quot;any interface&quot; opens the port beyond this machine — leave it off unless you mean to.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6058"/>
+        <source>Stop session</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6065"/>
+        <source>RUNNING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6081"/>
         <source>FRAMES</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6037"/>
+        <location filename="../qml/Main.qml" line="6091"/>
         <source>DROPPED</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6049"/>
+        <location filename="../qml/Main.qml" line="6104"/>
+        <source>OSC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6106"/>
+        <source>%1 updates, %2 dropped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Main.qml" line="6118"/>
         <source>Also writing the take to disk</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6060"/>
+        <location filename="../qml/Main.qml" line="6129"/>
         <source>Chain</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6069"/>
+        <location filename="../qml/Main.qml" line="6138"/>
         <source>CAPTURE</source>
         <translation>כאַפּונג</translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6074"/>
+        <location filename="../qml/Main.qml" line="6143"/>
         <source>Capture device</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6108"/>
+        <location filename="../qml/Main.qml" line="6177"/>
         <source>LIVE ENCODE</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6119"/>
+        <location filename="../qml/Main.qml" line="6188"/>
         <source>meters and soundfield follow this</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6134"/>
+        <location filename="../qml/Main.qml" line="6203"/>
         <source>RECEIVER LEG — IEC 61937</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6152"/>
+        <location filename="../qml/Main.qml" line="6221"/>
         <source>exclusive · E-AC-3 bursts (data type 21)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6153"/>
+        <location filename="../qml/Main.qml" line="6222"/>
         <source>exclusive · AC-3 bursts (data type 1)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6195"/>
+        <location filename="../qml/Main.qml" line="6264"/>
         <source>The encode is a 5.1 bed with %1 objects; the receiver leg is a Dolby Digital 5.1 downmix of that bed. Every object move is visible on the meters and the soundfield, but %2 can only bitstream Dolby Digital — the amplifier plays the downmix, not the motion.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6198"/>
+        <location filename="../qml/Main.qml" line="6267"/>
         <source>The encode is a 5.1 bed with %1 objects; the receiver leg is that Dolby Digital Plus 5.1 bed. Every object move is visible on the meters and the soundfield, but a consumer decoder gates object decoding — the amplifier plays the bed, not the motion.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6201"/>
+        <location filename="../qml/Main.qml" line="6270"/>
         <source>The encode is %1; the receiver leg is a Dolby Digital 5.1 downmix — everything past it is visible on the meters, not audible on the amplifier.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6234"/>
+        <location filename="../qml/Main.qml" line="6303"/>
         <source>No passthrough opened — %1 The session still encodes, meters and monitors; only the receiver leg is missing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6251"/>
+        <location filename="../qml/Main.qml" line="6320"/>
         <source>Live room</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6263"/>
+        <location filename="../qml/Main.qml" line="6332"/>
         <source>OBJECTS IN THIS SESSION</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6272"/>
+        <location filename="../qml/Main.qml" line="6341"/>
         <source>%1 of %2 slots live</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6275"/>
+        <location filename="../qml/Main.qml" line="6344"/>
         <source>%1 objects live</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6312"/>
+        <location filename="../qml/Main.qml" line="6381"/>
         <source>obj %1 · %2 · dragging</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6300"/>
-        <location filename="../qml/Main.qml" line="6315"/>
+        <location filename="../qml/Main.qml" line="6369"/>
+        <location filename="../qml/Main.qml" line="6384"/>
         <source>obj %1 · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6345"/>
+        <location filename="../qml/Main.qml" line="6414"/>
         <source>Live object channel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6356"/>
+        <location filename="../qml/Main.qml" line="6425"/>
         <source>Add</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6365"/>
+        <location filename="../qml/Main.qml" line="6434"/>
         <source>Reassign selected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6373"/>
+        <location filename="../qml/Main.qml" line="6442"/>
         <source>Silence selected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6383"/>
+        <location filename="../qml/Main.qml" line="6452"/>
         <source>drag to move — you hear it immediately</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6400"/>
+        <location filename="../qml/Main.qml" line="6469"/>
         <source>Live room plan, top-down</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6575"/>
+        <location filename="../qml/Main.qml" line="6658"/>
         <source>LATENCY</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6582"/>
+        <location filename="../qml/Main.qml" line="6665"/>
         <source>~%1 ms measured</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6583"/>
+        <location filename="../qml/Main.qml" line="6666"/>
         <source>~%1 ms est.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6598"/>
+        <location filename="../qml/Main.qml" line="6681"/>
         <source>Layout — switching re-locks the receiver</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6603"/>
+        <location filename="../qml/Main.qml" line="6686"/>
         <source>Atmos objects over a 5.1 bed — fixed while object mode is on</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6604"/>
+        <location filename="../qml/Main.qml" line="6687"/>
         <source>Now encoding %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6689"/>
+        <location filename="../qml/Main.qml" line="6772"/>
         <source>Dotted layouts encode and meter fully — %1 bitstreams Dolby Digital only, so this receiver hears a 5.1 downmix of them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6703"/>
+        <location filename="../qml/Main.qml" line="6786"/>
         <source>%1 takes Dolby Digital Plus — every layout here bitstreams as encoded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6713"/>
+        <location filename="../qml/Main.qml" line="6796"/>
         <source>The take is being written to disk, so the layout is fixed for this run — a restart would clobber the first half of the file.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6714"/>
+        <location filename="../qml/Main.qml" line="6797"/>
         <source>A layout change is a deliberate act, not a silent one: the stream stops, the receiver renegotiates, and about a second of audio is lost. The receiver&apos;s own display changes with it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6722"/>
+        <location filename="../qml/Main.qml" line="6805"/>
         <source>Receiver reports</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6739"/>
-        <location filename="../qml/Main.qml" line="6742"/>
+        <location filename="../qml/Main.qml" line="6822"/>
+        <location filename="../qml/Main.qml" line="6825"/>
         <source>DOLBY DIGITAL</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6742"/>
+        <location filename="../qml/Main.qml" line="6825"/>
         <source>DOLBY DIGITAL PLUS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6753"/>
+        <location filename="../qml/Main.qml" line="6836"/>
         <source>Input</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6763"/>
+        <location filename="../qml/Main.qml" line="6846"/>
         <source>5.1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6773"/>
+        <location filename="../qml/Main.qml" line="6856"/>
         <source>Lock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6778"/>
+        <location filename="../qml/Main.qml" line="6861"/>
         <source>no passthrough</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6779"/>
+        <location filename="../qml/Main.qml" line="6862"/>
         <source>re-locking</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6780"/>
+        <location filename="../qml/Main.qml" line="6863"/>
         <source>locked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6789"/>
+        <location filename="../qml/Main.qml" line="6872"/>
         <source>Underruns</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6852"/>
+        <location filename="../qml/Main.qml" line="6935"/>
         <source>RUNS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6913"/>
+        <location filename="../qml/Main.qml" line="6996"/>
         <source>%1 · %2 · %3 · %4%</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6918"/>
+        <location filename="../qml/Main.qml" line="7001"/>
         <source>%1 · %2 · %3%4</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6923"/>
+        <location filename="../qml/Main.qml" line="7006"/>
         <source>%1 · %2 · %3 · %4%5</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6958"/>
+        <location filename="../qml/Main.qml" line="7041"/>
         <source>Progress</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6959"/>
+        <location filename="../qml/Main.qml" line="7042"/>
         <source>%1%</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="6997"/>
+        <location filename="../qml/Main.qml" line="7080"/>
         <source>Show in folder</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7013"/>
+        <location filename="../qml/Main.qml" line="7096"/>
         <source>Details</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7034"/>
+        <location filename="../qml/Main.qml" line="7117"/>
         <source>More…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7044"/>
+        <location filename="../qml/Main.qml" line="7127"/>
         <source>QC this run</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7049"/>
+        <location filename="../qml/Main.qml" line="7132"/>
         <source>Inspect objects</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7109"/>
+        <location filename="../qml/Main.qml" line="7192"/>
         <source>ac3cli command line</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7126"/>
+        <location filename="../qml/Main.qml" line="7209"/>
         <source>ac3cli</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7133"/>
+        <location filename="../qml/Main.qml" line="7216"/>
         <source>command line ↗</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7172"/>
+        <location filename="../qml/Main.qml" line="7255"/>
         <source>THE COMMAND LINE — REPRODUCES THIS ENCODE</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7192"/>
+        <location filename="../qml/Main.qml" line="7275"/>
         <source>Encode runs the encoder in-process — this is the exact ac3cli equivalent, quoting and all.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7199"/>
+        <location filename="../qml/Main.qml" line="7282"/>
         <source>Copy</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7221"/>
+        <location filename="../qml/Main.qml" line="7304"/>
         <source>Encoding…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7226"/>
+        <location filename="../qml/Main.qml" line="7309"/>
         <source>Encode to folder</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Main.qml" line="7227"/>
+        <location filename="../qml/Main.qml" line="7310"/>
         <source>Encode to .%1</source>
         <translation type="unfinished"></translation>
     </message>

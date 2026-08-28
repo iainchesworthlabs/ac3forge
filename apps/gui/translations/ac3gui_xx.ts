@@ -2002,6 +2002,26 @@
             <translation>[À lîvé séssîõn àlwàys rûns àt thé fîxéd bît ràté — pàssthrõûgh bûrsts àré fîxéd-sîzé, sõ fràmés cànnõt flõàt. Vàrîàblé ràté àpplîés tõ fîlé éncõdés õnly. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>Drive objects from OSC</source>
+            <translation>[Drîvé õbjécts frõm ÕSC ~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>port</source>
+            <translation>[põrt ~~]</translation>
+        </message>
+        <message>
+            <source>OSC port</source>
+            <translation>[ÕSC põrt ~~~]</translation>
+        </message>
+        <message>
+            <source>any interface</source>
+            <translation>[àny întérfàcé ~~~~~]</translation>
+        </message>
+        <message>
+            <source>Objects an OSC message addresses (/object/&lt;n&gt;/xyz, 0-based) move live; anything it never addresses stays where you left it. "any interface" opens the port beyond this machine — leave it off unless you mean to.</source>
+            <translation>[Õbjécts àn ÕSC méssàgé àddréssés (/õbjéct/&lt;n&gt;/xyz, 0-bàséd) mõvé lîvé; ànythîng ît névér àddréssés stàys whéré yõû léft ît. "àny întérfàcé" õpéns thé põrt béyõnd thîs màchîné — léàvé ît õff ûnléss yõû méàn tõ. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>Stop session</source>
             <translation>[Stõp séssîõn ~~~~~]</translation>
         </message>
@@ -2016,6 +2036,14 @@
         <message>
             <source>DROPPED</source>
             <translation>[DRÕPPÉD ~~~]</translation>
+        </message>
+        <message>
+            <source>OSC</source>
+            <translation>[ÕSC ~]</translation>
+        </message>
+        <message>
+            <source>%1 updates, %2 dropped</source>
+            <translation>[%1 ûpdàtés, %2 drõppéd ~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Also writing the take to disk</source>
