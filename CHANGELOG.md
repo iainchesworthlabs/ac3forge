@@ -375,6 +375,56 @@ a concrete API-freeze plan for v1.0 now exists.
   match its own installer URL or nested-installer fields — the same class of drift a manual
   copy-forward release bump can introduce.
 
+**Shield Atmos Demo (Android)**
+
+- **The encode loop kept streaming to the receiver after the demo left the screen.** It stopped only
+  in `onDestroy`, so pressing HOME left a cached process pushing E-AC-3 bursts into the AVR with no
+  UI and nothing to stop it. Now stopped in `onStop`, without tearing down the stream for the app's
+  own About screen. Both on-screen render loops likewise ran behind other windows.
+- **"Waiting for receiver" cleared on a capability probe rather than on audio flowing**, so a failed
+  sink open left a fully-drawn dashboard over permanent silence. Readiness now means the encode loop
+  is confirmed running, with a distinct "starting" state in between, and the waiting screen reports
+  what the HDMI route actually advertises — including whether it claims the Atmos (JOC) profile.
+- **A native library load failure crashed instead of showing its own failure screen**, because a
+  throwing static initializer marks the class erroneous and the later `NoClassDefFoundError` is not
+  what the call sites caught.
+- **A partial `AudioTrack` write duplicated bytes into the IEC 61937 stream**, since a short write
+  was retried by resubmitting the whole burst. Now resumed from.
+- **Precise placement was impossible**: a flat per-axis deadzone with no rescaling meant the
+  smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
+  seeded from the device's own declared flat range. Right-stick height is resolved by probing which
+  axis the device declares rather than assuming.
+- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
+  and draws what a decoder finds in them — the lead object's intended height against the height read
+  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
+  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
+  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
+  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
+- **The status line now reports whole-frame occupancy**, not just `encode_frame()`. The previously
+  quoted figure excluded synthesis, the limiter, both meters, signing, stripping, the packer and the
+  JNI submit — most of the frame.
+- **The real-time encode thread no longer attaches to and detaches from the JVM once per frame**, and
+  both worker threads now have explicit priorities instead of inheriting whatever started them.
+- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
+  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
+  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
+  between; and once left idle it walks them itself rather than just inviting the next person.
+- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
+  gesture forever — still pushable, still springing back to itself.
+- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
+  passing through the listening position.
+- **New: a settings panel and a phone remote.** Every control was previously an undocumented
+  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
+  drive the object from their own phone. The remote is **off by default** and has no authentication
+  — it starts only when switched on, and stops when the demo leaves the screen.
+- **`isDirectPlaybackSupported` was called unguarded on a minSdk-26 app**, so on any API 26–28
+  device — a 2015/2017 Shield on Android 9, for instance — the app's most load-bearing platform
+  query threw `NoSuchMethodError` rather than degrading. Guarded.
+- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
+  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
+  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
+  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
+
 ### Security
 
 - **Build-time key material can no longer reach a published Shield APK.** The EMDF object-signing

@@ -97,10 +97,20 @@ class NativeBridgeInstrumentedTest {
     }
 
     @Test
-    fun futureTrajectoryReturnsTheRequestedSampleCount() {
-        val samples = 5
-        val trajectory = NativeBridge.nativeGetFutureLeadTrajectory(1.0f, samples)
-        assertEquals(samples * 3, trajectory.size)  // (x, y, z) per sample
+    fun futureTrajectoryIsEmptyWithNoRunInProgress() {
+        // Deliberately an EMPTY array - not sample_count*3 zeros, and not a
+        // path computed against a zero epoch - whenever no encode loop has
+        // published its start time (live_cursor.cpp's g_start_time_ns
+        // guard, added so a stopped loop can't leave the waiting screen
+        // drawing a phantom orbit). On an emulator that is always the case:
+        // run_loop() fail-fasts on PassthroughSink::start() BEFORE the
+        // start time is stored, so not even the start/stop test elsewhere
+        // in this class can race a non-empty result into this one. The
+        // samples*3 shape of a LIVE run's result is only observable with a
+        // receiver attached; what an emulator can pin down is the no-run
+        // contract RoomView's trail drawing relies on.
+        val trajectory = NativeBridge.nativeGetFutureLeadTrajectory(1.0f, 5)
+        assertEquals(0, trajectory.size)
     }
 
     @Test
