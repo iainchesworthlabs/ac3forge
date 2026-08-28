@@ -1,7 +1,10 @@
 # ---------------------------------------------------------------------------
-# ac3::audio - live capture, IEC 61937 passthrough delivery, and shared-mode
-# monitor playback. The only OS-specific code in the project: everything that
-# actually touches WASAPI or ALSA lives here, not in ac3::forge.
+# ac3::audio - live capture, IEC 61937 passthrough delivery, shared-mode
+# monitor playback, and a live object-position source over OSC (roadmap
+# UX4). Almost all the OS-specific code in the project lives here rather than
+# in ac3::forge: WASAPI/ALSA/PipeWire/CoreAudio for the three capabilities
+# above, and (a second, independent platform axis - see the net/ block below)
+# Winsock/Berkeley sockets for the position source's UDP listener.
 #
 # Split out of ac3::forge (see git history) so the codec library itself stays
 # platform-independent - a third party linking ac3::forge purely to encode or
@@ -9,14 +12,18 @@
 # and a third party targeting a platform with neither can still use the codec
 # without this library existing for their platform yet. ac3::audio is what
 # ac3cli/ac3gui link for their live-capture/monitor/passthrough commands
-# (record, live, devices, outputs, play, monitor) - it is not part of the
-# distributed ac3forge-dev package (see docs/library/index.md).
+# (record, live, devices, outputs, play, monitor) and for `live`'s
+# `positions=osc:<port>` - it is not part of the distributed ac3forge-dev
+# package (see docs/library/index.md).
 #
-# PRIVATE-links ac3::forge for one reason only: the passthrough backends
-# reuse ac3::iec61937's burst-size constants and framer to size and
-# pack S/PDIF bursts. iec61937 itself has no platform dependency and stays in
-# ac3::forge - it is pure codec-adjacent byte framing, also used standalone
-# by ac3cli's file-based `spdif` command.
+# PUBLIC-links ac3::forge: live_positions.hpp names ac3::oba::SceneCursor in
+# its own public interface (LivePositionSource::drain_into), so forge is a
+# genuine usage requirement for anything that includes this library's
+# headers, not merely something the .cpp files reach for privately the way
+# the passthrough backends reuse ac3::iec61937's burst-size constants and
+# framer to size and pack S/PDIF bursts. Free to widen from the PRIVATE this
+# used to be: this target is never installed or exported (see above), so
+# there is no install(EXPORT) graph for the wider dependency to leak into.
 #
 # Always STATIC, deliberately, regardless of the ambient BUILD_SHARED_LIBS a
 # whole-project configure might set for ac3::forge/matroska::matroska's own
@@ -49,7 +56,14 @@ target_compile_features(ac3audio PUBLIC cxx_std_23)
 # cmake/Coverage.cmake). Plain, not $<BUILD_INTERFACE:...>-wrapped: this
 # target is never installed (see the header comment above), so it has no
 # install(EXPORT) graph to keep the dependency out of.
-target_link_libraries(ac3audio PRIVATE ac3::forge ac3::warnings ac3::coverage ac3::fmt)
+target_link_libraries(ac3audio PUBLIC ac3::forge)
+target_link_libraries(ac3audio PRIVATE ac3::warnings ac3::coverage ac3::fmt)
+
+# live_positions.cpp: platform-independent by construction (it names
+# UdpSocket and ac3::oba, never a socket API directly), and the first source
+# in this library that is not part of a backend/ directory - said here
+# rather than left to look misfiled.
+target_sources(ac3audio PRIVATE src/live_positions.cpp)
 
 # ---------------------------------------------------------------------------
 # The backend tree.
@@ -344,3 +358,41 @@ endif(ANDROID)
 set(AC3FORGE_AUDIO_BACKEND "${AC3FORGE_AUDIO_BACKEND}" PARENT_SCOPE)
 set(AC3FORGE_AUDIO_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/${AC3FORGE_AUDIO_BACKEND}"
     PARENT_SCOPE)
+
+# ---------------------------------------------------------------------------
+# The socket tree - a SECOND, independent platform axis from the backend
+# selection above, deliberately not a fifth file added to each of that
+# tree's six directories.
+#
+# The backend axis is the AUDIO SUBSYSTEM, because that is where those
+# answers differ: WASAPI, ALSA, PipeWire and CoreAudio share no API at all.
+# Sockets are the OPERATING SYSTEM instead - Linux, macOS and Android are one
+# Berkeley-sockets implementation, Windows is Winsock - so folding a UDP
+# listener into the backend tree would mean five near-identical copies of
+# the same POSIX file under alsa/, pipewire/, posix/, macos/ and android/.
+# Two directories on their own axis is the smaller thing, and this project
+# already carries independent per-platform trees on more than one axis (see
+# docs/building.md, "SIMD kernels and the architecture tree", for
+# src/forge/src/internal/arch/'s own version of the same idea).
+#
+# No FATAL_ERROR fallback, unlike the backend selection above: an
+# unrecognised system gets posix/, because Berkeley sockets ARE the
+# fallback here - Winsock is the only outlier this project has to name.
+#
+# udp_socket.hpp is internal (src/net/, not include/ac3/audio/) - nothing
+# outside live_positions.cpp needs a socket type at all.
+# ---------------------------------------------------------------------------
+if(WIN32)
+    target_sources(ac3audio PRIVATE src/net/windows/udp_socket.cpp)
+    target_link_libraries(ac3audio PRIVATE ws2_32)
+else()
+    target_sources(ac3audio PRIVATE src/net/posix/udp_socket.cpp)
+endif()
+
+# Published the same way AC3FORGE_AUDIO_BACKEND_DIR is (see above):
+# tests/CMakeLists.txt puts this on ac3tests' own include path so
+# tests/audio/test_live_positions.cpp can open a second, independent
+# UdpSocket to send itself test datagrams over real loopback - reusing the
+# exact class LivePositionSource is built on rather than hand-rolling a
+# second raw-socket implementation just for the test.
+set(AC3FORGE_AUDIO_NET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/net" PARENT_SCOPE)

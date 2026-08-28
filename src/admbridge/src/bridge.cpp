@@ -30,6 +30,11 @@ std::string_view describe(BridgeError error) {
         case BridgeError::kEmptyBlockSequence: return "an audioChannelFormat has no audioBlockFormat";
         case BridgeError::kTooManyChannels: return "more channels than AtmosEncoder supports";
         case BridgeError::kEmptyInput: return "write() input had no channels, or a dynamic object had no updates";
+        case BridgeError::kEmptyIabStream: return "build_iab() input had no frames";
+        case BridgeError::kUnsupportedIabChannel:
+            return "a Bed ChannelID has no ac3::oba::BedLabel equivalent";
+        case BridgeError::kNoIabEssenceForChannel:
+            return "a channel's non-zero AudioDataID never resolved to AudioDataPCM essence";
     }
     return "unknown ac3::admbridge::BridgeError";
 }

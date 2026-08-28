@@ -240,7 +240,15 @@ jobs:
   # self-hosted-eligible job does.
   check-runner:
     name: Check self-hosted runner availability
-    runs-on: ubuntu-latest
+    # Control-plane job: routed by vars.CONTROL_RUNNER_JSON (delete the
+    # variable to send it back to ubuntu-latest - see
+    # _toolchain-versions.yml's jobs comment for the full rationale). This
+    # 9-second job deciding where the real work runs is worthless if it
+    # itself queues for hours behind saturated hosted runners - observed
+    # 2026-08-28. Fork PRs stay on GitHub-hosted unconditionally: this job
+    # checks out the fork's merge ref and runs ./.github/actions/decide-runner
+    # FROM that checkout, i.e. fork-controlled code.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read
@@ -277,13 +285,16 @@ jobs:
   # gate reporting. Conservative - anything not clearly docs counts as code.
   changes:
     name: Detect changes
-    # Stays GitHub-hosted, deliberately: this job's script calls `gh api`
-    # directly (see below), and the self-hosted image's toolset is not
-    # guaranteed to include the gh CLI - confirmed the hard way, `gh:
-    # command not found` on tf-gh-linux-runner-11 when this was briefly
-    # routed through check-runner like every other cheap job in this file.
-    # A one-shot metadata lookup gains nothing from self-hosted anyway.
-    runs-on: ubuntu-latest
+    # Routed through check-runner like the other cheap gate jobs. This job
+    # calls `gh api` directly, which briefly broke on self-hosted ("gh:
+    # command not found" on tf-gh-linux-runner-11, reverted in #459) - the
+    # fleet image now ships the GitHub CLI (ci-runners#12, deployed
+    # 2026-08-28), so that constraint is gone. Routing matters here more
+    # than for the other cheap jobs: everything heavy needs this job's
+    # output, so when the hosted queue is saturated an ubuntu-latest
+    # `changes` stalls the whole run behind it.
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     permissions:
       contents: read
       pull-requests: read
@@ -342,9 +353,12 @@ jobs:
         shell: pwsh
         run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 
-  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan) - NOT "is it
-  # current", see the script's own header for why that's the wrong check. Same shape as
-  # platform-macros above: cheap, fast, ungated.
+  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
+  # latest-tag advisory (roadmap DR2) - see the script's own header for the split
+  # between the two and why only the first one fails the job. fetch-depth: 0, unlike
+  # platform-macros above: the advisory half needs `git describe --tags` to see the
+  # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
+  # it in CI while it kept working from a normal local checkout.
   packaging-consistency:
     name: Packaging Consistency
     needs: check-runner
@@ -352,6 +366,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Check packaging manifests are internally consistent
         shell: bash
@@ -498,9 +513,9 @@ jobs:
   # configuration and no analysis-only preset is needed.
   static-analysis:
     name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -580,6 +595,14 @@ jobs:
     name: Coverage (Linux, GCC)
     needs: [changes, toolchain-versions]
     if: needs.changes.outputs.code == 'true'
+    # Stays GitHub-hosted for now - the one leg of the #460 revert that is
+    # NOT re-enabled with the rest. Its self-hosted failure ("The runner has
+    # received a shutdown signal" 34s in) was a runner-lifecycle kill, not
+    # the gh/profile/ASLR class fixed in ci-runners#12/#13, and remains
+    # undiagnosed (suspected --replace eviction race in the supervisor's
+    # recycle loop). If it is re-routed and the failure recurs, capture
+    # `journalctl -u github-runner.service` off the affected VM before the
+    # fleet replaces it - that is the missing evidence.
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
@@ -1347,9 +1370,9 @@ jobs:
   # to the vcpkg commit and the LLVM/GCC versions.
   ffmpeg-validate:
     name: FFmpeg Validate
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1899,7 +1922,14 @@ jobs:
     name: CI Status
     if: always()
     needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
-    runs-on: ubuntu-latest
+    # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
+    # switch as check-runner above. This is the required check every PR
+    # waits on LAST - when the hosted pool is saturated, a run whose every
+    # real job passed still reported nothing for hours because this
+    # seconds-long aggregator was queued behind build legs (PR #447,
+    # 2026-08-28). No checkout, no untrusted code - the fork guard is
+    # consistency, not necessity.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     steps:
       - name: Gate on required job results
         shell: bash

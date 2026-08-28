@@ -3,6 +3,7 @@
 #include "ac3/admbridge/export.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3adm/model.hpp"
+#include "ac3iab/model.hpp"
 
 // Coordinate conversion between the two position systems Recommendation ITU-R BS.2076-2 (10/2019)
 // Annex 1 defines for audioBlockFormat (Tables 15-17, and Clause 8 "Coordinate system" for the
@@ -86,5 +87,25 @@ namespace ac3::admbridge {
 // pair - a caller wanting a polar master would need one, and none of this project's own writers do.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3adm::CartesianPosition room_to_adm_cartesian(
     const ac3::oba::Position& room);
+
+// SMPTE ST 2098-2:2022 §11.1's unit cube to ac3::oba::Position's own room-anchored convention -
+// for roadmap item IM1 phase 3 ("atmos-iab", mapping the IAB bed/object graph onto this same
+// ObjectPath layer). Unlike BS.2076-2's Cartesian convention above, this needs no formula at all:
+// §11.1 defines IAB's x ("0 corresponds to left wall... 1 corresponds to right wall") and y ("0
+// corresponds to front wall... 1 corresponds to back wall") identically to oba::Position's own
+// [0, 1]/[0, 1] x/y (oamd.hpp §4.2.1: "x runs 0 at the left wall to 1 at the right, y 0 at the
+// front wall to 1 at the back"), and z - "z=0 corresponds to a horizontal plane at... the height
+// of the main screen Loudspeakers, the side and rear surround Loudspeakers; z=1 corresponds to
+// the ceiling" - anchors its zero at exactly the same screen/ear-height reference oba::Position's
+// own z=0 does (oamd.hpp: "the centre of the front wall is (0.5, 0, 0)"), just never expressing
+// anything below it: IAB's [0, 1] is the upper half of oba::Position's own [-1 floor, +1 ceiling]
+// range. This is this bridge's own judgement call, not a clause either standard states outright
+// (no clause equates the two specs' height references directly) - the same status
+// coordinates.hpp's own "one genuine, documented judgement call" above has for ADM, stated
+// plainly rather than asserted as spec fact. See iab_bridge.cpp's own top comment for where this
+// is used and what is deliberately not carried across (ObjectSpread, the 9-zone
+// ObjectZoneControl).
+[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position iab_position_to_room(
+    const ac3iab::Position& position);
 
 }  // namespace ac3::admbridge

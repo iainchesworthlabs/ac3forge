@@ -5865,6 +5865,59 @@ ApplicationWindow {
                                         font.pixelSize: 11
                                         color: Theme.accent700
                                     }
+
+                                    // ---- positions=: a real live object-position
+                                    // source over OSC (roadmap UX4), instead of
+                                    // dragging objects by hand. Object mode only -
+                                    // a channel session has no objects to drive.
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: EncoderController.atmosEnabled
+                                        spacing: Theme.space2
+
+                                        CheckBox {
+                                            id: liveOscCheck
+                                            objectName: "liveOscCheck"
+                                            text: qsTr("Drive objects from OSC")
+                                            checked: EncoderController.liveOscEnabled
+                                            font.pixelSize: 12
+                                            onToggled: EncoderController.liveOscEnabled = checked
+                                        }
+                                        Text {
+                                            text: qsTr("port")
+                                            visible: liveOscCheck.checked
+                                            color: Theme.neutral600
+                                            font.pixelSize: 12
+                                        }
+                                        SpinBox {
+                                            id: liveOscPortField
+                                            objectName: "liveOscPortField"
+                                            visible: liveOscCheck.checked
+                                            from: 1
+                                            to: 65535
+                                            editable: true
+                                            value: EncoderController.liveOscPort
+                                            onValueModified: EncoderController.liveOscPort = value
+                                        }
+                                        CheckBox {
+                                            id: liveOscAnyCheck
+                                            objectName: "liveOscAnyCheck"
+                                            visible: liveOscCheck.checked
+                                            text: qsTr("any interface")
+                                            checked: EncoderController.liveOscAnyInterface
+                                            font.pixelSize: 12
+                                            onToggled: EncoderController.liveOscAnyInterface = checked
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                    }
+                                    Text {
+                                        visible: window.showExplanations && liveOscCheck.checked
+                                        Layout.fillWidth: true
+                                        text: qsTr("Objects an OSC message addresses (/object/<n>/xyz, 0-based) move live; anything it never addresses stays where you left it. \"any interface\" opens the port beyond this machine — leave it off unless you mean to.")
+                                        wrapMode: Text.WordWrap
+                                        font.pixelSize: 11
+                                        color: Theme.textMuted
+                                    }
                                 }
 
                                 // ---- running: the real transport ---------------
@@ -5913,6 +5966,21 @@ ApplicationWindow {
                                             text: EncoderController.groupDigits(EncoderController.liveFramesDropped)
                                             color: EncoderController.liveFramesDropped > 0 ? Theme.accent700 : Theme.text
                                             font.pixelSize: 15
+                                            font.family: Theme.monoFamily
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        objectName: "liveOscStatsColumn"
+                                        visible: EncoderController.liveOscListening
+                                        spacing: 2
+                                        Text { text: qsTr("OSC"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text {
+                                            text: qsTr("%1 updates, %2 dropped")
+                                                  .arg(EncoderController.groupDigits(EncoderController.liveOscUpdatesApplied))
+                                                  .arg(EncoderController.groupDigits(EncoderController.liveOscDropped))
+                                            color: EncoderController.liveOscDropped > 0 ? Theme.accent700 : Theme.text
+                                            font.pixelSize: 12
                                             font.family: Theme.monoFamily
                                         }
                                     }
@@ -6309,7 +6377,12 @@ ApplicationWindow {
                                                 for (let i = 0; i < list.length; ++i) {
                                                     if (list[i].index === sel) { selected = list[i]; break; }
                                                 }
-                                                if (!selected) {
+                                                if (!selected || selected.networkDriven) {
+                                                    // OSC is driving this object right
+                                                    // now (positions=) - a click/drag
+                                                    // here would only be overwritten by
+                                                    // the next update anyway, so it is
+                                                    // refused rather than fought over.
                                                     return;
                                                 }
                                                 const x = Math.max(0, Math.min(1, mouse.x / liveRoom.width));
@@ -6329,10 +6402,18 @@ ApplicationWindow {
                                                 }
                                                 readonly property bool isSelected:
                                                     index === EncoderController.selectedObjectIndex
+                                                readonly property bool networkDriven:
+                                                    obj !== null && obj.networkDriven === true
                                                 visible: obj !== null
                                                 width: isSelected ? 18 : 14
                                                 height: isSelected ? 18 : 14
-                                                color: isSelected ? Theme.accent : Theme.neutral800
+                                                // Network-driven: greyed and, below,
+                                                // undraggable - positions= owns this
+                                                // object for as long as it keeps
+                                                // addressing it (roadmap UX4).
+                                                color: networkDriven ? Theme.neutral400
+                                                                     : (isSelected ? Theme.accent : Theme.neutral800)
+                                                opacity: networkDriven ? 0.7 : 1.0
                                                 x: (obj ? obj.x : 0.5) * liveRoom.width - width / 2
                                                 y: (obj ? obj.y : 0.5) * liveRoom.height - height / 2
                                                 z: isSelected ? 1 : 0
@@ -6365,7 +6446,8 @@ ApplicationWindow {
                                                     onPressed: EncoderController.selectedObjectIndex = liveMarker.index
                                                     onPositionChanged: (mouse) => {
                                                         if (!(mouse.buttons & Qt.LeftButton)
-                                                                || !EncoderController.liveActive) {
+                                                                || !EncoderController.liveActive
+                                                                || liveMarker.networkDriven) {
                                                             return;
                                                         }
                                                         const p = mapToItem(liveRoom, mouse.x, mouse.y);

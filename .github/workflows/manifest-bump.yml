@@ -1,0 +1,272 @@
+# Automates docs/releasing.md's "Bump the four packaging manifests" post-release step
+# (roadmap DR2): computes the digests a new release's four staged manifests need
+# (packaging/vcpkg-port, packaging/homebrew, packaging/conan, packaging/winget) straight
+# from the release's own published assets, opens a PR with the bump, and pushes the
+# Homebrew Formula/Cask to the live iainchesworthlabs/homebrew-ac3forge tap. This is what
+# closes the gap check_packaging_versions.sh's latest-tag advisory now flags - see that
+# script's own header.
+#
+# Two triggers into the same job, deliberately: release.yml's github-release job calls
+# this as `workflow_call` with dry_run: false right after a real release publishes, and
+# it is also directly `workflow_dispatch`-able (default dry_run: true) so the whole
+# digest-computation and cross-check pipeline can be exercised against any already-shipped
+# tag without cutting a new release - this is release-path automation that otherwise
+# cannot be tested except by shipping. A dry run downloads the same real assets, computes
+# and cross-checks the same real digests, and prints the manifest diffs that would result,
+# but writes nothing, commits nothing and pushes nothing - see the `dry_run` checks in the
+# `bump` job below.
+name: Manifest Bump
+
+on:
+  workflow_call:
+    inputs:
+      version_tag:
+        required: true
+        type: string
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: "Release tag to bump the packaging manifests to, e.g. v0.9.0-beta.1"
+        required: true
+        type: string
+      dry_run:
+        description: "Compute and cross-check digests, show the manifest diffs; write, commit, push or open a PR for nothing"
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: manifest-bump-${{ inputs.version_tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    name: Bump packaging manifests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      VERSION_TAG: ${{ inputs.version_tag }}
+      REPO: ${{ github.repository }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      # A step's `if:` cannot read `secrets` directly, only `env` - same reasoning as
+      # release.yml's HAVE_GPG_KEY. Empty means the tap push step below no-ops cleanly
+      # rather than failing a bump whose in-tree PR half still succeeded.
+      HAVE_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve bare version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::'$VERSION_TAG' is not vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]"
+            exit 1
+          fi
+          echo "VERSION=${VERSION_TAG#v}" >> "$GITHUB_ENV"
+
+      # The vcpkg port, the Homebrew formula and the Conan recipe all pin GitHub's own
+      # auto-generated source archive (archive/refs/tags/vX.Y.Z.tar.gz) - that file is
+      # generated on demand by GitHub itself, not one of this project's CI-built
+      # packages, so it has no entry in the release's own SHA512SUMS to cross-check
+      # against (that manifest only covers what _build.yml's packaging steps actually
+      # produced). Computed directly from the downloaded bytes is the strongest
+      # available answer for this one - it is the same URL vcpkg_from_github() and
+      # Homebrew's own url/sha256 verification would fetch and hash themselves.
+      - name: Download source tarball and digest it
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o source.tar.gz \
+            "https://github.com/${REPO}/archive/refs/tags/${VERSION_TAG}.tar.gz"
+          {
+            echo "SOURCE_SHA512=$(sha512sum source.tar.gz | cut -d' ' -f1)"
+            echo "SOURCE_SHA256=$(sha256sum source.tar.gz | cut -d' ' -f1)"
+          } >> "$GITHUB_ENV"
+
+      # ac3forge-*-Darwin.dmg (the Homebrew cask) and ac3forge-*-win64.zip (winget) ARE
+      # real CI-built packages, so - unlike the source tarball above - the release's own
+      # SHA512SUMS is a second, independently-computed source to check the freshly
+      # downloaded bytes against, and this refuses to proceed on a mismatch rather than
+      # trusting either side alone. Either asset may legitimately be absent (a platform
+      # leg failing packaging is a release-blocking failure per docs/releasing.md, but a
+      # dry run against an old tag, or a re-run against a release still mid-upload, can
+      # still land here) - that manifest is then just skipped, not a hard error.
+      - name: Download and cross-check platform release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bare_version="${VERSION%%-*}"
+          dmg_name="ac3forge-${bare_version}-Darwin.dmg"
+          zip_name="ac3forge-${bare_version}-win64.zip"
+
+          assets="$(gh release view "$VERSION_TAG" --repo "$REPO" --json assets \
+                     --jq '.assets[].name')"
+
+          have_sums=false
+          if grep -qx "SHA512SUMS" <<<"$assets"; then
+            gh release download "$VERSION_TAG" --repo "$REPO" -p "SHA512SUMS" -O SHA512SUMS
+            have_sums=true
+          else
+            echo "::warning::no SHA512SUMS asset on $VERSION_TAG - GPG signing is optional \
+          (docs/releasing.md#provisioning-the-gpg-signing-key) and this release predates \
+          always generating SHA512SUMS regardless; digests below are computed directly \
+          from the downloaded assets but not cross-checked against a second source"
+          fi
+
+          # Prints the digest env assignment on success, nothing on a legitimately
+          # missing asset (caller checks $? - see the two call sites below), and fails
+          # the job outright on a hash mismatch or an asset present but missing from
+          # SHA512SUMS: never ship a bump built on an unverified or wrong digest.
+          verify_asset() {
+            local name="$1" out="$2"
+            if ! grep -qx "$name" <<<"$assets"; then
+              echo "no $name release asset on $VERSION_TAG - skipping its manifest" >&2
+              return 1
+            fi
+            if ! gh release download "$VERSION_TAG" --repo "$REPO" -p "$name" -O "$out"; then
+              echo "::error::$name is listed on $VERSION_TAG but failed to download"
+              exit 1
+            fi
+            if [ "$have_sums" = true ]; then
+              expected="$(awk -v f="$name" '$2==f{print $1}' SHA512SUMS)"
+              actual="$(sha512sum "$out" | cut -d' ' -f1)"
+              if [ -z "$expected" ]; then
+                echo "::error::$name is a release asset with no SHA512SUMS entry - refusing to trust an uncross-checked digest"
+                exit 1
+              fi
+              if [ "$expected" != "$actual" ]; then
+                echo "::error::$name SHA512 mismatch: SHA512SUMS says $expected, downloaded bytes hash to $actual"
+                exit 1
+              fi
+            fi
+          }
+
+          if verify_asset "$dmg_name" darwin.dmg; then
+            echo "DMG_SHA256=$(sha256sum darwin.dmg | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          fi
+          if verify_asset "$zip_name" win64.zip; then
+            echo "WINZIP_SHA256=$(sha256sum win64.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Bump the staged manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--version "$VERSION" --source-sha512 "$SOURCE_SHA512" \
+                --source-sha256 "$SOURCE_SHA256" --repo "$REPO")
+          [ -n "${DMG_SHA256:-}" ] && args+=(--dmg-sha256 "$DMG_SHA256")
+          [ -n "${WINZIP_SHA256:-}" ] && args+=(--winzip-sha256 "$WINZIP_SHA256")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 tools/release/bump_manifests.py "${args[@]}"
+
+      - name: Verify the result is internally consistent
+        if: env.DRY_RUN != 'true'
+        shell: bash
+        run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
+
+      # Skips cleanly, not just on a dry run, when a previous run already opened this
+      # same tag's PR (a re-run after this job failed downstream, e.g. in the tap push
+      # step below) and when there is nothing to bump at all (every manifest already
+      # matched - the idempotent-skip case bump_manifests.py's own docstring describes).
+      - name: Open the manifest-bump PR
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- packaging/ && [ -z "$(git status --porcelain -- packaging/)" ]; then
+            echo "no manifest changes for $VERSION_TAG - already up to date"
+            exit 0
+          fi
+
+          branch="chore/bump-packaging-manifests-${VERSION_TAG}"
+          if gh pr list --repo "$REPO" --head "$branch" --state open --json number \
+               --jq 'length' | grep -qx 0; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$branch"
+            git add packaging/
+            git commit -m "packaging: bump manifests to ${VERSION_TAG}"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$branch"
+
+            {
+              echo "Bumps the vcpkg port, Homebrew formula/cask, winget manifest and Conan"
+              echo "recipe to ${VERSION_TAG} - opened automatically by .github/workflows/manifest-bump.yml"
+              echo "(roadmap DR2). Digests were computed from the release's own downloaded"
+              echo "assets and cross-checked against its published SHA512SUMS where one of"
+              echo "those assets exists to check against - see that workflow's own comments."
+              echo
+              echo "Still manual after this merges, per docs/releasing.md's per-ecosystem"
+              echo "sections - none of these are affected by whether GitHub Actions can reach"
+              echo "them:"
+              echo "- vcpkg: a follow-up PR to the microsoft/vcpkg fork, once the port is merged upstream."
+              echo "- Conan: a follow-up PR to the conan-center-index fork, once the recipe is merged upstream."
+              echo "- winget: a follow-up PR to the microsoft/winget-pkgs fork."
+              echo "- Homebrew: \`brew audit\`/\`brew install --build-from-source\`/\`brew test\` and"
+              echo "  the cask equivalents, from a real macOS machine - there is no Homebrew on any"
+              echo "  of this project's CI runners."
+              if [ "$HAVE_TAP_TOKEN" != "true" ]; then
+                echo
+                echo "HOMEBREW_TAP_TOKEN is not set, so the live iainchesworthlabs/homebrew-ac3forge"
+                echo "tap was NOT pushed - copy packaging/homebrew/Formula/ac3forge.rb and"
+                echo "packaging/homebrew/Casks/ac3gui.rb into it by hand (see"
+                echo "docs/releasing.md#homebrew-formula-and-cask)."
+              fi
+            } > pr-body.md
+            gh pr create --repo "$REPO" --base main --head "$branch" \
+              --title "packaging: bump manifests to ${VERSION_TAG}" --body-file pr-body.md
+          else
+            echo "a PR for $branch is already open - not opening a second one"
+          fi
+
+      # Direct push, not a second PR: this tap has no build or review gate of its own
+      # (docs/releasing.md#homebrew-formula-and-cask - "not submitted to homebrew-core"),
+      # and this is the same "copy the file in and push" step a maintainer did by hand
+      # before this workflow existed. HOMEBREW_TAP_TOKEN needs to be a fine-grained PAT
+      # scoped to Contents: read and write on iainchesworthlabs/homebrew-ac3forge only -
+      # the built-in GITHUB_TOKEN this job otherwise uses cannot reach a different repo.
+      - name: Push the Formula/Cask to the live tap
+        if: env.DRY_RUN != 'true' && env.HAVE_TAP_TOKEN == 'true'
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tapdir="$(mktemp -d)"
+          git clone --quiet --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/iainchesworthlabs/homebrew-ac3forge.git" \
+            "$tapdir"
+
+          cp packaging/homebrew/Formula/ac3forge.rb "$tapdir/Formula/ac3forge.rb"
+          if [ -n "${DMG_SHA256:-}" ]; then
+            cp packaging/homebrew/Casks/ac3gui.rb "$tapdir/Casks/ac3gui.rb"
+          fi
+
+          cd "$tapdir"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/ac3forge.rb Casks/ac3gui.rb
+          if git diff --cached --quiet; then
+            echo "tap already up to date for $VERSION_TAG"
+            exit 0
+          fi
+          git commit -m "ac3forge ${VERSION_TAG}"
+          git push origin HEAD

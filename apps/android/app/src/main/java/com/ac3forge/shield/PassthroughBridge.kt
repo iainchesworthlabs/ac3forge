@@ -58,6 +58,7 @@ class PassthroughBridge {
      */
     fun isDirectPlaybackSupported(carrierRateHz: Int, eac3: Boolean): Boolean {
         val format = iec61937Format(carrierRateHz)
+        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         val supported = AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
         Log.d(TAG, "isDirectPlaybackSupported(carrier=$carrierRateHz eac3=$eac3) = $supported")
         return supported
@@ -70,6 +71,7 @@ class PassthroughBridge {
             .setSampleRate(sampleRateHz)
             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
             .build()
+        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         return AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
     }
 
@@ -78,6 +80,7 @@ class PassthroughBridge {
         close()
 
         val format = iec61937Format(carrierRateHz)
+        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         if (!AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)) {
             Log.w(TAG, "open: isDirectPlaybackSupported=false for carrier=$carrierRateHz eac3=$eac3")
             return false
