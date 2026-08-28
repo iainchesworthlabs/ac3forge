@@ -150,6 +150,15 @@ a concrete API-freeze plan for v1.0 now exists.
   object programme onto a named layout by its own positions before metering. `qc` gained
   `layout=rendered|bed` and `objects=<layout>`, plus two new delivery presets.
 
+**Browser (WASM)**
+
+- **An in-browser encode demo**, alongside the existing decode one: drop a `.wav` file and get back
+  a real AC-3/E-AC-3 elementary stream, encoded entirely client-side by the same codec compiled to
+  WebAssembly, plus a real BS.1770 loudness/true-peak QC verdict against the same five delivery
+  presets `ac3cli qc` checks — computed on the same PCM, in the page. A round-trip preview decodes
+  the produced stream through the existing decode module to prove it's real. Headless-browser CI
+  coverage (Playwright) now spans both demos, not just decode.
+
 **Library, C API, Python and Rust**
 
 - **A pimpl sweep across the exported surface**, so a private-state change is no longer an ABI

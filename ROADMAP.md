@@ -1414,9 +1414,31 @@ directory; there is still no threading anywhere in the codec core.
   a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3
   ([video.js http-streaming #1297](https://github.com/videojs/http-streaming/issues/1297) is
   open); the docs demo becomes a consumer of the package.
-- [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` calls it "a separate, much
-  larger undertaking"; the encoders are already proven platform-free (C API, wheels, NDK). A
-  drop-a-WAV / capture-a-mic encode page, and a browser-side `qc`.
+- [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` used to call it "a separate,
+  much larger undertaking"; measured instead of assumed (WSL2/Emscripten 6.0.6, the same toolchain
+  `build-wasm` uses), that turned out not to be true. A combined AC-3 + E-AC-3 + Atmos/JOC + QC
+  Embind module (`apps/wasm/encoder_bindings.cpp`) is 390 KB raw / 149 KB gzip, comparable to the
+  decode-only module's own 372 KB/130 KB — not worth a further module split. Timed under Node/V8,
+  single-threaded, no SIMD: AC-3 2.0 at 385x real-time, E-AC-3 3/2+LFE at 120x, 4-object Atmos/JOC
+  at 82x — enough headroom that neither product needs `pthreads`/`SharedArrayBuffer`, and a future
+  microphone-capture encoder is a plumbing problem, not a CPU one. QC needed no new DSP:
+  `ac3::meta::LoudnessMeter`/`evaluate_qc_gate` are `ac3cli qc`'s own functions, bound directly.
+  **Landed so far**: the encode module (full binding surface, including Atmos/JOC even though no
+  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — coding-mode/rate/bitrate
+  controls, the five-preset QC verdict table, and a round-trip preview through the existing decode
+  module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
+  known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).
+  See [docs/platforms/wasm.md#encode-module](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/wasm.md#encode-module)
+  for the full numbers. **Still open**: capture-a-mic (real-time capture/buffering plumbing —
+  `getUserMedia`/`AudioWorklet` — the CPU budget is proven, this is UX work); an object-authoring
+  UI on top of the already-bound `WasmAtmosBedEncoder`; wider channel layouts (7.1, height
+  channels) than the mono/stereo/5.1 the drop-a-WAV page reorders today. Dialnorm is left at
+  §5.4.2.8's unmeasured default (31) rather than derived from the QC pass's own measured
+  loudness — the QC verdict itself measures the source PCM directly so this does not affect it,
+  but a real decoder's dialnorm normalisation would under-attenuate loud content this page
+  produces. VX18(a)'s browser-test coverage now spans both demos, but neither demo's visual/
+  interactive surface (drag-and-drop, the QC table's rendering, the decode side's visualizations)
+  is CI-tested — see `wasm.md`'s own "Not yet verified" note.
 - [ ] **UX7 (M)** — macOS loopback capture through Core Audio process/system taps
   (`AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2+). Capture is still input-only
   there and `start()` still refuses `kLoopback`: the tap itself needs an Objective-C class, a

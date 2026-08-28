@@ -1939,7 +1939,7 @@ jobs:
   # published copy is rebuilt fresh by docs.yml's deploy job rather than
   # shipped from here (see that workflow and docs/platforms/wasm.md).
   build-wasm:
-    name: WASM (browser decode demo)
+    name: WASM (browser demos)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1954,29 +1954,43 @@ jobs:
       - name: Configure
         run: cmake --preset config-wasm-emscripten
 
+      # Builds both demos - ac3forge_wasm_encode depends on ac3forge_wasm_decode
+      # (apps/wasm/CMakeLists.txt's add_dependencies, so its round-trip preview's
+      # copy of the decode module is always available), so one `cmake --build`
+      # over the whole preset orders them correctly with no --target list to
+      # keep in sync here as targets are added.
       - name: Build
         run: cmake --build build/config-wasm-emscripten
 
       # Not consumed by docs.yml (see this job's own header) - uploaded
       # purely so a failed/successful build's actual output is inspectable
       # from the Actions run, the same convenience packages-android gets.
-      # Unconditional (ahead of the browser test below) so a failing test
+      # Unconditional (ahead of the browser tests below) so a failing test
       # still leaves the build it tested inspectable.
-      - name: Upload demo artifact
+      - name: Upload decode demo artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wasm-decode-demo
           path: build/config-wasm-emscripten/bin/wasm_decode_demo
           if-no-files-found: error
 
+      - name: Upload encode demo artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wasm-encode-demo
+          path: build/config-wasm-emscripten/bin/wasm_encode_demo
+          if-no-files-found: error
+
       # Roadmap VX18(a): until this, "it compiles" was the only thing any CI
       # leg checked - docs/platforms/wasm.md's "Not yet verified" section
       # recorded decode/playback/render correctness as manual-only,
-      # re-checked by eye every time this demo changed. apps/wasm/tests'
-      # Playwright harness drives the real Embind API against the bundled
-      # fixture and asserts the same real values (channel count, sample
-      # rate, object count, duration, a moving object position) that manual
-      # verification checked before.
+      # re-checked by eye every time either demo changed. apps/wasm/tests'
+      # Playwright harness (two projects, one per demo - see
+      # playwright.config.js) drives each real Embind API directly and
+      # asserts real values: the decode side's channel count/sample rate/
+      # object count/duration/moving-object-position, and the encode side's
+      # real encoded byte count, QC verdict against a known signal, and
+      # round-trip decode.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
@@ -1990,10 +2004,11 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      - name: Headless-browser decode test
+      - name: Headless-browser demo tests
         working-directory: apps/wasm/tests
         env:
           WASM_DEMO_DIR: ${{ github.workspace }}/build/config-wasm-emscripten/bin/wasm_decode_demo
+          WASM_ENCODE_DEMO_DIR: ${{ github.workspace }}/build/config-wasm-emscripten/bin/wasm_encode_demo
           CI: "1"
         run: npm test
 
