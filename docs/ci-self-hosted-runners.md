@@ -9,9 +9,17 @@ Windows) that means every leg, and the per-leg fan-out only reappears as gracefu
 degradation when most of the fleet is genuinely gone (one surviving runner takes one leg,
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
-(Detect changes, Static Analysis, FFmpeg Validate, and the cheap gate jobs) route the same
-way through its `check-runner` job; Coverage deliberately does not - see its own comment in
-`ci.yml` for the undiagnosed shutdown-signal failure that keeps it on GitHub-hosted.
+(Detect changes, Static Analysis, FFmpeg Validate, ADM Module, ABI diff, Performance vs
+merge base, Platform Macros, and the cheap gate jobs) route the same way through its
+`check-runner` job, `codeql.yml`'s Analyze matrix routes through its own `check-runner`,
+and `_build.yml`'s standalone containerised build-footprint job rides the matrix fan-out as
+leg 5. Three jobs stay on GitHub-hosted deliberately: Coverage (see its own comment in
+`ci.yml` for the undiagnosed shutdown-signal failure), and build-wasm / build-android /
+build-rust (they run bare and lean on toolchains the hosted image pre-bakes - emsdk,
+Android SDK/NDK, rustup - that the fleet image does not; route them only if/when
+`ci-runners` bakes those in). MSVC Code Analysis (PREfast) also stays on `windows-latest`
+for now: it is a ~35-minute job, and the 7-runner Windows fleet is the capacity pinch -
+two build legs per queue entry already keep it busy.
 
 Control-plane jobs - the `check-runner`/`check-runners` deciders themselves,
 `_toolchain-versions.yml`'s `resolve`, and the `CI Status` aggregator - route separately,
