@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 57> kOptionTokens{{
+constexpr std::array<OptionToken, 58> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -86,6 +86,7 @@ constexpr std::array<OptionToken, 57> kOptionTokens{{
     {"codec=", "record/live: ac3 or eac3, instead of deriving it from layout="},
     {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
     {"objects=", "live mode=atmos: the object-slot budget, 1..15"},
+    {"positions=", "live mode=atmos: osc:[<bind>:]<port> - a real live object-position source"},
     {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1 - "
                 "decode/monitor: loro, ltrt or mono fold the §7.8 output stage"},
     {"follow=", "play: off refuses a sink that rejects the source format instead of "
@@ -174,8 +175,20 @@ void print_live_topic() {
     fmt::println("live mode: 'channels' (default) encodes the captured channels as they are,");
     fmt::println("       onto layout= (stereo by default, anything up to 7.1.4); 'atmos' pans");
     fmt::println("       every captured channel into a 5.1 bed as its own object, moving it");
-    fmt::println("       every frame the same way 'atmos' orbits its synthetic ones — the hook");
-    fmt::println("       a real live position source drops into once one exists.");
+    fmt::println("       every frame the same way 'atmos' orbits its synthetic ones, unless");
+    fmt::println("       positions= names a real source instead.");
+    fmt::println("live positions=osc:[<bind>:]<port> (mode=atmos only): drives every object's");
+    fmt::println("       placement from OSC 1.0 messages over UDP instead of the synthetic");
+    fmt::println("       orbit - a show-control rig or a DAW sends /object/<n>/xyz (,fff: x, y,");
+    fmt::println("       z, matching the room's own [0,1]/[0,1]/[-1,1] axes), /object/<n>/gain");
+    fmt::println("       or /object/<n>/lfe (,f: linear, not dB), or /object/<n>/release to hand");
+    fmt::println("       that object back to the built-in orbit's starting point. <n> is");
+    fmt::println("       0-based. <bind> is 'local' (default: 127.0.0.1, loopback-only) or");
+    fmt::println("       'any' (0.0.0.0, explicit opt-in) or a dotted-quad IPv4 literal - never");
+    fmt::println("       a hostname, so starting a session never blocks on DNS. A bind failure");
+    fmt::println("       refuses the session outright rather than silently falling back to the");
+    fmt::println("       orbit. MIDI and a game controller are follow-ons under the same token");
+    fmt::println("       (positions=midi:..., positions=gamepad:...), not implemented yet.");
     fmt::println("live capture2=<index>: the capture_device positional stays the session's");
     fmt::println("       clock master, paced exactly as it always has been; capture2= adds a");
     fmt::println("       second, independently-clocked device whose stream is resampled to");
@@ -587,6 +600,9 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  capture2=<index>  a second capture device, clock-conformed to the first "
                      "(see 'devices')");
         fmt::println("  objects=<N>       the object-slot budget for mode=atmos (1..15)");
+        fmt::println("  positions=osc:<port>");
+        fmt::println("                    mode=atmos only: a real live object-position source "
+                     "(see 'help live' for the OSC address space)");
         fmt::println("  downmix=off       refuse an AC-3-only passthrough endpoint instead of "
                      "running the parallel 5.1 AC-3 leg");
     }

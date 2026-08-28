@@ -10,7 +10,8 @@ to backport to yet.
 
 Before linking this decoder against input you do not control, read
 [docs/threat-model.md](docs/threat-model.md). It states what is treated as untrusted (elementary
-streams, EMDF/OAMD/JOC payloads, WAV headers, ADM documents) and what is not, the memory-safety
+streams, EMDF/OAMD/JOC payloads, WAV headers, ADM documents, OSC live-position control packets)
+and what is not, the memory-safety
 posture and where the raw-pointer boundaries are (the C API, the WASM bindings, the JNI bridge),
 the per-access-unit resource limits and what a hostile `frmsiz` does, and the gaps — including
 the ones that are the embedder's to close rather than this project's.
