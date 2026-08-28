@@ -27,6 +27,12 @@ const char* ac3forge_status_message(ac3forge_status_t status) {
         case AC3FORGE_ERROR_DECODE_RESERVED_VALUE: return "reserved value";
         case AC3FORGE_ERROR_DECODE_UNSUPPORTED: return "legal but unsupported syntax";
         case AC3FORGE_ERROR_DECODE_INVALID_STREAM: return "invalid stream";
+        case AC3FORGE_ERROR_SCAN_EMPTY: return "empty stream";
+        case AC3FORGE_ERROR_SCAN_LOST_SYNC: return "lost sync";
+        case AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID: return "unsupported bsid";
+        case AC3FORGE_ERROR_SCAN_RESERVED_VALUE: return "reserved value";
+        case AC3FORGE_ERROR_SCAN_TRUNCATED: return "truncated stream";
+        case AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE: return "unsupported stream structure";
     }
     return "unknown status";
 }

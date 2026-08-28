@@ -1274,16 +1274,24 @@ directory; there is still no threading anywhere in the codec core.
   public) makes `check_abi_symbols.py` fail with `+
   ac3::internal::resolve_operating_mode(ac3::DecoderConfig const&) (newly exported, not in
   allowlist)`; reverted before merging.
-- [ ] **AP5 (L)** — C API completeness. ~~It has an AC-3 encoder, an Atmos encoder and both
+- [x] **AP5 (L)** — C API completeness. Done: ~~It has an AC-3 encoder, an Atmos encoder and both
   decoders, and no E-AC-3 encoder at all~~ `ac3forge_eac3_encoder_t`/
-  `ac3forge_eac3_access_unit_encoder_t` now cover plain E-AC-3 and dependent-substream wide
+  `ac3forge_eac3_access_unit_encoder_t` cover plain E-AC-3 and dependent-substream wide
   layouts (7.1/5.1.2/5.1.4/7.1.4) with the Annex E tools including `auto`, mirroring
-  `ac3::eac3::FrameEncoder`/`AccessUnitEncoder` — see `docs/library/c-api.md`'s "E-AC-3 encoding"
-  section for the fields deliberately left out of the C mirror (mixmdate/infomdat, VBR,
-  `numblkscod`). Still missing: `scan`/`ScannedStream` (only `stream_bsid` and `split_*` exist),
-  the caller-buffer `_into` decode forms the memory programme added for exactly the real-time
-  embedder the C API serves, and loudness/level/QC metering (`docs/library/c-api.md` calls the
-  custom DRC profile a deliberate omission — revisit at 1.0).
+  `ac3::eac3::FrameEncoder`/`AccessUnitEncoder`. ~~`scan`/`ScannedStream` (only `stream_bsid` and
+  `split_*` exist)~~ `ac3forge_scan` now reads layout, every programme and the DVB/ATSC service
+  fields a muxer's descriptors want, without decoding audio. ~~The caller-buffer `_into` decode
+  forms the memory programme added for exactly the real-time embedder the C API serves~~
+  `ac3forge_decoder_decode_frame_into`/`ac3forge_eac3_decoder_decode_access_unit_into` decode into
+  caller-owned planar storage, preserving §3.7's transient pre-noise hold-back exactly (a
+  held-back frame leaves the caller's spans untouched, same as the value form leaves its result
+  unpopulated). ~~Loudness/level/QC metering~~ `ac3forge_loudness_meter_t`/`ac3forge_level_meter_t`/
+  `ac3forge_qc_preset`/`ac3forge_evaluate_qc_gate` mirror `ac3::meta::LoudnessMeter`/
+  `ac3::analysis::LevelMeter`/`ac3::meta::qc`. See `docs/library/c-api.md` for what every one of
+  these deliberately trims (mixmdate/infomdat, VBR, `numblkscod`, `process_interleaved`, the
+  presentational level-meter string/geometry helpers, `AccessUnitTiming`'s one-line
+  seconds/timescale conversions) and for the custom DRC profile, still a deliberate omission to
+  revisit at 1.0.
 - [ ] **AP6 (L)** — Python completeness. ~~The same four classes; no E-AC-3 encoder~~
   `ac3.eac3.FrameEncoder`/`AccessUnitEncoder` now wrap the E-AC-3 encoder directly
   (pybind11-direct, matching every other class here), with `ac3.eac3.access_unit_config_for_layout`
