@@ -106,7 +106,8 @@ if(WIN32)
             src/backend/windows/capture.cpp
             src/backend/windows/passthrough.cpp
             src/backend/windows/monitor.cpp
-            src/backend/windows/sink_capabilities.cpp)
+            src/backend/windows/sink_capabilities.cpp
+            src/backend/windows/spatial.cpp)
 
     # How <windows.h> is to be configured wherever it is included: the lean
     # header set, and no min/max macros to collide with <algorithm>. Stated
@@ -243,7 +244,8 @@ if(LINUX)
                 src/backend/alsa/capture.cpp
                 src/backend/alsa/monitor.cpp
                 src/backend/alsa/passthrough.cpp
-                src/backend/alsa/sink_capabilities.cpp)
+                src/backend/alsa/sink_capabilities.cpp
+                src/backend/alsa/spatial.cpp)
         target_link_libraries(ac3audio PRIVATE ALSA::ALSA)
         set(AC3FORGE_AUDIO_BACKEND alsa)
         message(STATUS
@@ -256,7 +258,8 @@ if(LINUX)
                 src/backend/pipewire/capture.cpp
                 src/backend/pipewire/monitor.cpp
                 src/backend/pipewire/passthrough.cpp
-                src/backend/pipewire/sink_capabilities.cpp)
+                src/backend/pipewire/sink_capabilities.cpp
+                src/backend/pipewire/spatial.cpp)
         target_link_libraries(ac3audio PRIVATE PkgConfig::PipeWire)
         set(AC3FORGE_AUDIO_BACKEND pipewire)
         message(STATUS
@@ -271,7 +274,8 @@ if(LINUX)
                 src/backend/posix/capture.cpp
                 src/backend/posix/monitor.cpp
                 src/backend/posix/passthrough.cpp
-                src/backend/posix/sink_capabilities.cpp)
+                src/backend/posix/sink_capabilities.cpp
+                src/backend/posix/spatial.cpp)
         set(AC3FORGE_AUDIO_BACKEND posix)
         message(STATUS
             "Neither ALSA nor PipeWire headers were found; building without live capture, "
@@ -303,7 +307,8 @@ if(APPLE)
             src/backend/macos/capture.cpp
             src/backend/macos/passthrough.cpp
             src/backend/macos/monitor.cpp
-            src/backend/macos/sink_capabilities.cpp)
+            src/backend/macos/sink_capabilities.cpp
+            src/backend/macos/spatial.cpp)
 
     # CoreAudio: the Audio HAL itself. CoreFoundation: CFStringRef, used
     # throughout coreaudio_support.hpp for every device's persistent UID and
@@ -340,7 +345,8 @@ if(ANDROID)
             src/backend/android/capture.cpp
             src/backend/android/passthrough.cpp
             src/backend/android/monitor.cpp
-            src/backend/android/sink_capabilities.cpp)
+            src/backend/android/sink_capabilities.cpp
+            src/backend/android/spatial.cpp)
 
     # aaudio: monitor.cpp's native playback API. log: android/log.h, used
     # throughout the backend for diagnostics visible in `adb logcat`.

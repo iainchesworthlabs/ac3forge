@@ -1500,11 +1500,18 @@ directory; there is still no threading anywhere in the codec core.
   and expanded (`docs/platforms/macos.md`), and a pure, CI-verified OS-version gate a future
   implementation should refuse on before ever touching `CATapDescription`
   (`ac3::coreaudio::system_audio_tap_api_available()`).
-- [ ] **UX8 (L)** — A Windows Spatial Sound object sink (`ISpatialAudioObjectRenderStream`):
-  feed decoded objects as dynamic objects with their OAMD positions and the bed as static ones.
-  The one path that lets Dolby's own renderer render this project's reconstructed objects
-  without the authenticity gate, and hardware evidence for the object layer (and DC10). A
-  per-platform directory, no `#ifdef`.
+- [x] **UX8 (L)** — A Windows Spatial Sound object sink, `ac3::audio::SpatialObjectSink`
+  (`ISpatialAudioObjectRenderStream`): decoded objects go out as dynamic objects at their real
+  OAMD positions, the bed's LFE as a static one (never a JOC output, §6.3.2.2 — the rest of a
+  genuine bed programme's channels are not yet mapped, see the sink's own header). Confirmed
+  against a real spatial endpoint: `GetMaxDynamicObjectCount` read 0 everywhere on this machine
+  before Windows Sonic for Headphones was enabled on the default Realtek output, `start()`
+  refused with `kNoSpatialFormat` naming the fix, and after enabling it a real 4-object stream
+  rendered 250 access units with zero underruns. That confirms the plumbing end to end against a
+  real OS renderer, not a self-consistency check — but per DC10's own note, it still is not a
+  measurement of how Dolby's *own* JOC reconstruction reads this project's matrix, since Windows
+  Spatial Sound renders the PCM and positions it is handed rather than re-deriving objects from
+  the matrix itself.
 - [x] **UX9 (M)** — `play` that follows the sink: parse EDID short audio descriptors to choose
   AC-3, E-AC-3 or PCM, and a one-command transcode-to-passthrough pipeline (DC9's transcode into
   `PassthroughSink`) for the "no 5.1 PCM over optical" case. Shipped as

@@ -170,6 +170,13 @@ a concrete API-freeze plan for v1.0 now exists.
   real `Accessible` name, role and description to screen readers, built from the same live state
   the visuals already read rather than a static copy of a label — channel meters, QC gates, the
   Guided wizard's cards, the object-placement room and timeline views, run-strip chips, all of it.
+- **`ac3cli spatial`, a Windows Spatial Sound object sink.** Every JOC-reconstructed object goes
+  out as a dynamic object at its real OAMD position, and the bed's LFE as a static one, through
+  `ISpatialAudioObjectRenderStream`. This is the one path that lets Dolby's own renderer engage
+  with this project's reconstructed objects at all — a licensed decoder otherwise refuses to
+  object-decode a stream without a signing key this project doesn't ship. Refuses cleanly, naming
+  which Settings toggle to flip, when the chosen endpoint has no spatial sound format enabled;
+  `ac3cli outputs` reports each device's spatial capability alongside its passthrough columns.
 
 **Browser (WASM)**
 
