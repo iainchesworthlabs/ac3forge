@@ -1302,11 +1302,12 @@ directory; there is still no threading anywhere in the codec core.
   "pimpl" convention note for the growth-after-1.0 decision and why `EncoderConfig`'s
   `verify::FrameTrace*` (and its siblings) are not part of that promise.
 - [x] **AP4 (M)** — An ABI gate. Done: `abi-gate` in `ci.yml` builds `config-linux-llvm-shared`
-  at HEAD and at the last `v*` tag (a `git worktree`, mirroring `performance-compare`'s own
-  merge-base pattern) and runs `abidiff` across all six shared libraries, plus
+  at HEAD and at a comparison point (a `git worktree`, mirroring `performance-compare`) — the
+  PR's own merge base on a pull request, the last `v*` tag on a push or tag — and runs `abidiff`
+  across all six shared libraries under `tools/ci/abi-suppressions.ini`, plus
   `tools/ci/check_abi_symbols.py` — a checked-in `nm -D --defined-only` allowlist per library
-  under `tools/ci/abi-allowlist/` — advisory (`continue-on-error: true`) until `AP1`'s freeze,
-  at which point deleting that one line is the whole promotion. `examples/capi_encode_decode.c`
+  under `tools/ci/abi-allowlist/` — advisory (`ABI_ENFORCE: 'false'`) until `AP1`'s freeze,
+  at which point flipping that one value is the whole promotion. `examples/capi_encode_decode.c`
   and `capi_encode_eac3.c` now pin `C_STANDARD 11`/`C_STANDARD_REQUIRED ON`/`C_EXTENSIONS OFF`
   on top of the `-Wpedantic` they already got from `ac3::warnings`, so `ac3forge_c/ac3forge.h`
   is proven strict-C11-clean on every desktop leg that already builds them, not a new leg.
