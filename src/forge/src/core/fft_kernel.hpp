@@ -149,8 +149,22 @@ struct FftTables {
 // of the second, twiddled by exp(-2*pi*i*j/Len)). Multiplying by -i is a
 // swap and a sign, not a multiply, which is where radix-4's fourth complex
 // multiply went.
-template <std::size_t P, std::size_t Len>
-void fft_radix4_stage(const FftTables<P>& t, std::span<double, P> re, std::span<double, P> im) {
+//
+// VecType (ROADMAP PF5's batch-axis follow-on): every operation below is
+// `+`/`-`/`*` over a `re`/`im` element and (for the three complex multiplies)
+// a scalar `double` twiddle - the exact shape `f64x2`/`f64x4` already
+// support, so this same body runs N independent same-size transforms in
+// lockstep, one per lane, when VecType is a vector type instead of the
+// default `double`. Twiddles stay `double` regardless of VecType - they are
+// identical for every lane of a batch, the same size-P transform - so a
+// vector VecType needs a `VecType * double` (broadcast) `operator*`; there
+// is no such requirement on `VecType = double` itself, which is already
+// legal built-in arithmetic. This is a behaviour-preserving default: every
+// existing caller passes a `std::span<double, P>` and deduces
+// `VecType = double`, the identical instantiation this function had before
+// the parameter existed.
+template <std::size_t P, std::size_t Len, typename VecType = double>
+void fft_radix4_stage(const FftTables<P>& t, std::span<VecType, P> re, std::span<VecType, P> im) {
     constexpr std::size_t kQ = Len / 4;
     constexpr std::size_t kBase = kQ - 1;
     for (std::size_t i = 0; i < P; i += Len) {
@@ -158,22 +172,22 @@ void fft_radix4_stage(const FftTables<P>& t, std::span<double, P> re, std::span<
         // Len == 4 it is the only group there is, which is what makes the
         // whole first stage free.
         {
-            const double ar = re[i];
-            const double ai = im[i];
-            const double br = re[i + kQ];
-            const double bi = im[i + kQ];
-            const double cr = re[i + (2 * kQ)];
-            const double ci = im[i + (2 * kQ)];
-            const double dr = re[i + (3 * kQ)];
-            const double di = im[i + (3 * kQ)];
-            const double t0r = ar + br;
-            const double t0i = ai + bi;
-            const double t1r = ar - br;
-            const double t1i = ai - bi;
-            const double t2r = cr + dr;
-            const double t2i = ci + di;
-            const double t3r = cr - dr;
-            const double t3i = ci - di;
+            const auto ar = re[i];
+            const auto ai = im[i];
+            const auto br = re[i + kQ];
+            const auto bi = im[i + kQ];
+            const auto cr = re[i + (2 * kQ)];
+            const auto ci = im[i + (2 * kQ)];
+            const auto dr = re[i + (3 * kQ)];
+            const auto di = im[i + (3 * kQ)];
+            const auto t0r = ar + br;
+            const auto t0i = ai + bi;
+            const auto t1r = ar - br;
+            const auto t1i = ai - bi;
+            const auto t2r = cr + dr;
+            const auto t2i = ci + di;
+            const auto t3r = cr - dr;
+            const auto t3i = ci - di;
             re[i] = t0r + t2r;
             im[i] = t0i + t2i;
             re[i + kQ] = t1r + t3i;
@@ -194,22 +208,22 @@ void fft_radix4_stage(const FftTables<P>& t, std::span<double, P> re, std::span<
             const std::size_t i1 = i0 + kQ;
             const std::size_t i2 = i0 + (2 * kQ);
             const std::size_t i3 = i0 + (3 * kQ);
-            const double ar = re[i0];
-            const double ai = im[i0];
-            const double br = (re[i1] * w2r) - (im[i1] * w2i);
-            const double bi = (re[i1] * w2i) + (im[i1] * w2r);
-            const double cr = (re[i2] * w1r) - (im[i2] * w1i);
-            const double ci = (re[i2] * w1i) + (im[i2] * w1r);
-            const double dr = (re[i3] * w3r) - (im[i3] * w3i);
-            const double di = (re[i3] * w3i) + (im[i3] * w3r);
-            const double t0r = ar + br;
-            const double t0i = ai + bi;
-            const double t1r = ar - br;
-            const double t1i = ai - bi;
-            const double t2r = cr + dr;
-            const double t2i = ci + di;
-            const double t3r = cr - dr;
-            const double t3i = ci - di;
+            const auto ar = re[i0];
+            const auto ai = im[i0];
+            const auto br = (re[i1] * w2r) - (im[i1] * w2i);
+            const auto bi = (re[i1] * w2i) + (im[i1] * w2r);
+            const auto cr = (re[i2] * w1r) - (im[i2] * w1i);
+            const auto ci = (re[i2] * w1i) + (im[i2] * w1r);
+            const auto dr = (re[i3] * w3r) - (im[i3] * w3i);
+            const auto di = (re[i3] * w3i) + (im[i3] * w3r);
+            const auto t0r = ar + br;
+            const auto t0i = ai + bi;
+            const auto t1r = ar - br;
+            const auto t1i = ai - bi;
+            const auto t2r = cr + dr;
+            const auto t2i = ci + di;
+            const auto t3r = cr - dr;
+            const auto t3i = ci - di;
             re[i0] = t0r + t2r;
             im[i0] = t0i + t2i;
             re[i1] = t1r + t3i;
@@ -223,17 +237,18 @@ void fft_radix4_stage(const FftTables<P>& t, std::span<double, P> re, std::span<
 }
 
 // The single length-P radix-2 stage an odd log2(P) leaves over, run last.
-template <std::size_t P>
-void fft_radix2_final_stage(const FftTables<P>& t, std::span<double, P> re,
-                            std::span<double, P> im) {
+// VecType: see fft_radix4_stage's own comment above - the same shape.
+template <std::size_t P, typename VecType = double>
+void fft_radix2_final_stage(const FftTables<P>& t, std::span<VecType, P> re,
+                            std::span<VecType, P> im) {
     constexpr std::size_t kHalf = P / 2;
     constexpr std::size_t kBase = kHalf - 1;
     {
         // j == 0 again: w = 1.
-        const double ur = re[0];
-        const double ui = im[0];
-        const double vr = re[kHalf];
-        const double vi = im[kHalf];
+        const auto ur = re[0];
+        const auto ui = im[0];
+        const auto vr = re[kHalf];
+        const auto vi = im[kHalf];
         re[0] = ur + vr;
         im[0] = ui + vi;
         re[kHalf] = ur - vr;
@@ -242,12 +257,12 @@ void fft_radix2_final_stage(const FftTables<P>& t, std::span<double, P> re,
     for (std::size_t j = 1; j < kHalf; ++j) {
         const double wr = t.stage_re[kBase + j];
         const double wi = t.stage_im[kBase + j];
-        const double xr = re[j + kHalf];
-        const double xi = im[j + kHalf];
-        const double vr = (xr * wr) - (xi * wi);
-        const double vi = (xr * wi) + (xi * wr);
-        const double ur = re[j];
-        const double ui = im[j];
+        const auto xr = re[j + kHalf];
+        const auto xi = im[j + kHalf];
+        const auto vr = (xr * wr) - (xi * wi);
+        const auto vi = (xr * wi) + (xi * wr);
+        const auto ur = re[j];
+        const auto ui = im[j];
         re[j] = ur + vr;
         im[j] = ui + vi;
         re[j + kHalf] = ur - vr;
@@ -256,9 +271,13 @@ void fft_radix2_final_stage(const FftTables<P>& t, std::span<double, P> re,
 }
 
 // The radix-4 stage sequence len = 4, 16, 64, ..., unrolled at compile time
-// so every stage's length, quarter and table offset are constants.
-template <std::size_t P, std::size_t Len>
-void fft_radix4_chain(const FftTables<P>& t, std::span<double, P> re, std::span<double, P> im) {
+// so every stage's length, quarter and table offset are constants. VecType
+// is explicit at the top of the recursion (fft_forward_bitrev) and deduced
+// from `re`/`im` at every recursive call below - a trailing template
+// parameter deduced from a function argument stays deducible even when the
+// parameters before it (P, Len) are given explicitly.
+template <std::size_t P, std::size_t Len, typename VecType = double>
+void fft_radix4_chain(const FftTables<P>& t, std::span<VecType, P> re, std::span<VecType, P> im) {
     fft_radix4_stage<P, Len>(t, re, im);
     if constexpr (Len * 4 <= FftTables<P>::kLastRadix4Len) {
         fft_radix4_chain<P, Len * 4>(t, re, im);
@@ -271,8 +290,15 @@ void fft_radix4_chain(const FftTables<P>& t, std::span<double, P> re, std::span<
 // (unnormalized forward transform). Split arrays rather than std::complex so
 // the butterfly's independent multiply-add chains stay visible to the
 // auto-vectorizer.
-template <std::size_t P>
-void fft_forward_bitrev(const FftTables<P>& t, std::span<double, P> re, std::span<double, P> im) {
+//
+// VecType (ROADMAP PF5's batch-axis follow-on, default `double`): see
+// fft_radix4_stage's own comment. Every existing caller passes
+// `std::span<double, P>` and gets the same `VecType = double` instantiation
+// this function always had; a batched caller instantiates this explicitly
+// at `VecType = f64x4` (or similar) to run 4 independent P-point transforms
+// at once instead of calling this 4 separate times.
+template <std::size_t P, typename VecType = double>
+void fft_forward_bitrev(const FftTables<P>& t, std::span<VecType, P> re, std::span<VecType, P> im) {
     fft_radix4_chain<P, 4>(t, re, im);
     if constexpr (FftTables<P>::kHasTrailingRadix2) {
         fft_radix2_final_stage<P>(t, re, im);

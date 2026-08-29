@@ -158,6 +158,64 @@ struct FrameParameters {
         return object_offset(objects);
     }
 
+    // A cursor into ONE object's slice of `matrix`.
+    //
+    // object_offset() is O(objects) - it sums every earlier object's size -
+    // and index_of()/at() call it on EVERY access, so sweeping one object's
+    // coefficients through at() costs O(objects) per coefficient and a whole
+    // frame O(objects^2). The reconstruction loops do exactly that sweep:
+    // 2 * channels * kQmfSubbands reads per object per block, each of which
+    // was re-walking the offset list. Measured before this existed, that walk
+    // (joc.hpp's lines 145-152 and 174) was ~44% of a 12-object
+    // joc-domain=mdct decode profile - more than every transform in the codec
+    // put together. A caller that is about to sweep an object takes a view
+    // ONCE and indexes straight off it instead.
+    //
+    // Pure index arithmetic: a view resolves to the same matrix element the
+    // same at() call would, so every value read through it is bit-identical
+    // by construction - there is no arithmetic here to round differently.
+    struct ObjectMatrixView {
+        const double* base = nullptr;
+        int channels = 0;
+        int bands = 0;
+
+        [[nodiscard]] double at(int data_point, int channel, int band) const {
+            return base[((static_cast<std::size_t>(data_point) *
+                              static_cast<std::size_t>(channels) +
+                          static_cast<std::size_t>(channel)) *
+                         static_cast<std::size_t>(bands)) +
+                        static_cast<std::size_t>(band)];
+        }
+    };
+
+    [[nodiscard]] ObjectMatrixView object_view(int object) const {
+        return ObjectMatrixView{.base = matrix.data() + object_offset(object),
+                                .channels = channels,
+                                .bands = shape(object).bands()};
+    }
+
+    // The write side of the same idea, for the parse and encode loops that
+    // FILL one object's slice band by band.
+    struct MutableObjectMatrixView {
+        double* base = nullptr;
+        int channels = 0;
+        int bands = 0;
+
+        [[nodiscard]] double& at(int data_point, int channel, int band) const {
+            return base[((static_cast<std::size_t>(data_point) *
+                              static_cast<std::size_t>(channels) +
+                          static_cast<std::size_t>(channel)) *
+                         static_cast<std::size_t>(bands)) +
+                        static_cast<std::size_t>(band)];
+        }
+    };
+
+    [[nodiscard]] MutableObjectMatrixView object_view_mut(int object) {
+        return MutableObjectMatrixView{.base = matrix.data() + object_offset(object),
+                                       .channels = channels,
+                                       .bands = shape(object).bands()};
+    }
+
     [[nodiscard]] std::size_t index_of(int object, int data_point, int channel, int band) const {
         const int object_bands = shape(object).bands();
         return object_offset(object) +
@@ -279,9 +337,20 @@ struct ReconstructionState {
     // BETWEEN calls the way bed_history/previous_matrix/object_history do.
     std::array<std::array<double, 256>, kMaxChannels> bed_mdct_scratch{};
     std::array<double, 512> time_scratch{};
-    std::array<double, 512> windowed_scratch{};
-    std::array<double, 256> object_mdct_scratch{};
-    std::array<double, 512> synth_scratch{};
+    // Four windowed blocks, not one (ROADMAP PF5 phase 4c): the bed
+    // analysis batches four CHANNELS' forward transforms into one
+    // ac3::mdct512_forward_batch4 call, which needs all four windowed
+    // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
+    // four plus one ordinary call; lane 0 doubles as the scalar path's own
+    // buffer, so this costs 3 x 512 doubles over the previous single one.
+    std::array<std::array<double, 512>, 4> windowed_scratch{};
+    // Per-object (ROADMAP PF5's batch-axis follow-on): every present
+    // object's spectrum/synthesis output now coexists, so the imdct pass
+    // can batch four objects at a time (ac3::imdct512_windowed_batch4)
+    // instead of running strictly one object at a time - see
+    // reconstruct_mdct_band's own object loop (joc.cpp).
+    std::array<std::array<double, 256>, kMaxObjects> object_mdct_scratch{};
+    std::array<std::array<double, 512>, kMaxObjects> synth_scratch{};
 
     // --- Domain::kQmf only -------------------------------------------------
 
@@ -296,6 +365,16 @@ struct ReconstructionState {
         std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_imag{};
         std::array<double, dsp::kQmfSubbands> object_real{};
         std::array<double, dsp::kQmfSubbands> object_imag{};
+        // §6.6.5's mixing coefficient for one (object, timeslot), all
+        // channels and subbands: filled in one branch-free pass, then read by
+        // the accumulation pass. Splitting the two is what lets each be fast
+        // - the coefficient's own shape/timeslot branches resolve once per
+        // (object, timeslot) rather than once per (subband, channel), and the
+        // accumulation that follows becomes a plain contiguous walk over
+        // subbands with nothing conditional in it. Laid out channel-major so
+        // both it and bed_real/bed_imag are contiguous in the subband index
+        // the accumulation runs over.
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> mix{};
     };
     std::unique_ptr<QmfState> qmf{};
 

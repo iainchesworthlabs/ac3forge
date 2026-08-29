@@ -101,6 +101,18 @@ else()
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static)
 endif()
 
+# forge_simd_avx2 (ROADMAP PF5's dynamic-dispatch follow-on, x86_64 only,
+# AC3FORGE_AVX2) is PUBLIC-linked into both forge_static and forge_shared
+# unconditionally (src/forge/CMakeLists.txt), so it needs the same
+# export-set membership forge_objects gets just above and for the same
+# reason: install(EXPORT) cannot resolve a usage-requirement dependency
+# that is not itself part of an export set, regardless of which branch
+# above put forge_static/forge_shared in the target list. Does not exist
+# at all when AC3FORGE_AVX2=OFF or the target is not x86_64.
+if(TARGET forge_simd_avx2)
+    list(APPEND _ac3forge_forge_install_targets forge_simd_avx2)
+endif()
+
 # ac3adm/admbridge deliberately do NOT follow the AC3FORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS
 # selection above - they are always shared-only, unconditionally, regardless of how the rest of
 # this project is configured. See src/ac3adm/CMakeLists.txt's and src/admbridge/CMakeLists.txt's

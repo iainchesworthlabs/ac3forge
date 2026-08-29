@@ -305,6 +305,26 @@ a concrete API-freeze plan for v1.0 now exists.
   A 30-second 15-object decode drops from 6.5 s to under 3 s. Encoder output is byte-identical.
 - **SIMD kernels are selected by CMake per architecture** rather than by `#ifdef`, with
   bit-identical output and no runtime dispatch.
+- **Runtime AVX2 dispatch — and the three non-SIMD findings that outweighed it.** A second,
+  AVX2-flagged kernel tier is now chosen per process by CPUID (`AC3FORGE_SIMD_TIER=auto|sse2|avx2`
+  forces either way for testing), carrying 256-bit windowing and twiddle stages plus batched
+  four-transform IMDCT/MDCT kernels. Output is unchanged: real encodes and decodes are
+  byte-for-byte identical under `sse2` and `avx2`.
+  Profiling by *source line* rather than by symbol then found three costs larger than every
+  transform in the codec put together, all of them redundant work rather than missing
+  vectorisation, and all with unchanged output:
+  `FrameParameters::at()` re-walked an O(objects) offset list on **every** coefficient access,
+  making a frame O(objects²) — a 12-object Atmos decode is now **1.82×** faster under
+  `joc-domain=mdct` and **2.90×** under the default `joc-domain=qmf`;
+  `aht_bin_gaq_bits` fully quantised six mantissas per candidate gain to read one integer width
+  off each, where that width follows from a single predicate — **1.70×** on `eac3_51_auto`
+  whole-frame encode;
+  and §6.6.5's QMF mixing coefficient re-evaluated its shape/timeslot branches once per
+  (subband, channel) instead of once per (object, timeslot) — **−8.6%** instructions on a
+  12-object QMF-domain decode.
+  FMA3 was measured (~1%, and it perturbs results) and declined, so `-ffp-contract=off` stays
+  pinned. See [docs/building.md](docs/building.md)'s "Runtime AVX2 dispatch" and
+  [docs/performance-trend.md](docs/performance-trend.md)'s "Profile by source line, not by symbol".
 - **Floating-point contraction is pinned off project-wide**, and the timing benches run real
   programme material instead of a single tone.
 - **The coverage gate covers `apps/cli` and `python/`**, not just `src/`, and the fuzz jobs are no

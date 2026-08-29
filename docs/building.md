@@ -258,6 +258,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
 | `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from `CMAKE_SYSTEM_PROCESSOR` and falls back to `generic` everywhere else, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
+| `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_TRACY` | `OFF` | Tracy profiler instrumentation (`ac3::tracy` — see `cmake/Tracy.cmake`). Needs vcpkg's `profiling` manifest feature (`-DVCPKG_MANIFEST_FEATURES=profiling`), which supplies Tracy itself; off is a no-op. |
@@ -809,12 +810,12 @@ carry the types, not a copy of each kernel:
 
 | Kernel | Where | Note |
 |---|---|---|
-| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT/DCT-IV core (`fft_kernel.hpp`, see the boundary note below). The core wants its input digit-reversed and returns its output in natural order, so the pre-twiddle gathers at stride ±2 and scatters to `bitrev[m]`, and the post-twiddle reads at stride +1 and scatters to stride ±2. Every gather and scatter stays scalar; only the arithmetic between them goes two-wide. |
-| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Both inverses' pre- and post-transform complex multiplies, same gather/scatter-around-the-core shape as above for the pre-twiddle, unit stride for the post-twiddle. |
-| analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. |
-| `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. |
-| §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. |
-| `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. |
+| DCT-IV pre/post twiddles | `src/forge/src/core/mdct.cpp` | The complex multiplies either side of the FFT/DCT-IV core (`fft_kernel.hpp`, see the boundary note below). The core wants its input digit-reversed and returns its output in natural order, so the pre-twiddle gathers at stride ±2 and scatters to `bitrev[m]`, and the post-twiddle reads at stride +1 and scatters to stride ±2. Every gather and scatter stays scalar; only the arithmetic between them goes two-wide. Also has a real AVX2 tier — see [Runtime AVX2 dispatch](#runtime-avx2-dispatch). |
+| IMDCT twiddle stages | `src/forge/src/core/mdct.cpp` | Both inverses' pre- and post-transform complex multiplies, same gather/scatter-around-the-core shape as above for the pre-twiddle, unit stride for the post-twiddle. Also has a real AVX2 tier. |
+| analysis windowing | `src/forge/src/core/mdct.cpp` | 512 independent multiplies, unit stride throughout. Also has a real AVX2 tier. |
+| `dft512` normalisation | `src/forge/src/core/fft.cpp` | Multiply by the exact reciprocal of 512, which is the same correctly-rounded result as the division it replaced. SSE2/NEON only — Phase 1's own measurement (below) found no reproducible AVX2 signal, since this is a small slice of a function `fft_kernel.hpp`'s own unaccelerated core dominates. |
+| §7.2.2.2 exponent to PSD | `src/forge/src/core/bitalloc.cpp` | Four bins at a time. The only loop in the bit allocator that vectorises at all: §7.2.2.4's excitation function is a serial recurrence and §7.2.2.5's masking curve is a per-band conditional over 50 elements. SSE2/NEON only, same reason as `dft512` above. |
+| `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. SSE2/NEON only, same reason as `dft512` above. |
 
 **The FFT/DCT-IV core itself is not part of this seam.** `src/forge/src/core/fft_kernel.hpp`
 (ROADMAP PF4) is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
@@ -831,11 +832,16 @@ splitting a reduction into per-lane partial sums reassociates the additions — 
 result. Those paths are the normative oracle every fast path is validated against, so their
 numbers are not something to trade for speed. `band_energy`'s per-band accumulation is a reduction
 for the same reason (its cost is the MDCT inside it, which does get faster). Steps 1 and 5 of both
-inverses are permutation-dominated. On x86-64 nothing wider than SSE2 is used: AVX and FMA3 are
-CPU features rather than architecture, a compile-time `-march=` for them would produce a binary
-that faults on older hardware, and the runtime `cpuid` dispatch that would make them safe is not
-built. 128 bits is the native width of NEON and of WASM's `simd128` in any case, and those are the
-platforms with the least headroom.
+inverses are permutation-dominated. This seam itself stays SSE2-width on x86-64: AVX and FMA3 are
+CPU features rather than architecture, so a compile-time `-march=` for them would produce a binary
+that faults on older hardware. [Runtime AVX2 dispatch](#runtime-avx2-dispatch) below covers the
+`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — ROADMAP PF5's
+dynamic-dispatch follow-on wired it to the analysis windowing and DCT-IV/IMDCT twiddle kernels in
+the table above (the two Phase 1's own measurement found a real win for); `dft512`'s normalisation,
+exponent-to-PSD and `to_fixed25_block` stay SSE2/NEON-only for the same reason. 128 bits is the native width of
+NEON and of WASM's `simd128` in any case, and those are the platforms with the least headroom —
+which is also why this dispatch mechanism is x86-64 only: NEON double-precision is mandatory
+ARMv8-A baseline, so aarch64 has no equivalent feature gap to close.
 
 **Why it is bit-exact.** Every operation in the seam is exactly one IEEE-754 add, subtract or
 multiply per lane, so a kernel written against `f64x2` performs precisely the operations, in
@@ -862,6 +868,139 @@ cmake -S . -B build/simd-generic -DAC3FORGE_SIMD=generic
 ```bash
 ./tools/ci/run_codec_matrix.sh build/config-linux-gcc/bin/ac3cli /tmp/mx-simd && ./tools/ci/run_codec_matrix.sh build/simd-generic/bin/ac3cli /tmp/mx-generic && diff <(cd /tmp/mx-simd && find . -type f | sort | xargs sha256sum) <(cd /tmp/mx-generic && find . -type f | sort | xargs sha256sum)
 ```
+
+## Runtime AVX2 dispatch
+
+`AC3FORGE_SIMD` above answers "which architecture" and is a compile-time question — SSE2, NEON and
+scalar are all guaranteed present on the architecture they target, so there is nothing to ask a
+running CPU. AVX2 is different: it is a real feature a deployment machine might not have, so the
+build machine cannot bake in a yes/no answer safely. `AC3FORGE_AVX2` (`ON` by default, x86_64 only)
+compiles a second, AVX2-flagged tier alongside the baseline one; `ac3::internal::cpu::has_avx2()`
+(`src/forge/src/internal/cpu/cpu_features.hpp`) decides at runtime, once per process, whether it is
+safe to use it on the machine actually running the binary.
+
+**Detection.** GCC/Clang/AppleClang use `__builtin_cpu_init()` + `__builtin_cpu_supports("avx2")`,
+which already performs both the CPUID check and the OS-support (XSAVE/XGETBV) check correctly.
+MSVC and clang-cl (sharing a path, keyed on `_MSC_VER` rather than compiler identity, since
+`__builtin_cpu_supports` needs compiler-rt support this project's clang-cl configuration does not
+guarantee) do it by hand with `<intrin.h>`: `__cpuid`/`__cpuidex` confirm CPUID leaf 7 exists and
+OSXSAVE+AVX are set (leaf 1, ECX bits 27 and 28), only then `_xgetbv(0)` confirms XCR0 enables both
+XMM and YMM state, only then a second `__cpuidex(_, 7, 0)` reads the actual AVX2 bit (EBX bit 5).
+That order is load-bearing — calling `_xgetbv` before confirming OSXSAVE can fault on hardware
+without XSAVE at all. The result is cached in a function-local `static const bool` (a C++11 magic
+static — thread-safe on every toolchain in the matrix), so the detection sequence runs once per
+process regardless of how many call sites ask.
+
+**`AC3FORGE_SIMD_TIER`** (environment variable, read once inside that same cached initialisation)
+overrides the answer: `sse2` always forces `has_avx2()` false, `avx2` forces it true — except when
+the hardware genuinely cannot run AVX2, where forcing up `std::abort()`s with a clear message
+rather than risk an illegal-instruction fault. `auto` (the default, same as unset) is the real
+detected answer. This is what makes cross-tier correctness checking possible without needing AVX2
+hardware physically present for the "does this at least build and dispatch correctly" half of the
+question, and what proves the "does it actually execute correctly" half wherever it does run.
+
+**Compilation.** The AVX2 tier is one CMake `OBJECT` library, `forge_simd_avx2` — the only target in
+the whole build that ever sees `/arch:AVX2` (MSVC/clang-cl) or `-mavx2` (GCC/Clang/AppleClang).
+Never `-mfma`: this project's code must not call an FMA intrinsic regardless of what the flag would
+otherwise permit — see [Floating-point contraction](#floating-point-contraction) — and not
+requesting it keeps the CPUID gate to the single AVX2 bit. `INTERPROCEDURAL_OPTIMIZATION` is forced
+`OFF` on this target specifically: LTO/LTCG is the one mechanism that could hoist AVX2-flagged
+codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it.
+
+**Testing — compile everywhere, execute only where capable.** `forge_simd_avx2` links into
+`ac3tests` on every x86_64 leg unconditionally, proving the AVX2 code is valid, compilable,
+linkable C++ on MSVC, clang-cl, GCC, Clang and AppleClang alike, with zero hardware dependency.
+`tests/core/test_simd_kernels.cpp`'s `[avx2]`-tagged cases go further and actually execute it —
+guarded by `has_avx2()`, with a loud, explicit `SKIP()` (never a silent pass) on hardware that
+genuinely lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
+run and self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
+host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead —
+set on the `linux-llvm-asan-ubsan` leg (`.github/workflows/_build.yml`), the one leg pinned to a
+GitHub-hosted (rather than the dynamic self-hosted/GitHub-hosted `matrix.runner`) label, so there is
+always at least one leg per PR where "the AVX2 path actually ran and passed" is a guaranteed, not
+aspirational, statement.
+
+`tools/ci/run_codec_matrix.sh`'s own `AC3FORGE_CROSS_TIER_CHECK=1` mode is the corpus-level
+analogue of the `AC3FORGE_SIMD=generic` cross-*build* check above, but cross-*tier* from the SAME
+binary: it runs the whole matrix twice, once under `AC3FORGE_SIMD_TIER=sse2` and once under `=avx2`,
+and byte-diffs the two output trees. Wired into the same `linux-llvm-asan-ubsan` leg for the same
+reason. On a host that cannot execute AVX2 (`/proc/cpuinfo` has no `avx2` flag) the second pass is
+skipped with an explicit message and the script still exits 0 — degrading to exactly today's
+guarantee, never silently claiming a check that did not run:
+
+```bash
+AC3FORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
+```
+
+ROADMAP PF5's dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
+function first (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
+of its own) — deliberately, so the build/link/dispatch/test pipeline was proven before any kernel's
+correctness depended on it — then wired two real kernels behind it: `apply_analysis_window` and the
+DCT-IV/IMDCT twiddle stages (`mdct.cpp`'s `dct4_pre_twiddle`/`dct4_post_twiddle`,
+`imdct512_pre_twiddle`/`imdct512_negate_copy`/`imdct512_post_twiddle`, `imdct256_post_twiddle` —
+see `src/forge/src/internal/avx2/mdct_avx2.hpp`).
+
+**Which kernel gets wired is decided by measurement, not by which ones happen to be easiest.** A
+symbol-scoped `perf record` comparison (generic-vs-x86_64-tier `ac3kernelbench`, PID-attributed
+cycles rather than whole-process wall-clock — the latter turned out to be confounded by link-time
+code layout even between builds differing in nothing SIMD-related, an early false lead this project
+ruled out empirically) found a real, reproducible ~15-20% cycle reduction for `apply_analysis_window`
+and the twiddle stages, comfortably clear of the ~2-4% cross-build measurement noise floor a known-
+identical control function (`reference_mdct512_forward`, never touched by any SIMD tier) established.
+The same measurement found no signal above that noise floor for `dft512`'s normalisation,
+exponent-to-PSD or `to_fixed25_block` — each vectorises a small slice of a much larger, non-
+accelerated function (the FFT core, the §7.2.2.4/.5 excitation/masking recurrence, and the exponent
+pipeline respectively), so whatever benefit the vectorised slice contributes is swamped by the rest
+of its caller at the per-call granularity this method can resolve. Those three stay SSE2/NEON-only;
+extending them to AVX2 would need proof of aggregate (not per-call) benefit first.
+
+### Batching across transforms, and where the transpose tax lands
+
+The kernels above widen operations *within* one transform. The follow-on phases took the other
+axis — running four INDEPENDENT same-size transforms in lockstep, one per SIMD lane — because
+the FFT core (`fft_kernel.hpp`) has no clean within-one-transform grouping to widen at all. It is
+templated on its arithmetic type (`typename VecType = double`), so the identical body serves the
+existing scalar instantiation and a new `f64x4` one; `imdct512_windowed_batch4` and
+`mdct512_forward_batch4` (`mdct.hpp`) are the batched entry points, used by JOC's object loop,
+JOC's bed analysis, and both encoders' per-channel loops. Each checks `has_avx2()` internally and
+falls back to four ordinary calls, so a caller only ever decides "are four ready to batch".
+
+**The batched inverse took three designs, and the reason is worth stating** because the first two
+look reasonable and both lost. A batched kernel needs its four objects interleaved; the caller
+holds them contiguous per object; so *something* must transpose, and the only question is what
+currency it is paid in. Paying inside the kernel with `f64x4::set` gathers and `lane0()..lane3()`
+extraction — several dependent instructions per four doubles, run 128 and 512 times a call — came
+out ~1% slower than the scalar path it replaced. Moving the interleaving out into the caller's own
+storage made the kernel faster but the caller ~8% slower, because its accumulation and overlap-add
+passes then strode one cache line per double (L1d misses roughly doubled across a decode); net
+~7% worse than the first attempt. Paying it in 4x4 block transposes at the kernel boundary
+(`transpose4x4`, `simd_avx2.hpp` — eight independent shuffles per sixteen doubles, both sides
+keeping their natural layout) is what finally won. At this transform size the arithmetic saved is
+small enough that the transpose's *form* decides the outcome, not its presence.
+
+**FMA3 was measured and declined.** Compiling the AVX2 kernels with `-mfma -ffp-contract=fast`
+fuses 46 instructions across both batch kernels, the twiddle stages and the FFT instantiations —
+an upper bound, since hand-written `_mm256_fmadd_pd` cannot beat what the optimiser already finds.
+It buys about **1%**. It also changes results: one of thirteen decoded object WAVs differed.
+Encoded bitstreams happened to match on the material tried, which is luck (the coefficient deltas
+quantised to the same mantissas), not a property. One percent does not justify retiring the
+cross-tier byte-identity gate or having a single binary emit different bitstreams depending on the
+CPU it lands on, so [Floating-point contraction](#floating-point-contraction) stays pinned.
+
+One trap for anyone re-running that experiment: **the `[avx2]` bit-exactness cases do not detect
+contraction.** They compare a batched kernel against `imdct512_windowed`, which also routes
+through AVX2 twiddle kernels — so with FMA enabled both sides fuse and still agree. They pass on
+an FMA build. Compare decoded PCM, not bitstream hashes.
+
+### What the transform work was actually worth
+
+Batching moved `joc_reconstruct_mdct_4obj` about 18% against the pre-batching scalar baseline, and
+a real 12-object `joc-domain=mdct` decode a few percent. Encode barely moved (−0.9% to −2.2%) for a
+reason worth recording: **the entire transform stack is only ~2.3% of an E-AC-3 encode profile**, so
+even a large multiple on it cannot show. Two later, non-SIMD changes each dwarfed all of it — see
+[Performance trend](performance-trend.md)'s note on profiling by source line. The transforms are
+now fully 256-bit (582 ymm register operands against 55 xmm in the AVX2 kernel object); the
+remaining cost in this codec is not in them.
 
 ## Floating-point contraction
 

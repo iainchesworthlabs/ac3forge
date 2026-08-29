@@ -1199,6 +1199,25 @@ directory; there is still no threading anywhere in the codec core.
   reassociating them would change the reference path's numbers), a WASM `simd128` directory (no
   `emsdk` on this session's machine to verify one against, and WASM reaches `generic` — a complete
   and correct scalar implementation — until then), and AVX2/NEON-wider dispatch.
+
+  The AVX2 half of that remainder has since landed as a follow-on: a second, AVX2-flagged object
+  library selected per-process by CPUID (`has_avx2()`, `AC3FORGE_SIMD_TIER` to force either way),
+  carrying 256-bit windowing and twiddle stages plus batched 4-transform IMDCT/MDCT kernels for
+  the JOC object loop, the JOC bed analysis and both encoders' per-channel loops. Output stays
+  byte-identical across tiers. NEON-wider is still not done, and there is no equivalent gap on
+  aarch64 to close — base ARMv8-A is already the widest guaranteed set there.
+
+  Two findings from that work belong here rather than in the SIMD description, because they
+  changed where this project should look next. Profiling by source line rather than by symbol
+  found `FrameParameters::at()` re-walking an O(objects) offset list on every coefficient access
+  (a frame O(objects²), ~44% of a 12-object decode profile) and `aht_bin_gaq_bits` fully
+  quantising six mantissas per candidate gain to read one integer width off each (~43% of an
+  E-AC-3 encode profile). Fixing those two — pure bookkeeping, unchanged output — was worth
+  1.82x/2.90x on a 12-object Atmos decode and 1.70x on `eac3_51_auto`, against roughly 18% from
+  all the transform vectorisation combined. The transforms are now ~1-6% of any profile and are
+  not where the remaining cost is; `docs/performance-trend.md` records the method and the trap
+  (symbol self-time attributes inlined header code to its caller). FMA3 was measured at ~1% and
+  declined, since it perturbs results and would break the cross-tier byte-identity gate.
 - [x] **PF6 (M)** — A latency budget: documented end-to-end encoder latency (frame
   granularity, MDCT/IMDCT overlap, lookahead, the §3.7 hold-back) in `ac3/latency.hpp`, measured
   it empirically (`tests/decoder/test_latency.cpp`: an impulse and a tone burst through a real
