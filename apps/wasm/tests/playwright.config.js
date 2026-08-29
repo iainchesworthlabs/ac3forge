@@ -23,6 +23,17 @@ const decodePort = 4173;
 const encodePort = 4174;
 const serveScript = path.join(__dirname, 'serve.js');
 
+// Each demo is served from its *parent* directory and navigated to under its
+// directory name, mirroring the published docs site (which embeds both demos
+// as docs/assets/wasm-*-demo/ subdirectories) rather than the
+// demo-dir-as-server-root layout of the local serve instructions. Root
+// serving masks a whole bug class: a parent-relative asset path (the
+// "../ac3forge_decode.js" the encode page once used) clamps at the origin
+// when the demo dir is the root, so it resolves anyway - and only 404s, as
+// on the docs site, once the page actually sits in a subdirectory.
+const decodeBase = `http://127.0.0.1:${decodePort}/${path.basename(decodeDemoDir)}/`;
+const encodeBase = `http://127.0.0.1:${encodePort}/${path.basename(encodeDemoDir)}/`;
+
 module.exports = defineConfig({
     testDir: __dirname,
     timeout: 30_000,
@@ -34,14 +45,14 @@ module.exports = defineConfig({
     // them the same way rather than assuming one directory nests the other.
     webServer: [
         {
-            command: `node "${serveScript}" "${decodeDemoDir}" ${decodePort}`,
-            url: `http://127.0.0.1:${decodePort}/index.html`,
+            command: `node "${serveScript}" "${path.dirname(decodeDemoDir)}" ${decodePort}`,
+            url: `${decodeBase}index.html`,
             reuseExistingServer: !process.env.CI,
             timeout: 30_000,
         },
         {
-            command: `node "${serveScript}" "${encodeDemoDir}" ${encodePort}`,
-            url: `http://127.0.0.1:${encodePort}/index.html`,
+            command: `node "${serveScript}" "${path.dirname(encodeDemoDir)}" ${encodePort}`,
+            url: `${encodeBase}index.html`,
             reuseExistingServer: !process.env.CI,
             timeout: 30_000,
         },
@@ -50,12 +61,12 @@ module.exports = defineConfig({
         {
             name: 'decode',
             testMatch: 'decode.spec.js',
-            use: { baseURL: `http://127.0.0.1:${decodePort}` },
+            use: { baseURL: decodeBase },
         },
         {
             name: 'encode',
             testMatch: 'encode.spec.js',
-            use: { baseURL: `http://127.0.0.1:${encodePort}` },
+            use: { baseURL: encodeBase },
         },
     ],
 });

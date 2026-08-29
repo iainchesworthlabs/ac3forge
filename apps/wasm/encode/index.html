@@ -156,7 +156,12 @@
 </div>
 
 <script src="ac3forge_encode.js"></script>
-<script src="../ac3forge_decode.js"></script>
+<!-- Directory-local on purpose: ac3forge_decode.js/.wasm are copied in next
+     to this page (apps/wasm/CMakeLists.txt POST_BUILD) so the demo works
+     from any mount point. A "../" here resolves outside the demo directory
+     and 404s wherever the page is served from a subdirectory, as the docs
+     site serves it (docs/assets/wasm-encode-demo/). -->
+<script src="ac3forge_decode.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
