@@ -1,9 +1,11 @@
 # vcpkg port for ac3forge - installs the library only (ac3::forge, plus matroska::matroska,
-# mp4::mp4 and mpegts::mpegts as opt-in features), never the CLI, GUI, tests, examples or fuzz
-# harnesses - upstream's own AC3FORGE_BUILD_CLI/GUI/TESTS/EXAMPLES/FUZZERS options make that a
-# plain OFF each, no patching needed. ac3adm::ac3adm (the ADM/BW64 reader) has no feature here:
-# it needs Boost and is only ever consumed in-tree via add_subdirectory, never through
-# find_package(ac3forge).
+# mp4::mp4, mpegts::mpegts and ac3::forge_c as opt-in features), never the CLI, GUI, tests,
+# examples or fuzz harnesses - upstream's own AC3FORGE_BUILD_CLI/GUI/TESTS/EXAMPLES/FUZZERS
+# options make that a plain OFF each, no patching needed. ac3adm::ac3adm (the ADM/BW64 reader)
+# and ac3::admbridge have no feature here: ac3adm needs Boost and, even though both are now
+# installed/exported by upstream (shared-only - see cmake/InstallLibrary.cmake's
+# AC3FORGE_BUILD_ADM block upstream), this port keeps AC3FORGE_BUILD_ADM=OFF below rather than
+# adding an "adm" feature - out of scope for this port until there's a real need for it.
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
@@ -20,6 +22,7 @@ vcpkg_check_features(
         matroska AC3FORGE_BUILD_MATROSKA
         mp4      AC3FORGE_BUILD_MP4
         mpegts   AC3FORGE_BUILD_MPEGTS
+        capi     AC3FORGE_BUILD_CAPI
 )
 
 # DERIVED_VERSION_OVERRIDE: upstream derives its version via `git describe`, which finds nothing
@@ -39,13 +42,6 @@ vcpkg_cmake_configure(
         -DAC3FORGE_BUILD_TESTS=OFF
         -DAC3FORGE_BUILD_EXAMPLES=OFF
         -DAC3FORGE_BUILD_FUZZERS=OFF
-        # ac3::forge_c (roadmap F1) was never part of this port's scope - this triplet's
-        # single-linkage, shared-only build would otherwise now succeed (cmake/InstallLibrary.cmake
-        # exports forge_static alongside forge_shared whenever AC3FORGE_BUILD_CAPI is ON, so the
-        # export set it needs is no longer missing), but ac3::forge_c stays out of the installed
-        # package here until it is formally added as its own vcpkg feature and documented in
-        # docs/releasing.md's vcpkg port section, same as matroska/mp4/mpegts were.
-        -DAC3FORGE_BUILD_CAPI=OFF
         -DAC3FORGE_FETCH_CATCH2=OFF
         -DAC3FORGE_INSTALL_BOTH_LINKAGES=OFF
         -DAC3FORGE_BUILD_ADM=OFF

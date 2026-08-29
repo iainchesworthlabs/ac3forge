@@ -50,10 +50,10 @@ Two hard constraints rule out folding this into either side it bridges:
   `ac3adm` without breaking every default build.
 
 `ac3::admbridge` is therefore its own module (`src/admbridge/`), PUBLIC-linking both — the same
-shape `ac3::signing` uses for its own `ac3::forge` dependency. It is not part of the installed
-`find_package(ac3forge)` package, for the same reason `ac3adm::ac3adm` itself is not (see
-[ADM / BW64 reading](adm.md)'s own "Why opt-in" section): consume it via `add_subdirectory`
-in-tree. ROADMAP.md's IM1 (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is now
+shape `ac3::signing` uses for its own `ac3::forge` dependency. Like `ac3adm::ac3adm` itself
+(see [ADM / BW64 reading](adm.md)), it IS part of the installed `find_package(ac3forge)` package,
+but shared-only: `ac3::admbridge_shared`/the bare `ac3::admbridge` alias, no `_static` variant.
+ROADMAP.md's IM1 (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is now
 in the roadmap's "not on the list" section for want of a public specification) named this module
 as the "mapping layer" it intended to share, and phase 3 has now landed: `build_iab()`
 (`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame` sequence — from

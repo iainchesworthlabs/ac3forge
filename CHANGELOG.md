@@ -220,6 +220,13 @@ a concrete API-freeze plan for v1.0 now exists.
   `Eac3Decoder.decode_access_unit_into` write PCM into caller-supplied buffers for a realtime
   embedder or tight batch loop that wants to reuse them. See [Python API](docs/library/python-api.md)'s
   "Zero-copy numpy and buffer reuse".
+- **pkg-config files** for every installed component (`ac3forge`, `ac3signing`, `matroska`,
+  `mp4`, `mpegts`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer.
+  **`ac3adm`/`ac3::admbridge` (the ADM/BW64 reader and its Atmos bridge) are now installable via
+  `find_package(ac3forge)`**, shared-only, without re-exporting the third-party libbw64/libadm
+  they embed. **A `capi` feature** for the vcpkg port and Conan recipe reaches `ac3::forge_c`
+  through either package manager for the first time. See
+  [Using ac3::forge](docs/library/index.md).
 - **Stream scanning in Python.** `ac3.scan()`/`ac3.read_frame_header()` read an elementary
   stream's shape — channel layout, every programme, every access unit's byte range — without
   decoding any audio, plus timing helpers (`ac3.access_unit_timing`, `stream_duration_seconds`,
@@ -298,6 +305,26 @@ a concrete API-freeze plan for v1.0 now exists.
   A 30-second 15-object decode drops from 6.5 s to under 3 s. Encoder output is byte-identical.
 - **SIMD kernels are selected by CMake per architecture** rather than by `#ifdef`, with
   bit-identical output and no runtime dispatch.
+- **Runtime AVX2 dispatch — and the three non-SIMD findings that outweighed it.** A second,
+  AVX2-flagged kernel tier is now chosen per process by CPUID (`AC3FORGE_SIMD_TIER=auto|sse2|avx2`
+  forces either way for testing), carrying 256-bit windowing and twiddle stages plus batched
+  four-transform IMDCT/MDCT kernels. Output is unchanged: real encodes and decodes are
+  byte-for-byte identical under `sse2` and `avx2`.
+  Profiling by *source line* rather than by symbol then found three costs larger than every
+  transform in the codec put together, all of them redundant work rather than missing
+  vectorisation, and all with unchanged output:
+  `FrameParameters::at()` re-walked an O(objects) offset list on **every** coefficient access,
+  making a frame O(objects²) — a 12-object Atmos decode is now **1.82×** faster under
+  `joc-domain=mdct` and **2.90×** under the default `joc-domain=qmf`;
+  `aht_bin_gaq_bits` fully quantised six mantissas per candidate gain to read one integer width
+  off each, where that width follows from a single predicate — **1.70×** on `eac3_51_auto`
+  whole-frame encode;
+  and §6.6.5's QMF mixing coefficient re-evaluated its shape/timeslot branches once per
+  (subband, channel) instead of once per (object, timeslot) — **−8.6%** instructions on a
+  12-object QMF-domain decode.
+  FMA3 was measured (~1%, and it perturbs results) and declined, so `-ffp-contract=off` stays
+  pinned. See [docs/building.md](docs/building.md)'s "Runtime AVX2 dispatch" and
+  [docs/performance-trend.md](docs/performance-trend.md)'s "Profile by source line, not by symbol".
 - **Floating-point contraction is pinned off project-wide**, and the timing benches run real
   programme material instead of a single tone.
 - **The coverage gate covers `apps/cli` and `python/`**, not just `src/`, and the fuzz jobs are no
@@ -391,6 +418,17 @@ a concrete API-freeze plan for v1.0 now exists.
   workflow on two platforms. The C++ value was correct; the test had drifted.
 - **Packaging manifests and the Homebrew tap** were two releases behind, and **several pages
   described shipped work as still pending** — both corrected.
+- **`python/pyproject.toml`'s licence identifier drifted to `GPL-3.0-only`** while `vcpkg.json`,
+  the Conan recipe, the Homebrew formula and the README's own grant language ("or (at your
+  option) any later version") all agreed on `GPL-3.0-or-later` — corrected to match. The ABI
+  gate's exported-symbol allowlist and shared-library-diff steps discovered libraries from a
+  hardcoded list rather than the actual build output, which had silently left `libac3iab.so`
+  uncovered by both since it landed; both now discover dynamically, and a statically-embedded
+  third-party dependency (`libadm`, pulled in by the new `ac3adm` export above) was found leaking
+  ~16,800 of its own template-instantiation symbols into `libac3adm.so`'s dynamic symbol table
+  through this change, fixed with a linker `--exclude-libs` flag rather than shipped. Both the
+  licence check and a vcpkg-feature/Conan-option/pkg-config completeness check are now part of
+  `tools/checks/check_packaging_versions.sh`.
 - **The Windows installer stopped silently degrading to a ZIP-only package.** `cpack`'s NSIS
   generator dropped itself whenever `makensis` was missing with no diagnostic anywhere, so the
   release shipped without an installer for several releases before anyone noticed. CI now

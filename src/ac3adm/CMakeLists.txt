@@ -35,6 +35,18 @@
 # purely because the app has no use for them), and this module adds an even
 # less NDK-friendly dependency (Boost) on top of a capability (ADM ingest)
 # the Android app has no use for at all either.
+#
+# Installed/exported via find_package(ac3forge) (cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
+# block) as ac3adm::ac3adm_shared ONLY - never ac3adm::ac3adm_static, regardless of
+# AC3FORGE_INSTALL_BOTH_LINKAGES. bw64/adm are third-party FetchContent targets this project
+# doesn't install or export in their own right (re-exporting libbw64/libadm as first-class
+# packages of their own - including libadm's Boost header dependency - was judged out of scope
+# for this module). A STATIC ac3adm still has genuinely unresolved symbol references into adm's
+# object code that only a downstream consumer's own final link step would resolve, which would
+# require shipping libadm/libbw64 too; a SHARED ac3adm.so is self-contained instead, since adm is
+# forced STATIC and embedded into it at ac3adm_shared's own build step (see the
+# FetchContent_MakeAvailable(libadm) comment above). See target_link_libraries(ac3adm_objects...)
+# below for how bw64/adm are kept out of the exported package's Targets.cmake entirely.
 # ---------------------------------------------------------------------------
 
 # Only checked when this module is actually being configured - AC3FORGE_BUILD_ADM=OFF
@@ -108,8 +120,30 @@ FetchContent_Declare(libadm
 
 # Populates the target `adm` (STATIC or SHARED, following BUILD_SHARED_LIBS like every other
 # target in this build) - see its own src/CMakeLists.txt for why that is the exact name, not
-# `libadm`.
+# `libadm`. Forced STATIC here regardless of this project's own ambient BUILD_SHARED_LIBS
+# (save/restore around just this one call): ac3adm_shared (below) is the only installed/exported
+# variant of this module (see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM block), and it has
+# to be self-contained - a downstream consumer of the installed package never gets a libadm.so of
+# its own to link against (this project never install()s adm/bw64, see the target_link_libraries
+# comment below). If adm followed BUILD_SHARED_LIBS=ON here, ac3adm_shared would gain a genuine
+# runtime dependency on a libadm.so this package doesn't ship - broken for any consumer, not just
+# an inconvenience. Forcing it static means ac3adm_shared always embeds it, regardless of how the
+# rest of this project was configured.
+#
+# A CACHE FORCE, not a plain set(BUILD_SHARED_LIBS OFF) normal-variable override - confirmed by
+# actually building this with -DBUILD_SHARED_LIBS=ON that the plain-variable form does NOT work:
+# libadm's own CMakeLists.txt declares option(BUILD_SHARED_LIBS ...) itself under CMP0077 OLD
+# (it predates that policy and never opts into NEW), and OLD-policy option() creates/uses its own
+# CACHE entry regardless of any pre-existing normal variable of the same name - it doesn't
+# "clear" the normal variable so much as ignore it entirely, silently building adm SHARED again.
+# Pre-seeding the CACHE entry (same FORCE pattern already used for ADM_UNIT_TESTS/ADM_EXAMPLES/
+# ADM_PACKAGE_AND_INSTALL just above) works because option() only initializes a CACHE entry that
+# doesn't already exist - one that's already present, FORCEd or not, is left alone.
+set(_ac3adm_saved_build_shared_libs "${BUILD_SHARED_LIBS}")
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libadm)
+set(BUILD_SHARED_LIBS "${_ac3adm_saved_build_shared_libs}" CACHE BOOL "" FORCE)
+unset(_ac3adm_saved_build_shared_libs)
 
 # ---------------------------------------------------------------------------
 # ac3adm's own targets - built and installed as both a static and a shared
@@ -177,13 +211,26 @@ add_library(ac3adm_suppress_gcc15_null_deref INTERFACE)
 target_compile_options(ac3adm_suppress_gcc15_null_deref INTERFACE
     "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
+# bw64/adm/ac3adm_suppress_gcc15_null_deref are all wrapped in $<BUILD_INTERFACE:...>, not just
+# ac3::warnings/ac3::coverage: ac3adm_objects is an OBJECT library, which has no link step of its
+# own to hide a PRIVATE dependency behind - a PRIVATE link on an OBJECT library still leaks into
+# that library's own INTERFACE_LINK_LIBRARIES (see src/capi/CMakeLists.txt's forge_c_objects/
+# ac3::forge_static for the same leak forcing a real export-set fix there). Since ac3adm_objects
+# is itself part of the admTargets export set (cmake/InstallLibrary.cmake), an unwrapped bw64/adm
+# would make install(EXPORT admTargets) fail outright ("requires target ... that is not in any
+# export set") - neither is installed/exported by this project (see this file's header comment).
+# BUILD_INTERFACE keeps them resolved for the in-tree build (this generator expression still
+# evaluates true there) while stripping them from what gets written into the exported
+# admTargets.cmake - which is safe here specifically because the only installed variant,
+# ac3adm_shared, already has adm's (forced-STATIC, see above) object code embedded by the time
+# it's built; a downstream consumer never needs bw64/adm on their own link line.
 target_link_libraries(ac3adm_objects
     PRIVATE
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>"
-        bw64
-        adm
-        ac3adm_suppress_gcc15_null_deref)
+        "$<BUILD_INTERFACE:bw64>"
+        "$<BUILD_INTERFACE:adm>"
+        "$<BUILD_INTERFACE:ac3adm_suppress_gcc15_null_deref>")
 
 set_target_properties(ac3adm_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -207,3 +254,30 @@ set_target_properties(ac3adm_shared PROPERTIES
 
 set_target_properties(ac3adm_shared PROPERTIES OUTPUT_NAME "ac3adm")
 set_target_properties(ac3adm_static PROPERTIES OUTPUT_NAME "ac3adm_static")
+
+# --exclude-libs,ALL: confirmed empirically necessary, not a defensive guess - without this,
+# ac3adm_shared's dynamic symbol table carries ~16,800 exported symbols (a real linux-llvm-shared
+# build measured it), nearly all adm::/boost:: template instantiations (VTTs, boost::optional<
+# adm::X>::operator=, adm::xml::detail::toString<...>, ...) reachable from ac3adm's own .cpp
+# files including adm.hpp/model.hpp. CXX_VISIBILITY_PRESET hidden + VISIBILITY_INLINES_HIDDEN
+# (set on ac3adm_objects above) do NOT suppress these: libadm's own class declarations carry an
+# explicit default-visibility attribute of their own (for libadm's own shared-library builds),
+# which - being on the class declaration itself - wins over this project's -fvisibility=hidden
+# default for every instantiation of that class anywhere, including ones compiled into OUR
+# translation units. --exclude-libs is the standard fix for exactly this "statically embed a
+# third-party archive into a shared library without re-exporting its (or its headers') symbols"
+# shape: it forces the linker to treat every symbol pulled in from a STATIC archive (adm.a,
+# already forced STATIC above) as local, regardless of what visibility that symbol's own
+# declaration requested - independent of, and layered on top of, the ordinary
+# CXX_VISIBILITY_PRESET default. GNU ld/gold/lld all support it; MSVC's link.exe (and clang-cl's
+# lld-link, which parses MSVC-style arguments) do not - guarded the same way this project's other
+# frontend-variant-sensitive flags are (see the root CMakeLists.txt's AC3_FP_CONTRACT_FLAG). Not
+# needed on admbridge_shared: it never statically embeds adm/bw64 itself (see this file's header
+# comment - it links ac3adm_shared, a real shared-library dependency, not an archive), and its own
+# leaked symbol count is in the same small ballpark (~130) every other library here already
+# carries as baseline libstdc++ template noise (tools/ci/abi-allowlist/libac3forge.so.txt has
+# ~220 of the same shape).
+if(NOT MSVC AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+                      CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    target_link_options(ac3adm_shared PRIVATE "LINKER:--exclude-libs,ALL")
+endif()

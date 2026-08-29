@@ -74,6 +74,45 @@ slice), consistent with the ~33-38 µs the change targeted. The gate that actual
 matters for this change is byte-identical output, not a timing number: see the PF2
 commit message for the corpus that was checked.
 
+## Profile by source line, not by symbol
+
+The single largest performance finding in this codebase was invisible to symbol-level
+profiling, and the way it hid is worth repeating because the trap is generic.
+
+`joc::reconstruct_mdct_band` showed 62% self-time in an Atmos decode. That reads like
+"vectorise its inner loop", and doing so would have been worth about 2%. Re-profiling
+the same run with `perf report --sort=srcline` showed the time was not in that
+function's arithmetic at all: 45% of the whole profile was in **joc.hpp**, inlined —
+`FrameParameters::object_offset()` walking an O(objects) list on *every* coefficient
+access, making a frame O(objects²). Fixing that made a 12-object decode 1.82x faster
+in the MDCT domain and 2.90x in the QMF domain (the default), against roughly 18% from
+four phases of transform vectorisation.
+
+Symbol self-time attributes inlined header code to whoever inlined it, so an
+accidentally-quadratic accessor appears as arithmetic in its caller. When a symbol
+looks hot, confirm *which lines* before designing a fix. A `RelWithDebInfo` build with
+`-O3 -g` is enough; on this repo it also needs `-Wno-error=null-dereference` for a GCC
+false positive in `apps/cli/commands/audio_io.cpp` that the Release preset does not trip.
+
+The same method found the second-largest win: `aht_bin_gaq_bits` fully quantising six
+mantissas per candidate gain to read one integer width off each result — 43% of an
+E-AC-3 encode profile, and 1.70x on `eac3_51_auto` once the width was derived from the
+escape predicate instead.
+
+## A bench that cannot see a bug class cannot gate it
+
+`ac3kernelbench`'s JOC series originally ran at four objects. The quadratic accessor
+above moved those rows about 26% — an ordinary-looking optimisation — while moving a
+real 12-object decode 1.8-2.9x. The bench was structurally unable to report the
+difference, because at four objects an O(objects²) term is nearly invisible.
+
+`joc_reconstruct_mdct_12obj` and `joc_reconstruct_qmf_12obj` exist to close that. Twelve
+is representative rather than arbitrary: TS 103 420 caps a programme at 15 dynamic
+objects plus the bed LFE, and twelve is three clean batches of four for the batched
+transform paths. When adding a series, ask what class of regression it can and cannot
+see at the size it runs — a workload sized where the interesting term vanishes will
+pass forever while the thing it nominally covers rots.
+
 `tools/ci/append_performance_history.py` appends every `main` run's numbers
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over

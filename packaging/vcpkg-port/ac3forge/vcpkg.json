@@ -25,6 +25,9 @@
     },
     "mpegts": {
       "description": "Standalone MPEG-2 Transport Stream container writer (mpegts::mpegts) - depends on nothing in ac3::forge"
+    },
+    "capi": {
+      "description": "Stable, minimal C11 API over the encode/decode core (ac3::forge_c) - for bindings and embedding by callers that cannot or do not want to link C++23"
     }
   }
 }

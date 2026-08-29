@@ -1016,8 +1016,19 @@ jobs:
         shell: bash
         run: cmake --build --preset build-${{ matrix.preset }} -- -k 0
 
+      # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
+      # probe case from a loud skip into a hard failure - only safe to set on
+      # a leg pinned to `runner: '["ubuntu-latest"]'` above rather than the
+      # dynamic self-hosted/GitHub-hosted `matrix.runner` most legs use,
+      # since self-hosted CPU features aren't documented anywhere in this
+      # repo (see src/forge/src/internal/cpu/cpu_features.hpp) but GitHub's
+      # own hosted Linux runners are AVX2-capable. This guarantees at least
+      # one leg per PR where "the AVX2 path actually ran and passed" is
+      # asserted, not just possible.
       - name: Test
         shell: bash
+        env:
+          AC3FORGE_REQUIRE_AVX2: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
         run: ctest --preset test-${{ matrix.preset }}
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
@@ -1168,12 +1179,20 @@ jobs:
       # the metadata options, so the sanitizer sees code paths a unit test
       # would not reach on its own. ASAN_OPTIONS/UBSAN_OPTIONS mirror what the
       # ctest preset already sets for the Test step above.
+      #
+      # AC3FORGE_CROSS_TIER_CHECK runs this same matrix twice more, under
+      # AC3FORGE_SIMD_TIER=sse2 then =avx2, byte-diffing the two output
+      # trees (see run_codec_matrix.sh's own header comment) - gated the
+      # same way AC3FORGE_REQUIRE_AVX2 is above, to the one leg pinned to a
+      # GitHub-hosted (therefore AVX2-capable) runner rather than the
+      # dynamic self-hosted/GitHub-hosted labels most legs use.
       - name: Codec matrix (sanitizer build)
         if: matrix.sanitizer
         shell: bash
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
+          AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
         run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
 
       # Roadmap VX20: the conformance vector set - one stream per coding tool,

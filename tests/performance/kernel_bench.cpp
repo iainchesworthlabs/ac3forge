@@ -469,6 +469,48 @@ int main(int argc, char** argv) {
                                       /*fast_imdct=*/true, ac3::oba::joc::Domain::kQmf);
             g_sink += static_cast<double>(out[0][128]);
         }));
+
+        // The SAME two workloads at 12 objects, and they exist because the
+        // 4-object pair above could not see a real bug.
+        //
+        // FrameParameters::at() used to re-walk an O(objects) offset list on
+        // every coefficient access, making a frame O(objects^2). At four
+        // objects that term is small: fixing it moved these 4-object series
+        // by ~26%, which reads like an ordinary optimisation. At twelve it
+        // was 1.8x (kMdctBand) to 2.9x (kQmf) of a real decode - the fix was
+        // worth more than every transform change in ROADMAP PF5 combined,
+        // and this bench was structurally unable to say so.
+        //
+        // Twelve is also representative rather than arbitrary: TS 103 420
+        // caps a programme at 15 dynamic objects plus the bed LFE, and 12 is
+        // three clean batches of four for the batched transform paths. Any
+        // cost that grows super-linearly in object count shows up here and
+        // nowhere else in this bench.
+        {
+            ac3::oba::joc::FrameParameters wide{.objects = 12, .num_bands_idx = 4, .seq_count = 5};
+            wide.matrix.assign(wide.coefficient_count(), 0.0);
+            for (int object = 0; object < wide.objects; ++object) {
+                for (int channel = 0; channel < wide.channels; ++channel) {
+                    for (int band = 0; band < wide.bands(); ++band) {
+                        wide.at(object, channel, band) = 0.4 - 0.05 * ((object + channel) % 5);
+                    }
+                }
+            }
+            results.push_back(time_kernel("joc_reconstruct_mdct_12obj", [&] {
+                static ac3::oba::joc::ReconstructionState state;
+                const auto out =
+                    ac3::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
+                                          /*fast_imdct=*/true, ac3::oba::joc::Domain::kMdctBand);
+                g_sink += static_cast<double>(out[0][128]);
+            }));
+            results.push_back(time_kernel("joc_reconstruct_qmf_12obj", [&] {
+                static ac3::oba::joc::ReconstructionState state;
+                const auto out =
+                    ac3::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
+                                          /*fast_imdct=*/true, ac3::oba::joc::Domain::kQmf);
+                g_sink += static_cast<double>(out[0][128]);
+            }));
+        }
     }
 
     // --- one full bits_at evaluation ------------------------------------------

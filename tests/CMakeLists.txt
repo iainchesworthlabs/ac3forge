@@ -172,6 +172,60 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/e
 # backend's internal header below.
 target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
+# test_simd_kernels.cpp's CPU-feature-detection cases (ROADMAP PF5's
+# dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,
+# directly into this target, against the same resolved probe directory
+# src/forge/CMakeLists.txt selected for the library - rather than calling
+# into forge_objects's own copy of has_avx2(), which would need
+# dllexport/dllimport treatment that would otherwise only matter for the
+# config-linux-llvm-shared (BUILD_SHARED_LIBS=ON) leg. Same white-box
+# arrangement as src/signing/src above, and unconditional: has_avx2()
+# correctly answering "false" on a build with no AVX2 tier is exactly as
+# worth testing as it answering "true" where one exists.
+target_sources(ac3tests PRIVATE "${AC3FORGE_CPU_FEATURES_SOURCE}")
+target_include_directories(ac3tests PRIVATE
+    "${AC3FORGE_CPU_FEATURES_INCLUDE_DIR}"
+    "${AC3FORGE_CPU_PROBE_INCLUDE_DIR}")
+if(AC3FORGE_IS_MSVC_LIKE)
+    set_source_files_properties("${AC3FORGE_CPU_FEATURES_SOURCE}" PROPERTIES
+        COMPILE_OPTIONS "/wd4996")
+endif()
+
+# The AVX2 kernel side of the same follow-on: avx2_probe.cpp and
+# mdct_avx2.cpp compiled a second time into this target too, same reasoning
+# as cpu_features.cpp just above. AC3FORGE_AVX2_INCLUDE_DIR is empty (falsy)
+# whenever src/forge/CMakeLists.txt did not build the AVX2 tier at all
+# (AC3FORGE_AVX2=OFF, or a non-x86_64 target) - the test sources are
+# conditional on the exact same condition the library used, and
+# AC3FORGE_HAVE_AVX2_TIER tells the test file itself whether to reference
+# them (a #ifdef is fine in tests/ - tools/checks/check_platform_macros.ps1
+# scans src/ and apps/ only).
+if(AC3FORGE_AVX2_INCLUDE_DIR)
+    target_sources(ac3tests PRIVATE
+        "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+        "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp")
+    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AVX2_INCLUDE_DIR}")
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_HAVE_AVX2_TIER)
+    if(AC3FORGE_IS_MSVC_LIKE)
+        set_source_files_properties(
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
+            COMPILE_OPTIONS "/arch:AVX2")
+    else()
+        set_source_files_properties(
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+            "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
+            COMPILE_OPTIONS "-mavx2")
+    endif()
+endif()
+
+# core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
+# same C4996 reasoning as cpu_features.cpp above.
+if(AC3FORGE_IS_MSVC_LIKE)
+    set_source_files_properties(core/test_simd_kernels.cpp PROPERTIES
+        COMPILE_OPTIONS "/wd4996")
+endif()
+
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
 # half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
 # builds under Clang with -fsanitize=fuzzer, but the header's

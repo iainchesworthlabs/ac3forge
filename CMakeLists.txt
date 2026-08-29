@@ -409,14 +409,13 @@ endif()
 # install()/find_package(ac3forge) support for ac3::forge, matroska::matroska,
 # mp4::mp4 and mpegts::mpegts - after every add_subdirectory() call above (needs their targets to
 # exist), before include(Packaging) (CPack's library component packages exactly what gets
-# install()'d here). Deliberately not ac3::audio, and deliberately not ac3adm::ac3adm either -
-# see cmake/InstallLibrary.cmake's own header comment for the former; ac3adm is left out of the
-# installed package for the same "FetchContent'd third-party code, not this project's own" reason
-# it stays out of docs/library/index.md's zero-dependency claim (see src/ac3adm/CMakeLists.txt's
-# header comment) plus the added complexity of re-exporting libbw64/libadm's own transitive
-# targets through this package - AC3FORGE_BUILD_ADM users consume ac3adm::ac3adm from an in-tree
-# add_subdirectory() build, not from a `find_package(ac3forge)` installed one, for now. ac3::admbridge
-# (src/admbridge) is excluded for the same reason - it transitively depends on ac3adm::ac3adm.
+# install()'d here). Deliberately not ac3::audio - see cmake/InstallLibrary.cmake's own header
+# comment for why. ac3adm::ac3adm and ac3::admbridge ARE installed/exported here (AC3FORGE_BUILD_ADM
+# block) but SHARED ONLY, unlike every other component - ac3adm PRIVATE-embeds the third-party
+# libbw64/libadm (FetchContent'd, never installed/exported by this project in their own right,
+# see src/ac3adm/CMakeLists.txt's header comment), which only a self-contained SHARED library can
+# absorb without either re-exporting them or shipping a STATIC archive with genuinely unresolved
+# symbols. admbridge follows suit since it transitively depends on ac3adm::ac3adm_shared.
 # Not under AC3FORGE_MINIMAL_DECODER: the exported package describes
 # ac3::forge_static/ac3::forge_shared, neither of which exists in that
 # profile, and an embedded integrator consumes ac3::forge_minimal from an

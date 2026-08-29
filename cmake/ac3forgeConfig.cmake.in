@@ -27,6 +27,16 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iabTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/iabTargets.cmake")
 endif()
+# admTargets/admbridgeTargets.cmake, when present, each define ONLY a *_shared target (never
+# *_static) - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM block and
+# src/ac3adm/CMakeLists.txt's header comment for why ac3adm/admbridge are shared-only, unlike
+# every other component here.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
+endif()
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/admbridgeTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/admbridgeTargets.cmake")
+endif()
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
 endif()
@@ -82,6 +92,16 @@ if(TARGET ac3::forge_c_shared AND NOT TARGET ac3::forge_c_static)
     add_library(ac3::forge_c ALIAS ac3::forge_c_shared)
 elseif(TARGET ac3::forge_c_static AND NOT TARGET ac3::forge_c_shared)
     add_library(ac3::forge_c ALIAS ac3::forge_c_static)
+endif()
+
+# Single-branch, unlike every alias above: ac3adm::ac3adm_static/ac3::admbridge_static are never
+# installed here (shared-only export, see admTargets.cmake's own comment just above), so there is
+# no elseif() case to handle - if the _shared target exists at all, the bare alias always means it.
+if(TARGET ac3adm::ac3adm_shared)
+    add_library(ac3adm::ac3adm ALIAS ac3adm::ac3adm_shared)
+endif()
+if(TARGET ac3::admbridge_shared)
+    add_library(ac3::admbridge ALIAS ac3::admbridge_shared)
 endif()
 
 check_required_components(ac3forge)
