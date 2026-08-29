@@ -24,8 +24,12 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 - **Binary size.** A module binding the AC-3 encoder (`ac3::FrameEncoder`), the E-AC-3 encoder
   (`ac3::eac3::FrameEncoder`), the Atmos/JOC bed encoder (`ac3::oba::AtmosEncoder`) and the QC
   loudness meter (`ac3::meta::LoudnessMeter`/`evaluate_qc_gate`) together — everything
-  `encoder_bindings.cpp` binds, not a cut-down subset — compiles to **390 KB raw / 149 KB gzip**,
-  against the decode module's own **372 KB raw / 130 KB gzip**. Comparable order of magnitude, not
+  `encoder_bindings.cpp` binds, not a cut-down subset — compiled to **390 KB raw / 152 KB gzip**
+  when UX6 measured it, against the decode module's own **372 KB raw / 133 KB gzip** (all gzip
+  figures here are `gzip -9`). The codec has grown since; the 2026-08 refresh of the committed
+  fallbacks measures **640 KB raw / 247 KB gzip** against **621 KB raw / 228 KB gzip** — the growth
+  is compiled code and lookup-table data, not debug payload; both modules stay stripped. Comparable
+  order of magnitude, not
   the multi-megabyte blow-up "much larger undertaking" implied; a third module split (e.g. Atmos
   bound separately) was not worth pursuing.
 - **Real-time factor.** Timed under Node/V8 (a reasonable proxy for Chrome's own engine),

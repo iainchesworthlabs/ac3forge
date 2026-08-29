@@ -404,6 +404,13 @@ a concrete API-freeze plan for v1.0 now exists.
 
 **Tooling and packaging**
 
+- **The committed WASM demo fallbacks had gone stale.** `docs/assets/wasm-decode-demo/`'s decode
+  module dated from the demo's first landing (2026-08-16, 225 KB against the 621 KB a current build
+  produces), and the encode demo's copies were a few days behind too — so a local `mkdocs serve`
+  (and the PR-time docs build) embedded a much older module than the checked-in pages expect. The
+  live site was never affected: the docs deploy job rebuilds both demos fresh on every publish.
+  Both directories are re-copied from a fresh build on the pinned Emscripten (6.0.6), verified
+  decoding the bundled fixture in a real browser.
 - **Containers hardcoded 1536 samples per frame**, breaking timelines on short E-AC-3 syncframes;
   `atmos bed51` still advertised an object layer it deliberately did not encode.
 - **The minimum-footprint image ceiling was stale**, measured before the QMF work landed on the
