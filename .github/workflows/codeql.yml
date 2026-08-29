@@ -181,6 +181,18 @@ jobs:
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
+      # CodeQL's TypeScript extraction shells out to `node` (first needed
+      # when js/'s .ts sources landed with UX5). The GitHub-hosted image
+      # ships Node; the self-hosted fleet image does not - and since #466
+      # this leg runs bare on whichever pool check-runner picks, so pin
+      # Node explicitly on the one leg that needs it rather than routing
+      # the leg away (the follow-the-toolchain rule from
+      # docs/ci-self-hosted-runners.md).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.language == 'javascript-typescript'
+        with:
+          node-version: "24"
+
       - name: Initialize CodeQL
         # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable
         # pause on the two non-required legs during PR/merge-queue
