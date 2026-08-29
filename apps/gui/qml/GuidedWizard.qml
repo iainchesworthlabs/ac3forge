@@ -381,6 +381,10 @@ ColumnLayout {
                         font.family: Theme.monoFamily
                         color: stepEntry.current || stepEntry.completed ? Theme.bg : Theme.text
                     }
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: stepEntry.modelData.label
+                    Accessible.selected: stepEntry.current
+                    Accessible.onPressAction: wizard.currentStepKey = stepEntry.modelData.key
                     MouseArea {
                         anchors.fill: parent
                         onClicked: wizard.currentStepKey = stepEntry.modelData.key
@@ -465,6 +469,13 @@ ColumnLayout {
                 border.color: active ? Theme.text : Theme.divider
                 border.width: active ? 2 : 1
 
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Files on this computer")
+                Accessible.description: qsTr("One WAV of any width, or several — a 5.1 mix plus the separate sounds you want moving over it.")
+                Accessible.checkable: true
+                Accessible.checked: active
+                Accessible.onPressAction: sourceFileTap.tapped()
+
                 Rectangle {
                     anchors.left: parent.left
                     anchors.top: parent.top
@@ -506,6 +517,7 @@ ColumnLayout {
                     }
                 }
                 TapHandler {
+                    id: sourceFileTap
                     onTapped: {
                         const win = wizard.requestWindow();
                         if (EncoderController.sourceModel.length === 0) {
@@ -529,6 +541,13 @@ ColumnLayout {
                 color: "transparent"
                 border.color: active ? Theme.text : Theme.divider
                 border.width: active ? 2 : 1
+
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Whatever is playing right now")
+                Accessible.description: qsTr("Captures this machine's own output. Nothing is recorded until you say so.")
+                Accessible.checkable: true
+                Accessible.checked: active
+                Accessible.onPressAction: sourceLiveTap.tapped()
 
                 Rectangle {
                     anchors.left: parent.left
@@ -563,6 +582,7 @@ ColumnLayout {
                     }
                 }
                 TapHandler {
+                    id: sourceLiveTap
                     onTapped: {
                         const win = wizard.requestWindow();
                         if (win) {
@@ -618,6 +638,12 @@ ColumnLayout {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: Theme.accent700
+                    Accessible.role: Accessible.Link
+                    Accessible.name: text
+                    Accessible.onPressAction: {
+                        const win = wizard.requestWindow();
+                        if (win) win.goAssign();
+                    }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -689,6 +715,13 @@ ColumnLayout {
                         border.width: active ? 2 : 1
                         opacity: EncoderController.atmosEnabled || EncoderController.busy ? 0.4 : 1.0
 
+                        Accessible.role: Accessible.Button
+                        Accessible.name: setupCard.modelData.title
+                        Accessible.description: setupCard.modelData.body + " " + setupCard.modelData.detail
+                        Accessible.checkable: true
+                        Accessible.checked: setupCard.active
+                        Accessible.onPressAction: EncoderController.applyChannelPreset(setupCard.modelData.preset)
+
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Theme.space3
@@ -742,6 +775,9 @@ ColumnLayout {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: Theme.accent700
+                    Accessible.role: Accessible.Link
+                    Accessible.name: text
+                    Accessible.onPressAction: wizard.roomPicker = true
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -754,6 +790,12 @@ ColumnLayout {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: Theme.accent700
+                    Accessible.role: Accessible.Link
+                    Accessible.name: text
+                    Accessible.onPressAction: {
+                        const win = wizard.requestWindow();
+                        if (win) win.goAssign();
+                    }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -938,6 +980,8 @@ ColumnLayout {
                                 objectName: "roomExtra-" + roomExtraRow.modelData.id
                                 checked: roomExtraRow.modelData.checked
                                 enabled: roomExtraRow.modelData.enabled && !EncoderController.busy
+                                Accessible.name: roomExtraRow.roomLabels[roomExtraRow.modelData.id]
+                                    || roomExtraRow.modelData.label
                                 onToggled: EncoderController.toggleExtra(roomExtraRow.modelData.id)
                             }
                             Text {
@@ -995,6 +1039,12 @@ ColumnLayout {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: Theme.accent700
+                    Accessible.role: Accessible.Link
+                    Accessible.name: text
+                    Accessible.onPressAction: {
+                        const win = wizard.requestWindow();
+                        if (win) win.goAssign();
+                    }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -1074,6 +1124,16 @@ ColumnLayout {
                         border.color: active ? Theme.accent : Theme.divider
                         border.width: active ? 2 : 1
 
+                        Accessible.role: Accessible.Button
+                        Accessible.name: rateCard.modelData.title
+                        Accessible.description: rateCard.modelData.body + " " +
+                            (wizard.vbrQualityMode
+                                ? qsTr("VBR quality %1").arg(rateCard.modelData.vbrQuality)
+                                : rateCard.modelData.detail)
+                        Accessible.checkable: true
+                        Accessible.checked: rateCard.active
+                        Accessible.onPressAction: rateTap.tapped()
+
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Theme.space3
@@ -1104,6 +1164,7 @@ ColumnLayout {
                             }
                         }
                         TapHandler {
+                            id: rateTap
                             enabled: !EncoderController.busy
                             onTapped: {
                                 EncoderController.formatDefaultsTouched = true;
@@ -1183,6 +1244,13 @@ ColumnLayout {
                     border.color: active ? Theme.accent : Theme.divider
                     border.width: active ? 2 : 1
 
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("Stay put")
+                    Accessible.description: qsTr("Every sound keeps the speaker the assignments gave it. A plain channel bed — smallest, simplest, plays everywhere.")
+                    Accessible.checkable: true
+                    Accessible.checked: stayCard.active
+                    Accessible.onPressAction: stayTap.tapped()
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: Theme.space3
@@ -1203,6 +1271,7 @@ ColumnLayout {
                         }
                     }
                     TapHandler {
+                        id: stayTap
                         enabled: !EncoderController.busy
                         onTapped: {
                             EncoderController.atmosEnabled = false;
@@ -1221,6 +1290,13 @@ ColumnLayout {
                     color: active ? Theme.accent100 : "transparent"
                     border.color: active ? Theme.accent : Theme.divider
                     border.width: active ? 2 : 1
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("Move around the room")
+                    Accessible.description: qsTr("Sounds become Dolby Atmos objects with a place — and a path — in the room. Fixes the stream at Dolby Digital Plus over a 5.1 bed and raises the rate to at least 384 kbps.")
+                    Accessible.checkable: true
+                    Accessible.checked: moveCard.active
+                    Accessible.onPressAction: moveTap.tapped()
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -1242,6 +1318,7 @@ ColumnLayout {
                         }
                     }
                     TapHandler {
+                        id: moveTap
                         enabled: !EncoderController.busy
                         onTapped: {
                             if (!EncoderController.atmosEnabled) {
@@ -1296,6 +1373,13 @@ ColumnLayout {
                         border.color: active ? Theme.accent : Theme.divider
                         border.width: active ? 2 : 1
 
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Everything moves")
+                        Accessible.description: qsTr("Every loaded channel becomes its own object — there is no bed left underneath them.")
+                        Accessible.checkable: true
+                        Accessible.checked: allMoveCard.active
+                        Accessible.onPressAction: allMoveTap.tapped()
+
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Theme.space3
@@ -1316,6 +1400,7 @@ ColumnLayout {
                             }
                         }
                         TapHandler {
+                            id: allMoveTap
                             enabled: !EncoderController.busy
                             onTapped: wizard.setWhatMovesAll()
                         }
@@ -1330,6 +1415,13 @@ ColumnLayout {
                         color: active ? Theme.accent100 : "transparent"
                         border.color: active ? Theme.accent : Theme.divider
                         border.width: active ? 2 : 1
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Keep the bed, add movers")
+                        Accessible.description: qsTr("Leaves an existing mix exactly where it is; only channels not yet assigned to anything — a file added since — become objects.")
+                        Accessible.checkable: true
+                        Accessible.checked: pickedMoveCard.active
+                        Accessible.onPressAction: pickedMoveTap.tapped()
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -1351,6 +1443,7 @@ ColumnLayout {
                             }
                         }
                         TapHandler {
+                            id: pickedMoveTap
                             enabled: !EncoderController.busy
                             onTapped: wizard.setWhatMovesPicked()
                         }
@@ -1415,6 +1508,13 @@ ColumnLayout {
                             border.color: active ? Theme.accent : Theme.divider
                             border.width: active ? 2 : 1
 
+                            Accessible.role: Accessible.Button
+                            Accessible.name: trajCard.modelData.title
+                            Accessible.description: trajCard.modelData.body
+                            Accessible.checkable: true
+                            Accessible.checked: trajCard.active
+                            Accessible.onPressAction: trajTap.tapped()
+
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: Theme.space3
@@ -1435,6 +1535,7 @@ ColumnLayout {
                                 }
                             }
                             TapHandler {
+                                id: trajTap
                                 enabled: !EncoderController.busy
                                 onTapped: {
                                     if (trajCard.modelData.key === "custom") {
@@ -1559,6 +1660,7 @@ ColumnLayout {
                 spacing: Theme.space3
 
                 Rectangle {
+                    id: destFileCard
                     objectName: "wizardDest-file"
                     readonly property bool active: wizard.dest === "file"
                     Layout.fillWidth: true
@@ -1566,6 +1668,13 @@ ColumnLayout {
                     color: active ? Theme.accent100 : "transparent"
                     border.color: active ? Theme.accent : Theme.divider
                     border.width: active ? 2 : 1
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("Save a file")
+                    Accessible.description: qsTr("Keeps everything — every channel and every object move.")
+                    Accessible.checkable: true
+                    Accessible.checked: destFileCard.active
+                    Accessible.onPressAction: wizard.dest = "file"
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -1603,6 +1712,7 @@ ColumnLayout {
                 }
 
                 Rectangle {
+                    id: destAmpCard
                     objectName: "wizardDest-amp"
                     readonly property bool active: wizard.dest === "amp"
                     Layout.fillWidth: true
@@ -1610,6 +1720,13 @@ ColumnLayout {
                     color: active ? Theme.accent100 : "transparent"
                     border.color: active ? Theme.accent : Theme.divider
                     border.width: active ? 2 : 1
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: qsTr("Play it on my receiver")
+                    Accessible.description: qsTr("Encodes the same file, then bitstreams it over HDMI as IEC 61937 bursts — the run strip's Play does the sending.")
+                    Accessible.checkable: true
+                    Accessible.checked: destAmpCard.active
+                    Accessible.onPressAction: wizard.dest = "amp"
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -1668,6 +1785,9 @@ ColumnLayout {
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: Theme.accent700
+                    Accessible.role: Accessible.Link
+                    Accessible.name: text
+                    Accessible.onPressAction: ampDeviceMenu.popup()
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor

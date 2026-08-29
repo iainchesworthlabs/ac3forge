@@ -43,18 +43,28 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
 #include <numbers>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
+#include <sys/resource.h>
+
+#include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/io/object_strip.hpp"
+#include "ac3/latency.hpp"
+#include "ac3/meta/loudness.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/audio/passthrough.hpp"
@@ -66,6 +76,7 @@ constexpr char kLogTag[] = "ac3forge.shield.live_cursor";
 constexpr int kInteractiveObjects = 1;
 constexpr int kAmbientObjects = 2;
 constexpr int kObjects = kInteractiveObjects + kAmbientObjects;
+constexpr int kSceneCount = 5;
 constexpr double kSampleRate = 48000.0;
 // The interactive lead at A4, the two ambient objects a major third and a
 // perfect fifth above it (C#5, E5) - an A major triad rather than an
@@ -112,12 +123,49 @@ float soft_limit(float x) {
 // the path is a gentle tilted ellipse in 3-space rather than a flat circle.
 // Distinct rate/phase/radius per object keeps the three visually and
 // audibly distinguishable rather than moving in lockstep.
+// What an object's path through the room actually looks like. The demo used
+// to have exactly one answer to this - a circle with a slow height bob - so
+// it had exactly one thing to show, forever. These are the shapes a scene can
+// ask for; the parameters below mean slightly different things per shape,
+// which is noted on each.
+enum class Shape : std::uint8_t {
+    // Circle in x/y about the room centre, with an independent height bob.
+    kOrbit,
+    // Front-to-back and back again, rising to a peak as it passes over the
+    // listening position: the "did you hear it go over you" pass. radius is
+    // the lateral wander, height_amp the apex height.
+    kFlyover,
+    // Fixed above the listener, pure vertical sweep. Isolates the height axis
+    // completely - the one shape where nothing else is moving to distract.
+    kElevator,
+    // Circle like kOrbit, but pinned near the ceiling: height_amp is the base
+    // height rather than a bob amplitude.
+    kOverhead,
+    // Hard front/back alternation with no height at all, for A/B-ing speaker
+    // placement rather than for listening to.
+    kPingPong,
+};
+
 struct TrajectoryParams {
-    double rate_hz;         // xy orbit revolutions per second
+    Shape shape = Shape::kOrbit;
+    double rate_hz;         // path repetitions per second
     double phase_rad;
     double radius;          // xy radius about the room centre, room units
-    double height_amp;      // z bob amplitude, room units ([-1,1] full range)
-    double height_rate_hz;  // z bob revolutions per second
+    double height_amp;      // z amplitude or base height, room units ([-1,1])
+    double height_rate_hz;  // z bob revolutions per second (kOrbit/kElevator)
+    // Per-scene voice level, multiplied onto kToneGain. 0 silences the object
+    // without stopping it moving - which is how a scene "has fewer objects"
+    // without the encoder being rebuilt for a different object count.
+    double gain_scale = 1.0;
+};
+
+struct Scene {
+    std::string_view name;
+    // One line of "what to listen for", shown with the name when the scene
+    // changes. The demo has always been able to show where a sound is; it has
+    // never told anyone what it wanted them to notice.
+    std::string_view hint;
+    std::array<TrajectoryParams, kObjects> objects;
 };
 
 // height_amp is close to the full [-1,1] range for the lead (0.85, not the
@@ -127,26 +175,245 @@ struct TrajectoryParams {
 // than a source passing overhead. Lap rate is also faster (12s, not 20s) so
 // the motion is perceptible within a short listening window rather than
 // requiring a patient, full-lap wait to notice.
-constexpr std::array<TrajectoryParams, kObjects> kTrajectory{{
-    // Interactive lead: one lap every 12s.
-    {1.0 / 12.0, 0.0, 0.45, 0.85, 1.0 / 25.0},
-    // Ambient 1: a smaller, slower orbit, phase-offset 120 degrees so it
-    // starts on the opposite side of the room from the lead.
-    {1.0 / 33.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.45, 1.0 / 53.0},
-    // Ambient 2: offset a further 120 degrees, and its height bob runs in
-    // the opposite sense (negative amplitude) so it and ambient 1 do not
-    // mirror each other in height as well as azimuth.
-    {1.0 / 27.0, 4.0 * std::numbers::pi / 3.0, 0.28, -0.45, 1.0 / 47.0},
+// The object COUNT is fixed at kObjects for every scene, deliberately:
+// AtmosEncoder takes its object count at construction, so varying it would
+// mean rebuilding the encoder mid-stream - per-object QMF filterbank
+// allocation on a thread holding a 32ms deadline. A scene that wants fewer
+// voices silences them with gain_scale instead and leaves them moving.
+constexpr std::array<Scene, kSceneCount> kScenes{{
+    // 0 - what the demo has always done. Still the best one to hand someone a
+    // controller on, so it stays first.
+    {"Orbit",
+     "The lead laps the room - push it off course and let go",
+     {{
+         {Shape::kOrbit, 1.0 / 12.0, 0.0, 0.45, 0.85, 1.0 / 25.0, 1.0},
+         {Shape::kOrbit, 1.0 / 33.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.45, 1.0 / 53.0, 1.0},
+         {Shape::kOrbit, 1.0 / 27.0, 4.0 * std::numbers::pi / 3.0, 0.28, -0.45, 1.0 / 47.0, 1.0},
+     }}},
+    // 1 - one voice, passing over the listening position. The ambients drop
+    // right down rather than out: something still has to hold the room while
+    // the lead is away at the far wall.
+    {"Flyover",
+     "Front to back, straight over your head - listen for it passing",
+     {{
+         {Shape::kFlyover, 1.0 / 9.0, 0.0, 0.10, 0.90, 0.0, 1.0},
+         {Shape::kOrbit, 1.0 / 41.0, 2.0 * std::numbers::pi / 3.0, 0.34, -0.20, 1.0 / 61.0, 0.35},
+         {Shape::kOrbit, 1.0 / 37.0, 4.0 * std::numbers::pi / 3.0, 0.34, -0.25, 1.0 / 59.0, 0.35},
+     }}},
+    // 2 - everything in the ceiling plane at once. The scene that sells height
+    // channels, because nothing is down at ear level to compare against.
+    {"Overhead",
+     "Everything is above you - the height channels are doing all of this",
+     {{
+         {Shape::kOverhead, 1.0 / 19.0, 0.0, 0.38, 0.80, 1.0 / 23.0, 1.0},
+         {Shape::kOverhead, 1.0 / 29.0, 2.0 * std::numbers::pi / 3.0, 0.30, 0.72, 1.0 / 31.0, 0.7},
+         {Shape::kOverhead, 1.0 / 23.0, 4.0 * std::numbers::pi / 3.0, 0.24, 0.88, 1.0 / 37.0, 0.7},
+     }}},
+    // 3 - the height axis on its own, nothing else moving or sounding.
+    {"Elevator",
+     "One voice, straight up and down over your seat - nothing else moving",
+     {{
+         {Shape::kElevator, 0.0, 0.0, 0.0, 0.92, 1.0 / 8.0, 1.0},
+         {Shape::kOrbit, 1.0 / 43.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 61.0, 0.0},
+         {Shape::kOrbit, 1.0 / 47.0, 4.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 59.0, 0.0},
+     }}},
+    // 4 - deliberately unmusical. This one is for checking a room, not for
+    // enjoying: front wall, back wall, nothing in between and no height.
+    {"Front / back",
+     "Hard front-to-back with no height - for checking your speaker placement",
+     {{
+         {Shape::kPingPong, 1.0 / 4.0, 0.0, 0.0, 0.0, 0.0, 1.0},
+         {Shape::kOrbit, 1.0 / 43.0, 2.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 61.0, 0.0},
+         {Shape::kOrbit, 1.0 / 47.0, 4.0 * std::numbers::pi / 3.0, 0.28, 0.0, 1.0 / 59.0, 0.0},
+     }}},
 }};
 
-ac3::oba::Position trajectory_position(int obj, double time_s) {
-    const auto& p = kTrajectory[static_cast<std::size_t>(obj)];
+// Which scene the demo is playing. Written from Kotlin (a keypress, or the
+// guided tour's own timer), read by the encode thread.
+std::atomic<int> g_scene{0};
+
+// How long a scene change takes to complete. Positions are jumped between
+// otherwise, and a 32ms step from one side of the room to the other is an
+// abrupt pan rather than a move. Long enough to read as a transition, short
+// enough not to feel like waiting.
+constexpr double kSceneBlendSeconds = 0.9;
+
+// Path recording: hold the room's own clock and remember where the lead
+// object actually went, then fly that path forever. A parametric orbit is
+// something the demo does TO you; a path you flew by hand is something you
+// did, and watching your own gesture come round again is a different kind of
+// convincing.
+//
+// One entry per encode frame (32ms), capped at two minutes - well past any
+// gesture anyone performs live, and 3750 Positions is ~90KB, which is nothing
+// next to the frame buffers this loop already holds.
+constexpr int kMaxRecordFrames = 3750;
+constexpr double kFrameSeconds = static_cast<double>(ac3::kSamplesPerFrame) / kSampleRate;
+
+enum class RecordState : std::int32_t { kIdle = 0, kRecording = 1, kPlaying = 2 };
+
+// --- the wire trace -------------------------------------------------------
+//
+// A second thread parses back the EXACT access units this loop hands to the
+// burst packer - post-signing, post-strip, the bytes going out of HDMI - and
+// reports what a decoder finds in them.
+//
+// What this is honestly good for, and what it is not:
+//
+//   * It is NOT a measurement of reconstruction quality. Both ends run the
+//     same non-normative QMF prototype (dsp/qmf.hpp: "The prototype is NOT
+//     Dolby's"), so a per-object SNR here would hold constant precisely the
+//     variable most likely to explain a disagreement with a real decoder.
+//     Nothing of the kind is computed.
+//   * The decoded POSITION is an algebraic identity, not a discovery -
+//     tests/oba/test_atmos.cpp asserts decoded == the encoder's own
+//     quantize_xy/quantize_z of the intended position. It is shown because
+//     the QUANTISER is the interesting part: height travels in 16 steps and
+//     left/right in 63, which is visible as a staircase against a smooth
+//     intended line and is a fact about the format rather than a claim about
+//     this encoder.
+//   * What IS falsifiable: that the container survives on the wire at all,
+//     and that OBJECTS OFF really removes it - a decoder reading the
+//     post-strip bytes and reporting zero objects is independent of the byte
+//     counter that claims it.
+//
+// `skip_reconstruction` is what makes this safe rather than merely cheap. It
+// returns before the IMDCT, the overlap-add and JOC reconstruction, so no
+// cross-frame state is carried and frames are mutually INDEPENDENT: the ring
+// below may drop under load without corrupting anything that is drawn. A full
+// decode could not - its IMDCT delay lines and joc::ReconstructionState
+// history mean a dropped frame silently poisons every frame after it, and
+// there is no reset() on the public surface to recover with.
+constexpr int kTraceSlots = 64;
+constexpr std::size_t kTraceSlotBytes = 2048;  // 448kbps/32ms = 1792 bytes
+constexpr int kTracePoints = 240;              // ~7.7s of history at 32ms/frame
+
+struct TraceSlot {
+    std::array<std::byte, kTraceSlotBytes> bytes{};
+    std::uint32_t size = 0;
+    // The placement that PRODUCED this unit, captured with it rather than
+    // read live by the monitor. Not optional: the lead moves ~0.0075 room
+    // units per frame against an x/y quantiser step of ~0.016, so even two
+    // frames of pipeline lag against a live snapshot() would manufacture most
+    // of a quantiser step of error and the trace would be showing the ring's
+    // latency rather than the format's.
+    float intended_x = 0.0F;
+    float intended_y = 0.0F;
+    float intended_z = 0.0F;
+};
+
+// Single producer (the encode loop), single consumer (the monitor). The
+// producer never blocks and never allocates; on a full ring it drops the
+// frame and counts it, which parse-only decoding makes harmless.
+struct TraceRing {
+    std::array<TraceSlot, kTraceSlots> slots{};
+    alignas(64) std::atomic<std::uint64_t> written{0};
+    alignas(64) std::atomic<std::uint64_t> read{0};
+};
+
+TraceRing& trace_ring() {
+    static TraceRing ring;
+    return ring;
+}
+
+// What the monitor publishes for the UI. A plain mutex rather than atomics:
+// this is written ~31 times a second and read once per vsync, which is not a
+// contended path by any measure, and a whole coherent history is wanted
+// rather than fields that might disagree with each other.
+struct TraceHistory {
+    mutable std::mutex mutex;
+    std::array<float, kTracePoints> intended{};
+    std::array<float, kTracePoints> decoded{};
+    std::array<std::uint8_t, kTracePoints> valid{};
+    std::size_t head = 0;   // next slot to write
+    std::size_t count = 0;  // how many are populated
+
+    void push(float intended_z, float decoded_z, bool has_objects) {
+        std::lock_guard lock(mutex);
+        intended[head] = intended_z;
+        decoded[head] = decoded_z;
+        valid[head] = has_objects ? 1U : 0U;
+        head = (head + 1) % kTracePoints;
+        if (count < kTracePoints) ++count;
+    }
+
+    void clear() {
+        std::lock_guard lock(mutex);
+        head = 0;
+        count = 0;
+    }
+};
+
+TraceHistory& trace_history() {
+    static TraceHistory history;
+    return history;
+}
+
+// 0 at the start of a blend, 1 at the end, with the ends eased so the
+// transition neither starts nor stops abruptly.
+double smooth_step(double x) {
+    const double c = std::clamp(x, 0.0, 1.0);
+    return c * c * (3.0 - 2.0 * c);
+}
+
+// 0 -> 1 -> 0 over one period, for the shapes that travel out and back rather
+// than around. A sawtooth would be simpler but wraps, and a wrap is an object
+// teleporting from the back wall to the front.
+double triangle01(double phase) {
+    const double frac = phase - std::floor(phase);
+    return frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
+}
+
+ac3::oba::Position trajectory_position(int scene, int obj, double time_s) {
+    const auto& p = kScenes[static_cast<std::size_t>(scene)]
+                        .objects[static_cast<std::size_t>(obj)];
     const double angle = 2.0 * std::numbers::pi * p.rate_hz * time_s + p.phase_rad;
     const double height_angle =
         2.0 * std::numbers::pi * p.height_rate_hz * time_s + p.phase_rad;
-    return {.x = 0.5 + p.radius * std::sin(angle),
-            .y = 0.5 - p.radius * std::cos(angle),
-            .z = p.height_amp * std::sin(height_angle)};
+    switch (p.shape) {
+        case Shape::kFlyover: {
+            // y runs front (0) to back (1) and back again; height peaks as it
+            // crosses the listening position, so it arrives low, passes over,
+            // and leaves low.
+            const double travel = triangle01(p.rate_hz * time_s + p.phase_rad / (2.0 * std::numbers::pi));
+            const double y = 0.03 + 0.94 * travel;
+            return {.x = 0.5 + p.radius * std::sin(angle * 0.5),
+                    .y = y,
+                    .z = p.height_amp * std::sin(std::numbers::pi * travel)};
+        }
+        case Shape::kElevator:
+            return {.x = 0.5, .y = 0.5, .z = p.height_amp * std::sin(height_angle)};
+        case Shape::kOverhead:
+            // height_amp is a base height here, with a small bob around it -
+            // the point of the scene is that nothing drops back to ear level.
+            return {.x = 0.5 + p.radius * std::sin(angle),
+                    .y = 0.5 - p.radius * std::cos(angle),
+                    .z = std::clamp(p.height_amp + 0.12 * std::sin(height_angle), -1.0, 1.0)};
+        case Shape::kPingPong: {
+            const double travel = triangle01(p.rate_hz * time_s + p.phase_rad / (2.0 * std::numbers::pi));
+            return {.x = 0.5, .y = 0.05 + 0.90 * travel, .z = 0.0};
+        }
+        case Shape::kOrbit:
+        default:
+            return {.x = 0.5 + p.radius * std::sin(angle),
+                    .y = 0.5 - p.radius * std::cos(angle),
+                    .z = p.height_amp * std::sin(height_angle)};
+    }
+}
+
+// The position an object is at, accounting for a scene change still in
+// progress. `from` is the scene being left; once the blend is complete the
+// caller stops passing one.
+ac3::oba::Position blended_position(int scene, int from, double blend, int obj, double time_s) {
+    const auto to_pos = trajectory_position(scene, obj, time_s);
+    if (blend >= 1.0 || scene == from) {
+        return to_pos;
+    }
+    const auto from_pos = trajectory_position(from, obj, time_s);
+    const double w = smooth_step(blend);
+    return {.x = from_pos.x + (to_pos.x - from_pos.x) * w,
+            .y = from_pos.y + (to_pos.y - from_pos.y) * w,
+            .z = from_pos.z + (to_pos.z - from_pos.z) * w};
 }
 
 // Distance-based loudness: without this, an object sounded exactly as loud
@@ -298,6 +565,93 @@ struct StreamStats {
     // not an approximation from the room-position math - see run_loop()'s
     // own comment on where this is computed. For the speaker-activity meter.
     std::array<std::atomic<float>, 6> channel_levels{};
+    // The encoder's own end-to-end latency for this configuration, in ms:
+    // object_latency_ms is what a decoder reconstructing the objects hears,
+    // bed_latency_ms what a legacy 5.1 decoder hears. Constant for a run
+    // (they depend on the config, not the content) but not compile-time
+    // constant here, since joc_domain decides whether the object path pays a
+    // second transform - see AtmosEncoder::latency(). Published so the
+    // dashboard can state the figure instead of the demo quietly implying
+    // the dot and the sound are simultaneous.
+    std::atomic<float> object_latency_ms{0.0F};
+    std::atomic<float> bed_latency_ms{0.0F};
+
+    // Where the bed's energy actually sits on the loudspeaker ring - Gerzon's
+    // energy vector over the REAL encoded bed, not the room-position maths.
+    // That distinction is the whole point: the room panels plot where the
+    // demo asked the object to be, and this shows where a 5.1 decoder's own
+    // speakers will actually put it. Azimuth is degrees counterclockwise from
+    // front; magnitude runs 1 (all energy at one speaker) to 0 (no direction).
+    std::atomic<float> energy_azimuth_deg{0.0F};
+    std::atomic<float> energy_magnitude{0.0F};
+
+    // BS.1770 integrated loudness of the bed, and the dialnorm it implies.
+    // Measured and DISPLAYED only - see the loudness block in run_loop() for
+    // why this stream is deliberately not patched with it.
+    std::atomic<float> integrated_lkfs{0.0F};
+    std::atomic_bool loudness_valid{false};
+    std::atomic<int> implied_dialnorm{0};
+
+    // OBJECTS OFF: strips the object layer out of every access unit before it
+    // is wrapped, live. See the strip block in run_loop().
+    std::atomic_bool objects_off{false};
+    std::atomic<std::uint32_t> stripped_bytes_per_frame{0};
+
+    // --- the wire trace (see TraceRing) ---
+    // How long ONE WHOLE loop iteration took, as distinct from encode_ms,
+    // which brackets encode_frame() alone. Everything else in the iteration -
+    // tone synthesis and the limiter, the level and loudness meters, signing,
+    // stripping, the burst packer and the JNI submit - was never measured, so
+    // the frame slot's real occupancy was unknown and every headroom claim
+    // rested on a figure that did not include most of the frame.
+    std::atomic<float> loop_ms{0.0F};
+    // Wall time for one parse-only decode on the monitor thread. The repo has
+    // no decode measurement on any ARM device; this is the first.
+    std::atomic<float> decode_ms{0.0F};
+    // How many objects a decoder finds in the bytes on the wire. Independent
+    // of stripped_bytes_per_frame: this is the object layer being ABSENT,
+    // observed, rather than a count of bytes claimed to have been removed.
+    std::atomic<int> decoded_objects{-1};  // -1 = nothing decoded yet
+    std::atomic<std::uint64_t> trace_frames{0};
+    std::atomic<std::uint64_t> trace_dropped{0};
+    std::atomic<std::uint64_t> trace_errors{0};
+
+    // Zeroes everything a *previous* run left behind. Without this, a stopped
+    // loop froze its last values on screen rather than going dark: the meters
+    // held whatever the final frame happened to be, the frame/burst counters
+    // kept counting from the old total when the loop restarted, and
+    // `signed_stream` still claimed "Atmos (signed)" for a stream that was no
+    // longer being produced at all. A stopped demo should look stopped.
+    void reset() {
+        frames.store(0, std::memory_order_relaxed);
+        bursts_submitted.store(0, std::memory_order_relaxed);
+        bursts_rendered.store(0, std::memory_order_relaxed);
+        underruns.store(0, std::memory_order_relaxed);
+        signed_stream.store(false, std::memory_order_relaxed);
+        encode_ms.store(0.0F, std::memory_order_relaxed);
+        object_latency_ms.store(0.0F, std::memory_order_relaxed);
+        bed_latency_ms.store(0.0F, std::memory_order_relaxed);
+        energy_azimuth_deg.store(0.0F, std::memory_order_relaxed);
+        energy_magnitude.store(0.0F, std::memory_order_relaxed);
+        integrated_lkfs.store(0.0F, std::memory_order_relaxed);
+        loudness_valid.store(false, std::memory_order_relaxed);
+        implied_dialnorm.store(0, std::memory_order_relaxed);
+        stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
+        loop_ms.store(0.0F, std::memory_order_relaxed);
+        decode_ms.store(0.0F, std::memory_order_relaxed);
+        decoded_objects.store(-1, std::memory_order_relaxed);
+        trace_frames.store(0, std::memory_order_relaxed);
+        trace_dropped.store(0, std::memory_order_relaxed);
+        trace_errors.store(0, std::memory_order_relaxed);
+        // objects_off is deliberately NOT reset, for the same reason
+        // ambient_muted is not: it is a control the presenter set, not a
+        // measurement of this run.
+        for (auto& level : channel_levels) {
+            level.store(0.0F, std::memory_order_relaxed);
+        }
+        // ambient_muted is deliberately NOT reset: it is a user preference
+        // set from the remote, not a measurement of this run.
+    }
 };
 
 StreamStats& stream_stats() {
@@ -352,10 +706,20 @@ public:
     // Called once per encode frame - this is the only place deflection_
     // decays, so the spring-back happens on its own every frame regardless
     // of whether any input arrived.
-    std::array<ac3::oba::ObjectPlacement, kObjects> advance(double time_s) {
+    std::array<ac3::oba::ObjectPlacement, kObjects> advance(double time_s, int scene, int from,
+                                                            double blend) {
         std::lock_guard lock(mutex_);
         for (int i = 0; i < kInteractiveObjects; ++i) {
-            const auto base = trajectory_position(i, time_s);
+            // A played-back recording REPLACES the scene's trajectory for the
+            // lead, but deflection still applies on top of it - the recorded
+            // path behaves exactly like any other course, including being
+            // pushable and springing back to itself.
+            const auto base =
+                (i == 0 && record_state_ == RecordState::kPlaying && !recorded_.empty())
+                    ? recorded_[static_cast<std::size_t>(
+                          static_cast<std::int64_t>((time_s - playback_start_s_) / kFrameSeconds) %
+                          static_cast<std::int64_t>(recorded_.size()))]
+                    : blended_position(scene, from, blend, i, time_s);
             auto& defl = deflection_[static_cast<std::size_t>(i)];
             // Clamp to oamd.hpp's Position contract on top of the
             // deflection's own bounding-box clamp in deflect_selected():
@@ -372,10 +736,24 @@ public:
             defl.x *= kDeflectionDecayPerFrame;
             defl.y *= kDeflectionDecayPerFrame;
             defl.z *= kDeflectionDecayPerFrame;
+
+            // Record the FINAL placed position, deflection and clamps
+            // included - what gets replayed is where the object actually
+            // went, not where the trajectory alone would have put it.
+            if (i == 0 && record_state_ == RecordState::kRecording) {
+                if (recorded_.size() < static_cast<std::size_t>(kMaxRecordFrames)) {
+                    recorded_.push_back(placements_[0].position);
+                } else {
+                    // Out of room: keep what was captured and start playing it
+                    // rather than silently recording nothing further.
+                    playback_start_s_ = time_s;
+                    record_state_ = RecordState::kPlaying;
+                }
+            }
         }
         for (int i = kInteractiveObjects; i < kObjects; ++i) {
-            placements_[static_cast<std::size_t>(i)] = {.position = trajectory_position(i, time_s),
-                                                         .gain = 1.0};
+            placements_[static_cast<std::size_t>(i)] = {
+                .position = blended_position(scene, from, blend, i, time_s), .gain = 1.0};
         }
         return placements_;
     }
@@ -422,11 +800,59 @@ public:
         return placements_;
     }
 
+    /**
+     * Cycles idle -> recording -> playing -> idle, returning the new state.
+     *
+     * Stopping a recording goes straight to playing rather than back to idle:
+     * the gesture was performed to be watched, and making the user press
+     * again to see it is a beat of dead air in a live demo.
+     */
+    RecordState toggle_record(double time_s) {
+        std::lock_guard lock(mutex_);
+        switch (record_state_) {
+            case RecordState::kIdle:
+                recorded_.clear();
+                recorded_.reserve(kMaxRecordFrames);
+                record_state_ = RecordState::kRecording;
+                break;
+            case RecordState::kRecording:
+                // A recording too short to be a path at all is discarded
+                // rather than looped as a twitch.
+                if (recorded_.size() < 8) {
+                    recorded_.clear();
+                    record_state_ = RecordState::kIdle;
+                } else {
+                    playback_start_s_ = time_s;
+                    record_state_ = RecordState::kPlaying;
+                }
+                break;
+            case RecordState::kPlaying:
+                recorded_.clear();
+                record_state_ = RecordState::kIdle;
+                break;
+        }
+        return record_state_;
+    }
+
+    RecordState record_state() const {
+        std::lock_guard lock(mutex_);
+        return record_state_;
+    }
+
+    std::size_t recorded_frames() const {
+        std::lock_guard lock(mutex_);
+        return recorded_.size();
+    }
+
 private:
     mutable std::mutex mutex_;
     std::array<Deflection, kInteractiveObjects> deflection_{};
     std::array<ac3::oba::ObjectPlacement, kObjects> placements_{};
     int selected_ = 0;
+
+    RecordState record_state_ = RecordState::kIdle;
+    std::vector<ac3::oba::Position> recorded_;
+    double playback_start_s_ = 0.0;
 };
 
 LiveCursorState& live_cursor_state() {
@@ -434,7 +860,105 @@ LiveCursorState& live_cursor_state() {
     return state;
 }
 
+// Nice values. Android's own audio threads sit at -16; background work sits
+// well above 0. Set explicitly because nothing here ever did: the encode
+// worker simply inherited whatever the Java thread that started it had, which
+// gave the scheduler no reason at all to prefer the thread with the deadline
+// over the one merely watching it.
+constexpr int kEncodeNice = -16;
+constexpr int kMonitorNice = 10;
+
+void set_thread_nice(int nice, const char* what) {
+    // who == 0 is the calling thread: Linux nice is per-task, and this is
+    // what Android's own Process.setThreadPriority ends up calling.
+    if (setpriority(PRIO_PROCESS, 0, nice) != 0) {
+        // Not fatal, and not silent. An app is normally allowed to lower its
+        // own threads' nice values, but if the platform refuses, the timing
+        // numbers on screen should be read knowing it.
+        __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                            "could not set %s thread nice to %d (errno %d) - "
+                            "scheduling is whatever this process inherited",
+                            what, nice, errno);
+    }
+}
+
+// The monitor: parses back what the encode loop put on the wire. Never touches
+// JNI, never blocks the producer, and may lag real time freely - it publishes
+// into trace_history() and the UI reads that at its own pace.
+void trace_loop() {
+    set_thread_nice(kMonitorNice, "trace monitor");
+
+    // Heap, not stack: the decoder's Impl is large, and both examples/
+    // atmos_objects.cpp and the CLI's live_audio path allocate it for exactly
+    // that reason.
+    const ac3::DecoderConfig config{.skip_reconstruction = true};
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(config);
+
+    auto& ring = trace_ring();
+    std::vector<std::byte> unit;
+    unit.reserve(kTraceSlotBytes);
+
+    while (!g_stop_requested.load(std::memory_order_acquire)) {
+        const auto read_index = ring.read.load(std::memory_order_relaxed);
+        if (read_index == ring.written.load(std::memory_order_acquire)) {
+            // Nothing waiting. A frame is 32ms; waking at 4ms keeps the trace
+            // close to live without spinning.
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            continue;
+        }
+
+        const auto& slot = ring.slots[read_index % kTraceSlots];
+        unit.assign(slot.bytes.begin(),
+                    slot.bytes.begin() + static_cast<std::ptrdiff_t>(slot.size));
+        const float intended_z = slot.intended_z;
+        // Only now is the slot free for the producer to overwrite.
+        ring.read.store(read_index + 1, std::memory_order_release);
+
+        const auto started = std::chrono::steady_clock::now();
+        const auto decoded = decoder->decode_access_unit(unit);
+        const auto elapsed_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
+                .count();
+        stream_stats().decode_ms.store(static_cast<float>(elapsed_ms), std::memory_order_relaxed);
+
+        if (!decoded) {
+            stream_stats().trace_errors.fetch_add(1, std::memory_order_relaxed);
+            continue;
+        }
+        // std::nullopt is "nothing assembled from this unit", not an error.
+        if (!decoded->has_value()) {
+            continue;
+        }
+
+        const auto& unit_out = **decoded;
+        int object_count = 0;
+        float decoded_z = 0.0F;
+        if (unit_out.object_metadata) {
+            const auto& objects = unit_out.object_metadata->objects;
+            object_count = static_cast<int>(objects.size());
+            if (!objects.empty()) {
+                // objects[i] is parallel to the placement[i] the encoder was
+                // handed - see tests/oba/test_atmos.cpp's round-trip - so
+                // index 0 is the interactive lead.
+                decoded_z = static_cast<float>(objects[0].position.z);
+            }
+        }
+        stream_stats().decoded_objects.store(object_count, std::memory_order_relaxed);
+        stream_stats().trace_frames.fetch_add(1, std::memory_order_relaxed);
+        trace_history().push(intended_z, decoded_z, object_count > 0);
+    }
+
+    // Nothing is held back by a parse-only decode, but flush() is the
+    // documented way to end a stream and costs nothing here.
+    (void)decoder->flush();
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "trace monitor stopped");
+}
+
 void run_loop() {
+    // Every counter and level below belongs to THIS run - see
+    // StreamStats::reset(). Must happen before signed_stream is set a few
+    // lines down.
+    stream_stats().reset();
     // Load the bundled signing key (if this build carries one) before deciding
     // whether to emit the object container: the same AAssetManager the lead
     // voice uses is already set by now (MainActivity.onCreate registers it
@@ -451,6 +975,19 @@ void run_loop() {
                                    kObjects);
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
                         "object container: %s", emit_objects ? "objects (signed)" : "bed51 (omitted, unsigned build)");
+    {
+        // Asked once, here: both figures are a property of the configuration
+        // this encoder was just built with, not of any frame.
+        const auto object_ms = ac3::latency_ms(encoder.latency(), ac3::SampleRate::k48000);
+        const auto bed_ms = ac3::latency_ms(encoder.bed_latency(), ac3::SampleRate::k48000);
+        stream_stats().object_latency_ms.store(static_cast<float>(object_ms),
+                                               std::memory_order_relaxed);
+        stream_stats().bed_latency_ms.store(static_cast<float>(bed_ms), std::memory_order_relaxed);
+        __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                            "encoder latency: objects %.1fms (%d samples), bed %.1fms (%d samples)",
+                            object_ms, encoder.latency().total_samples(), bed_ms,
+                            encoder.bed_latency().total_samples());
+    }
     ac3::audio::PassthroughSink sink;
     auto started = sink.start("", 48000, ac3::audio::BitstreamFormat::kEac3);
     if (!started) {
@@ -458,6 +995,29 @@ void run_loop() {
                             std::string(ac3::audio::describe(started.error())).c_str());
         return;
     }
+
+    // A real programme meter over the encoded bed, replacing an `rms * 4.0`
+    // clamp whose only justification was "without some boost the meter would
+    // barely move". This is dB-scaled with PPM ballistics and a peak hold, so
+    // the bars mean the same thing the desktop tools' bars mean.
+    //
+    // rms_integration_ms is shortened well below the 300ms default: 300ms is
+    // roughly ten frames at 32ms, and the soundfield arrow computed from these
+    // levels would visibly trail a fast pan - the exact opposite of the cue it
+    // exists to give. 80ms still reads as a level rather than a twitch.
+    ac3::analysis::LevelMeter level_meter(ac3::Acmod::k3_2, /*lfe=*/true,
+                                          static_cast<std::uint32_t>(kSampleRate),
+                                          ac3::analysis::MeterBallistics{
+                                              .rms_integration_ms = 80.0,
+                                          });
+    // BS.1770 over the same bed. Measured for display only - see where it is
+    // published below.
+    ac3::meta::LoudnessMeter loudness_meter(ac3::SampleRate::k48000, ac3::Acmod::k3_2,
+                                            /*lfe=*/true);
+    // Reused every frame for both meters rather than rebuilt: bed() hands back
+    // a span of vectors, and both meters want a span of spans.
+    std::vector<std::span<const float>> bed_views;
+    bed_views.reserve(6);
 
     ac3::iec61937::Eac3BurstPacker packer;
     std::array<std::vector<float>, kObjects> tones;
@@ -486,6 +1046,13 @@ void run_loop() {
     // one AC-3 frame is exactly kSamplesPerFrame/48000 seconds.
     const auto frame_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::duration<double>(ac3::kSamplesPerFrame / kSampleRate));
+    // Scene state belongs to this thread alone: g_scene is the only thing
+    // crossing a thread boundary, and the blend it triggers is derived here
+    // rather than shared, so nothing else has to be synchronised.
+    int active_scene = std::clamp(g_scene.load(std::memory_order_relaxed), 0, kSceneCount - 1);
+    int blend_from_scene = active_scene;
+    double blend_start_s = -kSceneBlendSeconds;  // already finished
+
     auto next_deadline = std::chrono::steady_clock::now();
     // Elapsed wall-clock time since the loop started is the trajectory's own
     // clock (trajectory_position's time_s) - a monotonic clock, not a sample
@@ -497,6 +1064,25 @@ void run_loop() {
         std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch())
             .count(),
         std::memory_order_relaxed);
+
+    // This thread has the deadline; say so before the first frame.
+    set_thread_nice(kEncodeNice, "encode");
+
+    trace_history().clear();
+    trace_ring().read.store(0, std::memory_order_relaxed);
+    trace_ring().written.store(0, std::memory_order_relaxed);
+    // Only run the monitor when there is an object layer for it to find. On a
+    // keyless build the encoder emits no container at all, so the trace would
+    // be a panel of gaps saying nothing, and a core would be spent producing
+    // it. Not started means nativeGetWireTrace stays empty and the elevation
+    // panel keeps its whole area - the pre-existing behaviour, exactly.
+    std::thread trace_thread;
+    if (emit_objects) {
+        trace_thread = std::thread(trace_loop);
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                            "wire trace not started: this build emits no object container");
+    }
 
     g_running.store(true, std::memory_order_release);
     __android_log_print(ANDROID_LOG_INFO, kLogTag, "encode loop started (%d interactive + %d ambient objects)",
@@ -512,9 +1098,27 @@ void run_loop() {
         // this loop iteration encodes should be timestamped from the START
         // of the work it does, not after several hundred microseconds of
         // sample generation have already elapsed.
+        const auto iteration_start = std::chrono::steady_clock::now();
         const double time_s =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
-        const auto placement = live_cursor_state().advance(time_s);
+            std::chrono::duration<double>(iteration_start - start_time).count();
+
+        // A scene change starts a blend from wherever the objects currently
+        // are. Changing again mid-blend restarts from the scene being left
+        // rather than compounding blends - the visible result of a fast
+        // double-press is one move, not two overlapping ones.
+        const int requested = std::clamp(g_scene.load(std::memory_order_relaxed), 0, kSceneCount - 1);
+        if (requested != active_scene) {
+            blend_from_scene = active_scene;
+            blend_start_s = time_s;
+            active_scene = requested;
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "scene -> %d (%.*s)", active_scene,
+                                static_cast<int>(kScenes[static_cast<std::size_t>(active_scene)].name.size()),
+                                kScenes[static_cast<std::size_t>(active_scene)].name.data());
+        }
+        const double blend = (time_s - blend_start_s) / kSceneBlendSeconds;
+
+        const auto placement =
+            live_cursor_state().advance(time_s, active_scene, blend_from_scene, blend);
 
         const bool ambient_muted = stream_stats().ambient_muted.load(std::memory_order_relaxed);
         for (int obj = 0; obj < kObjects; ++obj) {
@@ -527,8 +1131,23 @@ void run_loop() {
             // distance_attenuation() reads THIS frame's own placement -
             // real position-based loudness, not merely correct panning
             // direction; see that function's own comment.
+            // The scene's own level for this voice, blended in alongside the
+            // position so a scene that silences an object fades it rather
+            // than cutting it - a hard gain step between frames is a click.
+            const double scene_gain = [&] {
+                const double to_gain =
+                    kScenes[static_cast<std::size_t>(active_scene)]
+                        .objects[static_cast<std::size_t>(obj)].gain_scale;
+                if (blend >= 1.0 || blend_from_scene == active_scene) {
+                    return to_gain;
+                }
+                const double from_gain =
+                    kScenes[static_cast<std::size_t>(blend_from_scene)]
+                        .objects[static_cast<std::size_t>(obj)].gain_scale;
+                return from_gain + (to_gain - from_gain) * smooth_step(blend);
+            }();
             const auto tone_gain =
-                kToneGain[static_cast<std::size_t>(obj)] *
+                kToneGain[static_cast<std::size_t>(obj)] * scene_gain *
                 ((!is_lead && ambient_muted) ? 0.0 : 1.0) *
                 distance_attenuation(placement[static_cast<std::size_t>(obj)].position);
             if (is_lead && !lead_sample.empty()) {
@@ -603,15 +1222,38 @@ void run_loop() {
         // barely move) - visual only, has no effect on the encoded audio.
         {
             const auto bed = encoder.bed();
+            bed_views.clear();
             for (std::size_t ch = 0; ch < bed.size() && ch < 6; ++ch) {
-                double sum_sq = 0.0;
-                for (const float sample : bed[ch]) {
-                    sum_sq += static_cast<double>(sample) * static_cast<double>(sample);
-                }
-                const double rms =
-                    bed[ch].empty() ? 0.0 : std::sqrt(sum_sq / static_cast<double>(bed[ch].size()));
-                const float level = static_cast<float>(std::clamp(rms * 4.0, 0.0, 1.0));
-                stream_stats().channel_levels[ch].store(level, std::memory_order_relaxed);
+                bed_views.emplace_back(bed[ch]);
+            }
+            level_meter.process(bed_views);
+            loudness_meter.push(bed_views);
+
+            // meter_fraction puts a dB level on the same 0..1 scale the bars
+            // already draw, and on the same scale the desktop meters use.
+            const auto levels = level_meter.levels();
+            for (std::size_t ch = 0; ch < levels.size() && ch < 6; ++ch) {
+                const auto fraction = ac3::analysis::meter_fraction(levels[ch].rms_db);
+                stream_stats().channel_levels[ch].store(static_cast<float>(fraction),
+                                                        std::memory_order_relaxed);
+            }
+
+            const auto vector = ac3::analysis::energy_vector(levels, ac3::Acmod::k3_2);
+            stream_stats().energy_azimuth_deg.store(static_cast<float>(vector.azimuth_deg),
+                                                    std::memory_order_relaxed);
+            stream_stats().energy_magnitude.store(static_cast<float>(vector.magnitude),
+                                                  std::memory_order_relaxed);
+
+            // Integrated loudness is cheap to read (it is accumulated by
+            // push() above); loudness_range() is NOT - it allocates and sorts
+            // on every call - so it is deliberately not asked for here, on the
+            // encode thread, on every frame.
+            if (const auto lkfs = loudness_meter.integrated_lkfs()) {
+                stream_stats().integrated_lkfs.store(static_cast<float>(*lkfs),
+                                                     std::memory_order_relaxed);
+                stream_stats().implied_dialnorm.store(ac3::meta::dialnorm_from_lkfs(*lkfs),
+                                                      std::memory_order_relaxed);
+                stream_stats().loudness_valid.store(true, std::memory_order_relaxed);
             }
         }
 
@@ -630,7 +1272,67 @@ void run_loop() {
         // blocks each (kSamplesPerFrame/256), so in practice one push() per
         // encode_frame() yields one burst immediately, not an accumulation
         // across several frames.
-        const auto push_result = packer.push(unit->bytes);
+        // OBJECTS OFF: strip the object layer out of this access unit before
+        // it is wrapped, live, while everything else about the stream stays
+        // put. What the receiver does with that is the point of the whole
+        // demo - a licensed decoder drops from Atmos to plain DD+ on its own
+        // front panel and back again, on a toggle, with the per-frame byte
+        // cost of the object layer on screen next to it.
+        //
+        // AFTER signing, not before: the signature covers the container this
+        // removes, so stripping first would leave a signature over bytes that
+        // are no longer there. Removing the whole container outright is the
+        // safe direction - an unsigned-but-present container is the hard
+        // refusal case AtmosConfig::emit_object_metadata warns about.
+        //
+        // A strip failure falls back to the UNSTRIPPED unit rather than
+        // `break`ing the loop the way the surrounding error paths do: this is
+        // a presentation toggle, and the correct response to "could not strip"
+        // is to keep playing the stream we already have.
+        std::span<const std::byte> unit_bytes{unit->bytes};
+        std::vector<std::byte> stripped_storage;
+        if (stream_stats().objects_off.load(std::memory_order_relaxed)) {
+            auto stripped = ac3::io::strip_objects(unit->bytes);
+            if (stripped) {
+                stream_stats().stripped_bytes_per_frame.store(
+                    static_cast<std::uint32_t>(stripped->bytes_removed),
+                    std::memory_order_relaxed);
+                stripped_storage = std::move(stripped->bytes);
+                unit_bytes = stripped_storage;
+            } else if (frames % 96 == 0) {  // ~3s apart, not once per frame
+                __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                    "strip_objects failed (%s) - sending the unstripped unit",
+                                    std::string(ac3::io::describe(stripped.error())).c_str());
+            }
+        } else {
+            stream_stats().stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
+        }
+
+        // Hand the monitor a copy of exactly these bytes - after signing,
+        // after any strip - with the placement that produced them. One
+        // ~1792-byte memcpy, next to the 24576-byte burst copy the submit
+        // path already does every frame.
+        {
+            auto& ring = trace_ring();
+            const auto write_index = ring.written.load(std::memory_order_relaxed);
+            const auto read_index = ring.read.load(std::memory_order_acquire);
+            if (write_index - read_index < static_cast<std::uint64_t>(kTraceSlots) &&
+                unit_bytes.size() <= kTraceSlotBytes) {
+                auto& slot = ring.slots[write_index % kTraceSlots];
+                std::memcpy(slot.bytes.data(), unit_bytes.data(), unit_bytes.size());
+                slot.size = static_cast<std::uint32_t>(unit_bytes.size());
+                slot.intended_x = static_cast<float>(placement[0].position.x);
+                slot.intended_y = static_cast<float>(placement[0].position.y);
+                slot.intended_z = static_cast<float>(placement[0].position.z);
+                ring.written.store(write_index + 1, std::memory_order_release);
+            } else {
+                // The monitor fell behind, or a unit somehow exceeded the slot.
+                // Dropping is safe precisely because the decode is parse-only.
+                stream_stats().trace_dropped.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        const auto push_result = packer.push(unit_bytes);
         if (!push_result) {
             __android_log_print(ANDROID_LOG_ERROR, kLogTag, "iec61937 wrap failed: %d",
                                 static_cast<int>(push_result.error()));
@@ -693,11 +1395,32 @@ void run_loop() {
                                 static_cast<unsigned long long>(frames));
             next_deadline = now;
         }
+        // The whole iteration, not just the encode - see StreamStats::loop_ms.
+        // Measured before the sleep, so it is work rather than wall clock.
+        stream_stats().loop_ms.store(
+            static_cast<float>(std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - iteration_start)
+                                   .count()),
+            std::memory_order_relaxed);
+
         next_deadline += frame_period;
         std::this_thread::sleep_until(next_deadline);
     }
 
+    // Joined before anything else is torn down: the monitor owns a decoder
+    // and reads the ring, both of which outlive this scope only if it does.
+    // It watches the same g_stop_requested this loop just left.
+    if (trace_thread.joinable()) {
+        trace_thread.join();
+    }
+
     sink.stop();
+    // Clearing the trajectory clock is what makes
+    // nativeGetFutureLeadTrajectory report "no run in progress" rather than
+    // computing a path from a start time that is no longer meaningful - a
+    // stopped loop used to leave the waiting screen drawing a phantom orbit
+    // phased off whenever the device happened to boot.
+    g_start_time_ns.store(0, std::memory_order_relaxed);
     g_running.store(false, std::memory_order_release);
     __android_log_print(ANDROID_LOG_INFO, kLogTag, "encode loop stopped");
 }
@@ -853,6 +1576,12 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
         return env->NewFloatArray(0);
     }
     const auto start_ns = g_start_time_ns.load(std::memory_order_relaxed);
+    if (start_ns == 0) {
+        // No run in progress (never started, or stopped) - there is no
+        // "ahead" to plot. An empty array, not a path computed against a
+        // zero epoch, which would be the whole boot-clock elapsed time.
+        return env->NewFloatArray(0);
+    }
     const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count();
@@ -867,13 +1596,178 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
     for (int i = 0; i < sample_count; ++i) {
         const double t = now_s + (static_cast<double>(i) / static_cast<double>(steps)) *
                                      static_cast<double>(seconds_ahead);
-        const auto pos = trajectory_position(0, t);  // object 0: the lead
+        // The scene as it is NOW: a blend in progress is deliberately ignored
+        // here, since this draws where the object is heading, and where it is
+        // heading is the scene it is heading into.
+        const auto pos = trajectory_position(
+            std::clamp(g_scene.load(std::memory_order_relaxed), 0, kSceneCount - 1), 0, t);
         flat[static_cast<std::size_t>(i) * 3 + 0] = static_cast<jfloat>(pos.x);
         flat[static_cast<std::size_t>(i) * 3 + 1] = static_cast<jfloat>(pos.y);
         flat[static_cast<std::size_t>(i) * 3 + 2] = static_cast<jfloat>(pos.z);
     }
     env->SetFloatArrayRegion(result, 0, sample_count * 3, flat.data());
     return result;
+}
+
+// The wire trace's history: kTracePoints * 3 floats, oldest first - intended
+// z, decoded z, and 1/0 for whether a decoder found any objects in that
+// frame's bytes at all. Empty until the monitor has parsed something.
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetWireTrace(JNIEnv* env, jclass /*clazz*/) {
+    auto& history = trace_history();
+    std::vector<jfloat> flat;
+    {
+        std::lock_guard lock(history.mutex);
+        if (history.count == 0) {
+            return env->NewFloatArray(0);
+        }
+        flat.resize(history.count * 3);
+        // head is the NEXT slot to write, so the oldest entry is head-count.
+        const std::size_t oldest =
+            (history.head + kTracePoints - history.count) % kTracePoints;
+        for (std::size_t i = 0; i < history.count; ++i) {
+            const std::size_t at = (oldest + i) % kTracePoints;
+            flat[i * 3 + 0] = history.intended[at];
+            flat[i * 3 + 1] = history.decoded[at];
+            flat[i * 3 + 2] = history.valid[at] != 0U ? 1.0F : 0.0F;
+        }
+    }
+    jfloatArray result = env->NewFloatArray(static_cast<jsize>(flat.size()));
+    if (result == nullptr) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(result, 0, static_cast<jsize>(flat.size()), flat.data());
+    return result;
+}
+
+// One line about the trace, for the panel header: how many objects a decoder
+// actually finds on the wire, and what one parse-only decode costs.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetWireTraceText(JNIEnv* env, jclass /*clazz*/) {
+    auto& s = stream_stats();
+    const int objects = s.decoded_objects.load(std::memory_order_relaxed);
+    if (objects < 0) {
+        return env->NewStringUTF("");
+    }
+    const auto dropped = s.trace_dropped.load(std::memory_order_relaxed);
+    char drop_buf[32] = "";
+    if (dropped > 0) {
+        std::snprintf(drop_buf, sizeof drop_buf, " | %llu dropped",
+                      static_cast<unsigned long long>(dropped));
+    }
+    char buf[128];
+    std::snprintf(buf, sizeof buf, "decoder sees %d object%s | %.1fms/frame%s", objects,
+                  objects == 1 ? "" : "s",
+                  static_cast<double>(s.decode_ms.load(std::memory_order_relaxed)), drop_buf);
+    return env->NewStringUTF(buf);
+}
+
+// Whether the ambient voices are muted. A getter as well as a setter because
+// three places now change it - the remote's transport keys, the settings
+// panel and the phone remote - and a mirror of this in Kotlin would drift the
+// moment any two of them were used in one session.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetAmbientMuted(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return stream_stats().ambient_muted.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Path recording: idle -> recording -> playing -> idle. Returns the new
+// state (0/1/2, matching RecordState). The encode loop's own clock is what
+// timestamps a recording, so this needs the loop to be running; with it
+// stopped this is a no-op that stays idle.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeToggleRecording(JNIEnv* /*env*/, jclass /*clazz*/) {
+    const auto start_ns = g_start_time_ns.load(std::memory_order_relaxed);
+    if (start_ns == 0) {
+        return static_cast<jint>(RecordState::kIdle);
+    }
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    const double time_s = static_cast<double>(now_ns - start_ns) / 1.0e9;
+    return static_cast<jint>(live_cursor_state().toggle_record(time_s));
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetRecordState(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return static_cast<jint>(live_cursor_state().record_state());
+}
+
+// Scene selection. See kScenes - the demo used to have one path through the
+// room and nothing else to show.
+extern "C" JNIEXPORT void JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeSetScene(JNIEnv* /*env*/, jclass /*clazz*/,
+                                                       jint scene) {
+    // Wrapped rather than clamped: this is reached by "next"/"previous" keys
+    // and by the guided tour, and all three want to come round again.
+    const int wrapped = ((scene % kSceneCount) + kSceneCount) % kSceneCount;
+    g_scene.store(wrapped, std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetScene(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return g_scene.load(std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetSceneCount(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return kSceneCount;
+}
+
+// name and hint for one scene, tab-separated - one call rather than two, and
+// they are only ever wanted together (the overlay shows both).
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetSceneText(JNIEnv* env, jclass /*clazz*/,
+                                                           jint scene) {
+    const int wrapped = ((scene % kSceneCount) + kSceneCount) % kSceneCount;
+    const auto& s = kScenes[static_cast<std::size_t>(wrapped)];
+    std::string text(s.name);
+    text += '\t';
+    text += s.hint;
+    return env->NewStringUTF(text.c_str());
+}
+
+// OBJECTS OFF, from the remote/controller. See the strip block in run_loop().
+extern "C" JNIEXPORT void JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeSetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/,
+                                                            jboolean off) {
+    stream_stats().objects_off.store(off == JNI_TRUE, std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/) {
+    return stream_stats().objects_off.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Two floats: the energy vector's azimuth in degrees counterclockwise from
+// front, and its magnitude in [0,1]. For the top-down panel's soundfield
+// arrow - see StreamStats::energy_azimuth_deg.
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetSoundfieldVector(JNIEnv* env, jclass /*clazz*/) {
+    auto& s = stream_stats();
+    const std::array<jfloat, 2> flat{s.energy_azimuth_deg.load(std::memory_order_relaxed),
+                                     s.energy_magnitude.load(std::memory_order_relaxed)};
+    jfloatArray result = env->NewFloatArray(2);
+    if (result == nullptr) {
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(result, 0, 2, flat.data());
+    return result;
+}
+
+// The measured BS.1770 loudness of the bed, and the dialnorm it implies.
+// Empty until the meter's first gated 400ms block has passed.
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ac3forge_shield_NativeBridge_nativeGetLoudnessText(JNIEnv* env, jclass /*clazz*/) {
+    auto& s = stream_stats();
+    if (!s.loudness_valid.load(std::memory_order_relaxed)) {
+        return env->NewStringUTF("");
+    }
+    char buf[96];
+    std::snprintf(buf, sizeof buf, "%.1f LKFS  ->  dialnorm %d",
+                  static_cast<double>(s.integrated_lkfs.load(std::memory_order_relaxed)),
+                  s.implied_dialnorm.load(std::memory_order_relaxed));
+    return env->NewStringUTF(buf);
 }
 
 // For the on-screen stats overlay (RoomView.kt) - a single formatted line
@@ -897,16 +1791,44 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
         std::snprintf(loss_buf, sizeof loss_buf, " (%llu lost)",
                       static_cast<unsigned long long>(underruns));
     }
-    char buf[192];
+    // The object path's latency, which is what the moving dot on screen is
+    // actually ahead of. Shown so the demo states the figure rather than
+    // implying the plot and the sound are simultaneous; the plot is
+    // deliberately NOT shifted by it, because the encoder's own budget is
+    // only the part of the pipeline this app can measure - the AudioTrack
+    // queue and the receiver's own decode add more, and silently correcting
+    // for one term of three would be a different kind of wrong.
+    const auto object_lat_ms = s.object_latency_ms.load(std::memory_order_relaxed);
+
+    // What the object layer is costing, only while it is being taken away -
+    // the number is meaningless otherwise, and the line has no width to spare.
+    // Recording state is worth a word on screen: a demo that is silently
+    // capturing, or silently replaying rather than following its own scene, is
+    // confusing in exactly the way this readout exists to prevent.
+    const char* record_buf = "";
+    switch (live_cursor_state().record_state()) {
+        case RecordState::kRecording: record_buf = " | REC"; break;
+        case RecordState::kPlaying:   record_buf = " | LOOPING YOUR PATH"; break;
+        case RecordState::kIdle:      break;
+    }
+    char strip_buf[40] = "";
+    if (s.objects_off.load(std::memory_order_relaxed)) {
+        std::snprintf(strip_buf, sizeof strip_buf, " | OBJECTS OFF (-%u B/frame)",
+                      s.stripped_bytes_per_frame.load(std::memory_order_relaxed));
+    }
+    char buf[288];
     std::snprintf(buf, sizeof buf,
-                  "bursts %llu/%llu%s | encode %.1fms/32ms | %s%s",
+                  "bursts %llu/%llu%s | frame %.1f/32ms (enc %.1f) | enc lat %.0fms | %s%s%s%s",
                   static_cast<unsigned long long>(s.bursts_rendered.load(std::memory_order_relaxed)),
                   static_cast<unsigned long long>(s.bursts_submitted.load(std::memory_order_relaxed)),
                   loss_buf,
+                  static_cast<double>(s.loop_ms.load(std::memory_order_relaxed)),
                   static_cast<double>(s.encode_ms.load(std::memory_order_relaxed)),
+                  static_cast<double>(object_lat_ms),
                   s.signed_stream.load(std::memory_order_relaxed) ? "Atmos (signed)"
                                                                    : "5.1 bed (unsigned)",
-                  s.ambient_muted.load(std::memory_order_relaxed) ? " | ambient muted" : "");
+                  s.ambient_muted.load(std::memory_order_relaxed) ? " | ambient muted" : "",
+                  strip_buf, record_buf);
     return env->NewStringUTF(buf);
 }
 

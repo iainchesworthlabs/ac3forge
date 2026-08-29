@@ -7,7 +7,7 @@
 # macOS), never a vcpkg port. Machines with no Qt kit build the rest of the
 # project with -DAC3FORGE_BUILD_GUI=OFF.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -30,7 +30,9 @@ qt_add_executable(ac3gui
     ../common/container_input.cpp
     ../common/container_input.hpp
     system_theme.cpp
-    system_theme.hpp)
+    system_theme.hpp
+    language_manager.cpp
+    language_manager.hpp)
 
 # RecordingSink and its Fmp4FolderWriter moved to apps/common when
 # `ac3cli record`/`live` started writing their takes through the same classes
@@ -79,6 +81,35 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ObjectInspectorDialog.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/StreamPlayerDialog.qml")
 
+# Roadmap UX3: one .ts per shipped language, French/German/Spanish/Arabic/
+# Hebrew/Yiddish - the same set and order LanguageManager's kLanguages uses
+# (language_manager.cpp), matching the canonical set already shipped by the
+# sibling CountdownSolver project (R:\CountdownSolver). Shared with
+# tests/CMakeLists.txt below for the same reason AC3_QML_FILES is: that file
+# is include()d into this one's own scope, not a separate directory, so a
+# plain variable set here is already visible there. See
+# docs/gui/localisation.md for how to update or add to this list, and
+# translations/ac3gui_xx.ts (tools/generators/gen_pseudo_locale.py) for the
+# separate pseudo-locale QA fixture, which is intentionally NOT part of this
+# list - it is loaded only through the AC3GUI_LOCALE test override, never
+# through the real qt_add_translations() pipeline below.
+set(AC3_TS_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_fr.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_de.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_es.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_ar.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_he.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_yi.ts")
+
+# The pseudo-locale QA fixture (see AC3_TS_FILES's own comment above) -
+# deliberately kept out of that list and out of ac3gui's own
+# qt_add_translations() call below, since production ac3gui.exe has no
+# reason to carry it. tests/CMakeLists.txt embeds it into ac3gui_qmltests
+# ALONGSIDE AC3_TS_FILES instead, purely for tst_localisation_pipeline.qml's
+# AC3GUI_LOCALE=xx suite.
+set(AC3_PSEUDO_TS_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_xx.ts")
+
 foreach(qml_file IN LISTS AC3_QML_FILES)
     get_filename_component(qml_name "${qml_file}" NAME)
     set_source_files_properties("${qml_file}" PROPERTIES QT_RESOURCE_ALIAS "${qml_name}")
@@ -111,6 +142,12 @@ qt_add_qml_module(ac3gui
 # named static weights on every platform this builds for, while variable-
 # font axis selection is only dependable from Qt 6.7 up. main.cpp registers
 # these with QFontDatabase before the engine loads.
+#
+# NotoSansArabic/NotoSansHebrew (roadmap UX3, RTL languages) are the same
+# OFL-licensed faces the sibling CountdownSolver project already vets and
+# ships for exactly this purpose (Latin has no Arabic/Hebrew glyph coverage,
+# and Yiddish is written in Hebrew script) - copied verbatim rather than
+# re-sourced, license files included per font per Noto's own naming.
 qt_add_resources(ac3gui "ac3gui_fonts"
     PREFIX "/fonts"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/fonts"
@@ -119,7 +156,11 @@ qt_add_resources(ac3gui "ac3gui_fonts"
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Archivo-Medium.ttf"
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Archivo-SemiBold.ttf"
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Archivo-ExtraBold.ttf"
-        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/OFL.txt")
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/OFL.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansArabic.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansArabic-OFL.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansHebrew.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansHebrew-OFL.txt")
 
 # The build-tree/window-icon PNGs (main.cpp's QGuiApplication::setWindowIcon)
 # plus AboutDialog.qml's own Image. Generated, along with every other
@@ -131,6 +172,30 @@ qt_add_resources(ac3gui "ac3gui_icons"
     FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-32.png"
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png")
+
+# ---------------------------------------------------------------------------
+# Roadmap UX3: lupdate (scan every source SOURCE_TARGETS' own target already
+# lists - AC3_QML_FILES is the only source of qsTr() calls in this app; no
+# .cpp file has one) plus lrelease (.ts -> .qm) and a /i18n resource
+# embedding, all in one call. LanguageManager (language_manager.cpp) loads
+# the matching ac3gui_<code>.qm at runtime.
+#
+# IMMEDIATE_CALL, and SOURCE_TARGETS given explicitly rather than left to the
+# default auto-collection: CountdownSolver's own src/app/CMakeLists.txt
+# documents a real, reproduced Xcode "is attached to multiple targets"
+# failure from the deferred form's directory-scope mismatch (its
+# qt_add_translations() call and its QML module target lived in different
+# scopes; ac3gui doesn't have that split - qt_add_qml_module(ac3gui ...)
+# above backs the executable target directly - but there is no upside to
+# relying on the deferred/auto-collected path here either, so this avoids
+# the failure mode outright rather than trusting the scopes stay aligned).
+# ---------------------------------------------------------------------------
+qt_add_translations(ac3gui
+    IMMEDIATE_CALL
+    SOURCE_TARGETS ac3gui
+    TS_FILES ${AC3_TS_FILES}
+    LUPDATE_TARGET ac3gui_lupdate
+    LRELEASE_TARGET ac3gui_lrelease)
 
 # Qt generates a lot of C++ into this target - moc output, the QML type
 # registrations, the rcc resources and qmlcachegen's AOT-compiled QML - and it

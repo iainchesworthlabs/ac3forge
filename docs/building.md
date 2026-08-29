@@ -695,6 +695,9 @@ and did not (real hardware), prove.
 linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan,
 linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/audio/` and the
 headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
+linux-appimage (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04` container and
+smoke-tests it in a second container that never had Qt installed at all — see
+[Linux](platforms/linux.md#appimage), roadmap DR8),
 script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
 all three pinned in `requirements/requirements-lint.txt`),
 static-analysis (clang-tidy), coverage (`tools/checks/coverage_report.sh` over every `src/` library

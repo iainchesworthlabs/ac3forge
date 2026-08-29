@@ -15,6 +15,7 @@ Usage:
   ac3cli atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
   ac3cli atmos-encode  <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
   ac3cli atmos-adm     <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
+  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (UNAVAILABLE HERE)
   ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
   ac3cli record        <out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index] (capture straight to a file; layout=/codec=/container= decide its shape)
   ac3cli live          <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
@@ -182,6 +183,52 @@ for the parser and the mapping layer this command drives, and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
 
+### IAB ingest — real Dolby Atmos cinema/IMF masters (opt-in, roadmap IM1)
+
+**Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — the identical gate and the same
+`UNAVAILABLE HERE`/clear-error treatment `atmos-adm` above gets, and for the same underlying
+reason even though `ac3iab::ac3iab` itself is on by default: this command needs
+[`ac3::admbridge`'s own IAB mapping](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3)
+(`build_iab()`), and that whole module rides `AC3FORGE_BUILD_ADM` (see
+[ADM / BW64 reading](../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
+alongside `ac3iab::ac3iab`. What the row looks like in a build configured with the flag on (the
+usage block at the top of this page is copied from a *default* build, where this row instead reads
+`UNAVAILABLE HERE`):
+
+```text
+  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by the file's own authored panning - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+```
+
+| Command | What it does |
+|---|---|
+| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master |
+
+```bash
+ac3cli atmos-iab master.iab out.ec3 448
+```
+
+The same command reads a real MXF Track File too, no different invocation:
+
+```bash
+ac3cli atmos-iab master.mxf out.ec3 448
+```
+
+`dialnorm=` works the same as every other encoding command (see
+[Options & grammars](metadata-options.md)); `dialnorm=auto` does not — an IAB file's Bed/Object
+channels have no single fixed layout to measure loudness against the way `atmos-encode`'s WAV
+input does, so `atmos-iab` refuses it with a clear error rather than silently keeping the default.
+
+Every failure — a bitstream/MXF parse error (`ac3iab::IabError`) or a graph-resolution error
+(`ac3::admbridge::BridgeError`, e.g. a Table 19 `ChannelID` with no `BedLabel` equivalent, or
+essence that never resolved) — prints a real diagnosis via that error's own `describe()`, never an
+opaque crash or a bare non-zero exit.
+
+See [IAB reading](../library/iab.md) and
+[ADM → Atmos bridging](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3) for the parser
+and the mapping layer this command drives, and
+[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
+for the same pipeline as a minimal, standalone, self-fixturing program.
+
 ### Object-layer strip
 
 | Command | What it does |
@@ -224,7 +271,7 @@ requirements ask for beside an Atmos one.
 | Command | What it does |
 |---|---|
 | `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream (roadmap IO2), sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
-| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1` |
+| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. Auto-detects AC-4 too (TOC/presentation/substream-group framing only) |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or (roadmap IO2) a Matroska/MP4/MPEG-TS container carrying one |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
 | `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream — bare, or (roadmap IO2) inside a Matroska/MP4/MPEG-TS container — measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
@@ -485,6 +532,62 @@ Top level:
 `rematrixing`, `delta_bit_alloc`, `skip_field`, `skip_bytes`, `exponent_strategy` (one entry per
 coded channel, LFE last) and `coupling_exponent_strategy`.
 
+##### AC-4
+
+`probe` auto-detects AC-4 (`ac4::`, roadmap IM4) by its first byte — `0xAC` rather than AC-3/
+E-AC-3's `0x0B` — so `ac3cli probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
+same way. It reads the sync frame, table of contents, presentation and substream-group framing —
+channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike; audio content is
+reported by byte range, never decoded, and there is no `detail=frames`/`detail=blocks`
+equivalent — there is no per-block audio-layer walk to show, by scope (see
+[Verification](../verification.md#ac-4) for exactly what that does and does not cover, including
+the narrower evidence behind the A-JOC/object/OAMD path).
+
+```bash
+ac3cli probe stream.ac4
+```
+
+```text
+file            stream.ac4
+codec           AC-4
+access units    73 (73 sync frame(s)), 25939 bytes
+CRC             73 of 73 valid
+bs version      2
+sample rate     48000 Hz
+presentations   1
+                Stereo
+```
+
+`json=1` writes `stream.codec == "ac4"` and a dedicated `stream.ac4` object — deliberately not
+the AC-3/E-AC-3 `stream` shape above with its acmod/bsmod/numblkscod/etc. fields nulled out one
+by one. Those fields belong to a different codec family and do not apply; `stream.ac4` is
+additive to the schema, and a consumer branches on `stream.codec` first the way any
+discriminated-union JSON shape is read. `stream.ac4`: `bitstream_version`, `sample_rate_hz`,
+`frame_rate_index`, `n_presentations`, `substream_groups[]`, and `presentations_v0[]` for the
+legacy `bitstream_version <= 1` path (empty for every stream observed so far — see the
+Verification link above). Each `substream_groups[]` entry carries `b_substreams_present`,
+`b_channel_coded`, `oamd` (null unless the group is object-coded and carries an OAMD substream:
+`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each substream entry is a tagged union —
+`kind` (`"chan"`, `"ajoc"` or `"obj"`) says which one of `chan`/`ajoc`/`obj` is non-null, the
+other two `null`:
+- `chan`: `channel_mode`, `channel_mode_name`, `ch_mode`, `bitrate_kbps`, `substream_index`,
+  `original_content` (`b_4_back_channels_present`/`b_centre_present`/`top_channels_present` —
+  whether channels `channel_mode` implies exist are real content or encoded silence, e.g. a 5.1.4
+  source carried in a 7.1.4-coded substream).
+- `ajoc`: `b_lfe`, `b_static_dmx`, `n_fullband_dmx_signals`, `static_objects[]`,
+  `n_fullband_upmix_signals`, `upmix_objects[]`, `sf_multiplier`, `bitrate_kbps`,
+  `substream_index`.
+- `obj`: `objects[]`, `b_dynamic_objects`, `sf_multiplier`, `bitrate_kbps`, `substream_index`.
+- Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
+  "isf", lfe, ajoc_coded}`.
+
+`stream.integrity` (`crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error`) is shared
+with the AC-3/E-AC-3 shape. The one payload this parser still refuses rather than reads is
+`oamd_common_data()` (§6.2.8.1, reachable only via an A-JOC substream's own
+`b_oamd_common_data_present` flag) — `first_parse_error` names it
+(`oamd_common_data_present`) when hit; **exit code** follows the same rule as AC-3/E-AC-3: 0 only
+when every sync frame's CRC passed and every frame parsed.
+
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 
 ```bash
@@ -688,9 +791,9 @@ run alongside the file `live` always writes.
 `live mode` (also shared with `atmos`): `channels` (default) encodes the captured channels onto
 `layout=` — stereo by default, anything up to 7.1.4 — placing them by direction the way `encode`
 places a file's; `atmos` pans capture channels into a 5.1 bed as objects, moving each one every
-frame the same way `atmos`'s synthetic orbit does — the hook a real live position source drops
-into once one exists. `layout=`/`codec=` describe a channel session only; `mode=atmos` always
-encodes the TS 103 420 shape and refuses either.
+frame the same way `atmos`'s synthetic orbit does, unless `positions=` names a real live position
+source instead — see **Live object positions over OSC** below. `layout=`/`codec=` describe a
+channel session only; `mode=atmos` always encodes the TS 103 420 shape and refuses either.
 
 **Take shape and durability.** `record` and `live` both take `layout=`, `codec=`,
 `container=raw|mkv|ts|spdif|fmp4` (`cmaf` is an accepted alias for the last) and
@@ -708,6 +811,87 @@ start — `objects=<N>` sets the budget, `map=` binds capture channels to slots 
 [Options & grammars](metadata-options.md#objects-and-map-modeatmos)). A slot with nothing bound to
 it is carried silent rather than changing the object count a decoder read from the first access
 unit.
+
+**Live object positions over OSC (roadmap UX4).** `positions=<scheme>:[<bind>:]<port>` (`mode=atmos`
+only — refused with `mode=channels`, since there are no objects to place) swaps the built-in
+synthetic orbit for a real live position source: a show-control rig, a DAW, or any OSC 1.0 sender
+addressing this session's objects over UDP. The token is scheme-prefixed on purpose — only `osc`
+exists today, but a MIDI source (`positions=midi:...`) or a desktop game controller
+(`positions=gamepad:...`) can land as new schemes later without a grammar change. **Neither MIDI
+nor gamepad is implemented yet.**
+
+`<bind>` is `local` (the default — binds `127.0.0.1`, loopback only), `any` (binds `0.0.0.0`,
+every interface — a real security-relevant choice, not just a technical one: it opens the port to
+whatever else can already reach this machine, not just this process), or a dotted-quad IPv4
+literal. Never a hostname — there is no DNS resolution, so starting a session never blocks waiting
+for one to resolve. `<port>` is 1-65535.
+
+```text
+positions=osc:9000                 # loopback, port 9000 (the default bind)
+positions=osc:any:9000             # every interface
+positions=osc:192.168.1.50:9000    # bind to one specific local address
+```
+
+Once bound, the listener understands one address space, `<n>` 0-based and matching scene order:
+
+| Address | OSC type tag | Arguments |
+|---|---|---|
+| `/object/<n>/xyz` | `,fff` | x, y, z (float32) — the same room-anchored axes `atmos-path`'s own scene grammar uses (see [x/y/z above](#synthesis-generate-a-stream-from-nothing) and [Library → Spatial & Atmos](../library/spatial-and-atmos.md)) |
+| `/object/<n>/gain` | `,f` | linear gain (float32), not dB |
+| `/object/<n>/lfe` | `,f` | linear `lfe_send` (float32) |
+| `/object/<n>/release` | `,` | no arguments — hands the object back to the orbit's own starting point |
+
+Any other address, or a message with the wrong argument count or type, is silently dropped and
+counted rather than treated as fatal to the session — a show-control rig sends plenty of traffic
+this listener has no use for, and none of it should end a take. A `/gain` or `/lfe` message that
+arrives before that object's first `/xyz` is held pending rather than applied or dropped, and takes
+effect the moment a position follows it.
+
+A bind failure — most often the port already in use — refuses the whole session (exit `4`,
+`kExitUnavailable`) rather than silently falling back to the orbit. That is deliberate, and
+different from `monitor=`/`passthrough=`: those are output legs whose absence still leaves a
+correct file behind, but `positions=` is an *input* — a silent fallback would put a different
+scene in the recorded file than the one asked for, discoverable only at playback.
+
+An object nothing has addressed yet holds exactly where the orbit's own formula would have started
+it at t=0 — still spread apart from its siblings (objects sharing a direction are exactly what JOC
+cannot separate, which is why the orbit spreads them at all) — at this session's own gain law
+(`0.7 / sqrt(N)`, the same one the orbit itself uses). A session with `positions=` on but nothing
+yet addressing some of its objects therefore degrades gracefully: those objects sit still and
+audible, never silent, never snapped to room centre.
+
+Status lines at session start and end report what actually happened — read the live text out of
+`apps/cli/commands/live_audio.cpp` (search for `"positions:"`) if this drifts, but as of writing:
+
+```text
+positions: OSC on 127.0.0.1:9000, objects 0-3 (/object/<n>/xyz|gain|lfe|release)
+...
+positions: 812 datagrams, 796 updates applied, 12 dropped
+```
+
+**Testing it.** Any OSC 1.0 sender works — TouchOSC, a DAW's OSC output, or a few dependency-free
+lines of Python:
+
+```python
+import socket, struct
+
+def osc_xyz(obj, x, y, z):
+    addr = f"/object/{obj}/xyz".encode() + b"\0"
+    addr += b"\0" * (-len(addr) % 4)          # pad to a 4-byte boundary
+    tags = b",fff\0\0\0\0"                    # ",fff" padded the same way
+    return addr + tags + struct.pack(">fff", x, y, z)
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(osc_xyz(0, 0.8, 0.2, 0.0), ("127.0.0.1", 9000))
+```
+
+```bash
+ac3cli live out.ec3 0 60 192 -2 -2 atmos positions=osc:9000
+```
+
+That starts a 60-second object session listening on loopback port 9000; the Python snippet above
+moves object 0 to `x=0.8, y=0.2, z=0.0` — front-right of the room, at listener height — while it
+runs.
 
 **An AC-3-only receiver.** When the session's stream needs E-AC-3 but the chosen
 `passthrough_device` only bitstreams plain AC-3, `live` sends it a parallel 5.1 AC-3 encode of the

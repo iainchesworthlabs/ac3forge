@@ -240,7 +240,15 @@ jobs:
   # self-hosted-eligible job does.
   check-runner:
     name: Check self-hosted runner availability
-    runs-on: ubuntu-latest
+    # Control-plane job: routed by vars.CONTROL_RUNNER_JSON (delete the
+    # variable to send it back to ubuntu-latest - see
+    # _toolchain-versions.yml's jobs comment for the full rationale). This
+    # 9-second job deciding where the real work runs is worthless if it
+    # itself queues for hours behind saturated hosted runners - observed
+    # 2026-08-28. Fork PRs stay on GitHub-hosted unconditionally: this job
+    # checks out the fork's merge ref and runs ./.github/actions/decide-runner
+    # FROM that checkout, i.e. fork-controlled code.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read
@@ -277,13 +285,16 @@ jobs:
   # gate reporting. Conservative - anything not clearly docs counts as code.
   changes:
     name: Detect changes
-    # Stays GitHub-hosted, deliberately: this job's script calls `gh api`
-    # directly (see below), and the self-hosted image's toolset is not
-    # guaranteed to include the gh CLI - confirmed the hard way, `gh:
-    # command not found` on tf-gh-linux-runner-11 when this was briefly
-    # routed through check-runner like every other cheap job in this file.
-    # A one-shot metadata lookup gains nothing from self-hosted anyway.
-    runs-on: ubuntu-latest
+    # Routed through check-runner like the other cheap gate jobs. This job
+    # calls `gh api` directly, which briefly broke on self-hosted ("gh:
+    # command not found" on tf-gh-linux-runner-11, reverted in #459) - the
+    # fleet image now ships the GitHub CLI (ci-runners#12, deployed
+    # 2026-08-28), so that constraint is gone. Routing matters here more
+    # than for the other cheap jobs: everything heavy needs this job's
+    # output, so when the hosted queue is saturated an ubuntu-latest
+    # `changes` stalls the whole run behind it.
+    needs: check-runner
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     permissions:
       contents: read
       pull-requests: read
@@ -333,6 +344,13 @@ jobs:
   # violation is reported even while the porting legs are still red.
   platform-macros:
     name: Platform Macros
+    # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
+    # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
+    # does not - confirmed live ("pwsh: command not found" on
+    # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
+    # it only if/when ci-runners bakes PowerShell into the Linux template -
+    # same follow-the-toolchain rule as build-wasm/android/rust in
+    # _build.yml.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -342,9 +360,12 @@ jobs:
         shell: pwsh
         run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 
-  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan) - NOT "is it
-  # current", see the script's own header for why that's the wrong check. Same shape as
-  # platform-macros above: cheap, fast, ungated.
+  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
+  # latest-tag advisory (roadmap DR2) - see the script's own header for the split
+  # between the two and why only the first one fails the job. fetch-depth: 0, unlike
+  # platform-macros above: the advisory half needs `git describe --tags` to see the
+  # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
+  # it in CI while it kept working from a normal local checkout.
   packaging-consistency:
     name: Packaging Consistency
     needs: check-runner
@@ -352,6 +373,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Check packaging manifests are internally consistent
         shell: bash
@@ -498,9 +520,9 @@ jobs:
   # configuration and no analysis-only preset is needed.
   static-analysis:
     name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -580,6 +602,14 @@ jobs:
     name: Coverage (Linux, GCC)
     needs: [changes, toolchain-versions]
     if: needs.changes.outputs.code == 'true'
+    # Stays GitHub-hosted for now - the one leg of the #460 revert that is
+    # NOT re-enabled with the rest. Its self-hosted failure ("The runner has
+    # received a shutdown signal" 34s in) was a runner-lifecycle kill, not
+    # the gh/profile/ASLR class fixed in ci-runners#12/#13, and remains
+    # undiagnosed (suspected --replace eviction race in the supervisor's
+    # recycle loop). If it is re-routed and the failure recurs, capture
+    # `journalctl -u github-runner.service` off the affected VM before the
+    # fleet replaces it - that is the missing evidence.
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     steps:
@@ -707,9 +737,9 @@ jobs:
   # AC3FORGE_BUILD_GUI already defaults OFF on this preset.
   adm-validate:
     name: ADM Module (Linux, GCC)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1065,9 +1095,9 @@ jobs:
   #     repetitions are a rounding error next to the two builds.
   performance-compare:
     name: Performance vs merge base
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
     env:
@@ -1197,8 +1227,16 @@ jobs:
   #
   # Two independent checks, both against config-linux-llvm-shared (already
   # Debug - has DWARF - and BUILD_SHARED_LIBS=ON):
-  #   - abidiff: does this PR change anything abigail can see in the
-  #     public interface of a library that already existed at the last tag.
+  #   - abidiff: of the libraries that already existed at the last tag, does
+  #     this PR change anything abigail can prove BREAKS their binary
+  #     interface. Every visible difference lands in the step summary for
+  #     review, but only abidiff's incompatible-change exit bit (removed
+  #     symbols, changed signatures) fails the step: an additions-only diff
+  #     is backward compatible - exactly what a minor release is allowed to
+  #     ship - and failing on it would leave the promoted gate rejecting
+  #     every PR that adds API until the next tag is cut, which is the
+  #     opposite of what the freeze needs. See the step's own comment for
+  #     the exit-code bit field.
   #   - check_abi_symbols.py: does the actual dynamic-symbol export set
   #     (nm -D --defined-only - exactly what CXX_VISIBILITY_PRESET hidden
   #     leaves reachable) still match the checked-in allowlist, catching an
@@ -1206,9 +1244,9 @@ jobs:
   #     with no tag yet to abidiff against.
   abi-gate:
     name: ABI diff vs last release
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
     steps:
@@ -1279,6 +1317,16 @@ jobs:
           cmake --build build/config-linux-llvm-shared -- -k 0
           popd >/dev/null
 
+      # Both steps below discover libraries dynamically - `find .../src -name '*.so'` - rather
+      # than a hardcoded `for lib in ...` list: this project's own SHARED targets each produce a
+      # bare, unversioned libFOO.so symlink (alongside the real, version-suffixed libFOO.so.X.Y.Z)
+      # directly in the build tree under src/<component>/, with no install step needed to see it.
+      # Scoped to .../src specifically - not the whole build tree - so a FetchContent'd
+      # third-party dependency's own .so (e.g. a hypothetical libadm.so, if AC3FORGE_BUILD_ADM
+      # were ever turned on for this preset) is never picked up: those build under .../_deps/,
+      # a disjoint subtree, and this project never install()s them in their own right regardless.
+      # A hardcoded list is exactly what let libac3iab.so go uncovered by both steps below (and
+      # unrepresented in tools/ci/abi-allowlist/) from the day ac3iab landed until this fix.
       - name: abidiff each shared library against the last release
         if: steps.last_tag.outputs.skip == 'false'
         shell: bash
@@ -1290,19 +1338,43 @@ jobs:
             echo "## ABI diff vs $LAST_TAG (advisory pre-1.0)"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t libs < <(
+            { find build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+              find ../abi-base/build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+            } 2>/dev/null | sort -u)
           status=0
-          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
-                     libmatroska.so libmp4.so libmpegts.so; do
-            head_lib="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
-            base_lib="$(find ../abi-base/build/config-linux-llvm-shared -name "$lib" -print -quit)"
+          for lib in "${libs[@]}"; do
+            head_lib="$(find build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
+            base_lib="$(find ../abi-base/build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
             echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             if [ -z "$head_lib" ]; then
               echo "(not built at HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
             elif [ -z "$base_lib" ]; then
               echo "(not present at $LAST_TAG - new library)" | tee -a "$GITHUB_STEP_SUMMARY"
-            elif ! abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"; then
-              status=1
+            else
+              rc=0
+              abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+              # abidiff's exit status is a bit field (abidiff(1), "Return
+              # values"): 1|2 are tool/usage errors, 4 ABIDIFF_ABI_CHANGE
+              # is any visible difference, 8 ABIDIFF_ABI_INCOMPATIBLE_CHANGE
+              # is a difference abidiff can prove breaks compatibility.
+              # Measured against v0.9.0-beta.1: removed symbols and changed
+              # signatures both raise bit 8 (exit 12); an additions-only
+              # library exits with just bit 4. Only bit 8 (or a tool error)
+              # fails the step - additions are backward compatible, so they
+              # pass, reported above for human review.
+              if (( rc & 3 )); then
+                echo "abidiff itself failed on $lib (exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
+                status=1
+              elif (( rc & 8 )); then
+                echo "INCOMPATIBLE ABI change vs $LAST_TAG (abidiff exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
+                status=1
+              elif (( rc & 4 )); then
+                echo "compatible ABI change vs $LAST_TAG (abidiff exit $rc - nothing abidiff can prove incompatible)" | tee -a "$GITHUB_STEP_SUMMARY"
+              else
+                echo "no ABI change vs $LAST_TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+              fi
             fi
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done
@@ -1310,20 +1382,21 @@ jobs:
 
       - name: Exported-symbol allowlist check
         # Independent of the abidiff step above (see this job's header
-        # comment) - must run even when abidiff already found a diff, which
-        # pre-1.0 it does on almost every PR. Without this, GitHub Actions'
-        # default success()-only condition means an abidiff failure silently
-        # skips the one check here that catches a real regression.
+        # comment) - must run even when abidiff already failed, which
+        # pre-1.0 it can do for a whole release cycle: with no compatibility
+        # promise yet, removals/renames (e.g. AP2's naming sweep) land on
+        # main freely and keep that step red until the next tag moves the
+        # comparison base past them. Without this, GitHub Actions' default
+        # success()-only condition means an abidiff failure silently skips
+        # the one check here that catches a real regression.
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
           libs=()
-          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
-                     libmatroska.so libmp4.so libmpegts.so; do
-            found="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
-            [ -n "$found" ] && libs+=(--lib "$found")
-          done
+          while IFS= read -r found; do
+            libs+=(--lib "$found")
+          done < <(find build/config-linux-llvm-shared/src -name '*.so' | sort)
           python3 tools/ci/check_abi_symbols.py \
             --allowlist-dir tools/ci/abi-allowlist "${libs[@]}"
 
@@ -1368,9 +1441,9 @@ jobs:
   # to the vcpkg commit and the LLVM/GCC versions.
   ffmpeg-validate:
     name: FFmpeg Validate
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1920,7 +1993,14 @@ jobs:
     name: CI Status
     if: always()
     needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
-    runs-on: ubuntu-latest
+    # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
+    # switch as check-runner above. This is the required check every PR
+    # waits on LAST - when the hosted pool is saturated, a run whose every
+    # real job passed still reported nothing for hours because this
+    # seconds-long aggregator was queued behind build legs (PR #447,
+    # 2026-08-28). No checkout, no untrusted code - the fork guard is
+    # consistency, not necessity.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     steps:
       - name: Gate on required job results
         shell: bash

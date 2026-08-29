@@ -21,6 +21,7 @@ const mimeTypes = {
     '.wasm': 'application/wasm',
     '.ec3': 'application/octet-stream',
     '.ac3': 'application/octet-stream',
+    '.wav': 'audio/wav',
     '.svg': 'image/svg+xml',
     '.png': 'image/png',
 };

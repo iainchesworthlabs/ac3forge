@@ -102,6 +102,15 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Theme.space4
 
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is, and is what a screen reader actually reaches
+        // when the dialog opens. title is "" (a styled Text below draws
+        // the visible "Preferences" heading instead), so Dialog's own
+        // title-derived accessible name has nothing to read without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("Preferences")
+
         Text {
             text: qsTr("Preferences")
             font.pixelSize: 20
@@ -125,6 +134,7 @@ Dialog {
 
                 PrefsLabel { text: qsTr("Theme") }
                 SegmentedControl {
+                    accessibleName: qsTr("Theme")
                     model: [
                         { value: "light", label: qsTr("Light") },
                         { value: "dark", label: qsTr("Dark") },
@@ -142,6 +152,7 @@ Dialog {
                 PrefsLabel { text: qsTr("Palette") }
                 ComboBox {
                     objectName: "prefsPalette"
+                    Accessible.name: qsTr("Palette")
                     Layout.fillWidth: true
                     model: [
                         { value: "signal", label: qsTr("Signal — the design system's red") },
@@ -163,8 +174,54 @@ Dialog {
 
                 Item { Layout.preferredHeight: Theme.space2 }
 
+                PrefsLabel {
+                    text: qsTr("Language")
+                    Accessible.ignored: true
+                }
+                ComboBox {
+                    id: langCombo
+                    objectName: "prefsLanguage"
+                    Layout.fillWidth: true
+                    // Takes effect immediately (not staged behind Save, and
+                    // not part of `settings` below) - languageManager
+                    // persists and applies it itself, the same immediate,
+                    // cancel-has-nothing-to-cancel shape CountdownSolver's
+                    // own SettingsPage.qml uses for the identical control.
+                    // Guarded against a null languageManager - see this
+                    // dialog's own onAboutToShow/Save split for why a
+                    // context property can momentarily be unset in a QML
+                    // test harness that doesn't install one.
+                    model: languageManager ? languageManager.availableLanguages() : []
+                    textRole: "name"
+                    valueRole: "code"
+                    onActivated: {
+                        if (languageManager) languageManager.setLanguage(currentValue);
+                    }
+                    Component.onCompleted: {
+                        currentIndex = languageManager
+                            ? indexOfValue(languageManager.currentLanguage) : -1;
+                    }
+                    Connections {
+                        target: languageManager
+                        function onCurrentLanguageChanged() {
+                            if (languageManager) {
+                                langCombo.currentIndex =
+                                    langCombo.indexOfValue(languageManager.currentLanguage);
+                            }
+                        }
+                    }
+                    Accessible.name: qsTr("Language")
+                    Accessible.description: qsTr("Switches the app's own text; Arabic, Hebrew and Yiddish also mirror the whole window right-to-left.")
+                }
+                PrefsNote {
+                    text: qsTr("French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.")
+                }
+
+                Item { Layout.preferredHeight: Theme.space2 }
+
                 PrefsLabel { text: qsTr("Meters — show") }
                 SegmentedControl {
+                    accessibleName: qsTr("Meters — show")
                     model: [
                         { value: "coded", label: qsTr("Every coded channel") },
                         { value: "rendered", label: qsTr("Only speakers a receiver drives") },
@@ -207,6 +264,7 @@ Dialog {
 
                 PrefsLabel { text: qsTr("Controls") }
                 ComboBox {
+                    Accessible.name: qsTr("Controls")
                     Layout.fillWidth: true
                     model: [
                         { value: "guided", label: qsTr("Guided — one step at a time") },
@@ -274,6 +332,7 @@ Dialog {
                 PrefsLabel { text: qsTr("Name new files") }
                 TextField {
                     objectName: "prefsNamePattern"
+                    Accessible.name: qsTr("Name new files")
                     Layout.fillWidth: true
                     text: root.namePatternChoice
                     font.family: Theme.monoFamily
@@ -306,6 +365,7 @@ Dialog {
 
                 PrefsLabel { text: qsTr("Container") }
                 ComboBox {
+                    Accessible.name: qsTr("Container")
                     Layout.fillWidth: true
                     model: EncoderController.containerNames
                     currentIndex: root.containerChoice
@@ -314,6 +374,7 @@ Dialog {
 
                 PrefsLabel { text: qsTr("Rate mode") }
                 SegmentedControl {
+                    accessibleName: qsTr("Rate mode")
                     model: [
                         { value: "cbr", label: qsTr("Constant") },
                         { value: "vbr", label: qsTr("Variable") },
@@ -325,6 +386,7 @@ Dialog {
                 PrefsLabel { text: qsTr("Bit rate") }
                 ComboBox {
                     id: prefsBitrateBox
+                    Accessible.name: qsTr("Bit rate")
                     Layout.fillWidth: true
                     model: EncoderController.bitrates
                     displayText: qsTr("%1 kbps").arg(root.bitrateChoice)
@@ -352,6 +414,8 @@ Dialog {
                 }
                 Slider {
                     objectName: "prefsVbrQuality"
+                    Accessible.name: qsTr("VBR quality")
+                    Accessible.description: String(root.vbrQualityChoice)
                     Layout.fillWidth: true
                     from: 0
                     to: 100
@@ -362,6 +426,7 @@ Dialog {
 
                 PrefsLabel { text: qsTr("DRC profile") }
                 ComboBox {
+                    Accessible.name: qsTr("DRC profile")
                     Layout.fillWidth: true
                     model: EncoderController.drcNames
                     currentIndex: root.drcChoice

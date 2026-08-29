@@ -26,18 +26,30 @@ namespace ac3cli::commands {
 // is where the reconstructed object audio itself comes out.
 int run_monitor(std::string_view in_path, int device_index, const ac3cli::Options& meta);
 
+// Decode an E-AC-3 stream's object layer and hand it to the OS's own spatial
+// object renderer (Windows' ISpatialAudioObjectRenderStream, roadmap UX8):
+// every JOC-reconstructed object goes out as a DYNAMIC object at its real
+// OAMD position, and the bed's LFE (never a JOC output - TS 103 420 §6.3.2.2
+// bypasses it) goes out as a STATIC one. This is the one path that lets
+// Dolby's own renderer engage with this project's reconstructed objects at
+// all - see ac3::audio::SpatialObjectSink's own header comment. Refuses
+// cleanly, naming which Settings toggle would fix it, when the chosen
+// endpoint has no spatial sound format enabled.
+int run_spatial(std::string_view in_path, int device_index, const ac3cli::Options& meta);
+
 // Live capture -> live encode -> optionally live monitor and/or live IEC
 // 61937 passthrough, running continuously and also writing the encoded
 // access units to a file (so a live session leaves an artifact the way
 // 'record' always has). This is the command 'record' is not: 'record' only
 // ever reaches a file.
 //
-// mode "atmos" additionally moves each object's placement every frame from
-// elapsed wall-clock time, using the same orbiting math run_atmos's
-// synthetic demo uses - the concrete shape a real per-frame live position
-// source (a separate, parallel piece of work) drops into once it lands: swap
-// the orbit-angle expression below for a read of wherever that source keeps
-// its current position, still evaluated fresh every frame inside this same loop.
+// mode "atmos" additionally moves each object's placement every frame:
+// either the same orbiting math run_atmos's synthetic demo uses (elapsed
+// wall-clock time, recomputed every frame), or, when positions= names a
+// live source (roadmap UX4 - OSC today), a real one - ac3::audio::
+// LivePositionSource drained into an ac3::oba::SceneCursor at the same
+// frame-end instant the orbit already samples at, so switching the source
+// on changes WHERE objects go, never the shape of this loop.
 int run_live(std::string_view out_path, int capture_device, std::uint32_t seconds,
             std::uint32_t bitrate, int monitor_device, int passthrough_device,
             std::string_view mode, const ac3cli::Options& meta);

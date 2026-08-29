@@ -21,9 +21,11 @@
 #include "../support.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
+#include "ac3/audio/live_positions.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/resampler.hpp"
+#include "ac3/audio/spatial.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
@@ -33,6 +35,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
@@ -265,6 +268,190 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     return kExitOk;
 }
 
+namespace {
+
+// WAVEFORMATEXTENSIBLE SPEAKER_LOW_FREQUENCY (ksmedia.h) - the one bed
+// channel run_spatial feeds the sink as a static object. Hardcoded for the
+// same reason ac3::audio's own Windows backend hardcodes its SPEAKER_* bits
+// rather than pulling in mmreg.h: the value is part of the public ABI and
+// has never changed.
+constexpr std::uint32_t kSpeakerLowFrequency = 0x8;
+
+// TS 103 420 §4.2.1's room-anchored cube (x,y in [0,1]; z in [-1,1] about ear
+// height - see ac3::oba::scene.hpp's Orientation comment and
+// bed_label_position's "front wall at y=0, ceiling at z=+1, sides at x=0 and
+// 1", and the GUI's ObjectInspectorDialog.qml plan/elevation views, which
+// draw the same cube the same way) to ISpatialAudioObject::SetPosition's
+// listener-relative, right-handed metres: +x right, +y up, +z BEHIND the
+// listener (Microsoft Learn, "Render spatial sound using spatial audio
+// objects").
+//
+// OAMD's cube carries no absolute size, so the metre scale below is a
+// plausible small-room half-extent, not a measured one - what is NOT a
+// guess is the axis correspondence, and the listener sits at the room's
+// centre facing the front (screen) wall, the same reference point
+// ac3::oba::Orientation::rotate already treats as "centred". Moving away
+// from centre still moves an object further away in the right direction;
+// only the absolute distance is approximate.
+struct SpatialXyz {
+    float x;
+    float y;
+    float z;
+};
+
+SpatialXyz to_windows_spatial(const ac3::oba::Position& p) {
+    constexpr float kHalfWidthM = 2.0F;  // left/right wall distance from centre
+    constexpr float kHalfDepthM = 2.0F;  // front/rear wall distance from centre
+    constexpr float kHeightM = 1.0F;     // ceiling/floor distance from ear height
+    return {.x = (static_cast<float>(p.x) - 0.5F) * kHalfWidthM,
+            .y = static_cast<float>(p.z) * kHeightM,
+            .z = (static_cast<float>(p.y) - 0.5F) * kHalfDepthM};
+}
+
+}  // namespace
+
+int run_spatial(std::string_view in_path, int device_index, const Options& meta) {
+    const auto stream = read_all(in_path);
+    if (stream.empty()) {
+        fmt::println(stderr, "error: cannot read {}", in_path);
+        return kExitInput;
+    }
+    if (!apply_object_verification(stream, meta)) {
+        return kExitInput;
+    }
+    const auto bsid = ac3::stream_bsid(stream);
+    if (!bsid) {
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        return kExitInput;
+    }
+    if (*bsid <= 8) {
+        fmt::println(stderr,
+                     "error: spatial rendering needs the object layer, which only E-AC-3 "
+                     "carries - 'ac3cli monitor' plays a plain AC-3 bed");
+        return kExitInput;
+    }
+
+    std::string device_id;
+    std::string device_name = "default endpoint";
+    if (device_index >= 0) {
+        const auto devices = ac3::audio::enumerate_render_devices();
+        if (!devices) {
+            fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+            return kExitUnavailable;
+        }
+        if (static_cast<std::size_t>(device_index) >= devices->size()) {
+            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+                         device_index);
+            return kExitUsage;
+        }
+        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
+        device_id = chosen.id;
+        device_name = chosen.name;
+    }
+
+    // Refused up front, before any decoding: a spatial format has to be
+    // enabled on the chosen endpoint for this command to do anything this
+    // project cannot already do with 'monitor', and the roadmap calls for
+    // exactly this clean, named refusal rather than a generic failure.
+    const auto capability = ac3::audio::probe_spatial_capability(device_id);
+    if (!capability) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(capability.error()));
+        return kExitUnavailable;
+    }
+    if (capability->max_dynamic_objects == 0) {
+        fmt::println(stderr, "error: {}", capability->reason);
+        return kExitUnavailable;
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    if (!units || units->empty()) {
+        fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+        return kExitInput;
+    }
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(
+        ac3::DecoderConfig{.drc_scale = meta.drc_scale,
+                           .fast_imdct = meta.fast_imdct,
+                           .heavy_compression = meta.p.heavy.has_value(),
+                           .output = meta.output,
+                           .concealment = meta.concealment});
+
+    ac3::audio::SpatialObjectSink sink;
+    bool started = false;
+    std::uint64_t units_played = 0;
+    std::vector<ac3::audio::DynamicObjectUpdate> dynamic_updates;
+    std::vector<ac3::audio::StaticObjectUpdate> static_updates;
+
+    for (const auto& unit : *units) {
+        const auto decoded = decoder->decode_access_unit(unit);
+        if (!decoded) {
+            fmt::println(stderr, "error: decode failed (code {})",
+                         static_cast<int>(decoded.error()));
+            return kExitInput;
+        }
+        if (!decoded->has_value()) {
+            // §3.7: held back pending transient pre-noise processing - see
+            // run_monitor's identical handling above.
+            continue;
+        }
+        const auto& out = **decoded;
+
+        if (!started) {
+            const bool has_lfe =
+                out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
+            const auto started_result =
+                sink.start(device_id, sample_rate_hz(out.sample_rate),
+                          has_lfe ? kSpeakerLowFrequency : 0U,
+                          static_cast<std::uint32_t>(out.object_audio.size()));
+            if (!started_result) {
+                fmt::println(stderr, "error: {}", ac3::audio::describe(started_result.error()));
+                return kExitUnavailable;
+            }
+            started = true;
+            status_println(status_stream(), "spatial: {} dynamic object(s){} on \"{}\"…",
+                           out.object_audio.size(),
+                           has_lfe ? " + the bed's LFE (static)" : "", device_name);
+        }
+
+        dynamic_updates.clear();
+        if (out.object_metadata) {
+            const auto positions = ac3::oba::describe_objects(*out.object_metadata);
+            for (std::size_t i = 0; i < out.object_audio.size() && i < positions.size(); ++i) {
+                const auto xyz = to_windows_spatial(positions[i].position);
+                dynamic_updates.push_back(
+                    {.pcm = out.object_audio[i],
+                     .x = xyz.x,
+                     .y = xyz.y,
+                     .z = xyz.z,
+                     .gain = static_cast<float>(std::pow(10.0, positions[i].gain_db / 20.0))});
+            }
+        }
+        static_updates.clear();
+        if (out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program) &&
+            !out.channels.empty()) {
+            // Table 5.8's coded order puts the LFE last regardless of acmod
+            // (ac3::DecodedAccessUnit::channels' own doc comment) - never a
+            // JOC output (§6.3.2.2), so it only ever exists here.
+            static_updates.push_back(
+                {.pcm = out.channels.back(), .channel = kSpeakerLowFrequency});
+        }
+
+        while (!sink.submit(dynamic_updates, static_updates)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+        ++units_played;
+    }
+
+    while (sink.stats().updates_rendered < sink.stats().updates_submitted) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const auto stats = sink.stats();
+    sink.stop();
+    status_println(status_stream(),
+                   "played {} access units, {} active dynamic objects, {} underruns",
+                   units_played, stats.active_dynamic_objects, stats.underruns);
+    return kExitOk;
+}
+
 // The slot budget for a live object session, allocated ONCE here so a slot
 // bound later cannot change the stream's object count mid-session - a decoder
 // reads the count from the first access unit's OAMD and never re-reads it.
@@ -348,6 +535,16 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         return kExitUsage;
     }
     const bool atmos = mode == "atmos";
+
+    // positions= only means anything once objects exist to drive - a pure
+    // input-shape conflict, so it is refused before any device I/O rather
+    // than after: the answer does not depend on what hardware is present.
+    if (meta.positions && !atmos) {
+        fmt::println(stderr,
+                     "error: positions= drives object placement, which only 'live mode=atmos' "
+                     "has");
+        return kExitUsage;
+    }
 
     const auto devices = ac3::audio::enumerate_devices();
     if (!devices) {
@@ -486,6 +683,62 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         return kExitUsage;
     }
     const std::size_t nobjects = slots.size();
+
+    // positions=: a real live object-position source (roadmap UX4) instead
+    // of the built-in synthetic orbit below. Built here, right after
+    // nobjects is fixed and before anything else in this session (capture,
+    // encoders, the output file) opens, so a bind failure is refused early
+    // rather than discovered mid-session. Fatal (kExitUnavailable) rather
+    // than a warning the way monitor=/passthrough= are: those are OUTPUT
+    // legs whose absence still leaves a correct recording, but positions=
+    // is an INPUT - silently falling back to the orbit because a port was
+    // already in use would put a different scene in the file than the one
+    // asked for, discovered only at playback.
+    std::unique_ptr<ac3::audio::LivePositionSource> position_source;
+    std::optional<ac3::oba::SceneCursor> position_cursor;
+    if (atmos && meta.positions) {
+        position_source = std::make_unique<ac3::audio::LivePositionSource>(nobjects);
+        const auto bound = position_source->start(meta.positions->bind, meta.positions->port);
+        if (!bound) {
+            fmt::println(stderr, "error: positions={}:{}:{} - {}", meta.positions->scheme,
+                         meta.positions->bind, meta.positions->port,
+                         ac3::audio::describe(bound.error()));
+            return kExitUnavailable;
+        }
+        // One default automation point per slot: the orbit's own t=0
+        // position, so an object nothing has addressed yet holds where the
+        // orbit would have started it - still spread apart from its
+        // siblings, which is the reason the orbit spreads them at all (JOC
+        // cannot separate co-located objects) - and this session's own
+        // gain law, so switching positions= on changes WHERE objects start,
+        // never how loud they are.
+        std::vector<ac3::oba::SceneObject> objects(nobjects);
+        for (std::size_t i = 0; i < nobjects; ++i) {
+            const double angle =
+                2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(nobjects);
+            const double height =
+                nobjects == 1 ? 0.5
+                             : -1.0 + 2.0 * static_cast<double>(i) /
+                                          static_cast<double>(nobjects - 1);
+            objects[i].automation.push_back(
+                {.time_s = 0.0,
+                 .position = {.x = 0.5 + 0.5 * std::sin(angle),
+                             .y = 0.5 - 0.5 * std::cos(angle),
+                             .z = height},
+                 .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
+                 .lfe_send = i == 0 ? 0.2 : 0.0});
+        }
+        auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+        if (!scene) {
+            fmt::println(stderr, "error: internal: {}", scene.error().message);
+            return kExitUsage;
+        }
+        position_cursor.emplace(std::move(*scene));
+        status_println(status,
+                       "positions: OSC on {}:{}, objects 0-{} (/object/<n>/xyz|gain|lfe|release)",
+                       meta.positions->bind, position_source->local_port(), nobjects - 1);
+    }
+
     const auto channel_plan = atmos ? plan::ChannelPlan{} : plan::resolve(take->plan);
     std::optional<plan::Routing> routing;
     if (!atmos) {
@@ -835,24 +1088,33 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         if (atmos) {
             // Objects orbit at their own rate and start spread around the
             // ring, matching run_atmos exactly - the position is recomputed
-            // from elapsed time every frame rather than fixed once, which is
-            // the whole point: a real live source reads the same way.
+            // from elapsed time every frame rather than fixed once, which
+            // used to be described as "the hook a real live position source
+            // drops into once one exists" (see live_audio.hpp's own header):
+            // positions= is that source now, sampled through the same
+            // SceneCursor seam ac3::oba::SceneCursor was built for (roadmap
+            // UX4), at the frame-end time `t` either path already needs.
             const double t = static_cast<double>(n0) / static_cast<double>(rate_hz);
-            for (std::size_t i = 0; i < nobjects; ++i) {
-                const double rate =
-                    1.0 / (6.0 * (1.0 + 0.31 * static_cast<double>(i)));
-                const double phase =
-                    2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(nobjects);
-                const double angle = 2.0 * std::numbers::pi * rate * t + phase;
-                const double height =
-                    nobjects == 1 ? 0.5
-                                 : -1.0 + 2.0 * static_cast<double>(i) /
-                                              static_cast<double>(nobjects - 1);
-                placement[i] = {.position = {.x = 0.5 + 0.5 * std::sin(angle),
-                                             .y = 0.5 - 0.5 * std::cos(angle),
-                                             .z = height},
-                                .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
-                                .lfe_send = i == 0 ? 0.2 : 0.0};
+            if (position_source) {
+                position_source->drain_into(*position_cursor, t);
+                position_cursor->sample_into(t, placement);
+            } else {
+                for (std::size_t i = 0; i < nobjects; ++i) {
+                    const double rate =
+                        1.0 / (6.0 * (1.0 + 0.31 * static_cast<double>(i)));
+                    const double phase =
+                        2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(nobjects);
+                    const double angle = 2.0 * std::numbers::pi * rate * t + phase;
+                    const double height =
+                        nobjects == 1 ? 0.5
+                                     : -1.0 + 2.0 * static_cast<double>(i) /
+                                                  static_cast<double>(nobjects - 1);
+                    placement[i] = {.position = {.x = 0.5 + 0.5 * std::sin(angle),
+                                                 .y = 0.5 - 0.5 * std::cos(angle),
+                                                 .z = height},
+                                    .gain = 0.7 / std::sqrt(static_cast<double>(nobjects)),
+                                    .lfe_send = i == 0 ? 0.2 : 0.0};
+                }
             }
             const auto unit = atmos_encoder->encode_frame(views, placement);
             if (!unit) {
@@ -968,6 +1230,9 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (device2) {
         capture2.stop();
     }
+    if (position_source) {
+        position_source->stop();
+    }
     if (monitoring) {
         while (monitor_sink.stats().frames_rendered < monitor_sink.stats().frames_submitted) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -1017,6 +1282,12 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         status_println(status,
                        "  {} object slots, {} bound to captured channels, {} carried silent",
                        nobjects, bound, nobjects - bound);
+    }
+    if (position_source) {
+        const auto position_stats = position_source->stats();
+        status_println(status, "positions: {} datagrams, {} updates applied, {} dropped",
+                       position_stats.datagrams, position_stats.updates_applied,
+                       position_stats.packets_rejected + position_stats.messages_dropped);
     }
     status_println(status, "captured {} frames, {} silence-filled, {} dropped",
                    stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);

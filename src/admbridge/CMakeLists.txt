@@ -27,13 +27,15 @@
 # this module without dragging in BW64/RF64-specific parsing it does not
 # need.
 #
-# Like ac3adm::ac3adm, this module is NOT part of the installed
-# find_package(ac3forge) package (see the root CMakeLists.txt's own
-# InstallLibrary.cmake comment) - it transitively depends on ac3adm, which is
-# already excluded for the same reason (FetchContent'd third-party code, not
-# this project's own, plus the added complexity of re-exporting libbw64/
-# libadm's own transitive targets through an installed package). Consume it
-# via add_subdirectory in-tree, the same way ac3adm itself is consumed today.
+# Installed/exported via find_package(ac3forge) (cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
+# block) as ac3::admbridge_shared ONLY - same shared-only deviation as ac3adm::ac3adm itself (see
+# src/ac3adm/CMakeLists.txt's header comment), and for a related reason: admbridge_objects PUBLIC-
+# links ac3adm::ac3adm below, a genuine usage requirement (this module's own public headers name
+# ac3adm types), so admTargets must resolve it - and since only ac3adm_shared is ever exported,
+# admbridge has to resolve to that specific variant too, not the ambient ac3adm::ac3adm alias
+# (which would pick ac3adm_static whenever BUILD_SHARED_LIBS=OFF, breaking the export the same
+# way an unpinned dependency broke ac3adm's own export before the fix described there). See the
+# target_link_libraries(admbridge_objects...) call below.
 # ---------------------------------------------------------------------------
 add_library(admbridge_objects OBJECT)
 add_library(admbridge_static STATIC)
@@ -53,7 +55,8 @@ endif()
 target_sources(admbridge_objects
     PRIVATE
         src/coordinates.cpp
-        src/bridge.cpp)
+        src/bridge.cpp
+        src/iab_bridge.cpp)
 
 target_include_directories(admbridge_objects
     PUBLIC
@@ -63,14 +66,25 @@ target_include_directories(admbridge_objects
 
 target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 
-# PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp) name types from both
-# ac3::oba (ac3::forge) and ac3adm::ac3adm in their signatures (ac3::oba::ObjectPath,
-# ac3adm::AdmDocument, ...), so anything linking ac3::admbridge needs both transitively -
-# the same PUBLIC-link-its-dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
+# PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp, iab_bridge.hpp) name
+# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (roadmap IM1 phase 3) ac3iab::ac3iab in
+# their signatures (ac3::oba::ObjectPath, ac3adm::AdmDocument, ac3iab::IABitstreamFrame, ...), so
+# anything linking ac3::admbridge needs all three transitively - the same PUBLIC-link-its-
+# dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
+#
+# ac3adm::ac3adm_shared explicitly, not the ambient ac3adm::ac3adm alias: this file's header
+# comment explains why - the alias tracks BUILD_SHARED_LIBS and would resolve to ac3adm_static
+# whenever that's OFF (the common case, including the coverage preset - the only place
+# AC3FORGE_BUILD_ADM=ON is exercised in CI today), which is never in any export set under
+# ac3adm's shared-only design. Pinning here mirrors src/capi/CMakeLists.txt's forge_c precedent
+# of embedding one fixed variant regardless of the ambient default, just for a PUBLIC dependency
+# instead of a PRIVATE one. ac3iab is NOT pinned the same way: it is default-ON with both
+# variants in the install/export set, so the ambient alias is exactly right for it.
 target_link_libraries(admbridge_objects
     PUBLIC
         ac3::forge
-        ac3adm::ac3adm
+        ac3adm::ac3adm_shared
+        ac3iab::ac3iab
     PRIVATE
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")

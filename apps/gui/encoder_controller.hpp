@@ -24,6 +24,7 @@
 
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
+#include "ac3/audio/live_positions.hpp"
 #include "ac3/audio/resampler.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/assignment.hpp"
@@ -599,6 +600,31 @@ class EncoderController : public QObject {
     // also makes true (the leg always carries less than the main encode).
     Q_PROPERTY(bool liveDownmixLeg READ liveDownmixLeg NOTIFY liveActiveChanged)
 
+    // ---- live object-position source over OSC (roadmap UX4) ----------------
+    // A real live position source for the live room's objects instead of
+    // manual placement - ac3::audio::LivePositionSource drained into an
+    // ac3::oba::SceneCursor once per encode frame, the same seam
+    // 'ac3cli live mode=atmos positions=osc:<port>' lands on. Pre-flight
+    // only, same reasoning as liveWavSafetyCopy above: startLiveSession
+    // reads these once, at session start, and they are fixed for that
+    // session's lifetime - the toggle re-enables for the NEXT session.
+    Q_PROPERTY(bool liveOscEnabled READ liveOscEnabled WRITE setLiveOscEnabled NOTIFY
+                   liveOscConfigChanged)
+    Q_PROPERTY(int liveOscPort READ liveOscPort WRITE setLiveOscPort NOTIFY liveOscConfigChanged)
+    // Off by default: the bind address is loopback (127.0.0.1) unless this
+    // is explicitly turned on, matching 'ac3cli live positions=osc:local:...'
+    // vs '...osc:any:...' - see docs/threat-model.md.
+    Q_PROPERTY(bool liveOscAnyInterface READ liveOscAnyInterface WRITE setLiveOscAnyInterface
+                   NOTIFY liveOscConfigChanged)
+    Q_PROPERTY(bool liveOscListening READ liveOscListening NOTIFY liveActiveChanged)
+    // Empty while listening; a bind failure's message otherwise - the same
+    // "explain rather than silently do nothing" idiom liveReceiverPlanText
+    // already uses for the passthrough leg.
+    Q_PROPERTY(QString liveOscStatus READ liveOscStatus NOTIFY liveActiveChanged)
+    Q_PROPERTY(qint64 liveOscDatagrams READ liveOscDatagrams NOTIFY liveStatsChanged)
+    Q_PROPERTY(qint64 liveOscUpdatesApplied READ liveOscUpdatesApplied NOTIFY liveStatsChanged)
+    Q_PROPERTY(qint64 liveOscDropped READ liveOscDropped NOTIFY liveStatsChanged)
+
 public:
     explicit EncoderController(QObject* parent = nullptr);
     ~EncoderController() override;
@@ -781,6 +807,17 @@ public:
     [[nodiscard]] bool livePassthrough() const { return live_passthrough_; }
     [[nodiscard]] bool liveWritingToDisk() const { return live_writing_to_disk_; }
     [[nodiscard]] bool liveWavSafetyCopy() const { return live_wav_safety_copy_; }
+    [[nodiscard]] bool liveOscEnabled() const { return live_osc_enabled_; }
+    void setLiveOscEnabled(bool enabled);
+    [[nodiscard]] int liveOscPort() const { return live_osc_port_; }
+    void setLiveOscPort(int port);
+    [[nodiscard]] bool liveOscAnyInterface() const { return live_osc_any_interface_; }
+    void setLiveOscAnyInterface(bool any_interface);
+    [[nodiscard]] bool liveOscListening() const { return live_osc_listening_; }
+    [[nodiscard]] QString liveOscStatus() const { return live_osc_status_; }
+    [[nodiscard]] qint64 liveOscDatagrams() const { return live_osc_datagrams_; }
+    [[nodiscard]] qint64 liveOscUpdatesApplied() const { return live_osc_updates_applied_; }
+    [[nodiscard]] qint64 liveOscDropped() const { return live_osc_dropped_; }
     void setLiveWavSafetyCopy(bool on);
     [[nodiscard]] QString liveReceiverPlanText() const { return live_receiver_plan_text_; }
     [[nodiscard]] bool liveGap() const { return live_gap_; }
@@ -1212,6 +1249,7 @@ signals:
     void liveStatsChanged();
     void liveReconnectingChanged();
     void liveWavSafetyCopyChanged();
+    void liveOscConfigChanged();
     void motionPreviewActiveChanged();
     void motionPreviewTimeChanged();
     void sourceLevelsChanged();
@@ -1402,6 +1440,10 @@ private:
     // the GUI thread, the worker reads it once per frame). Empty outside a
     // live Atmos session.
     [[nodiscard]] std::vector<int> liveSlotChannels() const;
+    // Parallel to liveObjectSnapshot, same guard: which slots
+    // ac3::audio::LivePositionSource is currently driving. Empty (never
+    // true) whenever liveOscEnabled was off at session start.
+    [[nodiscard]] std::vector<bool> liveObjectNetworkDriven() const;
 
     // Writes an elementary stream, or muxes Matroska/MP4/MPEG-TS, or wraps
     // fMP4/CMAF (a folder of files - see outputIsFolder()), according to the
@@ -1812,11 +1854,37 @@ private:
     double live_drift_ppm_ = 0.0;
     // ---- parallel downmix receiver leg -----------------------------------
     bool live_downmix_leg_ = false;
+    // ---- live object-position source over OSC (roadmap UX4) -------------
+    // Pre-flight, same convention as live_wav_safety_copy_ above.
+    bool live_osc_enabled_ = false;
+    int live_osc_port_ = 9000;
+    bool live_osc_any_interface_ = false;
+    bool live_osc_listening_ = false;
+    QString live_osc_status_;
+    qint64 live_osc_datagrams_ = 0;
+    qint64 live_osc_updates_applied_ = 0;
+    qint64 live_osc_dropped_ = 0;
     // Genuinely shared with the live worker thread (dragging the Live
     // session's room, or the Objects tab's, while a live Atmos session is
-    // running): every read and write goes through live_object_mutex_.
+    // running): every read and write goes through live_object_mutex_. With
+    // liveOscEnabled on, the DIRECTION reverses for whichever objects are
+    // network-driven - the worker writes live_object_snapshot_ (the
+    // position ac3::audio::LivePositionSource most recently pushed) instead
+    // of only reading it, and the GUI thread's setObjectPosition/
+    // setObjectLfeSend refuse to write a driven object rather than racing
+    // the worker's own write - see live_object_network_driven_ below and
+    // objectModel()'s own merge.
     mutable std::mutex live_object_mutex_;
     std::vector<ObjectConfig> live_object_snapshot_;
+    // Parallel to live_object_snapshot_, same size, same guard: true for a
+    // slot ac3::oba::SceneCursor::is_live() currently reports live - i.e.
+    // ac3::audio::LivePositionSource has pushed a placement for it and
+    // nothing has since released it. Read by objectModel() (which object to
+    // take from the snapshot instead of object_configs_) and by
+    // setObjectPosition/setObjectLfeSend (which object a manual drag must
+    // refuse). Empty, or all false, whenever liveOscEnabled is off - every
+    // object is manually placed exactly as before this existed.
+    std::vector<bool> live_object_network_driven_;
     // Slot -> capture-channel bindings (see liveSlotChannels' own comment);
     // -1 marks an allocated-but-unbound slot, which the worker encodes as
     // silence. Guarded by live_object_mutex_ alongside live_object_snapshot_
@@ -1826,6 +1894,13 @@ private:
     // thread, matching capture_'s own convention - only buffer()/submit()/
     // stats() are called from the worker while a session runs.
     std::unique_ptr<ac3::audio::Capture> live_capture_;
+    // Same convention as live_capture_ immediately above: opened on the GUI
+    // thread before the worker starts (startLiveSession), only
+    // drain_into()/stats() called from the worker while running, closed on
+    // the GUI thread once the session ends. Null whenever liveOscEnabled
+    // was off at session start - the orbit (or manual placement) path is
+    // then unchanged from before this existed.
+    std::unique_ptr<ac3::audio::LivePositionSource> live_position_source_;
     // The slave device, when a two-device session opened one - same
     // GUI-thread-owns-open/close, worker-thread-only-reads convention as
     // live_capture_ itself. Null for an ordinary single-device session.

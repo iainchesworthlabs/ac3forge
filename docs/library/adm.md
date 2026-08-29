@@ -178,9 +178,13 @@ turning it on needs the dedicated `adm` vcpkg feature to resolve those Boost pac
 with `AC3FORGE_BUILD_ADM=OFF` (the default) never touches `find_package(Boost)`, never fetches
 libbw64/libadm, and behaves identically to a build of this project before this module existed.
 
-For the same reason, `ac3adm::ac3adm` is **not** part of the installed `find_package(ac3forge)`
-package (see [the library overview](index.md)) and is **not** wired into the Android/Shield NDK
-build — see `src/ac3adm/CMakeLists.txt`'s own header comment for both.
+`ac3adm::ac3adm` IS part of the installed `find_package(ac3forge)` package (see
+[the library overview](index.md)), but **shared-only** — unlike every other module here, there is
+no `ac3adm::ac3adm_static` to link against, since a static archive would leave a downstream
+consumer with unresolved symbols into libbw64/libadm (neither installed/exported by this project
+in its own right); a self-contained `.so` absorbs both at its own build step instead. It is
+**not** wired into the Android/Shield NDK build — see `src/ac3adm/CMakeLists.txt`'s own header
+comment for both points.
 
 ## PCM formats
 

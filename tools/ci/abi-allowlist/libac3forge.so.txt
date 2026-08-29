@@ -89,6 +89,7 @@ ac3::decode_exponents(unsigned char, std::span<unsigned char const, 184467440737
 ac3::dequantize_mantissa(unsigned int, int)
 ac3::describe(ac3::DecodeError)
 ac3::describe(ac3::DiagnosticEvent)
+ac3::describe(ac3::FrameError)
 ac3::dft512(std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double, 512ul>, std::span<double, 512ul>)
 ac3::dsp::Biquad::process(float)
 ac3::dsp::Biquad::reset()
@@ -352,6 +353,7 @@ ac3::oba::SceneCursor::release(unsigned long)
 ac3::oba::SceneCursor::release_all()
 ac3::oba::SceneCursor::sample(double) const
 ac3::oba::SceneCursor::sample_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
+ac3::oba::apply(ac3::oba::SceneOscUpdate const&, ac3::oba::ObjectPlacement const&)
 ac3::oba::band_energy(std::span<float const, 18446744073709551615ul>, std::span<unsigned char const, 64ul>, std::span<double, 18446744073709551615ul>, bool)
 ac3::oba::bed_label_position(ac3::oba::BedLabel)
 ac3::oba::bed_labels(unsigned short)
@@ -367,6 +369,8 @@ ac3::oba::joc::reconstruct(std::span<std::span<float const, 18446744073709551615
 ac3::oba::joc_object_indices(ac3::oba::Program const&)
 ac3::oba::make_orbit_path(double, double, double, double, double)
 ac3::oba::orientation_from_degrees(double, double, double)
+ac3::oba::parse_osc_packet(std::span<std::byte const, 18446744073709551615ul>, ac3::oba::OscParseStats*)
+ac3::oba::parse_osc_packet_into(std::span<std::byte const, 18446744073709551615ul>, std::span<ac3::oba::SceneOscUpdate, 18446744073709551615ul>, ac3::oba::OscParseStats*)
 ac3::oba::parse_payload(std::span<std::byte const, 18446744073709551615ul>)
 ac3::oba::qmf_band_energy(std::span<float const, 18446744073709551615ul>, std::span<unsigned char const, 64ul>, std::span<double, 18446744073709551615ul>, ac3::dsp::QmfAnalysis&)
 ac3::oba::read_scene(std::basic_string_view<char, std::char_traits<char> >)
@@ -465,6 +469,10 @@ ac3::verify::Eac3MirrorEncoder::last_report[abi:cxx11]() const
 ac3::verify::MirrorEncoder::MirrorEncoder(ac3::EncoderConfig)
 ac3::verify::MirrorEncoder::encode_frame(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
 ac3::verify::MirrorEncoder::last_report[abi:cxx11]() const
+ac3::verify::append_trace_csv(ac3::verify::Eac3AccessUnitTrace const&, unsigned long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)
+ac3::verify::append_trace_csv(ac3::verify::FrameTrace const&, unsigned long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)
+ac3::verify::append_trace_json_lines(ac3::verify::Eac3AccessUnitTrace const&, unsigned long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)
+ac3::verify::append_trace_json_lines(ac3::verify::FrameTrace const&, unsigned long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)
 ac3::verify::compare(ac3::verify::Eac3AccessUnitTrace const&, ac3::verify::Eac3AccessUnitTrace const&, unsigned long)
 ac3::verify::compare(ac3::verify::Eac3SubstreamTrace const&, ac3::verify::Eac3SubstreamTrace const&, unsigned long, int)
 ac3::verify::compare(ac3::verify::FrameTrace const&, ac3::verify::FrameTrace const&, unsigned long)
@@ -474,6 +482,7 @@ ac3::verify::describe[abi:cxx11](ac3::verify::Eac3Mismatch const&, int, int)
 ac3::verify::describe[abi:cxx11](ac3::verify::Mismatch const&, int, int)
 ac3::verify::report[abi:cxx11](std::span<ac3::verify::Eac3Mismatch const, 18446744073709551615ul>, ac3::verify::Eac3AccessUnitTrace const&)
 ac3::verify::report[abi:cxx11](std::span<ac3::verify::Mismatch const, 18446744073709551615ul>, int, int)
+ac3::verify::trace_csv_header()
 ac3::version_details[abi:cxx11]()
 std::__throw_bad_variant_access(unsigned int)::__reasons
 typeinfo for std::bad_variant_access
