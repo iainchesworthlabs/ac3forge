@@ -1296,6 +1296,16 @@ jobs:
           cmake --build build/config-linux-llvm-shared -- -k 0
           popd >/dev/null
 
+      # Both steps below discover libraries dynamically - `find .../src -name '*.so'` - rather
+      # than a hardcoded `for lib in ...` list: this project's own SHARED targets each produce a
+      # bare, unversioned libFOO.so symlink (alongside the real, version-suffixed libFOO.so.X.Y.Z)
+      # directly in the build tree under src/<component>/, with no install step needed to see it.
+      # Scoped to .../src specifically - not the whole build tree - so a FetchContent'd
+      # third-party dependency's own .so (e.g. a hypothetical libadm.so, if AC3FORGE_BUILD_ADM
+      # were ever turned on for this preset) is never picked up: those build under .../_deps/,
+      # a disjoint subtree, and this project never install()s them in their own right regardless.
+      # A hardcoded list is exactly what let libac3iab.so go uncovered by both steps below (and
+      # unrepresented in tools/ci/abi-allowlist/) from the day ac3iab landed until this fix.
       - name: abidiff each shared library against the last release
         if: steps.last_tag.outputs.skip == 'false'
         shell: bash
@@ -1307,11 +1317,14 @@ jobs:
             echo "## ABI diff vs $LAST_TAG (advisory pre-1.0)"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t libs < <(
+            { find build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+              find ../abi-base/build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+            } 2>/dev/null | sort -u)
           status=0
-          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
-                     libmatroska.so libmp4.so libmpegts.so; do
-            head_lib="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
-            base_lib="$(find ../abi-base/build/config-linux-llvm-shared -name "$lib" -print -quit)"
+          for lib in "${libs[@]}"; do
+            head_lib="$(find build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
+            base_lib="$(find ../abi-base/build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
             echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             if [ -z "$head_lib" ]; then
@@ -1360,11 +1373,9 @@ jobs:
         run: |
           set -euo pipefail
           libs=()
-          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
-                     libmatroska.so libmp4.so libmpegts.so; do
-            found="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
-            [ -n "$found" ] && libs+=(--lib "$found")
-          done
+          while IFS= read -r found; do
+            libs+=(--lib "$found")
+          done < <(find build/config-linux-llvm-shared/src -name '*.so' | sort)
           python3 tools/ci/check_abi_symbols.py \
             --allowlist-dir tools/ci/abi-allowlist "${libs[@]}"
 

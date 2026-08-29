@@ -201,23 +201,26 @@ exported. `vcpkg.json` also declares `"supports": "!(android & !arm64)"` - only 
 Android is a real target (see [docs/platforms/android.md](platforms/android.md)); other Android
 architectures fail to build (`matroska`'s size comparisons assume a 64-bit `size_t`).
 
-`ac3::forge_c` (roadmap F1) is deliberately excluded via `-DAC3FORGE_BUILD_CAPI=OFF` rather than
-exposed as a feature. Its `capiTargets` export used to require `forge_static` even when
-`AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` left that target unexported - a real bug independent of
-vcpkg, fixed in `cmake/InstallLibrary.cmake` by exporting `forge_static` alongside `forge_shared`
-in that branch whenever `AC3FORGE_BUILD_CAPI` is `ON` (#227). The port keeps
-`AC3FORGE_BUILD_CAPI=OFF` regardless: `ac3::forge_c` was never part of its documented scope, and
-with the export-set bug gone, revisiting that is now a scope decision rather than a bug
-workaround - add a same-named `capi` feature to `vcpkg.json` and `portfile.cmake`'s
-`vcpkg_check_features()` call (its `AC3FORGE_BUILD_CAPI` CMake option and
-`cmake/InstallLibrary.cmake` guard already exist) and document it in
-[docs/library/index.md](library/index.md), same as `matroska`/`mp4`/`mpegts` each did.
+`ac3::forge_c` (roadmap F1) is exposed as the port's `capi` feature (`vcpkg install
+ac3forge[capi]`), off by default like `matroska`/`mp4`/`mpegts` above. Its `capiTargets` export
+used to require `forge_static` even when `AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` left that target
+unexported - a real bug independent of vcpkg, fixed in `cmake/InstallLibrary.cmake` by exporting
+`forge_static` alongside `forge_shared` in that branch whenever `AC3FORGE_BUILD_CAPI` is `ON`
+(#227) - which is what made adding the feature itself (roadmap AP7) a scope decision rather than
+a bug workaround.
 
 Any future optional library component follows the same three-step recipe this repo's own
 `AC3FORGE_BUILD_<NAME>` options already establish: add the CMake option and its
-`cmake/InstallLibrary.cmake` guard first (that part isn't vcpkg-specific), then add a same-named
+`cmake/InstallLibrary.cmake` guard first (that part isn't vcpkg-specific; also add a matching
+`ac3forge_install_pkgconfig()` call there - see the "pkg-config" section of
+[docs/library/index.md](library/index.md), a consumer expects one alongside every installed
+component's CMake export), then add a same-named
 feature to `packaging/vcpkg-port/ac3forge/vcpkg.json` and one line to `portfile.cmake`'s
-`vcpkg_check_features()` call.
+`vcpkg_check_features()` call - unless the component pulls in a real third-party link dependency
+of its own, the way `ac3adm`/`ac3::admbridge` do (see
+[ADM / BW64 reading](library/adm.md#why-opt-in)): those still install/export (shared-only, to
+stay self-contained without re-exporting the third party), but deliberately have no vcpkg/Conan
+feature of their own for now.
 
 **Every release tag, once the port has been merged upstream**, needs a follow-up PR to
 `microsoft/vcpkg` - the curated registry has no mechanism to track a moving `main`, so a new
@@ -243,15 +246,15 @@ it drives change (whether or not a release is involved):
 ```bash
 vcpkg install ac3forge --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows
 vcpkg install ac3forge --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows-static
-vcpkg install ac3forge[matroska,mp4,mpegts] --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows
+vcpkg install ac3forge[matroska,mp4,mpegts,capi] --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows
 ```
 
 `--classic` is required from inside this repo - the root `vcpkg.json` (manifest mode, for this
 project's *own* build-time dependencies) would otherwise shadow the package-name argument.
 Check for a clean post-build lint (no "not used"/"missing usage" warnings) and that the bare
-`ac3forge` install genuinely excludes `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts` - not
-just unlinked, no matching files anywhere in the install tree - while
-`ac3forge[matroska,mp4,mpegts]` installs all three.
+`ac3forge` install genuinely excludes `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/
+`ac3::forge_c` - not just unlinked, no matching files anywhere in the install tree - while
+`ac3forge[matroska,mp4,mpegts,capi]` installs all four.
 
 Fetching a real tag only exercises whatever `AC3FORGE_BUILD_*` options actually existed in that
 tagged source - `vcpkg_from_github()`'s `REF` always points at an already-released tag, so a
@@ -448,6 +451,7 @@ change (whether or not a release is involved):
 conan create packaging/conan --version <version> -s compiler.cppstd=23
 conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:shared=True"
 conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:matroska=False" -o "&:mp4=False" -o "&:mpegts=False"
+conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:capi=True"
 ```
 
 `-s compiler.cppstd=23` is required - a bare default profile's `compiler.cppstd` predates
